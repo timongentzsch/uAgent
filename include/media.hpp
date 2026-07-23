@@ -3,6 +3,7 @@
 // URLs; PDFs/documents use file_data. No upload API or decoding dependency.
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <fstream>
@@ -25,6 +26,14 @@ struct Attachment {
     uintmax_t bytes = 0;
     bool image = false;
 };
+
+inline std::string image_extension(const std::string& mime) {
+    if (mime == "image/png") return ".png";
+    if (mime == "image/jpeg") return ".jpg";
+    if (mime == "image/webp") return ".webp";
+    if (mime == "image/gif") return ".gif";
+    return "";
+}
 
 inline long attachment_limit_mb() {
     return std::max(1L, env_long("UAGENT_ATTACHMENT_MB", 10));
@@ -131,6 +140,45 @@ inline std::string base64_file(const Attachment& attachment, uintmax_t max_bytes
     return out;
 }
 
+inline bool base64_decode(std::string_view input, std::string& output,
+                          size_t max_bytes) {
+    static constexpr signed char invalid = -1;
+    static const auto table = [] {
+        std::array<signed char, 256> values{};
+        values.fill(invalid);
+        constexpr char alphabet[] =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        for (int i = 0; i < 64; ++i)
+            values[static_cast<unsigned char>(alphabet[i])] =
+                static_cast<signed char>(i);
+        return values;
+    }();
+    if (input.size() % 4 != 0 || input.size() / 4 * 3 > max_bytes + 2)
+        return false;
+    output.clear();
+    output.reserve(std::min(max_bytes, input.size() / 4 * 3));
+    for (size_t i = 0; i < input.size(); i += 4) {
+        int a = table[static_cast<unsigned char>(input[i])];
+        int b = table[static_cast<unsigned char>(input[i + 1])];
+        int c = input[i + 2] == '=' ? 0
+                                    : table[static_cast<unsigned char>(input[i + 2])];
+        int d = input[i + 3] == '=' ? 0
+                                    : table[static_cast<unsigned char>(input[i + 3])];
+        if (a < 0 || b < 0 || c < 0 || d < 0 ||
+            (input[i + 2] == '=' && input[i + 3] != '=') ||
+            (i + 4 != input.size() &&
+             (input[i + 2] == '=' || input[i + 3] == '=')))
+            return false;
+        output.push_back(static_cast<char>((a << 2) | (b >> 4)));
+        if (input[i + 2] != '=')
+            output.push_back(static_cast<char>((b << 4) | (c >> 2)));
+        if (input[i + 3] != '=')
+            output.push_back(static_cast<char>((c << 6) | d));
+        if (output.size() > max_bytes) return false;
+    }
+    return true;
+}
+
 inline json attachment_content(const std::string& prompt,
                                const std::vector<Attachment>& attachments,
                                std::string& error) {
@@ -191,7 +239,9 @@ inline TerminalImageProtocol terminal_image_protocol() {
     std::string term = env_str("TERM");
     if (program == "iTerm.app" || program == "WezTerm" || terminal == "iTerm2")
         return TerminalImageProtocol::iterm;
-    if (getenv("KITTY_WINDOW_ID") || term.find("kitty") != std::string::npos)
+    if (getenv("KITTY_WINDOW_ID") || program == "ghostty" ||
+        term.find("kitty") != std::string::npos ||
+        term.find("ghostty") != std::string::npos)
         return TerminalImageProtocol::kitty;
     return TerminalImageProtocol::none;
 }
@@ -200,6 +250,15 @@ inline const char* terminal_image_protocol_name(TerminalImageProtocol protocol) 
     if (protocol == TerminalImageProtocol::iterm) return "iterm";
     if (protocol == TerminalImageProtocol::kitty) return "kitty";
     return "none";
+}
+
+inline const char* terminal_image_instruction() {
+    if (!g_tty || terminal_image_protocol() == TerminalImageProtocol::none)
+        return " This terminal cannot display images inline. If asked, say so directly; "
+               "do not fetch the image or substitute Python, ASCII art, or a browser "
+               "screenshot unless the user requests a fallback.";
+    return " This terminal supports inline images via view_image; obtain a local image "
+           "file and call it when asked to show an image.";
 }
 
 template <class Emit>
@@ -272,10 +331,10 @@ inline std::string tool_view_image(const std::string& path, long columns = 0) {
     columns = std::clamp(columns, 1L, max_columns);
     long limit_mb = std::max(1L, env_long("UAGENT_TERMINAL_IMAGE_MB", 10));
     uintmax_t limit = static_cast<uintmax_t>(limit_mb) * 1024 * 1024;
+    TerminalImageProtocol protocol = terminal_image_protocol();
     std::string data = base64_file(attachment, limit, error);
     if (!error.empty()) return "error: " + error;
 
-    TerminalImageProtocol protocol = terminal_image_protocol();
     auto write_part = [](std::string_view part) {
         fwrite(part.data(), 1, part.size(), stdout);
     };
@@ -291,8 +350,7 @@ inline std::string tool_view_image(const std::string& path, long columns = 0) {
     } else {
         std::string program = env_str("TERM_PROGRAM", env_str("TERM", "unknown"));
         return "error: terminal `" + program +
-               "` has no supported inline-image protocol; use iTerm2, WezTerm, "
-               "or Kitty";
+               "` has no supported inline-image protocol; use iTerm2, WezTerm, or Kitty";
     }
     fflush(stdout);
     return "displayed " + attachment.path + " inline via " +

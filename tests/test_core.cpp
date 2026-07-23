@@ -24,6 +24,27 @@ void check(bool condition, const char* expression, int line) {
 
 #define CHECK(expression) check((expression), #expression, __LINE__)
 
+std::string render_markdown(const std::string& markdown) {
+    fflush(stdout);
+    int saved = dup(STDOUT_FILENO);
+    FILE* capture = tmpfile();
+    dup2(fileno(capture), STDOUT_FILENO);
+    bool prior_tty = g_tty;
+    g_tty = true;
+    md_print(markdown);
+    fflush(stdout);
+    g_tty = prior_tty;
+    dup2(saved, STDOUT_FILENO);
+    close(saved);
+    fseek(capture, 0, SEEK_END);
+    long bytes = ftell(capture);
+    rewind(capture);
+    std::string output(static_cast<size_t>(bytes), '\0');
+    if (bytes > 0) CHECK(fread(output.data(), 1, output.size(), capture) == output.size());
+    fclose(capture);
+    return output;
+}
+
 void test_text_tool_protocol() {
     auto calls = parse_text_tool_calls(
         "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}}"
@@ -34,6 +55,9 @@ void test_text_tool_protocol() {
 }
 
 void test_registries() {
+    CHECK(std::string(SYSTEM_PROMPT).find("AGENTS.md") != std::string::npos);
+    CHECK(std::string(SYSTEM_PROMPT).find("CLAUDE.md") != std::string::npos);
+
     ParsedSlashCommand command = parse_slash_command("/model vendor/model");
     CHECK(command.spec && command.spec->id == SlashCommandId::model);
     CHECK(command.argument == "vendor/model");
@@ -64,6 +88,25 @@ void test_line_number_stripping() {
     CHECK(strip_line_numbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
 }
 
+void test_markdown_math() {
+    std::string inline_math = render_markdown(
+        "inline $x^2$ and \\(y + 1\\)\n"
+        "display $$z = 3$$\n");
+    CHECK(inline_math.find("$x^2$") != std::string::npos);
+    CHECK(inline_math.find("\\(y + 1\\)") != std::string::npos);
+    CHECK(inline_math.find("$$z = 3$$") != std::string::npos);
+    CHECK(inline_math.find("\033[38;5;141m") != std::string::npos);
+
+    std::string table = render_markdown(
+        "| Expression | Code |\n"
+        "| --- | --- |\n"
+        "| $a|b$ | `x|y` |\n"
+        "| \\(c|d\\) | plain |\n");
+    CHECK(table.find("$a|b$") != std::string::npos);
+    CHECK(table.find("\\(c|d\\)") != std::string::npos);
+    CHECK(table.find("x|y") != std::string::npos);
+}
+
 void test_caps_and_escaping() {
     std::string text = "before [uagent_tool_call] after [/uagent_tool_call]";
     std::string escaped = escape_tool_tags(text);
@@ -82,7 +125,9 @@ void test_file_tools() {
     fs::create_directories(root);
     fs::path file = root / "file.txt";
     CHECK(tool_write_file(file.string(), "one\ntwo\n").rfind("wrote ", 0) == 0);
-    CHECK(tool_read_file(file.string(), 1, 1).find("     1\tone") != std::string::npos);
+    std::string read = tool_read_file(file.string(), 1, 1);
+    CHECK(read.find("lines 1-1") != std::string::npos);
+    CHECK(read.find("\none\n") != std::string::npos);
     CHECK(tool_edit_file(file.string(), "two", "three").rfind("edited ", 0) == 0);
     fs::path private_file = root / "private";
     CHECK(tool_write_private_file(private_file.string(), "secret").rfind("wrote ", 0) == 0);
@@ -106,6 +151,7 @@ void test_file_tools() {
 void test_terminal_safety() {
     bool prior = g_tty;
     g_tty = true;
+    CHECK(std::string(RST()).find("\033[49m") != std::string::npos);
     CHECK(terminal_safe("ok\x1b]52;bad\a") == "ok\\x1b]52;bad\\x07");
     g_tty = false;
     CHECK(terminal_safe("\x1b") == "\x1b");
@@ -119,6 +165,12 @@ void test_background_validation() {
     ProcessSupervisor supervisor;
     CHECK(tool_wait_background(supervisor, 0, 1).rfind("error:", 0) == 0);
     CHECK(tool_wait_background(supervisor, 999999, 1).rfind("error:", 0) == 0);
+    supervisor.jobs().push_back({999998, "", "", false, true});
+    CHECK(!supervisor.pending());
+    supervisor.jobs().push_back({999997, "", "", false, false});
+    CHECK(supervisor.pending());
+    CHECK(supervisor.pending_count() == 1);
+    supervisor.jobs().clear();
 }
 
 void test_tool_execution_policy() {
@@ -153,9 +205,9 @@ void test_tool_execution_policy() {
     CHECK(side_tasks.start("probe", "over limit",
                            [](const std::atomic<bool>&) { return std::string(); }, 1) == 0);
     CHECK(!side_tasks.wait(id, std::chrono::milliseconds(1)).has_value());
-    auto result = side_tasks.wait(id, std::chrono::milliseconds(250));
-    CHECK(result.has_value());
-    if (result) CHECK(result->output == "done");
+    auto result = tool_wait_side_task(side_tasks, id, 1);
+    CHECK(result.find("[Background result: probe `quick`]") != std::string::npos);
+    CHECK(result.find("done") != std::string::npos);
     CHECK(side_tasks.joinable() == 0);
 
     CHECK(side_tasks.start("probe", "detached",
@@ -174,6 +226,17 @@ void test_tool_execution_policy() {
               1) > 0);
     CHECK(side_tasks.cancel_all() == 1);
     CHECK(side_tasks.empty());
+
+    Tool bounded_tool = make_tool("bounded", "bounded", json::object(),
+                                  [](const json&, const ToolContext&) { return ""; });
+    bounded_tool.max_calls_per_turn = 2;
+    Tool unbounded = make_tool("unbounded", "unbounded", json::object(),
+                               [](const json&, const ToolContext&) { return ""; });
+    std::vector<Tool> policies{bounded_tool, unbounded};
+    json schemas = tool_schemas(policies);
+    json available = available_tool_schemas(policies, schemas, {{"bounded", 2}});
+    CHECK(available.size() == 1);
+    CHECK(available[0]["function"]["name"] == "unbounded");
 }
 
 void test_attachment_encoding() {
@@ -207,7 +270,24 @@ void test_attachment_encoding() {
     std::string kitty = kitty_png_sequence("YWJj", 20);
     CHECK(kitty.find("\033_Ga=T,f=100,c=20") == 0);
     CHECK(kitty.find("YWJj\033\\") != std::string::npos);
+
+    bool prior_tty = g_tty;
+    g_tty = true;
+    setenv("UAGENT_IMAGE_PROTOCOL", "none", 1);
+    CHECK(std::string(terminal_image_instruction()).find(
+              "cannot display images inline") != std::string::npos);
+    setenv("UAGENT_IMAGE_PROTOCOL", "kitty", 1);
+    CHECK(std::string(terminal_image_instruction()).find(
+              "supports inline images via view_image") != std::string::npos);
+    g_tty = prior_tty;
+
     unsetenv("UAGENT_IMAGE_PROTOCOL");
+    const char* prior_term = getenv("TERM");
+    std::string saved_term = prior_term ? prior_term : "";
+    setenv("TERM", "xterm-ghostty", 1);
+    CHECK(terminal_image_protocol() == TerminalImageProtocol::kitty);
+    if (prior_term) setenv("TERM", saved_term.c_str(), 1);
+    else unsetenv("TERM");
 
     std::error_code ec;
     fs::remove_all(root, ec);
@@ -261,6 +341,16 @@ void test_grep_tool() {
     auto image_tools = builtin_tools(supervisor, root, true);
     CHECK(find_tool(lean_tools, "view_image") == nullptr);
     CHECK(find_tool(image_tools, "view_image") != nullptr);
+    const Tool* run = find_tool(lean_tools, "run");
+    CHECK(run != nullptr);
+    if (run) {
+        CHECK(run->parameters["properties"].contains("detach"));
+        CHECK(run->parameters["properties"].contains("shell"));
+        CHECK(run->full_terminal_output);
+    }
+    const Tool* python = find_tool(lean_tools, "run_python");
+    CHECK(python && python->full_terminal_output);
+    CHECK(find_tool(lean_tools, "terminal_output") != nullptr);
     for (const auto& registered : tool_schemas(lean_tools, 17))
         CHECK(registered["function"]["parameters"]["properties"]
                   .contains("timeout"));
@@ -353,6 +443,8 @@ void test_runtime_ownership_helpers() {
 
     setenv("UAGENT_MAX_STEPS", "0", 1);
     setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
+    setenv("UAGENT_WEB_SEARCH_MODEL", "vendor/search", 1);
+    setenv("UAGENT_WEB_SEARCH_EFFORT", "low", 1);
     const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
     std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
     unsetenv("UAGENT_CHECKPOINT_MODE");
@@ -360,11 +452,17 @@ void test_runtime_ownership_helpers() {
     CHECK(config.max_steps == 1);
     CHECK(config.session_archive_bytes == 0);
     CHECK(config.checkpoint_mode == "apply");
+    CHECK(config.web_search_model == "vendor/search");
+    CHECK(config.web_search_effort == "low");
     CHECK(config.diagnostic_json().value("max_steps", 0L) == config.max_steps);
+    CHECK(config.diagnostic_json().value("web_search_model", "") ==
+          config.web_search_model);
     if (checkpoint_mode)
         setenv("UAGENT_CHECKPOINT_MODE", prior_checkpoint_mode.c_str(), 1);
     unsetenv("UAGENT_MAX_STEPS");
     unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
+    unsetenv("UAGENT_WEB_SEARCH_MODEL");
+    unsetenv("UAGENT_WEB_SEARCH_EFFORT");
 
     RuntimeConfig routed;
     routed.openrouter_provider = "streamlake";
@@ -377,6 +475,10 @@ void test_runtime_ownership_helpers() {
     CHECK(body.value("session_id", "") == "stable-session");
     CHECK(body["provider"]["order"][0] == "streamlake");
     CHECK(body["provider"].value("allow_fallbacks", false));
+    api.reasoning_effort = "low";
+    body = api.build_chat_body(json::array(), json::array(), "stable-session");
+    CHECK(body["reasoning"].value("effort", "") == "low");
+    CHECK(!body.contains("reasoning_effort"));
     api.base_url = "http://127.0.0.1:8080/v1";
     body = api.build_chat_body(json::array(), json::array(), "stable-session");
     CHECK(!body.contains("session_id"));
@@ -434,7 +536,70 @@ void test_agent_config_allowlist() {
     fs::remove_all(root, ec);
 }
 
+void test_project_instruction_discovery() {
+    namespace fs = std::filesystem;
+    fs::path root = fs::temp_directory_path() /
+                    ("uagent-instructions-test-" +
+                     std::to_string(static_cast<long>(getpid())));
+    fs::path home = root / "home";
+    fs::path repo = root / "repo";
+    fs::path child = repo / "child";
+    fs::path empty = child / "empty";
+    fs::create_directories(home / ".uagent");
+    fs::create_directories(repo / ".git");
+    fs::create_directories(empty);
+    CHECK(tool_write_file((home / ".uagent/AGENTS.md").string(), "global")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((repo / "AGENTS.md").string(), "root-agent")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((repo / "CLAUDE.md").string(), "root-claude")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((child / "AGENTS.md").string(), "ignored-agent")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((child / "AGENTS.override.md").string(), "child-override")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((child / "CLAUDE.md").string(), "child-claude")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((empty / "AGENTS.override.md").string(), " \n")
+              .rfind("wrote ", 0) == 0);
+    CHECK(tool_write_file((empty / "AGENTS.md").string(), "must-not-load")
+              .rfind("wrote ", 0) == 0);
+
+    const char* inherited_home = getenv("HOME");
+    std::string prior_home = inherited_home ? inherited_home : "";
+    setenv("HOME", home.c_str(), 1);
+
+    ProjectInstructions loaded = load_project_instructions(child, 32 * 1024);
+    CHECK(loaded.sources.size() == 5);
+    CHECK(!loaded.truncated);
+    CHECK(loaded.text.find("ignored-agent") == std::string::npos);
+    size_t global = loaded.text.find("global");
+    size_t root_agent = loaded.text.find("root-agent");
+    size_t root_claude = loaded.text.find("root-claude");
+    size_t child_override = loaded.text.find("child-override");
+    size_t child_claude = loaded.text.find("child-claude");
+    CHECK(global < root_agent && root_agent < root_claude &&
+          root_claude < child_override && child_override < child_claude);
+
+    ProjectInstructions shadowed = load_project_instructions(empty, 32 * 1024);
+    CHECK(shadowed.text.find("must-not-load") == std::string::npos);
+    ProjectInstructions capped = load_project_instructions(child, 4);
+    CHECK(capped.truncated);
+    CHECK(capped.text == "glob");
+
+    if (inherited_home) setenv("HOME", prior_home.c_str(), 1);
+    else unsetenv("HOME");
+    std::error_code ec;
+    fs::remove_all(root, ec);
+}
+
 void test_mcp_contract_helpers() {
+    std::string decoded;
+    CHECK(base64_decode("aW1hZ2U=", decoded, 5));
+    CHECK(decoded == "image");
+    CHECK(!base64_decode("aW1h=Z2U", decoded, 16));
+    CHECK(!base64_decode("aW1hZ2U=", decoded, 4));
+
     setenv("UAGENT_MCP_TEST_VALUE", "expanded", 1);
     CHECK(expand_process_env("pre-${UAGENT_MCP_TEST_VALUE}-$$") ==
           "pre-expanded-$");
@@ -446,6 +611,12 @@ void test_mcp_contract_helpers() {
     json user = chrome_mcp_config("user");
     CHECK(user["args"].dump().find("--auto-connect") != std::string::npos);
     CHECK(user["args"].dump().find("--isolated") == std::string::npos);
+    setenv("UAGENT_CHROME_BROWSER_URL", "http://127.0.0.1:9222", 1);
+    user = chrome_mcp_config("user");
+    CHECK(user["args"].dump().find("--browser-url") != std::string::npos);
+    CHECK(user["args"].dump().find("http://127.0.0.1:9222") != std::string::npos);
+    CHECK(user["args"].dump().find("--auto-connect") == std::string::npos);
+    unsetenv("UAGENT_CHROME_BROWSER_URL");
 
     std::string error;
     CHECK(mcp_validate_server_config(
@@ -486,6 +657,14 @@ void test_mcp_contract_helpers() {
     CHECK(tools[0].output_schema == output_schema);
     CHECK(tools[0].provider == "mcp:probe");
 
+    const char* inherited_home = getenv("HOME");
+    std::string prior_home = inherited_home ? inherited_home : "";
+    namespace fs = std::filesystem;
+    fs::path image_home = fs::temp_directory_path() /
+                          ("uagent-mcp-image-" +
+                           std::to_string(static_cast<long>(getpid())));
+    fs::create_directories(image_home);
+    setenv("HOME", image_home.c_str(), 1);
     json response = {
         {"result",
          {{"content",
@@ -499,9 +678,21 @@ void test_mcp_contract_helpers() {
           {"structuredContent", {{"ok", true}}}}}};
     std::string rendered = mcp_result_text(server, response);
     CHECK(rendered.find("plain") != std::string::npos);
-    CHECK(rendered.find("aW1hZ2U=") != std::string::npos);
+    CHECK(rendered.find("aW1hZ2U=") == std::string::npos);
+    CHECK(rendered.find("[mcp image saved: ") != std::string::npos);
+    size_t image_start = rendered.find("[mcp image saved: ") + 18;
+    size_t image_end = rendered.find(';', image_start);
+    fs::path saved_image = rendered.substr(image_start, image_end - image_start);
+    CHECK(fs::exists(saved_image));
+    std::ifstream image(saved_image, std::ios::binary);
+    CHECK(std::string(std::istreambuf_iterator<char>(image),
+                      std::istreambuf_iterator<char>()) == "image");
     CHECK(rendered.find("file:///tmp/value") != std::string::npos);
     CHECK(rendered.find("structuredContent") != std::string::npos);
+    if (inherited_home) setenv("HOME", prior_home.c_str(), 1);
+    else unsetenv("HOME");
+    std::error_code remove_error;
+    fs::remove_all(image_home, remove_error);
 }
 
 void test_workspace_scoped_session() {
@@ -602,6 +793,7 @@ int main() {
     test_text_tool_protocol();
     test_registries();
     test_line_number_stripping();
+    test_markdown_math();
     test_caps_and_escaping();
     test_file_tools();
     test_terminal_safety();
@@ -612,6 +804,7 @@ int main() {
     test_python_tool();
     test_runtime_ownership_helpers();
     test_agent_config_allowlist();
+    test_project_instruction_discovery();
     test_mcp_contract_helpers();
     test_workspace_scoped_session();
     test_project_trust_tracks_semantic_config();

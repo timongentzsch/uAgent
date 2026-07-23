@@ -290,7 +290,13 @@ public:
         long max_tokens = max_output_tokens();
         if (max_tokens > 0)
             body[openai_url(base_url) ? "max_completion_tokens" : "max_tokens"] = max_tokens;
-        if (!reasoning_effort.empty()) body["reasoning_effort"] = reasoning_effort;
+        if (!reasoning_effort.empty()) {
+            if (openrouter_url(base_url)) {
+                body["reasoning"] = {{"effort", reasoning_effort}};
+            } else {
+                body["reasoning_effort"] = reasoning_effort;
+            }
+        }
         if (openrouter_url(base_url)) {
             if (!session_id.empty()) body["session_id"] = session_id;
             if (!config.openrouter_provider.empty())

@@ -271,7 +271,7 @@ def run_agent(
 
 def evaluate_analysis(binary: Path, workspace: Path, home: Path, env: dict[str, str]) -> Result:
     prompt = """Analyze the pinned SWE-bench Verified issue in this fixture.
-Your first tool call must be run_bash with exactly
+Your first tool call must be run with exactly
 {"command":"python3 slow_analysis.py","timeout":1}; do not change that timeout.
 After it backgrounds, use grep/read_file to inspect dataset/SWE_BENCH_ISSUE.md,
 astropy/modeling/separable.py, and its tests; then collect the background
@@ -294,7 +294,7 @@ location, cause, regression tests, repair."""
     required = ("separable.py", "_cstack", "nested", "right", "test")
     backgrounded = any(
         "[backgrounded]" in event.get("data", {}).get("result", "")
-        for event in tool_events(events, "run_bash")
+        for event in tool_events(events, "run")
     )
     waited = bool(tool_events(events, "wait_background")) or trace_contains(
         events, "[Background result:"
@@ -334,6 +334,9 @@ delegate."""
     run, events, elapsed = run_agent(binary, workspace, home, env, "research", prompt)
     output = run.stdout.strip()
     searches = tool_events(events, "web_search")
+    successful_searches = [
+        event for event in searches if event.get("data", {}).get("status") == "ok"
+    ]
     parallel_batches = [
         event
         for event in events
@@ -341,7 +344,8 @@ delegate."""
     ]
     passed = (
         run.returncode == 0
-        and len(searches) == 2
+        and len(successful_searches) == 2
+        and len(searches) <= 3
         and bool(parallel_batches)
         and "http" in output.lower()
         and "cache" in output.lower()
@@ -362,7 +366,8 @@ delegate."""
     )
     passed = passed and pricing_scoped and top_level_scoped
     detail = (
-        f"searches={len(searches)}, parallel_batch={bool(parallel_batches)}, "
+        f"searches={len(successful_searches)}/{len(searches)} successful/attempted, "
+        f"parallel_batch={bool(parallel_batches)}, "
         f"pricing_scoped={pricing_scoped}, top_level_scoped={top_level_scoped}, "
         f"durations_ms={[round(e.get('data', {}).get('duration_ms', 0)) for e in searches]}"
     )
@@ -620,7 +625,7 @@ def evaluate_subagents(binary: Path, workspace: Path, home: Path, env: dict[str,
     }
     briefs = "\n".join(
         f"- {name}: delegate a standalone task that first runs "
-        f"`python3 slow_probe.py {name}` with run_bash timeout=0, then reads "
+        f"`python3 slow_probe.py {name}` with run timeout=0, then reads "
         f"{path} and {instruction}."
         for name, (path, _, instruction) in specifications.items()
     )
@@ -755,6 +760,7 @@ def main() -> int:
                 "UAGENT_TOOL_CONCURRENCY": "3",
                 "UAGENT_MAX_BACKGROUND_JOBS": "8",
                 "UAGENT_OPENROUTER_FALLBACKS": "1",
+                "UAGENT_CHROME_DEVTOOLS": "0",
             }
         )
         if args.provider == "default":

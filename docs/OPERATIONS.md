@@ -15,20 +15,25 @@ These are local safety bounds, not provider service objectives.
 | model rounds / tool calls | 40 / 100 |
 | reported turn cost | $1.00 |
 | request / response | 64 / 32 MiB |
+| project instructions | 32 KiB |
 | attachment / terminal image | 10 / 10 MiB |
-| tool result | 12,000 characters |
-| grep | 200 matches, 12,000 characters |
+| tool result | 8,000 characters |
+| grep | 200 matches, 8,000 characters |
 | background jobs / safe tool workers | 8 / 4 |
+| web search | 2 calls, 4 queries/call, 1,200 output tokens |
 | MCP servers / tools per server | 32 / 256 |
 | checkpoint suggestion / urgent | 65% / 85% |
 | emergency compaction | 95% |
 | saved removed-trace archive | newest 16 MiB |
 
 Other bounds include 4 MiB assembled reads, 10 MiB editable files, 64 MiB
-shell logs, 1 MiB MCP config, 16 MiB MCP response/log, and 256 KiB schema per
-server. `run_python` shares the shell job/log bounds, caps source at 128 KiB
-and accepts at most 12 package requirements. Raise limits only with a
+rotating shell logs, 1 MiB MCP config, 16 MiB MCP response/log, and 256 KiB
+schema per server. `run_python` shares the shell job/log bounds, caps source at
+128 KiB and accepts at most 12 package requirements. Raise limits only with a
 representative workload and memory/request measurement.
+
+Detached-terminal records older than `UAGENT_TERMINAL_DAYS=7` are pruned when
+listed. Their rotating logs remain bounded independently.
 
 ## Release check
 

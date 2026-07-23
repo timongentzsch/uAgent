@@ -14,6 +14,7 @@
 #include <future>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "api.hpp"
@@ -60,8 +61,8 @@ inline std::string escape_tool_tags(std::string s) {
 }
 
 // cap huge results, keeping head + tail (errors usually live at the end)
-inline std::string cap_result(const std::string& s) {
-    long cap = tool_result_cap();
+inline std::string cap_result(const std::string& s, long cap = -1) {
+    if (cap < 0) cap = tool_result_cap();
     if (cap <= 0 || (long)s.size() <= cap) return s;
     size_t half = (size_t)cap / 2;
     size_t head_end = half;
@@ -84,7 +85,9 @@ inline std::string cap_result(const std::string& s) {
 // sent) is appended only after a server rejects native tool calls.
 inline constexpr const char* SYSTEM_PROMPT =
     "You are a coding agent in the current directory. Use tools to inspect, edit, and "
-    "verify; call independent tools together. When done, answer concisely.";
+    "verify; call independent tools together. Project instructions are mandatory and "
+    "loaded before the first turn. Before working in any other repository or subtree, "
+    "first read its applicable AGENTS.md and CLAUDE.md files. When done, answer concisely.";
 
 inline std::string text_protocol_prompt(const std::vector<Tool>& tools,
                                         long default_timeout_s = 30) {
@@ -126,12 +129,14 @@ public:
 
     Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
           SideTaskSupervisor& side_tasks, UsageAccumulator& side_usage, Approver approve,
-          ToolRefresher refresh_tools = {})
+          ToolRefresher refresh_tools = {},
+          ProjectInstructions project_instructions = {})
         : api_(api), tools_(tools), processes_(processes), side_tasks_(side_tasks),
           side_usage_(side_usage),
           schemas_(tool_schemas(tools, api.config.tool_timeout_s)),
           approve_(std::move(approve)),
-          refresh_tools_(std::move(refresh_tools)) {
+          refresh_tools_(std::move(refresh_tools)),
+          project_instructions_(std::move(project_instructions)) {
         schema_chars_ = schemas_.dump().size();
         if (g_debug.enabled()) {
             json names = json::array();
@@ -139,7 +144,13 @@ public:
             g_debug.write("agent_init",
                           {{"tools", std::move(names)},
                            {"schemas", schemas_},
-                           {"schema_chars", schema_chars_}});
+                           {"schema_chars", schema_chars_},
+                           {"project_instruction_sources",
+                            project_instructions_.sources},
+                           {"project_instruction_chars",
+                            project_instructions_.text.size()},
+                           {"project_instructions_truncated",
+                            project_instructions_.truncated}});
         }
         reset();
     }
@@ -149,7 +160,7 @@ public:
                   {{"dropped_messages", messages_.size()},
                    {"prior_usage", usage_json(session_usage_)}});
         turn_time_ = local_stamp();
-        messages_ = json::array({sys_msg()});
+        messages_ = baseline_messages();
         archive_ = json::array();
         archive_bytes_ = 0;
         archive_dropped_segments_ = 0;
@@ -186,7 +197,9 @@ public:
         return "";
     }
 
-    size_t message_count() const { return messages_.size(); }
+    size_t message_count() const {
+        return messages_.size() - (project_instructions_.text.empty() ? 0 : 1);
+    }
 
     void route_changed() {
         ctx_used_ = 0;
@@ -198,8 +211,10 @@ public:
     std::string first_user_text() const {
         if (!session_title_.empty()) return session_title_;
         for (const auto& m : messages_)
-            if (m.value("role", "") == "user" && m["content"].is_string())
-                return one_line(m["content"].get<std::string>(), 80);
+            if (m.value("role", "") == "user" && m["content"].is_string()) {
+                std::string text = m["content"].get<std::string>();
+                if (!internal_user_text(text)) return one_line(text, 80);
+            }
         return "(no messages)";
     }
 
@@ -209,6 +224,7 @@ public:
             "[Background result:",
             "[context checkpoint ",
             "[checkpoint",
+            "# AGENTS.md instructions for ",
             "Prior context:",
             "(response interrupted; partial output was discarded)",
         };
@@ -345,7 +361,7 @@ public:
         }
         messages_ = j["messages"];
         turn_time_ = local_stamp();
-        messages_[0] = sys_msg();
+        refresh_baseline();
         archive_ = j.value("archive", json::array());
         if (!archive_.is_array()) archive_ = json::array();
         archive_bytes_ =
@@ -385,7 +401,7 @@ public:
     // summarize the conversation with the model, then restart the session
     // from that summary — frees the context without losing the thread
     void compact(bool automatic = false) {
-        if (messages_.size() < 2) {
+        if (message_count() < 2) {
             debug_log("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
             printf("%s· nothing to compact%s\n", DIM(), RST());
             return;
@@ -412,7 +428,7 @@ public:
         }
         session_usage_.add(r.usage);
         archive_all(automatic ? "auto_compact" : "manual_compact");
-        messages_ = json::array({sys_msg()});
+        messages_ = baseline_messages();
         messages_.push_back({{"role", "user"},
                              {"content", "Prior context:\n" + r.content}});
         ctx_used_ = 0;
@@ -555,6 +571,7 @@ public:
         }
         Usage usage;
         long tool_count = 0;
+        std::unordered_map<std::string, long> tool_counts;
         auto t0 = std::chrono::steady_clock::now();
         long max_steps = api_.config.max_steps;
         long max_tool_calls = api_.config.max_tool_calls;
@@ -596,7 +613,8 @@ public:
                 printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
                 break;
             }
-            ChatResult r = chat("turn", step, schemas_);
+            ChatResult r =
+                chat("turn", step, available_tool_schemas(tools_, schemas_, tool_counts));
 
             if (r.interrupted) {
                 line_open = false;
@@ -704,7 +722,8 @@ public:
                 break;  // plain prose -> turn is done
             }
             if (line_open) printf("\n");
-            bool cancelled = run_calls(calls, text_mode, tool_count, step, deadline);
+            bool cancelled =
+                run_calls(calls, text_mode, tool_count, tool_counts, step, deadline);
             line_open = false;
             if (checkpoint_turn_complete_) {
                 complete = true;
@@ -726,7 +745,7 @@ public:
         if (complete && !checkpoint_turn_complete_) prune_turn(turn_start);
         if (pending_checkpoint_.is_object() &&
             pending_checkpoint_.value("turn", -1L) == turn_id_) {
-            if (complete && processes_.jobs().empty() && side_tasks_.empty()) {
+            if (complete && !processes_.pending() && side_tasks_.empty()) {
                 pending_checkpoint_["ready"] = true;
                 debug_log("checkpoint_ready",
                           {{"turn", turn_id_},
@@ -806,7 +825,7 @@ private:
     }
 
     void archive_all(const char* reason) {
-        archive_range(reason, messages_.empty() ? 0 : 1, messages_.size());
+        archive_range(reason, baseline_size(), messages_.size());
     }
 
     ChatResult chat(const char* purpose, long step, const json& schemas) {
@@ -824,7 +843,7 @@ private:
                            {"session_id", session_id_},
                            {"total_messages", messages_.size()},
                            {"tool_schemas", schemas.size()},
-                           {"schema_chars", schemas.empty() ? 0 : schema_chars_},
+                           {"schema_chars", schemas.dump().size()},
                            {"native_tools", api_.native_tools},
                            {"parallel_tools", api_.parallel_tools},
                            {"include_usage", api_.include_usage}};
@@ -977,6 +996,7 @@ private:
         std::string s = SYSTEM_PROMPT;
         if (!turn_time_.empty())
             s += " Current local date and time: " + turn_time_ + ".";
+        s += terminal_image_instruction();
         if (!api_.native_tools)
             s += text_protocol_prompt(tools_, api_.config.tool_timeout_s);
         return s;
@@ -985,6 +1005,41 @@ private:
     // messages_[0], the one place its shape is defined. Always rebuilt rather
     // than restored, so it tracks the current tools/protocol (see load()).
     json sys_msg() const { return {{"role", "system"}, {"content", system_prompt()}}; }
+
+    json project_instruction_msg() const {
+        return {{"role", "user"},
+                {"content",
+                 "# AGENTS.md instructions for " + canonical_cwd() +
+                     "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
+                     "\n</INSTRUCTIONS>"}};
+    }
+
+    size_t baseline_size() const {
+        return project_instructions_.text.empty() ? 1 : 2;
+    }
+
+    json baseline_messages(bool checkpoint = false) const {
+        json messages =
+            json::array({checkpoint ? checkpoint_sys_msg() : sys_msg()});
+        if (!project_instructions_.text.empty())
+            messages.push_back(project_instruction_msg());
+        return messages;
+    }
+
+    void refresh_baseline() {
+        if (messages_.empty()) {
+            messages_ = baseline_messages();
+            return;
+        }
+        messages_[0] = sys_msg();
+        if (messages_.size() > 1 && messages_[1].value("role", "") == "user" &&
+            messages_[1].contains("content") && messages_[1]["content"].is_string() &&
+            messages_[1]["content"].get_ref<const std::string&>().rfind(
+                "# AGENTS.md instructions for ", 0) == 0)
+            messages_.erase(messages_.begin() + 1);
+        if (!project_instructions_.text.empty())
+            messages_.insert(messages_.begin() + 1, project_instruction_msg());
+    }
 
     json checkpoint_sys_msg() const {
         return {{"role", "system"},
@@ -1043,8 +1098,9 @@ private:
             ToolContext call_context = context.with_timeout(timeout);
             json arguments = task.args;
             arguments.erase("timeout");  // runtime policy, never a provider argument
-            task.result =
-                cap_result(escape_tool_tags(task.tool->run(arguments, call_context)));
+            task.result = cap_result(
+                escape_tool_tags(task.tool->run(arguments, call_context)),
+                task.tool->result_chars);
         } catch (const std::exception& e) {
             task.result = std::string("error: ") + e.what();
         }
@@ -1056,9 +1112,14 @@ private:
         std::lock_guard<std::mutex> lock(output);
         std::string safe_name = terminal_safe(call.name);
         std::string safe_label = terminal_safe(task.label);
-        std::string safe_result = terminal_safe(one_line(task.result, 100));
-        printf("%s  ← %s%s(%s): %s%s\n", DIM(), task.ordinal.c_str(), safe_name.c_str(),
-               safe_label.c_str(), safe_result.c_str(), RST());
+        std::string safe_result = terminal_safe(
+            task.tool->full_terminal_output ? task.result : one_line(task.result, 100));
+        if (task.tool->full_terminal_output)
+            printf("%s  ← %s%s:\n%s%s\n", DIM(), task.ordinal.c_str(), safe_name.c_str(),
+                   safe_result.c_str(), RST());
+        else
+            printf("%s  ← %s%s(%s): %s%s\n", DIM(), task.ordinal.c_str(),
+                   safe_name.c_str(), safe_label.c_str(), safe_result.c_str(), RST());
     }
 
     void append_tool_result(const ToolCall& call, bool text_mode,
@@ -1130,7 +1191,7 @@ private:
             invalidate_pending_checkpoint("candidate was not completed");
             return;
         }
-        if (!processes_.jobs().empty() || !side_tasks_.empty()) {
+        if (processes_.pending() || !side_tasks_.empty()) {
             invalidate_pending_checkpoint("background work is still active");
             return;
         }
@@ -1173,7 +1234,7 @@ private:
         long used = 0;
         size_t retained_results = 0;
 
-        json next = json::array({checkpoint_sys_msg()});
+        json next = baseline_messages(/*checkpoint=*/true);
         next.push_back(
             {{"role", "assistant"},
              {"content", "[checkpoint facts; non-authoritative]\n" + state}});
@@ -1425,6 +1486,7 @@ private:
 
     // returns true if the user interrupted the batch
     bool run_calls(const std::vector<ToolCall>& calls, bool text_mode, long& tool_count,
+                   std::unordered_map<std::string, long>& tool_counts,
                    long step, std::chrono::steady_clock::time_point deadline) {
         if (calls.size() == 1 && calls[0].name == "checkpoint")
             return run_checkpoint_call(calls[0], text_mode, tool_count, step);
@@ -1466,17 +1528,29 @@ private:
                 task.result =
                     "error: checkpoint must be the only call in its tool batch";
                 task.status = "invalid_batch";
+            } else if (tool->max_calls_per_turn >= 0 &&
+                       tool_counts[c.name] >= tool->max_calls_per_turn) {
+                task.result = "error: " + c.name + " reached its per-turn call limit (" +
+                              std::to_string(tool->max_calls_per_turn) +
+                              "); use existing results";
+                task.status = "call_limit";
             } else {
-                task.label = one_line(tool_summary(*tool, args), 80);
+                task.label = tool_summary(*tool, args);
                 std::string safe_name = terminal_safe(c.name);
-                std::string safe_label = terminal_safe(task.label);
-                printf("%s→ %s%s(%s)%s\n", CYAN(), task.ordinal.c_str(), safe_name.c_str(),
-                       safe_label.c_str(), RST());
+                std::string safe_label = terminal_safe(
+                    tool->full_terminal_output ? task.label : one_line(task.label, 80));
+                if (tool->full_terminal_output)
+                    printf("%s→ %s%s:\n%s%s\n", CYAN(), task.ordinal.c_str(),
+                           safe_name.c_str(), safe_label.c_str(), RST());
+                else
+                    printf("%s→ %s%s(%s)%s\n", CYAN(), task.ordinal.c_str(),
+                           safe_name.c_str(), safe_label.c_str(), RST());
                 bool approval_required =
                     tool->mutating || (tool->needs_approval && tool->needs_approval(args));
                 if (!approval_required || approve_(*tool, args)) {
                     task.execute = true;
                     ++tool_count;
+                    ++tool_counts[c.name];
                 } else {
                     task.result =
                         "user denied this action; ask for guidance or try a different approach";
@@ -1580,6 +1654,7 @@ private:
     size_t schema_chars_ = 0;
     Approver approve_;
     ToolRefresher refresh_tools_;
+    ProjectInstructions project_instructions_;
     json messages_;
     json archive_ = json::array();
     long archive_bytes_ = 0;

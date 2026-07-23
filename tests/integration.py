@@ -2,7 +2,10 @@
 import json
 import os
 import pathlib
+import pty
+import select
 import shlex
+import signal
 import socket
 import subprocess
 import sys
@@ -61,7 +64,10 @@ class Server:
                 self.send_header("Content-Type", "text/event-stream")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
-                self.wfile.write(data)
+                try:
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
 
             def log_message(self, *_):
                 pass
@@ -121,6 +127,51 @@ def run_dialog(cwd, env, text, *args, timeout=10):
     )
 
 
+def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10):
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
+        [str(BINARY)],
+        cwd=cwd,
+        env=env,
+        stdin=slave,
+        stdout=slave,
+        stderr=slave,
+        start_new_session=True,
+    )
+    os.close(slave)
+    output = bytearray()
+    deadline = time.monotonic() + timeout
+
+    def read_until(marker=None, start=0):
+        while time.monotonic() < deadline:
+            if marker is not None and marker in output[start:]:
+                return
+            if select.select([master], [], [], 0.1)[0]:
+                try:
+                    output.extend(os.read(master, 65536))
+                except OSError:
+                    return
+            elif process.poll() is not None:
+                return
+
+    read_until(b"> ")
+    if interrupt:
+        process.send_signal(signal.SIGINT)
+    else:
+        payloads = [payload] if isinstance(payload, bytes) else payload
+        for index, item in enumerate(payloads):
+            start = len(output)
+            os.write(master, item)
+            if index + 1 < len(payloads):
+                read_until(b"> ", start)
+    read_until()
+    if process.poll() is None:
+        process.kill()
+    process.wait()
+    os.close(master)
+    return process.returncode, bytes(output)
+
+
 def assert_true(value, message):
     if not value:
         raise AssertionError(message)
@@ -132,6 +183,110 @@ def test_plain_turn(root, home):
         result = run(root, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
+    finally:
+        server.close()
+
+
+def test_project_instructions_precede_first_turn(root, home):
+    workspace = root / "instructions-workspace"
+    nested = workspace / "nested"
+    (workspace / ".git").mkdir(parents=True)
+    nested.mkdir()
+    (workspace / "AGENTS.md").write_text("root-agent-sentinel", encoding="utf-8")
+    (workspace / "CLAUDE.md").write_text("root-claude-sentinel", encoding="utf-8")
+    (nested / "AGENTS.override.md").write_text("nested-agent-sentinel", encoding="utf-8")
+
+    def verify(_, body):
+        messages = body["messages"]
+        instructions = messages[1].get("content", "") if len(messages) > 1 else ""
+        valid = (
+            messages[0].get("role") == "system"
+            and messages[1].get("role") == "user"
+            and messages[2].get("content") == "reply"
+            and "<INSTRUCTIONS>" in instructions
+            and instructions.index("root-agent-sentinel")
+            < instructions.index("root-claude-sentinel")
+            < instructions.index("nested-agent-sentinel")
+        )
+        return event({"content": "instructions-ok" if valid else "instructions-bad"})
+
+    server = Server([verify])
+    try:
+        result = run(nested, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
+    finally:
+        server.close()
+
+
+def test_full_run_and_python_terminal_trace(root, home):
+    shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
+    python_code = "print('python-one')\nprint('python-two')"
+    server = Server(
+        [
+            tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
+            tool_call("run_python", {"code": python_code}),
+            event({"content": "trace-ok"}),
+        ]
+    )
+    try:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "trace\n/q\n",
+            "--yolo",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        for expected in (
+            "printf 'shell-one",
+            "printf 'shell-two",
+            "shell-one",
+            "shell-two",
+            "print('python-one')",
+            "print('python-two')",
+            "python-one",
+            "python-two",
+            "trace-ok",
+        ):
+            assert_true(expected in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_terminal_image_capability_contract(root, home):
+    cases = (
+        ("Apple_Terminal", "xterm-256color", "cannot display images inline", False),
+        ("ghostty", "xterm-ghostty", "supports inline images via view_image", True),
+    )
+    for program, term, instruction, has_tool in cases:
+
+        def verify(_, body, instruction=instruction, has_tool=has_tool):
+            names = {tool["function"]["name"] for tool in body["tools"]}
+            valid = instruction in body["messages"][0]["content"]
+            valid &= ("view_image" in names) == has_tool
+            return event({"content": "image-capability-ok" if valid else "image-capability-bad"})
+
+        server = Server([verify])
+        try:
+            env = base_env(home, server.url)
+            env.update({"TERM_PROGRAM": program, "TERM": term})
+            for variable in ("TMUX", "KITTY_WINDOW_ID", "LC_TERMINAL"):
+                env.pop(variable, None)
+            code, output = run_pty(root, env, [b"show an image\n", b"/q\n"])
+            assert_true(code == 0, output)
+            assert_true(b"image-capability-ok" in output, output)
+        finally:
+            server.close()
+
+
+def test_signal_exit_restores_terminal(root, home):
+    server = Server([event({"content": "unused"})])
+    try:
+        code, output = run_pty(root, base_env(home, server.url), interrupt=True)
+        restore = b"\x1b[0m\x1b[39m\x1b[49m"
+        assert_true(code == 130, (code, output))
+        assert_true(output.rfind(restore) > output.rfind(b"\x1b[48;5;"), output)
     finally:
         server.close()
 
@@ -418,7 +573,7 @@ def test_mcp_stdio_contract(root, home):
         expected = [
             f"cwd={os.path.realpath(server_root)}",
             "env=prefix-expanded-$",
-            "aW1hZ2U=",
+            "[mcp image saved:",
             "YXVkaW8=",
             "file:///contract",
             "file:///embedded",
@@ -429,7 +584,7 @@ def test_mcp_stdio_contract(root, home):
         return event(
             {
                 "content": "contract-ok"
-                if all(value in result for value in expected)
+                if all(value in result for value in expected) and "aW1hZ2U=" not in result
                 else "contract-bad"
             }
         )
@@ -498,18 +653,27 @@ def test_builtin_chrome_session_modes(root, home):
 
     def switch(_, body):
         names = {tool["function"]["name"] for tool in body.get("tools", [])}
-        assert_true("chrome-devtools_list_pages" in names, names)
+        assert_true("chrome-devtools_list_pages" not in names, names)
         assert_true("chrome_session" in names, names)
         return tool_call("chrome_session", {"mode": "user"})
 
-    def final(_, body):
+    def use_browser(_, body):
+        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        assert_true("chrome-devtools_list_pages" in names, names)
         result = next(
             message["content"] for message in body["messages"] if message.get("role") == "tool"
         )
         expected = "approval prompt appears only when the next browser tool interacts"
-        return event({"content": "chrome-ok" if expected in result else "chrome-bad"})
+        assert_true(expected in result, result)
+        return tool_call("chrome-devtools_list_pages", {})
 
-    server = Server([switch, final])
+    def final(_, body):
+        results = [
+            message["content"] for message in body["messages"] if message.get("role") == "tool"
+        ]
+        return event({"content": "chrome-ok" if results[-1] == "ok" else "chrome-bad"})
+
+    server = Server([switch, use_browser, final])
     try:
         env = base_env(home, server.url)
         env["UAGENT_CHROME_DEVTOOLS"] = "1"
@@ -518,10 +682,9 @@ def test_builtin_chrome_session_modes(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "chrome-ok", result.stdout)
         calls = invocations.read_text(encoding="utf-8").splitlines()
-        assert_true(len(calls) == 2, calls)
-        assert_true("--isolated" in calls[0], calls)
+        assert_true(len(calls) == 1, calls)
         assert_true("chrome-devtools-mcp@latest" in calls[0], calls)
-        assert_true("--auto-connect" in calls[1] and "--isolated" not in calls[1], calls)
+        assert_true("--auto-connect" in calls[0] and "--isolated" not in calls[0], calls)
     finally:
         server.close()
 
@@ -966,7 +1129,7 @@ def test_checkpoint_invalidated_by_background_job(root, home):
 
     server = Server(
         [
-            tool_call("run_bash", {"command": command, "timeout": 1}),
+            tool_call("run", {"command": command, "timeout": 1}),
             event({"content": "background-started"}),
             tool_call(
                 "checkpoint",
@@ -1271,7 +1434,7 @@ def test_project_env_ignored(root, home):
         )
         return event({"content": "denied" if denied else "executed"})
 
-    server = Server([tool_call("run_bash", {"command": "printf should-not-run"}), final])
+    server = Server([tool_call("run", {"command": "printf should-not-run"}), final])
     try:
         result = run(workspace, base_env(home, server.url), "-p", "probe")
         assert_true(result.returncode == 0, result.stderr)
@@ -1444,7 +1607,7 @@ def test_headless_reaps_background_process(root, home):
     command = f"echo $$ > {shlex.quote(str(pid_file))}; sleep 30"
     server = Server(
         [
-            tool_call("run_bash", {"command": command, "timeout": 1}),
+            tool_call("run", {"command": command, "timeout": 1}),
             event({"content": "done"}),
         ]
     )
@@ -1471,6 +1634,129 @@ def test_headless_reaps_background_process(root, home):
         server.close()
 
 
+def test_detached_terminal_survives_and_is_readable(root, home):
+    workspace = root / "detached-terminal-workspace"
+    workspace.mkdir()
+    pid_file = workspace / "pid"
+    command = (
+        f"echo $$ > {shlex.quote(str(pid_file))}; "
+        "i=0; while [ $i -lt 500 ]; do "
+        "printf 'bounded-log-line-%04d-xxxxxxxxxxxxxxxx\\n' \"$i\"; i=$((i+1)); "
+        "done; printf 'server-ready\\n'; sleep 30"
+    )
+
+    pid = None
+    try:
+        launch_server = Server(
+            [
+                tool_call(
+                    "run",
+                    {"command": command, "timeout": 0, "detach": True},
+                ),
+                event({"content": "launched"}),
+            ]
+        )
+        try:
+            launch_env = base_env(home, launch_server.url)
+            launch_env["UAGENT_BASH_LOG_BYTES"] = "4096"
+            launched = run_dialog(
+                workspace,
+                launch_env,
+                "launch the server\n/q\n",
+                "--yolo",
+                timeout=8,
+            )
+            for _ in range(40):
+                if pid_file.exists():
+                    break
+                time.sleep(0.05)
+            assert_true(pid_file.exists(), "detached command did not start")
+            pid = int(pid_file.read_text(encoding="utf-8"))
+            assert_true(launched.returncode == 0, launched.stderr)
+            assert_true("launched" in launched.stdout, launched.stdout)
+            assert_true("terminals:1" in launched.stdout, launched.stdout)
+            os.kill(pid, 0)
+        finally:
+            launch_server.close()
+
+        fresh_server = Server([event({"content": "fresh"})])
+        try:
+            fresh = run_dialog(
+                workspace,
+                base_env(home, fresh_server.url),
+                "status\n/q\n",
+                timeout=8,
+            )
+            assert_true(fresh.returncode == 0, fresh.stderr)
+            assert_true("terminals:" not in fresh.stdout, fresh.stdout)
+        finally:
+            fresh_server.close()
+
+        def request_output(_, body):
+            tool_results = [
+                message.get("content", "")
+                for message in body["messages"]
+                if message.get("role") == "tool"
+            ]
+            listing = next(
+                (text for text in tool_results if text.startswith("[running] pid ")),
+                "",
+            )
+            assert_true(f"pid {pid} " in listing, listing)
+            return tool_call("terminal_output", {"pid": pid})
+
+        def verify_output(_, body):
+            tool_results = [
+                message.get("content", "")
+                for message in body["messages"]
+                if message.get("role") == "tool"
+            ]
+            readable = any(
+                text.startswith("[running · pid ") and "server-ready" in text
+                for text in tool_results
+            )
+            return event({"content": "terminal-ok" if readable else "terminal-bad"})
+
+        server = Server(
+            [
+                tool_call("terminal_output", {}),
+                request_output,
+                verify_output,
+            ]
+        )
+        try:
+            result = run(
+                workspace,
+                base_env(home, server.url),
+                "--yolo",
+                "-p",
+                "inspect the server from this new session",
+                timeout=8,
+            )
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(result.stdout.strip() == "terminal-ok", result.stdout)
+            os.kill(pid, 0)
+            record = home / ".uagent" / "terminals" / f"{pid}.json"
+            assert_true(record.exists(), record)
+            record_data = json.loads(record.read_text(encoding="utf-8"))
+            log = pathlib.Path(record_data["log"])
+            log_bytes = sum(
+                path.stat().st_size
+                for path in (log, pathlib.Path(str(log) + ".1"))
+                if path.exists()
+            )
+            assert_true(log_bytes <= 4096, log_bytes)
+            assert_true(pathlib.Path(str(log) + ".1").exists(), log)
+        finally:
+            server.close()
+    finally:
+        if pid is not None:
+            try:
+                os.killpg(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="uagent-integration-") as temp:
         root = pathlib.Path(temp)
@@ -1478,6 +1764,10 @@ def main():
         home.mkdir()
         tests = [
             test_plain_turn,
+            test_project_instructions_precede_first_turn,
+            test_full_run_and_python_terminal_trace,
+            test_terminal_image_capability_contract,
+            test_signal_exit_restores_terminal,
             test_response_stats,
             test_headless_debug_session_end,
             test_grep_tool_round_trip,
@@ -1510,6 +1800,7 @@ def main():
             test_interleaved_tool_calls_reset_guard,
             test_late_subagent_continues_turn,
             test_headless_reaps_background_process,
+            test_detached_terminal_survives_and_is_readable,
         ]
         names = [test.__name__ for test in tests]
         defined = {

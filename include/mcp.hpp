@@ -22,6 +22,7 @@
 // declaration so validation constraints are never weakened.
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -98,11 +99,26 @@ inline constexpr const char* CHROME_MCP_PACKAGE = "chrome-devtools-mcp@latest";
 inline json chrome_mcp_config(const std::string& mode = "isolated") {
     json args = json::array(
         {"-y", CHROME_MCP_PACKAGE, "--no-usage-statistics", "--no-performance-crux"});
-    args.push_back(mode == "user" ? "--auto-connect" : "--isolated");
+    if (mode == "user") {
+        std::string browser_url = env_str("UAGENT_CHROME_BROWSER_URL", "");
+        if (browser_url.empty()) {
+            args.push_back("--auto-connect");
+        } else {
+            args.push_back("--browser-url");
+            args.push_back(std::move(browser_url));
+        }
+    } else {
+        args.push_back("--isolated");
+    }
     return {{"command", "npx"},
             {"args", std::move(args)},
             {"__uagent_builtin", "chrome-devtools"},
+            {"__uagent_lazy", true},
             {"__uagent_mode", mode}};
+}
+
+inline bool mcp_config_lazy(const json& config) {
+    return config.value("__uagent_lazy", false);
 }
 
 // Explicit session owner. Destruction closes every transport and reaps every
@@ -407,9 +423,40 @@ inline json mcp_rpc(McpServer& s, const std::string& method, const json& params,
 
 // --- results & schemas -------------------------------------------------------
 
-// tools/call response -> bounded model-readable text. Text blocks remain
-// natural text; every other standard or future content block is preserved as
-// JSON instead of being silently replaced by a placeholder.
+inline std::string mcp_image_result(const json& content) {
+    if (!content.contains("data") || !content["data"].is_string())
+        return "error: MCP image is missing base64 data";
+    std::string mime = content.value("mimeType", "image/png");
+    std::string extension = image_extension(mime);
+    if (extension.empty()) return "error: unsupported MCP image type " + mime;
+    long limit_mb = std::max(1L, env_long("UAGENT_TERMINAL_IMAGE_MB", 10));
+    std::string bytes;
+    if (!base64_decode(content["data"].get_ref<const std::string&>(), bytes,
+                       static_cast<size_t>(limit_mb) * 1024 * 1024))
+        return "error: MCP image is invalid or exceeds " +
+               std::to_string(limit_mb) + " MB";
+    static std::atomic<unsigned long> sequence{0};
+    std::string path =
+        uagent_dir("mcp") + "/image-" + utc_stamp("%Y%m%dT%H%M%SZ") + "-" +
+        std::to_string(getpid()) + "-" + std::to_string(sequence++) + extension;
+    std::string saved = tool_write_private_file(path, bytes);
+    if (saved.rfind("error:", 0) == 0) return saved;
+    std::string status = "[mcp image saved: " + path;
+    if (g_tty && terminal_image_protocol() != TerminalImageProtocol::none) {
+        std::string displayed = tool_view_image(path);
+        status += displayed.rfind("error:", 0) == 0
+                      ? "; display failed: " + displayed.substr(7)
+                      : "; displayed inline via " +
+                            std::string(terminal_image_protocol_name(
+                                terminal_image_protocol()));
+    } else {
+        status += "; use view_image in a supported terminal";
+    }
+    return status + "]";
+}
+
+// tools/call response -> bounded model-readable text. Binary images are saved
+// and rendered locally; their base64 never enters model history.
 inline std::string mcp_result_text(const McpServer& s, const json& resp) {
     if (!resp.contains("result")) {
         std::string msg = "unknown error";
@@ -430,6 +477,8 @@ inline std::string mcp_result_text(const McpServer& s, const json& resp) {
             if (type == "text" && c.is_object() && c.contains("text") &&
                 c["text"].is_string())
                 text += c["text"].get<std::string>();
+            else if (type == "image" && c.is_object())
+                text += mcp_image_result(c);
             else
                 text += "[mcp " + (type.empty() ? "content" : type) + "]\n" +
                         c.dump();
@@ -507,7 +556,8 @@ inline bool mcp_validate_server_config(const std::string& name, const json& conf
             }
     static const std::set<std::string> known = {
         "type", "command", "args", "env", "cwd", "tools", "trust",
-        "disabled", "__uagent_config_dir", "__uagent_builtin", "__uagent_mode"};
+        "disabled", "__uagent_config_dir", "__uagent_builtin", "__uagent_lazy",
+        "__uagent_mode"};
     for (const auto& [field, ignored] : conf.items()) {
         (void)ignored;
         if (!known.count(field))
@@ -835,6 +885,7 @@ inline bool mcp_finish_initialize(McpServer& server, long initialize_id, long ti
 inline bool mcp_restart(McpServer& server, const json& next_config,
                         const RuntimeConfig& config, long timeout, std::string& error) {
     json previous = server.config;
+    bool was_alive = server.alive;
     server.shutdown();
     server.config = next_config;
     long initialize_id = -1;
@@ -845,6 +896,7 @@ inline bool mcp_restart(McpServer& server, const json& next_config,
     }
 
     server.shutdown();
+    if (!was_alive) return false;
     server.config = std::move(previous);
     std::string restore_error;
     if (mcp_start_configured(server, config, initialize_id, restore_error) &&
@@ -863,15 +915,19 @@ inline void mcp_add_chrome_session_tool(std::vector<Tool>& tools, McpRuntime& ru
             chrome = server.get();
             break;
         }
-    if (!chrome || !chrome->alive) return;
+    if (!chrome) return;
 
     Tool& tool = add_tool(
         tools,
         make_tool(
             "chrome_session",
-            "Switch Chrome DevTools session. Use isolated for a fresh browser or user for "
-            "existing login state; user mode requires chrome://inspect/#remote-debugging and "
-            "attaches lazily on the next browser call.",
+            "Start or switch Chrome DevTools; browser tools register after this call. If the "
+            "user asks for their existing Chrome, login, or user session, select user before "
+            "any browser call and do not retry isolated. User attaches to "
+            "UAGENT_CHROME_BROWSER_URL when configured; otherwise it requires "
+            "chrome://inspect/#remote-debugging. Chrome may show its remote-debugging approval "
+            "only when the first browser interaction occurs. "
+            "For screenshots, omit filePath; uagent saves and displays the returned image.",
             {{"type", "object"},
              {"properties",
               {{"mode", {{"type", "string"},
@@ -883,7 +939,8 @@ inline void mcp_add_chrome_session_tool(std::vector<Tool>& tools, McpRuntime& ru
                 std::string mode = args.value("mode", "");
                 if (mode != "isolated" && mode != "user")
                     return "error: mode must be isolated or user";
-                if (chrome->config.value("__uagent_mode", "isolated") == mode)
+                if (chrome->alive &&
+                    chrome->config.value("__uagent_mode", "isolated") == mode)
                     return "Chrome DevTools is already using the " + mode + " session";
                 json next = chrome_mcp_config(mode);
                 std::string error;
@@ -893,8 +950,7 @@ inline void mcp_add_chrome_session_tool(std::vector<Tool>& tools, McpRuntime& ru
                 return mode == "user"
                            ? "User Chrome session selected. The approval prompt appears only "
                              "when the next browser tool interacts"
-                           : "Chrome DevTools will launch a fresh isolated browser on the "
-                             "next browser call";
+                           : "Fresh isolated Chrome session selected";
             }));
     tool.mutating = true;
     tool.provider = "builtin:chrome";
@@ -941,6 +997,11 @@ inline void mcp_register(std::vector<Tool>& tools, McpRuntime& runtime,
         srv->name = name;
         srv->response_cap = static_cast<size_t>(config.mcp_response_bytes);
         srv->config = conf;
+        if (mcp_config_lazy(conf)) {
+            runtime.add(std::move(srv));  // activate only after chrome_session
+            ++spawned;
+            continue;
+        }
         long id = -1;
         std::string start_error;
         if (!mcp_start_configured(*srv, config, id, start_error)) {

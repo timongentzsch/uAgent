@@ -44,7 +44,7 @@ private:
 // Delegation: re-invoke this same binary on a scoped sub-task. The child's
 // reasoning and tool trace stay in its own context and its own log; only the
 // final answer comes back, so a wide search costs the coordinator a paragraph
-// instead of fifty tool results. run_bash does the rest — a quick sub-task
+// instead of fifty tool results. The shell runner does the rest — a quick sub-task
 // answers inline, a slow one backgrounds itself and is collected by pid.
 static Tool subagent_tool(const Api& api, ProcessSupervisor& processes, bool yolo,
                           bool debug) {
@@ -83,33 +83,54 @@ static Tool web_search_tool(Api& api, UsageAccumulator& usage,
                             SideTaskSupervisor& side_tasks) {
     Tool t = make_tool(
         "web_search",
-        "OpenRouter search with source URLs. Batch independent queries; slow searches "
-        "return automatically—never wait_background or repeat them.",
+        "OpenRouter search with source URLs. Prefer one queries array for up to four "
+        "independent searches. Slow searches return automatically; continue useful work, "
+        "then join their job ids only when needed. Do not repeat them.",
         json::parse(R"json({"type":"object","properties":{
-          "query":{"type":"string"}},"required":["query"]})json"),
+          "query":{"type":"string","description":"one query (legacy shorthand)"},
+          "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
+            "description":"one to four queries in one request"}}})json"),
         [&api, &usage, &side_tasks](const json& a,
                                    const ToolContext& context) -> std::string {
         if (!openrouter_url(api.base_url))
             return "error: web_search is available only for OpenRouter";
-        const std::string query = a.value("query", "");
+        std::vector<std::string> queries;
+        if (a.contains("queries") && a["queries"].is_array())
+            for (const json& value : a["queries"])
+                if (value.is_string() && !trim(value.get<std::string>()).empty())
+                    queries.push_back(trim(value.get<std::string>()));
+        if (queries.empty()) {
+            std::string query = trim(a.value("query", ""));
+            if (!query.empty()) queries.push_back(std::move(query));
+        }
+        if (queries.empty()) return "error: query or queries is required";
+        if (queries.size() > 4) return "error: queries is limited to four items";
+        std::string query;
+        for (size_t i = 0; i < queries.size(); ++i)
+            query += std::to_string(i + 1) + ". " + queries[i] + "\n";
         const std::string base_url = api.base_url, api_key = api.api_key;
         const std::string model = api.model;
-        const std::string reasoning_effort = api.reasoning_effort;
         RuntimeConfig config = api.config;
-        std::string base = model.substr(0, model.find(':'));
+        std::string base =
+            config.web_search_model.empty() ? model : config.web_search_model;
+        base = base.substr(0, base.find(':'));
         json body = {{"model", base + ":online"},
+                     {"max_tokens", config.web_search_max_tokens},
                      {"usage", {{"include", true}}},  // OpenRouter: report cost
                      {"messages",
                       json::array({{{"role", "user"},
                                     {"content",
                                      "Answer concisely with source URLs. State only "
                                      "source-supported claims, preserve provider/model "
-                                     "scope, and omit pricing unless asked: " +
+                                     "scope, answer each numbered query in its own compact "
+                                     "section, and omit pricing unless asked:\n" +
                                          query}}})}};
+        if (!config.web_search_effort.empty())
+            body["reasoning"] = {{"effort", config.web_search_effort}};
         long timeout = std::max(config.web_search_timeout_s, context.timeout_s);
         long id = side_tasks.start(
             "web search", query,
-            [base_url, api_key, reasoning_effort, config, body = std::move(body),
+            [base_url, api_key, config, body = std::move(body),
              timeout, &usage](const std::atomic<bool>& cancel) {
                 auto started = std::chrono::steady_clock::now();
                 debug_log("side_request",
@@ -119,7 +140,6 @@ static Tool web_search_tool(Api& api, UsageAccumulator& usage,
                 Api side(config);
                 side.base_url = base_url;
                 side.api_key = api_key;
-                side.reasoning_effort = reasoning_effort;
                 json r = side.post("/chat/completions", body, timeout, &cancel);
                 debug_log("side_response",
                           {{"kind", "web_search"},
@@ -130,11 +150,15 @@ static Tool web_search_tool(Api& api, UsageAccumulator& usage,
                 if (abort_requested()) return std::string("error: search cancelled by user");
                 try {
                     if (r.is_object() && r.contains("usage")) usage.add(r["usage"]);
-                    if (r.is_object() && r.contains("choices"))
-                        return std::string(
-                                   "[web search result; refetch only if verification is "
-                                   "necessary]\n") +
-                               r["choices"][0]["message"].value("content", "(empty answer)");
+                    if (r.is_object() && r.contains("choices")) {
+                        const json& choice = r["choices"][0];
+                        std::string output =
+                            "[web search result; refetch only if verification is necessary]\n" +
+                            choice["message"].value("content", "(empty answer)");
+                        if (choice.value("finish_reason", "") == "length")
+                            output += "\n[truncated; raise UAGENT_WEB_SEARCH_MAX_TOKENS]";
+                        return output;
+                    }
                     if (r.is_object() && r.contains("error"))
                         return "error: " + r["error"].value("message", "search failed");
                 } catch (const std::exception&) {}
@@ -142,18 +166,32 @@ static Tool web_search_tool(Api& api, UsageAccumulator& usage,
             },
             tool_concurrency());
         if (!id) return "error: concurrent side-task limit reached";
-        long grace = std::min(context.timeout_s, timeout);
+        long grace = context.timeout_s == 0
+                         ? timeout
+                         : std::min(context.timeout_s, timeout);
         if (auto result = side_tasks.wait(id, std::chrono::seconds(grace)))
             return result->output;
         debug_log("side_backgrounded",
                   {{"kind", "web_search"}, {"id", id}, {"query", query}});
-        return "[backgrounded] web search; continue other work — the result will be "
-               "delivered automatically; do not call wait_background";
+        return "[backgrounded] web search job " + std::to_string(id) +
+               "; continue other work or call wait_background(id=" +
+               std::to_string(id) + ")";
         });
     t.mutating = true;
-    t.summary = [](const json& a) { return a.value("query", ""); };
+    t.summary = [](const json& a) {
+        if (a.contains("queries") && a["queries"].is_array()) {
+            std::string summary;
+            for (const json& query : a["queries"])
+                if (query.is_string())
+                    summary += (summary.empty() ? "" : " | ") +
+                               one_line(query.get<std::string>(), 60);
+            return summary;
+        }
+        return a.value("query", "");
+    };
     t.parallel_safe = true;
     t.timeout_s = 5;
+    t.max_calls_per_turn = api.config.web_search_calls;
     return t;
 }
 
@@ -343,10 +381,13 @@ static std::string status_bar(const Api& api, const Agent& agent, bool yolo,
     if (!api.reasoning_effort.empty()) s += " · effort " + api.reasoning_effort;
     if (u.cache_read) s += " · cache " + fmt_tokens(u.cache_read) + " total";
     if (u.cost > 0) s += " · spent " + fmt_cost(u.cost);
-    if (!processes.jobs().empty()) {
+    if (processes.pending()) {
         s += " · bg:";
-        for (auto& j : processes.jobs()) s += " " + std::to_string(j.pid);
+        for (auto& j : processes.jobs())
+            if (!j.detached) s += " " + std::to_string(j.pid);
     }
+    size_t terminals = processes.detached_count();
+    if (terminals) s += " · terminals:" + std::to_string(terminals);
     if (yolo) s += " · YOLO";
     if (attachments) s += " · " + std::to_string(attachments) + " attached";
     return s;
@@ -359,8 +400,16 @@ static void print_status_bar(const std::string& status) {
 }
 
 int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[1]) == "--log-pump") {
+        char* end = nullptr;
+        long bytes = strtol(argv[3], &end, 10);
+        return end && *end == '\0' && bytes >= 1024
+                   ? tool_log_pump(argv[2], bytes)
+                   : 2;
+    }
     std::setlocale(LC_CTYPE, "");
     g_tty = isatty(1);
+    g_signal_tty = g_tty;
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigint_handler);
     signal(SIGHUP, sigint_handler);
@@ -460,6 +509,7 @@ int main(int argc, char** argv) {
     if (!prompt.empty()) {
         fflush(stdout);
         saved_stdout = dup(1);
+        fcntl(saved_stdout, F_SETFD, FD_CLOEXEC);
         int null = open("/dev/null", O_WRONLY);
         dup2(null, 1);
         close(null);
@@ -483,9 +533,22 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    AppRuntime runtime(RuntimeConfig::from_environment());
+    RuntimeConfig parsed_config = RuntimeConfig::from_environment();
+    if (!parsed_config.web_search_effort.empty() &&
+        !valid_effort(parsed_config.web_search_effort)) {
+        fprintf(stderr, "%signoring invalid UAGENT_WEB_SEARCH_EFFORT=%s%s\n", YEL(),
+                terminal_safe(parsed_config.web_search_effort).c_str(), RST());
+        parsed_config.web_search_effort.clear();
+    }
+    AppRuntime runtime(std::move(parsed_config));
     RuntimeConfig& runtime_config = runtime.config;
     Api& api = runtime.api;
+    ProjectInstructions project_instructions =
+        load_project_instructions(canonical_access_path(canonical_cwd()),
+                                  static_cast<size_t>(runtime_config.project_doc_bytes));
+    if (project_instructions.truncated)
+        fprintf(stderr, "%sproject instructions truncated at %ld bytes%s\n", YEL(),
+                runtime_config.project_doc_bytes, RST());
     ProviderSetup provider = configure_provider(api);
     std::vector<ModelRoute>& model_routes = provider.routes;
     if (!provider.warning.empty())
@@ -568,7 +631,7 @@ int main(int argc, char** argv) {
     bool inline_images = prompt.empty() && g_tty &&
                          terminal_image_protocol() != TerminalImageProtocol::none;
     std::vector<Tool> tools = builtin_tools(
-        processes, canonical_access_path(canonical_cwd()), inline_images);
+        processes, canonical_access_path(canonical_cwd()), inline_images, &side_tasks);
     bool has_openrouter = openrouter_url(api.base_url) ||
                           std::any_of(model_routes.begin(), model_routes.end(),
                                       [](const ModelRoute& route) {
@@ -584,7 +647,8 @@ int main(int argc, char** argv) {
         api, tools, processes, side_tasks, side_usage, approver,
         [&](std::chrono::steady_clock::time_point deadline) {
             return mcp_refresh_tools(tools, mcp, runtime_config, deadline);
-        });
+        },
+        std::move(project_instructions));
     if (g_debug.enabled())
         g_debug.write("session_ready",
                       {{"base_url", api.base_url},
@@ -886,5 +950,6 @@ int main(int argc, char** argv) {
                        {"usage", usage_json(usage)},
                        {"context_tokens", agent.context_used()}});
     }
+    terminal_restore();
     return 0;
 }

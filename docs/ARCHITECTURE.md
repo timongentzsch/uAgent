@@ -13,6 +13,7 @@ main.cpp
   │  └─ McpRuntime          configured/default stdio transports and child lifetimes
   ├─ cli.hpp                command registry, input, completion and steering UI
   ├─ providers.hpp          provider config, model routes and live catalog parsing
+  ├─ ProjectInstructions    bounded root-to-cwd AGENTS.md and CLAUDE.md discovery
   ├─ Tool registry          built-ins, OpenRouter search, MCP and Chrome adapters
   └─ Agent                  conversation, orchestration, budgets, persistence
 ```
@@ -39,7 +40,8 @@ bridge are the narrow process-wide exceptions.
 
 `Tool` is the common capability interface for built-ins, MCP, Chrome, search,
 and delegation. `make_tool` constructs every registration, so schema, execution,
-approval, timeout and ownership policy cannot drift with aggregate field order.
+approval, timeout, result budget and ownership policy cannot drift with
+aggregate field order. Per-tool turn budgets use the same registry.
 Numeric runtime settings likewise register their environment key, bounds and
 diagnostic name once in `RuntimeConfig::LONG_OPTIONS`.
 
@@ -60,7 +62,8 @@ record the eviction count.
 ## Turn flow
 
 ```text
-user input
+load bounded project instructions before the first request
+  → user input
   → estimate projected context and optionally append checkpoint hint
   → stream model response
   → validate and approve tool calls
@@ -84,7 +87,8 @@ the session-owned supervisor instead of blocking a tool batch.
 Background work declares whether it must join before a final answer. Prose is
 provisional while required work remains; the runtime waits within the turn
 deadline, injects every result, and resumes the model. Searches and subagents
-join; intentionally long-lived shell/Python jobs do not.
+join; intentionally long-lived shell/Python jobs do not. A shared job-id
+interface lets `wait_background` join process and in-process side work alike.
 
 Contiguous `parallel_safe` calls share a bounded worker group. A stateful call
 is a barrier. Side-request usage merges under a mutex. MCP registry changes are
@@ -123,8 +127,8 @@ ends and makes the newest user request authoritative by role and position.
 
 ## Cache model
 
-The cacheable prefix is the lean system message, stable ordered tool schemas,
-and append-only active history. A persistent curl handle reuses connections.
+The cacheable prefix is the lean system message, project instructions, stable
+ordered tool schemas, and append-only active history. A persistent curl handle reuses connections.
 OpenRouter receives the saved session ID; provider preference is optional and
 is not a correctness input.
 

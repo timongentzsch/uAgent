@@ -23,6 +23,8 @@ struct MdStream {
 
     // inline state
     bool bold = false, ital = false, code = false;
+    int math = 0;  // 1=$…$ · 2=$$…$$ · 3=\(…\) · 4=\[…\]
+    bool dollar = false, math_dollar = false, slash = false;
     int star = 0;  // 1: lone '*' unresolved · 2: "**" seen, opening needs a non-space
     // line state
     bool linestart = true;
@@ -51,6 +53,9 @@ struct MdStream {
     void flush() {  // stream end: resolve everything still held
         if (!on) return;
         if (star) { pv(star == 2 ? "**" : "*"); star = 0; }
+        if (dollar) pc('$');
+        if (slash) pc('\\');
+        if (math_dollar) pc('$');
         if (intable || tablemode) {
             if (!row.empty()) table.push_back(row);
             row.clear();
@@ -58,8 +63,9 @@ struct MdStream {
         }
         flush_table();
         if (!pre.empty()) pv(pre), pre.clear();
-        if (bold || ital || code || heading || fence || fencehead) fputs(RST(), stdout);
+        if (bold || ital || code || math || heading || fence || fencehead) fputs(RST(), stdout);
         bold = ital = code = heading = fence = fencehead = false;
+        math = 0; dollar = math_dollar = slash = false;
         linestart = true;
         fflush(stdout);
     }
@@ -90,7 +96,7 @@ private:
         }
         if (tablemode) {  // headerless-pipe table body: rows until a line without '|'
             if (c != '\n') { row += c; return; }
-            if (row.find('|') != std::string::npos) { table.push_back(row); row.clear(); return; }
+            if (split_cells(row).size() > 1) { table.push_back(row); row.clear(); return; }
             std::string tail = row;
             row.clear(); tablemode = false;
             flush_table();
@@ -108,6 +114,7 @@ private:
             } else putchar(c);
             return;
         }
+        if (math) { math_char(c); return; }
         if (linestart) { classify(c); return; }
         if (fence) {
             putchar(c);
@@ -179,7 +186,7 @@ private:
             }
             if (c == '\n') {
                 if (seppish && mk.find('|') != std::string::npos &&
-                    prev_raw.find('|') != std::string::npos) { retro_table(); return; }
+                    split_cells(prev_raw).size() > 1) { retro_table(); return; }
                 emit_pre();
                 end_line();
                 return;
@@ -220,6 +227,28 @@ private:
     }
 
     void inline_char(char c) {
+        if (dollar) {
+            dollar = false;
+            if (c == '$') {
+                math = 2; fputs(MATH(), stdout); pv("$$");
+                return;
+            }
+            if (c != '\n' && c != ' ' && c != '\t') {
+                math = 1; fputs(MATH(), stdout); pc('$');
+                math_char(c);
+                return;
+            }
+            pc('$');
+        }
+        if (slash) {
+            slash = false;
+            if (!code && (c == '(' || c == '[')) {
+                math = c == '(' ? 3 : 4;
+                fputs(MATH(), stdout); pc('\\'); pc(c);
+                return;
+            }
+            pc('\\');
+        }
         if (star) {
             int n = star;
             star = 0;
@@ -237,10 +266,45 @@ private:
                 else pv("*");  // "2 * 3": literal
             }
         }
+        if (c == '$' && !code) { dollar = true; return; }
+        if (c == '\\' && !code) { slash = true; return; }
         if (c == '*' && !code) { star = 1; return; }
         if (c == '`') { code = !code; fputs(code ? CODE() : FG_DFL(), stdout); return; }
         if (c == '\n') { end_line(); return; }
         pc(c);
+    }
+
+    void math_char(char c) {
+        if (slash) {
+            slash = false;
+            pc('\\'); pc(c); linestart = false;
+            if ((math == 3 && c == ')') || (math == 4 && c == ']')) {
+                math = 0; fputs(FG_DFL(), stdout);
+            }
+            return;
+        }
+        if (c == '\\') { slash = true; return; }
+        if (math == 1 && c == '$') {
+            pc(c); linestart = false; math = 0; fputs(FG_DFL(), stdout); return;
+        }
+        if (math == 2) {
+            if (math_dollar) {
+                math_dollar = false;
+                if (c == '$') {
+                    pv("$$"); linestart = false;
+                    math = 0; fputs(FG_DFL(), stdout); return;
+                }
+                pc('$');
+            }
+            if (c == '$') { math_dollar = true; return; }
+        }
+        if (c != '\n') { pc(c); linestart = false; return; }
+        if (math == 1 || math == 3) {
+            math = 0; fputs(FG_DFL(), stdout); end_line(); return;
+        }
+        fputs(RST(), stdout); putchar('\n'); fputs(MATH(), stdout);
+        bold = ital = code = heading = false;
+        cur_raw.clear(); prev_raw.clear(); vis_line = prev_vis = 0; linestart = true;
     }
 
     void end_line() {  // inline styles never span lines
@@ -269,8 +333,33 @@ private:
         tablemode = true;  // body rows follow until a line without '|'
     }
 
-    // Render inline Markdown and measure real terminal columns for wide and
-    // combining characters.
+    static bool escaped(const std::string& s, size_t pos) {
+        size_t slashes = 0;
+        while (pos > slashes && s[pos - slashes - 1] == '\\') ++slashes;
+        return slashes % 2;
+    }
+
+    // Exclusive end of a complete math span, or npos. Keeping delimiters is
+    // deliberate: terminals cannot typeset TeX, so color adds structure while
+    // preserving copy/paste fidelity.
+    static size_t math_span(const std::string& s, size_t pos) {
+        if (escaped(s, pos)) return std::string::npos;
+        std::string close;
+        size_t begin = pos;
+        if (s.compare(pos, 2, "$$") == 0) close = "$$", begin += 2;
+        else if (s[pos] == '$' && pos + 1 < s.size() &&
+                 !isspace(static_cast<unsigned char>(s[pos + 1])))
+            close = "$", begin++;
+        else if (s.compare(pos, 2, "\\(") == 0) close = "\\)", begin += 2;
+        else if (s.compare(pos, 2, "\\[") == 0) close = "\\]", begin += 2;
+        else return std::string::npos;
+        for (size_t end = begin; (end = s.find(close, end)) != std::string::npos; ++end)
+            if (!escaped(s, end)) return end + close.size();
+        return std::string::npos;
+    }
+
+    // Render inline Markdown/LaTeX and measure real terminal columns for wide
+    // and combining characters.
     static std::string render_cell(const std::string& s, size_t& vis) {
         std::string out;
         std::string visible;
@@ -278,6 +367,13 @@ private:
         for (size_t k = 0; k < s.size(); k++) {
             char c = s[k];
             if (c == '`') { cd = !cd; out += cd ? CODE() : FG_DFL(); continue; }
+            size_t math_end = cd ? std::string::npos : math_span(s, k);
+            if (math_end != std::string::npos) {
+                std::string span = s.substr(k, math_end - k);
+                out += MATH(); out += span; out += FG_DFL(); visible += span;
+                k = math_end - 1;
+                continue;
+            }
             if (c == '*' && !cd) {
                 bool tight = k + 1 < s.size() && s[k + 1] != ' ';  // flanked: a marker
                 if (k + 1 < s.size() && s[k + 1] == '*') { b = !b; out += b ? BOLD() : BOLD_OFF(); k++; }
@@ -291,6 +387,29 @@ private:
         vis = display_width(visible);
         if (b || i || cd) out += RST();
         return out;
+    }
+
+    static std::vector<std::string> split_cells(const std::string& text) {
+        std::vector<std::string> cells;
+        std::string cell;
+        bool code_span = false;
+        for (size_t i = 0; i < text.size(); ++i) {
+            if (text[i] == '`') code_span = !code_span;
+            size_t end = code_span ? std::string::npos : math_span(text, i);
+            if (end != std::string::npos) {
+                cell += text.substr(i, end - i);
+                i = end - 1;
+            } else if (text[i] == '\\' && i + 1 < text.size() &&
+                       text[i + 1] == '|') {
+                cell += "\\|"; ++i;
+            } else if (text[i] == '|' && !code_span) {
+                cells.push_back(trim(cell)); cell.clear();
+            } else {
+                cell += text[i];
+            }
+        }
+        cells.push_back(trim(cell));
+        return cells;
     }
 
     void flush_table() {
@@ -313,13 +432,7 @@ private:
             std::string t = trim(raw);
             if (!t.empty() && t.front() == '|') t.erase(0, 1);
             if (!t.empty() && t.back() == '|') t.pop_back();
-            std::vector<std::string> cells;
-            std::string cur;
-            for (char c : t) {
-                if (c == '|') { cells.push_back(trim(cur)); cur.clear(); }
-                else cur += c;
-            }
-            cells.push_back(trim(cur));
+            std::vector<std::string> cells = split_cells(t);
             bool is_sep = true;  // |---|:--:| alignment row
             for (auto& c : cells)
                 if (c.find_first_not_of("-: ") != std::string::npos) is_sep = false;

@@ -4,6 +4,7 @@
 // to the registry; nothing in the agent loop changes.
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cerrno>
@@ -78,6 +79,9 @@ struct Tool {
     std::string provider;                              // owner for live registry refresh
     json output_schema;                               // optional MCP output contract
     long timeout_s = -1;                              // -1 = global default; 0 = turn limit
+    long result_chars = -1;                           // -1 = global result cap
+    long max_calls_per_turn = -1;                     // -1 = global turn budget
+    bool full_terminal_output = false;                // show complete call + result
 };
 
 inline Tool make_tool(std::string name, std::string description, json parameters,
@@ -93,6 +97,12 @@ inline Tool make_tool(std::string name, std::string description, json parameters
 inline Tool& add_tool(std::vector<Tool>& tools, Tool tool) {
     tools.push_back(std::move(tool));
     return tools.back();
+}
+
+inline std::string tool_description(const Tool& tool) {
+    if (tool.max_calls_per_turn < 0) return tool.description;
+    return tool.description + " Per-turn call limit: " +
+           std::to_string(tool.max_calls_per_turn) + ".";
 }
 
 // One execution policy for built-ins, MCP, and future providers. Tool-specific
@@ -171,9 +181,24 @@ inline json tool_schemas(const std::vector<Tool>& tools, long default_timeout_s 
     for (auto& t : tools)
         out.push_back({{"type", "function"},
                        {"function", {{"name", t.name},
-                                     {"description", t.description},
+                                     {"description", tool_description(t)},
                                      {"parameters", tool_parameters(t, default_timeout_s)}}}});
     return out;
+}
+
+inline json available_tool_schemas(
+    const std::vector<Tool>& tools, const json& schemas,
+    const std::unordered_map<std::string, long>& counts) {
+    json available = json::array();
+    for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
+        const Tool& tool = tools[i];
+        auto count = counts.find(tool.name);
+        if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
+            count->second >= tool.max_calls_per_turn)
+            continue;
+        available.push_back(schemas[i]);
+    }
+    return available;
 }
 
 inline std::filesystem::path canonical_access_path(const std::string& path) {
@@ -205,20 +230,16 @@ inline std::string tool_read_file(const std::string& path, long offset, long lim
     if (!f) return "error: cannot open " + path;
     std::string line, out;
     long total = 0, shown = 0, first = 0, last = 0;
-    char num[32];
     bool output_limited = false;
     while (shown < limit && std::getline(f, line)) {
         if (abort_requested()) return "error: read cancelled";
         ++total;
         if (total >= offset) {
-            snprintf(num, sizeof num, "%6ld\t", total);
-            size_t prefix = strlen(num);
-            if (out.size() + prefix + line.size() + 1 >
+            if (out.size() + line.size() + 1 >
                 static_cast<size_t>(max_bytes)) {
                 output_limited = true;
                 break;
             }
-            out += num;
             out += line;
             out += '\n';
             if (!first) first = total;
@@ -408,7 +429,7 @@ inline std::string tool_list_dir(const std::string& path, long offset = 0, long 
 }
 
 // --- background jobs ---------------------------------------------------------
-// run_bash writes stdout+stderr to a log file from the start. Commands that
+// The shell runner writes stdout+stderr to a log file from the start. Commands that
 // finish within a short poll window return output directly; longer ones keep
 // running in a supervised process group and the model checks on them with
 // read_file(log) or wait_background(pid). Memory stays bounded because only
@@ -422,6 +443,7 @@ struct BgJob {
     pid_t pid;
     std::string log, cmd;
     bool join_before_final = false;
+    bool detached = false;
 };
 
 class ProcessSupervisor {
@@ -433,6 +455,20 @@ public:
 
     const std::vector<BgJob>& jobs() const { return jobs_; }
     std::vector<BgJob>& jobs() { return jobs_; }
+    bool pending() const {
+        return std::any_of(jobs_.begin(), jobs_.end(),
+                           [](const BgJob& job) { return !job.detached; });
+    }
+    size_t pending_count() const {
+        return static_cast<size_t>(std::count_if(
+            jobs_.begin(), jobs_.end(),
+            [](const BgJob& job) { return !job.detached; }));
+    }
+    size_t detached_count() const {
+        return static_cast<size_t>(std::count_if(
+            jobs_.begin(), jobs_.end(),
+            [](const BgJob& job) { return job.detached; }));
+    }
 
 private:
     std::vector<BgJob> jobs_;
@@ -539,6 +575,7 @@ public:
         return jobs_.size();
     }
     bool empty() const { return size() == 0; }
+    bool contains(long id) const { return static_cast<bool>(find(id)); }
 
     size_t joinable() const {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -622,15 +659,153 @@ inline std::string fmt_exit(int status, bool show_ok) {
 }
 
 inline std::string read_log_tail(const std::string& path, long cap) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f) return "(no output captured: " + path + " missing)";
-    long size = (long)f.tellg();
-    long start = (cap > 0 && size > cap) ? size - cap : 0;
-    f.seekg(start);
-    std::string s((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-    if (start > 0)
-        s = "[log tail — first " + std::to_string(start) + " bytes omitted]\n" + s;
+    auto tail = [](const std::string& file, long bytes) {
+        std::ifstream f(file, std::ios::binary | std::ios::ate);
+        if (!f || bytes == 0) return std::pair<std::string, long>{"", 0};
+        long size = static_cast<long>(f.tellg());
+        long start = bytes > 0 && size > bytes ? size - bytes : 0;
+        f.seekg(start);
+        return std::pair<std::string, long>{
+            std::string(std::istreambuf_iterator<char>(f),
+                        std::istreambuf_iterator<char>()),
+            start};
+    };
+    auto [current, current_start] = tail(path, cap);
+    long remaining = cap > 0 ? std::max(0L, cap - static_cast<long>(current.size())) : -1;
+    auto [previous, previous_start] = tail(path + ".1", remaining);
+    if (current.empty() && previous.empty() &&
+        !std::filesystem::exists(path) && !std::filesystem::exists(path + ".1"))
+        return "(no output captured: " + path + " missing)";
+    std::string s = previous + current;
+    if (previous_start > 0 || current_start > 0 ||
+        (!previous.empty() && std::filesystem::exists(path + ".1")))
+        s = "[rotating log tail]\n" + s;
     return s.empty() ? "(no output)" : s;
+}
+
+// Hidden subprocess mode used by detached shells. Two half-size segments keep
+// server logs bounded without sending SIGXFSZ/SIGPIPE to the server itself.
+inline int tool_log_pump(const std::string& path, long max_bytes) {
+    long segment = std::max(512L, max_bytes / 2);
+    int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return 1;
+    std::array<char, 64 * 1024> buffer{};
+    long written = 0;
+    for (;;) {
+        ssize_t count = read(STDIN_FILENO, buffer.data(), buffer.size());
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        size_t offset = 0;
+        while (offset < static_cast<size_t>(count)) {
+            if (written >= segment) {
+                close(fd);
+                unlink((path + ".1").c_str());
+                rename(path.c_str(), (path + ".1").c_str());
+                fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+                if (fd < 0) return 1;
+                written = 0;
+            }
+            size_t chunk = std::min(static_cast<size_t>(segment - written),
+                                    static_cast<size_t>(count) - offset);
+            ssize_t n = write(fd, buffer.data() + offset, chunk);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) {
+                close(fd);
+                return 1;
+            }
+            offset += static_cast<size_t>(n);
+            written += n;
+        }
+    }
+    close(fd);
+    return 0;
+}
+
+inline bool process_alive(pid_t pid) {
+    return pid > 0 && kill(pid, 0) == 0 && getpgid(pid) == pid;
+}
+
+inline std::string detached_record_path(pid_t pid) {
+    return uagent_dir("terminals") + "/" + std::to_string(pid) + ".json";
+}
+
+inline std::vector<json> detached_records() {
+    namespace fs = std::filesystem;
+    std::vector<json> records;
+    auto cutoff = fs::file_time_type::clock::now() -
+                  std::chrono::hours(24 * std::max(
+                      0L, env_long("UAGENT_TERMINAL_DAYS", 7)));
+    std::error_code ec;
+    for (fs::directory_iterator it(uagent_dir("terminals"), ec), end;
+         !ec && it != end; it.increment(ec)) {
+        if (it->path().extension() != ".json") continue;
+        std::ifstream input(it->path());
+        json record = json::parse(input, nullptr, false);
+        if (record.is_discarded()) {
+            fs::remove(it->path(), ec);
+            continue;
+        }
+        record["_alive"] = process_alive(record.value("pid", 0));
+        std::error_code time_error;
+        auto modified = fs::last_write_time(it->path(), time_error);
+        if (!record["_alive"].get<bool>() && !time_error && modified < cutoff) {
+            fs::remove(record.value("log", ""), ec);
+            fs::remove(record.value("log", "") + ".1", ec);
+            fs::remove(it->path(), ec);
+            continue;
+        }
+        records.push_back(std::move(record));
+    }
+    std::sort(records.begin(), records.end(), [](const json& a, const json& b) {
+        return a.value("started_at", "") > b.value("started_at", "");
+    });
+    return records;
+}
+
+inline std::string save_detached_record(pid_t pid, const std::string& log,
+                                        const std::string& cmd) {
+    std::error_code ec;
+    std::string cwd = std::filesystem::current_path(ec).string();
+    json record = {{"pid", pid},
+                   {"log", log},
+                   {"command", cmd},
+                   {"cwd", ec ? "" : cwd},
+                   {"started_at", utc_stamp()}};
+    return tool_write_private_file(detached_record_path(pid), record.dump(2) + "\n");
+}
+
+inline std::string tool_terminal_output(long pid) {
+    std::vector<json> records = detached_records();
+    if (pid <= 0) {
+        if (records.empty()) return "(no detached terminals)";
+        std::string out;
+        for (const json& record : records) {
+            pid_t record_pid = record.value("pid", 0);
+            out += (record.value("_alive", false) ? "[running] " : "[exited] ");
+            out += "pid " + std::to_string(record_pid) + " · " +
+                   record.value("cwd", "") + " · " +
+                   one_line(record.value("command", ""), 120) + " · " +
+                   record.value("log", "") + "\n";
+        }
+        long cap = tool_result_cap();
+        if (cap > 0 && out.size() > static_cast<size_t>(cap)) {
+            out = utf8_trunc(std::move(out), static_cast<size_t>(cap));
+            out += "\n[terminal list truncated]";
+        }
+        return out;
+    }
+
+    auto found = std::find_if(records.begin(), records.end(), [&](const json& record) {
+        return record.value("pid", 0L) == pid;
+    });
+    if (found == records.end())
+        return "error: pid " + std::to_string(pid) +
+               " is not a uagent detached terminal";
+    const json& record = *found;
+    std::string status = record.value("_alive", false) ? "running" : "exited";
+    return "[" + status + " · pid " + std::to_string(pid) + " · " +
+           record.value("cwd", "") + " · log " + record.value("log", "") + "]\n" +
+           read_log_tail(record.value("log", ""), tool_result_cap());
 }
 
 // Drain finished bg jobs: return notification strings for any completed pids.
@@ -641,10 +816,11 @@ inline std::vector<std::string> bg_take_completed(ProcessSupervisor& supervisor)
     for (auto it = jobs.begin(); it != jobs.end();) {
         int st;
         if (waitpid(it->pid, &st, WNOHANG) == it->pid) {
-            bg_track_signal(it->pid, false);
+            if (!it->detached) bg_track_signal(it->pid, false);
             std::string out = read_log_tail(it->log, tool_result_cap());
-            unlink(it->log.c_str());
-            std::string note = "[Background result: pid " + std::to_string(it->pid) +
+            if (!it->detached) unlink(it->log.c_str());
+            std::string note = "[" + std::string(it->detached ? "Detached" : "Background") +
+                               " result: pid " + std::to_string(it->pid) +
                                " `" + one_line(it->cmd, 80) + "`]\n" + out +
                                fmt_exit(st, /*show_ok=*/true);
             notes.push_back(std::move(note));
@@ -658,6 +834,13 @@ inline std::vector<std::string> bg_take_completed(ProcessSupervisor& supervisor)
 
 inline void bg_shutdown_all(ProcessSupervisor& supervisor) {
     auto& jobs = supervisor.jobs();
+    jobs.erase(std::remove_if(jobs.begin(), jobs.end(), [](const BgJob& job) {
+                   if (!job.detached) return false;
+                   int status = 0;
+                   waitpid(job.pid, &status, WNOHANG);
+                   return true;
+               }),
+               jobs.end());
     for (const BgJob& job : jobs)
         if (kill(-job.pid, SIGTERM) != 0) kill(job.pid, SIGTERM);
     for (int attempt = 0; attempt < 10 && !jobs.empty(); ++attempt) {
@@ -691,15 +874,21 @@ inline ProcessSupervisor::~ProcessSupervisor() { bg_shutdown_all(*this); }
 inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::string& cmd,
                                  long window_s, bool join_before_final = false,
                                  const ToolContext& context = {},
-                                 bool allow_background = true) {
+                                 bool allow_background = true, bool detach = false,
+                                 std::string shell = "bash") {
+    if (shell.empty() || shell.find('\0') != std::string::npos)
+        return "error: shell must be a non-empty executable name or path";
     auto& jobs = supervisor.jobs();
     long max_jobs = std::max(1L, env_long("UAGENT_MAX_BACKGROUND_JOBS", 8));
-    if (static_cast<long>(jobs.size()) >= max_jobs)
+    if (static_cast<long>(supervisor.pending_count()) >= max_jobs)
         return "error: background job limit reached (" + std::to_string(max_jobs) + ")";
-    long window = window_s < 0 ? env_long("UAGENT_BASH_POLL", 3)
-                               : (window_s == 0 ? (1L << 30) : window_s);
-    window = context.remaining_seconds(window);
-    std::string pattern = uagent_dir("bg") + "/pending-" + std::to_string(getpid()) + "-XXXXXX";
+    long window = detach ? 0
+                         : (window_s < 0 ? env_long("UAGENT_BASH_POLL", 3)
+                                         : (window_s == 0 ? (1L << 30) : window_s));
+    if (!detach) window = context.remaining_seconds(window);
+    const char* log_kind = detach ? "terminals" : "bg";
+    std::string pattern = uagent_dir(log_kind) + "/pending-" +
+                          std::to_string(getpid()) + "-XXXXXX";
     std::vector<char> temp(pattern.begin(), pattern.end());
     temp.push_back('\0');
     int lfd = mkstemp(temp.data());
@@ -707,11 +896,14 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
     if (lfd < 0) return "error: cannot create log file " + log;
     fchmod(lfd, 0600);
     long log_bytes = std::max(1024L, env_long("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024));
-    // Shell ulimit block units vary across POSIX shells. A 1024-byte divisor
-    // keeps the effective common-shell limit at or below the configured bound.
-    // The limit is inherited, so a firehose cannot fill disk indefinitely.
+    // Foreground commands may be stopped at the cap. Detached servers instead
+    // stream through this binary's tiny rotating log pump and keep running.
     std::string bounded_cmd =
-        "ulimit -f " + std::to_string((log_bytes + 1023) / 1024) + "; " + cmd;
+        detach
+            ? "(" + cmd + ") 2>&1 | " + shell_quote(g_argv0) + " --log-pump " +
+                  shell_quote(log) + " " + std::to_string(log_bytes)
+            : "ulimit -f " + std::to_string((log_bytes + 1023) / 1024) +
+                  "; " + cmd;
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
     posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
@@ -720,7 +912,12 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
     posix_spawn_file_actions_addclose(&actions, lfd);
     posix_spawnattr_t attributes;
     posix_spawnattr_init(&attributes);
-    posix_spawnattr_setpgroup(&attributes, 0);
+    short group_flag = POSIX_SPAWN_SETPGROUP;
+#ifdef POSIX_SPAWN_SETSID
+    if (detach) group_flag = POSIX_SPAWN_SETSID;
+#endif
+    if (group_flag == POSIX_SPAWN_SETPGROUP)
+        posix_spawnattr_setpgroup(&attributes, 0);
     sigset_t defaults, mask;
     sigemptyset(&defaults);
     for (int signal_number : {SIGINT, SIGTERM, SIGHUP, SIGPIPE})
@@ -730,17 +927,19 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
     posix_spawnattr_setsigmask(&attributes, &mask);
     posix_spawnattr_setflags(
         &attributes,
-        static_cast<short>(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF |
+        static_cast<short>(group_flag | POSIX_SPAWN_SETSIGDEF |
                            POSIX_SPAWN_SETSIGMASK));
     pid_t pid = -1;
-    auto spawn_shell = [&](const char* shell) {
-        char* const argv[] = {const_cast<char*>(shell),
+    auto spawn_shell = [&](const std::string& executable) {
+        char* const argv[] = {const_cast<char*>(executable.c_str()),
                               const_cast<char*>("-c"),
                               bounded_cmd.data(), nullptr};
-        return posix_spawn(&pid, shell, &actions, &attributes, argv, environ);
+        return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
+                            environ);
     };
-    int spawn_error = spawn_shell("/bin/bash");
-    if (spawn_error != 0) spawn_error = spawn_shell("/bin/sh");
+    int spawn_error = spawn_shell(shell);
+    if (spawn_error != 0 && shell == "bash") spawn_error = spawn_shell("/bin/bash");
+    if (spawn_error != 0 && shell == "bash") spawn_error = spawn_shell("/bin/sh");
     posix_spawnattr_destroy(&attributes);
     posix_spawn_file_actions_destroy(&actions);
     if (spawn_error != 0) {
@@ -749,8 +948,22 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
         return "error: cannot spawn shell: " + std::string(strerror(spawn_error));
     }
     close(lfd);
-    std::string named = uagent_dir("bg") + "/" + std::to_string(pid) + ".log";
-    if (rename(log.c_str(), named.c_str()) == 0) log = named;  // child's fd stays valid
+    if (!detach) {
+        std::string named = uagent_dir(log_kind) + "/" + std::to_string(pid) + ".log";
+        if (rename(log.c_str(), named.c_str()) == 0)
+            log = named;  // child's fd stays valid
+    }
+    if (detach) {
+        std::string saved = save_detached_record(pid, log, cmd);
+        if (saved.rfind("error:", 0) == 0) {
+            if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
+            int status = 0;
+            waitpid(pid, &status, 0);
+            unlink(log.c_str());
+            unlink((log + ".1").c_str());
+            return saved;
+        }
+    }
 
     g_child_pgid = pid;  // Ctrl+C during the window is a hard stop: kill it too
     int status = 0;
@@ -772,6 +985,8 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
     if (exited) {
         std::string out = read_log_tail(log, tool_result_cap());
         unlink(log.c_str());
+        unlink((log + ".1").c_str());
+        if (detach) unlink(detached_record_path(pid).c_str());
         if (cancelled) return "error: command cancelled by user";
         return out + fmt_exit(status, /*show_ok=*/false);
     }
@@ -779,9 +994,16 @@ inline std::string tool_run_bash(ProcessSupervisor& supervisor, const std::strin
         if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
         unlink(log.c_str());
+        unlink((log + ".1").c_str());
+        if (detach) unlink(detached_record_path(pid).c_str());
         return "error: search exceeded its execution deadline";
     }
-    jobs.push_back({pid, log, cmd, join_before_final});
+    if (detach) {
+        jobs.push_back({pid, log, cmd, false, true});
+        return "[detached] pid " + std::to_string(pid) + ", log: " + log +
+               " — read with terminal_output(pid=" + std::to_string(pid) + ")";
+    }
+    jobs.push_back({pid, log, cmd, join_before_final, false});
     bg_track_signal(pid, true);
     return "[backgrounded] pid " + std::to_string(pid) + ", log: " + log +
            " — peek with read_file, or wait_background(pid=" + std::to_string(pid) + ")";
@@ -820,7 +1042,7 @@ inline std::string tool_run_python(ProcessSupervisor& supervisor,
         std::string hint;
         if (result.find("No module named") != std::string::npos)
             hint = " Declare every third-party dependency in run_python.packages; "
-                   "do not install it with pip or run_bash.";
+                   "do not install it with pip or run.";
         return "error: Python execution failed." + hint + "\n" + result;
     }
     return result;
@@ -898,6 +1120,9 @@ inline std::string tool_wait_background(ProcessSupervisor& supervisor, long pid,
                                    [&](const BgJob& job) { return job.pid == (pid_t)pid; });
     if (pid <= 0 || registered == jobs.end())
         return "error: pid " + std::to_string(pid) + " is not a live uagent background job";
+    if (registered->detached)
+        return "error: detached job " + std::to_string(pid) +
+               " is persistent; inspect it with terminal_output";
     std::string log = registered->log;
     int status = 0;
     bool reaped = false;
@@ -934,12 +1159,32 @@ inline std::string tool_wait_background(ProcessSupervisor& supervisor, long pid,
     return out;
 }
 
+inline std::string tool_wait_side_task(SideTaskSupervisor& supervisor, long id,
+                                       long timeout_s,
+                                       const ToolContext& context = {}) {
+    if (id <= 0 || !supervisor.contains(id))
+        return "error: id " + std::to_string(id) +
+               " is not a live uagent background job";
+    long bounded_timeout = context.remaining_seconds(
+        timeout_s > 0 ? timeout_s : (1L << 30));
+    auto deadline = std::chrono::steady_clock::now() +
+                    std::chrono::seconds(bounded_timeout);
+    while (!abort_requested() && std::chrono::steady_clock::now() < deadline) {
+        if (auto result = supervisor.wait(id, std::chrono::milliseconds(0)))
+            return "[Background result: " + result->kind + " `" +
+                   one_line(result->label, 80) + "`]\n" + result->output;
+        supervisor.wait_for_one(std::chrono::milliseconds(100));
+    }
+    return std::string(abort_requested() ? "[wait cancelled" : "[wait timed out") +
+           " — background job still running]";
+}
+
 // --- registry ---------------------------------------------------------------
 
 inline std::vector<Tool> builtin_tools(
     ProcessSupervisor& supervisor,
     const std::filesystem::path& workspace = canonical_access_path("."),
-    bool inline_images = false) {
+    bool inline_images = false, SideTaskSupervisor* side_tasks = nullptr) {
     auto schema = [](const char* s) { return json::parse(s); };
     std::vector<Tool> tools;
     auto path_tool = [&](Tool tool, const char* fallback) -> Tool& {
@@ -951,7 +1196,7 @@ inline std::vector<Tool> builtin_tools(
     };
 
     Tool& read = path_tool(
-        make_tool("read_file", "Read numbered lines.",
+        make_tool("read_file", "Read a line range.",
                   schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line (default 1)"},
@@ -1018,7 +1263,8 @@ inline std::vector<Tool> builtin_tools(
     };
 
     if (inline_images)
-        path_tool(make_tool("view_image", "Display an image inline in the terminal.",
+        path_tool(make_tool("view_image",
+                            "Display a local image inline in this terminal.",
                             schema(R"json({"type":"object","properties":{
                               "path":{"type":"string"}},"required":["path"]})json"),
                             [](const json& a, const ToolContext&) {
@@ -1026,20 +1272,29 @@ inline std::vector<Tool> builtin_tools(
                             }),
                   "");
 
-    Tool& bash = add_tool(
+    Tool& run = add_tool(
         tools,
-        make_tool("run_bash",
-                  "Run a shell command. Slow jobs return a pid for wait_background; "
-                  "timeout=0 waits forever.",
+        make_tool("run",
+                  "Run a command with bash by default or another requested shell. "
+                  "Slow jobs return a pid for wait_background; "
+                  "detach=true returns immediately, keeps a long-lived server across sessions, "
+                  "and makes its log readable with terminal_output; otherwise timeout=0 waits "
+                  "forever.",
                   schema(R"json({"type":"object","properties":{
-                    "command":{"type":"string"}},"required":["command"]})json"),
+                    "command":{"type":"string"},
+                    "shell":{"type":"string","description":"shell executable (default bash)"},
+                    "detach":{"type":"boolean","description":"persist process and log across sessions"}},
+                    "required":["command"]})json"),
                   [&supervisor](const json& a, const ToolContext& context) {
                       return tool_run_bash(supervisor, a.value("command", ""),
-                                           context.timeout_s, false, context);
+                                           context.timeout_s, false, context, true,
+                                           a.value("detach", false),
+                                           a.value("shell", "bash"));
                   }));
-    bash.mutating = true;
-    bash.summary = [](const json& a) { return one_line(a.value("command", ""), 120); };
-    bash.timeout_s = 3;
+    run.mutating = true;
+    run.summary = [](const json& a) { return a.value("command", ""); };
+    run.timeout_s = 3;
+    run.full_terminal_output = true;
 
     Tool& python = add_tool(
         tools,
@@ -1058,25 +1313,52 @@ inline std::vector<Tool> builtin_tools(
                   }));
     python.mutating = true;
     python.summary = [](const json& a) {
-        std::string summary = one_line(a.value("code", ""), 100);
+        std::string summary = a.value("code", "");
         size_t packages = a.value("packages", json::array()).size();
-        return packages ? summary + " (+" + std::to_string(packages) + " packages)" : summary;
+        return packages ? summary + "\n[packages: " + a["packages"].dump() + "]"
+                        : summary;
     };
     python.timeout_s = 3;
+    python.full_terminal_output = true;
 
     Tool& wait = add_tool(
         tools,
         make_tool("wait_background",
-                  "Wait for a live pid from run_bash, run_python, or task; web_search results "
-                  "arrive automatically.",
+                  "Wait for a live background job from any tool.",
                   schema(R"json({"type":"object","properties":{
-                    "pid":{"type":"integer","minimum":1}},"required":["pid"]})json"),
-                  [&supervisor](const json& a, const ToolContext& context) {
-                      return tool_wait_background(supervisor, a.value("pid", 0L),
-                                                  context.timeout_s, context);
+                    "id":{"type":"integer","minimum":1,
+                      "description":"job id; process jobs use their OS pid"},
+                    "pid":{"type":"integer","minimum":1,
+                      "description":"legacy alias for id"}}})json"),
+                  [&supervisor, side_tasks](const json& a, const ToolContext& context) {
+                      long id = a.value("id", a.value("pid", 0L));
+                      if (side_tasks && side_tasks->contains(id))
+                          return tool_wait_side_task(*side_tasks, id, context.timeout_s,
+                                                     context);
+                      return tool_wait_background(supervisor, id, context.timeout_s,
+                                                  context);
                   }));
-    wait.summary = [](const json& a) { return "pid " + std::to_string(a.value("pid", 0L)); };
+    wait.summary = [](const json& a) {
+        return "job " + std::to_string(a.value("id", a.value("pid", 0L)));
+    };
     wait.timeout_s = 0;
+
+    Tool& terminal = add_tool(
+        tools,
+        make_tool("terminal_output",
+                  "List uagent-detached terminals, or read the latest output for one pid. "
+                  "Only run(detach=true) processes are available.",
+                  schema(R"json({"type":"object","properties":{
+                    "pid":{"type":"integer","minimum":1}}})json"),
+                  [](const json& a, const ToolContext&) {
+                      return tool_terminal_output(a.value("pid", 0L));
+                  }));
+    terminal.parallel_safe = true;
+    terminal.result_chars = 6000;
+    terminal.summary = [](const json& a) {
+        long pid = a.value("pid", 0L);
+        return pid ? "pid " + std::to_string(pid) : "list";
+    };
 
     Tool& checkpoint = add_tool(
         tools,

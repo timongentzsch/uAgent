@@ -48,9 +48,9 @@ uagent --yolo
 | --- | --- |
 | `read_file`, `list_dir`, `grep` | Bounded repository inspection |
 | `write_file`, `edit_file` | Atomic file changes |
-| `run_bash`, `wait_background` | Supervised processes |
+| `run`, `wait_background`, `terminal_output` | Supervised and persistent processes |
 | `run_python` | Isolated uv-backed Python with optional packages |
-| `view_image` | iTerm2, WezTerm, or Kitty image output |
+| `view_image` | iTerm2, WezTerm, or Kitty-compatible terminal image output |
 | `web_search` | OpenRouter search side request |
 | `chrome-devtools_*`, `chrome_session` | Browser automation and session selection |
 | `task` | One-level isolated subagent |
@@ -63,13 +63,23 @@ Every tool exposes the same optional `timeout` (foreground seconds); defaults
 come from its registry entry or `UAGENT_TOOL_TIMEOUT=30`, and `0` uses the turn
 limit. Slow web searches return after 5 seconds, continue in the background,
 and are injected into the next model step; their hard cap is
-`UAGENT_WEB_SEARCH_TIMEOUT=25`.
+`UAGENT_WEB_SEARCH_TIMEOUT=25`. A call can batch four queries. Search output is
+bounded by `UAGENT_WEB_SEARCH_MAX_TOKENS=1200`; set
+`UAGENT_WEB_SEARCH_MODEL` to route search through a cheaper OpenRouter model
+and `UAGENT_WEB_SEARCH_EFFORT` only when that model needs an explicit effort.
+The default two calls per turn can each batch four queries; change
+`UAGENT_WEB_SEARCH_CALLS` for unusually broad research. Every backgrounded tool
+returns one job id; `wait_background` can join either a process or side request.
 
-`run_bash` uses process groups and backgrounds slow commands. Subagents cannot
+`run` uses bash by default, accepts another `shell`, uses process groups, and
+backgrounds slow commands. Subagents cannot
 recurse and exit with the parent. If the coordinator tries to finish while a
 required background task is still running, it waits for all required results
-and continues the turn. Long-lived shell/Python jobs remain explicitly detached.
+and continues the turn. `detach=true` keeps long-lived servers and their
+rotating logs across sessions; `terminal_output` lists or reads them.
 Unsupported native tool calling falls back to a strict text protocol.
+Interactive traces show complete `run` commands, Python source, and their
+returned output; model-visible results remain bounded.
 
 `run_python` uses `uv run --isolated --no-project`, so it cannot rewrite the
 workspace's Python project or inherit an active virtual environment. Package
@@ -81,10 +91,20 @@ short installation link.
 
 ## Context
 
-The system prompt and ordered tool schemas stay stable for provider caching.
+Before the first request, µAgent loads project instructions from repository
+root to the working directory. Each level prefers `AGENTS.override.md` over
+`AGENTS.md` and also reads `CLAUDE.md`; `~/.uagent` is the global level. Later
+files are more specific. `UAGENT_PROJECT_DOC_BYTES` sets the shared 32 KiB
+content limit (`0` disables loading).
+
+The system prompt, project instructions, and ordered tool schemas stay stable
+for provider caching.
 Completed tool traces move to a bounded local archive.
 The local date, time, timezone, and UTC offset refresh once per user turn and
 remain fixed through that turn's model/tool rounds.
+
+TTY output renders Markdown and preserves LaTeX delimiters while coloring
+inline/display math, including math and code spans containing pipes in tables.
 
 At 65% projected context, the model may create a durable checkpoint; at 85% the
 request becomes urgent. Default `apply` mode commits a valid checkpoint only
@@ -110,8 +130,12 @@ when it needs an existing login; Chrome 144+ must be running, remote debugging
 must be enabled at `chrome://inspect/#remote-debugging`, and Chrome asks you to
 approve the connection only when the agent first interacts with it. Set
 `UAGENT_CHROME_MODE=user` to start in that mode or
+`UAGENT_CHROME_BROWSER_URL` to an explicit DevTools endpoint. Set
 `UAGENT_CHROME_DEVTOOLS=0` to disable the built-in. A `chrome-devtools` entry in
 `~/.mcp.json` or a trusted project config overrides it.
+Image content returned by any MCP server is saved privately under
+`~/.uagent/mcp`, rendered inline when the terminal supports it, and never copied
+as base64 into model history.
 
 ```json
 {

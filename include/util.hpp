@@ -46,8 +46,10 @@ using nlohmann::json;
 // --- terminal colors (empty strings when stdout is not a TTY) ---------------
 
 inline bool g_tty = false;
+inline volatile sig_atomic_t g_signal_tty = 0;
+inline constexpr char TERMINAL_RESTORE[] = "\033[0m\033[39m\033[49m";
 inline const char* DIM() { return g_tty ? "\033[2m" : ""; }
-inline const char* RST() { return g_tty ? "\033[0m" : ""; }
+inline const char* RST() { return g_tty ? TERMINAL_RESTORE : ""; }
 inline const char* CYAN() { return g_tty ? "\033[36m" : ""; }
 inline const char* YEL() { return g_tty ? "\033[33m" : ""; }
 inline const char* RED() { return g_tty ? "\033[31m" : ""; }
@@ -81,9 +83,15 @@ inline void panel_clear_line() {
     fputs("\r\033[2K\r", stdout);
     fflush(stdout);
 }
+inline void terminal_restore() {
+    if (!g_tty) return;
+    fputs(TERMINAL_RESTORE, stdout);
+    fflush(stdout);
+}
 // code colors (256-color, readable on dark and light themes; glamour-inspired)
 inline const char* CODE() { return g_tty ? "\033[38;5;203m" : ""; }     // inline `code`
 inline const char* CODE_BLK() { return g_tty ? "\033[38;5;110m" : ""; }  // fenced block body
+inline const char* MATH() { return g_tty ? "\033[38;5;141m" : ""; }      // LaTeX
 
 // --- interrupt state: Ctrl+C aborts an in-flight stream, else exits ---------
 
@@ -98,7 +106,7 @@ inline std::string g_argv0;
 // and therefore uses a real atomic; abort_requested() joins the two domains.
 inline volatile sig_atomic_t g_signal_abort = 0;
 inline std::atomic<bool> g_thread_abort{false};
-inline volatile sig_atomic_t g_child_pgid = 0;  // pgid of a running run_bash child
+inline volatile sig_atomic_t g_child_pgid = 0;  // pgid of a running shell child
 inline constexpr int MCP_MAX = 64;                      // tracked MCP server processes
 inline volatile sig_atomic_t g_mcp_pids[MCP_MAX] = {};  // live MCP pgids — TERMed on exit
 inline constexpr int BG_MAX = 64;
@@ -132,6 +140,11 @@ inline void sigint_handler(int signal_number) {
             kill(-(pid_t)g_mcp_pids[i], SIGTERM);
             kill((pid_t)g_mcp_pids[i], SIGTERM);
         }
+    if (g_signal_tty) {
+        ssize_t restored =
+            write(STDOUT_FILENO, TERMINAL_RESTORE, sizeof(TERMINAL_RESTORE) - 1);
+        (void)restored;
+    }
     _exit(128 + signal_number);
 }
 
@@ -197,11 +210,16 @@ inline bool executable_on_path(const std::string& name) {
 }
 
 // cap a string at a UTF-8 boundary (never splits a codepoint), appending "…"
-inline std::string utf8_trunc(std::string s, size_t cap) {
+inline std::string utf8_prefix(std::string s, size_t cap) {
     if (s.size() <= cap) return s;
     while (cap > 0 && ((unsigned char)s[cap] & 0xC0) == 0x80) --cap;
     s.resize(cap);
-    return s += "…";
+    return s;
+}
+
+inline std::string utf8_trunc(std::string s, size_t cap) {
+    if (s.size() <= cap) return s;
+    return utf8_prefix(std::move(s), cap) + "…";
 }
 
 // Terminal column width for valid UTF-8 in the active locale. Invalid or
@@ -317,7 +335,7 @@ inline double env_double(const char* name, double dflt) {
 // Single source of truth for every tunable default: the consumer and the
 // session_ready debug record read the same accessor, so the trace can never
 // report a value the runtime is not using.
-inline long tool_result_cap() { return env_long("UAGENT_TOOL_RESULT_CHARS", 12000); }
+inline long tool_result_cap() { return env_long("UAGENT_TOOL_RESULT_CHARS", 8000); }
 inline long auto_compact_pct() { return env_long("UAGENT_AUTO_COMPACT_PCT", 95); }
 inline long checkpoint_pct() { return env_long("UAGENT_CHECKPOINT_PCT", 65); }
 inline long checkpoint_urgent_pct() {
@@ -342,6 +360,8 @@ struct RuntimeConfig {
     double max_turn_cost = 1.0;
     long tool_timeout_s = 30;
     long web_search_timeout_s = 25;
+    long web_search_max_tokens = 1200;
+    long web_search_calls = 2;
     long mcp_timeout_s = 60;
     long mcp_servers = 32;
     long mcp_pages = 100;
@@ -350,9 +370,12 @@ struct RuntimeConfig {
     long mcp_response_bytes = 16 * 1024 * 1024;
     long mcp_schema_bytes = 256 * 1024;
     long mcp_log_bytes = 16 * 1024 * 1024;
+    long project_doc_bytes = 32 * 1024;
     long session_archive_bytes = 16 * 1024 * 1024;
     std::string checkpoint_mode = "apply";
     std::string openrouter_provider;
+    std::string web_search_effort;
+    std::string web_search_model;
     bool openrouter_fallbacks = true;
 
     struct LongOption {
@@ -361,6 +384,18 @@ struct RuntimeConfig {
         long RuntimeConfig::*field;
         long minimum;
         long maximum;
+    };
+    struct StringOption {
+        const char* env;
+        const char* name;
+        std::string RuntimeConfig::*field;
+        const char* default_value;
+    };
+    struct BoolOption {
+        const char* env;
+        const char* name;
+        bool RuntimeConfig::*field;
+        bool default_value;
     };
 
     inline static constexpr long ANY_MIN = std::numeric_limits<long>::min();
@@ -382,6 +417,10 @@ struct RuntimeConfig {
         {"UAGENT_TOOL_TIMEOUT", "tool_timeout_s", &RuntimeConfig::tool_timeout_s, 0, ANY_MAX},
         {"UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s",
          &RuntimeConfig::web_search_timeout_s, 1, ANY_MAX},
+        {"UAGENT_WEB_SEARCH_MAX_TOKENS", "web_search_max_tokens",
+         &RuntimeConfig::web_search_max_tokens, 128, ANY_MAX},
+        {"UAGENT_WEB_SEARCH_CALLS", "web_search_calls",
+         &RuntimeConfig::web_search_calls, 1, ANY_MAX},
         {"UAGENT_MCP_TIMEOUT", "mcp_timeout_s", &RuntimeConfig::mcp_timeout_s, 1, ANY_MAX},
         {"UAGENT_MCP_SERVERS", "mcp_servers", &RuntimeConfig::mcp_servers, 1, MCP_MAX},
         {"UAGENT_MCP_PAGES", "mcp_pages", &RuntimeConfig::mcp_pages, 1, ANY_MAX},
@@ -394,8 +433,24 @@ struct RuntimeConfig {
          ANY_MAX},
         {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes, 1024,
          ANY_MAX},
+        {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
+         &RuntimeConfig::project_doc_bytes, 0, ANY_MAX},
         {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",
          &RuntimeConfig::session_archive_bytes, 0, ANY_MAX},
+    };
+    inline static constexpr StringOption STRING_OPTIONS[] = {
+        {"UAGENT_CHECKPOINT_MODE", "checkpoint_mode",
+         &RuntimeConfig::checkpoint_mode, "apply"},
+        {"UAGENT_OPENROUTER_PROVIDER", "openrouter_provider",
+         &RuntimeConfig::openrouter_provider, ""},
+        {"UAGENT_WEB_SEARCH_EFFORT", "web_search_effort",
+         &RuntimeConfig::web_search_effort, ""},
+        {"UAGENT_WEB_SEARCH_MODEL", "web_search_model",
+         &RuntimeConfig::web_search_model, ""},
+    };
+    inline static constexpr BoolOption BOOL_OPTIONS[] = {
+        {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
+         &RuntimeConfig::openrouter_fallbacks, true},
     };
 
     static RuntimeConfig from_environment() {
@@ -403,27 +458,30 @@ struct RuntimeConfig {
         for (const LongOption& option : LONG_OPTIONS)
             c.*option.field = std::clamp(env_long(option.env, c.*option.field),
                                          option.minimum, option.maximum);
+        for (const StringOption& option : STRING_OPTIONS)
+            c.*option.field = env_str(option.env, option.default_value);
+        for (const BoolOption& option : BOOL_OPTIONS)
+            c.*option.field =
+                env_str(option.env, option.default_value ? "1" : "0") != "0";
         c.max_turn_cost = env_double("UAGENT_MAX_TURN_COST", 1.0);
-        c.checkpoint_mode = env_str("UAGENT_CHECKPOINT_MODE", "apply");
         if (c.checkpoint_mode != "off" && c.checkpoint_mode != "shadow" &&
             c.checkpoint_mode != "apply")
             c.checkpoint_mode = "apply";
-        c.openrouter_provider = env_str("UAGENT_OPENROUTER_PROVIDER");
-        c.openrouter_fallbacks =
-            env_str("UAGENT_OPENROUTER_FALLBACKS", "1") != "0";
         return c;
     }
 
     json diagnostic_json() const {
         json out;
         for (const LongOption& option : LONG_OPTIONS) out[option.name] = this->*option.field;
+        for (const StringOption& option : STRING_OPTIONS)
+            out[option.name] = this->*option.field;
+        for (const BoolOption& option : BOOL_OPTIONS)
+            out[option.name] = this->*option.field;
         out.update({{"max_turn_cost", max_turn_cost},
-                    {"checkpoint_mode", checkpoint_mode},
                     {"checkpoint_pct", checkpoint_pct()},
                     {"checkpoint_urgent_pct", checkpoint_urgent_pct()},
                     {"auto_compact_pct", auto_compact_pct()},
-                    {"openrouter_provider", openrouter_provider},
-                    {"openrouter_fallbacks", openrouter_fallbacks}});
+                    });
         return out;
     }
 };
@@ -659,6 +717,85 @@ inline std::string canonical_cwd() {
     return ec ? std::filesystem::current_path().string() : path.string();
 }
 
+struct ProjectInstructions {
+    std::string text;
+    std::vector<std::string> sources;
+    bool truncated = false;
+};
+
+inline std::filesystem::path project_root(const std::filesystem::path& cwd) {
+    for (auto path = cwd;; path = path.parent_path()) {
+        std::error_code ec;
+        if (std::filesystem::exists(path / ".git", ec)) return path;
+        if (path == path.root_path() || path.parent_path() == path) break;
+    }
+    return cwd;
+}
+
+// Codex-style startup discovery: one AGENTS override/default per directory,
+// ordered from repository root to cwd. CLAUDE.md is additionally loaded at
+// each level so mixed-tool repositories keep both instruction surfaces.
+inline ProjectInstructions load_project_instructions(
+    const std::filesystem::path& cwd, size_t max_bytes) {
+    namespace fs = std::filesystem;
+    ProjectInstructions loaded;
+    if (max_bytes == 0) return loaded;
+
+    std::vector<fs::path> dirs;
+    fs::path root = project_root(cwd);
+    for (fs::path path = cwd;; path = path.parent_path()) {
+        dirs.push_back(path);
+        if (path == root || path == path.root_path() || path.parent_path() == path)
+            break;
+    }
+    std::reverse(dirs.begin(), dirs.end());
+
+    size_t used = 0;
+    auto append = [&](const fs::path& path) {
+        if (used >= max_bytes) {
+            loaded.truncated = true;
+            return false;
+        }
+        std::ifstream input(path, std::ios::binary);
+        if (!input) return false;
+        size_t remaining = max_bytes - used;
+        std::string content(remaining + 1, '\0');
+        input.read(content.data(), static_cast<std::streamsize>(content.size()));
+        size_t read = static_cast<size_t>(input.gcount());
+        content.resize(std::min(read, remaining));
+        if (read > remaining || input.peek() != std::char_traits<char>::eof())
+            loaded.truncated = true;
+        content = utf8_prefix(std::move(content), remaining);
+        if (trim(content).empty()) return false;
+        if (!loaded.text.empty()) loaded.text += "\n\n";
+        used += content.size();
+        loaded.text += content;
+        loaded.sources.push_back(path.string());
+        return true;
+    };
+    auto append_dir = [&](const fs::path& dir) {
+        for (const char* name : {"AGENTS.override.md", "AGENTS.md"}) {
+            std::error_code ec;
+            fs::path candidate = dir / name;
+            if (fs::is_regular_file(candidate, ec)) {
+                append(candidate);
+                break;
+            }
+        }
+        std::error_code ec;
+        fs::path claude = dir / "CLAUDE.md";
+        if (fs::is_regular_file(claude, ec)) append(claude);
+    };
+
+    std::error_code ec;
+    fs::path global = fs::weakly_canonical(uagent_dir(""), ec);
+    if (ec) global = uagent_dir("");
+    append_dir(global);
+    for (const fs::path& dir : dirs)
+        if (dir != global) append_dir(dir);
+    return loaded;
+}
+
 inline std::string url_host(std::string url) {
     if (auto p = url.find("://"); p != std::string::npos) url = url.substr(p + 3);
     if (auto p = url.find('/'); p != std::string::npos) url.resize(p);
@@ -842,7 +979,7 @@ public:
             error_ = ec.message();
             return false;
         }
-        int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
         if (fd < 0) {
             error_ = strerror(errno);
             return false;

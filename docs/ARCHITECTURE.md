@@ -22,16 +22,21 @@ main.cc
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.cc` | Runtime composition, session UI and REPL dispatch |
+| `src/main.cc` | Runtime composition, argument parsing, REPL dispatch |
+| `include/ui/` | Session picker and terminal rendering for the REPL |
 | `include/cli.h` | Slash-command registry, input, completion and steering UI |
 | `include/providers.h` | Provider setup, model routing, effort and catalog metadata |
 | `include/agent.h` | Model/tool loop, active history, checkpoints, sessions |
+| `include/agent/` | Text-protocol fallback, system prompt, tool-call dispatch |
 | `include/api.h` | OpenAI-compatible HTTP/SSE; no tool execution |
-| `include/tools.h` | Tool interface, file adapters, process supervision |
-| `include/mcp.h` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
-| `include/util.h` | Limits, private config, diagnostics, terminal/platform helpers |
+| `include/tools/` | Tool interface, file adapters, process supervision, registry |
+| `include/mcp/` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
+| `include/core/` | Limits, private config, diagnostics, terminal/platform helpers |
 | `include/media.h` | Attachment encoding and terminal image protocol |
 | `include/md.h` | Streaming Markdown-to-ANSI rendering |
+
+Headers are grouped by subsystem and stay header-only; the include graph is
+acyclic, with `core/` at the bottom and no module depending on `main.cc`.
 
 `Agent` alone may replace model-visible history. `Api`, MCP, and tools do not
 own conversation state. Background processes, MCP children, and side usage have

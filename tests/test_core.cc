@@ -2,6 +2,7 @@
 
 #include <clocale>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -15,6 +16,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
+#include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/mcp/register.h"
@@ -26,6 +28,7 @@
 #include "include/tools/process.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
+#include "include/tools/skill.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -1108,6 +1111,106 @@ void TestScopedBaseAndMemory() {
   fs::remove_all(root, ec);
 }
 
+void TestSkillDiscovery() {
+  namespace fs = std::filesystem;
+  fs::path original = fs::current_path();
+  fs::path root =
+      fs::temp_directory_path() /
+      ("uagent-skill-test-" + std::to_string(static_cast<int64_t>(getpid())));
+  fs::path workspace = root / "workspace";
+  fs::path home = root / "home";
+  fs::create_directories(workspace);
+  fs::create_directories(home);
+  const char* prior_home_value = getenv("HOME");
+  std::string prior_home = prior_home_value ? prior_home_value : "";
+  bool had_home = prior_home_value != nullptr;
+  setenv("HOME", home.c_str(), 1);
+  fs::current_path(workspace);
+  workspace = fs::current_path();
+
+  auto write_skill = [](const fs::path& dir, const std::string& text) {
+    std::filesystem::create_directories(dir);
+    CHECK(
+        ToolWriteFile((dir / "SKILL.md").string(), text).starts_with("wrote "));
+  };
+
+  CHECK(LoadSkills(workspace).empty());
+
+  write_skill(home / ".uagent/skills/release",
+              "---\nname: release\ndescription: how to cut a release\n---\n\n"
+              "Run the checks, then tag.\n");
+  // No front matter, so nothing to advertise: skipped rather than guessed at.
+  write_skill(home / ".uagent/skills/broken", "no front matter here\n");
+  std::vector<Skill> skills = LoadSkills(workspace);
+  CHECK(skills.size() == 1);
+  CHECK(skills[0].name == "release");
+  CHECK(skills[0].description == "how to cut a release");
+  CHECK(skills[0].dir == (home / ".uagent/skills/release").string());
+
+  // The body arrives without its front matter and names its own directory, so
+  // relative references inside it resolve.
+  std::string body = ReadSkillBody(skills[0]);
+  CHECK(body.find("Run the checks, then tag.") != std::string::npos);
+  CHECK(body.find("description:") == std::string::npos);
+  CHECK(body.find(skills[0].dir) != std::string::npos);
+
+  // A workspace skill of the same name shadows the global one.
+  write_skill(
+      workspace / ".uagent/skills/release",
+      "---\nname: whatever\ndescription: this repo's release steps\n---\n\n"
+      "Use the makefile.\n");
+  write_skill(workspace / ".uagent/skills/lint",
+              "---\ndescription: how this repo lints\n---\n\nRun ruff.\n");
+  skills = LoadSkills(workspace);
+  CHECK(skills.size() == 2);
+  const Skill* release = nullptr;
+  const Skill* lint = nullptr;
+  for (const Skill& s : skills) {
+    if (s.name == "release") release = &s;
+    if (s.name == "lint") lint = &s;
+  }
+  CHECK(release != nullptr);
+  CHECK(lint != nullptr);
+  if (release) {
+    CHECK(release->description == "this repo's release steps");
+    CHECK(release->dir == (workspace / ".uagent/skills/release").string());
+  }
+  // The directory name is authoritative even when front matter disagrees or
+  // omits it, so a skill can never claim another skill's name.
+  if (lint) CHECK(lint->description == "how this repo lints");
+
+  // Descriptions ride every request, so an over-long one is truncated rather
+  // than dropping the skill. The cap bounds the text; the ellipsis marking the
+  // cut is allowed on top of it.
+  setenv("UAGENT_SKILL_DESC_BYTES", "16", 1);
+  skills = LoadSkills(workspace);
+  for (const Skill& s : skills) {
+    CHECK(s.description.size() <= 16 + strlen("…"));
+    CHECK(s.description.ends_with("…"));
+  }
+  unsetenv("UAGENT_SKILL_DESC_BYTES");
+
+  // The tool advertises every skill by name and returns the one asked for.
+  skills = LoadSkills(workspace);
+  Tool tool = SkillTool(skills);
+  CHECK(tool.name == "skill");
+  CHECK(!tool.mutating);
+  json names = tool.parameters["properties"]["name"]["enum"];
+  CHECK(names.size() == 2);
+  CHECK(tool.run({{"name", "lint"}}, {}).find("Run ruff.") !=
+        std::string::npos);
+  CHECK(tool.run({{"name", "nope"}}, {}).starts_with("error:"));
+
+  fs::current_path(original);
+  if (had_home) {
+    setenv("HOME", prior_home.c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  std::error_code ec;
+  fs::remove_all(root, ec);
+}
+
 }  // namespace
 
 int RunTests() {
@@ -1135,6 +1238,7 @@ int RunTests() {
   TestWorkspaceScopedSession();
   TestProjectTrustTracksSemanticConfig();
   TestScopedBaseAndMemory();
+  TestSkillDiscovery();
   curl_global_cleanup();
   if (failures) {
     std::cerr << failures << " test(s) failed\n";

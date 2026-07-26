@@ -36,6 +36,7 @@
 #include "include/core/json.h"
 #include "include/core/project.h"
 #include "include/core/signals.h"
+#include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -47,6 +48,7 @@
 #include "include/tools/process.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
+#include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
 #include "include/tools/web_search.h"
@@ -270,6 +272,15 @@ int Main(int argc, char** argv) {
     }
     printf("%s· context: %s%s\n", DIM(), TerminalSafe(list).c_str(), RST());
   }
+  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
+  if (!skills.empty()) {
+    std::string list;
+    for (const Skill& skill : skills) {
+      if (!list.empty()) list += ", ";
+      list += skill.name;
+    }
+    printf("%s· skills: %s%s\n", DIM(), TerminalSafe(list).c_str(), RST());
+  }
   if (project_instructions.truncated) {
     std::cerr << YEL() << "project instructions truncated at "
               << runtime_config.project_doc_bytes << " bytes" << RST() << '\n';
@@ -389,6 +400,7 @@ int Main(int argc, char** argv) {
   if (CanDelegate()) {  // subagents delegate too, up to UAGENT_SUBAGENT_DEPTH
     tools.push_back(SubagentTool(api, processes, yolo, debug));
   }
+  if (!skills.empty()) tools.push_back(SkillTool(std::move(skills)));
   Agent agent(
       api, tools, processes, side_tasks, side_usage, approver,
       [&](std::chrono::steady_clock::time_point deadline) {

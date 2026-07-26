@@ -18,6 +18,7 @@ These are local safety bounds, not provider service objectives.
 | request / response | 64 / 32 MiB |
 | project instructions and memories | 32 KiB |
 | memory entry / memories per scope | 2 KiB / 32 |
+| skill body / description / count | 16 KiB / 512 B / 64 |
 | attachment / terminal image | 10 / 10 MiB |
 | tool result | 8,000 characters |
 | grep | 200 matches, 8,000 characters |
@@ -82,6 +83,8 @@ features, uncached/cached/write tokens, cost, and peak RSS.
   reasoning; logging is off by default.
 - Memories are model-written and load into every later session. Review
   `<base>/memory` before sharing it; delete a file to retract what it taught.
+- Skill descriptions are sent on every request and skill bodies only when
+  opened. A skill with no `description` in its front matter is skipped.
 - A workspace `.uagent/.config` is ignored until trusted. Headless runs warn and
   fall back to `~/.uagent/.config` rather than failing.
 - Session archives drop oldest segments when full and record the count.

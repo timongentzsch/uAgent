@@ -60,6 +60,7 @@ uagent --yolo
 | `chrome-devtools_*`, `chrome_session` | Automate isolated or signed-in Chrome |
 | `task` | Delegate to a depth-bounded subagent |
 | `memory` | Keep a lesson for later sessions, per project or global |
+| `skill` | Open a stored procedure from `~/.uagent/skills` or the project |
 | `checkpoint` | Fold context into a durable checkpoint |
 
 Independent read-only tools can run concurrently. Mutating, shell, network,
@@ -92,6 +93,28 @@ urgent. See [checkpoint design](docs/CHECKPOINTS.md).
 
 Sessions are stored under `~/.uagent/history`. Debug JSONL traces are opt-in
 with `--debug[=PATH]` and may contain private source and reasoning.
+
+## Skills
+
+A skill is a directory under `<base>/skills` holding a `SKILL.md`: YAML front
+matter with `name` and `description`, then the procedure. Only the front matter
+is read at startup — it becomes one line in the `skill` tool's schema — and the
+body reaches the model when it opens that skill. Owning many skills therefore
+costs a line of schema each, not a document each.
+
+```
+~/.uagent/skills/<name>/SKILL.md      every workspace
+./.uagent/skills/<name>/SKILL.md      this one, shadowing a global skill by name
+```
+
+`SKILL.md` may reference sibling files; the tool result names the skill's
+directory so relative paths resolve. Skills add no privilege of their own — a
+skill that says to run a script does so through `run`, which still asks. Like
+`AGENTS.md`, a project skill is instructions from the repository, so read one
+before trusting a checkout.
+
+`install.sh` installs the bundled skills in `skills/` into `~/.uagent/skills`,
+never overwriting one already there.
 
 ## MCP and Chrome
 

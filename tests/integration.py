@@ -718,6 +718,42 @@ def test_memory_reaches_context_by_scope(root, home):
         (home / ".uagent" / "memory" / "style.md").unlink(missing_ok=True)
 
 
+def test_skill_tool_offers_and_opens(root, home):
+    workspace = root / "skill-workspace"
+    skill = workspace / ".uagent" / "skills" / "demo"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: demo-description-sentinel\n---\n\ndemo-body-sentinel\n",
+        encoding="utf-8",
+    )
+
+    def offer(_, body):
+        functions = {t["function"]["name"]: t["function"] for t in body.get("tools", [])}
+        name_arg = functions.get("skill", {}).get("parameters", {}).get("properties", {})
+        valid = (
+            "skill" in functions
+            and name_arg.get("name", {}).get("enum") == ["demo"]
+            and "demo-description-sentinel" in name_arg["name"]["description"]
+            # progressive disclosure: the catalogue is present, the body is not
+            and "demo-body-sentinel" not in json.dumps(body)
+        )
+        if not valid:
+            return event({"content": "schema-bad"})
+        return tool_call("skill", {"name": "demo"})
+
+    def confirm(_, body):
+        opened = any("demo-body-sentinel" in str(m.get("content", "")) for m in body["messages"])
+        return event({"content": "skill-ok" if opened else "skill-bad"})
+
+    server = Server([offer, confirm])
+    try:
+        result = run(workspace, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "skill-ok", result.stdout)
+    finally:
+        server.close()
+
+
 def test_invalid_mcp_config_not_executed(root, home):
     workspace = root / "mcp-invalid-config"
     workspace.mkdir()
@@ -2263,6 +2299,7 @@ def main():
             test_project_mcp_trust,
             test_project_agent_config_trust,
             test_memory_reaches_context_by_scope,
+            test_skill_tool_offers_and_opens,
             test_invalid_mcp_config_not_executed,
             test_mcp_tool_round_trip,
             test_mcp_stdio_contract,

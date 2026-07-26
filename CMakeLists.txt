@@ -66,6 +66,9 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# Shipped so a packaged install carries them; install.sh is what copies them
+# into ~/.uagent/skills, which is the only place the binary looks.
+install(DIRECTORY skills/ DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills)
 install(FILES README.md SECURITY.md LICENSE docs/ARCHITECTURE.md docs/OPERATIONS.md
               docs/CHECKPOINTS.md
         DESTINATION ${CMAKE_INSTALL_DOCDIR})

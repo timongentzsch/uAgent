@@ -31,6 +31,14 @@ project `.env` files are never loaded. Named OpenAI-compatible routes can be
 defined with `UAGENT_PROVIDERS`. Legacy `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
 and `UAGENT_MODEL` configuration remains supported.
 
+A workspace opts into its own settings by creating a `.uagent` directory. Its
+`.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
+`run_python` keeps its uv environments in `.uagent/uv` instead of the user-level
+one. Because that file can redirect every request, it needs the same trust as
+`.mcp.json` — an interactive prompt or `--trust-project-config`. Sessions, logs,
+and history stay global. µAgent never creates `.uagent` in a workspace on its
+own; you do, or the agent does when it saves a project memory.
+
 ```sh
 uagent
 uagent -p "inspect this repository"
@@ -51,6 +59,7 @@ uagent --yolo
 | `web_search` | Search through an OpenRouter side request |
 | `chrome-devtools_*`, `chrome_session` | Automate isolated or signed-in Chrome |
 | `task` | Delegate to a depth-bounded subagent |
+| `memory` | Keep a lesson for later sessions, per project or global |
 | `checkpoint` | Fold context into a durable checkpoint |
 
 Independent read-only tools can run concurrently. Mutating, shell, network,
@@ -67,6 +76,12 @@ protocol.
 Before the first request, µAgent loads one instruction file per directory from
 the repository root to the working directory, preferring `AGENTS.override.md`,
 then `AGENTS.md`, then `CLAUDE.md`. `~/.uagent` supplies global instructions.
+Everything loaded is listed at startup.
+
+The `memory` tool appends to the same context: one markdown file per lesson
+under `<base>/memory`, global in `~/.uagent` or scoped to a workspace in its
+`.uagent`. Instruction files are what you tell the agent; memories are what it
+concluded, so they load last and are trimmed first. Delete a file to retract it.
 
 Use `/attach PATH` or repeat `--attach PATH` to add images and documents.
 Attachments are size-bounded and their encoded data is removed after the turn.

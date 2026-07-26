@@ -26,9 +26,17 @@
 #include <vector>
 
 #include "include/api.h"
+#include "include/core/debug.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/project.h"
+#include "include/core/signals.h"
+#include "include/core/steering.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/md.h"
 #include "include/tools.h"
-#include "include/util.h"
 #include "third_party/json.hpp"
 
 namespace uagent {
@@ -1259,8 +1267,11 @@ class Agent {
   static bool SecretCheckpointPath(const std::filesystem::path& path) {
     std::string name = path.filename().string();
     if (name == ".env" || name.starts_with(".env.")) return true;
-    std::string config = UagentConfigPath();
-    return !config.empty() && CanonicalAccessPath(config) == path;
+    for (const std::string& config :
+         {UagentConfigPath(), ProjectConfigFilePath()}) {
+      if (!config.empty() && CanonicalAccessPath(config) == path) return true;
+    }
+    return false;
   }
 
   std::vector<std::string> RecentToolResults(int64_t count) const {

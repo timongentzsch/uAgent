@@ -33,8 +33,13 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/debug.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/media.h"
-#include "include/util.h"
 #include "third_party/json.hpp"
 
 extern char** environ;
@@ -1128,10 +1133,19 @@ inline std::string ToolRunPython(ProcessSupervisor& supervisor,
            "https://docs.astral.sh/uv/getting-started/installation/ "
            "(macOS: brew install uv), or use only the standard library";
   }
-  std::string command = uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet "
-                             "--isolated --no-project" +
-                                 with + " -- python"
-                           : "MPLBACKEND=Agg python3";
+  // Isolated environments are materialised in uv's cache, so pointing the cache
+  // at the agent directory is what keeps them with the project (or the user).
+  // An explicit UV_CACHE_DIR in the environment still wins.
+  std::string cache =
+      EnvStr("UV_CACHE_DIR").empty()
+          ? "UV_CACHE_DIR=" + ShellQuote(UagentScopedDir("uv")) + " "
+          : "";
+  std::string command =
+      uv ? cache +
+               "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet "
+               "--isolated --no-project" +
+               with + " -- python"
+         : "MPLBACKEND=Agg python3";
   command += " -c " + ShellQuote(code);
   std::string result = ToolRunBash(supervisor, command, window_s,
                                    /*join_before_final=*/true, context);
@@ -1146,6 +1160,51 @@ inline std::string ToolRunPython(ProcessSupervisor& supervisor,
     return "error: Python execution failed." + hint + "\n" + result;
   }
   return result;
+}
+
+// Durable notes the agent writes for itself, reloaded with the project
+// instructions at the start of every session. Global memories follow the user,
+// project memories stay with the workspace that opted into ./.uagent — writing
+// one is what creates that directory, and the call needs approval first.
+inline std::string ToolMemory(const std::string& name, const std::string& scope,
+                              const std::string& content) {
+  namespace fs = std::filesystem;
+  if (Trim(name).empty()) return "error: memory name must not be empty";
+  if (scope != "project" && scope != "global") {
+    return "error: scope must be \"project\" or \"global\"";
+  }
+  int64_t max_bytes =
+      std::max(int64_t{256}, EnvLong("UAGENT_MEMORY_BYTES", 2048));
+  if (static_cast<int64_t>(content.size()) > max_bytes) {
+    return "error: a memory is limited to " + std::to_string(max_bytes) +
+           " bytes; keep it to the durable lesson";
+  }
+  std::error_code ec;
+  std::string base = GlobalBase();
+  if (scope == "project") {
+    fs::path cwd = fs::current_path(ec);
+    if (ec) return "error: cannot resolve the workspace: " + ec.message();
+    base = (cwd / ".uagent").string();
+  }
+  std::string dir = MakePrivateDir(base, "memory");
+  std::string file = dir + "/" + SafeFileComponent(name) + ".md";
+  if (Trim(content).empty()) {
+    return fs::remove(file, ec) ? "forgot " + file : "error: no such memory";
+  }
+  int64_t max_files = std::max(int64_t{1}, EnvLong("UAGENT_MEMORY_FILES", 32));
+  if (!fs::exists(file, ec)) {
+    int64_t count = 0;
+    for (fs::directory_iterator it(dir, ec), end; it != end && !ec;
+         it.increment(ec)) {
+      count += it->path().extension() == ".md";
+    }
+    if (count >= max_files) {
+      return "error: " + scope + " memory is full (" +
+             std::to_string(max_files) +
+             "); delete or consolidate one before adding another";
+    }
+  }
+  return ToolWritePrivateFile(file, content);
 }
 
 inline std::string ToolGrep(ProcessSupervisor& supervisor,
@@ -1520,6 +1579,30 @@ inline std::vector<Tool> BuiltinTools(
   terminal.summary = [](const json& a) {
     int64_t pid = JsonValue(a, "pid", int64_t{0});
     return pid ? "pid " + std::to_string(pid) : "list";
+  };
+
+  Tool& memory = AddTool(
+      tools,
+      MakeTool(
+          "memory",
+          "Save a durable lesson, convention, or preference for future "
+          "sessions; they are reloaded at the start of every one. Use it for "
+          "what stays true, not for this turn's state.",
+          schema(R"json({"type":"object","properties":{
+                    "name":{"type":"string","description":"short kebab-case slug; reusing one replaces it"},
+                    "scope":{"type":"string","enum":["project","global"],
+                      "description":"project: this workspace only; global: every workspace"},
+                    "content":{"type":"string",
+                      "description":"markdown body; omit to forget this memory"}},
+                    "required":["name","scope"]})json"),
+          [](const json& a, const ToolContext&) {
+            return ToolMemory(JsonValue(a, "name", ""),
+                              JsonValue(a, "scope", ""),
+                              JsonValue(a, "content", ""));
+          }));
+  memory.mutating = true;
+  memory.summary = [](const json& a) {
+    return JsonValue(a, "scope", "") + "/" + JsonValue(a, "name", "");
   };
 
   Tool& checkpoint = AddTool(

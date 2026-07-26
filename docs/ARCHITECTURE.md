@@ -67,7 +67,7 @@ record the eviction count.
 ## Turn flow
 
 ```text
-load bounded project instructions before the first request
+load bounded project instructions and memories before the first request
   → user input
   → estimate projected context and optionally append checkpoint hint
   → stream model response

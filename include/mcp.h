@@ -45,8 +45,15 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
+#include "include/core/debug.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/signals.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/tools.h"
-#include "include/util.h"
 #include "third_party/json.hpp"
 
 namespace uagent {

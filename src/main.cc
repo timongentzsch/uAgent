@@ -2,7 +2,8 @@
 
 // µAgent — a lean C++ terminal coding agent for OpenAI-compatible endpoints.
 //
-// Config (process env over ~/.uagent/.config — see util.h):
+// Config (process env over a trusted ./.uagent/.config over ~/.uagent/.config —
+// see core/config.h):
 //   OPENROUTER_API_KEY  zero-config OpenRouter (optional model/effort
 //   overrides) UAGENT_BASE_URL   e.g. http://localhost:8080/v1 UAGENT_MODEL
 //   model name (unset = ask the server what it serves) UAGENT_API_KEY    any
@@ -28,11 +29,20 @@
 #include "include/agent.h"
 #include "include/api.h"
 #include "include/cli.h"
+#include "include/core/config.h"
+#include "include/core/debug.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/project.h"
+#include "include/core/signals.h"
+#include "include/core/steering.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/mcp.h"
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools.h"
-#include "include/util.h"
 
 namespace uagent {
 
@@ -521,9 +531,10 @@ int Main(int argc, char** argv) {
           "  -c          resume the most recent saved session\n"
           "  --resume    pick a saved session to resume at startup\n"
           "  --version   print the installed version\n"
-          "  --trust-project-config  allow this workspace's .mcp.json\n\n"
-          "config: ~/.uagent/.config; process UAGENT_* variables override "
-          "it\n");
+          "  --trust-project-config  allow this workspace's .mcp.json and "
+          ".uagent/.config\n\n"
+          "config: ./.uagent/.config when trusted, then ~/.uagent/.config; "
+          "process UAGENT_* variables override both\n");
       return 0;
     } else {
       fprintf(stderr, "unknown flag: %s\n", a.c_str());
@@ -531,47 +542,63 @@ int Main(int argc, char** argv) {
     }
   }
 
-  // Project MCP configuration is executable code. Trust comes only from an
-  // inherited flag/environment value, a matching stored fingerprint, or an
-  // explicit interactive decision. Project files cannot grant themselves.
+  // Project MCP configuration is executable code, and a project .uagent/.config
+  // can redirect every request. Trust comes only from an inherited
+  // flag/environment value, a matching stored fingerprint, or an explicit
+  // interactive decision. Project files cannot grant themselves.
   trust_project = trust_project || EnvStr("UAGENT_TRUST_PROJECT_CONFIG") == "1";
   if (!trust_project) {
     trust_project = ProjectConfigTrusted(&trusted_project_config);
   }
   if (ProjectConfigPresent() && !trust_project) {
+    std::string surfaces =
+        ProjectMcpPresent()
+            ? (ProjectAgentConfigPresent() ? ".mcp.json and .uagent/.config"
+                                           : ".mcp.json")
+            : ".uagent/.config";
     if (!isatty(STDIN_FILENO) || !prompt.empty()) {
+      // MCP servers have nothing to degrade to, so an untrusted .mcp.json is
+      // fatal. An untrusted .uagent/.config does: ~/.uagent/.config still
+      // applies, so a script keeps working instead of failing on a checkout.
+      if (ProjectMcpPresent()) {
+        fprintf(stderr,
+                "project .mcp.json is untrusted; rerun with "
+                "--trust-project-config after reviewing it\n");
+        return 2;
+      }
       fprintf(stderr,
-              "project .mcp.json is untrusted; rerun with "
-              "--trust-project-config after reviewing it\n");
-      return 2;
-    }
-    bool eof = false;
-    std::string answer = Trim(ReadInputLine(
-        "Trust and execute this workspace's .mcp.json? [y/N] ", &eof,
-        /*keep_history=*/false));
-    trust_project = !eof && (answer == "y" || answer == "Y" || answer == "yes");
-    if (trust_project) {
-      std::string error;
-      if (!TrustProjectConfig(error, &trusted_project_config)) {
-        fprintf(stderr, "cannot save project trust: %s\n", error.c_str());
-        return 1;
+              "project .uagent/.config is untrusted and was ignored; rerun "
+              "with --trust-project-config after reviewing it\n");
+    } else {
+      bool eof = false;
+      std::string answer = Trim(
+          ReadInputLine("Trust this workspace's " + surfaces + "? [y/N] ", &eof,
+                        /*keep_history=*/false));
+      trust_project =
+          !eof && (answer == "y" || answer == "Y" || answer == "yes");
+      if (trust_project) {
+        std::string error;
+        if (!TrustProjectConfig(error, &trusted_project_config)) {
+          fprintf(stderr, "cannot save project trust: %s\n", error.c_str());
+          return 1;
+        }
       }
     }
   }
   // Explicit trust authorizes exactly this parsed snapshot. Registration
   // consumes it directly, so a file swap after approval cannot change which
   // commands are spawned.
-  if (ProjectConfigPresent() && trust_project &&
+  if (ProjectMcpPresent() && trust_project &&
       trusted_project_config.is_null()) {
     std::string error;
-    if (!ProjectConfigSnapshot(trusted_project_config, error)) {
+    if (!ProjectMcpSnapshot(trusted_project_config, error)) {
       fprintf(stderr, "cannot load trusted project config: %s\n",
               error.c_str());
       return 1;
     }
   }
 
-  LoadConfigFile();
+  LoadConfigFile(trust_project);
   MaintainArtifacts();
   if (!yolo) yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
   if (!debug) {
@@ -622,6 +649,19 @@ int Main(int argc, char** argv) {
   ProjectInstructions project_instructions = LoadProjectInstructions(
       CanonicalAccessPath(CanonicalCwd()),
       static_cast<size_t>(runtime_config.project_doc_bytes));
+  // Name what was loaded into the first message: instruction files carry
+  // standing orders and memories carry what earlier sessions concluded, so it
+  // should never be a mystery which of them are in play.
+  if (!project_instructions.sources.empty()) {
+    std::string cwd = CanonicalCwd() + "/";
+    std::string list;
+    for (const std::string& source : project_instructions.sources) {
+      if (!list.empty()) list += ", ";
+      list +=
+          source.starts_with(cwd) ? source.substr(cwd.size()) : Tilde(source);
+    }
+    printf("%s· context: %s%s\n", DIM(), TerminalSafe(list).c_str(), RST());
+  }
   if (project_instructions.truncated) {
     std::cerr << YEL() << "project instructions truncated at "
               << runtime_config.project_doc_bytes << " bytes" << RST() << '\n';

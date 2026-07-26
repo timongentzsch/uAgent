@@ -14,7 +14,10 @@
 #include <vector>
 
 #include "include/api.h"
-#include "include/util.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 

@@ -158,7 +158,8 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             elif process.poll() is not None:
                 return
 
-    read_until(b"> ")
+    prompt_ready = b"\x1b[?2004h"
+    read_until(prompt_ready)
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -167,7 +168,7 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             start = len(output)
             os.write(master, item)
             if index + 1 < len(payloads):
-                read_until(b"> ", start)
+                read_until(prompt_ready, start)
     read_until()
     if process.poll() is None:
         process.kill()

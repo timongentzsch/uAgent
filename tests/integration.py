@@ -146,10 +146,14 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
     output = bytearray()
     deadline = time.monotonic() + timeout
 
-    def read_until(marker=None, start=0):
+    def read_until(marker=None, start=0, following=None):
         while time.monotonic() < deadline:
-            if marker is not None and marker in output[start:]:
-                return
+            if marker is not None:
+                marker_at = output.find(marker, start)
+                if marker_at >= 0:
+                    after_marker = marker_at + len(marker)
+                    if following is None or following in output[after_marker:]:
+                        return
             if select.select([master], [], [], 0.1)[0]:
                 try:
                     output.extend(os.read(master, 65536))
@@ -159,7 +163,7 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
                 return
 
     prompt_ready = b"\x1b[?2004h"
-    read_until(prompt_ready)
+    read_until(prompt_ready, following=b">")
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -168,7 +172,7 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             start = len(output)
             os.write(master, item)
             if index + 1 < len(payloads):
-                read_until(prompt_ready, start)
+                read_until(prompt_ready, start, following=b">")
     read_until()
     if process.poll() is None:
         process.kill()
@@ -378,10 +382,19 @@ def test_terminal_image_capability_contract(root, home):
 
             def verify(_, body, instruction=instruction, has_tool=has_tool):
                 names = {tool["function"]["name"] for tool in body["tools"]}
-                valid = instruction in body["messages"][0]["content"]
-                valid &= ("show_image" in names) == has_tool
+                has_instruction = instruction in body["messages"][0]["content"]
+                has_image_tool = "show_image" in names
+                valid = has_instruction and has_image_tool == has_tool
                 return event(
-                    {"content": "image-capability-ok" if valid else "image-capability-bad"}
+                    {
+                        "content": (
+                            "image-capability-ok"
+                            if valid
+                            else "image-capability-bad "
+                            f"instruction={has_instruction} "
+                            f"show_image={has_image_tool}"
+                        )
+                    }
                 )
 
             server = Server([verify])

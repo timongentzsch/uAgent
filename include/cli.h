@@ -23,7 +23,8 @@
 #include <editline/readline.h>
 #endif
 
-#include "include/util.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 
 namespace uagent {
 

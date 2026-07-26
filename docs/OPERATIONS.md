@@ -16,7 +16,8 @@ These are local safety bounds, not provider service objectives.
 | subagent depth / child rounds / calls | 2 / 25 / 60 |
 | reported turn cost | $1.00 |
 | request / response | 64 / 32 MiB |
-| project instructions | 32 KiB |
+| project instructions and memories | 32 KiB |
+| memory entry / memories per scope | 2 KiB / 32 |
 | attachment / terminal image | 10 / 10 MiB |
 | tool result | 8,000 characters |
 | grep | 200 matches, 8,000 characters |
@@ -79,6 +80,10 @@ features, uncached/cached/write tokens, cost, and peak RSS.
 - MCP failures are server-local. Inspect `~/.uagent/mcp/<name>.log`.
 - Debug traces under `~/.uagent/sessions` can contain private source and model
   reasoning; logging is off by default.
+- Memories are model-written and load into every later session. Review
+  `<base>/memory` before sharing it; delete a file to retract what it taught.
+- A workspace `.uagent/.config` is ignored until trusted. Headless runs warn and
+  fall back to `~/.uagent/.config` rather than failing.
 - Session archives drop oldest segments when full and record the count.
 - A failed checkpoint reread is recorded and the fold continues. Switch back
   to `shadow` if continuation quality regresses.

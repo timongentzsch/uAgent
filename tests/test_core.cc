@@ -10,11 +10,17 @@
 
 #include "include/agent.h"
 #include "include/cli.h"
+#include "include/core/config.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
+#include "include/core/project.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/mcp.h"
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools.h"
-#include "include/util.h"
 
 namespace uagent {
 namespace {
@@ -590,7 +596,7 @@ void TestAgentConfigAllowlist() {
   unsetenv("OPENROUTER_API_KEY");
   unsetenv("OPENROUTER_MODEL");
   unsetenv("OPENROUTER_EFFORT");
-  LoadConfigFile();
+  LoadConfigFile(/*trust_project=*/false);
   CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
   CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
   CHECK(EnvStr("OPENROUTER_EFFORT") == "high");
@@ -959,6 +965,133 @@ void TestProjectTrustTracksSemanticConfig() {
             .starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
 
+  // A project config is the second surface trust covers, on its own or beside
+  // .mcp.json, and a value change in either revokes it.
+  fs::remove(".mcp.json");
+  fs::create_directories(".uagent");
+  CHECK(!ProjectMcpPresent());
+  CHECK(ProjectAgentConfigPresent() == false);
+  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
+            .starts_with("wrote "));
+  CHECK(ProjectAgentConfigPresent());
+  CHECK(ProjectConfigPresent());
+  CHECK(!ProjectConfigTrusted());
+  CHECK(TrustProjectConfig(error));
+  CHECK(ProjectConfigTrusted());
+  CHECK(
+      ToolWriteFile(".uagent/.config", "# comment\nUAGENT_MODEL=vendor/model\n")
+          .starts_with("wrote "));
+  CHECK(ProjectConfigTrusted());  // comment-only edit
+  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
+            .starts_with("wrote "));
+  CHECK(!ProjectConfigTrusted());
+
+  fs::current_path(original);
+  if (had_home) {
+    setenv("HOME", prior_home.c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  std::error_code ec;
+  fs::remove_all(root, ec);
+}
+
+void TestScopedBaseAndMemory() {
+  namespace fs = std::filesystem;
+  fs::path original = fs::current_path();
+  fs::path root =
+      fs::temp_directory_path() /
+      ("uagent-memory-test-" + std::to_string(static_cast<int64_t>(getpid())));
+  fs::path workspace = root / "workspace";
+  fs::path home = root / "home";
+  fs::create_directories(workspace);
+  fs::create_directories(home);
+  const char* prior_home_value = getenv("HOME");
+  std::string prior_home = prior_home_value ? prior_home_value : "";
+  bool had_home = prior_home_value != nullptr;
+  setenv("HOME", home.c_str(), 1);
+  fs::current_path(workspace);
+  workspace = fs::current_path();  // macOS resolves /var to /private/var
+
+  // Without ./.uagent everything is global; the workspace never gets one by
+  // being visited.
+  CHECK(UagentBase() == GlobalBase());
+  CHECK(ProjectConfigFilePath().empty());
+  CHECK(!fs::exists(workspace / ".uagent"));
+
+  // A global memory lands in the home directory even from inside a workspace.
+  CHECK(ToolMemory("prefers-tabs", "global", "The user prefers tabs.")
+            .starts_with("wrote "));
+  CHECK(fs::is_regular_file(home / ".uagent/memory/prefers-tabs.md"));
+
+  // Saving a project memory is what opts the workspace in, which then also
+  // moves the config and uv locations.
+  CHECK(
+      ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
+          .starts_with("wrote "));
+  fs::path project_memory = workspace / ".uagent/memory/build-uses-ninja.md";
+  CHECK(fs::is_regular_file(project_memory));
+  CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
+        (fs::perms::owner_read | fs::perms::owner_write));
+  CHECK(UagentBase() == (workspace / ".uagent").string());
+  CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
+  CHECK(UagentScopedDir("uv") == (workspace / ".uagent/uv").string());
+  CHECK(UagentDir("history") == (home / ".uagent/history").string());
+
+  // Names become safe file components, oversize content is refused, an existing
+  // name is replaced, and empty content forgets.
+  CHECK(ToolMemory("../escape", "project", "x").starts_with("wrote "));
+  CHECK(fs::is_regular_file(workspace / ".uagent/memory/___escape.md"));
+  CHECK(ToolMemory("", "global", "x").starts_with("error:"));
+  CHECK(ToolMemory("name", "elsewhere", "x").starts_with("error:"));
+  CHECK(ToolMemory("huge", "global", std::string(4096, 'x'))
+            .starts_with("error:"));
+  CHECK(ToolMemory("build-uses-ninja", "project", "Now it builds with make.")
+            .starts_with("wrote "));
+  CHECK(ToolMemory("build-uses-ninja", "project", "").starts_with("forgot "));
+  CHECK(!fs::exists(project_memory));
+  CHECK(ToolMemory("build-uses-ninja", "project", "").starts_with("error:"));
+
+  // Both scopes reach the instruction rail, project after global, each labeled.
+  CHECK(ToolWriteFile("AGENTS.md", "workspace rules").starts_with("wrote "));
+  CHECK(
+      ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
+          .starts_with("wrote "));
+  ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
+  CHECK(loaded.text.find("workspace rules") != std::string::npos);
+  CHECK(loaded.text.find("## memory: prefers-tabs") != std::string::npos);
+  CHECK(loaded.text.find("The user prefers tabs.") != std::string::npos);
+  CHECK(loaded.text.find("## memory: build-uses-ninja") != std::string::npos);
+  CHECK(loaded.text.find("workspace rules") <
+        loaded.text.find("## memory: prefers-tabs"));
+  CHECK(loaded.text.find("## memory: prefers-tabs") <
+        loaded.text.find("## memory: build-uses-ninja"));
+  CHECK(!loaded.truncated);
+
+  // A trusted project config wins key by key; the global file fills the rest.
+  CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")
+            .starts_with("wrote "));
+  CHECK(ToolWriteFile((home / ".uagent/.config").string(),
+                      "UAGENT_MODEL=global/model\nUAGENT_API_KEY=global-key\n")
+            .starts_with("wrote "));
+  const char* prior_config = getenv("UAGENT_CONFIG_FILE");
+  std::string prior_config_value = prior_config ? prior_config : "";
+  unsetenv("UAGENT_CONFIG_FILE");
+  unsetenv("UAGENT_MODEL");
+  unsetenv("UAGENT_API_KEY");
+  LoadConfigFile(/*trust_project=*/true);
+  CHECK(EnvStr("UAGENT_MODEL") == "project/model");
+  CHECK(EnvStr("UAGENT_API_KEY") == "global-key");
+
+  // Untrusted, the project file is skipped entirely.
+  unsetenv("UAGENT_MODEL");
+  unsetenv("UAGENT_API_KEY");
+  LoadConfigFile(/*trust_project=*/false);
+  CHECK(EnvStr("UAGENT_MODEL") == "global/model");
+
+  unsetenv("UAGENT_MODEL");
+  unsetenv("UAGENT_API_KEY");
+  if (prior_config) setenv("UAGENT_CONFIG_FILE", prior_config_value.c_str(), 1);
   fs::current_path(original);
   if (had_home) {
     setenv("HOME", prior_home.c_str(), 1);
@@ -995,6 +1128,7 @@ int RunTests() {
   TestMcpContractHelpers();
   TestWorkspaceScopedSession();
   TestProjectTrustTracksSemanticConfig();
+  TestScopedBaseAndMemory();
   curl_global_cleanup();
   if (failures) {
     std::cerr << failures << " test(s) failed\n";

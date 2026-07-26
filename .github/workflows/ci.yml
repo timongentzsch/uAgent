@@ -128,7 +128,8 @@ jobs:
       - name: Check formatting
         run: >-
           uvx --from clang-format==22.1.8 clang-format
-          --dry-run --Werror include/*.h src/*.cc tests/*.cc benchmarks/*.cc
+          --dry-run --Werror include/*.h include/*/*.h src/*.cc tests/*.cc
+          benchmarks/*.cc
       - name: Check Google style
         run: >-
           uvx --from cpplint==2.0.2 cpplint

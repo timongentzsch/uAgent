@@ -646,6 +646,78 @@ def test_project_mcp_trust(root, home):
     assert_true(marker.read_text(encoding="utf-8") == "executed", "trusted MCP did not run")
 
 
+def test_project_agent_config_trust(root, home):
+    workspace = root / "config-workspace"
+    (workspace / ".uagent").mkdir(parents=True)
+    (home / ".uagent").mkdir(exist_ok=True)
+    (home / ".uagent" / ".config").write_text("UAGENT_MODEL=global/model\n", encoding="utf-8")
+    (workspace / ".uagent" / ".config").write_text("UAGENT_MODEL=project/model\n", encoding="utf-8")
+    server = Server([event({"content": "ok"}), event({"content": "ok"})])
+    try:
+        env = base_env(home, server.url)
+        env.pop("UAGENT_MODEL")
+        # Untrusted the workspace file is ignored, but the run still works off
+        # the global config instead of failing.
+        ignored = run(workspace, env, "-p", "reply")
+        assert_true(ignored.returncode == 0, ignored.stderr)
+        assert_true("untrusted" in ignored.stderr, ignored.stderr)
+        assert_true(server.requests[0][1]["model"] == "global/model", server.requests[0][1])
+        trusted = run(workspace, env, "--trust-project-config", "-p", "reply")
+        assert_true(trusted.returncode == 0, trusted.stderr)
+        assert_true(server.requests[1][1]["model"] == "project/model", server.requests[1][1])
+    finally:
+        server.close()
+        # HOME is shared by every test; leave it as it was found.
+        (home / ".uagent" / ".config").unlink(missing_ok=True)
+
+
+def test_memory_reaches_context_by_scope(root, home):
+    workspace = root / "memory-workspace"
+    (workspace / ".uagent" / "memory").mkdir(parents=True)
+    (workspace / ".uagent" / "memory" / "build.md").write_text(
+        "project-memory-sentinel", encoding="utf-8"
+    )
+    (home / ".uagent" / "memory").mkdir(parents=True, exist_ok=True)
+    (home / ".uagent" / "memory" / "style.md").write_text(
+        "global-memory-sentinel", encoding="utf-8"
+    )
+    other = root / "memory-other-workspace"
+    other.mkdir()
+
+    def verify(_, body):
+        instructions = str(body["messages"][1].get("content", ""))
+        valid = (
+            "## memory: style" in instructions
+            and "global-memory-sentinel" in instructions
+            and "## memory: build" in instructions
+            and "project-memory-sentinel" in instructions
+        )
+        return event({"content": "memory-ok" if valid else "memory-bad"})
+
+    def verify_isolated(_, body):
+        messages = body["messages"]
+        instructions = str(messages[1].get("content", "")) if len(messages) > 1 else ""
+        valid = (
+            "global-memory-sentinel" in instructions
+            and "project-memory-sentinel" not in instructions
+        )
+        return event({"content": "isolated-ok" if valid else "isolated-bad"})
+
+    server = Server([verify, verify_isolated])
+    try:
+        env = base_env(home, server.url)
+        result = run(workspace, env, "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "memory-ok", result.stdout)
+        elsewhere = run(other, env, "-p", "reply")
+        assert_true(elsewhere.returncode == 0, elsewhere.stderr)
+        assert_true(elsewhere.stdout.strip() == "isolated-ok", elsewhere.stdout)
+    finally:
+        server.close()
+        # HOME is shared by every test; a global memory would join them all.
+        (home / ".uagent" / "memory" / "style.md").unlink(missing_ok=True)
+
+
 def test_invalid_mcp_config_not_executed(root, home):
     workspace = root / "mcp-invalid-config"
     workspace.mkdir()
@@ -2189,6 +2261,8 @@ def main():
             test_grep_tool_round_trip,
             test_real_headless_error,
             test_project_mcp_trust,
+            test_project_agent_config_trust,
+            test_memory_reaches_context_by_scope,
             test_invalid_mcp_config_not_executed,
             test_mcp_tool_round_trip,
             test_mcp_stdio_contract,

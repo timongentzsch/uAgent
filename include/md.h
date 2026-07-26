@@ -16,7 +16,9 @@
 #include <utility>
 #include <vector>
 
-#include "include/util.h"
+#include "include/core/env.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 
 namespace uagent {
 

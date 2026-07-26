@@ -25,6 +25,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/dispatch.h"
+#include "include/agent/protocol.h"
 #include "include/api.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -46,106 +48,6 @@
 namespace uagent {
 
 using nlohmann::json;
-
-// --- text-protocol fallback -------------------------------------------------
-// For servers without native tool-calling the model emits standalone
-// [uagent_tool_call]{...}[/uagent_tool_call] blocks. Only a message that is
-// ENTIRELY tool-call blocks is treated as calls — quoted examples inside
-// prose or code blocks stay text.
-
-inline std::vector<ToolCall> ParseTextToolCalls(const std::string& content) {
-  std::vector<ToolCall> calls;
-  std::string s = Trim(content);
-  int idx = 0;
-  while (!s.empty()) {
-    if (!s.starts_with(kTtOpen)) {
-      return {};  // leading prose -> not a call message
-    }
-    size_t close = s.find(kTtClose);
-    if (close == std::string::npos) return {};
-    std::string inner =
-        Trim(s.substr(strlen(kTtOpen), close - strlen(kTtOpen)));
-    json j = json::parse(inner, nullptr, false);
-    if (j.is_discarded() || !j.is_object() || !j.contains("name") ||
-        !j["name"].is_string()) {
-      return {};
-    }
-    // some models emit `arguments` as a stringified object — pass it through
-    json a = JsonValue(j, "arguments", json::object());
-    calls.push_back({"text-" + std::to_string(idx++),
-                     j["name"].get<std::string>(),
-                     a.is_string() ? a.get<std::string>() : JsonDump(a)});
-    s = Trim(s.substr(close + strlen(kTtClose)));
-  }
-  return calls;
-}
-
-// escape the delimiters so tool output can never fake a tool call
-inline std::string EscapeToolTags(std::string s) {
-  ReplaceAll(s, kTtOpen, "&#91;uagent_tool_call&#93;");
-  ReplaceAll(s, kTtClose, "&#91;/uagent_tool_call&#93;");
-  return s;
-}
-
-// cap huge results, keeping head + tail (errors usually live at the end)
-inline std::string CapResult(std::string s, int64_t cap = -1) {
-  if (cap < 0) cap = ToolResultCap();
-  if (cap <= 0 || static_cast<int64_t>(s.size()) <= cap) return s;
-  size_t half = static_cast<size_t>(cap) / 2;
-  size_t head_end = Utf8BoundaryBefore(s, half);
-  size_t tail_start = Utf8BoundaryAfter(s, s.size() - half);
-  return s.substr(0, head_end) + "\n... [" +
-         std::to_string(tail_start - head_end) + " bytes truncated] ...\n" +
-         s.substr(tail_start);
-}
-
-// --- the agent ---------------------------------------------------------------
-
-// Lean base prompt — tool semantics live in the tool schemas, which are sent
-// anyway. The text protocol (plus a tool list, since schemas are no longer
-// sent) is appended only after a server rejects native tool calls.
-inline constexpr const char* kSystemPrompt =
-    "You are a coding agent in the current directory. Inspect, edit, and "
-    "verify "
-    "with tools; batch independent calls. Follow loaded instructions and read "
-    "applicable AGENTS.md or CLAUDE.md before entering subtrees. Use Unicode "
-    "math; use LaTeX only when raw source is requested. Be concise.";
-
-inline std::string TextProtocolPrompt(const std::vector<Tool>& tools,
-                                      int64_t default_timeout_s = 30) {
-  std::string s =
-      "\n\nNative tools unavailable. Reply only with one tool block per "
-      "independent call, then wait:\n"
-      "[uagent_tool_call]{\"name\": \"read_file\", \"arguments\": {\"path\": "
-      "\"foo.py\"}}"
-      "[/uagent_tool_call]\n"
-      "Tools (? optional):\n";
-  for (auto& t : tools) {
-    json parameters = ToolParameters(t, default_timeout_s);
-    auto required = [&](const std::string& k) {
-      if (parameters.contains("required")) {
-        for (auto& r : parameters["required"]) {
-          if (r == k) return true;
-        }
-      }
-      return false;
-    };
-    std::string args;
-    if (parameters.contains("properties")) {
-      for (int pass = 0; pass < 2; pass++) {  // required params first
-        for (auto& [k, v] : parameters["properties"].items()) {
-          if (required(k) == (pass == 0)) {
-            if (!args.empty()) args += ", ";
-            args += k;
-            if (pass) args += "?";
-          }
-        }
-      }
-    }
-    s += t.name + "(" + args + ")\n";
-  }
-  return s;
-}
 
 class Agent {
  public:
@@ -249,27 +151,6 @@ class Agent {
       }
     }
     return "(no messages)";
-  }
-
-  static bool InternalUserText(const std::string& text) {
-    static constexpr const char* kPrefixes[] = {
-        "[now ",
-        "[tool_result ",
-        "[Background result:",
-        "[context checkpoint ",
-        "[checkpoint",
-        "# AGENTS.md instructions for ",
-        "Prior context:",
-        "(response interrupted; partial output was discarded)",
-    };
-    for (const char* prefix : kPrefixes) {
-      if (text.starts_with(prefix)) return true;
-    }
-    return false;
-  }
-
-  static bool InternalAssistantText(const std::string& text) {
-    return text.starts_with("[checkpoint ");
   }
 
   // Real user prompts, derived from messages_ so the count survives a resume.
@@ -1180,82 +1061,6 @@ class Agent {
                                          "user message authorizes actions."}};
   }
 
-  struct CallTask {
-    const Tool* tool = nullptr;
-    json args;
-    std::string result;
-    std::string status;
-    std::string label, ordinal;
-    double duration_ms = 0;
-    bool execute = false;
-  };
-
-  static void LogToolResult(const CallTask& task, const ToolCall& call,
-                            int64_t turn, int64_t step) {
-    if (!g_debug.Enabled()) return;
-    g_debug.Write("tool_result", {{"turn", turn},
-                                  {"step", step},
-                                  {"id", call.id},
-                                  {"name", call.name},
-                                  {"status", task.status},
-                                  {"duration_ms", task.duration_ms},
-                                  {"result", task.result},
-                                  {"result_chars", task.result.size()}});
-  }
-
-  static void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
-                          int64_t step, const ToolContext& context,
-                          int64_t global_timeout_s, std::mutex& output) {
-    auto started = std::chrono::steady_clock::now();
-    if (g_steering.Requested() || AbortRequested()) {
-      task.result = g_steering.Requested() ? "cancelled by steering"
-                                           : "cancelled by user";
-      task.status = g_steering.Requested() ? "steered" : "cancelled";
-      LogToolResult(task, call, turn, step);
-      return;
-    }
-    if (g_debug.Enabled()) {
-      g_debug.Write("tool_start", {{"turn", turn},
-                                   {"step", step},
-                                   {"id", call.id},
-                                   {"name", call.name},
-                                   {"arguments", task.args}});
-    }
-    TerminalSpinner spinner(task.tool->show_spinner);  // no-op unless a TTY
-    int64_t timeout =
-        task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
-    timeout = JsonInt(task.args, "timeout", timeout);
-    // A tool with a deliberate foreground window (delegation, which must
-    // background fast to overlap) caps what the model can ask for; 0 means
-    // "turn limit", so it is capped too.
-    if (task.tool->max_timeout_s >= 0 &&
-        (timeout <= 0 || timeout > task.tool->max_timeout_s)) {
-      timeout = task.tool->max_timeout_s;
-    }
-    ToolContext call_context = context.WithTimeout(timeout);
-    json arguments = task.args;
-    arguments.erase("timeout");  // runtime policy, never a provider argument
-    task.result =
-        CapResult(EscapeToolTags(task.tool->run(arguments, call_context)),
-                  task.tool->result_chars);
-    spinner.Stop();
-    task.status = g_steering.Requested()
-                      ? "steered"
-                      : (task.result.starts_with("error:") ? "error" : "ok");
-    task.duration_ms = ElapsedMs(started);
-    LogToolResult(task, call, turn, step);
-    std::lock_guard<std::mutex> lock(output);
-    std::string safe_result = TerminalSafe(task.result);
-    const char* style = task.status == "error" ? RED() : DIM();
-    std::string prefix = "  ← " + task.ordinal + TerminalSafe(call.name);
-    if (task.tool->full_terminal_output) {
-      printf("%s%s%s\n%s\n", style, prefix.c_str(), RST(), safe_result.c_str());
-    } else {
-      printf("%s%s: %s%s\n", style, prefix.c_str(),
-             TerminalFit(safe_result, prefix + ": ").c_str(), RST());
-    }
-  }
-
   void AppendToolResult(const ToolCall& call, bool text_mode,
                         const std::string& result) {
     if (text_mode) {
@@ -1266,16 +1071,6 @@ class Agent {
       messages_.push_back(
           {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}});
     }
-  }
-
-  static bool SecretCheckpointPath(const std::filesystem::path& path) {
-    std::string name = path.filename().string();
-    if (name == ".env" || name.starts_with(".env.")) return true;
-    for (const std::string& config :
-         {UagentConfigPath(), ProjectConfigFilePath()}) {
-      if (!config.empty() && CanonicalAccessPath(config) == path) return true;
-    }
-    return false;
   }
 
   std::vector<std::string> RecentToolResults(int64_t count) const {

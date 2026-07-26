@@ -9,6 +9,8 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdint>

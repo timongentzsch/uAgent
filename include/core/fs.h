@@ -290,6 +290,24 @@ inline bool AppendPrivateLine(const std::string& path, const std::string& line,
   return true;
 }
 
+inline std::filesystem::path CanonicalAccessPath(const std::string& path) {
+  std::error_code ec;
+  std::filesystem::path p = path.empty() ? "." : path;
+  auto canonical = std::filesystem::weakly_canonical(p, ec);
+  return ec ? std::filesystem::absolute(p, ec) : canonical;
+}
+
+inline bool PathWithin(const std::filesystem::path& path,
+                       const std::filesystem::path& root) {
+  auto p = path.lexically_normal();
+  auto r = root.lexically_normal();
+  auto pi = p.begin(), ri = r.begin();
+  for (; ri != r.end(); ++ri, ++pi) {
+    if (pi == p.end() || *pi != *ri) return false;
+  }
+  return true;
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_FS_H_

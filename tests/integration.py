@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import fcntl
 import json
 import os
 import pathlib
@@ -7,9 +8,11 @@ import select
 import shlex
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
+import termios
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -127,10 +130,11 @@ def run_dialog(cwd, env, text, *args, timeout=10):
     )
 
 
-def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10):
+def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args=()):
     master, slave = pty.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
     process = subprocess.Popen(
-        [str(BINARY)],
+        [str(BINARY), *args],
         cwd=cwd,
         env=env,
         stdin=slave,
@@ -193,19 +197,22 @@ def test_project_instructions_precede_first_turn(root, home):
     (workspace / ".git").mkdir(parents=True)
     nested.mkdir()
     (workspace / "AGENTS.md").write_text("root-agent-sentinel", encoding="utf-8")
-    (workspace / "CLAUDE.md").write_text("root-claude-sentinel", encoding="utf-8")
+    # CLAUDE.md is a fallback: shadowed here by AGENTS.md in the same directory
+    (workspace / "CLAUDE.md").write_text("shadowed-claude-sentinel", encoding="utf-8")
     (nested / "AGENTS.override.md").write_text("nested-agent-sentinel", encoding="utf-8")
 
     def verify(_, body):
         messages = body["messages"]
         instructions = messages[1].get("content", "") if len(messages) > 1 else ""
+        contents = [str(m.get("content", "")) for m in messages]
         valid = (
             messages[0].get("role") == "system"
             and messages[1].get("role") == "user"
-            and messages[2].get("content") == "reply"
+            and "reply" in contents
+            and contents.index("reply") > 1  # instructions precede the prompt
             and "<INSTRUCTIONS>" in instructions
+            and "shadowed-claude-sentinel" not in instructions
             and instructions.index("root-agent-sentinel")
-            < instructions.index("root-claude-sentinel")
             < instructions.index("nested-agent-sentinel")
         )
         return event({"content": "instructions-ok" if valid else "instructions-bad"})
@@ -215,6 +222,87 @@ def test_project_instructions_precede_first_turn(root, home):
         result = run(nested, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
+    finally:
+        server.close()
+
+
+def test_attach_tool_puts_bytes_in_context(root, home):
+    """The model can pull an image and a document into its own context, and the
+    encoded bytes do not stay in history afterwards."""
+    workspace = root / "attach-workspace"
+    workspace.mkdir()
+    png = workspace / "shot.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    pdf = workspace / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n" + b"\x00" * 32)
+    seen = {}
+
+    def route(_, body):
+        messages = body["messages"]
+        parts = [p for m in messages if isinstance(m.get("content"), list) for p in m["content"]]
+        if parts:
+            seen["image"] = any(p.get("type") == "image_url" for p in parts)
+            seen["file"] = any(p.get("type") == "file" for p in parts)
+            return event({"content": "attach-ok"})
+        return event(  # both in one batch: attach is parallel_safe
+            {
+                "tool_calls": [
+                    {
+                        "index": i,
+                        "id": f"call-{i}",
+                        "function": {
+                            "name": "attach",
+                            "arguments": json.dumps({"path": str(path)}),
+                        },
+                    }
+                    for i, path in enumerate((png, pdf))
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    server = Server([route])
+    try:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "look", timeout=40)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "attach-ok", result.stdout)
+        assert_true(seen.get("image"), seen)
+        assert_true(seen.get("file"), seen)
+        # the base64 payload must not survive into the saved session
+        sessions = list((home / ".uagent" / "history").rglob("*.json"))
+        blobs = [
+            s for s in sessions if "base64," in s.read_text(encoding="utf-8", errors="replace")
+        ]
+        assert_true(not blobs, blobs)
+    finally:
+        server.close()
+
+
+def test_attach_flag_headless(root, home):
+    """--attach sends a file with the first message, and rejects bad paths."""
+    workspace = root / "attach-flag-workspace"
+    workspace.mkdir()
+    png = workspace / "flag.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+    seen = {}
+
+    def verify(_, body):
+        parts = [
+            p for m in body["messages"] if isinstance(m.get("content"), list) for p in m["content"]
+        ]
+        seen["image"] = any(p.get("type") == "image_url" for p in parts)
+        return event({"content": "flag-attach-ok"})
+
+    server = Server([verify])
+    try:
+        env = base_env(home, server.url)
+        result = run(workspace, env, "--attach", str(png), "-p", "look")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "flag-attach-ok", result.stdout)
+        assert_true(seen.get("image"), seen)
+
+        missing = run(workspace, env, "--attach", str(workspace / "nope.png"), "-p", "look")
+        assert_true(missing.returncode == 2, missing.returncode)
     finally:
         server.close()
 
@@ -255,29 +343,108 @@ def test_full_run_and_python_terminal_trace(root, home):
 
 
 def test_terminal_image_capability_contract(root, home):
-    cases = (
-        ("Apple_Terminal", "xterm-256color", "cannot display images inline", False),
-        ("ghostty", "xterm-ghostty", "supports inline images via view_image", True),
-    )
-    for program, term, instruction, has_tool in cases:
+    with (
+        tempfile.TemporaryDirectory() as empty_path,
+        tempfile.TemporaryDirectory() as chafa_path,
+    ):
+        invoked = pathlib.Path(chafa_path) / "invoked"
+        chafa = pathlib.Path(chafa_path) / "chafa"
+        chafa.write_text(
+            f"#!/bin/sh\ntouch {shlex.quote(str(invoked))}\n",
+            encoding="utf-8",
+        )
+        chafa.chmod(0o755)
 
-        def verify(_, body, instruction=instruction, has_tool=has_tool):
-            names = {tool["function"]["name"] for tool in body["tools"]}
-            valid = instruction in body["messages"][0]["content"]
-            valid &= ("view_image" in names) == has_tool
-            return event({"content": "image-capability-ok" if valid else "image-capability-bad"})
-
-        server = Server([verify])
-        try:
-            env = base_env(home, server.url)
-            env.update({"TERM_PROGRAM": program, "TERM": term})
+        def image_env(url, program, term, path):
+            env = base_env(home, url)
+            env.update({"TERM_PROGRAM": program, "TERM": term, "PATH": path})
             for variable in ("TMUX", "KITTY_WINDOW_ID", "LC_TERMINAL"):
                 env.pop(variable, None)
-            code, output = run_pty(root, env, [b"show an image\n", b"/q\n"])
+            return env
+
+        cases = (
+            ("Apple_Terminal", "xterm-256color", "Images unavailable", False, empty_path),
+            ("ghostty", "xterm-ghostty", "show_image (native)", True, empty_path),
+            (
+                "Apple_Terminal",
+                "xterm-256color",
+                "Images unavailable",
+                False,
+                chafa_path,
+            ),
+        )
+        for program, term, instruction, has_tool, path in cases:
+
+            def verify(_, body, instruction=instruction, has_tool=has_tool):
+                names = {tool["function"]["name"] for tool in body["tools"]}
+                valid = instruction in body["messages"][0]["content"]
+                valid &= ("show_image" in names) == has_tool
+                return event(
+                    {"content": "image-capability-ok" if valid else "image-capability-bad"}
+                )
+
+            server = Server([verify])
+            try:
+                env = image_env(server.url, program, term, path)
+                code, output = run_pty(root, env, [b"show an image\n", b"/q\n"])
+                assert_true(code == 0, output)
+                assert_true(b"image-capability-ok" in output, output)
+            finally:
+                server.close()
+        assert_true(not invoked.exists(), "Chafa must not enable ASCII image output")
+
+        image = pathlib.Path(chafa_path) / "tiny.png"
+        image.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        def final(_, body):
+            result = next(
+                message["content"] for message in body["messages"] if message.get("role") == "tool"
+            )
+            return event(
+                {
+                    "content": (
+                        "native-image-ok" if "inline via kitty" in result else "native-image-bad"
+                    )
+                }
+            )
+
+        server = Server([tool_call("show_image", {"path": str(image)}), final])
+        try:
+            env = image_env(server.url, "ghostty", "xterm-ghostty", chafa_path)
+            code, output = run_pty(chafa_path, env, [b"show an image\n", b"/q\n"], columns=40)
             assert_true(code == 0, output)
-            assert_true(b"image-capability-ok" in output, output)
+            assert_true(b"native-image-ok" in output, output)
+            assert_true(b"\x1b_Ga=T,f=100,c=39" in output, output)
+            assert_true(not invoked.exists(), "PNG rendering must not invoke Chafa")
         finally:
             server.close()
+
+
+def test_multiline_bracketed_paste(root, home):
+    def verify(_, body):
+        pasted = body["messages"][-1].get("content")
+        return event(
+            {
+                "content": "multiline-paste-ok"
+                if pasted == "first line\nsecond line\nthird line"
+                else "multiline-paste-bad"
+            }
+        )
+
+    server = Server([verify])
+    try:
+        paste = b"\x1b[200~first line\nsecond line\nthird line\x1b[201~\n"
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [paste, b"/q\n"],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"multiline-paste-ok" in output, output)
+        assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
+        assert_true(len(server.requests) == 1, len(server.requests))
+    finally:
+        server.close()
 
 
 def test_signal_exit_restores_terminal(root, home):
@@ -297,7 +464,64 @@ def test_response_stats(root, home):
         result = run_dialog(root, base_env(home, server.url), "hello\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
         assert_true("tok/s" in result.stdout, result.stdout)
-        assert_true("ttt " in result.stdout, result.stdout)
+        assert_true("first " in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_cacheable_prefix_stable_across_turns(root, home):
+    """The clock must ride on the turn, not messages[0]: rewriting the system
+    message each turn would invalidate the provider's cached prefix."""
+    server = Server([event({"content": "one"}), event({"content": "two"})])
+    try:
+        result = run_dialog(root, base_env(home, server.url), "first\nsecond\n/q\n")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(len(server.requests) == 2, len(server.requests))
+        first, second = (body["messages"] for _, body in server.requests)
+        assert_true(first[0] == second[0], (first[0], second[0]))
+        assert_true("[now " not in first[0]["content"], first[0]["content"])
+        # ...and the model still gets the time, appended per turn
+        stamps = [m for m in second if str(m.get("content", "")).startswith("[now ")]
+        assert_true(len(stamps) == 2, stamps)
+        # every message the first request sent is still a byte-identical prefix
+        assert_true(second[: len(first)] == first, (first, second[: len(first)]))
+    finally:
+        server.close()
+
+
+def test_wait_background_spinner(root, home):
+    workspace = root / "wait-spinner-workspace"
+    workspace.mkdir()
+
+    def wait_for_pid(_, body):
+        result = body["messages"][-1]["content"]
+        pid = int(result.split("[backgrounded] pid ", 1)[1].split(",", 1)[0])
+        return tool_call("wait_background", {"id": pid})
+
+    server = Server(
+        [
+            tool_call(
+                "run",
+                {"command": "sleep 2; printf 'background-done\\n'", "timeout": 1},
+            ),
+            wait_for_pid,
+            event({"content": "spinner-ok"}),
+        ]
+    )
+    try:
+        code, output = run_pty(
+            workspace,
+            base_env(home, server.url),
+            [b"probe\n", b"/q\n"],
+            timeout=10,
+            args=("--yolo",),
+        )
+        start = output.find(b"wait_background(job ")
+        end = output.find(b"\xe2\x86\x90 wait_background:", start)
+        assert_true(code == 0, output)
+        assert_true(start >= 0 and end > start, output)
+        assert_true(b"\r\x1b[2m" in output[start:end], output[start:end])
+        assert_true(b"background-done" in output and b"spinner-ok" in output, output)
     finally:
         server.close()
 
@@ -370,7 +594,7 @@ def test_grep_tool_round_trip(root, home):
         assert_true(result.stdout.strip() == "grep-ok", result.stdout)
         names = {tool["function"]["name"] for tool in server.requests[0][1].get("tools", [])}
         assert_true("grep" in names, names)
-        assert_true("view_image" not in names, names)
+        assert_true("show_image" not in names, names)
     finally:
         server.close()
 
@@ -845,6 +1069,58 @@ def test_model_route_switch(root, home):
         assert_true(not first.requests, first.requests)
         auth = second.requests[0][0].get("Authorization")
         assert_true(auth == "Bearer key-b", auth)
+    finally:
+        first.close()
+        second.close()
+
+
+def test_model_preference_survives_restart(root, home):
+    first = Server([event({"content": "explicit-model-ok"})])
+
+    def remembered(_, body):
+        valid = body.get("model") == "model-b" and body.get("reasoning_effort") == "medium"
+        return event({"content": "remembered-model-ok" if valid else "remembered-model-bad"})
+
+    second = Server([remembered])
+    providers = {
+        "first": {
+            "base_url": first.url,
+            "api_key": "key-a",
+            "context": 4096,
+            "models": {"main": {"id": "model-a", "effort": "low"}},
+        },
+        "second": {
+            "base_url": second.url,
+            "api_key": "key-b",
+            "context": 8192,
+            "models": {"fast": {"id": "model-b", "effort": "medium"}},
+        },
+    }
+    try:
+        choose_env = base_env(home, first.url)
+        choose_env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        choose_env["UAGENT_MODEL"] = "first/main"
+        chosen = run_dialog(root, choose_env, "/model second/fast\n/q\n")
+        assert_true(chosen.returncode == 0, chosen.stderr)
+
+        preference = home / ".uagent" / "config" / "model-preference.json"
+        saved = json.loads(preference.read_text(encoding="utf-8"))
+        assert_true(saved["selection"] == "second/fast" and saved["route"], saved)
+        assert_true(preference.stat().st_mode & 0o777 == 0o600, oct(preference.stat().st_mode))
+
+        restart_env = base_env(home, first.url)
+        restart_env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        restart_env.pop("UAGENT_MODEL")
+        restarted = run(root, restart_env, "-p", "probe")
+        assert_true(restarted.returncode == 0, restarted.stderr)
+        assert_true(restarted.stdout.strip() == "remembered-model-ok", restarted.stdout)
+        assert_true(not first.requests, first.requests)
+
+        override_env = dict(restart_env)
+        override_env["UAGENT_MODEL"] = "first/main"
+        overridden = run(root, override_env, "-p", "probe")
+        assert_true(overridden.returncode == 0, overridden.stderr)
+        assert_true(overridden.stdout.strip() == "explicit-model-ok", overridden.stdout)
     finally:
         first.close()
         second.close()
@@ -1538,8 +1814,12 @@ def test_repeated_tool_guard_keeps_history_valid(root, home):
     repeated = tool_call("read_file", {"path": "missing"})
 
     def after_abort(_, body):
-        messages = body["messages"]
-        valid = messages[-1].get("content") == "continue" and messages[-2].get("role") == "tool"
+        # the aborted turn must still leave its tool call answered before the
+        # next real user message (runtime notes may follow it)
+        notes = ("[now ", "[context checkpoint")
+        real = [m for m in body["messages"] if not str(m.get("content", "")).startswith(notes)]
+        index = next((i for i, m in enumerate(real) if m.get("content") == "continue"), 0)
+        valid = index > 0 and real[index - 1].get("role") == "tool"
         return event({"content": "history-ok" if valid else "history-bad"})
 
     server = Server([repeated, repeated, repeated, repeated, after_abort])
@@ -1598,6 +1878,120 @@ def test_late_subagent_continues_turn(root, home):
         assert_true(len(server.requests) == 4, len(server.requests))
     finally:
         server.close()
+
+
+def test_parallel_run_overlaps(root, home):
+    """`run` is parallel_safe: independent commands must overlap, not queue."""
+    sleep, count = 3, 4
+    batch = event(
+        {
+            "tool_calls": [
+                {
+                    "index": i,
+                    "id": f"call-{i}",
+                    "function": {
+                        "name": "run",
+                        "arguments": json.dumps(
+                            {"command": f"sleep {sleep}; echo done{i}", "timeout": 20}
+                        ),
+                    },
+                }
+                for i in range(count)
+            ]
+        },
+        finish="tool_calls",
+    )
+    server = Server([batch, event({"content": "parallel-run-ok"})])
+    try:
+        started = time.time()
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "go", timeout=90)
+        elapsed = time.time() - started
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "parallel-run-ok", result.stdout)
+        # serial would be count*sleep; allow generous slack for spawn overhead
+        assert_true(elapsed < sleep * count * 0.7, f"{elapsed:.1f}s for {count}x{sleep}s")
+    finally:
+        server.close()
+
+
+def test_subagent_timeout_is_capped(root, home):
+    """A model-supplied `timeout` must not stretch delegation's foreground window —
+    that is what serialises a fleet of subagents instead of overlapping them."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if any(m.get("role") == "user" and m.get("content") == "child" for m in messages):
+            time.sleep(8)  # far longer than the 3s cap
+            return event({"content": "child-done"})
+        if any(m.get("tool_calls") for m in messages):
+            return event({"content": "capped-ok"})
+        return tool_call("task", {"prompt": "child", "timeout": 120})
+
+    server = Server([route])
+    try:
+        started = time.time()
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=60)
+        elapsed = time.time() - started
+        assert_true(result.returncode == 0, result.stderr)
+        # the spawn must have backgrounded near the 3s cap, not waited out 8s
+        assert_true(elapsed < 8, f"delegation blocked {elapsed:.1f}s; cap not applied")
+    finally:
+        server.close()
+
+
+def test_subagent_receives_budget(root, home):
+    """Children get their own step budget, so one flailing subagent cannot spend
+    the whole turn. With a 1-step budget the child must stop after one request."""
+    child_requests = []
+
+    def route(_, body):
+        messages = body["messages"]
+        is_child = any(m.get("role") == "user" and m.get("content") == "child" for m in messages)
+        if is_child:
+            child_requests.append(1)
+            # the child would loop forever if its step budget were not enforced
+            return tool_call("list_dir", {"path": "."})
+        if any(m.get("tool_calls") for m in messages):
+            return event({"content": "budget-ok"})
+        return tool_call("task", {"prompt": "child", "timeout": 120})
+
+    server = Server([route])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_SUBAGENT_MAX_STEPS"] = "1"
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=60)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(len(child_requests) == 1, f"child made {len(child_requests)} requests")
+    finally:
+        server.close()
+
+
+def test_subagent_recursion_is_depth_bounded(root, home):
+    """A subagent may delegate again, but only while under UAGENT_SUBAGENT_DEPTH —
+    the cap is what keeps nested spawning from fanning out without limit."""
+
+    def has_task(body):
+        return "task" in {tool["function"]["name"] for tool in body.get("tools", [])}
+
+    for depth, cap, expected in (
+        ("0", "2", True),
+        ("1", "2", True),
+        ("2", "2", False),
+        ("0", "0", False),
+    ):
+        server = Server([lambda _, body: event({"content": str(has_task(body))})])
+        try:
+            env = base_env(home, server.url)
+            env["UAGENT_DEPTH"] = depth
+            env["UAGENT_SUBAGENT_DEPTH"] = cap
+            result = run(root, env, "-p", "probe")
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(
+                result.stdout.strip() == str(expected),
+                (depth, cap, expected, result.stdout),
+            )
+        finally:
+            server.close()
 
 
 def test_headless_reaps_background_process(root, home):
@@ -1765,10 +2159,15 @@ def main():
         tests = [
             test_plain_turn,
             test_project_instructions_precede_first_turn,
+            test_attach_tool_puts_bytes_in_context,
+            test_attach_flag_headless,
             test_full_run_and_python_terminal_trace,
             test_terminal_image_capability_contract,
+            test_multiline_bracketed_paste,
             test_signal_exit_restores_terminal,
             test_response_stats,
+            test_cacheable_prefix_stable_across_turns,
+            test_wait_background_spinner,
             test_headless_debug_session_end,
             test_grep_tool_round_trip,
             test_real_headless_error,
@@ -1780,6 +2179,7 @@ def main():
             test_mcp_tool_list_changed,
             test_user_config_interpolation,
             test_model_route_switch,
+            test_model_preference_survives_restart,
             test_live_model_catalog,
             test_checkpoint_apply,
             test_checkpoint_500k_window,
@@ -1799,6 +2199,10 @@ def main():
             test_repeated_tool_guard_keeps_history_valid,
             test_interleaved_tool_calls_reset_guard,
             test_late_subagent_continues_turn,
+            test_parallel_run_overlaps,
+            test_subagent_timeout_is_capped,
+            test_subagent_receives_budget,
+            test_subagent_recursion_is_depth_bounded,
             test_headless_reaps_background_process,
             test_detached_terminal_survives_and_is_readable,
         ]

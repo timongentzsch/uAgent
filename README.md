@@ -3,14 +3,14 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small C++17 coding agent for OpenAI-compatible APIs. One core binary, direct
+A small C++20 coding agent for OpenAI-compatible APIs. One core binary, direct
 HTTP, and bounded tools.
 
 ## Quick start
 
-Requirements: CMake, a C++17 compiler, libcurl, and optional libedit. The
-`run_python` tool additionally needs [uv](https://docs.astral.sh/uv/); the
-default Chrome DevTools integration needs Node.js/npm.
+Requirements: CMake, a C++20 compiler, libcurl, and optional libedit.
+`run_python` needs [uv](https://docs.astral.sh/uv/) only for third-party
+packages; the default Chrome DevTools integration needs Node.js/npm.
 
 ```sh
 ./install.sh
@@ -50,10 +50,11 @@ uagent --yolo
 | `write_file`, `edit_file` | Atomic file changes |
 | `run`, `wait_background`, `terminal_output` | Supervised and persistent processes |
 | `run_python` | Isolated uv-backed Python with optional packages |
-| `view_image` | iTerm2, WezTerm, or Kitty-compatible terminal image output |
+| `show_image` | Native terminal images in supported interactive terminals |
+| `attach` | Read an image or document (PDF, Word, Excel, …) into model context |
 | `web_search` | OpenRouter search side request |
 | `chrome-devtools_*`, `chrome_session` | Browser automation and session selection |
-| `task` | One-level isolated subagent |
+| `task` | Depth-bounded isolated subagent |
 | `checkpoint` | Cache-aware context fold |
 
 Independent read-only tools may run concurrently. Writes, shell, network,
@@ -72,8 +73,9 @@ The default two calls per turn can each batch four queries; change
 returns one job id; `wait_background` can join either a process or side request.
 
 `run` uses bash by default, accepts another `shell`, uses process groups, and
-backgrounds slow commands. Subagents cannot
-recurse and exit with the parent. If the coordinator tries to finish while a
+backgrounds slow commands. Subagents may delegate again while they stay under
+`UAGENT_SUBAGENT_DEPTH=2` (`0` disables delegation), and exit with the parent.
+If the coordinator tries to finish while a
 required background task is still running, it waits for all required results
 and continues the turn. `detach=true` keeps long-lived servers and their
 rotating logs across sessions; `terminal_output` lists or reads them.
@@ -86,28 +88,39 @@ workspace's Python project or inherit an active virtual environment. Package
 requirements must be passed in its `packages` argument and are cached by uv;
 installing them through `pip` or a separate shell cannot affect a later call.
 Plotting uses a non-interactive backend; save
-the image and open it with `view_image`. If uv is missing, the tool returns a
-short installation link.
+the image and open it with `show_image`. Without uv, standard-library code still
+runs on `python3`; only `packages` requires uv.
 
 ## Context
 
 Before the first request, µAgent loads project instructions from repository
-root to the working directory. Each level prefers `AGENTS.override.md` over
-`AGENTS.md` and also reads `CLAUDE.md`; `~/.uagent` is the global level. Later
-files are more specific. `UAGENT_PROJECT_DOC_BYTES` sets the shared 32 KiB
-content limit (`0` disables loading).
+root to the working directory. Each level loads one file, preferring
+`AGENTS.override.md`, then `AGENTS.md`, then `CLAUDE.md` as a compatibility
+fallback; `~/.uagent` is the global level. Later files are more specific.
+`UAGENT_PROJECT_DOC_BYTES` sets the shared 32 KiB content limit (`0` disables
+loading).
+
+`/attach` adds files to your next message and `--attach PATH` (repeatable) sends
+them with the first one; the model reaches the same encoder itself with `attach`,
+up to four files per turn. Images travel as `image_url`
+data URLs and documents as `file_data`, bounded by `UAGENT_ATTACHMENT_MB=10`.
+Encoded bytes are dropped from history once the turn that carried them ends.
 
 The system prompt, project instructions, and ordered tool schemas stay stable
 for provider caching.
 Completed tool traces move to a bounded local archive.
 The local date, time, timezone, and UTC offset refresh once per user turn and
-remain fixed through that turn's model/tool rounds.
+remain fixed through that turn's model/tool rounds. They are appended with the
+turn rather than written into the system prompt, so no turn rewrites the cached
+prefix.
 
-TTY output renders Markdown and preserves LaTeX delimiters while coloring
-inline/display math, including math and code spans containing pipes in tables.
+Models write math as Unicode text. TTY output also preserves raw
+LaTeX delimiters while coloring inline/display math, including math and code
+spans containing pipes in tables.
 
 At 65% projected context, the model may create a durable checkpoint; at 85% the
-request becomes urgent. Default `apply` mode commits a valid checkpoint only
+request becomes urgent, and a model that ignores two urgent requests is compacted
+for it. Default `apply` mode commits a valid checkpoint only
 before the next user message. Invalid or declined checkpoints leave history
 unchanged. Set `UAGENT_CHECKPOINT_MODE=shadow` to evaluate a new model route.
 
@@ -151,7 +164,7 @@ as base64 into model history.
 
 ## Interactive use
 
-Each response footer reports output `tok/s` and time to first token (`ttt`).
+Each response footer reports output `tok/s` and time to the first model event.
 
 | Command | Action |
 | --- | --- |
@@ -163,6 +176,9 @@ Each response footer reports output `tok/s` and time to first token (`ttt`).
 | `/online` | Toggle OpenRouter online mode |
 | `/yolo` | Toggle automatic approval |
 | `/quit` | Exit |
+
+`/model` remembers the selected route across restarts in a private preference
+file. An explicit `UAGENT_MODEL` still overrides it.
 
 Escape interrupts the active response and opens steering; a second Escape
 resumes. Sessions are saved under `~/.uagent/history`. Debug JSONL traces are
@@ -176,11 +192,21 @@ Python is test-only and managed with [uv](https://docs.astral.sh/uv/):
 uv sync --frozen
 uv run --frozen ruff check tests
 uv run --frozen ruff format --check tests
+uvx --from clang-format==22.1.8 clang-format -i \
+  include/*.h src/*.cc tests/*.cc benchmarks/*.cc
 
 cmake -S . -B build -DUAGENT_WARNINGS_AS_ERRORS=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
+
+First-party C++ uses the
+[Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html) and
+the checked-in exact Google `.clang-format` style. CI enforces Google
+`clang-tidy` checks, identifier naming, control-flow rules, and
+`cpplint`; the C++ build disables exceptions. The sole suppressed integer-type
+warning is the `short` required by the POSIX spawn ABI. Vendored code under
+`third_party/` is excluded from first-party style checks.
 
 The optional live harness spends API credit and uses a checksum-pinned Astropy
 SWE-bench fixture:

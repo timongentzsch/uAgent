@@ -1,18 +1,18 @@
 # Architecture
 
-µAgent is a single-process C++17 CLI with one composition root and explicit
+µAgent is a single-process C++20 CLI with one composition root and explicit
 owners for runtime resources.
 
 ```text
-main.cpp
+main.cc
   ├─ AppRuntime
   │  ├─ RuntimeConfig
   │  ├─ Api                 HTTP/SSE and provider request shaping
   │  ├─ ProcessSupervisor   shell/subagent process groups and logs
   │  ├─ UsageAccumulator    concurrent side-request accounting
   │  └─ McpRuntime          configured/default stdio transports and child lifetimes
-  ├─ cli.hpp                command registry, input, completion and steering UI
-  ├─ providers.hpp          provider config, model routes and live catalog parsing
+  ├─ cli.h                command registry, input, completion and steering UI
+  ├─ providers.h          provider config, model routes and live catalog parsing
   ├─ ProjectInstructions    bounded root-to-cwd AGENTS.md and CLAUDE.md discovery
   ├─ Tool registry          built-ins, OpenRouter search, MCP and Chrome adapters
   └─ Agent                  conversation, orchestration, budgets, persistence
@@ -22,16 +22,16 @@ main.cpp
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.cpp` | Runtime composition, session UI and REPL dispatch |
-| `include/cli.hpp` | Slash-command registry, input, completion and steering UI |
-| `include/providers.hpp` | Provider setup, model routing, effort and catalog metadata |
-| `include/agent.hpp` | Model/tool loop, active history, checkpoints, sessions |
-| `include/api.hpp` | OpenAI-compatible HTTP/SSE; no tool execution |
-| `include/tools.hpp` | Tool interface, file adapters, process supervision |
-| `include/mcp.hpp` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
-| `include/util.hpp` | Limits, private config, diagnostics, terminal/platform helpers |
-| `include/media.hpp` | Attachment encoding and terminal image protocol |
-| `include/md.hpp` | Streaming Markdown-to-ANSI rendering |
+| `src/main.cc` | Runtime composition, session UI and REPL dispatch |
+| `include/cli.h` | Slash-command registry, input, completion and steering UI |
+| `include/providers.h` | Provider setup, model routing, effort and catalog metadata |
+| `include/agent.h` | Model/tool loop, active history, checkpoints, sessions |
+| `include/api.h` | OpenAI-compatible HTTP/SSE; no tool execution |
+| `include/tools.h` | Tool interface, file adapters, process supervision |
+| `include/mcp.h` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
+| `include/util.h` | Limits, private config, diagnostics, terminal/platform helpers |
+| `include/media.h` | Attachment encoding and terminal image protocol |
+| `include/md.h` | Streaming Markdown-to-ANSI rendering |
 
 `Agent` alone may replace model-visible history. `Api`, MCP, and tools do not
 own conversation state. Background processes, MCP children, and side usage have
@@ -39,11 +39,16 @@ explicit owners rather than hidden service globals. Signal flags and the debug
 bridge are the narrow process-wide exceptions.
 
 `Tool` is the common capability interface for built-ins, MCP, Chrome, search,
-and delegation. `make_tool` constructs every registration, so schema, execution,
+and delegation. `MakeTool` constructs every registration, so schema, execution,
 approval, timeout, result budget and ownership policy cannot drift with
-aggregate field order. Per-tool turn budgets use the same registry.
-Numeric runtime settings likewise register their environment key, bounds and
-diagnostic name once in `RuntimeConfig::LONG_OPTIONS`.
+aggregate field order. Per-tool turn budgets use the same registry. Core
+request, MCP, and persistence settings register their environment key, bounds,
+and diagnostic name once in `RuntimeConfig::kLongOptions`.
+
+Zero-configuration provider setup is data-driven through `ProviderTemplate`.
+Each template declares its endpoint, environment keys, default model, and URL
+matcher. Explicit `UAGENT_*` settings and named `UAGENT_PROVIDERS` routes take
+precedence, so adding a built-in template does not alter existing resolution.
 
 ## State
 
@@ -157,15 +162,16 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 
 ## Verification
 
-- `tests/test_core.cpp`: parsers, request shaping, accounting, file/process and
+- `tests/test_core.cc`: parsers, request shaping, accounting, file/process and
   terminal boundaries.
 - `tests/integration.py`: hermetic SSE/MCP, Chrome modes, trust, config,
   approvals, limits, shutdown, and checkpoint behavior including a 500k-window
   pressure case.
 - `tests/context_policy_sim.py`: deterministic context-policy comparison.
 - `tests/agent_workflow_live.py`: opt-in billable workflow validation.
-- `benchmarks/bench_core.cpp`: dependency-free microbenchmarks.
+- `benchmarks/bench_core.cc`: dependency-free microbenchmarks.
 
-CI builds Debug and Release on Linux/macOS with warnings as errors and runs
-ASan/UBSan on Linux. Add characterization coverage before changing a boundary,
-then verify externally visible behavior with integration tests.
+CI builds Debug and Release on Linux/macOS with warnings as errors, runs
+ASan/UBSan on Linux, and enforces the Google formatter, `clang-tidy`, and
+`cpplint`. Add characterization coverage before changing a boundary, then
+verify externally visible behavior with integration tests.

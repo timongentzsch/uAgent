@@ -20,7 +20,12 @@
 #include "include/mcp.h"
 #include "include/media.h"
 #include "include/providers.h"
-#include "include/tools.h"
+#include "include/tools/files.h"
+#include "include/tools/jobs.h"
+#include "include/tools/process.h"
+#include "include/tools/registry.h"
+#include "include/tools/shell.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 namespace {

@@ -53,7 +53,9 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/tools.h"
+#include "include/media.h"
+#include "include/tools/files.h"
+#include "include/tools/tool.h"
 #include "third_party/json.hpp"
 
 namespace uagent {

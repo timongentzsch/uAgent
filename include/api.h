@@ -24,7 +24,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
-#include "include/tools.h"
 #include "third_party/json.hpp"
 
 namespace uagent {

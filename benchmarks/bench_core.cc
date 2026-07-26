@@ -8,6 +8,7 @@
 #include "include/agent.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/tools/registry.h"
 
 namespace uagent {
 namespace {

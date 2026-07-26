@@ -162,8 +162,11 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             elif process.poll() is not None:
                 return
 
-    prompt_ready = b"\x1b[?2004h"
-    read_until(prompt_ready, following=b">")
+    def read_prompt(start=0):
+        read_until(b"\x1b[?2004h", start, following=b">")
+        time.sleep(0.1)  # libedit finishes terminal setup after drawing the prompt
+
+    read_prompt()
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -172,7 +175,7 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             start = len(output)
             os.write(master, item)
             if index + 1 < len(payloads):
-                read_until(prompt_ready, start, following=b">")
+                read_prompt(start)
     read_until()
     if process.poll() is None:
         process.kill()

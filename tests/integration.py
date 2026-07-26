@@ -454,7 +454,7 @@ def test_multiline_bracketed_paste(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [paste, b"/q\n"],
+            [paste, b"\x04"],
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)

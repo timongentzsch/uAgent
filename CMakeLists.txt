@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 project(uagent VERSION 0.2.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
@@ -12,15 +12,15 @@ endif()
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
-add_executable(uagent src/main.cpp)
+add_executable(uagent src/main.cc)
 add_library(uagent_options INTERFACE)
 target_include_directories(
-  uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include
-                           ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+  uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-  target_compile_options(uagent_options INTERFACE -Wall -Wextra -Wpedantic)
+  target_compile_options(
+    uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic)
 endif()
 option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 if(UAGENT_WARNINGS_AS_ERRORS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
@@ -35,11 +35,6 @@ if(ipo_ok)
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
-# GCC before 9 needs an explicit filesystem library.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
-  target_link_libraries(uagent PRIVATE stdc++fs)
-endif()
-
 # libedit adds line editing and history when available.
 find_library(EDITLINE_LIB NAMES edit)
 find_path(EDITLINE_INC editline/readline.h)
@@ -51,7 +46,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(uagent_tests tests/test_core.cpp)
+  add_executable(uagent_tests tests/test_core.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_options)
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -66,7 +61,7 @@ endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
-  add_executable(uagent_bench benchmarks/bench_core.cpp)
+  add_executable(uagent_bench benchmarks/bench_core.cc)
   target_link_libraries(uagent_bench PRIVATE uagent_options)
 endif()
 

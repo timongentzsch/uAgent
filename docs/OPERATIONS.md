@@ -13,6 +13,7 @@ These are local safety bounds, not provider service objectives.
 | first event / stream idle / request | 120 / 90 / 300 s |
 | complete turn | 900 s |
 | model rounds / tool calls | 40 / 100 |
+| subagent depth / child rounds / calls | 2 / 25 / 60 |
 | reported turn cost | $1.00 |
 | request / response | 64 / 32 MiB |
 | project instructions | 32 KiB |
@@ -40,7 +41,8 @@ listed. Their rotating logs remain bounded independently.
 GitHub Actions builds and tests Debug and Release natively on Linux x86_64,
 Linux arm64, and macOS arm64. Release jobs upload versioned archives and SHA-256
 files. A `v<project version>` tag publishes those assets as a GitHub Release;
-other version tags fail before publication.
+other version tags fail before publication. A separate style job enforces the
+Google formatter, semantic/naming checks, and `cpplint` on first-party C++.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release

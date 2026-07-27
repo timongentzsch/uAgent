@@ -90,7 +90,7 @@ struct RuntimeConfig {
   int64_t tool_timeout_s = 30;
   int64_t web_search_timeout_s = 25;
   int64_t web_search_max_tokens = 1200;
-  int64_t web_search_calls = 2;
+  int64_t web_search_calls = 4;
   int64_t mcp_timeout_s = 60;
   int64_t mcp_servers = 32;
   int64_t mcp_pages = 100;

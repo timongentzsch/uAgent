@@ -31,9 +31,10 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   std::string child_depth = std::to_string(AgentDepth() + 1);
   Tool t = MakeTool(
       "task",
-      "Delegate substantial independent research or analysis. The child sees "
-      "no "
-      "conversation, so include every path and constraint.",
+      "Delegate substantial independent research or analysis. Issue one call "
+      "per independent subtask in the same response: the spawns serialise but "
+      "the children then run concurrently. The child sees no conversation, so "
+      "include every path and constraint.",
       json::parse(R"json({"type":"object","properties":{
           "prompt":{"type":"string","description":"complete standalone brief"}},
           "required":["prompt"]})json"),

@@ -66,15 +66,18 @@ int RunBenchmarks() {
     return tools;
   };
   auto no_python_tools = without(lean_tools, "run_python");
+  auto no_edit_tools = without(lean_tools, "edit_file");
   base_tools = without(no_python_tools, "grep");
   size_t base_schema = ToolSchemas(base_tools).dump().size();
   size_t grep_schema = ToolSchemas(no_python_tools).dump().size();
+  size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
   size_t image_schema = ToolSchemas(image_tools).dump().size();
   std::cout << "built-in schema              " << lean_schema << " bytes (~"
             << lean_schema / 4 << " tokens); grep adds "
             << grep_schema - base_schema << " bytes; Python adds "
-            << lean_schema - grep_schema << " bytes; inline image adds "
+            << lean_schema - grep_schema << " bytes; edit adds "
+            << lean_schema - no_edit_schema << " bytes; inline image adds "
             << image_schema - lean_schema << " bytes\n";
   std::cout << "sink " << sink << '\n';
   return 0;

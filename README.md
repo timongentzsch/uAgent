@@ -70,7 +70,9 @@ results, processes, logs, costs, and retained history are bounded.
 Slow commands and web searches continue in the background. `run_python` uses
 `uv run --isolated --no-project`, so packages must be listed in the tool call.
 `show_image` is available only when the terminal supports a native image
-protocol.
+protocol. `edit_file` can apply ordered exact replacements with one atomic
+write; replacing every match must be explicit, and existing line endings are
+preserved.
 
 ## Context and sessions
 

@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -142,9 +143,99 @@ inline int64_t CountOccurrences(const std::string& hay,
   return n;
 }
 
+struct FileEdit {
+  std::string old_text;
+  std::string new_text;
+  bool replace_all = false;
+};
+
+inline constexpr size_t kMaxFileEdits = 64;
+
+inline bool MostlyCrLf(const std::string& text) {
+  size_t newlines =
+      static_cast<size_t>(std::count(text.begin(), text.end(), '\n'));
+  if (!newlines) return false;
+  size_t crlf = 0;
+  for (size_t pos = 0; (pos = text.find("\r\n", pos)) != std::string::npos;
+       pos += 2) {
+    ++crlf;
+  }
+  return crlf * 2 >= newlines;
+}
+
+inline bool CrLfAtMatch(const std::string& data, size_t match, size_t length,
+                        bool fallback) {
+  size_t end = std::min(data.size(), match + length);
+  size_t newline = data.find('\n', match);
+  if (newline < end) return newline > 0 && data[newline - 1] == '\r';
+  newline = data.find('\n', end);
+  if (newline != std::string::npos) {
+    return newline > 0 && data[newline - 1] == '\r';
+  }
+  if (match > 0) {
+    newline = data.rfind('\n', match - 1);
+    if (newline != std::string::npos) {
+      return newline > 0 && data[newline - 1] == '\r';
+    }
+  }
+  return fallback;
+}
+
+inline std::string FileLineEnding(const std::string& text, bool crlf,
+                                  bool normalize_crlf) {
+  std::string out;
+  out.reserve(text.size() +
+              (crlf ? std::count(text.begin(), text.end(), '\n') : 0));
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n' &&
+        normalize_crlf) {
+      if (crlf) out += '\r';
+      out += '\n';
+      ++i;
+    } else {
+      if (text[i] == '\n' && crlf && (i == 0 || text[i - 1] != '\r')) {
+        out += '\r';
+      }
+      out += text[i];
+    }
+  }
+  return out;
+}
+
+inline bool EditedSize(size_t current, size_t old_size, size_t new_size,
+                       int64_t count, int64_t max_bytes, size_t& next) {
+  if (new_size >= old_size) {
+    size_t growth = new_size - old_size;
+    if (growth && static_cast<uint64_t>(count) >
+                      (std::numeric_limits<size_t>::max() - current) / growth) {
+      return false;
+    }
+    next = current + growth * static_cast<size_t>(count);
+  } else {
+    next = current - (old_size - new_size) * static_cast<size_t>(count);
+  }
+  return max_bytes <= 0 || next <= static_cast<size_t>(max_bytes);
+}
+
+inline void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
+                                  const std::string& new_s, size_t next_size) {
+  std::string out;
+  out.reserve(next_size);
+  size_t copied = 0;
+  while (true) {
+    size_t match = data.find(old_s, copied);
+    if (match == std::string::npos) break;
+    out.append(data, copied, match - copied);
+    out += new_s;
+    copied = match + old_s.size();
+  }
+  out.append(data, copied, std::string::npos);
+  data.swap(out);
+}
+
 inline std::string ToolEditFile(const std::string& path,
-                                const std::string& old_s,
-                                const std::string& new_s) {
+                                const std::vector<FileEdit>& edits) {
+  if (edits.empty()) return "error: at least one edit is required";
   std::ifstream f(path, std::ios::binary);
   if (!f) return "error: cannot open " + path;
   std::error_code size_ec;
@@ -161,32 +252,84 @@ inline std::string ToolEditFile(const std::string& path,
   if (max_bytes > 0 && data.size() > static_cast<size_t>(max_bytes)) {
     return "error: " + path + " grew beyond the edit limit while reading";
   }
-  std::string old_eff = old_s;
-  int64_t n = CountOccurrences(data, old_eff);
-  if (n == 0) {  // retry with read_file line-number prefixes stripped
-    std::string stripped = StripLineNumbers(old_s);
-    if (stripped != old_s) {
-      old_eff = stripped;
-      n = CountOccurrences(data, old_eff);
+
+  const size_t original_size = data.size();
+  int64_t replacements = 0;
+  for (size_t i = 0; i < edits.size(); ++i) {
+    const FileEdit& edit = edits[i];
+    if (edit.old_text.empty()) {
+      return "error: edit " + std::to_string(i + 1) +
+             " has an empty `old` value";
     }
+    const bool file_crlf = MostlyCrLf(data);
+    std::string old_eff = edit.old_text;
+    int64_t count = CountOccurrences(data, old_eff);
+    bool normalized_old = false;
+    if (count == 0) {  // accept copied output from line-numbering readers
+      std::string stripped = StripLineNumbers(edit.old_text);
+      if (stripped != edit.old_text) {
+        old_eff = stripped;
+        count = CountOccurrences(data, old_eff);
+      }
+    }
+    if (count == 0) {  // tolerate normalized model text without changing style
+      std::string normalized =
+          FileLineEnding(old_eff, file_crlf, /*normalize_crlf=*/true);
+      if (normalized != old_eff) {
+        old_eff = normalized;
+        count = CountOccurrences(data, old_eff);
+        normalized_old = count > 0;
+      }
+    }
+    if (count == 0) {
+      return "error: edit " + std::to_string(i + 1) + " `old` not found in " +
+             path;
+    }
+    if (!edit.replace_all && count > 1) {
+      return "error: edit " + std::to_string(i + 1) + " `old` matches " +
+             std::to_string(count) + " times in " + path +
+             "; add surrounding context or set `replace_all`";
+    }
+    size_t match = data.find(old_eff);
+    bool replacement_crlf =
+        count == 1 ? CrLfAtMatch(data, match, old_eff.size(), file_crlf)
+                   : file_crlf;
+    std::string new_eff =
+        FileLineEnding(edit.new_text, replacement_crlf, normalized_old);
+    if (old_eff == new_eff) {
+      return "error: edit " + std::to_string(i + 1) + " makes no change";
+    }
+    int64_t applied = edit.replace_all ? count : 1;
+    size_t next_size = 0;
+    if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
+                    max_bytes, next_size)) {
+      return "error: edit " + std::to_string(i + 1) +
+             " would exceed the edit byte limit";
+    }
+    if (edit.replace_all) {
+      ReplaceAllOccurrences(data, old_eff, new_eff, next_size);
+    } else {
+      data.replace(match, old_eff.size(), new_eff);
+    }
+    replacements += applied;
   }
-  if (n == 0) return "error: `old` not found in " + path;
-  if (n > 1) {
-    return "error: `old` matches " + std::to_string(n) + " times in " + path +
-           "; it must match exactly once — add surrounding context";
-  }
-  if (max_bytes > 0 && new_s.size() > old_eff.size() &&
-      new_s.size() - old_eff.size() >
-          static_cast<size_t>(max_bytes) - data.size()) {
-    return "error: edited output would exceed the edit byte limit";
-  }
-  data.replace(data.find(old_eff), old_eff.size(), new_s);
   std::string w =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (w.starts_with("error:")) return w;
-  return "edited " + path + " (replaced 1 occurrence, " +
-         std::to_string(old_eff.size()) + " -> " +
-         std::to_string(new_s.size()) + " chars)";
+  return "edited " + path + " (" + std::to_string(replacements) +
+         (replacements == 1 ? " replacement across "
+                            : " replacements across ") +
+         std::to_string(edits.size()) +
+         (edits.size() == 1 ? " edit; " : " edits; ") +
+         std::to_string(original_size) + " -> " + std::to_string(data.size()) +
+         " bytes)";
+}
+
+inline std::string ToolEditFile(const std::string& path,
+                                const std::string& old_s,
+                                const std::string& new_s,
+                                bool replace_all = false) {
+  return ToolEditFile(path, {{old_s, new_s, replace_all}});
 }
 
 inline std::string ToolListDir(const std::string& path, int64_t offset = 0,

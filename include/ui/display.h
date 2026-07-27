@@ -131,7 +131,6 @@ inline void PrintStatusBar(const std::string& status) {
     printf("%s\n", safe.c_str());
     return;
   }
-  safe = TerminalFit(safe);
   printf("%s%s\033[K%s\n", PanelMuted(), safe.c_str(), RST());
 }
 

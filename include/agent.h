@@ -149,7 +149,7 @@ class Agent {
     for (const auto& m : messages_) {
       if (JsonValue(m, "role", "") == "user" && m["content"].is_string()) {
         std::string text = m["content"].get<std::string>();
-        if (!InternalUserText(text)) return OneLine(text, 80);
+        if (!InternalUserText(text)) return FirstLine(text);
       }
     }
     return "(no messages)";
@@ -180,15 +180,14 @@ class Agent {
       const json& content = m.contains("content") ? m["content"] : kEmpty;
       if (role == "system") continue;
       if (role == "tool") {  // native tool result
-        std::string safe =
-            TerminalSafe(OneLine(content.get<std::string>(), 100));
+        std::string safe = TerminalSafe(content.get<std::string>());
         printf("%s  ← %s%s\n", DIM(), safe.c_str(), RST());
       } else if (role == "assistant") {
         if (content.is_string() && !content.get<std::string>().empty()) {
           std::string text = content.get<std::string>();
           if (InternalAssistantText(text)) {
-            printf("%s  ← %s%s\n", DIM(),
-                   TerminalSafe(OneLine(text, 100)).c_str(), RST());
+            printf("%s  ← %s%s\n", DIM(), TerminalSafe(FirstLine(text)).c_str(),
+                   RST());
           } else {
             MdPrint(text);
             printf("\n");
@@ -202,7 +201,7 @@ class Agent {
             const Tool* t = FindTool(tools_, name);
             std::string sum = t ? ToolSummary(*t, args) : JsonDump(args);
             std::string safe_name = TerminalSafe(name);
-            std::string safe_sum = TerminalSafe(OneLine(sum, 80));
+            std::string safe_sum = TerminalSafe(FirstLine(sum));
             printf("%s→ %s(%s)%s\n", CYAN(), safe_name.c_str(),
                    safe_sum.c_str(), RST());
           }
@@ -210,7 +209,7 @@ class Agent {
       } else if (role == "user" && content.is_string()) {
         std::string c = content.get<std::string>();
         if (InternalUserText(c)) {
-          printf("%s  ← %s%s\n", DIM(), TerminalSafe(OneLine(c, 100)).c_str(),
+          printf("%s  ← %s%s\n", DIM(), TerminalSafe(FirstLine(c)).c_str(),
                  RST());
         } else {
           std::string safe = TerminalSafe(c);
@@ -399,17 +398,17 @@ class Agent {
     bool changed = false;
     for (auto& note : BgTakeCompleted(processes_)) {
       printf("%s· bg job finished %s%s\n", DIM(),
-             TerminalSafe(OneLine(note, 80)).c_str(), RST());
+             TerminalSafe(FirstLine(note)).c_str(), RST());
       messages_.push_back({{"role", "user"}, {"content", std::move(note)}});
       changed = true;
     }
     for (auto& result : side_tasks_.TakeCompleted()) {
       printf("%s· %s finished %s%s\n", DIM(), result.kind.c_str(),
-             TerminalSafe(OneLine(result.label, 80)).c_str(), RST());
-      messages_.push_back({{"role", "user"},
-                           {"content", "[Background result: " + result.kind +
-                                           " `" + OneLine(result.label, 80) +
-                                           "`]\n" + result.output}});
+             TerminalSafe(FirstLine(result.label)).c_str(), RST());
+      messages_.push_back(
+          {{"role", "user"},
+           {"content", "[Background result: " + result.kind + " `" +
+                           FirstLine(result.label) + "`]\n" + result.output}});
       DebugLog("side_task_completed", {{"id", result.id},
                                        {"kind", result.kind},
                                        {"label", result.label},
@@ -480,7 +479,7 @@ class Agent {
     ++turn_id_;
     ++revision_;
     ++total_user_turns_;
-    if (session_title_.empty()) session_title_ = OneLine(user_input, 80);
+    if (session_title_.empty()) session_title_ = FirstLine(user_input);
     turn_time_ = LocalStamp();
     ApplyPendingCheckpoint();
     if (!messages_.empty()) messages_[0] = SysMsg();
@@ -1291,7 +1290,7 @@ class Agent {
     task.tool = FindTool(tools_, call.name);
     task.args = json::parse(call.args, nullptr, false);
     task.label = task.args.is_object()
-                     ? OneLine(JsonValue(task.args, "state", ""), 80)
+                     ? FirstLine(JsonValue(task.args, "state", ""))
                      : "";
     std::string safe_label = TerminalSafe(task.label);
     printf("%s→ checkpoint(%s)%s\n", CYAN(), safe_label.c_str(), RST());
@@ -1508,10 +1507,8 @@ class Agent {
           printf("%s%s%s\n%s\n", CYAN(), prefix.c_str(), RST(),
                  TerminalSafe(task.label).c_str());
         } else {
-          printf(
-              "%s%s(%s)%s\n", CYAN(), prefix.c_str(),
-              TerminalSafe(TerminalFit(task.label, prefix + "(", ")")).c_str(),
-              RST());
+          printf("%s%s(%s)%s\n", CYAN(), prefix.c_str(),
+                 TerminalSafe(FirstLine(task.label)).c_str(), RST());
         }
         bool approval_required = tool->mutating || (tool->needs_approval &&
                                                     tool->needs_approval(args));

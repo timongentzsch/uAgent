@@ -285,8 +285,7 @@ int Main(int argc, char** argv) {
     std::string summary = std::to_string(skills.size()) + ", ~" +
                           FmtTokens(static_cast<int64_t>(bytes) / 4) +
                           " tokens/request — " + list;
-    printf("%s· skills: %s%s\n", DIM(),
-           TerminalFit(TerminalSafe(summary), "· skills: ").c_str(), RST());
+    printf("%s· skills: %s%s\n", DIM(), TerminalSafe(summary).c_str(), RST());
   }
   if (project_instructions.truncated) {
     std::cerr << YEL() << "project instructions truncated at "
@@ -368,7 +367,7 @@ int Main(int argc, char** argv) {
     bool granted = true;
     if (!yolo) {
       std::string q = std::string(YEL()) + "allow " + TerminalSafe(t.name) +
-                      ": " + TerminalSafe(OneLine(ToolSummary(t, args), 120)) +
+                      ": " + TerminalSafe(FirstLine(ToolSummary(t, args))) +
                       "? [Y/n] " + RST();
       bool eof = false;
       std::string ans = Trim(ReadInputLine(q, &eof, /*keep_history=*/false));

@@ -178,7 +178,7 @@ inline std::string ToolTerminalOutput(int64_t pid) {
       out += (JsonValue(record, "_alive", false) ? "[running] " : "[exited] ");
       out += "pid " + std::to_string(record_pid) + " · " +
              JsonValue(record, "cwd", "") + " · " +
-             OneLine(JsonValue(record, "command", ""), 120) + " · " +
+             FirstLine(JsonValue(record, "command", "")) + " · " +
              JsonValue(record, "log", "") + "\n";
     }
     int64_t cap = ToolResultCap();
@@ -220,7 +220,7 @@ inline std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor) {
         std::string note =
             "[" + std::string(it->detached ? "Detached" : "Background") +
             " result: pid " + std::to_string(it->pid) + " `" +
-            OneLine(it->cmd, 80) + "`]\n" + out + FmtExit(st, /*show_ok=*/true);
+            FirstLine(it->cmd) + "`]\n" + out + FmtExit(st, /*show_ok=*/true);
         notes.push_back(std::move(note));
         it = jobs.erase(it);
       } else {
@@ -351,7 +351,7 @@ inline std::string ToolWaitSideTask(SideTaskSupervisor& supervisor, int64_t id,
   while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
     if (auto result = supervisor.Wait(id, std::chrono::milliseconds(0))) {
       return "[Background result: " + result->kind + " `" +
-             OneLine(result->label, 80) + "`]\n" + result->output;
+             FirstLine(result->label) + "`]\n" + result->output;
     }
     supervisor.WaitForOne(std::chrono::milliseconds(100));
   }

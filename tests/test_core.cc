@@ -191,11 +191,8 @@ void TestTerminalSafety() {
   CHECK(DisplayWidth("ASCII") == 5);
   CHECK(DisplayWidth("界") >= 1);
   CHECK(SafeFileComponent("../../escape") == "______escape");
-  int64_t columns = TerminalColumns();
-  if (columns > 2) {
-    CHECK(DisplayWidth(TerminalFit(std::string(columns + 10, 'x'))) <
-          static_cast<size_t>(columns));
-  }
+  CHECK(FirstLine(std::string(200, 'x')).size() == 200);
+  CHECK(FirstLine("first\nsecond") == "first");
 }
 
 void TestBackgroundValidation() {

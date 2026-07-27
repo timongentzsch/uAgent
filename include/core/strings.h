@@ -153,14 +153,18 @@ inline size_t JsonEstimatedBytes(const json& value) {
   return total;
 }
 
-// first line of a string, capped — for one-line previews
 inline std::string StripTrailingSlashes(std::string s) {
   while (!s.empty() && s.back() == '/') s.pop_back();
   return s;
 }
 
+inline std::string FirstLine(const std::string& s) {
+  return s.substr(0, s.find('\n'));
+}
+
+// Bounded first line for protocol/data previews, not terminal rendering.
 inline std::string OneLine(const std::string& s, size_t cap = 80) {
-  return Utf8Trunc(s.substr(0, s.find('\n')), cap);
+  return Utf8Trunc(FirstLine(s), cap);
 }
 
 // Model, tool and MCP text is untrusted terminal input. Preserve normal text,
@@ -218,17 +222,6 @@ inline int64_t TerminalColumns() {
     return size.ws_col;
   }
   return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
-}
-
-// Fit text into the rest of the row. Callers pass the decoration itself, not a
-// hand-counted column budget, so the two cannot drift.
-inline std::string TerminalFit(const std::string& text,
-                               const std::string& prefix = "",
-                               const std::string& suffix = "") {
-  int64_t reserve =
-      static_cast<int64_t>(DisplayWidth(prefix) + DisplayWidth(suffix));
-  return OneLine(text, static_cast<size_t>(std::max(
-                           int64_t{1}, TerminalColumns() - reserve - 2)));
 }
 
 inline uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {

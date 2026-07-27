@@ -94,8 +94,7 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   if (task.tool->full_terminal_output) {
     printf("%s%s%s\n%s\n", style, prefix.c_str(), RST(), safe_result.c_str());
   } else {
-    printf("%s%s: %s%s\n", style, prefix.c_str(),
-           TerminalFit(safe_result, prefix + ": ").c_str(), RST());
+    printf("%s%s: %s%s\n", style, prefix.c_str(), safe_result.c_str(), RST());
   }
 }
 

@@ -83,7 +83,7 @@ inline std::string PickSession() {
     int64_t secs =
         std::chrono::duration_cast<std::chrono::seconds>(now - s.mtime).count();
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
-    std::string safe_title = TerminalSafe(OneLine(s.title, 60));
+    std::string safe_title = TerminalSafe(FirstLine(s.title));
     std::cout << CYAN() << '[' << i + 1 << ']' << RST() << ' ' << FmtAgo(secs)
               << " · " << s.turns << " turn" << (s.turns == 1 ? "" : "s")
               << " · " << DIM() << safe_cwd << " · \"" << safe_title << '"'

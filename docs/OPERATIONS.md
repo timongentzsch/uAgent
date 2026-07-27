@@ -88,6 +88,10 @@ features, uncached/cached/write tokens, cost, and peak RSS.
   opened. A skill with no `description` in its front matter is skipped.
 - A workspace `.uagent/.config` is ignored until trusted. Headless runs warn and
   fall back to `~/.uagent/.config` rather than failing.
+- A model that refuses image input degrades once per session: the picture is
+  dropped from the request, the path is kept, and later attachments stay text.
+  Around half of OpenRouter's catalogue is text-only, and a route's advertised
+  modalities can be wrong, so this is detected rather than declared.
 - Session archives drop oldest segments when full and record the count.
 - A failed checkpoint reread is recorded and the fold continues. Switch back
   to `shadow` if continuation quality regresses.

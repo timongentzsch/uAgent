@@ -820,6 +820,59 @@ def test_mcp_image_reaches_the_model(root, home):
         server.close()
 
 
+def test_image_input_rejection_degrades(root, home):
+    """Half of OpenRouter's models are text-only and refuse images with a 404.
+
+    The turn has to survive that: drop the picture, keep the path, carry on.
+    """
+    workspace = root / "image-degrade"
+    workspace.mkdir()
+    png = workspace / "shot.png"
+    png.write_bytes(SMALL_PNG)
+
+    def reject(handler, body):
+        parts = [
+            part
+            for m in body["messages"]
+            if isinstance(m.get("content"), list)
+            for part in m["content"]
+        ]
+        if not any(p.get("type") == "image_url" for p in parts):
+            return event({"content": "no-image-to-reject"})
+        data = json.dumps(
+            {"error": {"message": "No endpoints found that support image input", "code": 404}}
+        ).encode()
+        handler.send_response(404)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+        return None
+
+    def after(_, body):
+        blob = json.dumps(body["messages"])
+        retried_without_image = '"image_url"' not in blob
+        kept_the_note = "withheld" in blob
+        return event(
+            {
+                "content": "degrade-ok"
+                if (retried_without_image and kept_the_note)
+                else f"degrade-bad image={not retried_without_image} note={kept_the_note}"
+            }
+        )
+
+    server = Server([tool_call("attach", {"path": str(png)}), reject, after])
+    try:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "look")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "degrade-ok", result.stdout + result.stderr)
+        # The notice rides on stdout like the other degradations, which headless
+        # sends to /dev/null; the retry itself is what this test pins down.
+        assert_true(len(server.requests) == 3, len(server.requests))
+    finally:
+        server.close()
+
+
 def test_invalid_mcp_config_not_executed(root, home):
     workspace = root / "mcp-invalid-config"
     workspace.mkdir()
@@ -2367,6 +2420,7 @@ def main():
             test_memory_reaches_context_by_scope,
             test_skill_tool_offers_and_opens,
             test_mcp_image_reaches_the_model,
+            test_image_input_rejection_degrades,
             test_invalid_mcp_config_not_executed,
             test_mcp_tool_round_trip,
             test_mcp_stdio_contract,

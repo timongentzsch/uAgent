@@ -30,11 +30,12 @@ These are local safety bounds, not provider service objectives.
 | emergency compaction | 95% |
 | saved removed-trace archive | newest 16 MiB |
 
-Other bounds include 4 MiB assembled reads, 10 MiB editable files, 64 MiB
-rotating shell logs, 1 MiB MCP config, 16 MiB MCP response/log, and 256 KiB
-schema per server. `run_python` shares the shell job/log bounds, caps source at
-128 KiB and accepts at most 12 package requirements. Raise limits only with a
-representative workload and memory/request measurement.
+Other bounds include 4 MiB assembled reads, 10 MiB editable files, 64 ordered
+edits per `edit_file` call, 64 MiB rotating shell logs, 1 MiB MCP config, 16 MiB
+MCP response/log, and 256 KiB schema per server. `run_python` shares the shell
+job/log bounds, caps source at 128 KiB and accepts at most 12 package
+requirements. Raise limits only with a representative workload and
+memory/request measurement.
 
 Detached-terminal records older than `UAGENT_TERMINAL_DAYS=7` are pruned when
 listed. Their rotating logs remain bounded independently.

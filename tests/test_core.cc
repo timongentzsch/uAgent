@@ -149,6 +149,11 @@ void TestCapsAndEscaping() {
 
 void TestFileTools() {
   namespace fs = std::filesystem;
+  auto contents = [](const fs::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    return std::string(std::istreambuf_iterator<char>(input),
+                       std::istreambuf_iterator<char>());
+  };
   fs::path root =
       fs::temp_directory_path() /
       ("uagent-test-" + std::to_string(static_cast<int64_t>(getpid())));
@@ -159,10 +164,86 @@ void TestFileTools() {
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
   CHECK(ToolEditFile(file.string(), "two", "three").starts_with("edited "));
+
+  struct stat before{}, after{};
+  CHECK(stat(file.c_str(), &before) == 0);
+  CHECK(ToolEditFile(file.string(), "three", "three").find("makes no change") !=
+        std::string::npos);
+  CHECK(stat(file.c_str(), &after) == 0);
+  CHECK(before.st_ino == after.st_ino);
+
+  fs::path crlf = root / "crlf.txt";
+  CHECK(ToolWriteFile(crlf.string(), "one\r\ntwo\r\n").starts_with("wrote "));
+  CHECK(ToolEditFile(crlf.string(), "one\ntwo\n", "ONE\ntwo\n")
+            .starts_with("edited "));
+  CHECK(contents(crlf) == "ONE\r\ntwo\r\n");
+  CHECK(
+      ToolEditFile(crlf.string(), "two", "two\nthree").starts_with("edited "));
+  CHECK(contents(crlf) == "ONE\r\ntwo\r\nthree\r\n");
+  CHECK(ToolEditFile(file.string(), "one\r\nthree\r\n", "ONE\r\nthree\r\n")
+            .starts_with("edited "));
+  CHECK(contents(file) == "ONE\nthree\n");
+
+  fs::path mixed = root / "mixed.txt";
+  CHECK(ToolWriteFile(mixed.string(), "a\r\nb\nc\n").starts_with("wrote "));
+  CHECK(ToolEditFile(mixed.string(), "c", "x\ny").starts_with("edited "));
+  CHECK(contents(mixed) == "a\r\nb\nx\ny\n");
+
+  fs::path literal_crlf = root / "literal-crlf.txt";
+  CHECK(
+      ToolWriteFile(literal_crlf.string(), "payload\n").starts_with("wrote "));
+  CHECK(ToolEditFile(literal_crlf.string(), "payload", "a\r\nb")
+            .starts_with("edited "));
+  CHECK(contents(literal_crlf) == "a\r\nb\n");
+
+  fs::path bom = root / "bom.txt";
+  CHECK(ToolWriteFile(bom.string(), "\xEF\xBB\xBFone\n").starts_with("wrote "));
+  CHECK(ToolEditFile(bom.string(), "one", "two").starts_with("edited "));
+  CHECK(contents(bom) == "\xEF\xBB\xBFtwo\n");
+
+  fs::path batch = root / "batch.txt";
+  CHECK(ToolWriteFile(batch.string(), "alpha one alpha two\n")
+            .starts_with("wrote "));
+  std::string batch_result = ToolEditFile(
+      batch.string(), {{"alpha", "beta", true}, {"beta two", "gamma", false}});
+  CHECK(batch_result.find("3 replacements across 2 edits") !=
+        std::string::npos);
+  CHECK(contents(batch) == "beta one gamma\n");
+  CHECK(ToolWriteFile(batch.string(), "same same\n").starts_with("wrote "));
+  CHECK(ToolEditFile(batch.string(), "same", "other").find("matches 2 times") !=
+        std::string::npos);
+  CHECK(contents(batch) == "same same\n");
+  CHECK(ToolEditFile(batch.string(), {{"same", "changed", true},
+                                      {"missing", "never written", false}})
+            .find("edit 2 `old` not found") != std::string::npos);
+  CHECK(contents(batch) == "same same\n");
+
+  fs::path registered = root / "registered.txt";
+  CHECK(ToolWriteFile(registered.string(), "a a c\n").starts_with("wrote "));
+  ProcessSupervisor supervisor;
+  std::vector<Tool> tools = BuiltinTools(supervisor, root);
+  const Tool* edit_tool = FindTool(tools, "edit_file");
+  CHECK(edit_tool != nullptr);
+  if (edit_tool) {
+    CHECK(edit_tool
+              ->run({{"path", registered.string()},
+                     {"old", "a"},
+                     {"new", "b"},
+                     {"replace_all", true},
+                     {"edits", json::array({{{"old", "c"}, {"new", "d"}}})}},
+                    {})
+              .starts_with("edited "));
+    CHECK(contents(registered) == "b b d\n");
+  }
+
   fs::path private_file = root / "private";
   CHECK(ToolWritePrivateFile(private_file.string(), "secret")
             .starts_with("wrote "));
   struct stat st{};
+  CHECK(stat(private_file.c_str(), &st) == 0);
+  CHECK((st.st_mode & 0777) == 0600);
+  CHECK(ToolEditFile(private_file.string(), "secret", "private")
+            .starts_with("edited "));
   CHECK(stat(private_file.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
   fs::path ledger = root / "ledger";
@@ -217,6 +298,25 @@ void TestBackgroundValidation() {
   const Tool* wait = FindTool(tools, "wait_background");
   CHECK(wait && wait->show_spinner);
   CHECK(wait && !wait->accepts_timeout);
+  const Tool* edit = FindTool(tools, "edit_file");
+  CHECK(edit && edit->parameters["properties"].contains("replace_all"));
+  CHECK(edit && edit->parameters["properties"].contains("edits"));
+  if (edit) {
+    CHECK(ToolSummary(*edit, {{"path", "x"}, {"old", "a"}, {"new", "b"}}) ==
+          "x (1 edit)");
+    CHECK(ToolSummary(*edit, {{"path", "x"},
+                              {"old", "a"},
+                              {"new", "b"},
+                              {"edits",
+                               json::array({{{"old", "c"}, {"new", "d"}}})}}) ==
+          "x (2 edits)");
+    CHECK(edit->run({{"path", "x"},
+                     {"old", "a"},
+                     {"new", "b"},
+                     {"edits", json::array({"bad"})}},
+                    {})
+              .find("each `edits` entry") != std::string::npos);
+  }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
   for (const char* name :

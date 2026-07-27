@@ -67,18 +67,65 @@ inline std::vector<Tool> BuiltinTools(
            " bytes)";
   };
 
-  Tool& edit =
-      path_tool(MakeTool("edit_file", "Replace one exact occurrence in a file.",
-                         schema(R"json({"type":"object","properties":{
+  Tool& edit = path_tool(
+      MakeTool("edit_file", "Apply exact edits atomically in order.",
+               schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},"old":{"type":"string"},
-                    "new":{"type":"string"}},"required":["path","old","new"]})json"),
-                         [](const json& a, const ToolContext&) {
-                           return ToolEditFile(JsonValue(a, "path", ""),
-                                               JsonValue(a, "old", ""),
-                                               JsonValue(a, "new", ""));
-                         }),
-                "");
+                    "new":{"type":"string"},
+                    "replace_all":{"type":"boolean","description":"replace every match of old"},
+                    "edits":{"type":"array","maxItems":63,
+                      "description":"additional edits in order",
+                      "items":{"type":"object","properties":{
+                        "old":{"type":"string"},"new":{"type":"string"},
+                        "replace_all":{"type":"boolean"}},
+                        "required":["old","new"]}}},
+                    "required":["path","old","new"]})json"),
+               [](const json& a, const ToolContext&) {
+                 std::vector<FileEdit> edits{{
+                     JsonValue(a, "old", ""),
+                     JsonValue(a, "new", ""),
+                     JsonValue(a, "replace_all", false),
+                 }};
+                 auto additional = a.find("edits");
+                 if (additional != a.end()) {
+                   if (!additional->is_array()) {
+                     return std::string("error: `edits` must be an array");
+                   }
+                   if (additional->size() + 1 > kMaxFileEdits) {
+                     return "error: `edit_file` is limited to " +
+                            std::to_string(kMaxFileEdits) + " edits per call";
+                   }
+                   for (const json& item : *additional) {
+                     if (!item.is_object() || !item.contains("old") ||
+                         !item["old"].is_string() || !item.contains("new") ||
+                         !item["new"].is_string() ||
+                         (item.contains("replace_all") &&
+                          !item["replace_all"].is_boolean())) {
+                       return std::string(
+                           "error: each `edits` entry requires "
+                           "string `old`/`new` and optional boolean "
+                           "`replace_all`");
+                     }
+                     edits.push_back({
+                         JsonValue(item, "old", ""),
+                         JsonValue(item, "new", ""),
+                         JsonValue(item, "replace_all", false),
+                     });
+                   }
+                 }
+                 return ToolEditFile(JsonValue(a, "path", ""), edits);
+               }),
+      "");
   edit.mutating = true;
+  edit.summary = [](const json& a) {
+    size_t count = 1;
+    auto additional = a.find("edits");
+    if (additional != a.end() && additional->is_array()) {
+      count += additional->size();
+    }
+    return JsonValue(a, "path", "") + " (" + std::to_string(count) +
+           (count == 1 ? " edit)" : " edits)");
+  };
 
   Tool& list = path_tool(MakeTool("list_dir", "List a directory",
                                   schema(R"json({"type":"object","properties":{

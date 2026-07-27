@@ -110,12 +110,21 @@ inline bool InspectAttachment(std::string path, Attachment& out,
 
 // Files the model asked to read. Drained into the next request as user content;
 // attachment_content owns the byte limit, the tool's call budget the count.
+// Cleared when an endpoint rejects image input, so nothing keeps offering
+// pictures to a model that cannot read them. Learned rather than declared: a
+// catalogue's modality list can be wrong when a route fans out to other models.
+inline std::atomic<bool> g_image_input{true};
+
 class AttachmentQueue {
  public:
   std::string Add(const std::string& path) {
     Attachment attachment;
     std::string error;
     if (!InspectAttachment(path, attachment, error)) return "error: " + error;
+    if (attachment.image && !g_image_input.load()) {
+      return "error: this model rejected image input; the file is on disk at " +
+             path + " and show_image can put it on the user's terminal";
+    }
     std::string result = "attached " + attachment.name + " (" +
                          attachment.mime + "); readable in your next step";
     std::lock_guard<std::mutex> lock(mutex_);

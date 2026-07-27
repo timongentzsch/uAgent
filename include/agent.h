@@ -961,10 +961,30 @@ class Agent {
                               {"removed_messages", before - messages_.size()}});
   }
 
-  // a 400 that rejects `tools` / `stream_options` -> drop the feature, retry.
-  // Ordered most-specific first: the native-tools probe matches any "tool",
-  // so it must stay last or it would swallow the parallel_tool_calls case.
+  // A rejected capability -> drop it and retry. Ordered most-specific first:
+  // the native-tools probe matches any "tool", so it must stay last or it would
+  // swallow the parallel_tool_calls case. Image input is refused with a 404 on
+  // some routers rather than a 400, so it is checked outside the 400 gate.
   bool DegradeAndRetry(const ChatResult& r) {
+    std::string lowered = r.error;
+    for (auto& c : lowered) {
+      c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    }
+    if (g_image_input.load() && lowered.find("image") != std::string::npos &&
+        (lowered.find("input") != std::string::npos ||
+         lowered.find("support") != std::string::npos ||
+         lowered.find("modalit") != std::string::npos)) {
+      g_image_input = false;
+      size_t rewritten = StripImageParts();
+      DebugLog("feature_degraded", {{"feature", "image_input"},
+                                    {"error", r.error},
+                                    {"messages_rewritten", rewritten}});
+      printf(
+          "%s· model rejected image input — attachments continue as file "
+          "paths%s\n",
+          DIM(), RST());
+      return rewritten > 0;
+    }
     if (r.http_status != 400) return false;
     std::string e = r.error;
     for (auto& c : e) {
@@ -993,6 +1013,32 @@ class Agent {
       return true;
     }
     return false;
+  }
+
+  // The failed request already carries the images in a user message. Replace
+  // those parts with the text the model can still act on — the names are what
+  // read_file, show_image and attach all take.
+  size_t StripImageParts() {
+    size_t rewritten = 0;
+    for (json& message : messages_) {
+      if (!message.contains("content") || !message["content"].is_array()) {
+        continue;
+      }
+      std::string kept, dropped;
+      for (const json& part : message["content"]) {
+        if (JsonValue(part, "type", "") == "text") {
+          kept += JsonValue(part, "text", "");
+        } else if (JsonValue(part, "type", "") == "image_url") {
+          dropped += dropped.empty() ? "" : ", ";
+          dropped += "1 image";
+        }
+      }
+      if (dropped.empty()) continue;
+      message["content"] = kept + "\n[" + dropped +
+                           " withheld: this model does not accept image input]";
+      ++rewritten;
+    }
+    return rewritten;
   }
 
   std::string SystemPrompt() const {

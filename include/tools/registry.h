@@ -274,7 +274,7 @@ inline std::vector<Tool> BuiltinTools(
             return "error: checkpoint must be handled by the agent runtime";
           }));
   checkpoint.summary = [](const json& a) {
-    return OneLine(JsonValue(a, "state", ""), 100);
+    return FirstLine(JsonValue(a, "state", ""));
   };
   return tools;
 }

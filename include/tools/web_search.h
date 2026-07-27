@@ -157,7 +157,7 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
       for (const json& query : a["queries"]) {
         if (query.is_string()) {
           summary += (summary.empty() ? "" : " | ") +
-                     OneLine(query.get<std::string>(), 60);
+                     FirstLine(query.get<std::string>());
         }
       }
       return summary;

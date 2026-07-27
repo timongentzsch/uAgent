@@ -759,9 +759,13 @@ def test_skill_tool_offers_and_opens(root, home):
 
     server = Server([offer, confirm])
     try:
-        result = run(workspace, base_env(home, server.url), "-p", "reply")
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "skill-ok", result.stdout)
+        code, output = run_pty(
+            workspace, base_env(home, server.url), [b"reply\n", b"\x04"], columns=24
+        )
+        assert_true(code == 0, output)
+        assert_true(b"skill-ok" in output and b"tokens/request" in output, output)
+        assert_true(b"demo" in output, output)
+        assert_true(b"demo-body-sentinel" in output, output)
     finally:
         server.close()
 

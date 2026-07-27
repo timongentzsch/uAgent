@@ -20,7 +20,6 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
-#include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/tools/jobs.h"
 #include "include/tools/process.h"

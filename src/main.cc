@@ -47,7 +47,6 @@
 #include "include/tools/jobs.h"
 #include "include/tools/process.h"
 #include "include/tools/registry.h"
-#include "include/tools/shell.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
@@ -548,9 +547,9 @@ int Main(int argc, char** argv) {
       return;
     }
     if (session_file.empty()) {
-      session_file = UagentDir("history") + "/" + WorkspaceId(CanonicalCwd()) +
-                     "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
-                     std::to_string(getpid()) + ".json";
+      session_file =
+          UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) + "/" +
+          UtcStamp("%Y%m%dT%H%M%SZ") + "-" + std::to_string(getpid()) + ".json";
     }
     std::error_code ec;
     std::filesystem::create_directories(

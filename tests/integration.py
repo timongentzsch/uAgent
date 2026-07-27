@@ -851,24 +851,28 @@ def test_image_input_rejection_degrades(root, home):
 
     def after(_, body):
         blob = json.dumps(body["messages"])
-        retried_without_image = '"image_url"' not in blob
-        kept_the_note = "withheld" in blob
+        if '"image_url"' in blob or "withheld" not in blob:
+            return event({"content": "degrade-bad retry"})
+        # The capability is dropped for the session, not just for this request:
+        # attaching again must be refused rather than resend an image.
+        return tool_call("attach", {"path": str(png)})
+
+    def second(_, body):
+        results = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        refused = any("rejected image input" in r for r in results)
+        still_no_image = '"image_url"' not in json.dumps(body["messages"])
         return event(
-            {
-                "content": "degrade-ok"
-                if (retried_without_image and kept_the_note)
-                else f"degrade-bad image={not retried_without_image} note={kept_the_note}"
-            }
+            {"content": "degrade-ok" if (refused and still_no_image) else "degrade-bad second"}
         )
 
-    server = Server([tool_call("attach", {"path": str(png)}), reject, after])
+    server = Server([tool_call("attach", {"path": str(png)}), reject, after, second])
     try:
         result = run(workspace, base_env(home, server.url), "--yolo", "-p", "look")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "degrade-ok", result.stdout + result.stderr)
         # The notice rides on stdout like the other degradations, which headless
         # sends to /dev/null; the retry itself is what this test pins down.
-        assert_true(len(server.requests) == 3, len(server.requests))
+        assert_true(len(server.requests) == 4, len(server.requests))
     finally:
         server.close()
 

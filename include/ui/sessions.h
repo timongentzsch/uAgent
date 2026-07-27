@@ -18,7 +18,6 @@
 
 #include "include/agent.h"
 #include "include/cli.h"
-#include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -42,7 +41,7 @@ inline std::vector<SessionInfo> ListSessions() {
   std::vector<SessionInfo> out;
   std::error_code ec;
   std::string current = CanonicalCwd();
-  std::string base = UagentDir("history");
+  std::string base = UagentDir(kHistoryDir);
   std::string scoped = base + "/" + WorkspaceId(current);
   fs::create_directories(scoped, ec);
   chmod(scoped.c_str(), 0700);

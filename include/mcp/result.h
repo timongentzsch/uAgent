@@ -16,7 +16,6 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
 #include "include/mcp/server.h"
 #include "include/media.h"
 #include "include/tools/files.h"
@@ -38,9 +37,9 @@ inline std::string McpImageResult(const json& content) {
            std::to_string(limit_mb) + " MB";
   }
   static std::atomic<uint64_t> sequence{0};
-  std::string path = UagentDir("mcp") + "/image-" + UtcStamp("%Y%m%dT%H%M%SZ") +
-                     "-" + std::to_string(getpid()) + "-" +
-                     std::to_string(sequence++) + extension;
+  std::string path =
+      UagentDir(kMcpDir) + "/image-" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+      std::to_string(getpid()) + "-" + std::to_string(sequence++) + extension;
   std::string saved = ToolWritePrivateFile(path, bytes);
   if (saved.starts_with("error:")) return saved;
   // A tool result is text-only, so the image cannot travel back inside it.

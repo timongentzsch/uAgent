@@ -58,7 +58,15 @@ inline std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / ".uagent";
 }
 
+// The agent's directory layout. Named where a second file also spells the
+// name: a writer, a reader and the pruner disagreeing would strand data
+// somewhere nothing looks. Single-use names stay literal at their one site.
 inline constexpr const char* kMemoryDir = "memory";
+inline constexpr const char* kHistoryDir = "history";
+inline constexpr const char* kSessionsDir = "sessions";
+inline constexpr const char* kBgDir = "bg";
+inline constexpr const char* kMcpDir = "mcp";
+inline constexpr const char* kConfigDir = "config";
 
 // The workspace's ./.uagent when that directory already exists, else the global
 // one. Never created here: a project opts in by making the directory itself.
@@ -224,10 +232,10 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
 }
 
 inline void MaintainArtifacts() {
-  PruneArtifactTree(UagentDir("history"), HistoryDays(), HistoryFiles());
-  PruneArtifactTree(UagentDir("sessions"), DebugDays(), DebugFiles());
-  PruneArtifactTree(UagentDir("bg"), BgDays(), BgFiles());
-  PruneArtifactTree(UagentDir("mcp"), McpLogDays(), McpLogFiles());
+  PruneArtifactTree(UagentDir(kHistoryDir), HistoryDays(), HistoryFiles());
+  PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
+  PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
+  PruneArtifactTree(UagentDir(kMcpDir), McpLogDays(), McpLogFiles());
 }
 
 inline std::string SafeFileComponent(std::string value) {

@@ -21,12 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/env.h"
-#include "include/core/json.h"
-#include "include/core/signals.h"
-#include "include/core/strings.h"
-#include "include/tools/tool.h"
-
 namespace uagent {
 
 // The shell runner writes stdout+stderr to a log file from the start. Commands

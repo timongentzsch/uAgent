@@ -51,11 +51,11 @@ inline std::string LocalStamp() {
 // this session to fold into its own totals. Named by the parent's pid; pruned
 // with the other background files.
 inline std::string UsageLedger() {
-  return UagentDir("bg") + "/usage-" + std::to_string(getpid()) + ".jsonl";
+  return UagentDir(kBgDir) + "/usage-" + std::to_string(getpid()) + ".jsonl";
 }
 
 inline std::string DefaultDebugPath() {
-  return UagentDir("sessions") + "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+  return UagentDir(kSessionsDir) + "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
          std::to_string(getpid()) + ".jsonl";
 }
 

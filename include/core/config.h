@@ -186,7 +186,7 @@ inline bool ProjectTrustSnapshot(json& snapshot, std::string& error) {
 }
 
 inline std::string TrustStorePath() {
-  return UagentDir("config") + "/trusted-projects.json";
+  return UagentDir(kConfigDir) + "/trusted-projects.json";
 }
 
 inline json ReadTrustStore() {

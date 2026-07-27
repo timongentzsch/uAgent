@@ -52,12 +52,20 @@ inline std::string GlobalBase() {
                       : home + "/.uagent";
 }
 
+// The directory a workspace opts into. Named once: several modules need it,
+// and a reader and a writer disagreeing about it would silently lose data.
+inline std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
+  return cwd / ".uagent";
+}
+
+inline constexpr const char* kMemoryDir = "memory";
+
 // The workspace's ./.uagent when that directory already exists, else the global
 // one. Never created here: a project opts in by making the directory itself.
 // Recomputed per call rather than cached, so tests can move HOME and cwd.
 inline std::string UagentBase() {
   std::error_code ec;
-  std::filesystem::path local = std::filesystem::current_path(ec) / ".uagent";
+  std::filesystem::path local = ProjectBase(std::filesystem::current_path(ec));
   if (!ec && std::filesystem::is_directory(local, ec)) return local.string();
   return GlobalBase();
 }

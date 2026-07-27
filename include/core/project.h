@@ -96,7 +96,7 @@ inline ProjectInstructions LoadProjectInstructions(
   auto append_memories = [&](const fs::path& base) {
     std::error_code list_error;
     std::vector<fs::path> files;
-    for (fs::directory_iterator it(base / "memory", list_error), end;
+    for (fs::directory_iterator it(base / kMemoryDir, list_error), end;
          it != end && !list_error; it.increment(list_error)) {
       if (it->path().extension() == ".md") files.push_back(it->path());
     }
@@ -114,7 +114,7 @@ inline ProjectInstructions LoadProjectInstructions(
     if (dir != global) append_dir(dir);
   }
   append_memories(GlobalBase());
-  fs::path scoped = cwd / ".uagent";
+  fs::path scoped = ProjectBase(cwd);
   if (fs::is_directory(scoped, ec) && scoped.string() != GlobalBase()) {
     append_memories(scoped);
   }

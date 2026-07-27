@@ -7,14 +7,20 @@ cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 cmake --build "$build" --parallel
 cmake --install "$build" --prefix "$prefix"
 
-# Bundled skills, installed once. An existing directory is left alone so local
-# edits survive an upgrade; delete one to get the shipped version back.
+# Bundled skills, installed only when the machine does not already have one by
+# that name. SKILL.md is a shared format, so a skill installed for another agent
+# is already on the search path — copying ours in beside it would just create a
+# second copy that drifts.
 skills=${UAGENT_SKILLS_DIR:-"$HOME/.uagent/skills"}
 for skill in "$root"/skills/*/; do
   [ -f "$skill/SKILL.md" ] || continue
   name=$(basename "$skill")
-  if [ -e "$skills/$name" ]; then
-    echo "-- Keeping existing skill: $skills/$name"
+  found=""
+  for dir in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills" "$skills"; do
+    [ -e "$dir/$name" ] && found="$dir/$name" && break
+  done
+  if [ -n "$found" ]; then
+    echo "-- Skill already present, leaving it: $found"
   else
     mkdir -p "$skills"
     cp -R "$skill" "$skills/$name"

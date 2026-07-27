@@ -55,13 +55,8 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
   std::vector<fs::path> path;
   std::string custom = EnvStr("UAGENT_SKILL_PATH");
   if (!custom.empty()) {
-    for (size_t start = 0; start <= custom.size();) {
-      size_t sep = custom.find(':', start);
-      std::string entry = Trim(custom.substr(
-          start, sep == std::string::npos ? std::string::npos : sep - start));
-      if (!entry.empty()) path.push_back(fs::path(entry));
-      if (sep == std::string::npos) break;
-      start = sep + 1;
+    for (const std::string& entry : SplitPathList(custom)) {
+      if (!Trim(entry).empty()) path.push_back(fs::path(Trim(entry)));
     }
     return path;
   }
@@ -76,7 +71,7 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
   }
   path.push_back(fs::path(GlobalBase()) / "skills");
   for (const char* vendor : kVendors) path.push_back(cwd / vendor / "skills");
-  path.push_back(cwd / ".uagent" / "skills");
+  path.push_back(ProjectBase(cwd) / "skills");
   return path;
 }
 

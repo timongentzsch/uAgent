@@ -518,23 +518,30 @@ def test_cacheable_prefix_stable_across_turns(root, home):
         server.close()
 
 
-def test_wait_background_spinner(root, home):
-    workspace = root / "wait-spinner-workspace"
+def test_wait_background_events(root, home):
+    workspace = root / "wait-events-workspace"
     workspace.mkdir()
+    pid = None
 
     def wait_for_pid(_, body):
-        result = body["messages"][-1]["content"]
-        pid = int(result.split("[backgrounded] pid ", 1)[1].split(",", 1)[0])
+        nonlocal pid
+        if pid is None:
+            result = body["messages"][-1]["content"]
+            pid = int(result.split("[backgrounded] pid ", 1)[1].split(",", 1)[0])
         return tool_call("wait_background", {"id": pid})
 
     server = Server(
         [
             tool_call(
                 "run",
-                {"command": "sleep 2; printf 'background-done\\n'", "timeout": 1},
+                {
+                    "command": "printf 'ready\\n'; sleep 2; printf 'done\\n'",
+                    "timeout": 1,
+                },
             ),
             wait_for_pid,
-            event({"content": "spinner-ok"}),
+            wait_for_pid,
+            event({"content": "events-ok"}),
         ]
     )
     try:
@@ -545,12 +552,14 @@ def test_wait_background_spinner(root, home):
             timeout=10,
             args=("--yolo",),
         )
-        start = output.find(b"wait_background(job ")
-        end = output.find(b"\xe2\x86\x90 wait_background:", start)
         assert_true(code == 0, output)
-        assert_true(start >= 0 and end > start, output)
-        assert_true(b"\r\x1b[2m" in output[start:end], output[start:end])
-        assert_true(b"background-done" in output and b"spinner-ok" in output, output)
+        assert_true(b"ready" in output and b"done" in output, output)
+        assert_true(b"events-ok" in output, output)
+        first = output.find(b"wait_background(job ")
+        second = output.find(b"wait_background(job ", first + 1)
+        end = output.find(b"\xe2\x86\x90 wait_background:", second)
+        assert_true(second > first and end > second, output)
+        assert_true(b"\r\x1b[2m" in output[second:end], output[second:end])
     finally:
         server.close()
 
@@ -2428,7 +2437,7 @@ def main():
             test_signal_exit_restores_terminal,
             test_response_stats,
             test_cacheable_prefix_stable_across_turns,
-            test_wait_background_spinner,
+            test_wait_background_events,
             test_headless_debug_session_end,
             test_grep_tool_round_trip,
             test_real_headless_error,

@@ -77,6 +77,12 @@ inline std::string ReadLogTail(const std::string& path, int64_t cap) {
   return s.empty() ? "(no output)" : s;
 }
 
+inline uintmax_t LogBytes(const std::string& path) {
+  std::error_code ec;
+  uintmax_t bytes = std::filesystem::file_size(path, ec);
+  return ec ? 0 : bytes;
+}
+
 // Hidden subprocess mode used by detached shells. Two half-size segments keep
 // server logs bounded without sending SIGXFSZ/SIGPIPE to the server itself.
 inline int ToolLogPump(const std::string& path, int64_t max_bytes) {
@@ -270,7 +276,7 @@ inline void BgShutdownAll(ProcessSupervisor& supervisor) {
 inline ProcessSupervisor::~ProcessSupervisor() { BgShutdownAll(*this); }
 
 inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
-                                      int64_t pid, int64_t timeout_s,
+                                      int64_t pid,
                                       const ToolContext& context = {}) {
   BgJob registered;
   bool found = supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
@@ -285,77 +291,80 @@ inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
     return "error: pid " + std::to_string(pid) +
            " is not a live uagent background job";
   }
-  // A detached job outlives the turn, so there is nothing to join — answer
-  // with its output so far rather than making the model retry another tool.
   if (registered.detached) {
     return "[detached job " + std::to_string(pid) +
            " is persistent; output so far]\n" +
            ReadLogTail(registered.log, ToolResultCap());
   }
-  std::string log = registered.log;
+  const pid_t process = static_cast<pid_t>(pid);
+  uintmax_t bytes = LogBytes(registered.log);
+  const uintmax_t baseline = registered.observed_log_bytes.value_or(bytes);
   int status = 0;
-  bool reaped = false;
-  std::string note;
-  int64_t bounded_timeout =
-      context.RemainingSeconds(timeout_s > 0 ? timeout_s : (int64_t{1} << 30));
-  auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(bounded_timeout);
-  RunCancellable([&] {  // Ctrl+C cancels the wait, never the process
-    while (true) {
-      pid_t r = waitpid(static_cast<pid_t>(pid), &status, WNOHANG);
-      if (r == static_cast<pid_t>(pid)) {
-        reaped = true;
-        break;
+  pid_t result = waitpid(process, &status, WNOHANG);
+  bool changed = !registered.observed_log_bytes || bytes != baseline;
+  bool cancelled = false;
+  if (result == 0 && !changed) {
+    cancelled = RunCancellable([&] {
+      while (std::chrono::steady_clock::now() < context.deadline) {
+        if (AbortRequested()) return;
+        usleep(100 * 1000);
+        result = waitpid(process, &status, WNOHANG);
+        bytes = LogBytes(registered.log);
+        if (result != 0 || bytes != baseline) return;
       }
-      if (r < 0 && kill(static_cast<pid_t>(pid), 0) != 0) {
-        break;  // reaped earlier
-      }
-      if (AbortRequested()) {
-        note = "[wait cancelled — process still running]\n";
-        break;
-      }
-      if (std::chrono::steady_clock::now() >= deadline) {
-        note = "[wait timed out after " + std::to_string(timeout_s) +
-               "s — process still running]\n";
-        break;
-      }
-      usleep(250 * 1000);
-    }
-  });
-  if (note.empty()) {  // finished: forget the job
-    BgTrackSignal(static_cast<pid_t>(pid), false);
-    supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
-      std::erase_if(jobs, [&](const BgJob& job) {
-        return job.pid == static_cast<pid_t>(pid);
-      });
     });
   }
-  std::string out = note + ReadLogTail(log, ToolResultCap());
-  if (reaped) {
-    out += FmtExit(status, /*show_ok=*/true);  // confirm completion even on 0
+
+  bool finished = result == process || (result < 0 && kill(process, 0) != 0);
+  std::string out = ReadLogTail(registered.log, ToolResultCap());
+  if (result == process) {
+    out += FmtExit(status, /*show_ok=*/true);
+  } else if (finished) {
+    out = "[process exited — status unavailable]\n" + out;
+  } else {
+    const char* state =
+        !registered.observed_log_bytes
+            ? "current output"
+            : (cancelled ? "wait cancelled"
+                         : (std::chrono::steady_clock::now() >= context.deadline
+                                ? "turn deadline reached"
+                                : "new output"));
+    out = "[process still running — " + std::string(state) + "]\n" + out;
+  }
+
+  supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
+    auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& job) {
+      return job.pid == process;
+    });
+    if (it == jobs.end()) return;
+    if (finished) {
+      jobs.erase(it);
+    } else {
+      it->observed_log_bytes = bytes;
+    }
+  });
+  if (finished) {
+    BgTrackSignal(process, false);
   }
   return out;
 }
 
 inline std::string ToolWaitSideTask(SideTaskSupervisor& supervisor, int64_t id,
-                                    int64_t timeout_s,
                                     const ToolContext& context = {}) {
   if (id <= 0 || !supervisor.Contains(id)) {
     return "error: id " + std::to_string(id) +
            " is not a live uagent background job";
   }
-  int64_t bounded_timeout =
-      context.RemainingSeconds(timeout_s > 0 ? timeout_s : (int64_t{1} << 30));
-  auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(bounded_timeout);
-  while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
+  while (!AbortRequested() &&
+         std::chrono::steady_clock::now() < context.deadline) {
     if (auto result = supervisor.Wait(id, std::chrono::milliseconds(0))) {
       return "[Background result: " + result->kind + " `" +
              FirstLine(result->label) + "`]\n" + result->output;
     }
     supervisor.WaitForOne(std::chrono::milliseconds(100));
   }
-  return std::string(AbortRequested() ? "[wait cancelled" : "[wait timed out") +
+  return std::string(AbortRequested() ? "[wait cancelled"
+                                      : "[turn deadline reached") +
          " — background job still running]";
 }
 

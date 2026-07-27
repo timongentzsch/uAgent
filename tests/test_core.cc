@@ -198,25 +198,25 @@ void TestTerminalSafety() {
 void TestBackgroundValidation() {
   namespace fs = std::filesystem;
   ProcessSupervisor supervisor;
-  CHECK(ToolWaitBackground(supervisor, 0, 1).starts_with("error:"));
-  CHECK(ToolWaitBackground(supervisor, 999999, 1).starts_with("error:"));
+  CHECK(ToolWaitBackground(supervisor, 0).starts_with("error:"));
+  CHECK(ToolWaitBackground(supervisor, 999999).starts_with("error:"));
   auto add_job = [&](BgJob job) {
     supervisor.WithJobs([&](std::vector<BgJob>& jobs) { jobs.push_back(job); });
   };
-  add_job({999998, "", "", false, true});
+  add_job({999998, "", "", false, true, {}});
   CHECK(!supervisor.PendingCount());
   CHECK(supervisor.DetachedCount() == 1);
-  // a detached job reports its output instead of erroring the model out
-  CHECK(ToolWaitBackground(supervisor, 999998, 1).starts_with("[detached job"));
-  add_job({999997, "", "", false, false});
+  CHECK(ToolWaitBackground(supervisor, 999998).starts_with("[detached job"));
+  add_job({999997, "", "", false, false, {}});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
-  CHECK(!supervisor.TryAdd({999996, "", "", false, false}, 1));
+  CHECK(!supervisor.TryAdd({999996, "", "", false, false, {}}, 1));
   supervisor.WithJobs([](std::vector<BgJob>& jobs) { jobs.clear(); });
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Tool* wait = FindTool(tools, "wait_background");
   CHECK(wait && wait->show_spinner);
+  CHECK(wait && !wait->accepts_timeout);
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
   for (const char* name :
@@ -272,7 +272,7 @@ void TestToolExecutionPolicy() {
             "probe", "over limit",
             [](const std::atomic<bool>&) { return std::string(); }, 1) == 0);
   CHECK(!side_tasks.Wait(id, std::chrono::milliseconds(1)).has_value());
-  auto result = ToolWaitSideTask(side_tasks, id, 1);
+  auto result = ToolWaitSideTask(side_tasks, id);
   CHECK(result.find("[Background result: probe `quick`]") != std::string::npos);
   CHECK(result.find("done") != std::string::npos);
   CHECK(side_tasks.Joinable() == 0);
@@ -459,8 +459,10 @@ void TestGrepTool() {
   CHECK(python && python->full_terminal_output);
   CHECK(FindTool(lean_tools, "terminal_output") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools, 17)) {
-    CHECK(
-        registered["function"]["parameters"]["properties"].contains("timeout"));
+    bool has_timeout =
+        registered["function"]["parameters"]["properties"].contains("timeout");
+    CHECK(has_timeout ==
+          (registered["function"].value("name", "") != "wait_background"));
   }
   fs::remove_all(root, ec);
 }
@@ -508,9 +510,52 @@ void TestPythonTool() {
   if (!pending.empty()) {
     CHECK(supervisor.JoinableCount() == 1);
     int64_t pid = pending.front();
-    result = ToolWaitBackground(supervisor, pid, 5);
+    for (int attempt = 0;
+         attempt < 3 && result.find("[exit code 0]") == std::string::npos;
+         ++attempt) {
+      result = ToolWaitBackground(supervisor, pid);
+    }
     CHECK(result.find("background-ok") != std::string::npos);
     CHECK(result.find("[exit code 0]") != std::string::npos);
+  }
+
+  result = ToolRunPython(
+      supervisor,
+      "import time\nprint('ready', flush=True)\ntime.sleep(2)\n"
+      "print('progress', flush=True)\ntime.sleep(2)\nprint('done')",
+      json::array(), 1);
+  CHECK(result.starts_with("[backgrounded]"));
+  pending = supervisor.PendingPids();
+  CHECK(pending.size() == 1);
+  if (!pending.empty()) {
+    int64_t pid = pending.front();
+    result = ToolWaitBackground(supervisor, pid);
+    CHECK(result.starts_with("[process still running — current output]"));
+    CHECK(result.find("ready") != std::string::npos);
+    CHECK(supervisor.PendingCount() == 1);
+    result = ToolWaitBackground(supervisor, pid);
+    CHECK(result.starts_with("[process still running — new output]"));
+    CHECK(result.find("progress") != std::string::npos);
+    result = ToolWaitBackground(supervisor, pid);
+    CHECK(result.find("done") != std::string::npos);
+    if (result.find("[exit code 0]") == std::string::npos) {
+      result = ToolWaitBackground(supervisor, pid);
+    }
+    CHECK(result.find("[exit code 0]") != std::string::npos);
+  }
+
+  result = ToolRunPython(
+      supervisor, "import time\nprint('Password:', flush=True)\ntime.sleep(4)",
+      json::array(), 1);
+  CHECK(result.starts_with("[backgrounded]"));
+  pending = supervisor.PendingPids();
+  CHECK(pending.size() == 1);
+  if (!pending.empty()) {
+    int64_t pid = pending.front();
+    auto started = std::chrono::steady_clock::now();
+    result = ToolWaitBackground(supervisor, pid);
+    CHECK(result.find("Password:") != std::string::npos);
+    CHECK(ElapsedMs(started) < 500);
   }
 
   result = ToolRunPython(supervisor, "import definitely_missing_uagent_package",

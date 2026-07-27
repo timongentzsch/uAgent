@@ -142,8 +142,8 @@ inline std::vector<Tool> BuiltinTools(
       MakeTool("run",
                "Run a command (bash by default). Slow jobs return an id for "
                "wait_background. detach=true persists a server and log across "
-               "sessions "
-               "for terminal_output; timeout=0 waits indefinitely.",
+               "sessions for terminal_output. Input is disabled; use "
+               "noninteractive flags such as sudo -n.",
                schema(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"shell executable (default bash)"},
@@ -194,7 +194,9 @@ inline std::vector<Tool> BuiltinTools(
   Tool& wait = AddTool(
       tools,
       MakeTool(
-          "wait_background", "Wait for a live background job from any tool.",
+          "wait_background",
+          "Wait for a background job. Current output returns immediately; "
+          "later calls return on new output or exit.",
           schema(R"json({"type":"object","properties":{
                     "id":{"type":"integer","minimum":1,
                       "description":"job id; process jobs use their OS pid"},
@@ -203,17 +205,15 @@ inline std::vector<Tool> BuiltinTools(
           [&supervisor, side_tasks](const json& a, const ToolContext& context) {
             int64_t id = JsonValue(a, "id", JsonValue(a, "pid", int64_t{0}));
             if (side_tasks && side_tasks->Contains(id)) {
-              return ToolWaitSideTask(*side_tasks, id, context.timeout_s,
-                                      context);
+              return ToolWaitSideTask(*side_tasks, id, context);
             }
-            return ToolWaitBackground(supervisor, id, context.timeout_s,
-                                      context);
+            return ToolWaitBackground(supervisor, id, context);
           }));
   wait.summary = [](const json& a) {
     return "job " +
            std::to_string(JsonValue(a, "id", JsonValue(a, "pid", int64_t{0})));
   };
-  wait.timeout_s = 0;
+  wait.accepts_timeout = false;
   wait.show_spinner = true;
 
   Tool& terminal = AddTool(

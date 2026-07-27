@@ -99,6 +99,8 @@ provisional while required work remains; the runtime waits within the turn
 deadline, injects every result, and resumes the model. Searches and subagents
 join; intentionally long-lived shell/Python jobs do not. A shared job-id
 interface lets `wait_background` join process and in-process side work alike.
+Each process wait reports current output immediately, then returns on new output
+or exit. The turn deadline and global call budget bound silent or noisy jobs.
 
 Contiguous `parallel_safe` calls share a bounded worker group. A stateful call
 is a barrier. Side-request usage merges under a mutex. MCP registry changes are

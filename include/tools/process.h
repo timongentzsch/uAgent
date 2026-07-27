@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -23,11 +24,9 @@
 
 namespace uagent {
 
-// The shell runner writes stdout+stderr to a log file from the start. Commands
-// that finish within a short poll window return output directly; longer ones
-// keep running in a supervised process group and the model checks on them with
-// read_file(log) or wait_background(pid). Memory stays bounded because only
-// the log tail is ever read. Normal shutdown terminates every remaining group.
+// The shell runner writes stdout+stderr to a bounded log. Longer commands keep
+// running in a supervised process group and wait_background reports each log
+// change to the model.
 //
 // Completed jobs are auto-detected at step boundaries: the agent loop checks
 // the ProcessSupervisor before each model call and injects results — no
@@ -38,6 +37,7 @@ struct BgJob {
   std::string log, cmd;
   bool join_before_final = false;
   bool detached = false;
+  std::optional<uintmax_t> observed_log_bytes;
 };
 
 class ProcessSupervisor {

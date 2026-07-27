@@ -173,7 +173,7 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     if (detach) unlink(DetachedRecordPath(pid).c_str());
     return "error: search exceeded its execution deadline";
   }
-  BgJob job{pid, log, cmd, detach ? false : join_before_final, detach};
+  BgJob job{pid, log, cmd, detach ? false : join_before_final, detach, {}};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
     waitpid(pid, &status, 0);

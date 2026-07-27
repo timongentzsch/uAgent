@@ -65,9 +65,12 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                                  {"arguments", task.args}});
   }
   TerminalSpinner spinner(task.tool->show_spinner);  // no-op unless a TTY
-  int64_t timeout =
-      task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
-  timeout = JsonInt(task.args, "timeout", timeout);
+  int64_t timeout = 0;
+  if (task.tool->accepts_timeout) {
+    timeout =
+        task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
+    timeout = JsonInt(task.args, "timeout", timeout);
+  }
   // A tool with a deliberate foreground window (delegation, which must
   // background fast to overlap) caps what the model can ask for; 0 means
   // "turn limit", so it is capped too.

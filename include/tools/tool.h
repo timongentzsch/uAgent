@@ -59,14 +59,15 @@ struct Tool {
   json parameters;        // JSON-schema for the args
   bool mutating = false;  // gated behind user approval
   Run run;
-  Summary summary;                    // args -> one-line display
-  bool parallel_safe = false;         // safe beside another tool call
-  bool show_spinner = false;          // animate while a quiet call blocks
-  Approval needs_approval;            // dynamic policy (e.g. external read)
-  std::string provider;               // owner for live registry refresh
-  json output_schema;                 // optional MCP output contract
-  int64_t timeout_s = -1;             // -1 = global default; 0 = turn limit
-  int64_t max_timeout_s = -1;         // -1 = uncapped; else clamps `timeout`
+  Summary summary;             // args -> one-line display
+  bool parallel_safe = false;  // safe beside another tool call
+  bool show_spinner = false;   // animate while a quiet call blocks
+  Approval needs_approval;     // dynamic policy (e.g. external read)
+  std::string provider;        // owner for live registry refresh
+  json output_schema;          // optional MCP output contract
+  int64_t timeout_s = -1;      // -1 = global default; 0 = turn limit
+  int64_t max_timeout_s = -1;  // -1 = uncapped; else clamps `timeout`
+  bool accepts_timeout = true;
   int64_t result_chars = -1;          // -1 = global result cap
   int64_t max_calls_per_turn = -1;    // -1 = global turn budget
   bool full_terminal_output = false;  // show complete call + result
@@ -99,8 +100,8 @@ inline std::string ToolDescription(const Tool& tool) {
 }
 
 // One execution policy for built-ins, MCP, and future providers. Tool-specific
-// schemas may refine the wording, but every registered tool exposes the same
-// optional foreground timeout without repeating it at each registration site.
+// schemas may refine the wording; tools expose the shared foreground timeout
+// unless they explicitly opt out.
 inline json ToolParameters(const Tool& tool, int64_t default_timeout_s = 30) {
   json parameters = tool.parameters;
   if (!parameters.is_object()) parameters = json::object();
@@ -109,7 +110,7 @@ inline json ToolParameters(const Tool& tool, int64_t default_timeout_s = 30) {
       !parameters["properties"].is_object()) {
     parameters["properties"] = json::object();
   }
-  if (!parameters["properties"].contains("timeout")) {
+  if (tool.accepts_timeout && !parameters["properties"].contains("timeout")) {
     int64_t timeout = tool.timeout_s >= 0 ? tool.timeout_s : default_timeout_s;
     parameters["properties"]["timeout"] = {
         {"type", "integer"},

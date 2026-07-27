@@ -274,12 +274,20 @@ int Main(int argc, char** argv) {
   }
   std::vector<Skill> skills = LoadSkills(CanonicalCwd());
   if (!skills.empty()) {
+    // Descriptions ride every request, so the catalogue has a standing price.
+    // Report it rather than let it accumulate invisibly as skills pile up.
     std::string list;
+    size_t bytes = 0;
     for (const Skill& skill : skills) {
       if (!list.empty()) list += ", ";
       list += skill.name;
+      bytes += skill.name.size() + skill.description.size();
     }
-    printf("%s· skills: %s%s\n", DIM(), TerminalSafe(list).c_str(), RST());
+    std::string summary = std::to_string(skills.size()) + ", ~" +
+                          FmtTokens(static_cast<int64_t>(bytes) / 4) +
+                          " tokens/request — " + list;
+    printf("%s· skills: %s%s\n", DIM(),
+           TerminalFit(TerminalSafe(summary), "· skills: ").c_str(), RST());
   }
   if (project_instructions.truncated) {
     std::cerr << YEL() << "project instructions truncated at "

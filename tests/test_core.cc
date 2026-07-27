@@ -1179,15 +1179,39 @@ void TestSkillDiscovery() {
   // omits it, so a skill can never claim another skill's name.
   if (lint) CHECK(lint->description == "how this repo lints");
 
+  // Skills installed for another agent are already on the machine and use the
+  // same format, so they are found too; ours wins a name collision.
+  write_skill(home / ".claude/skills/vendor-only",
+              "---\ndescription: from claude code\n---\n\nVendor body.\n");
+  write_skill(home / ".codex/skills/release",
+              "---\ndescription: codex's release steps\n---\n\nCodex body.\n");
+  skills = LoadSkills(workspace);
+  CHECK(skills.size() == 3);
+  for (const Skill& s : skills) {
+    // The workspace copy still outranks both the user's and the vendors'.
+    if (s.name == "release")
+      CHECK(s.description == "this repo's release steps");
+  }
+
+  // An explicit path replaces the defaults outright, so a user can narrow the
+  // catalogue to exactly what they want to pay for.
+  setenv("UAGENT_SKILL_PATH", (home / ".claude/skills").c_str(), 1);
+  skills = LoadSkills(workspace);
+  CHECK(skills.size() == 1);
+  CHECK(skills[0].name == "vendor-only");
+  unsetenv("UAGENT_SKILL_PATH");
+
   // Descriptions ride every request, so an over-long one is truncated rather
   // than dropping the skill. The cap bounds the text; the ellipsis marking the
   // cut is allowed on top of it.
   setenv("UAGENT_SKILL_DESC_BYTES", "16", 1);
   skills = LoadSkills(workspace);
+  int64_t marked = 0;
   for (const Skill& s : skills) {
     CHECK(s.description.size() <= 16 + strlen("…"));
-    CHECK(s.description.ends_with("…"));
+    marked += s.description.ends_with("…");
   }
+  CHECK(marked > 0);  // the over-long ones say so; short ones are left alone
   unsetenv("UAGENT_SKILL_DESC_BYTES");
 
   // The tool advertises every skill by name and returns the one asked for.
@@ -1196,7 +1220,7 @@ void TestSkillDiscovery() {
   CHECK(tool.name == "skill");
   CHECK(!tool.mutating);
   json names = tool.parameters["properties"]["name"]["enum"];
-  CHECK(names.size() == 2);
+  CHECK(names.size() == 3);
   CHECK(tool.run({{"name", "lint"}}, {}).find("Run ruff.") !=
         std::string::npos);
   CHECK(tool.run({{"name", "nope"}}, {}).starts_with("error:"));

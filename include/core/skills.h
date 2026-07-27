@@ -58,15 +58,49 @@ inline void ParseSkillFrontMatter(std::istream& input, std::string& name,
   }
 }
 
-// Global skills first, then the workspace's, which shadow a global one of the
-// same name: a project can override a default without editing the user's copy.
+// SKILL.md is an open format that ~30 agents read from their own directory, so
+// a skill installed for any of them is already on the machine and usable here.
+// User-level paths first, then the workspace's, and ours last in each group:
+// later wins, so a project overrides a user skill and µAgent's own overrides a
+// vendor copy of the same name. UAGENT_SKILL_PATH replaces the whole list.
+inline std::vector<std::filesystem::path> SkillSearchPath(
+    const std::filesystem::path& cwd) {
+  namespace fs = std::filesystem;
+  std::vector<fs::path> path;
+  std::string custom = EnvStr("UAGENT_SKILL_PATH");
+  if (!custom.empty()) {
+    for (size_t start = 0; start <= custom.size();) {
+      size_t sep = custom.find(':', start);
+      std::string entry = Trim(custom.substr(
+          start, sep == std::string::npos ? std::string::npos : sep - start));
+      if (!entry.empty()) path.push_back(fs::path(entry));
+      if (sep == std::string::npos) break;
+      start = sep + 1;
+    }
+    return path;
+  }
+  // ".agents" is the vendor-neutral location; the others are where Claude Code
+  // and Codex keep theirs.
+  const char* kVendors[] = {".agents", ".claude", ".codex"};
+  std::string home = UserHome();
+  if (!home.empty()) {
+    for (const char* vendor : kVendors) {
+      path.push_back(fs::path(home) / vendor / "skills");
+    }
+  }
+  path.push_back(fs::path(GlobalBase()) / "skills");
+  for (const char* vendor : kVendors) path.push_back(cwd / vendor / "skills");
+  path.push_back(cwd / ".uagent" / "skills");
+  return path;
+}
+
 inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<Skill> found;
   auto scan = [&](const fs::path& base) {
     std::error_code ec;
     std::vector<fs::path> dirs;
-    for (fs::directory_iterator it(base / "skills", ec), end; it != end && !ec;
+    for (fs::directory_iterator it(base, ec), end; it != end && !ec;
          it.increment(ec)) {
       if (it->is_directory(ec)) dirs.push_back(it->path());
     }
@@ -94,11 +128,14 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       }
     }
   };
-  scan(GlobalBase());
-  std::error_code ec;
-  fs::path scoped = cwd / ".uagent";
-  if (fs::is_directory(scoped, ec) && scoped.string() != GlobalBase()) {
-    scan(scoped);
+  std::vector<fs::path> seen;
+  for (const fs::path& base : SkillSearchPath(cwd)) {
+    // The workspace can be the home directory, and a vendor path can repeat;
+    // scanning one twice would only cost time, but it would also let a skill
+    // shadow itself and read as a precedence bug.
+    if (std::find(seen.begin(), seen.end(), base) != seen.end()) continue;
+    seen.push_back(base);
+    scan(base);
   }
   return found;
 }

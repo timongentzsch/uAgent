@@ -465,9 +465,11 @@ def test_multiline_bracketed_paste(root, home):
             root,
             base_env(home, server.url),
             [(paste, b"third line"), b"\n", b"\x04"],
+            columns=24,
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
+        assert_true(b"/4.1K (" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
     finally:

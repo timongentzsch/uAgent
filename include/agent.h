@@ -615,6 +615,12 @@ class Agent {
         }
         bool repeated = false;
         for (const ToolCall& call : calls) {
+          // Identical waits can each deliver new process output.
+          if (call.name == "wait_background") {
+            repeated_calls = 0;
+            last_call.clear();
+            continue;
+          }
           std::string signature = call.name + "\n" + call.args;
           repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
           last_call = std::move(signature);

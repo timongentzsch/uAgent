@@ -30,8 +30,7 @@ inline std::string McpImageResult(const json& content) {
   std::string mime = JsonValue(content, "mimeType", "image/png");
   std::string extension = ImageExtension(mime);
   if (extension.empty()) return "error: unsupported MCP image type " + mime;
-  int64_t limit_mb =
-      std::max(int64_t{1}, EnvLong("UAGENT_TERMINAL_IMAGE_MB", 10));
+  int64_t limit_mb = TerminalImageLimitMb();
   std::string bytes;
   if (!Base64Decode(content["data"].get_ref<const std::string&>(), bytes,
                     static_cast<size_t>(limit_mb) * 1024 * 1024)) {
@@ -104,7 +103,7 @@ inline std::string McpResultText(const McpServer& s, const json& resp) {
 
 // cap without splitting a UTF-8 codepoint
 inline std::string McpCapDesc(std::string d) {
-  int64_t cap = EnvLong("UAGENT_MCP_DESC_CHARS", 400);
+  int64_t cap = McpDescriptionChars();
   return cap > 0 ? Utf8Trunc(std::move(d), static_cast<size_t>(cap)) : d;
 }
 

@@ -75,6 +75,103 @@ inline int64_t SubagentMaxToolCalls() {
 inline int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", 16000); }
 inline bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
 
+// Bounded tunables. Every UAGENT_* limit the agent honours is declared here
+// with its default and its clamp, so the set can be read — and compared with
+// docs/OPERATIONS.md — without hunting through the modules that apply them.
+inline int64_t ReadFileLines() {
+  return EnvLong("UAGENT_READ_FILE_LINES", 200);
+}
+inline int64_t ReadFileMaxLines() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_READ_FILE_MAX_LINES", 10000));
+}
+inline int64_t ReadFileBytes() {
+  return std::max(int64_t{1024},
+                  EnvLong("UAGENT_READ_FILE_BYTES", 4 * 1024 * 1024));
+}
+// Exact totals mean scanning the tail of the file; off by default.
+inline bool ReadFileCountsTotal() {
+  return EnvLong("UAGENT_READ_FILE_COUNT_TOTAL", 0) != 0;
+}
+inline int64_t EditFileBytes() {
+  return EnvLong("UAGENT_EDIT_FILE_BYTES", 10 * 1024 * 1024);
+}
+inline int64_t ListDirEntries() {
+  return EnvLong("UAGENT_LIST_DIR_ENTRIES", 1000);
+}
+inline int64_t ListDirScanEntries() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_LIST_DIR_SCAN_ENTRIES", 100000));
+}
+inline int64_t MemoryBytes() {
+  return std::max(int64_t{256}, EnvLong("UAGENT_MEMORY_BYTES", 2048));
+}
+inline int64_t MaxMemories() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_MEMORY_FILES", 32));
+}
+inline int64_t SkillBodyBytes() {
+  return std::max(int64_t{1024}, EnvLong("UAGENT_SKILL_BYTES", 16 * 1024));
+}
+// Descriptions are sent with every request, so they are bounded far more
+// tightly than bodies, which are sent only when a skill is actually used.
+inline int64_t SkillDescriptionBytes() {
+  return std::max(int64_t{16}, EnvLong("UAGENT_SKILL_DESC_BYTES", 512));
+}
+inline int64_t MaxSkills() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_SKILLS", 64));
+}
+inline int64_t GrepResults() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_GREP_RESULTS", 200));
+}
+inline int64_t GrepBytes() {
+  return std::max(int64_t{1024}, EnvLong("UAGENT_GREP_BYTES", ToolResultCap()));
+}
+inline int64_t BashPollSeconds() { return EnvLong("UAGENT_BASH_POLL", 3); }
+inline int64_t BashLogBytes() {
+  return std::max(int64_t{1024},
+                  EnvLong("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024));
+}
+inline int64_t MaxBackgroundJobs() {
+  return std::clamp(EnvLong("UAGENT_MAX_BACKGROUND_JOBS", 8), int64_t{1},
+                    static_cast<int64_t>(kBgMax));
+}
+inline int64_t CheckpointFileLines() {
+  return EnvLong("UAGENT_CHECKPOINT_FILE_LINES", 120);
+}
+inline int64_t McpConfigBytes() {
+  return std::max(int64_t{1024},
+                  EnvLong("UAGENT_MCP_CONFIG_BYTES", 1024 * 1024));
+}
+inline int64_t McpDescriptionChars() {
+  return EnvLong("UAGENT_MCP_DESC_CHARS", 400);
+}
+inline int64_t AttachmentLimitMb() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_ATTACHMENT_MB", 10));
+}
+// Shared by the attachment path and MCP image results, which previously each
+// carried their own copy of the default.
+inline int64_t TerminalImageLimitMb() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_TERMINAL_IMAGE_MB", 10));
+}
+inline int64_t ImageMaxColumns() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_IMAGE_MAX_COLUMNS", 200));
+}
+// The fallback is the width actually available, so it is passed in.
+inline int64_t ImageColumns(int64_t available) {
+  return EnvLong("UAGENT_IMAGE_COLUMNS", available);
+}
+inline int64_t ContextWindow() { return EnvLong("UAGENT_CONTEXT", 0); }
+// Retention for the pruned artifact trees: days kept, then newest-N kept.
+inline int64_t HistoryDays() { return EnvLong("UAGENT_HISTORY_DAYS", 30); }
+inline int64_t HistoryFiles() { return EnvLong("UAGENT_HISTORY_FILES", 200); }
+inline int64_t DebugDays() { return EnvLong("UAGENT_DEBUG_DAYS", 14); }
+inline int64_t DebugFiles() { return EnvLong("UAGENT_DEBUG_FILES", 50); }
+inline int64_t BgDays() { return EnvLong("UAGENT_BG_DAYS", 7); }
+inline int64_t BgFiles() { return EnvLong("UAGENT_BG_FILES", 200); }
+inline int64_t McpLogDays() { return EnvLong("UAGENT_MCP_LOG_DAYS", 7); }
+inline int64_t McpLogFiles() { return EnvLong("UAGENT_MCP_LOG_FILES", 100); }
+inline int64_t TerminalRecordDays() {
+  return std::max(int64_t{0}, EnvLong("UAGENT_TERMINAL_DAYS", 7));
+}
+
 // Core request, MCP, and persistence settings, parsed once after
 // ~/.uagent/.config is loaded.
 struct RuntimeConfig {

@@ -126,10 +126,8 @@ inline std::string DetachedRecordPath(pid_t pid) {
 inline std::vector<json> DetachedRecords() {
   namespace fs = std::filesystem;
   std::vector<json> records;
-  auto cutoff =
-      fs::file_time_type::clock::now() -
-      std::chrono::hours(
-          24 * std::max(int64_t{0}, EnvLong("UAGENT_TERMINAL_DAYS", 7)));
+  auto cutoff = fs::file_time_type::clock::now() -
+                std::chrono::hours(24 * TerminalRecordDays());
   std::error_code ec;
   for (fs::directory_iterator it(UagentDir("terminals"), ec), end;
        !ec && it != end; it.increment(ec)) {

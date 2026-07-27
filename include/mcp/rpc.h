@@ -13,12 +13,8 @@
 #include <string>
 #include <utility>
 
-#include "include/core/debug.h"
-#include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
-#include "include/core/strings.h"
-#include "include/core/term.h"
 #include "include/mcp/server.h"
 
 namespace uagent {

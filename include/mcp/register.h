@@ -11,14 +11,10 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
-#include "include/core/strings.h"
-#include "include/core/term.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
-#include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
 #include "include/tools/tool.h"

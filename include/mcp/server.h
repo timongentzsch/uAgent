@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -218,7 +217,7 @@ inline void McpError(const std::string& name, const std::string& msg) {
 }
 
 inline std::string McpLogPath(const std::string& name) {
-  return UagentDir("mcp") + "/" + SafeFileComponent(name) + "-" +
+  return UagentDir(kMcpDir) + "/" + SafeFileComponent(name) + "-" +
          std::to_string(getpid()) + ".log";
 }
 

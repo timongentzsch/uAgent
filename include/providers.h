@@ -90,7 +90,7 @@ inline bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
 }
 
 inline std::string ModelPreferencePath() {
-  return UagentDir("config") + "/model-preference.json";
+  return UagentDir(kConfigDir) + "/model-preference.json";
 }
 
 // A selection has to survive a round trip through the file and a header value.

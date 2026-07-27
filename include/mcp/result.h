@@ -57,7 +57,7 @@ inline std::string McpImageResult(const json& content) {
 }
 
 // tools/call response -> bounded model-readable text. Binary images are saved
-// and rendered locally; their base64 never enters model history.
+// and queued separately; their base64 never enters the tool result history.
 inline std::string McpResultText(const McpServer& s, const json& resp) {
   if (!resp.contains("result")) {
     std::string msg = "unknown error";

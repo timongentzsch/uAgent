@@ -153,6 +153,8 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
   model-readable errors.
 - Unsupported request features degrade once: parallel hint, usage streaming,
   then native tools.
+- Image-input rejection removes only image parts, retains paths and documents,
+  and is retried when the session resets or the route changes.
 - MCP failure is isolated to one server; a failed list refresh retains the
   last usable registry.
 - Chrome session switching restarts only its MCP transport and refreshes that

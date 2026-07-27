@@ -57,8 +57,7 @@ uagent --yolo
 | `run_python` | Run isolated Python with optional uv packages |
 | `show_image`, `attach` | View native terminal images or add files to context |
 | `web_search` | Search through an OpenRouter side request |
-| `chrome-devtools_*`, `chrome_session` | Automate isolated or signed-in Chrome |
-| | Images an MCP server returns are attached for the model, not printed |
+| `chrome-devtools_*`, `chrome_session` | Automate Chrome; returned images attach to the model |
 | `task` | Delegate to a depth-bounded subagent |
 | `memory` | Keep a lesson for later sessions, per project or global |
 | `skill` | Open a stored procedure from `~/.uagent/skills` or the project |
@@ -98,10 +97,11 @@ with `--debug[=PATH]` and may contain private source and reasoning.
 ## Skills
 
 A skill is a directory under `<base>/skills` holding a `SKILL.md`: YAML front
-matter with `name` and `description`, then the procedure. Only the front matter
-is read at startup — it becomes one line in the `skill` tool's schema — and the
-body reaches the model when it opens that skill. Owning many skills therefore
-costs a line of schema each, not a document each.
+matter with a `description` and usually a `name`, then the procedure. The
+directory name is authoritative. Only the front matter is read at startup — it
+becomes one line in the `skill` tool's schema — and the body reaches the model
+when it opens that skill. Owning many skills therefore costs a line of schema
+each, not a document each.
 
 `SKILL.md` is an open format that around thirty agents read, so a skill
 installed for any of them already works here. Directories are searched in
@@ -116,6 +116,8 @@ A workspace skill therefore overrides a user one, and µAgent's own overrides a
 vendor copy of the same name. `UAGENT_SKILL_PATH` replaces the list outright
 with a colon-separated one. Startup reports how many were found and what their
 descriptions cost per request, since that part of a skill is always sent.
+If the configured count limit is reached, higher-precedence entries displace
+lower-precedence ones.
 
 `SKILL.md` may reference sibling files; the tool result names the skill's
 directory so relative paths resolve. Skills add no privilege of their own — a

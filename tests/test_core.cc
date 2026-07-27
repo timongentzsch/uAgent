@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent.h"
@@ -326,6 +327,32 @@ void TestAttachmentEncoding() {
   error.clear();
   CHECK(Base64File(attachment, 0, error).empty());
   CHECK(!error.empty());
+
+  fs::path image_path = root / "tiny.png";
+  CHECK(ToolWriteFile(image_path.string(), "png").starts_with("wrote "));
+  Attachment image_attachment;
+  error.clear();
+  CHECK(InspectAttachment(image_path.string(), image_attachment, error));
+  CHECK(ImageInputError(image_attachment).empty());
+  g_image_input = false;
+  CHECK(ImageInputError(image_attachment).find(image_path.string()) !=
+        std::string::npos);
+  CHECK(ImageInputError(attachment).empty());
+  g_image_input = true;
+
+  error.clear();
+  json content =
+      AttachmentContent("inspect", {image_attachment, attachment}, error);
+  CHECK(error.empty());
+  CHECK(content[0]["text"].get<std::string>().find(image_path.string()) !=
+        std::string::npos);
+  json messages =
+      json::array({{{"role", "user"}, {"content", std::move(content)}}});
+  CHECK(StripImageContentParts(messages) == 1);
+  CHECK(messages[0]["content"].size() == 2);
+  CHECK(messages[0]["content"][0]["text"].get<std::string>().find(
+            "1 image withheld") != std::string::npos);
+  CHECK(messages[0]["content"][1].value("type", "") == "file");
 
   setenv("UAGENT_IMAGE_PROTOCOL", "iterm", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kIterm);
@@ -905,6 +932,12 @@ void TestWorkspaceScopedSession() {
   std::vector<Tool> tools;
   Agent agent(api, tools, processes, side_tasks, usage,
               [](const Tool&, const json&) { return false; });
+  g_image_input = false;
+  agent.RouteChanged();
+  CHECK(g_image_input.load());
+  g_image_input = false;
+  agent.Reset();
+  CHECK(g_image_input.load());
   std::string session_id = agent.SessionId();
   std::string error;
   CHECK(agent.Save(session.string(), error));
@@ -1189,8 +1222,9 @@ void TestSkillDiscovery() {
   CHECK(skills.size() == 3);
   for (const Skill& s : skills) {
     // The workspace copy still outranks both the user's and the vendors'.
-    if (s.name == "release")
+    if (s.name == "release") {
       CHECK(s.description == "this repo's release steps");
+    }
   }
 
   // An explicit path replaces the defaults outright, so a user can narrow the
@@ -1200,6 +1234,15 @@ void TestSkillDiscovery() {
   CHECK(skills.size() == 1);
   CHECK(skills[0].name == "vendor-only");
   unsetenv("UAGENT_SKILL_PATH");
+
+  // The cap keeps the highest-precedence entries rather than filling up on
+  // user/vendor skills before the workspace is scanned.
+  setenv("UAGENT_SKILLS", "1", 1);
+  skills = LoadSkills(workspace);
+  CHECK(skills.size() == 1);
+  CHECK(skills[0].name == "release");
+  CHECK(skills[0].dir == (workspace / ".uagent/skills/release").string());
+  unsetenv("UAGENT_SKILLS");
 
   // Descriptions ride every request, so an over-long one is truncated rather
   // than dropping the skill. The cap bounds the text; the ellipsis marking the

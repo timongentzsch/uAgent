@@ -25,12 +25,10 @@ namespace uagent {
 
 inline std::string ToolReadFile(const std::string& path, int64_t offset,
                                 int64_t limit) {
-  if (limit == 0) limit = EnvLong("UAGENT_READ_FILE_LINES", 200);  // 0 = unset
-  int64_t max_lines =
-      std::max(int64_t{1}, EnvLong("UAGENT_READ_FILE_MAX_LINES", 10000));
+  if (limit == 0) limit = ReadFileLines();  // 0 = unset
+  int64_t max_lines = ReadFileMaxLines();
   if (limit <= 0 || limit > max_lines) limit = max_lines;
-  int64_t max_bytes = std::max(
-      int64_t{1024}, EnvLong("UAGENT_READ_FILE_BYTES", 4 * 1024 * 1024));
+  int64_t max_bytes = ReadFileBytes();
   if (offset < 1) offset = 1;
   std::ifstream f(path);
   if (!f) return "error: cannot open " + path;
@@ -54,7 +52,7 @@ inline std::string ToolReadFile(const std::string& path, int64_t offset,
   }
   bool more = output_limited ||
               (shown >= limit && f.peek() != std::char_traits<char>::eof());
-  if (more && EnvLong("UAGENT_READ_FILE_COUNT_TOTAL", 0) != 0) {
+  if (more && ReadFileCountsTotal()) {
     // Optional compatibility mode: exact totals require scanning the tail.
     char blk[1 << 16];
     bool ended_nl = true;
@@ -74,7 +72,7 @@ inline std::string ToolReadFile(const std::string& path, int64_t offset,
                        std::to_string(last);
   if (output_limited) {
     header += "; output byte limit reached; more available";
-  } else if (more && EnvLong("UAGENT_READ_FILE_COUNT_TOTAL", 0) == 0) {
+  } else if (more && !ReadFileCountsTotal()) {
     header += "; more available";
   } else {
     header += " of " + std::to_string(total);
@@ -151,7 +149,7 @@ inline std::string ToolEditFile(const std::string& path,
   if (!f) return "error: cannot open " + path;
   std::error_code size_ec;
   auto bytes = std::filesystem::file_size(path, size_ec);
-  int64_t max_bytes = EnvLong("UAGENT_EDIT_FILE_BYTES", 10 * 1024 * 1024);
+  int64_t max_bytes = EditFileBytes();
   if (!size_ec && max_bytes > 0 && bytes > static_cast<uintmax_t>(max_bytes)) {
     return "error: " + path + " is too large to edit atomically (" +
            std::to_string(bytes) + " bytes; limit " +
@@ -195,9 +193,8 @@ inline std::string ToolListDir(const std::string& path, int64_t offset = 0,
                                int64_t limit = 0) {
   std::string p = path.empty() ? "." : path;
   if (offset < 0) offset = 0;
-  if (limit <= 0) limit = EnvLong("UAGENT_LIST_DIR_ENTRIES", 1000);
-  int64_t scan_cap =
-      std::max(int64_t{1}, EnvLong("UAGENT_LIST_DIR_SCAN_ENTRIES", 100000));
+  if (limit <= 0) limit = ListDirEntries();
+  int64_t scan_cap = ListDirScanEntries();
   std::error_code ec;
   std::vector<std::string> names;
   for (auto& e : std::filesystem::directory_iterator(p, ec)) {
@@ -238,8 +235,7 @@ inline std::string ToolMemory(const std::string& name, const std::string& scope,
   if (scope != "project" && scope != "global") {
     return "error: scope must be \"project\" or \"global\"";
   }
-  int64_t max_bytes =
-      std::max(int64_t{256}, EnvLong("UAGENT_MEMORY_BYTES", 2048));
+  int64_t max_bytes = MemoryBytes();
   if (static_cast<int64_t>(content.size()) > max_bytes) {
     return "error: a memory is limited to " + std::to_string(max_bytes) +
            " bytes; keep it to the durable lesson";
@@ -256,7 +252,7 @@ inline std::string ToolMemory(const std::string& name, const std::string& scope,
   if (Trim(content).empty()) {
     return fs::remove(file, ec) ? "forgot " + file : "error: no such memory";
   }
-  int64_t max_files = std::max(int64_t{1}, EnvLong("UAGENT_MEMORY_FILES", 32));
+  int64_t max_files = MaxMemories();
   if (!fs::exists(file, ec)) {
     int64_t count = 0;
     for (fs::directory_iterator it(dir, ec), end; it != end && !ec;

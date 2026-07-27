@@ -208,7 +208,7 @@ inline ProviderSetup ConfigureProvider(Api& api) {
   api.api_key = EnvStr("UAGENT_API_KEY", "sk-noop");
   api.model = EnvStr("UAGENT_MODEL");
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
-  api.ctx_window = EnvLong("UAGENT_CONTEXT", 0);
+  api.ctx_window = ContextWindow();
 
   ProviderSetup setup{LoadModelRoutes(), {}};
   if (const ModelRoute* route = FindModelRoute(setup.routes, api.model)) {

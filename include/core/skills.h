@@ -27,20 +27,6 @@ struct Skill {
   std::string path;         // the SKILL.md itself
 };
 
-inline int64_t SkillBodyBytes() {
-  return std::max(int64_t{1024}, EnvLong("UAGENT_SKILL_BYTES", 16 * 1024));
-}
-
-// Descriptions are sent with every request, so they are bounded far more
-// tightly than bodies, which are sent only when a skill is actually used.
-inline int64_t SkillDescriptionBytes() {
-  return std::max(int64_t{16}, EnvLong("UAGENT_SKILL_DESC_BYTES", 512));
-}
-
-inline int64_t MaxSkills() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_SKILLS", 64));
-}
-
 // `key: value` pairs between the opening and closing `---`. Enough YAML for
 // the two keys a skill declares; anything else in the block is ignored.
 inline void ParseSkillFrontMatter(std::istream& input, std::string& name,

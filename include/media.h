@@ -48,10 +48,6 @@ inline std::string ImageExtension(const std::string& mime) {
   return "";
 }
 
-inline int64_t AttachmentLimitMb() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_ATTACHMENT_MB", 10));
-}
-
 inline std::string ImageDetail() {
   std::string detail = EnvStr("UAGENT_IMAGE_DETAIL");
   return detail == "low" || detail == "high" || detail == "original" ||
@@ -413,10 +409,8 @@ inline std::string ToolShowImage(const std::string& path, int64_t columns = 0) {
   if (!attachment.image) return "error: not an image: " + path;
   if (attachment.bytes == 0) return "error: image is empty: " + path;
   int64_t available = std::max(int64_t{1}, TerminalColumns() - 1);
-  int64_t max_columns =
-      std::min(available,
-               std::max(int64_t{1}, EnvLong("UAGENT_IMAGE_MAX_COLUMNS", 200)));
-  if (columns <= 0) columns = EnvLong("UAGENT_IMAGE_COLUMNS", available);
+  int64_t max_columns = std::min(available, ImageMaxColumns());
+  if (columns <= 0) columns = ImageColumns(available);
   columns = std::clamp(columns, int64_t{1}, max_columns);
   TerminalImageProtocol protocol = DetectTerminalImageProtocol();
   if (protocol == TerminalImageProtocol::kNone) {
@@ -434,8 +428,7 @@ inline std::string ToolShowImage(const std::string& path, int64_t columns = 0) {
     }
     return "displayed " + attachment.path + " inline via kitty";
   }
-  int64_t limit_mb =
-      std::max(int64_t{1}, EnvLong("UAGENT_TERMINAL_IMAGE_MB", 10));
+  int64_t limit_mb = TerminalImageLimitMb();
   uintmax_t limit = static_cast<uintmax_t>(limit_mb) * 1024 * 1024;
   std::string data = Base64File(attachment, limit, error);
   if (!error.empty()) return "error: " + error;

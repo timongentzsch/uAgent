@@ -216,14 +216,10 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
 }
 
 inline void MaintainArtifacts() {
-  PruneArtifactTree(UagentDir("history"), EnvLong("UAGENT_HISTORY_DAYS", 30),
-                    EnvLong("UAGENT_HISTORY_FILES", 200));
-  PruneArtifactTree(UagentDir("sessions"), EnvLong("UAGENT_DEBUG_DAYS", 14),
-                    EnvLong("UAGENT_DEBUG_FILES", 50));
-  PruneArtifactTree(UagentDir("bg"), EnvLong("UAGENT_BG_DAYS", 7),
-                    EnvLong("UAGENT_BG_FILES", 200));
-  PruneArtifactTree(UagentDir("mcp"), EnvLong("UAGENT_MCP_LOG_DAYS", 7),
-                    EnvLong("UAGENT_MCP_LOG_FILES", 100));
+  PruneArtifactTree(UagentDir("history"), HistoryDays(), HistoryFiles());
+  PruneArtifactTree(UagentDir("sessions"), DebugDays(), DebugFiles());
+  PruneArtifactTree(UagentDir("bg"), BgDays(), BgFiles());
+  PruneArtifactTree(UagentDir("mcp"), McpLogDays(), McpLogFiles());
 }
 
 inline std::string SafeFileComponent(std::string value) {

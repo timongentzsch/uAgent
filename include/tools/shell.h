@@ -40,15 +40,14 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return "error: shell must be a non-empty executable name or path";
   }
-  int64_t max_jobs = std::clamp(EnvLong("UAGENT_MAX_BACKGROUND_JOBS", 8),
-                                int64_t{1}, static_cast<int64_t>(kBgMax));
+  int64_t max_jobs = MaxBackgroundJobs();
   if (static_cast<int64_t>(supervisor.PendingCount()) >= max_jobs) {
     return "error: background job limit reached (" + std::to_string(max_jobs) +
            ")";
   }
   int64_t window =
       detach ? 0
-             : (window_s < 0 ? EnvLong("UAGENT_BASH_POLL", 3)
+             : (window_s < 0 ? BashPollSeconds()
                              : (window_s == 0 ? (int64_t{1} << 30) : window_s));
   if (!detach) window = context.RemainingSeconds(window);
   const char* log_kind = detach ? "terminals" : "bg";
@@ -60,8 +59,7 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
   std::string log = temp.data();
   if (lfd < 0) return "error: cannot create log file " + log;
   fchmod(lfd, 0600);
-  int64_t log_bytes = std::max(
-      int64_t{1024}, EnvLong("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024));
+  int64_t log_bytes = BashLogBytes();
   // Foreground commands may be stopped at the cap. Detached servers instead
   // stream through this binary's tiny rotating log pump and keep running.
   std::string bounded_cmd =
@@ -266,10 +264,8 @@ inline std::string ToolGrep(ProcessSupervisor& supervisor,
                      !std::filesystem::is_directory(status))) {
     return "error: search path is not a readable file or directory: " + target;
   }
-  int64_t max_results =
-      std::max(int64_t{1}, EnvLong("UAGENT_GREP_RESULTS", 200));
-  int64_t bytes =
-      std::max(int64_t{1024}, EnvLong("UAGENT_GREP_BYTES", ToolResultCap()));
+  int64_t max_results = GrepResults();
+  int64_t bytes = GrepBytes();
   if (ToolResultCap() > 0) bytes = std::min(bytes, ToolResultCap());
   bool ripgrep = ExecutableOnPath("rg");
   std::string command;

@@ -1205,9 +1205,8 @@ class Agent {
     json skipped = json::array();
     size_t reread = 0;
     for (const auto& path : paths) {
-      std::string content =
-          CapResult(ToolReadFile(path.string(), int64_t{1},
-                                 EnvLong("UAGENT_CHECKPOINT_FILE_LINES", 120)));
+      std::string content = CapResult(
+          ToolReadFile(path.string(), int64_t{1}, CheckpointFileLines()));
       if (content.starts_with("error:")) {
         skipped.push_back(
             {{"path", path.string()}, {"reason", OneLine(content, 160)}});

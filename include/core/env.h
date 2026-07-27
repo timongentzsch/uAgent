@@ -143,6 +143,9 @@ inline int64_t McpConfigBytes() {
 inline int64_t McpDescriptionChars() {
   return EnvLong("UAGENT_MCP_DESC_CHARS", 400);
 }
+inline int64_t MaxPendingAttachments() {
+  return std::max(int64_t{1}, EnvLong("UAGENT_PENDING_ATTACHMENTS", 8));
+}
 inline int64_t AttachmentLimitMb() {
   return std::max(int64_t{1}, EnvLong("UAGENT_ATTACHMENT_MB", 10));
 }

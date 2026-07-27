@@ -58,6 +58,7 @@ uagent --yolo
 | `show_image`, `attach` | View native terminal images or add files to context |
 | `web_search` | Search through an OpenRouter side request |
 | `chrome-devtools_*`, `chrome_session` | Automate isolated or signed-in Chrome |
+| | Images an MCP server returns are attached for the model, not printed |
 | `task` | Delegate to a depth-bounded subagent |
 | `memory` | Keep a lesson for later sessions, per project or global |
 | `skill` | Open a stored procedure from `~/.uagent/skills` or the project |

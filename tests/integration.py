@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import fcntl
 import json
 import os
@@ -17,6 +18,8 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Enough of a PNG for the attachment inspector to accept it.
+SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 BINARY = pathlib.Path(sys.argv[1]).resolve()
 
 
@@ -750,6 +753,69 @@ def test_skill_tool_offers_and_opens(root, home):
         result = run(workspace, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "skill-ok", result.stdout)
+    finally:
+        server.close()
+
+
+def test_mcp_image_reaches_the_model(root, home):
+    """An MCP screenshot has to end up in the model's context, not just on disk.
+
+    A tool result is text-only, so the image travels as an attachment on the
+    next request instead.
+    """
+    workspace = root / "mcp-image"
+    workspace.mkdir()
+    png = base64.b64encode(SMALL_PNG).decode()
+    fake = workspace / "fake_mcp.py"
+    fake.write_text(
+        "import json, sys\n"
+        "for line in sys.stdin:\n"
+        "    message = json.loads(line)\n"
+        "    method = message.get('method')\n"
+        "    if 'id' not in message:\n"
+        "        continue\n"
+        "    if method == 'initialize':\n"
+        "        result = {'protocolVersion': '2025-11-25', "
+        "'capabilities': {'tools': {}}, 'serverInfo': {'name': 'fake', 'version': '1'}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'shot', 'description': 'screenshot', "
+        "'inputSchema': {'type': 'object', 'properties': {}}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        result = {'content': [{'type': 'image', 'data': PNG, "
+        "'mimeType': 'image/png'}]}\n"
+        "    else:\n"
+        "        result = {}\n"
+        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
+        "flush=True)\n".replace("PNG", repr(png)),
+        encoding="utf-8",
+    )
+    (workspace / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"cam": {"command": sys.executable, "args": [str(fake)]}}}),
+        encoding="utf-8",
+    )
+
+    def verify(_, body):
+        tool_text = "".join(
+            str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
+        )
+        parts = [
+            part
+            for m in body["messages"]
+            if isinstance(m.get("content"), list)
+            for part in m["content"]
+        ]
+        got_image = any(p.get("type") == "image_url" for p in parts)
+        saved = "mcp image saved" in tool_text and "attached" in tool_text
+        # the terminal display used to happen on every call and is now gone
+        quiet = "displayed inline" not in tool_text
+        return event({"content": "image-ok" if (got_image and saved and quiet) else "image-bad"})
+
+    server = Server([tool_call("cam_shot", {}), verify])
+    try:
+        env = base_env(home, server.url)
+        result = run(workspace, env, "--trust-project-config", "--yolo", "-p", "screenshot")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "image-ok", result.stdout + result.stderr)
     finally:
         server.close()
 
@@ -2300,6 +2366,7 @@ def main():
             test_project_agent_config_trust,
             test_memory_reaches_context_by_scope,
             test_skill_tool_offers_and_opens,
+            test_mcp_image_reaches_the_model,
             test_invalid_mcp_config_not_executed,
             test_mcp_tool_round_trip,
             test_mcp_stdio_contract,

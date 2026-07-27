@@ -20,6 +20,7 @@ These are local safety bounds, not provider service objectives.
 | memory entry / memories per scope | 2 KiB / 32 |
 | skill body / description / count | 16 KiB / 512 B / 64 |
 | attachment / terminal image | 10 / 10 MiB |
+| attachments pending per step | 8 |
 | tool result | 8,000 characters |
 | grep | 200 matches, 8,000 characters |
 | background jobs / safe tool workers | 8 / 4 |

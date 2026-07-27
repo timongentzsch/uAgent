@@ -119,6 +119,12 @@ class AttachmentQueue {
     std::string result = "attached " + attachment.name + " (" +
                          attachment.mime + "); readable in your next step";
     std::lock_guard<std::mutex> lock(mutex_);
+    // MCP servers queue images without a model call to budget against, so the
+    // ceiling lives here rather than only on the attach tool.
+    if (static_cast<int64_t>(pending_.size()) >= MaxPendingAttachments()) {
+      return "error: too many attachments pending for one step (" +
+             std::to_string(MaxPendingAttachments()) + ")";
+    }
     pending_.push_back(std::move(attachment));
     return result;
   }

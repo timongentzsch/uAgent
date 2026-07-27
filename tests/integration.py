@@ -156,14 +156,15 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
                 if marker_at >= 0:
                     after_marker = marker_at + len(marker)
                     if following is None or following in output[after_marker:]:
-                        return
+                        return True
             if select.select([master], [], [], 0.1)[0]:
                 try:
                     output.extend(os.read(master, 65536))
                 except OSError:
-                    return
+                    return False
             elif process.poll() is not None:
-                return
+                return False
+        return marker is None
 
     def read_prompt(start=0):
         read_until(b"\x1b[?2004h", start, following=b">")
@@ -175,10 +176,16 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
     else:
         payloads = [payload] if isinstance(payload, bytes) else payload
         for index, item in enumerate(payloads):
+            marker = None
+            if isinstance(item, tuple):
+                item, marker = item
             start = len(output)
             os.write(master, item)
             if index + 1 < len(payloads):
-                read_prompt(start)
+                if marker is not None and not read_until(marker, start):
+                    break
+                if marker is None:
+                    read_prompt(start)
     read_until()
     if process.poll() is None:
         process.kill()
@@ -453,11 +460,11 @@ def test_multiline_bracketed_paste(root, home):
 
     server = Server([verify])
     try:
-        paste = b"\x1b[200~first line\nsecond line\nthird line\x1b[201~\n"
+        paste = b"\x1b[200~first line\nsecond line\nthird line\x1b[201~"
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [paste, b"\x04"],
+            [(paste, b"third line"), b"\n", b"\x04"],
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)

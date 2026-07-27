@@ -208,8 +208,7 @@ inline int EscGetc(FILE* file) {
       ReplaceAll(paste, "\r", "\n");
       std::erase(paste, '\0');
       rl_insert_text(paste.c_str());
-      rl_redisplay();
-      return EscGetc(file);  // wait for a real submit after the paste
+      return 0x12;  // Ctrl-R / ed-redisplay; Enter still submits separately.
     }
     for (unsigned char byte : sequence) readline_pending.push(byte);
   }

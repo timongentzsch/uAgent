@@ -43,18 +43,18 @@ inline std::string McpImageResult(const json& content) {
                      std::to_string(sequence++) + extension;
   std::string saved = ToolWritePrivateFile(path, bytes);
   if (saved.starts_with("error:")) return saved;
-  std::string status = "[mcp image saved: " + path;
-  if (g_tty && DetectTerminalImageProtocol() != TerminalImageProtocol::kNone) {
-    std::string displayed = ToolShowImage(path);
-    status +=
-        displayed.starts_with("error:")
-            ? "; display failed: " + displayed.substr(7)
-            : "; displayed inline via " + std::string(TerminalImageProtocolName(
-                                              DetectTerminalImageProtocol()));
-  } else {
-    status += "; use show_image in a supported terminal";
+  // A tool result is text-only, so the image cannot travel back inside it.
+  // Queue it instead: it rides in on the next request and the model can
+  // actually look at it. Printing it to the terminal was never what made it
+  // readable — that only showed it to the human, on every single call.
+  std::string attached = g_attachments.Add(path);
+  if (attached.starts_with("error:")) {
+    return "[mcp image saved: " + path +
+           "; not attached: " + attached.substr(7) + "]";
   }
-  return status + "]";
+  return "[mcp image saved: " + path +
+         "; attached — readable in your next step. Use show_image to put it on "
+         "the user's terminal]";
 }
 
 // tools/call response -> bounded model-readable text. Binary images are saved

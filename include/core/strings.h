@@ -19,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/core/env.h"
 #include "include/core/json.h"
@@ -59,19 +60,28 @@ inline std::string ShellQuote(const std::string& s) {
   return q + "'";
 }
 
+// Entries are returned as written, empties included: PATH reads an empty entry
+// as the working directory, while a search path skips it.
+inline std::vector<std::string> SplitPathList(const std::string& value,
+                                              char separator = ':') {
+  std::vector<std::string> entries;
+  for (size_t begin = 0;;) {
+    size_t end = value.find(separator, begin);
+    entries.push_back(end == std::string::npos
+                          ? value.substr(begin)
+                          : value.substr(begin, end - begin));
+    if (end == std::string::npos) break;
+    begin = end + 1;
+  }
+  return entries;
+}
+
 inline bool ExecutableOnPath(const std::string& name) {
   const char* path_value = getenv("PATH");
   if (!path_value || name.empty()) return false;
-  std::string path = path_value;
-  for (size_t begin = 0;;) {
-    size_t end = path.find(':', begin);
-    std::string directory = end == std::string::npos
-                                ? path.substr(begin)
-                                : path.substr(begin, end - begin);
+  for (std::string directory : SplitPathList(path_value)) {
     if (directory.empty()) directory = ".";
     if (access((directory + "/" + name).c_str(), X_OK) == 0) return true;
-    if (end == std::string::npos) break;
-    begin = end + 1;
   }
   return false;
 }

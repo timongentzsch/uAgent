@@ -245,9 +245,9 @@ inline std::string ToolMemory(const std::string& name, const std::string& scope,
   if (scope == "project") {
     fs::path cwd = fs::current_path(ec);
     if (ec) return "error: cannot resolve the workspace: " + ec.message();
-    base = (cwd / ".uagent").string();
+    base = ProjectBase(cwd).string();
   }
-  std::string dir = MakePrivateDir(base, "memory");
+  std::string dir = MakePrivateDir(base, kMemoryDir);
   std::string file = dir + "/" + SafeFileComponent(name) + ".md";
   if (Trim(content).empty()) {
     return fs::remove(file, ec) ? "forgot " + file : "error: no such memory";

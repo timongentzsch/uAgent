@@ -707,6 +707,8 @@ int Main(int argc, char** argv) {
             std::string error;
             if (!InspectAttachment(command.argument, attachment, error)) {
               printf("%s%s%s\n", RED(), error.c_str(), RST());
+            } else if (!(error = ImageInputError(attachment)).empty()) {
+              printf("%s%s%s\n", RED(), error.c_str(), RST());
             } else {
               attachments.push_back(std::move(attachment));
               printf("%s· attached %s for the next message%s\n", DIM(),

@@ -32,9 +32,9 @@ inline std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {
   return cwd;
 }
 
-// Codex-style startup discovery: one AGENTS override/default per directory,
-// ordered from repository root to cwd. CLAUDE.md is additionally loaded at
-// each level so mixed-tool repositories keep both instruction surfaces.
+// Codex-style startup discovery: one instruction file per directory, ordered
+// from repository root to cwd. CLAUDE.md is the fallback when no AGENTS file
+// exists at that level.
 inline ProjectInstructions LoadProjectInstructions(
     const std::filesystem::path& cwd, size_t max_bytes) {
   namespace fs = std::filesystem;

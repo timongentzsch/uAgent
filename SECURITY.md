@@ -6,12 +6,16 @@ endpoint and every MCP server as trusted infrastructure.
 
 ## Trust boundaries
 
-- Settings come from process `UAGENT_*` variables and
-  `~/.uagent/.config`; process variables win. The file and artifact tree are
-  forced private. Project `.env` files are ignored.
+- Settings come from process `UAGENT_*` variables, a trusted project
+  `.uagent/.config`, and `~/.uagent/.config`, in that order. Config and artifact
+  files are forced private. Project `.env` files are ignored.
 - User `~/.mcp.json` is trusted executable configuration. Project `.mcp.json`
-  requires interactive trust or `--trust-project-config`; semantic edits revoke
-  stored trust.
+  and `.uagent/.config` require interactive trust or
+  `--trust-project-config`; semantic edits revoke stored trust.
+- Project instruction files, memories, and skills enter model context without
+  configuration trust because they grant no capability themselves. Treat an
+  untrusted checkout as prompt input and review requested actions before
+  approving them.
 - The default Chrome integration executes `chrome-devtools-mcp@latest` through
   `npx`, so its code can change without a µAgent update. Disable it with
   `UAGENT_CHROME_DEVTOOLS=0` when reproducible or offline execution matters.

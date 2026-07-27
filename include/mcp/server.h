@@ -293,7 +293,7 @@ inline bool McpSpawn(
   s.out = outp[0];
   s.alive = true;
   for (int i = 0; i < kMcpMax;
-       i++) {  // SIGINT idle-exit TERMs these (see util.h)
+       i++) {  // SIGINT idle-exit TERMs these (see core/signals.h)
     if (g_mcp_pids[i] == 0) {
       g_mcp_pids[i] = pid;
       break;

@@ -62,7 +62,7 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
   }
   // ".agents" is the vendor-neutral location; the others are where Claude Code
   // and Codex keep theirs.
-  const char* kVendors[] = {".agents", ".claude", ".codex"};
+  constexpr const char* kVendors[] = {".agents", ".claude", ".codex"};
   std::string home = UserHome();
   if (!home.empty()) {
     for (const char* vendor : kVendors) {
@@ -103,10 +103,14 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
         return s.name == skill.name;
       });
       if (same != found.end()) {
-        *same = std::move(skill);
-      } else if (static_cast<int64_t>(found.size()) < MaxSkills()) {
-        found.push_back(std::move(skill));
+        found.erase(same);
+      } else if (static_cast<int64_t>(found.size()) >= MaxSkills()) {
+        found.erase(found.begin());
       }
+      // Discovery runs from low to high precedence. Moving every accepted
+      // skill to the end means a full catalogue evicts the oldest, lowest-
+      // precedence entry rather than hiding a workspace skill.
+      found.push_back(std::move(skill));
     }
   };
   std::vector<fs::path> seen;

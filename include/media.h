@@ -115,15 +115,20 @@ inline bool InspectAttachment(std::string path, Attachment& out,
 // catalogue's modality list can be wrong when a route fans out to other models.
 inline std::atomic<bool> g_image_input{true};
 
+inline std::string ImageInputError(const Attachment& attachment) {
+  if (!attachment.image || g_image_input.load()) return "";
+  return "this model rejected image input; the file is on disk at " +
+         attachment.path + " and show_image can put it on the user's terminal";
+}
+
 class AttachmentQueue {
  public:
   std::string Add(const std::string& path) {
     Attachment attachment;
     std::string error;
     if (!InspectAttachment(path, attachment, error)) return "error: " + error;
-    if (attachment.image && !g_image_input.load()) {
-      return "error: this model rejected image input; the file is on disk at " +
-             path + " and show_image can put it on the user's terminal";
+    if (!(error = ImageInputError(attachment)).empty()) {
+      return "error: " + error;
     }
     std::string result = "attached " + attachment.name + " (" +
                          attachment.mime + "); readable in your next step";
@@ -271,7 +276,7 @@ inline json AttachmentContent(const std::string& prompt,
 
   std::string text = prompt + "\n\nAttached:";
   for (const Attachment& attachment : attachments) {
-    text += " " + attachment.name;
+    text += " " + attachment.path;
   }
   json content = json::array({{{"type", "text"}, {"text", text}}});
   for (const Attachment& attachment : attachments) {
@@ -292,6 +297,39 @@ inline json AttachmentContent(const std::string& prompt,
     }
   }
   return content;
+}
+
+// Remove only image parts after an endpoint rejects them. Other attachment
+// types remain available on the retry, and the text part retains every path.
+inline size_t StripImageContentParts(json& messages) {
+  size_t rewritten = 0;
+  for (json& message : messages) {
+    if (!message.contains("content") || !message["content"].is_array()) {
+      continue;
+    }
+    json kept = json::array();
+    size_t dropped = 0;
+    for (json& part : message["content"]) {
+      if (JsonValue(part, "type", "") == "image_url") {
+        ++dropped;
+      } else {
+        kept.push_back(std::move(part));
+      }
+    }
+    if (!dropped) continue;
+    std::string note = "\n[" + std::to_string(dropped) + " image" +
+                       (dropped == 1 ? "" : "s") +
+                       " withheld: this model does not accept image input]";
+    if (!kept.empty() && kept[0].is_object() &&
+        JsonValue(kept[0], "type", "") == "text") {
+      kept[0]["text"] = JsonValue(kept[0], "text", "") + note;
+    } else {
+      kept.insert(kept.begin(), {{"type", "text"}, {"text", note.substr(1)}});
+    }
+    message["content"] = std::move(kept);
+    ++rewritten;
+  }
+  return rewritten;
 }
 
 enum class TerminalImageProtocol { kNone, kIterm, kItty };

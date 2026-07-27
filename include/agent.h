@@ -107,6 +107,7 @@ class Agent {
     last_checkpoint_hint_turn_ = 0;
     urgent_hints_ignored_ = 0;
     last_checkpoint_turn_ = 0;
+    g_image_input = true;
     ++revision_;
   }
 
@@ -138,6 +139,7 @@ class Agent {
   void RouteChanged() {
     ctx_used_ = 0;
     session_id_ = MakeSessionId();
+    g_image_input = true;
     ++revision_;
   }
 
@@ -975,7 +977,7 @@ class Agent {
          lowered.find("support") != std::string::npos ||
          lowered.find("modalit") != std::string::npos)) {
       g_image_input = false;
-      size_t rewritten = StripImageParts();
+      size_t rewritten = StripImageContentParts(messages_);
       DebugLog("feature_degraded", {{"feature", "image_input"},
                                     {"error", r.error},
                                     {"messages_rewritten", rewritten}});
@@ -1013,32 +1015,6 @@ class Agent {
       return true;
     }
     return false;
-  }
-
-  // The failed request already carries the images in a user message. Replace
-  // those parts with the text the model can still act on — the names are what
-  // read_file, show_image and attach all take.
-  size_t StripImageParts() {
-    size_t rewritten = 0;
-    for (json& message : messages_) {
-      if (!message.contains("content") || !message["content"].is_array()) {
-        continue;
-      }
-      std::string kept, dropped;
-      for (const json& part : message["content"]) {
-        if (JsonValue(part, "type", "") == "text") {
-          kept += JsonValue(part, "text", "");
-        } else if (JsonValue(part, "type", "") == "image_url") {
-          dropped += dropped.empty() ? "" : ", ";
-          dropped += "1 image";
-        }
-      }
-      if (dropped.empty()) continue;
-      message["content"] = kept + "\n[" + dropped +
-                           " withheld: this model does not accept image input]";
-      ++rewritten;
-    }
-    return rewritten;
   }
 
   std::string SystemPrompt() const {

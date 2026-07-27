@@ -1477,7 +1477,8 @@ class Agent {
         task.result = "error: " + c.name +
                       " reached its per-turn call limit (" +
                       std::to_string(tool->max_calls_per_turn) +
-                      "); use existing results";
+                      "); answer from the results you have or delegate the "
+                      "rest with task — do not reimplement it with run";
         task.status = "call_limit";
       } else {
         task.label = ToolSummary(*tool, args);

@@ -412,8 +412,11 @@ void TestToolExecutionPolicy() {
   AddTaskLifecycleTools(task_tools, task_processes);
   CHECK(FindTool(task_tools, "get_task_output") != nullptr);
   CHECK(FindTool(task_tools, "wait_tasks") != nullptr);
+  const Tool* get = FindTool(task_tools, "get_task_output");
   const Tool* kill = FindTool(task_tools, "kill_task");
+  CHECK(get && get->summary(json{{"id", 7}}) == "task 7");
   CHECK(kill && kill->mutating);
+  CHECK(kill && kill->summary(json{{"id", 7}}) == "task 7");
 
   std::string launched =
       ToolRunBash(task_processes, "sleep 0.2; printf task-done", 3, false, base,

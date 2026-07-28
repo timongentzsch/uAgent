@@ -334,8 +334,9 @@ inline std::string ToolWaitTasks(ProcessSupervisor& supervisor, const json& ids,
   }
   std::vector<int64_t> pending;
   for (const json& value : ids) {
-    if (!value.is_number_integer())
+    if (!value.is_number_integer()) {
       return "error: every task id must be integer";
+    }
     int64_t id = value.get<int64_t>();
     if (id <= 0 ||
         std::find(pending.begin(), pending.end(), id) != pending.end()) {

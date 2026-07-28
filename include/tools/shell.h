@@ -34,8 +34,9 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
                                bool join_before_final = false,
                                const ToolContext& context = {},
                                bool allow_background = true,
-                               bool detach = false,
-                               std::string shell = "bash") {
+                               bool detach = false, std::string shell = "bash",
+                               bool immediate_background = false,
+                               std::string job_kind = "") {
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return "error: shell must be a non-empty executable name or path";
   }
@@ -45,10 +46,13 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
            ")";
   }
   int64_t window =
-      detach ? 0
-             : (window_s < 0 ? BashPollSeconds()
-                             : (window_s == 0 ? (int64_t{1} << 30) : window_s));
-  if (!detach) window = context.RemainingSeconds(window);
+      (detach || immediate_background)
+          ? 0
+          : (window_s < 0 ? BashPollSeconds()
+                          : (window_s == 0 ? (int64_t{1} << 30) : window_s));
+  if (!detach && !immediate_background) {
+    window = context.RemainingSeconds(window);
+  }
   const char* log_kind = detach ? "terminals" : "bg";
   std::string pattern =
       UagentDir(log_kind) + "/pending-" + std::to_string(getpid()) + "-XXXXXX";
@@ -173,7 +177,8 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     if (detach) unlink(DetachedRecordPath(pid).c_str());
     return "error: search exceeded its execution deadline";
   }
-  BgJob job{pid, log, cmd, detach ? false : join_before_final, detach, {}};
+  BgJob job{pid,    log, cmd,     detach ? false : join_before_final,
+            detach, {},  job_kind};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
     waitpid(pid, &status, 0);
@@ -187,6 +192,11 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
            " — read with terminal_output(pid=" + std::to_string(pid) + ")";
   }
   BgTrackSignal(pid, true);
+  if (job_kind == "task") {
+    return "[backgrounded] task id " + std::to_string(pid) +
+           " — check with get_task_output(id=" + std::to_string(pid) +
+           ") or wait_tasks(ids=[" + std::to_string(pid) + "])";
+  }
   return "[backgrounded] pid " + std::to_string(pid) + ", log: " + log +
          " — peek with read_file, or wait_background(pid=" +
          std::to_string(pid) + ")";

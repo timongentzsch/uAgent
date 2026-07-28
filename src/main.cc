@@ -405,6 +405,7 @@ int Main(int argc, char** argv) {
       trusted_project_config);  // immutable trusted snapshot + user servers
   if (CanDelegate()) {  // subagents delegate too, up to UAGENT_SUBAGENT_DEPTH
     tools.push_back(SubagentTool(api, processes, yolo, debug));
+    AddTaskLifecycleTools(tools, processes);
   }
   if (!skills.empty()) tools.push_back(SkillTool(std::move(skills)));
   Agent agent(

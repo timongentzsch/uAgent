@@ -276,6 +276,145 @@ inline void BgShutdownAll(ProcessSupervisor& supervisor) {
 inline ProcessSupervisor::~ProcessSupervisor() { BgShutdownAll(*this); }
 
 inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
+                                      int64_t pid, const ToolContext& context);
+
+inline bool IsTrackedTask(ProcessSupervisor& supervisor, int64_t id) {
+  return supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
+    return std::any_of(jobs.begin(), jobs.end(), [&](const BgJob& job) {
+      return job.pid == static_cast<pid_t>(id) && job.kind == "task";
+    });
+  });
+}
+
+// Reap one completed task without retaining another copy of its bounded log.
+inline std::optional<std::string> TakeCompletedTask(
+    ProcessSupervisor& supervisor, int64_t id) {
+  pid_t process = static_cast<pid_t>(id);
+  std::optional<std::string> output;
+  supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
+    auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& job) {
+      return job.pid == process && job.kind == "task";
+    });
+    if (it == jobs.end()) return;
+    int status = 0;
+    pid_t result = waitpid(process, &status, WNOHANG);
+    bool finished = result == process || (result < 0 && kill(process, 0) != 0);
+    if (!finished) return;
+    std::string out = ReadLogTail(it->log, ToolResultCap());
+    if (result == process) {
+      out += FmtExit(status, /*show_ok=*/true);
+    } else {
+      out = "[process exited — status unavailable]\n" + out;
+    }
+    unlink(it->log.c_str());
+    unlink((it->log + ".1").c_str());
+    jobs.erase(it);
+    output = std::move(out);
+  });
+  if (output) BgTrackSignal(process, false);
+  return output;
+}
+
+inline std::string ToolGetTaskOutput(ProcessSupervisor& supervisor,
+                                     int64_t id) {
+  if (id <= 0 || !IsTrackedTask(supervisor, id)) {
+    return "error: task id " + std::to_string(id) +
+           " is not a live uagent background task";
+  }
+  ToolContext immediate;
+  immediate.deadline = std::chrono::steady_clock::now();
+  return ToolWaitBackground(supervisor, id, immediate);
+}
+
+inline std::string ToolWaitTasks(ProcessSupervisor& supervisor, const json& ids,
+                                 bool wait_all,
+                                 const ToolContext& context = {}) {
+  if (!ids.is_array() || ids.empty() || ids.size() > 20) {
+    return "error: ids must contain 1-20 task ids";
+  }
+  std::vector<int64_t> pending;
+  for (const json& value : ids) {
+    if (!value.is_number_integer())
+      return "error: every task id must be integer";
+    int64_t id = value.get<int64_t>();
+    if (id <= 0 ||
+        std::find(pending.begin(), pending.end(), id) != pending.end()) {
+      return "error: task ids must be positive and unique";
+    }
+    if (!IsTrackedTask(supervisor, id)) {
+      return "error: task id " + std::to_string(id) +
+             " is not a live uagent background task";
+    }
+    pending.push_back(id);
+  }
+
+  std::string out;
+  while (!AbortRequested() &&
+         std::chrono::steady_clock::now() < context.deadline) {
+    for (auto it = pending.begin(); it != pending.end();) {
+      std::optional<std::string> result = TakeCompletedTask(supervisor, *it);
+      if (!result) {
+        ++it;
+        continue;
+      }
+      out += "[task " + std::to_string(*it) + " completed]\n" + *result + "\n";
+      it = pending.erase(it);
+      if (!wait_all) return out;
+    }
+    if (pending.empty()) return out;
+    usleep(100 * 1000);
+  }
+
+  out += std::string(AbortRequested() ? "[wait cancelled" : "[wait timed out") +
+         " — running task ids:";
+  for (int64_t id : pending) out += " " + std::to_string(id);
+  return out + "]";
+}
+
+inline std::string ToolKillTask(ProcessSupervisor& supervisor, int64_t id) {
+  BgJob job;
+  bool found = supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
+    auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& current) {
+      return current.pid == static_cast<pid_t>(id) && current.kind == "task";
+    });
+    if (it == jobs.end()) return false;
+    job = std::move(*it);
+    jobs.erase(it);
+    return true;
+  });
+  if (id <= 0 || !found) {
+    return "error: task id " + std::to_string(id) +
+           " is not a live uagent background task";
+  }
+
+  int status = 0;
+  pid_t result = waitpid(job.pid, &status, WNOHANG);
+  bool already_completed = result == job.pid;
+  if (result < 0 && kill(job.pid, 0) == 0) result = 0;
+  if (result == 0) {
+    if (kill(-job.pid, SIGTERM) != 0) kill(job.pid, SIGTERM);
+    for (int attempt = 0; attempt < 10; ++attempt) {
+      usleep(50 * 1000);
+      result = waitpid(job.pid, &status, WNOHANG);
+      if (result == job.pid) break;
+    }
+  }
+  if (result == 0) {
+    if (kill(-job.pid, SIGKILL) != 0) kill(job.pid, SIGKILL);
+    waitpid(job.pid, &status, 0);
+  }
+  BgTrackSignal(job.pid, false);
+  std::string output = ReadLogTail(job.log, ToolResultCap());
+  unlink(job.log.c_str());
+  unlink((job.log + ".1").c_str());
+  if (already_completed) {
+    return "[task " + std::to_string(id) + " already completed]\n" + output +
+           FmtExit(status, /*show_ok=*/true);
+  }
+  return "[task " + std::to_string(id) + " cancelled]\n" + output;
+}
+
+inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
                                       int64_t pid,
                                       const ToolContext& context = {}) {
   BgJob registered;

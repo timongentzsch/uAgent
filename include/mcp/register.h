@@ -138,17 +138,9 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
       tools,
       MakeTool(
           "chrome_session",
-          "Start or switch Chrome DevTools; browser tools register after this "
-          "call. If the "
-          "user asks for their existing Chrome, login, or user session, select "
-          "user before "
-          "any browser call and do not retry isolated. User attaches to "
-          "UAGENT_CHROME_BROWSER_URL when configured; otherwise it requires "
-          "chrome://inspect/#remote-debugging. Chrome may show its "
-          "remote-debugging approval "
-          "only when the first browser interaction occurs. "
-          "For screenshots, omit filePath; uagent saves and displays the "
-          "returned image.",
+          "Start or switch the default Chrome MCP. isolated uses a fresh "
+          "profile; user attaches to the configured or Chrome-approved user "
+          "session. Browser tools register after this call.",
           {{"type", "object"},
            {"properties",
             {{"mode",
@@ -174,10 +166,8 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
                             error)) {
               return "error: could not switch Chrome DevTools: " + error;
             }
-            return mode == "user" ? "User Chrome session selected. The "
-                                    "approval prompt appears only "
-                                    "when the next browser tool interacts"
-                                  : "Fresh isolated Chrome session selected";
+            return mode == "user" ? "User Chrome session selected"
+                                  : "Isolated Chrome session selected";
           }));
   tool.mutating = true;
   tool.provider = "builtin:chrome";

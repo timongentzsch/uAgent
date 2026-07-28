@@ -194,7 +194,8 @@ inline void ApplyRoute(Api& api, const ModelRoute& route) {
   api.model = route.model;
   api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
-  api.native_tools = api.include_usage = api.parallel_tools = true;
+  api.native_tools = api.include_usage = api.parallel_tools =
+      api.openrouter_web_search = true;
   ExportRoute(api);
 }
 

@@ -564,6 +564,38 @@ def test_wait_background_events(root, home):
         server.close()
 
 
+def test_streamed_search_citations(root, home):
+    citation = {
+        "type": "url_citation",
+        "url_citation": {"url": "https://example.com/source", "title": "Source"},
+    }
+    server = Server(
+        [
+            {
+                "choices": [
+                    {
+                        "delta": {"content": "grounded", "annotations": [citation]},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 2,
+                    "completion_tokens": 1,
+                    "server_tool_use": {"web_search_requests": 1},
+                },
+            }
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "-p", "probe")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("grounded" in result.stdout, result.stdout)
+        assert_true("Sources:" in result.stdout, result.stdout)
+        assert_true("https://example.com/source" in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
 def test_headless_debug_session_end(root, home):
     trace = root / "headless-debug.jsonl"
     server = Server(
@@ -1157,8 +1189,7 @@ def test_builtin_chrome_session_modes(root, home):
         result = next(
             message["content"] for message in body["messages"] if message.get("role") == "tool"
         )
-        expected = "approval prompt appears only when the next browser tool interacts"
-        assert_true(expected in result, result)
+        assert_true(result == "User Chrome session selected", result)
         return tool_call("chrome-devtools_list_pages", {})
 
     def final(_, body):
@@ -2150,6 +2181,44 @@ def test_late_subagent_continues_turn(root, home):
         server.close()
 
 
+def test_explicit_background_task_lifecycle(root, home):
+    task_id = None
+
+    def route(_, body):
+        nonlocal task_id
+        messages = body["messages"]
+        if any(
+            message.get("role") == "user" and message.get("content") == "child-bg"
+            for message in messages
+        ):
+            time.sleep(1)
+            return event({"content": "child-background-result"})
+        for message in reversed(messages):
+            content = str(message.get("content", ""))
+            if "[task " in content and "completed]" in content:
+                return event({"content": "background-task-ok"})
+            if "[backgrounded] task id " in content:
+                task_id = int(content.split("[backgrounded] task id ", 1)[1].split()[0])
+                return tool_call("wait_tasks", {"ids": [task_id], "wait_all": True})
+        return tool_call("task", {"prompt": "child-bg", "run_in_background": True})
+
+    server = Server([route])
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "delegate in background",
+            timeout=8,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "background-task-ok", result.stdout)
+        assert_true(task_id is not None, server.requests)
+    finally:
+        server.close()
+
+
 def test_parallel_run_overlaps(root, home):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
     sleep, count = 3, 4
@@ -2438,6 +2507,7 @@ def main():
             test_response_stats,
             test_cacheable_prefix_stable_across_turns,
             test_wait_background_events,
+            test_streamed_search_citations,
             test_headless_debug_session_end,
             test_grep_tool_round_trip,
             test_real_headless_error,
@@ -2474,6 +2544,7 @@ def main():
             test_repeated_tool_guard_keeps_history_valid,
             test_interleaved_tool_calls_reset_guard,
             test_late_subagent_continues_turn,
+            test_explicit_background_task_lifecycle,
             test_parallel_run_overlaps,
             test_subagent_timeout_is_capped,
             test_subagent_receives_budget,

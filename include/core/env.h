@@ -191,6 +191,8 @@ struct RuntimeConfig {
   int64_t web_search_timeout_s = 25;
   int64_t web_search_max_tokens = 1200;
   int64_t web_search_calls = 4;
+  int64_t web_search_max_results = 5;
+  int64_t web_search_max_uses = 3;
   int64_t mcp_timeout_s = 60;
   int64_t mcp_servers = 32;
   int64_t mcp_pages = 100;
@@ -205,7 +207,10 @@ struct RuntimeConfig {
   std::string openrouter_provider;
   std::string web_search_effort;
   std::string web_search_model;
+  std::string web_search_engine = "auto";
+  std::string web_search_context_size;
   bool openrouter_fallbacks = true;
+  bool web_search_server = true;
 
   struct LongOption {
     const char* env;
@@ -253,6 +258,10 @@ struct RuntimeConfig {
        &RuntimeConfig::web_search_max_tokens, 128, kAnyMax},
       {"UAGENT_WEB_SEARCH_CALLS", "web_search_calls",
        &RuntimeConfig::web_search_calls, 1, kAnyMax},
+      {"UAGENT_WEB_SEARCH_MAX_RESULTS", "web_search_max_results",
+       &RuntimeConfig::web_search_max_results, 1, 25},
+      {"UAGENT_WEB_SEARCH_MAX_USES", "web_search_max_uses",
+       &RuntimeConfig::web_search_max_uses, 1, 30},
       {"UAGENT_MCP_TIMEOUT", "mcp_timeout_s", &RuntimeConfig::mcp_timeout_s, 1,
        kAnyMax},
       {"UAGENT_MCP_SERVERS", "mcp_servers", &RuntimeConfig::mcp_servers, 1,
@@ -281,10 +290,16 @@ struct RuntimeConfig {
        &RuntimeConfig::web_search_effort, ""},
       {"UAGENT_WEB_SEARCH_MODEL", "web_search_model",
        &RuntimeConfig::web_search_model, ""},
+      {"UAGENT_WEB_SEARCH_ENGINE", "web_search_engine",
+       &RuntimeConfig::web_search_engine, "auto"},
+      {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
+       &RuntimeConfig::web_search_context_size, ""},
   };
   inline static constexpr BoolOption kBoolOptions[] = {
       {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
        &RuntimeConfig::openrouter_fallbacks, true},
+      {"UAGENT_WEB_SEARCH_SERVER", "web_search_server",
+       &RuntimeConfig::web_search_server, true},
   };
 
   static RuntimeConfig FromEnvironment() {
@@ -304,6 +319,17 @@ struct RuntimeConfig {
     if (c.checkpoint_mode != "off" && c.checkpoint_mode != "shadow" &&
         c.checkpoint_mode != "apply") {
       c.checkpoint_mode = "apply";
+    }
+    const std::vector<std::string> search_engines = {
+        "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
+    if (std::find(search_engines.begin(), search_engines.end(),
+                  c.web_search_engine) == search_engines.end()) {
+      c.web_search_engine = "auto";
+    }
+    if (c.web_search_context_size != "low" &&
+        c.web_search_context_size != "medium" &&
+        c.web_search_context_size != "high") {
+      c.web_search_context_size.clear();
     }
     return c;
   }

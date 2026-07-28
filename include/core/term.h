@@ -86,13 +86,17 @@ inline void BracketedPaste(bool on) {
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true) {
-    if (!enabled || !g_tty) return;
+  explicit TerminalSpinner(bool enabled = true) { Start(enabled); }
+
+  void Start(bool enabled = true) {
+    if (thread_.joinable() || !enabled || !g_tty) return;
+    done_ = false;
     thread_ = std::thread([this] {
       std::unique_lock<std::mutex> lock(mutex_);
-      for (int i = 0; !done_; i = (i + 1) & 3) {
-        printf("\r%s%c%s", DIM(), "|/-\\"[i], RST());
+      while (!done_) {
+        printf("\r%s%c%s", DIM(), "|/-\\"[frame_], RST());
         fflush(stdout);
+        frame_ = (frame_ + 1) & 3;
         wake_.wait_for(lock, std::chrono::milliseconds(100),
                        [this] { return done_; });
       }
@@ -118,6 +122,7 @@ class TerminalSpinner {
   std::mutex mutex_;
   std::condition_variable wake_;
   bool done_ = false;
+  int frame_ = 0;
   std::thread thread_;
 };
 

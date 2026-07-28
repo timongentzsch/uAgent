@@ -8,7 +8,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <mutex>
 #include <string>
 
 #include "include/agent/protocol.h"
@@ -48,7 +47,7 @@ inline void LogToolResult(const CallTask& task, const ToolCall& call,
 
 inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t step, const ToolContext& context,
-                        int64_t global_timeout_s, std::mutex& output) {
+                        int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
   if (g_steering.Requested() || AbortRequested()) {
     task.result =
@@ -64,7 +63,6 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                                  {"name", call.name},
                                  {"arguments", task.args}});
   }
-  TerminalSpinner spinner(task.tool->show_spinner);  // no-op unless a TTY
   int64_t timeout = 0;
   if (task.tool->accepts_timeout) {
     timeout =
@@ -84,13 +82,14 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   task.result =
       CapResult(EscapeToolTags(task.tool->run(arguments, call_context)),
                 task.tool->result_chars);
-  spinner.Stop();
   task.status = g_steering.Requested()
                     ? "steered"
                     : (task.result.starts_with("error:") ? "error" : "ok");
   task.duration_ms = ElapsedMs(started);
   LogToolResult(task, call, turn, step);
-  std::lock_guard<std::mutex> lock(output);
+}
+
+inline void PrintCallResult(const CallTask& task, const ToolCall& call) {
   std::string safe_result = TerminalSafe(task.result);
   const char* style = task.status == "error" ? RED() : DIM();
   std::string prefix = "  ← " + task.ordinal + TerminalSafe(call.name);

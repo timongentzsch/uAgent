@@ -18,7 +18,6 @@
 #include <future>
 #include <iomanip>
 #include <iostream>
-#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -394,15 +393,17 @@ class Agent {
     session_usage_.Merge(spent);
   }
 
-  void DrainBackground() {
+  void DrainBackground(TerminalSpinner* spinner = nullptr) {
     bool changed = false;
     for (auto& note : BgTakeCompleted(processes_)) {
+      if (spinner) spinner->Stop();
       printf("%s· bg job finished %s%s\n", DIM(),
              TerminalSafe(FirstLine(note)).c_str(), RST());
       messages_.push_back({{"role", "user"}, {"content", std::move(note)}});
       changed = true;
     }
     for (auto& result : side_tasks_.TakeCompleted()) {
+      if (spinner) spinner->Stop();
       printf("%s· %s finished %s%s\n", DIM(), result.kind.c_str(),
              TerminalSafe(FirstLine(result.label)).c_str(), RST());
       messages_.push_back(
@@ -443,13 +444,16 @@ class Agent {
   bool WaitForBackground(std::chrono::steady_clock::time_point deadline,
                          Usage& usage) {
     DebugLog("background_join_start", {{"pending", JoinableBackground()}});
+    TerminalSpinner spinner;
     while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
-      DrainBackground();
+      DrainBackground(&spinner);
       MergeSideUsage(usage);
       if (!JoinableBackground()) {
+        spinner.Stop();
         DebugLog("background_join_end", {{"outcome", "complete"}});
         return true;
       }
+      spinner.Start();
       auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
       auto slice = std::min(remaining, std::chrono::milliseconds(100));
@@ -459,6 +463,7 @@ class Agent {
         std::this_thread::sleep_for(slice);
       }
     }
+    spinner.Stop();
     DebugLog("background_join_end",
              {{"outcome", AbortRequested() ? "interrupted" : "turn_timeout"},
               {"pending", JoinableBackground()}});
@@ -585,8 +590,16 @@ class Agent {
         break;
       }
 
-      usage.Add(r.usage);           // this turn's footer
-      session_usage_.Add(r.usage);  // running session totals (status bar)
+      Usage response_usage;
+      response_usage.Add(r.usage);
+      usage.Merge(response_usage);           // this turn's footer
+      session_usage_.Merge(response_usage);  // running session totals
+      tool_counts["web_search"] += response_usage.web_searches;
+      std::string citations = CitationMarkdown(r.annotations);
+      if (!citations.empty() && !r.content.empty()) {
+        MdPrint(citations);
+        r.content += citations;
+      }
       if (max_turn_cost > 0 && usage.cost > max_turn_cost) {
         last_error_ =
             "turn cost limit exceeded (" + FmtCost(max_turn_cost) + ")";
@@ -615,8 +628,9 @@ class Agent {
         }
         bool repeated = false;
         for (const ToolCall& call : calls) {
-          // Identical waits can each deliver new process output.
-          if (call.name == "wait_background") {
+          // Identical waits and peeks can each deliver new process output.
+          if (call.name == "wait_background" ||
+              call.name == "get_task_output" || call.name == "wait_tasks") {
             repeated_calls = 0;
             last_call.clear();
             continue;
@@ -648,8 +662,6 @@ class Agent {
       messages_.push_back(amsg);
 
       if (calls.empty()) {
-        Usage response_usage;
-        response_usage.Add(r.usage);
         ttt_ms = r.first_event_ms;
         double generation_ms = r.duration_ms - r.first_event_ms;
         if (response_usage.output > 0 && generation_ms > 0) {
@@ -745,6 +757,10 @@ class Agent {
       footer << " (+" << FmtTokens(usage.reasoning) << " reasoning)";
     }
     if (usage.cost > 0) footer << " · " << FmtCost(usage.cost);
+    if (usage.web_searches) {
+      footer << " · " << usage.web_searches << " search"
+             << (usage.web_searches == 1 ? "" : "es");
+    }
     if (tool_count) {
       footer << " · " << tool_count << " tool" << (tool_count == 1 ? "" : "s");
     }
@@ -993,24 +1009,34 @@ class Agent {
       return rewritten > 0;
     }
     if (r.http_status != 400) return false;
-    std::string e = r.error;
-    for (auto& c : e) {
-      c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
-    }
     auto drop = [&](bool& flag, const char* feature) {
       flag = false;
       DebugLog("feature_degraded", {{"feature", feature}, {"error", r.error}});
       return true;
     };
     if (api_.parallel_tools &&
-        (e.find("parallel_tool_calls") != std::string::npos ||
-         e.find("parallel tool calls") != std::string::npos)) {
+        (lowered.find("parallel_tool_calls") != std::string::npos ||
+         lowered.find("parallel tool calls") != std::string::npos)) {
       return drop(api_.parallel_tools, "parallel_tool_calls");
     }
-    if (api_.include_usage && e.find("stream_options") != std::string::npos) {
+    if (api_.include_usage &&
+        lowered.find("stream_options") != std::string::npos) {
       return drop(api_.include_usage, "stream_options");
     }
-    if (api_.native_tools && e.find("tool") != std::string::npos) {
+    if (OpenrouterUrl(api_.base_url) && api_.config.web_search_server &&
+        api_.openrouter_web_search &&
+        (lowered.find("openrouter:web_search") != std::string::npos ||
+         lowered.find("web_search") != std::string::npos ||
+         lowered.find("web search") != std::string::npos ||
+         lowered.find("server tool") != std::string::npos)) {
+      drop(api_.openrouter_web_search, "openrouter_web_search");
+      printf(
+          "%s· server rejected native web search — using compatibility "
+          "search%s\n",
+          DIM(), RST());
+      return true;
+    }
+    if (api_.native_tools && lowered.find("tool") != std::string::npos) {
       drop(api_.native_tools, "native_tools");
       messages_[0] = SysMsg();  // now carries protocol + tool list
       printf(
@@ -1117,340 +1143,15 @@ class Agent {
     return out;
   }
 
-  void InvalidatePendingCheckpoint(const char* reason) {
-    if (!pending_checkpoint_.is_object()) return;
-    DebugLog("checkpoint_invalidated",
-             {{"turn", turn_id_},
-              {"candidate_turn",
-               JsonValue(pending_checkpoint_, "turn", int64_t{-1})},
-              {"reason", reason}});
-    pending_checkpoint_ = nullptr;
-  }
-
-  void RecordSideEffect(const CallTask& task, const ToolCall& call) {
-    if (!task.execute || !task.tool || !task.tool->mutating) return;
-    json entry = {
-        {"turn", turn_id_}, {"tool", call.name}, {"status", task.status}};
-    if (task.args.contains("path") && task.args["path"].is_string()) {
-      std::error_code ec;
-      auto path = CanonicalAccessPath(task.args["path"].get<std::string>());
-      std::string display =
-          std::filesystem::relative(path, CanonicalCwd(), ec).string();
-      entry["path"] = ec || display.empty() ? path.string() : display;
-    }
-    side_effects_.push_back(std::move(entry));
-    while (!side_effects_.empty() && JsonDump(side_effects_).size() > 4096) {
-      side_effects_.erase(side_effects_.begin());
-    }
-  }
-
-  void ApplyPendingCheckpoint() {
-    if (!pending_checkpoint_.is_object()) return;
-    if (api_.config.checkpoint_mode != "apply") {
-      InvalidatePendingCheckpoint("apply mode is no longer active");
-      return;
-    }
-    if (!JsonValue(pending_checkpoint_, "ready", false)) {
-      InvalidatePendingCheckpoint("candidate was not completed");
-      return;
-    }
-    if (processes_.PendingCount() || !side_tasks_.Empty()) {
-      InvalidatePendingCheckpoint("background work is still active");
-      return;
-    }
-
-    std::string state = JsonValue(pending_checkpoint_, "state", "");
-    if (state.empty()) {
-      InvalidatePendingCheckpoint("candidate state is empty");
-      return;
-    }
-    std::vector<std::filesystem::path> paths;
-    for (const json& value :
-         JsonValue(pending_checkpoint_, "paths", json::array())) {
-      if (!value.is_string()) continue;
-      auto path = CanonicalAccessPath(value.get<std::string>());
-      if (PathWithin(path, CanonicalAccessPath(CanonicalCwd())) &&
-          !SecretCheckpointPath(path)) {
-        paths.push_back(std::move(path));
-      }
-    }
-    std::vector<std::string> results;
-    for (const json& value :
-         JsonValue(pending_checkpoint_, "results", json::array())) {
-      if (value.is_string()) results.push_back(value.get<std::string>());
-    }
-    std::vector<std::string> verbatim;
-    for (const json& value :
-         JsonValue(pending_checkpoint_, "verbatim", json::array())) {
-      if (value.is_string()) verbatim.push_back(value.get<std::string>());
-    }
-
-    pending_checkpoint_ = nullptr;
-    ApplyCheckpoint(state, paths, results, verbatim);
-  }
-
+  void InvalidatePendingCheckpoint(const char* reason);
+  void RecordSideEffect(const CallTask& task, const ToolCall& call);
+  void ApplyPendingCheckpoint();
   void ApplyCheckpoint(const std::string& state,
                        const std::vector<std::filesystem::path>& paths,
                        const std::vector<std::string>& results,
-                       const std::vector<std::string>& verbatim) {
-    int64_t before_tokens = ContextUsed();
-    size_t before_messages = messages_.size();
-    int64_t artifact_budget = std::max(int64_t{1024}, ToolResultCap());
-    int64_t used = 0;
-    size_t retained_results = 0;
-
-    json next = BaselineMessages(/*checkpoint=*/true);
-    next.push_back(
-        {{"role", "assistant"},
-         {"content", "[checkpoint facts; non-authoritative]\n" + state}});
-
-    if (!verbatim.empty()) {
-      next.push_back(
-          {{"role", "assistant"},
-           {"content", "[checkpoint exact literals; non-authoritative]\n" +
-                           JsonDump(json(verbatim))}});
-    }
-
-    if (!side_effects_.empty()) {
-      next.push_back(
-          {{"role", "assistant"},
-           {"content", "[checkpoint runtime activity; non-authoritative]\n" +
-                           JsonDump(side_effects_)}});
-    }
-
-    for (const std::string& result : results) {
-      if (used + static_cast<int64_t>(result.size()) > artifact_budget) break;
-      next.push_back(
-          {{"role", "assistant"},
-           {"content",
-            "[checkpoint retained tool result; non-authoritative]\n" +
-                result}});
-      used += static_cast<int64_t>(result.size());
-      ++retained_results;
-    }
-
-    json skipped = json::array();
-    size_t reread = 0;
-    for (const auto& path : paths) {
-      std::string content = CapResult(
-          ToolReadFile(path.string(), int64_t{1}, CheckpointFileLines()));
-      if (content.starts_with("error:")) {
-        skipped.push_back(
-            {{"path", path.string()}, {"reason", OneLine(content, 160)}});
-        continue;
-      }
-      if (used + static_cast<int64_t>(content.size()) > artifact_budget) {
-        skipped.push_back(
-            {{"path", path.string()}, {"reason", "artifact budget exhausted"}});
-        continue;
-      }
-      std::error_code ec;
-      std::string display =
-          std::filesystem::relative(path, CanonicalCwd(), ec).string();
-      if (ec || display.empty()) display = path.string();
-      next.push_back({{"role", "assistant"},
-                      {"content", "[checkpoint file " + display +
-                                      "; non-authoritative]\n" + content}});
-      used += static_cast<int64_t>(content.size());
-      ++reread;
-    }
-    if (!skipped.empty()) {
-      next.push_back(
-          {{"role", "assistant"},
-           {"content", "[checkpoint reread skipped; non-authoritative]\n" +
-                           JsonDump(skipped)}});
-    }
-    ArchiveAll("checkpoint_fold");
-    messages_ = std::move(next);
-    ctx_used_ = 0;
-    last_checkpoint_turn_ = turn_id_;
-    checkpoint_hint_active_ = false;
-    urgent_hints_ignored_ = 0;
-    DebugLog("checkpoint_applied", {{"turn", turn_id_},
-                                    {"before_messages", before_messages},
-                                    {"after_messages", messages_.size()},
-                                    {"before_tokens", before_tokens},
-                                    {"after_tokens_estimate", ContextUsed()},
-                                    {"paths_requested", paths.size()},
-                                    {"paths_reread", reread},
-                                    {"results_kept", retained_results},
-                                    {"deferred", true},
-                                    {"skipped", std::move(skipped)}});
-    printf("%s· checkpoint applied · %s → ~%s · %zu file%s · %zu result%s%s\n",
-           DIM(), FmtTokens(before_tokens).c_str(),
-           FmtTokens(ContextUsed()).c_str(), reread, reread == 1 ? "" : "s",
-           retained_results, retained_results == 1 ? "" : "s", RST());
-  }
-
+                       const std::vector<std::string>& verbatim);
   bool RunCheckpointCall(const ToolCall& call, bool text_mode,
-                         int64_t& tool_count, int64_t step) {
-    if (g_debug.Enabled()) {
-      g_debug.Write("tool_call", {{"turn", turn_id_},
-                                  {"step", step},
-                                  {"id", call.id},
-                                  {"name", call.name},
-                                  {"arguments", call.args},
-                                  {"text_protocol", text_mode}});
-    }
-    CallTask task;
-    task.tool = FindTool(tools_, call.name);
-    task.args = json::parse(call.args, nullptr, false);
-    task.label = task.args.is_object()
-                     ? FirstLine(JsonValue(task.args, "state", ""))
-                     : "";
-    std::string safe_label = TerminalSafe(task.label);
-    printf("%s→ checkpoint(%s)%s\n", CYAN(), safe_label.c_str(), RST());
-    auto started = std::chrono::steady_clock::now();
-    std::string error;
-    bool not_needed = false;
-    if (task.args.is_discarded() || !task.args.is_object()) {
-      error = "malformed tool arguments (not valid JSON)";
-    } else if (!task.tool) {
-      error = "checkpoint tool is unavailable";
-    } else if (!(error = MissingRequired(*task.tool, task.args)).empty()) {
-      error = "missing required argument `" + error + "`";
-    } else if (!(error = InvalidArgumentType(*task.tool, task.args)).empty()) {
-      error = "invalid tool argument: " + error;
-    } else if (api_.config.checkpoint_mode == "off") {
-      error = "checkpointing is disabled";
-    } else if (!checkpoint_hint_active_) {
-      error =
-          "checkpoint is not needed now; follow the latest user request "
-          "without calling checkpoint again";
-      not_needed = true;
-    } else if (last_checkpoint_turn_ == turn_id_) {
-      error = "checkpoint already applied during this turn";
-    }
-
-    std::string state;
-    std::vector<std::filesystem::path> paths;
-    std::vector<std::string> verbatim;
-    int64_t keep_results = 0;
-    if (error.empty()) {
-      state = Trim(JsonValue(task.args, "state", ""));
-      keep_results = JsonValue(task.args, "keep_last_n_results", int64_t{0});
-      if (state.empty()) {
-        error = "checkpoint state is empty";
-      } else if (state.size() > 4096) {
-        error = "checkpoint state exceeds 4096 bytes";
-      } else if (keep_results < 0 || keep_results > 3) {
-        error = "keep_last_n_results must be between 0 and 3";
-      }
-    }
-    if (error.empty() && task.args.contains("verbatim")) {
-      const json& requested = task.args["verbatim"];
-      if (requested.size() > 8) {
-        error = "verbatim is limited to 8 strings";
-      } else {
-        for (const json& value : requested) {
-          if (!value.is_string() || value.get<std::string>().empty()) {
-            error = "verbatim entries must be non-empty strings";
-            break;
-          }
-          if (value.get<std::string>().size() > 256) {
-            error = "verbatim entries are limited to 256 bytes";
-            break;
-          }
-          verbatim.push_back(value.get<std::string>());
-        }
-      }
-    }
-    if (error.empty() && task.args.contains("keep_paths")) {
-      const json& requested = task.args["keep_paths"];
-      if (requested.size() > 6) {
-        error = "keep_paths is limited to 6 files";
-      } else {
-        for (const json& value : requested) {
-          if (!value.is_string()) {
-            error = "keep_paths entries must be strings";
-            break;
-          }
-          auto path = CanonicalAccessPath(value.get<std::string>());
-          if (!PathWithin(path, CanonicalAccessPath(CanonicalCwd()))) {
-            error = "checkpoint paths must stay inside the workspace";
-            break;
-          }
-          if (SecretCheckpointPath(path)) {
-            error = "credential files cannot be reread into a checkpoint";
-            break;
-          }
-          paths.push_back(std::move(path));
-        }
-      }
-    }
-
-    task.duration_ms = ElapsedMs(started);
-    if (!error.empty()) {
-      task.result = not_needed ? error : "error: " + error;
-      task.status = not_needed ? "not_needed" : "error";
-      if (api_.config.checkpoint_mode == "apply" && checkpoint_hint_active_ &&
-          task.args.is_discarded()) {
-        checkpoint_turn_complete_ = true;
-      }
-      AppendToolResult(call, text_mode, task.result);
-      LogToolResult(task, call, turn_id_, step);
-      printf("%s  ← checkpoint: %s%s\n", DIM(),
-             TerminalSafe(task.result).c_str(), RST());
-      return false;
-    }
-
-    ++tool_count;
-    urgent_hints_ignored_ = 0;
-    checkpoint_candidates_.push_back(
-        {{"turn", turn_id_},
-         {"context_tokens", ContextUsed()},
-         {"mode", api_.config.checkpoint_mode},
-         {"state", state},
-         {"verbatim", JsonValue(task.args, "verbatim", json::array())},
-         {"keep_paths", JsonValue(task.args, "keep_paths", json::array())},
-         {"keep_last_n_results", keep_results}});
-    DebugLog("checkpoint_candidate", {{"turn", turn_id_},
-                                      {"mode", api_.config.checkpoint_mode},
-                                      {"context_tokens", ContextUsed()},
-                                      {"state_chars", state.size()},
-                                      {"verbatim", verbatim.size()},
-                                      {"paths", paths.size()},
-                                      {"keep_last_n_results", keep_results}});
-    if (api_.config.checkpoint_mode == "shadow") {
-      last_checkpoint_turn_ = turn_id_;
-      checkpoint_hint_active_ = false;
-      task.result =
-          "checkpoint candidate recorded (shadow mode); active history "
-          "unchanged";
-      task.status = "shadow";
-      AppendToolResult(call, text_mode, task.result);
-      printf("%s  ← %s%s\n", DIM(), task.result.c_str(), RST());
-    } else {
-      json saved_paths = json::array();
-      for (const auto& path : paths) saved_paths.push_back(path.string());
-      json saved_results = json::array();
-      for (const std::string& result : RecentToolResults(keep_results)) {
-        saved_results.push_back(result);
-      }
-      pending_checkpoint_ = {{"turn", turn_id_},
-                             {"ready", false},
-                             {"state", state},
-                             {"paths", std::move(saved_paths)},
-                             {"results", std::move(saved_results)},
-                             {"verbatim", verbatim}};
-      last_checkpoint_turn_ = turn_id_;
-      checkpoint_hint_active_ = false;
-      task.result =
-          "checkpoint prepared; active history remains until the next user "
-          "turn";
-      task.status = "prepared";
-      checkpoint_turn_complete_ = true;
-      AppendToolResult(call, text_mode, task.result);
-      DebugLog("checkpoint_prepared", {{"turn", turn_id_},
-                                       {"state_chars", state.size()},
-                                       {"paths", paths.size()},
-                                       {"keep_last_n_results", keep_results}});
-      printf("%s  ← %s%s\n", DIM(), task.result.c_str(), RST());
-    }
-    task.duration_ms = ElapsedMs(started);
-    LogToolResult(task, call, turn_id_, step);
-    return false;
-  }
+                         int64_t& tool_count, int64_t step);
 
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
@@ -1563,13 +1264,16 @@ class Agent {
                                    {"concurrency_limit", limit}});
     }
     SteeringGuard steering(!runnable.empty());
+    bool quiet = std::none_of(runnable.begin(), runnable.end(), [&](size_t i) {
+      return calls[i].name == "show_image";
+    });
+    TerminalSpinner spinner(!runnable.empty() && quiet);
     ToolContext context{deadline};
-    std::mutex output;
     for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
       size_t first = runnable[begin];
       if (limit <= 1 || !tasks[first].tool->parallel_safe) {
         ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                    api_.config.tool_timeout_s, output);
+                    api_.config.tool_timeout_s);
         ++begin;
         continue;
       }
@@ -1580,7 +1284,7 @@ class Agent {
       }
       if (end - begin == 1) {
         ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                    api_.config.tool_timeout_s, output);
+                    api_.config.tool_timeout_s);
         begin = end;
         continue;
       }
@@ -1591,13 +1295,14 @@ class Agent {
         workers.push_back(std::async(std::launch::async, [&] {
           for (size_t j; !AbortRequested() && (j = next.fetch_add(1)) < end;) {
             ExecuteCall(tasks[runnable[j]], calls[runnable[j]], turn_id_, step,
-                        context, api_.config.tool_timeout_s, output);
+                        context, api_.config.tool_timeout_s);
           }
         }));
       }
       for (auto& worker : workers) worker.get();
       begin = end;
     }
+    spinner.Stop();
     steering.Stop();
     // Remember the interrupt before clearing it: Ctrl+C means "stop", not
     // "this tool failed", so the turn has to end rather than press on.
@@ -1609,6 +1314,7 @@ class Agent {
     for (size_t i = 0; i < tasks.size(); ++i) {
       const ToolCall& c = calls[i];
       CallTask& task = tasks[i];
+      if (task.execute) PrintCallResult(task, c);
       RecordSideEffect(task, c);
       AppendToolResult(c, text_mode, task.result);
     }
@@ -1661,5 +1367,7 @@ class Agent {
 };
 
 }  // namespace uagent
+
+#include "include/agent/checkpoint_impl.h"
 
 #endif  // UAGENT_INCLUDE_AGENT_H_

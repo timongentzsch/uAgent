@@ -38,6 +38,7 @@ struct BgJob {
   bool join_before_final = false;
   bool detached = false;
   std::optional<uintmax_t> observed_log_bytes;
+  std::string kind;
 };
 
 class ProcessSupervisor {

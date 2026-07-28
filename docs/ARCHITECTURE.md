@@ -14,7 +14,7 @@ main.cc
   ├─ cli.h                command registry, input, completion and steering UI
   ├─ providers.h          provider config, model routes and live catalog parsing
   ├─ ProjectInstructions    bounded root-to-cwd AGENTS.md and CLAUDE.md discovery
-  ├─ Tool registry          built-ins, OpenRouter search, MCP and Chrome adapters
+  ├─ Tool registry          built-ins, search fallback and MCP adapters
   └─ Agent                  conversation, orchestration, budgets, persistence
 ```
 
@@ -26,13 +26,13 @@ main.cc
 | `include/ui/` | Session picker and terminal rendering for the REPL |
 | `include/cli.h` | Slash-command registry, input, completion and steering UI |
 | `include/providers.h` | Provider setup, model routing, effort and catalog metadata |
-| `include/agent.h` | Model/tool loop, active history, checkpoints, sessions |
-| `include/agent/` | Text-protocol fallback, system prompt, tool-call dispatch |
+| `include/agent.h` | Model/tool loop, active history and sessions |
+| `include/agent/` | Checkpoint folding, protocol fallback and tool dispatch |
 | `include/api.h` | OpenAI-compatible HTTP/SSE; no tool execution |
 | `include/tools/` | Tool interface, file adapters, process supervision, registry |
 | `include/mcp/` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
 | `include/core/` | Limits, private config, diagnostics, terminal/platform helpers |
-| `include/media.h` | Attachment encoding and terminal image protocol |
+| `include/media/` | Model attachments and terminal image rendering |
 | `include/md.h` | Streaming Markdown-to-ANSI rendering |
 
 Headers are grouped by subsystem and stay header-only; the include graph is
@@ -43,8 +43,8 @@ own conversation state. Background processes, MCP children, and side usage have
 explicit owners rather than hidden service globals. Signal flags and the debug
 bridge are the narrow process-wide exceptions.
 
-`Tool` is the common capability interface for built-ins, MCP, Chrome, search,
-and delegation. `MakeTool` constructs every registration, so schema, execution,
+`Tool` is the common capability interface for built-ins, MCP, search fallback and
+delegation. `MakeTool` constructs every registration, so schema, execution,
 approval, timeout, result budget and ownership policy cannot drift with
 aggregate field order. Per-tool turn budgets use the same registry. Core
 request, MCP, and persistence settings register their environment key, bounds,
@@ -77,7 +77,7 @@ load bounded project instructions and memories before the first request
   → estimate projected context and optionally append checkpoint hint
   → stream model response
   → validate and approve tool calls
-  → execute bounded safe calls concurrently; stateful calls serially
+  → execute bounded safe calls concurrently; stateful calls serially, under one spinner
   → inject completed background side requests between model steps
   → append results in model call order
   → repeat until prose
@@ -96,11 +96,14 @@ the session-owned supervisor instead of blocking a tool batch.
 
 Background work declares whether it must join before a final answer. Prose is
 provisional while required work remains; the runtime waits within the turn
-deadline, injects every result, and resumes the model. Searches and subagents
-join; intentionally long-lived shell/Python jobs do not. A shared job-id
+deadline, injects every result, and resumes the model. Adaptive subagents join;
+explicit background tasks and intentionally long-lived shell/Python jobs do not.
+A shared job-id
 interface lets `wait_background` join process and in-process side work alike.
 Each process wait reports current output immediately, then returns on new output
-or exit. The turn deadline and global call budget bound silent or noisy jobs.
+or exit. Task-specific peek, multi-wait, and cancellation tools reuse the same
+process table and bounded logs. The turn deadline and global call budget bound
+silent or noisy jobs.
 
 Contiguous `parallel_safe` calls share a bounded worker group. A stateful call
 is a barrier. Side-request usage merges under a mutex. MCP registry changes are
@@ -140,7 +143,11 @@ ends and makes the newest user request authoritative by role and position.
 ## Cache model
 
 The cacheable prefix is the lean system message, project instructions, stable
-ordered tool schemas, and append-only active history. A persistent curl handle reuses connections.
+ordered tool schemas, and append-only active history. OpenRouter request shaping
+replaces the compatibility `web_search` function with its model-decided server
+tool; compact/title requests remain tool-free. Citations are normalized into
+portable Markdown links, and server search counts merge into ordinary usage.
+A persistent curl handle reuses connections.
 OpenRouter receives the saved session ID; provider preference is optional and
 is not a correctness input.
 
@@ -154,7 +161,7 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 - Transport failures use `ChatResult.error`; tool failures return bounded
   model-readable errors.
 - Unsupported request features degrade once: parallel hint, usage streaming,
-  then native tools.
+  OpenRouter server search, then native tools.
 - Image-input rejection removes only image parts, retains paths and documents,
   and is retried when the session resets or the route changes.
 - MCP failure is isolated to one server; a failed list refresh retains the

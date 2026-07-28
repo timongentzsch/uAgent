@@ -24,7 +24,7 @@ These are local safety bounds, not provider service objectives.
 | tool result | 8,000 characters |
 | grep | 200 matches, 8,000 characters |
 | background jobs / safe tool workers | 8 / 4 |
-| web search | 4 calls, 4 queries/call, 1,200 output tokens |
+| OpenRouter server search | 5 results/search, 3 searches/request |
 | MCP servers / tools per server | 32 / 256 |
 | checkpoint suggestion / urgent | 65% / 85% |
 | emergency compaction | 95% |

@@ -30,6 +30,7 @@
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "include/tools/skill.h"
+#include "include/tools/subagent.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -284,19 +285,18 @@ void TestBackgroundValidation() {
   auto add_job = [&](BgJob job) {
     supervisor.WithJobs([&](std::vector<BgJob>& jobs) { jobs.push_back(job); });
   };
-  add_job({999998, "", "", false, true, {}});
+  add_job({999998, "", "", false, true, {}, ""});
   CHECK(!supervisor.PendingCount());
   CHECK(supervisor.DetachedCount() == 1);
   CHECK(ToolWaitBackground(supervisor, 999998).starts_with("[detached job"));
-  add_job({999997, "", "", false, false, {}});
+  add_job({999997, "", "", false, false, {}, ""});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
-  CHECK(!supervisor.TryAdd({999996, "", "", false, false, {}}, 1));
+  CHECK(!supervisor.TryAdd({999996, "", "", false, false, {}, ""}, 1));
   supervisor.WithJobs([](std::vector<BgJob>& jobs) { jobs.clear(); });
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Tool* wait = FindTool(tools, "wait_background");
-  CHECK(wait && wait->show_spinner);
   CHECK(wait && !wait->accepts_timeout);
   const Tool* edit = FindTool(tools, "edit_file");
   CHECK(edit && edit->parameters["properties"].contains("replace_all"));
@@ -406,6 +406,121 @@ void TestToolExecutionPolicy() {
   json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "unbounded");
+
+  ProcessSupervisor task_processes;
+  std::vector<Tool> task_tools;
+  AddTaskLifecycleTools(task_tools, task_processes);
+  CHECK(FindTool(task_tools, "get_task_output") != nullptr);
+  CHECK(FindTool(task_tools, "wait_tasks") != nullptr);
+  const Tool* kill = FindTool(task_tools, "kill_task");
+  CHECK(kill && kill->mutating);
+
+  std::string launched =
+      ToolRunBash(task_processes, "sleep 0.2; printf task-done", 3, false, base,
+                  true, false, "bash", true, "task");
+  CHECK(launched.starts_with("[backgrounded] task id "));
+  std::vector<pid_t> task_ids = task_processes.PendingPids();
+  CHECK(task_ids.size() == 1);
+  if (!task_ids.empty()) {
+    int64_t task_id = task_ids[0];
+    CHECK(!ToolGetTaskOutput(task_processes, task_id).starts_with("error:"));
+    ToolContext wait_context{std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2)};
+    std::string waited = ToolWaitTasks(task_processes, json::array({task_id}),
+                                       true, wait_context);
+    CHECK(waited.find("task-done") != std::string::npos);
+    CHECK(!task_processes.PendingCount());
+  }
+
+  launched = ToolRunBash(task_processes, "sleep 10", 3, false, base, true,
+                         false, "bash", true, "task");
+  task_ids = task_processes.PendingPids();
+  CHECK(task_ids.size() == 1);
+  if (!task_ids.empty()) {
+    CHECK(ToolKillTask(task_processes, task_ids[0]).find("cancelled") !=
+          std::string::npos);
+    CHECK(!task_processes.PendingCount());
+  }
+
+  ToolRunBash(task_processes, "sleep 0.1; printf first", 3, false, base, true,
+              false, "bash", true, "task");
+  ToolRunBash(task_processes, "sleep 10", 3, false, base, true, false, "bash",
+              true, "task");
+  task_ids = task_processes.PendingPids();
+  CHECK(task_ids.size() == 2);
+  if (task_ids.size() == 2) {
+    ToolContext wait_context{std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2)};
+    std::string first =
+        ToolWaitTasks(task_processes, json::array({task_ids[0], task_ids[1]}),
+                      false, wait_context);
+    CHECK(first.find("first") != std::string::npos);
+    CHECK(task_processes.PendingCount() == 1);
+    CHECK(ToolKillTask(task_processes, task_ids[1]).find("cancelled") !=
+          std::string::npos);
+  }
+}
+
+void TestOpenRouterServerSearch() {
+  RuntimeConfig config;
+  Api api(config);
+  api.base_url = "https://openrouter.ai/api/v1";
+  api.model = "vendor/model";
+  json schemas = json::array(
+      {{{"type", "function"},
+        {"function", {{"name", "web_search"}, {"parameters", json::object()}}}},
+       {{"type", "function"},
+        {"function",
+         {{"name", "read_file"}, {"parameters", json::object()}}}}});
+
+  json body = api.BuildChatBody(json::array(), schemas);
+  CHECK(body["tools"].size() == 2);
+  CHECK(body["tools"][0]["function"]["name"] == "read_file");
+  CHECK(body["tools"][1]["type"] == "openrouter:web_search");
+  CHECK(body["tools"][1]["parameters"]["engine"] == "auto");
+  CHECK(body["tools"][1]["parameters"]["max_results"] == 5);
+  CHECK(body["tools"][1]["parameters"]["max_uses"] == 3);
+  CHECK(!body["tools"][1]["parameters"].contains("search_context_size"));
+
+  body = api.BuildChatBody(json::array(), json::array({schemas[1]}));
+  CHECK(body["tools"].size() == 1);
+  CHECK(body["tools"][0]["function"]["name"] == "read_file");
+
+  api.openrouter_web_search = false;
+  body = api.BuildChatBody(json::array(), schemas);
+  CHECK(body["tools"].size() == 2);
+  CHECK(body["tools"][0]["function"]["name"] == "web_search");
+
+  api.base_url = "http://127.0.0.1:8080/v1";
+  body = api.BuildChatBody(json::array(), schemas);
+  CHECK(body["tools"].size() == 1);
+  CHECK(body["tools"][0]["function"]["name"] == "read_file");
+
+  api.base_url = "https://openrouter.ai/api/v1";
+  api.openrouter_web_search = true;
+  body = api.BuildChatBody(json::array(), json::array());
+  CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
+
+  Usage usage;
+  usage.Add({{"prompt_tokens", 1},
+             {"completion_tokens", 2},
+             {"server_tool_use", {{"web_search_requests", 3}}}});
+  CHECK(usage.web_searches == 3);
+  CHECK(UsageFromJson(UsageJson(usage)).web_searches == 3);
+
+  ChatResult result;
+  StreamCtx stream;
+  stream.res = &result;
+  stream.HandleLine(
+      R"(data: {"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})");
+  stream.HandleLine(
+      R"(data: {"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})");
+  std::string citations = CitationMarkdown(result.annotations);
+  CHECK(citations.find("<https://example.com/a>") != std::string::npos);
+  CHECK(citations.find("<https://example.com/b>") != std::string::npos);
+  CHECK(CitationMarkdown(
+            json::array({{{"url_citation", {{"url", "javascript:alert(1)"}}}}}))
+            .empty());
 }
 
 void TestAttachmentEncoding() {
@@ -698,6 +813,11 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
   setenv("UAGENT_WEB_SEARCH_MODEL", "vendor/search", 1);
   setenv("UAGENT_WEB_SEARCH_EFFORT", "low", 1);
+  setenv("UAGENT_WEB_SEARCH_ENGINE", "invalid", 1);
+  setenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge", 1);
+  setenv("UAGENT_WEB_SEARCH_MAX_RESULTS", "99", 1);
+  setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
+  setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
   const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
   std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
   unsetenv("UAGENT_CHECKPOINT_MODE");
@@ -707,6 +827,11 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.checkpoint_mode == "apply");
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_effort == "low");
+  CHECK(config.web_search_engine == "auto");
+  CHECK(config.web_search_context_size.empty());
+  CHECK(config.web_search_max_results == 25);
+  CHECK(config.web_search_max_uses == 1);
+  CHECK(!config.web_search_server);
   CHECK(config.DiagnosticJson().value("max_steps", int64_t{0}) ==
         config.max_steps);
   CHECK(config.DiagnosticJson().value("web_search_model", "") ==
@@ -718,6 +843,11 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
   unsetenv("UAGENT_WEB_SEARCH_MODEL");
   unsetenv("UAGENT_WEB_SEARCH_EFFORT");
+  unsetenv("UAGENT_WEB_SEARCH_ENGINE");
+  unsetenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE");
+  unsetenv("UAGENT_WEB_SEARCH_MAX_RESULTS");
+  unsetenv("UAGENT_WEB_SEARCH_MAX_USES");
+  unsetenv("UAGENT_WEB_SEARCH_SERVER");
 
   RuntimeConfig routed;
   routed.openrouter_provider = "streamlake";
@@ -1434,6 +1564,7 @@ int RunTests() {
   TestTerminalSafety();
   TestBackgroundValidation();
   TestToolExecutionPolicy();
+  TestOpenRouterServerSearch();
   TestAttachmentEncoding();
   TestGrepTool();
   TestPythonTool();

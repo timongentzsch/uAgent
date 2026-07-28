@@ -8,6 +8,7 @@
 
 #include <curl/curl.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <map>
@@ -39,6 +40,7 @@ struct Usage {
   double cost =
       0;  // credits (~USD), e.g. OpenRouter's `usage.cost`; 0 = not reported
   int64_t cache_write = 0;
+  int64_t web_searches = 0;
   void Merge(const Usage& o) {
     input += o.input;
     output += o.output;
@@ -46,6 +48,7 @@ struct Usage {
     reasoning += o.reasoning;
     cost += o.cost;
     cache_write += o.cache_write;
+    web_searches += o.web_searches;
   }
   // OpenAI convention: input excludes cached tokens, output excludes reasoning.
   // A server reporting a token count as a string must not abort the turn.
@@ -70,13 +73,20 @@ struct Usage {
     cache_write += cache_write_tokens;
     reasoning += reason;
     cost += JsonNumber(u, "cost");
+    if (u.contains("server_tool_use") && u["server_tool_use"].is_object()) {
+      web_searches += JsonInt(u["server_tool_use"], "web_search_requests");
+    }
   }
 };
 
 inline json UsageJson(const Usage& usage) {
-  return {{"input", usage.input},           {"output", usage.output},
-          {"cache_read", usage.cache_read}, {"cache_write", usage.cache_write},
-          {"reasoning", usage.reasoning},   {"cost", usage.cost}};
+  return {{"input", usage.input},
+          {"output", usage.output},
+          {"cache_read", usage.cache_read},
+          {"cache_write", usage.cache_write},
+          {"reasoning", usage.reasoning},
+          {"cost", usage.cost},
+          {"web_searches", usage.web_searches}};
 }
 
 // inverse of usage_json — reads back a total this or another process wrote
@@ -89,6 +99,7 @@ inline Usage UsageFromJson(const json& j) {
   u.cache_write = JsonValue(j, "cache_write", int64_t{0});
   u.reasoning = JsonValue(j, "reasoning", int64_t{0});
   u.cost = JsonValue(j, "cost", 0.0);
+  u.web_searches = JsonValue(j, "web_searches", int64_t{0});
   return u;
 }
 
@@ -121,6 +132,7 @@ struct ChatResult {
   std::string content;
   std::string reasoning;  // retained only in debug mode
   std::vector<ToolCall> tool_calls;
+  json annotations = json::array();
   json usage;  // null unless the server streamed one
   int64_t http_status = 0;
   double first_event_ms = -1;  // first content/reasoning/tool delta
@@ -131,6 +143,30 @@ struct ChatResult {
   bool suppressed =
       false;  // content looked like a text-protocol call; not printed
 };
+
+inline std::string CitationMarkdown(const json& annotations) {
+  if (!annotations.is_array()) return "";
+  std::vector<std::string> urls;
+  for (const json& annotation : annotations) {
+    if (!annotation.is_object()) continue;
+    const json& citation = annotation.contains("url_citation") &&
+                                   annotation["url_citation"].is_object()
+                               ? annotation["url_citation"]
+                               : annotation;
+    std::string url = JsonString(citation, "url");
+    bool safe = (url.starts_with("https://") || url.starts_with("http://")) &&
+                url.find_first_of(" \t\r\n<>") == std::string::npos;
+    if (!safe || std::find(urls.begin(), urls.end(), url) != urls.end()) {
+      continue;
+    }
+    urls.push_back(std::move(url));
+    if (urls.size() == 20) break;
+  }
+  if (urls.empty()) return "";
+  std::string out = "\n\nSources:\n";
+  for (const std::string& url : urls) out += "- <" + url + ">\n";
+  return out;
+}
 
 // text-protocol delimiters (shared with agent.h's parser)
 inline constexpr const char* kTtOpen = "[uagent_tool_call]";
@@ -163,6 +199,13 @@ struct StreamCtx {
 
   void MarkEvent() {
     if (res->first_event_ms < 0) res->first_event_ms = ElapsedMs(started);
+  }
+
+  void AddAnnotations(const json& annotations) {
+    if (!annotations.is_array()) return;
+    for (const json& annotation : annotations) {
+      if (annotation.is_object()) res->annotations.push_back(annotation);
+    }
   }
 
   void BeginOutput() {  // stop the spinner before any visible bytes
@@ -231,8 +274,14 @@ struct StreamCtx {
     if (ch.contains("finish_reason") && ch["finish_reason"].is_string()) {
       res->finish_reason = ch["finish_reason"].get<std::string>();
     }
+    if (ch.contains("annotations")) AddAnnotations(ch["annotations"]);
+    if (ch.contains("message") && ch["message"].is_object() &&
+        ch["message"].contains("annotations")) {
+      AddAnnotations(ch["message"]["annotations"]);
+    }
     if (!ch.contains("delta") || !ch["delta"].is_object()) return;
     const json& d = ch["delta"];
+    if (d.contains("annotations")) AddAnnotations(d["annotations"]);
     // dim "thinking" text from reasoning models (MiniMax, DeepSeek-R1, ...)
     if (d.contains("reasoning_content") && d["reasoning_content"].is_string()) {
       std::string r = d["reasoning_content"].get<std::string>();
@@ -310,6 +359,8 @@ class Api {
       true;  // dropped after a 400 that rejects `stream_options`
   bool parallel_tools =
       true;  // omit after a 400 that rejects `parallel_tool_calls`
+  bool openrouter_web_search =
+      true;  // dropped after a 400 that rejects the beta server tool
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment())
       : config(std::move(config)), handle_(curl_easy_init()) {}
@@ -324,8 +375,37 @@ class Api {
                      const std::string& session_id = "") const {
     json body = {{"model", model}, {"messages", messages}, {"stream", true}};
     if (native_tools && !tool_schemas.empty()) {
-      body["tools"] = tool_schemas;
-      if (parallel_tools) body["parallel_tool_calls"] = true;
+      json request_tools = json::array();
+      bool server_search = OpenrouterUrl(base_url) &&
+                           config.web_search_server && openrouter_web_search;
+      bool search_offered = false;
+      for (const json& tool : tool_schemas) {
+        bool legacy_search =
+            tool.is_object() && tool.contains("function") &&
+            tool["function"].is_object() &&
+            JsonString(tool["function"], "name") == "web_search";
+        search_offered = search_offered || legacy_search;
+        if (legacy_search && (server_search || !OpenrouterUrl(base_url))) {
+          continue;
+        }
+        request_tools.push_back(tool);
+      }
+      if (server_search && search_offered) {
+        json parameters = {
+            {"engine", config.web_search_engine},
+            {"max_results", config.web_search_max_results},
+            {"max_uses", config.web_search_max_uses},
+        };
+        if (!config.web_search_context_size.empty()) {
+          parameters["search_context_size"] = config.web_search_context_size;
+        }
+        request_tools.push_back({{"type", "openrouter:web_search"},
+                                 {"parameters", std::move(parameters)}});
+      }
+      if (!request_tools.empty()) {
+        body["tools"] = std::move(request_tools);
+        if (parallel_tools) body["parallel_tool_calls"] = true;
+      }
     }
     if (include_usage) body["stream_options"] = {{"include_usage", true}};
     int64_t max_tokens = MaxOutputTokens();

@@ -261,7 +261,6 @@ inline std::vector<Tool> BuiltinTools(
            std::to_string(JsonValue(a, "id", JsonValue(a, "pid", int64_t{0})));
   };
   wait.accepts_timeout = false;
-  wait.show_spinner = true;
 
   Tool& terminal = AddTool(
       tools,

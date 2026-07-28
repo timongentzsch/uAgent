@@ -61,7 +61,6 @@ struct Tool {
   Run run;
   Summary summary;             // args -> one-line display
   bool parallel_safe = false;  // safe beside another tool call
-  bool show_spinner = false;   // animate while a quiet call blocks
   Approval needs_approval;     // dynamic policy (e.g. external read)
   std::string provider;        // owner for live registry refresh
   json output_schema;          // optional MCP output contract

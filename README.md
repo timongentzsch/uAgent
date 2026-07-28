@@ -55,10 +55,12 @@ uagent --yolo
 | `write_file`, `edit_file` | Make atomic file changes |
 | `run`, `wait_background`, `terminal_output` | Manage supervised processes |
 | `run_python` | Run isolated Python with optional uv packages |
-| `show_image`, `attach` | View native terminal images or add files to context |
-| `web_search` | Search through an OpenRouter side request |
-| `chrome-devtools_*`, `chrome_session` | Automate Chrome; returned images attach to the model |
-| `task` | Delegate to a depth-bounded subagent |
+| `show_image` | Display a local image in the terminal |
+| `attach` | Add a local image or document to the model's next request |
+| `openrouter:web_search` | Let an OpenRouter model search and cite sources |
+| `<server>_<tool>` | Use a tool exposed by a configured MCP server |
+| `chrome_session` | Select the default Chrome MCP's isolated or user profile |
+| `task`, `get_task_output`, `wait_tasks`, `kill_task` | Delegate and manage depth-bounded subagents |
 | `memory` | Keep a lesson for later sessions, per project or global |
 | `skill` | Open a stored procedure from `~/.uagent/skills` or the project |
 | `checkpoint` | Fold context into a durable checkpoint |
@@ -67,7 +69,17 @@ Independent read-only tools can run concurrently. Mutating, shell, network,
 delegation, and MCP calls require approval unless `--yolo` is active. Requests,
 results, processes, logs, costs, and retained history are bounded.
 
-Slow commands and web searches continue in the background. `run_python` uses
+OpenRouter search runs inside the model request and falls back to the legacy
+side request if the beta server tool is rejected. Search defaults to `auto`,
+five results, and three uses per request; `UAGENT_WEB_SEARCH_ENGINE`,
+`UAGENT_WEB_SEARCH_MAX_RESULTS`, `UAGENT_WEB_SEARCH_MAX_USES`, and optional
+`UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. Set `UAGENT_WEB_SEARCH_SERVER=0` to
+force the fallback.
+
+Slow commands and tasks can continue in the background. `task` keeps its short
+adaptive foreground window unless `run_in_background=true` requests an
+immediate task id. One spinner remains visible while the model, a tool batch, or
+required background work is quiet. `run_python` uses
 `uv run --isolated --no-project`, so packages must be listed in the tool call.
 `show_image` is available only when the terminal supports a native image
 protocol. `edit_file` can apply ordered exact replacements with one atomic
@@ -130,16 +142,20 @@ before trusting a checkout.
 `install.sh` installs the bundled skills in `skills/` into `~/.uagent/skills`,
 never overwriting one already there.
 
-## MCP and Chrome
+## MCP
 
 User MCP configuration lives in `~/.mcp.json`. Project configuration requires
-interactive trust or `--trust-project-config`.
+interactive trust or `--trust-project-config`. MCP tools use
+`<server>_<tool>` names. Image results from any MCP server are saved and
+attached to the model's next step.
 
 [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) is
-enabled by default and starts lazily in an isolated profile. For an existing
-login, use `chrome_session` with `mode: user` and enable Chrome remote debugging
-at `chrome://inspect/#remote-debugging`. `UAGENT_CHROME_MODE=user` makes that
-the default; `UAGENT_CHROME_DEVTOOLS=0` disables the built-in integration.
+the default MCP server. Its browser tools use the same MCP path as every other
+server. `chrome_session` exists only to start it lazily or switch between a
+fresh isolated profile and the user's Chrome. User mode requires Chrome remote
+debugging at `chrome://inspect/#remote-debugging`.
+`UAGENT_CHROME_MODE=user` changes the default mode;
+`UAGENT_CHROME_DEVTOOLS=0` disables the default server.
 
 ```json
 {

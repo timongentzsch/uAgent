@@ -73,6 +73,9 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
 
 inline void AddTaskLifecycleTools(std::vector<Tool>& tools,
                                   ProcessSupervisor& processes) {
+  Tool::Summary task_summary = [](const json& a) {
+    return "task " + std::to_string(JsonValue(a, "id", int64_t{0}));
+  };
   Tool& get = AddTool(
       tools,
       MakeTool(
@@ -84,9 +87,7 @@ inline void AddTaskLifecycleTools(std::vector<Tool>& tools,
             return ToolGetTaskOutput(processes, JsonValue(a, "id", int64_t{0}));
           }));
   get.accepts_timeout = false;
-  get.summary = [](const json& a) {
-    return "task " + std::to_string(JsonValue(a, "id", int64_t{0}));
-  };
+  get.summary = task_summary;
 
   Tool& wait = AddTool(
       tools, MakeTool("wait_tasks",
@@ -116,7 +117,7 @@ inline void AddTaskLifecycleTools(std::vector<Tool>& tools,
                }));
   kill.accepts_timeout = false;
   kill.mutating = true;
-  kill.summary = get.summary;
+  kill.summary = task_summary;
 }
 
 }  // namespace uagent

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@
 
 #include "include/agent.h"
 #include "include/app/options.h"
+#include "include/app/runtime.h"
 #include "include/cli.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
@@ -211,6 +213,13 @@ void TestCapsAndEscaping() {
   CHECK(JsonDump(json(CapResult(std::string("partial: \xF0\x9F", 11))))
             .find("\xF0\x9F") == std::string::npos);
   unsetenv("UAGENT_TOOL_RESULT_CHARS");
+
+  size_t maximum = std::numeric_limits<size_t>::max();
+  CHECK(CheckedAdd(maximum - 1, 1) == maximum);
+  CHECK(!CheckedAdd(maximum, 1));
+  CHECK(CheckedMul(maximum / 2, 2).has_value());
+  CHECK(!CheckedMul(maximum, 2));
+  CHECK(SaturatingAdd(maximum, 1) == maximum);
 }
 
 void TestFileTools() {
@@ -357,6 +366,22 @@ void TestFileTools() {
                    CanonicalAccessPath(root.string())));
   CHECK(!PathWithin(CanonicalAccessPath(root.parent_path().string()),
                     CanonicalAccessPath(root.string())));
+
+  fs::path fifo = root / "pipe";
+  CHECK(mkfifo(fifo.c_str(), 0600) == 0);
+  ToolResult fifo_read = ToolReadFile(fifo.string(), 1, 1);
+  CHECK(!fifo_read.Ok());
+  CHECK(fifo_read.error == ToolErrorCode::kPermissionDenied);
+  CHECK(fifo_read.output.find("non-regular") != std::string::npos);
+  ToolResult fifo_write = ToolWriteFile(fifo.string(), "blocked");
+  CHECK(!fifo_write.Ok());
+  struct stat fifo_status{};
+  CHECK(lstat(fifo.c_str(), &fifo_status) == 0);
+  CHECK(S_ISFIFO(fifo_status.st_mode));
+  ToolResult directory_read = ToolReadFile(root.string(), 1, 1);
+  CHECK(!directory_read.Ok());
+  CHECK(directory_read.output.find("non-regular") != std::string::npos);
+
   std::error_code ec;
   fs::remove_all(root, ec);
 }
@@ -534,7 +559,7 @@ void TestBackgroundValidation() {
   CHECK(ToolWaitBackground(supervisor, 999999).error ==
         ToolErrorCode::kNotFound);
   auto add_job = [&](BgJob job) {
-    supervisor.WithJobs([&](std::vector<BgJob>& jobs) { jobs.push_back(job); });
+    CHECK(supervisor.TryAdd(std::move(job), 100));
   };
   add_job({999998, "", "", false, true, {}, ""});
   CHECK(!supervisor.PendingCount());
@@ -546,7 +571,7 @@ void TestBackgroundValidation() {
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
   CHECK(!supervisor.TryAdd({999996, "", "", false, false, {}, ""}, 1));
-  supervisor.WithJobs([](std::vector<BgJob>& jobs) { jobs.clear(); });
+  CHECK(!supervisor.TakeAll().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   const Tool* wait = FindTool(tools, "wait_background");
   CHECK(wait && !wait->accepts_timeout);
@@ -1104,6 +1129,10 @@ void TestPythonTool() {
 }
 
 void TestRuntimeOwnershipHelpers() {
+  AppRuntime runtime(RuntimeConfig{});
+  runtime.Shutdown();
+  runtime.Shutdown();
+
   UsageAccumulator accumulator;
   accumulator.Add(json{{"prompt_tokens", 5},
                        {"completion_tokens", 2},

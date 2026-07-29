@@ -28,12 +28,17 @@ class CurlRuntime {
 struct AppRuntime {
   explicit AppRuntime(RuntimeConfig parsed);
 
+  void Shutdown();
+
   RuntimeConfig config;
   Api api;
   ProcessSupervisor processes;
   UsageAccumulator side_usage;
   SideTaskSupervisor side_tasks;
   McpRuntime mcp;
+
+ private:
+  bool shutdown_ = false;
 };
 
 }  // namespace uagent

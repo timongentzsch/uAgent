@@ -54,13 +54,14 @@ inline ProjectInstructions LoadProjectInstructions(
 
   size_t used = 0;
   auto append = [&](const fs::path& path, const std::string& header = "") {
-    if (used + header.size() >= max_bytes) {
+    std::optional<size_t> with_header = CheckedAdd(used, header.size());
+    if (!with_header || *with_header >= max_bytes) {
       loaded.truncated = true;
       return false;
     }
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
-    size_t remaining = max_bytes - used - header.size();
+    size_t remaining = max_bytes - *with_header;
     std::string content(remaining + 1, '\0');
     input.read(content.data(), static_cast<std::streamsize>(content.size()));
     size_t read = static_cast<size_t>(input.gcount());
@@ -71,7 +72,8 @@ inline ProjectInstructions LoadProjectInstructions(
     content = Utf8Prefix(std::move(content), remaining);
     if (Trim(content).empty()) return false;
     if (!loaded.text.empty()) loaded.text += "\n\n";
-    used += header.size() + content.size();
+    used = SaturatingAdd(used, header.size());
+    used = SaturatingAdd(used, content.size());
     loaded.text += header + content;
     loaded.sources.push_back(path.string());
     return true;

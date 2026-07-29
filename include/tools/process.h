@@ -51,13 +51,10 @@ class ProcessSupervisor {
   ProcessSupervisor(const ProcessSupervisor&) = delete;
   ProcessSupervisor& operator=(const ProcessSupervisor&) = delete;
 
-  // `run` is parallel_safe, so several tool workers can touch the job table
-  // at once. Every read and write goes through here, under one lock.
-  template <class F>
-  auto WithJobs(F&& fn) -> decltype(fn(std::declval<std::vector<BgJob>&>())) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return fn(jobs_);
-  }
+  // The registry owns every tracked PID. A caller that needs to perform
+  // waitpid, kill, filesystem I/O, or callbacks first claims the record with
+  // Take, then either finishes ownership or restores it. No external work runs
+  // while mutex_ is held.
   bool TryAdd(BgJob job, int64_t max_pending) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!job.detached &&
@@ -69,6 +66,35 @@ class ProcessSupervisor {
     }
     jobs_.push_back(std::move(job));
     return true;
+  }
+  void Restore(BgJob job) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    jobs_.push_back(std::move(job));
+  }
+  std::optional<BgJob> Take(pid_t pid, const std::string& kind = "") {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found =
+        std::find_if(jobs_.begin(), jobs_.end(), [&](const BgJob& job) {
+          return job.pid == pid && (kind.empty() || job.kind == kind);
+        });
+    if (found == jobs_.end()) return std::nullopt;
+    BgJob job = std::move(*found);
+    jobs_.erase(found);
+    return job;
+  }
+  std::optional<BgJob> Find(pid_t pid, const std::string& kind = "") const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found =
+        std::find_if(jobs_.begin(), jobs_.end(), [&](const BgJob& job) {
+          return job.pid == pid && (kind.empty() || job.kind == kind);
+        });
+    return found == jobs_.end() ? std::nullopt : std::optional<BgJob>(*found);
+  }
+  std::vector<BgJob> TakeAll() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<BgJob> jobs;
+    jobs.swap(jobs_);
+    return jobs;
   }
   size_t PendingCount() const {
     return CountIf([](const BgJob& j) { return !j.detached; });

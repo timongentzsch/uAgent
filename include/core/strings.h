@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/term.h"
@@ -167,13 +168,18 @@ inline std::string DisplayTrunc(std::string s, size_t columns) {
 }
 
 inline size_t JsonEstimatedBytes(const json& value) {
-  if (value.is_string()) return value.get_ref<const std::string&>().size() + 2;
+  if (value.is_string()) {
+    return SaturatingAdd(value.get_ref<const std::string&>().size(), 2);
+  }
   size_t total = 16;
   if (value.is_array()) {
-    for (const json& item : value) total += JsonEstimatedBytes(item);
+    for (const json& item : value) {
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
+    }
   } else if (value.is_object()) {
     for (const auto& [key, item] : value.items()) {
-      total += key.size() + JsonEstimatedBytes(item);
+      total = SaturatingAdd(total, key.size());
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
     }
   }
   return total;

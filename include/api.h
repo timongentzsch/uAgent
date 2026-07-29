@@ -131,7 +131,12 @@ struct StreamCtx {
 
   size_t Feed(const char* data, size_t len) {
     last_byte = std::chrono::steady_clock::now();
-    received += len;
+    std::optional<size_t> total = CheckedAdd(received, len);
+    if (!total) {
+      res->error = "response size overflow";
+      return 0;
+    }
+    received = *total;
     if (response_cap > 0 && received > response_cap) {
       res->error =
           "response exceeded " + std::to_string(response_cap) + " bytes";
@@ -298,7 +303,8 @@ class Api {
     curl_easy_setopt(
         h, CURLOPT_WRITEFUNCTION,
         +[](char* d, size_t s, size_t n, void* u) -> size_t {
-          return static_cast<StreamCtx*>(u)->Feed(d, s * n);
+          std::optional<size_t> bytes = CheckedMul(s, n);
+          return bytes ? static_cast<StreamCtx*>(u)->Feed(d, *bytes) : 0;
         });
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &ctx);
     SetAbortable(h, &ctx);
@@ -397,13 +403,14 @@ class Api {
         h, CURLOPT_WRITEFUNCTION,
         +[](char* d, size_t s, size_t n, void* u) -> size_t {
           auto* out = static_cast<FetchBuffer*>(u);
-          size_t bytes = s * n;
-          if (out->cap > 0 && out->data.size() + bytes > out->cap) {
+          std::optional<size_t> bytes = CheckedMul(s, n);
+          if (!bytes || (out->cap > 0 &&
+                         AdditionExceeds(out->data.size(), *bytes, out->cap))) {
             out->exceeded = true;
             return 0;
           }
-          out->data.append(d, bytes);
-          return bytes;
+          out->data.append(d, *bytes);
+          return *bytes;
         });
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
     if (abortable) {

@@ -140,7 +140,6 @@ class McpRuntime {
     return servers_;
   }
 
- private:
   void ShutdownAll() {
     auto reaped = [](McpServer& server) {
       for (int i = 0; i < kMcpMax; ++i) {
@@ -199,6 +198,7 @@ class McpRuntime {
     servers_.clear();
   }
 
+ private:
   std::vector<std::unique_ptr<McpServer>> servers_;
 };
 

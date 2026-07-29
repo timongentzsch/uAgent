@@ -9,6 +9,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -17,7 +18,7 @@
 namespace uagent {
 namespace {
 
-constexpr int64_t kSessionFormat = 2;
+constexpr int64_t kSessionFormat = 3;
 
 SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
@@ -26,6 +27,8 @@ SessionStoreStatus Error(SessionStoreError code, std::string message) {
 bool ValidState(const json& value) {
   return value.is_object() && value.contains("messages") &&
          value["messages"].is_array() && !value["messages"].empty() &&
+         value.contains("message_kinds") && value["message_kinds"].is_array() &&
+         value["message_kinds"].size() == value["messages"].size() &&
          value.contains("archive") && value["archive"].is_array() &&
          value.contains("archive_dropped_segments") &&
          value["archive_dropped_segments"].is_number_integer() &&
@@ -40,6 +43,15 @@ bool ValidState(const json& value) {
          value.contains("usage") && value["usage"].is_object();
 }
 
+bool ValidHeader(const json& header) {
+  return header.is_object() && header.contains("cwd") &&
+         header["cwd"].is_string() && header.contains("model") &&
+         header["model"].is_string() && header.contains("session_id") &&
+         header["session_id"].is_string() && header.contains("turns") &&
+         header["turns"].is_number_integer() && header.contains("title") &&
+         header["title"].is_string();
+}
+
 json HeaderJson(const SessionMetadata& metadata) {
   return {{"format", kSessionFormat}, {"cwd", metadata.cwd},
           {"model", metadata.model},  {"session_id", metadata.session_id},
@@ -48,6 +60,7 @@ json HeaderJson(const SessionMetadata& metadata) {
 
 json StateJson(const SessionState& state) {
   return {{"messages", state.messages},
+          {"message_kinds", MessageKindsJson(state.message_kinds)},
           {"archive", state.archive},
           {"archive_dropped_segments", state.archive_dropped_segments},
           {"checkpoint_candidates", state.checkpoint_candidates},
@@ -61,9 +74,14 @@ json StateJson(const SessionState& state) {
 
 SessionStoreStatus SessionStore::Save(const std::string& path,
                                       const SessionRecord& record) {
+  json header = HeaderJson(record.metadata);
+  json state = StateJson(record.state);
+  if (!ValidHeader(header) || !ValidState(state)) {
+    return Error(SessionStoreError::kInvalid,
+                 "refusing to save incomplete session state");
+  }
   ToolResult result =
-      ToolWritePrivateFile(path, JsonDump(HeaderJson(record.metadata)) + "\n" +
-                                     JsonDump(StateJson(record.state)));
+      ToolWritePrivateFile(path, JsonDump(header) + "\n" + JsonDump(state));
   if (!result.Ok()) return Error(SessionStoreError::kIo, result.output);
   return {};
 }
@@ -90,15 +108,15 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   }
 
   json header = json::parse(header_line, nullptr, false);
-  if (!header.is_object() ||
-      JsonValue(header, "format", int64_t{0}) != kSessionFormat ||
-      !header.contains("cwd") || !header["cwd"].is_string() ||
-      !header.contains("model") || !header["model"].is_string() ||
-      !header.contains("session_id") || !header["session_id"].is_string() ||
-      !header.contains("turns") || !header["turns"].is_number_integer() ||
-      !header.contains("title") || !header["title"].is_string()) {
-    return {Error(SessionStoreError::kCorrupt,
-                  "session header is invalid or unsupported"),
+  if (!ValidHeader(header) || !header.contains("format") ||
+      !header["format"].is_number_integer()) {
+    return {Error(SessionStoreError::kCorrupt, "session header is invalid"),
+            std::nullopt};
+  }
+  int64_t format = header["format"].get<int64_t>();
+  if (format != kSessionFormat) {
+    return {Error(SessionStoreError::kIncompatible,
+                  "unsupported session format " + std::to_string(format)),
             std::nullopt};
   }
 
@@ -126,6 +144,13 @@ SessionLoadResult SessionStore::Load(const std::string& path,
                   "session payload is invalid or incomplete"),
             std::nullopt};
   }
+  std::vector<MessageKind> message_kinds;
+  if (!ParseMessageKinds(state["message_kinds"], state["messages"].size(),
+                         message_kinds)) {
+    return {Error(SessionStoreError::kCorrupt,
+                  "session message metadata is invalid or incomplete"),
+            std::nullopt};
+  }
 
   SessionRecord record;
   record.metadata.cwd = header["cwd"].get<std::string>();
@@ -134,6 +159,7 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   record.metadata.turns = header["turns"].get<int64_t>();
   record.metadata.title = header["title"].get<std::string>();
   record.state.messages = std::move(state["messages"]);
+  record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
   record.state.archive_dropped_segments =
       std::max(int64_t{0}, state["archive_dropped_segments"].get<int64_t>());

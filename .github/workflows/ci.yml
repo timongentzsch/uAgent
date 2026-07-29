@@ -102,6 +102,85 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build --output-on-failure
 
+  thread-sanitizer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libedit-dev
+      - name: Configure TSan
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DUAGENT_WARNINGS_AS_ERRORS=ON
+          -DUAGENT_ENABLE_TSAN=ON
+      - name: Build core tests
+        run: cmake --build build --target uagent_tests --parallel
+      - name: Test concurrent core paths
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+        run: ctest --test-dir build -R '^core$' --output-on-failure
+
+  fuzzers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev libedit-dev
+      - name: Configure fuzzers
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=OFF
+          -DUAGENT_WARNINGS_AS_ERRORS=ON
+          -DUAGENT_BUILD_FUZZERS=ON
+      - name: Build fuzzers
+        run: cmake --build build --target uagent_fuzz_sse uagent_fuzz_openai_stream --parallel
+      - name: Smoke fuzz
+        run: |
+          build/uagent_fuzz_sse -runs=1000 -max_len=8192
+          build/uagent_fuzz_openai_stream -runs=1000 -max_len=8192
+
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev libedit-dev
+      - name: Configure coverage
+        run: >-
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DUAGENT_WARNINGS_AS_ERRORS=ON
+          -DUAGENT_ENABLE_COVERAGE=ON
+      - name: Build and test
+        run: |
+          cmake --build build --target uagent_tests --parallel
+          ctest --test-dir build -R '^core$' --output-on-failure
+      - name: Generate branch report
+        run: >-
+          gcovr --root .
+          --filter include --filter src
+          --exclude third_party
+          --branches
+          --xml-pretty build/coverage.xml
+          --html-details build/coverage.html
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: |
+            build/coverage.xml
+            build/coverage.html
+            build/coverage.*.html
+          if-no-files-found: error
+          retention-days: 7
+
   python:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -128,8 +207,8 @@ jobs:
       - name: Check formatting
         run: >-
           uvx --from clang-format==22.1.8 clang-format
-          --dry-run --Werror include/*.h include/*/*.h src/*.cc tests/*.cc
-          benchmarks/*.cc
+          --dry-run --Werror include/*.h include/*/*.h src/*.cc src/*/*.cc
+          tests/unit/*.h tests/unit/*.cc tests/fuzz/*.cc benchmarks/*.cc
       - name: Check Google style
         run: >-
           uvx --from cpplint==2.0.2 cpplint
@@ -150,7 +229,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-and-test, sanitizers, python, cpp-style]
+    needs: [build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

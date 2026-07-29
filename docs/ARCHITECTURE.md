@@ -5,31 +5,32 @@ owners for runtime resources.
 
 ```text
 main.cc
-  ├─ AppRuntime
-  │  ├─ RuntimeConfig
-  │  ├─ Api                 HTTP/SSE and provider request shaping
-  │  ├─ ProcessSupervisor   shell/subagent process groups and logs
-  │  ├─ UsageAccumulator    concurrent side-request accounting
-  │  ├─ SideTaskSupervisor  bounded in-process background work
-  │  └─ McpRuntime          configured/default stdio transports and child lifetimes
-  ├─ cli.h                command registry, input, completion and steering UI
-  ├─ providers.h          provider config, model routes and live catalog parsing
-  ├─ ProjectInstructions    bounded root-to-cwd AGENTS.md and CLAUDE.md discovery
-  ├─ Tool registry          built-ins, search fallback and MCP adapters
-  └─ Agent                  conversation, orchestration, budgets, persistence
+  └─ Bootstrap → Application
+     ├─ AppRuntime
+     │  ├─ RuntimeConfig
+     │  ├─ Api                 HTTP/SSE and provider request shaping
+     │  ├─ ProcessSupervisor   shell/subagent process groups and logs
+     │  ├─ UsageAccumulator    concurrent side-request accounting
+     │  ├─ SideTaskSupervisor  bounded in-process background work
+     │  └─ McpRuntime          configured/default stdio transports and child lifetimes
+     ├─ cli.h                command registry, input, completion and steering UI
+     ├─ providers.h          provider config, model routes and live catalog parsing
+     ├─ ProjectInstructions  bounded root-to-cwd instruction discovery
+     ├─ Tool registry        built-ins, search fallback and MCP adapters
+     └─ Agent                conversation, orchestration, budgets, persistence
 ```
 
 ## Boundaries
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.cc` | Trust/bootstrap flow and REPL dispatch |
-| `include/app/`, `src/app/` | CLI options and ordered runtime ownership/shutdown |
+| `src/main.cc` | Signals, option parsing, bootstrap invocation and exit mapping |
+| `include/app/`, `src/app/` | Options, trust/bootstrap, REPL and ordered runtime ownership/shutdown |
 | `include/ui/` | Session picker and terminal rendering for the REPL |
 | `include/cli.h` | Slash-command registry, input, completion and steering UI |
 | `include/providers.h` | Provider setup, model routing, effort and catalog metadata |
-| `include/agent.h` | Agent coordination and active history |
-| `include/agent/`, `src/agent/` | Session storage, checkpoints and tool-loop execution |
+| `include/agent.h` | Thin coordination across conversation, policy and execution |
+| `include/agent/`, `src/agent/` | Structured conversation/archive, context policy, session storage, checkpoints and tool loop |
 | `include/api.h`, `src/api/` | OpenAI-compatible HTTP and protocol normalization |
 | `include/transport/`, `src/transport/` | Bounded provider-independent SSE framing |
 | `include/tools/` | Tool interface, file adapters, process supervision, registry |
@@ -43,10 +44,13 @@ and streaming parsers live in implementation units behind the private
 `uagent_core` target. The include graph is acyclic, with `core/` at the bottom
 and no module depending on `main.cc`.
 
-`Agent` alone may replace model-visible history. `Api`, MCP, and tools do not
-own conversation state. Background processes, MCP children, and side usage have
-explicit owners rather than hidden service globals. Signal flags and the debug
-bridge are the narrow process-wide exceptions.
+`Conversation` owns model-visible messages, structured message kinds and the
+bounded archive. Text prefixes are never parsed to decide authority or control
+flow. `ContextPolicy` alone accounts for projected pressure and checkpoint or
+compaction decisions. `Agent` coordinates them; `Api`, MCP, and tools do not
+own conversation state. Background processes, MCP children, and side usage
+have explicit owners rather than hidden service globals. Signal flags and the
+debug bridge are the narrow process-wide exceptions.
 
 `Tool` is the common capability interface for built-ins, MCP, search fallback and
 delegation. `MakeTool` constructs every registration, so schema, execution,
@@ -74,11 +78,11 @@ raw archive        bounded removed traces; not sent automatically
 checkpoints        small model-proposed states and evaluation records
 ```
 
-Workspace-scoped session files persist all three plus token totals and a stable
-provider session ID. `SessionStore` validates the complete versioned record
-before live state changes, rejects unsupported schemas, and leaves corrupt
-files untouched. Saves are atomic. Archives evict oldest segments first and
-record the eviction count.
+Workspace-scoped session files persist all three plus structured message kinds,
+token totals, and a stable provider session ID. `SessionStore` accepts only the
+current schema, validates the complete record before live state changes, and
+leaves corrupt files untouched. Saves are atomic. Archives evict oldest
+segments first and record the eviction count.
 
 ## Turn flow
 
@@ -174,6 +178,10 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 
 - Transport failures use `ChatResult.error`; typed tool outcomes carry a
   completion state, error category, and bounded model-readable explanation.
+- Connection failures, HTTP 408/409/429/5xx, and recognized structured
+  overload/server errors receive at most two exponentially delayed retries.
+  Retry is forbidden after semantic progress, preventing duplicate output,
+  search work, or tool calls.
 - Unsupported request features degrade once: parallel hint, usage streaming,
   OpenRouter server search, then native tools.
 - Image-input rejection removes only image parts, retains paths and documents,
@@ -192,8 +200,8 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 
 ## Verification
 
-- `tests/test_core.cc`: parsers, request shaping, accounting, file/process and
-  terminal boundaries.
+- `tests/unit/`: subsystem-focused parser, request, accounting, filesystem,
+  process, terminal, configuration, MCP and session tests.
 - `tests/integration.py`: hermetic SSE/MCP, Chrome modes, trust, config,
   approvals, limits, shutdown, and checkpoint behavior including a 500k-window
   pressure case.
@@ -202,9 +210,11 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 - `benchmarks/bench_core.cc`: dependency-free microbenchmarks.
 
 CI builds Debug and Release on Linux/macOS with warnings as errors, runs
-ASan/UBSan on Linux, and enforces the Google formatter, `clang-tidy`, and
-`cpplint`. Add characterization coverage before changing a boundary, then
-verify externally visible behavior with integration tests.
+ASan/UBSan and TSan on Linux, smoke-fuzzes standalone streaming parsers,
+generates branch coverage, and enforces the Google formatter, selected
+`clang-tidy` analyzer/bugprone/performance checks, and `cpplint`. Add
+characterization coverage before changing a boundary, then verify externally
+visible behavior with integration tests.
 
 ## Adding a capability
 

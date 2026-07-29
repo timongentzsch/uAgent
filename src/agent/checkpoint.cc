@@ -106,24 +106,29 @@ void Agent::ApplyCheckpoint(const std::string& state,
                             const std::vector<std::string>& results,
                             const std::vector<std::string>& verbatim) {
   int64_t before_tokens = ContextUsed();
-  size_t before_messages = messages_.size();
+  size_t before_messages = conversation_.Size();
   int64_t artifact_budget = std::max(int64_t{1024}, ToolResultCap());
   int64_t used = 0;
   size_t retained_results = 0;
 
   json next = BaselineMessages(/*checkpoint=*/true);
-  next.push_back(
+  std::vector<MessageKind> next_kinds = BaselineKinds();
+  auto push_evidence = [&](json message) {
+    next.push_back(std::move(message));
+    next_kinds.push_back(MessageKind::kInternal);
+  };
+  push_evidence(
       {{"role", "assistant"},
        {"content", "[checkpoint facts; non-authoritative]\n" + state}});
 
   if (!verbatim.empty()) {
-    next.push_back(
+    push_evidence(
         {{"role", "assistant"},
          {"content", "[checkpoint exact literals; non-authoritative]\n" +
                          JsonDump(json(verbatim))}});
   }
   if (!side_effects_.empty()) {
-    next.push_back(
+    push_evidence(
         {{"role", "assistant"},
          {"content", "[checkpoint runtime activity; non-authoritative]\n" +
                          JsonDump(side_effects_)}});
@@ -131,7 +136,7 @@ void Agent::ApplyCheckpoint(const std::string& state,
 
   for (const std::string& result : results) {
     if (used + static_cast<int64_t>(result.size()) > artifact_budget) break;
-    next.push_back(
+    push_evidence(
         {{"role", "assistant"},
          {"content",
           "[checkpoint retained tool result; non-authoritative]\n" + result}});
@@ -155,7 +160,7 @@ void Agent::ApplyCheckpoint(const std::string& state,
           {{"path", path.string()}, {"reason", "artifact budget exhausted"}});
       continue;
     }
-    next.push_back(
+    push_evidence(
         {{"role", "assistant"},
          {"content", "[checkpoint file " + CheckpointDisplayPath(path) +
                          "; non-authoritative]\n" + content}});
@@ -163,21 +168,21 @@ void Agent::ApplyCheckpoint(const std::string& state,
     ++reread;
   }
   if (!skipped.empty()) {
-    next.push_back(
+    push_evidence(
         {{"role", "assistant"},
          {"content", "[checkpoint reread skipped; non-authoritative]\n" +
                          JsonDump(skipped)}});
   }
 
   ArchiveAll("checkpoint_fold");
-  messages_ = std::move(next);
-  ctx_used_ = 0;
+  conversation_.ResetHistory(std::move(next), std::move(next_kinds));
+  context_policy_.SetReported(0);
   last_checkpoint_turn_ = turn_id_;
   checkpoint_hint_active_ = false;
-  urgent_hints_ignored_ = 0;
+  context_policy_.ResetUrgency();
   DebugLog("checkpoint_applied", {{"turn", turn_id_},
                                   {"before_messages", before_messages},
-                                  {"after_messages", messages_.size()},
+                                  {"after_messages", conversation_.Size()},
                                   {"before_tokens", before_tokens},
                                   {"after_tokens_estimate", ContextUsed()},
                                   {"paths_requested", paths.size()},
@@ -305,7 +310,7 @@ bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
   }
 
   ++tool_count;
-  urgent_hints_ignored_ = 0;
+  context_policy_.ResetUrgency();
   checkpoint_candidates_.push_back(
       {{"turn", turn_id_},
        {"context_tokens", ContextUsed()},

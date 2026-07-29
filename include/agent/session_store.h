@@ -6,7 +6,9 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
+#include "include/agent/conversation.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
 
@@ -16,7 +18,9 @@ enum class SessionStoreError {
   kNone,
   kNotFound,
   kCorrupt,
+  kIncompatible,
   kWrongWorkspace,
+  kInvalid,
   kIo,
 };
 
@@ -30,6 +34,7 @@ struct SessionMetadata {
 
 struct SessionState {
   json messages = json::array();
+  std::vector<MessageKind> message_kinds;
   json archive = json::array();
   int64_t archive_dropped_segments = 0;
   json checkpoint_candidates = json::array();

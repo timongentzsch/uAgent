@@ -216,6 +216,77 @@ def test_stream_error_is_not_an_empty_response(root, home):
         assert_true(result.returncode != 0, result.stdout)
         assert_true("upstream overloaded" in result.stderr, result.stderr)
         assert_true("empty response" not in result.stderr, result.stderr)
+        assert_true(len(server.requests) == 3, server.requests)
+    finally:
+        server.close()
+
+
+def test_transient_stream_errors_retry_before_progress(root, home):
+    server = Server(
+        [
+            {
+                "error": {
+                    "message": "temporary server failure",
+                    "type": "server_error",
+                    "code": "server_error",
+                }
+            },
+            {
+                "error": {
+                    "message": "server overloaded",
+                    "type": "service_unavailable_error",
+                    "code": "server_is_overloaded",
+                }
+            },
+            event({"content": "retry-ok"}),
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "retry-ok", result.stdout)
+        assert_true(len(server.requests) == 3, server.requests)
+    finally:
+        server.close()
+
+
+def test_transient_http_error_retries_before_progress(root, home):
+    def unavailable(handler, _):
+        data = json.dumps(
+            {
+                "error": {
+                    "message": "temporarily unavailable",
+                    "type": "service_unavailable_error",
+                }
+            }
+        ).encode()
+        handler.send_response(503)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    server = Server([unavailable, event({"content": "http-retry-ok"})])
+    try:
+        result = run(root, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "http-retry-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+    finally:
+        server.close()
+
+
+def test_connection_drop_retries_before_progress(root, home):
+    def disconnect(handler, _):
+        handler.connection.shutdown(socket.SHUT_RDWR)
+        handler.connection.close()
+
+    server = Server([disconnect, event({"content": "connection-retry-ok"})])
+    try:
+        result = run(root, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "connection-retry-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
     finally:
         server.close()
 
@@ -1515,6 +1586,93 @@ def test_dynamic_provider_catalog_and_model(root, home):
         second.close()
 
 
+def test_template_catalog_survives_named_provider_selection(root, home):
+    local = Server(
+        [event({"content": "unused"})],
+        get_response={"data": [{"id": "local-model"}]},
+    )
+    providers = {
+        "codex-local": {
+            "base_url": local.url,
+            "api_key": "local-key",
+        }
+    }
+    try:
+        env = base_env(home, local.url)
+        env["UAGENT_MODEL"] = "codex-local/local-model"
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["OPENROUTER_API_KEY"] = "openrouter-key"
+        env["UAGENT_BASE_URL"] = local.url
+        result = run_dialog(
+            root,
+            env,
+            "/models\n/q\n",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("codex-local/*" in result.stdout, result.stdout)
+        assert_true("openrouter/*" in result.stdout, result.stdout)
+        assert_true(local.get_requests == ["/v1/models"], local.get_requests)
+    finally:
+        local.close()
+
+
+def test_local_model_uses_openrouter_web_search_route(root, home):
+    def verify_search(handler, body):
+        valid = (
+            body.get("model") == "vendor/search:online"
+            and handler.headers.get("Authorization") == "Bearer search-key"
+        )
+        data = json.dumps(
+            {
+                "choices": [
+                    {"message": {"content": "search evidence" if valid else "search misrouted"}}
+                ]
+            }
+        ).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    def verify_tool_result(_, body):
+        tool_results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        valid = any("search evidence" in result for result in tool_results)
+        return event({"content": "fallback-search-ok" if valid else "fallback-search-bad"})
+
+    local = Server([tool_call("web_search", {"query": "current topic"}), verify_tool_result])
+    search = Server([verify_search])
+    providers = {
+        "codex-local": {"base_url": local.url, "api_key": "local-key"},
+        "openrouter": {"base_url": search.url, "api_key": "search-key"},
+    }
+    try:
+        env = base_env(home, local.url)
+        env["UAGENT_MODEL"] = "codex-local/local-model"
+        env["UAGENT_API_KEY"] = "local-key"
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["OPENROUTER_MODEL"] = "vendor/search"
+        result = run(
+            root,
+            env,
+            "--yolo",
+            "-p",
+            "research the current topic",
+            timeout=15,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "fallback-search-ok", result.stdout)
+        assert_true(len(local.requests) == 2, local.requests)
+        assert_true(len(search.requests) == 1, search.requests)
+    finally:
+        local.close()
+        search.close()
+
+
 def test_model_preference_survives_restart(root, home):
     first = Server([event({"content": "explicit-model-ok"})])
 
@@ -2638,6 +2796,9 @@ def main():
         tests = [
             test_plain_turn,
             test_stream_error_is_not_an_empty_response,
+            test_transient_stream_errors_retry_before_progress,
+            test_transient_http_error_retries_before_progress,
+            test_connection_drop_retries_before_progress,
             test_empty_response_does_not_enter_history,
             test_command_help,
             test_project_instructions_precede_first_turn,
@@ -2668,6 +2829,8 @@ def main():
             test_user_config_interpolation,
             test_model_route_switch,
             test_dynamic_provider_catalog_and_model,
+            test_template_catalog_survives_named_provider_selection,
+            test_local_model_uses_openrouter_web_search_route,
             test_model_preference_survives_restart,
             test_live_model_catalog,
             test_checkpoint_apply,

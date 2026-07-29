@@ -22,12 +22,23 @@
 
 namespace uagent {
 
+struct WebSearchRoute {
+  std::string base_url;
+  std::string api_key;
+  std::string model;
+
+  bool Valid() const {
+    return !base_url.empty() && !api_key.empty() && !model.empty();
+  }
+};
+
 // OpenRouter-only: lets the model reach the web when IT decides it needs to,
 // via a quiet side-request to <model>:online. Costs one search-enabled
 // completion per call — but only when actually used, unlike the /online
 // toggle which pays on every request.
 inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
-                          SideTaskSupervisor& side_tasks) {
+                          SideTaskSupervisor& side_tasks,
+                          WebSearchRoute fallback = {}) {
   Tool t = MakeTool(
       "web_search",
       "Search via OpenRouter with source URLs. Batch up to four queries. Slow "
@@ -39,12 +50,16 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           "query":{"type":"string","description":"one query (legacy shorthand)"},
           "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
             "description":"one to four queries in one request"}}})json"),
-      [&api, &usage, &side_tasks](const json& a,
-                                  const ToolContext& context) -> ToolResult {
-        if (!OpenrouterCompatibleUrl(api.base_url)) {
-          return ToolFailure(
-              ToolErrorCode::kUnavailable,
-              "error: web_search is available only for OpenRouter");
+      [&api, &usage, &side_tasks, fallback = std::move(fallback)](
+          const json& a, const ToolContext& context) -> ToolResult {
+        bool active_openrouter = OpenrouterCompatibleUrl(api.base_url);
+        WebSearchRoute route =
+            active_openrouter
+                ? WebSearchRoute{api.base_url, api.api_key, api.model}
+                : fallback;
+        if (!route.Valid()) {
+          return ToolFailure(ToolErrorCode::kUnavailable,
+                             "error: web_search requires an OpenRouter route");
         }
         std::vector<std::string> queries;
         if (a.contains("queries") && a["queries"].is_array()) {
@@ -70,11 +85,10 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         for (size_t i = 0; i < queries.size(); ++i) {
           query += std::to_string(i + 1) + ". " + queries[i] + "\n";
         }
-        const std::string base_url = api.base_url, api_key = api.api_key;
-        const std::string model = api.model;
         RuntimeConfig config = api.config;
-        std::string base =
-            config.web_search_model.empty() ? model : config.web_search_model;
+        std::string base = config.web_search_model.empty()
+                               ? route.model
+                               : config.web_search_model;
         base = base.substr(0, base.find(':'));
         json body = {
             {"model", base + ":online"},
@@ -95,8 +109,9 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
             std::max(config.web_search_timeout_s, context.timeout_s);
         int64_t id = side_tasks.Start(
             "web search", query,
-            [base_url, api_key, config, body = std::move(body), timeout,
-             &usage](const std::atomic<bool>& cancel) {
+            [base_url = std::move(route.base_url),
+             api_key = std::move(route.api_key), config, body = std::move(body),
+             timeout, &usage](const std::atomic<bool>& cancel) {
               auto started = std::chrono::steady_clock::now();
               DebugLog("side_request", {{"kind", "web_search"},
                                         {"path", "/chat/completions"},

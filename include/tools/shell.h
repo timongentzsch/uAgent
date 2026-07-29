@@ -19,6 +19,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/child_env.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
@@ -39,7 +40,9 @@ inline ShellCommandResult RunShellCommand(
     ProcessSupervisor& supervisor, const std::string& cmd, int64_t window_s,
     bool join_before_final, const ToolContext& context, bool allow_background,
     bool detach, std::string shell, bool immediate_background,
-    std::string job_kind) {
+    std::string job_kind, const EnvironmentOverrides& environment = {},
+    ChildEnvironmentPolicy environment_policy =
+        ChildEnvironmentPolicy::kSanitized) {
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -110,11 +113,12 @@ inline ShellCommandResult RunShellCommand(
                                             group_flag | POSIX_SPAWN_SETSIGDEF |
                                             POSIX_SPAWN_SETSIGMASK));
   pid_t pid = -1;
+  ChildEnvironment child_environment(environment, environment_policy);
   auto spawn_shell = [&](const std::string& executable) {
     char* const argv[] = {const_cast<char*>(executable.c_str()),
                           const_cast<char*>("-c"), bounded_cmd.data(), nullptr};
     return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
-                        environ);
+                        child_environment.Data());
   };
   int spawn_error = spawn_shell(shell);
   if (spawn_error != 0 && shell == "bash") {
@@ -220,18 +224,31 @@ inline ShellCommandResult RunShellCommand(
                       std::to_string(pid) + ")")};
 }
 
-inline ToolResult ToolRunBash(ProcessSupervisor& supervisor,
-                              const std::string& cmd, int64_t window_s,
-                              bool join_before_final = false,
-                              const ToolContext& context = {},
-                              bool allow_background = true, bool detach = false,
-                              std::string shell = "bash",
-                              bool immediate_background = false,
-                              std::string job_kind = "") {
+inline ToolResult ToolRunBash(
+    ProcessSupervisor& supervisor, const std::string& cmd, int64_t window_s,
+    bool join_before_final = false, const ToolContext& context = {},
+    bool allow_background = true, bool detach = false,
+    std::string shell = "bash", bool immediate_background = false,
+    std::string job_kind = "", const EnvironmentOverrides& environment = {},
+    ChildEnvironmentPolicy environment_policy =
+        ChildEnvironmentPolicy::kSanitized) {
   return RunShellCommand(supervisor, cmd, window_s, join_before_final, context,
                          allow_background, detach, std::move(shell),
-                         immediate_background, std::move(job_kind))
+                         immediate_background, std::move(job_kind), environment,
+                         environment_policy)
       .result;
+}
+
+inline ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
+                                       const std::string& command,
+                                       int64_t window_s,
+                                       const ToolContext& context, bool detach,
+                                       std::string shell) {
+  return ToolRunBash(supervisor, command, window_s, /*join_before_final=*/false,
+                     context,
+                     /*allow_background=*/true, detach, std::move(shell),
+                     /*immediate_background=*/false, "", {},
+                     ChildEnvironmentPolicy::kApprovedShell);
 }
 
 inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,

@@ -22,12 +22,15 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/child_env.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+
+extern char** environ;
 
 namespace uagent {
 
@@ -247,6 +250,7 @@ inline bool McpSpawn(
   fcntl(inp[1], F_SETFL, O_NONBLOCK);
   int errfd =
       open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0600);
+  ChildEnvironment child_environment(env);
   pid_t pid = fork();
   if (pid < 0) {
     close(inp[0]);
@@ -276,7 +280,7 @@ inline bool McpSpawn(
               strerror(errno));
       _exit(126);
     }
-    for (auto& [k, v] : env) setenv(k.c_str(), v.c_str(), 1);
+    environ = child_environment.Data();
     std::vector<char*> argv;
     argv.push_back(const_cast<char*>(cmd.c_str()));
     for (auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));

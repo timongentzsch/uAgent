@@ -26,6 +26,7 @@
 
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
+#include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -94,6 +95,7 @@ class Agent {
     archive_ = json::array();
     archive_bytes_ = 0;
     archive_dropped_segments_ = 0;
+    turn_search_trace_.Reset();
     checkpoint_candidates_ = json::array();
     pending_checkpoint_ = nullptr;
     side_effects_ = json::array();
@@ -118,6 +120,11 @@ class Agent {
   int64_t ArchiveDroppedSegments() const { return archive_dropped_segments_; }
   size_t CheckpointCandidates() const { return checkpoint_candidates_.size(); }
   uint64_t Revision() const { return revision_; }
+
+  // Show the most recent completed turn's pruned tool traffic without keeping
+  // a second transcript. Server search can expose sources and snippets, but
+  // not necessarily the provider-internal query.
+  void PrintTrace() const { PrintLatestTrace(archive_, tools_); }
 
   // final assistant prose — the whole result of a headless (-p) run
   std::string LastText() const {
@@ -178,9 +185,8 @@ class Agent {
       const std::string role = JsonValue(m, "role", "");
       const json& content = m.contains("content") ? m["content"] : kEmpty;
       if (role == "system") continue;
-      if (role == "tool") {  // native tool result
-        std::string safe = TerminalSafe(content.get<std::string>());
-        printf("%s  ← %s%s\n", DIM(), safe.c_str(), RST());
+      if (role == "tool" && content.is_string()) {  // native tool result
+        PrintToolResultText(content.get<std::string>());
       } else if (role == "assistant") {
         if (content.is_string() && !content.get<std::string>().empty()) {
           std::string text = content.get<std::string>();
@@ -194,15 +200,7 @@ class Agent {
         }
         if (m.contains("tool_calls")) {
           for (const auto& tc : m["tool_calls"]) {
-            std::string name = JsonValue(tc["function"], "name", "");
-            json args = json::parse(
-                JsonValue(tc["function"], "arguments", "{}"), nullptr, false);
-            const Tool* t = FindTool(tools_, name);
-            std::string sum = t ? ToolSummary(*t, args) : JsonDump(args);
-            std::string safe_name = TerminalSafe(name);
-            std::string safe_sum = TerminalSafe(FirstLine(sum));
-            printf("%s→ %s(%s)%s\n", CYAN(), safe_name.c_str(),
-                   safe_sum.c_str(), RST());
+            PrintToolCallSummary(tc, tools_);
           }
         }
       } else if (role == "user" && content.is_string()) {
@@ -311,6 +309,7 @@ class Agent {
     last_checkpoint_hint_turn_ = 0;
     urgent_hints_ignored_ = 0;
     last_checkpoint_turn_ = 0;
+    turn_search_trace_.Reset();
     ++revision_;
     return true;
   }
@@ -444,7 +443,7 @@ class Agent {
   bool WaitForBackground(std::chrono::steady_clock::time_point deadline,
                          Usage& usage) {
     DebugLog("background_join_start", {{"pending", JoinableBackground()}});
-    TerminalSpinner spinner;
+    TerminalSpinner spinner(false, SpinnerLabel("waiting for background"));
     while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
       DrainBackground(&spinner);
       MergeSideUsage(usage);
@@ -522,6 +521,7 @@ class Agent {
       last_checkpoint_hint_turn_ = turn_id_;
     }
     Usage usage;
+    turn_search_trace_.Reset();
     int64_t tool_count = 0;
     std::unordered_map<std::string, int64_t> tool_counts;
     auto t0 = std::chrono::steady_clock::now();
@@ -595,10 +595,18 @@ class Agent {
       usage.Merge(response_usage);           // this turn's footer
       session_usage_.Merge(response_usage);  // running session totals
       tool_counts["web_search"] += response_usage.web_searches;
+      turn_search_trace_.Add(response_usage.web_searches, r.annotations);
+      line_open =
+          !r.suppressed && !r.content.empty() && r.content.back() != '\n';
+      if (PrintSearchReceipt(response_usage.web_searches, r.annotations, false,
+                             line_open)) {
+        line_open = false;
+      }
       std::string citations = CitationMarkdown(r.annotations);
       if (!citations.empty() && !r.content.empty()) {
         MdPrint(citations);
         r.content += citations;
+        line_open = false;
       }
       if (max_turn_cost > 0 && usage.cost > max_turn_cost) {
         last_error_ =
@@ -615,8 +623,6 @@ class Agent {
       std::vector<ToolCall> calls = r.tool_calls;
       bool text_mode =
           calls.empty() && !(calls = ParseTextToolCalls(r.content)).empty();
-      line_open =
-          !r.suppressed && !r.content.empty() && r.content.back() != '\n';
 
       if (!calls.empty()) {
         if (tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
@@ -791,18 +797,28 @@ class Agent {
   }
 
  private:
-  void ArchiveRange(const char* reason, size_t begin, size_t end) {
-    if (begin >= end || begin >= messages_.size()) return;
+  void ArchiveRange(const char* reason, size_t begin, size_t end,
+                    json metadata = json::object()) {
+    if (!metadata.is_object()) metadata = json::object();
     end = std::min(end, messages_.size());
     json saved = json::array();
-    for (size_t i = begin; i < end; ++i) saved.push_back(messages_[i]);
-    if (saved.empty()) return;
+    if (begin < end && begin < messages_.size()) {
+      for (size_t i = begin; i < end; ++i) saved.push_back(messages_[i]);
+    }
+    if (saved.empty() && metadata.empty()) return;
     json segment = {
         {"turn", turn_id_}, {"reason", reason}, {"messages", std::move(saved)}};
+    for (auto& [key, value] : metadata.items()) {
+      if (!segment.contains(key)) segment[key] = std::move(value);
+    }
     int64_t segment_bytes = static_cast<int64_t>(JsonDump(segment).size());
     int64_t bytes = segment_bytes + (archive_.empty() ? 0 : 1);
     int64_t cap = api_.config.session_archive_bytes;
     if (cap <= 0) {
+      ++archive_dropped_segments_;
+      return;
+    }
+    if (segment_bytes > cap) {
       ++archive_dropped_segments_;
       return;
     }
@@ -813,10 +829,6 @@ class Agent {
       archive_.erase(archive_.begin());
       ++archive_dropped_segments_;
       bytes = segment_bytes + (archive_.empty() ? 0 : 1);
-    }
-    if (segment_bytes > cap) {
-      ++archive_dropped_segments_;
-      return;
     }
     archive_.push_back(std::move(segment));
     archive_bytes_ += segment_bytes + (archive_.size() > 1 ? 1 : 0);
@@ -970,9 +982,11 @@ class Agent {
   // A completed turn's final answer is the durable summary. Drop intermediate
   // calls/results (often entire files) so every future request stays lean.
   void PruneTurn(size_t turn_start) {
-    if (messages_.size() <= turn_start + 2) return;  // no tool exchange
+    bool has_tools = messages_.size() > turn_start + 2;
+    if (!has_tools && turn_search_trace_.Empty()) return;
     size_t before = messages_.size();
-    ArchiveRange("trace_pruned", turn_start + 1, messages_.size() - 1);
+    ArchiveRange("trace_pruned", turn_start + 1, messages_.size() - 1,
+                 turn_search_trace_.ArchiveMetadata());
     json answer = std::move(messages_.back());
     auto first =
         messages_.begin() + static_cast<json::difference_type>(turn_start + 1);
@@ -1023,7 +1037,8 @@ class Agent {
         lowered.find("stream_options") != std::string::npos) {
       return drop(api_.include_usage, "stream_options");
     }
-    if (OpenrouterUrl(api_.base_url) && api_.config.web_search_server &&
+    if (OpenrouterCompatibleUrl(api_.base_url) &&
+        api_.config.web_search_server &&
         api_.openrouter_web_search &&
         (lowered.find("openrouter:web_search") != std::string::npos ||
          lowered.find("web_search") != std::string::npos ||
@@ -1267,7 +1282,11 @@ class Agent {
     bool quiet = std::none_of(runnable.begin(), runnable.end(), [&](size_t i) {
       return calls[i].name == "show_image";
     });
-    TerminalSpinner spinner(!runnable.empty() && quiet);
+    std::string activity = runnable.size() == 1
+                               ? calls[runnable.front()].name
+                               : std::to_string(runnable.size()) + " tools";
+    TerminalSpinner spinner(!runnable.empty() && quiet,
+                            SpinnerLabel(std::move(activity)));
     ToolContext context{deadline};
     for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
       size_t first = runnable[begin];
@@ -1343,6 +1362,7 @@ class Agent {
   json archive_ = json::array();
   int64_t archive_bytes_ = 0;
   int64_t archive_dropped_segments_ = 0;
+  SearchTrace turn_search_trace_;
   json checkpoint_candidates_ = json::array();
   json pending_checkpoint_ = nullptr;
   json side_effects_ = json::array();

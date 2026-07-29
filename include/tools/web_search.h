@@ -41,7 +41,7 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
             "description":"one to four queries in one request"}}})json"),
       [&api, &usage, &side_tasks](const json& a,
                                   const ToolContext& context) -> std::string {
-        if (!OpenrouterUrl(api.base_url)) {
+        if (!OpenrouterCompatibleUrl(api.base_url)) {
           return "error: web_search is available only for OpenRouter";
         }
         std::vector<std::string> queries;

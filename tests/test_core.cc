@@ -84,13 +84,22 @@ void TestRegistries() {
   CHECK(std::string(kSystemPrompt).find("AGENTS.md") != std::string::npos);
   CHECK(std::string(kSystemPrompt).find("CLAUDE.md") != std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Unicode math") != std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("do not guess") != std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("preserve unrelated work") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("Commit or push only when asked") !=
+        std::string::npos);
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
+  command = ParseSlashCommand("/trace");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kTrace);
   CHECK(!ParseSlashCommand("/unknown").spec);
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
+  CHECK(DisplayTrunc("abcdef", 4) == "abc…");
+  CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);
 
   auto models = ParseModels(
       {{"data",
@@ -499,6 +508,12 @@ void TestOpenRouterServerSearch() {
   CHECK(body["tools"].size() == 1);
   CHECK(body["tools"][0]["function"]["name"] == "read_file");
 
+  api.base_url = "http://127.0.0.1:8787/api/v1";
+  api.openrouter_web_search = true;
+  body = api.BuildChatBody(json::array(), schemas);
+  CHECK(body["tools"].size() == 2);
+  CHECK(body["tools"][1]["type"] == "openrouter:web_search");
+
   api.base_url = "https://openrouter.ai/api/v1";
   api.openrouter_web_search = true;
   body = api.BuildChatBody(json::array(), json::array());
@@ -521,6 +536,28 @@ void TestOpenRouterServerSearch() {
   std::string citations = CitationMarkdown(result.annotations);
   CHECK(citations.find("<https://example.com/a>") != std::string::npos);
   CHECK(citations.find("<https://example.com/b>") != std::string::npos);
+  auto entries = CitationEntries(result.annotations);
+  CHECK(entries.size() == 2);
+  SearchTrace trace;
+  trace.Add(1, result.annotations);
+  CHECK(trace.ArchiveMetadata().value("web_searches", int64_t{0}) == 1);
+  CHECK(trace.ArchiveMetadata()["annotations"].size() == 2);
+  trace.Reset();
+  CHECK(trace.Empty());
+  trace.Add(0, result.annotations);
+  CHECK(!trace.Empty());
+  json many = json::array();
+  for (int i = 0; i < 25; ++i) {
+    many.push_back({{"url", "https://example.com/" + std::to_string(i)},
+                    {"content", std::string(5000, 'x')}});
+  }
+  trace.Reset();
+  trace.Add(1, many);
+  CHECK(trace.ArchiveMetadata()["annotations"].size() ==
+        SearchTrace::kMaxSources);
+  CHECK(trace.ArchiveMetadata()["annotations"][0]["content"]
+            .get<std::string>()
+            .size() <= SearchTrace::kMaxContentChars + 3);
   CHECK(CitationMarkdown(
             json::array({{{"url_citation", {{"url", "javascript:alert(1)"}}}}}))
             .empty());

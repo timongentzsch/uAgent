@@ -77,13 +77,15 @@ inline std::string CapResult(std::string s, int64_t cap = -1) {
 // anyway. The text protocol (plus a tool list, since schemas are no longer
 // sent) is appended only after a server rejects native tool calls.
 inline constexpr const char* kSystemPrompt =
-    "You are a coding agent in the current directory. Inspect, edit, and "
-    "verify "
-    "with tools; batch independent calls and delegate independent subtasks "
-    "rather than working through them one at a time. Follow loaded "
-    "instructions and read "
-    "applicable AGENTS.md or CLAUDE.md before entering subtrees. Use Unicode "
-    "math; use LaTeX only when raw source is requested. Be concise.";
+    "You are a coding agent in the current directory. Resolve the request "
+    "completely: inspect, edit, and verify with tools; do not guess. Keep "
+    "changes minimal and focused, preserve unrelated work, and run relevant "
+    "checks before claiming success. Commit or push only when asked. Batch "
+    "independent calls and delegate independent subtasks. Direct instructions "
+    "win; nearer AGENTS.md or CLAUDE.md overrides broader guidance—read "
+    "applicable files before entering subtrees. Ask only when blocked. Prefer "
+    "Unicode math; use LaTeX only when raw source is requested. Be concise and "
+    "report blockers.";
 
 inline std::string TextProtocolPrompt(const std::vector<Tool>& tools,
                                       int64_t default_timeout_s = 30) {

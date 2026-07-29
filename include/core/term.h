@@ -15,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 
 namespace uagent {
 
@@ -86,7 +87,10 @@ inline void BracketedPaste(bool on) {
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true) { Start(enabled); }
+  explicit TerminalSpinner(bool enabled = true, std::string label = "working")
+      : label_(std::move(label)) {
+    Start(enabled);
+  }
 
   void Start(bool enabled = true) {
     if (thread_.joinable() || !enabled || !g_tty) return;
@@ -94,7 +98,7 @@ class TerminalSpinner {
     thread_ = std::thread([this] {
       std::unique_lock<std::mutex> lock(mutex_);
       while (!done_) {
-        printf("\r%s%c%s", DIM(), "|/-\\"[frame_], RST());
+        printf("\r%s%c %s%s", DIM(), "|/-\\"[frame_], label_.c_str(), RST());
         fflush(stdout);
         frame_ = (frame_ + 1) & 3;
         wake_.wait_for(lock, std::chrono::milliseconds(100),
@@ -123,6 +127,7 @@ class TerminalSpinner {
   std::condition_variable wake_;
   bool done_ = false;
   int frame_ = 0;
+  std::string label_;
   std::thread thread_;
 };
 

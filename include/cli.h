@@ -40,6 +40,7 @@ enum class SlashCommandId {
   kQuit,
   kReset,
   kSessions,
+  kTrace,
   kYolo,
 };
 
@@ -67,6 +68,7 @@ inline constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kReset, "/reset", "", CommandCompletion::kNone, true},
     {SlashCommandId::kSessions, "/sessions", "", CommandCompletion::kNone,
      true},
+    {SlashCommandId::kTrace, "/trace", "", CommandCompletion::kNone, true},
     {SlashCommandId::kYolo, "/yolo", "", CommandCompletion::kNone, true},
     {SlashCommandId::kQuit, "/exit", "", CommandCompletion::kNone, false},
     {SlashCommandId::kQuit, "/q", "", CommandCompletion::kNone, false},

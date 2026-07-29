@@ -25,8 +25,8 @@ namespace uagent {
 struct CallTask {
   const Tool* tool = nullptr;
   json args;
-  std::string result;
-  std::string status;
+  ToolResult result;
+  std::string trace_status;
   std::string label, ordinal;
   double duration_ms = 0;
   bool execute = false;
@@ -35,14 +35,19 @@ struct CallTask {
 inline void LogToolResult(const CallTask& task, const ToolCall& call,
                           int64_t turn, int64_t step) {
   if (!g_debug.Enabled()) return;
-  g_debug.Write("tool_result", {{"turn", turn},
-                                {"step", step},
-                                {"id", call.id},
-                                {"name", call.name},
-                                {"status", task.status},
-                                {"duration_ms", task.duration_ms},
-                                {"result", task.result},
-                                {"result_chars", task.result.size()}});
+  g_debug.Write(
+      "tool_result",
+      {{"turn", turn},
+       {"step", step},
+       {"id", call.id},
+       {"name", call.name},
+       {"status", task.trace_status},
+       {"completion_status", CompletionStatusName(task.result.status)},
+       {"error_code", ToolErrorCodeName(task.result.error)},
+       {"detail", task.trace_status},
+       {"duration_ms", task.duration_ms},
+       {"result", task.result.output},
+       {"result_chars", task.result.output.size()}});
 }
 
 inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
@@ -50,9 +55,9 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
   if (g_steering.Requested() || AbortRequested()) {
-    task.result =
-        g_steering.Requested() ? "cancelled by steering" : "cancelled by user";
-    task.status = g_steering.Requested() ? "steered" : "cancelled";
+    task.result = ToolCancelled(g_steering.Requested() ? "cancelled by steering"
+                                                       : "cancelled by user");
+    task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
     LogToolResult(task, call, turn, step);
     return;
   }
@@ -79,19 +84,26 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   ToolContext call_context = context.WithTimeout(timeout);
   json arguments = task.args;
   arguments.erase("timeout");  // runtime policy, never a provider argument
-  task.result =
+  task.result = AdaptLegacyToolStringResult(
       CapResult(EscapeToolTags(task.tool->run(arguments, call_context)),
-                task.tool->result_chars);
-  task.status = g_steering.Requested()
-                    ? "steered"
-                    : (task.result.starts_with("error:") ? "error" : "ok");
+                task.tool->result_chars));
+  if (g_steering.Requested()) {
+    task.result.status = CompletionStatus::kCancelled;
+    task.result.error = ToolErrorCode::kCancelled;
+    task.trace_status = "steered";
+  } else {
+    task.trace_status = task.result.Ok() ? "ok" : "error";
+  }
   task.duration_ms = ElapsedMs(started);
   LogToolResult(task, call, turn, step);
 }
 
 inline void PrintCallResult(const CallTask& task, const ToolCall& call) {
-  std::string safe_result = TerminalSafe(task.result);
-  const char* style = task.status == "error" ? RED() : DIM();
+  std::string safe_result = TerminalSafe(task.result.output);
+  const char* style = task.result.status == CompletionStatus::kFailed ||
+                              task.result.status == CompletionStatus::kTimedOut
+                          ? RED()
+                          : DIM();
   std::string prefix = "  ← " + task.ordinal + TerminalSafe(call.name);
   if (task.tool->full_terminal_output) {
     printf("%s%s%s\n%s\n", style, prefix.c_str(), RST(), safe_result.c_str());

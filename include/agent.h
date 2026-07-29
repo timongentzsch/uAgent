@@ -1201,29 +1201,37 @@ class Agent {
       const json& args = task.args;
       std::string missing;
       if (args.is_discarded() || !args.is_object()) {
-        task.result = "error: malformed tool arguments (not valid JSON)";
-        task.status = "malformed_arguments";
-      } else if (!tool) {
-        task.result = "error: unknown tool " + c.name;
-        task.status = "unknown_tool";
-      } else if (!(missing = MissingRequired(*tool, args)).empty()) {
-        task.result = "error: missing required argument `" + missing + "`";
-        task.status = "missing_argument";
-      } else if (!(missing = InvalidArgumentType(*tool, args)).empty()) {
-        task.result = "error: invalid tool argument: " + missing;
-        task.status = "invalid_argument";
-      } else if (c.name == "checkpoint") {
         task.result =
-            "error: checkpoint must be the only call in its tool batch";
-        task.status = "invalid_batch";
+            ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "error: malformed tool arguments (not valid JSON)");
+        task.trace_status = "malformed_arguments";
+      } else if (!tool) {
+        task.result = ToolFailure(ToolErrorCode::kNotFound,
+                                  "error: unknown tool " + c.name);
+        task.trace_status = "unknown_tool";
+      } else if (!(missing = MissingRequired(*tool, args)).empty()) {
+        task.result =
+            ToolFailure(ToolErrorCode::kInvalidArguments,
+                        "error: missing required argument `" + missing + "`");
+        task.trace_status = "missing_argument";
+      } else if (!(missing = InvalidArgumentType(*tool, args)).empty()) {
+        task.result = ToolFailure(ToolErrorCode::kInvalidArguments,
+                                  "error: invalid tool argument: " + missing);
+        task.trace_status = "invalid_argument";
+      } else if (c.name == "checkpoint") {
+        task.result = ToolFailure(
+            ToolErrorCode::kInvalidArguments,
+            "error: checkpoint must be the only call in its tool batch");
+        task.trace_status = "invalid_batch";
       } else if (tool->max_calls_per_turn >= 0 &&
                  tool_counts[c.name] >= tool->max_calls_per_turn) {
-        task.result = "error: " + c.name +
-                      " reached its per-turn call limit (" +
-                      std::to_string(tool->max_calls_per_turn) +
-                      "); answer from the results you have or delegate the "
-                      "rest with task — do not reimplement it with run";
-        task.status = "call_limit";
+        task.result = ToolFailure(
+            ToolErrorCode::kLimitExceeded,
+            "error: " + c.name + " reached its per-turn call limit (" +
+                std::to_string(tool->max_calls_per_turn) +
+                "); answer from the results you have or delegate the "
+                "rest with task — do not reimplement it with run");
+        task.trace_status = "call_limit";
       } else {
         task.label = ToolSummary(*tool, args);
         std::string prefix = "→ " + task.ordinal + TerminalSafe(c.name);
@@ -1241,10 +1249,11 @@ class Agent {
           ++tool_count;
           ++tool_counts[c.name];
         } else {
-          task.result =
+          task.result = ToolFailure(
+              ToolErrorCode::kPermissionDenied,
               "user denied this action; ask for guidance or try a different "
-              "approach";
-          task.status = "denied";
+              "approach");
+          task.trace_status = "denied";
           printf("%s  denied%s\n", RED(), RST());
         }
       }
@@ -1337,7 +1346,7 @@ class Agent {
       CallTask& task = tasks[i];
       if (task.execute) PrintCallResult(task, c);
       RecordSideEffect(task, c);
-      AppendToolResult(c, text_mode, task.result);
+      AppendToolResult(c, text_mode, task.result.output);
     }
     return cancelled;
   }

@@ -140,6 +140,32 @@ inline size_t DisplayWidth(const std::string& s) {
   return width;
 }
 
+inline std::string DisplayTrunc(std::string s, size_t columns) {
+  if (DisplayWidth(s) <= columns) return s;
+  if (columns == 0) return "";
+  size_t limit = columns - 1;  // reserve one column for …
+  std::mbstate_t state{};
+  size_t offset = 0, width = 0;
+  while (offset < s.size()) {
+    wchar_t wide = 0;
+    size_t consumed =
+        std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
+    int glyph_width = 1;
+    if (consumed == static_cast<size_t>(-1) ||
+        consumed == static_cast<size_t>(-2)) {
+      state = {};
+      consumed = 1;
+    } else {
+      if (consumed == 0) consumed = 1;
+      glyph_width = std::max(0, ::wcwidth(wide));
+    }
+    if (width + static_cast<size_t>(glyph_width) > limit) break;
+    width += static_cast<size_t>(glyph_width);
+    offset += consumed;
+  }
+  return s.substr(0, offset) + "…";
+}
+
 inline size_t JsonEstimatedBytes(const json& value) {
   if (value.is_string()) return value.get_ref<const std::string&>().size() + 2;
   size_t total = 16;
@@ -224,6 +250,12 @@ inline int64_t TerminalColumns() {
   return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
 }
 
+inline std::string SpinnerLabel(std::string label) {
+  size_t columns =
+      static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 2));
+  return DisplayTrunc(TerminalSafe(label), columns);
+}
+
 inline uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     hash ^= static_cast<unsigned char>(data[i]);
@@ -262,6 +294,13 @@ inline bool OpenrouterUrl(std::string url) {
   return url == "openrouter.ai" || (url.size() > strlen(kSuffix) &&
                                     url.compare(url.size() - strlen(kSuffix),
                                                 strlen(kSuffix), kSuffix) == 0);
+}
+
+inline bool OpenrouterCompatibleUrl(std::string url) {
+  if (OpenrouterUrl(url)) return true;
+  url = StripTrailingSlashes(std::move(url));
+  return (UrlHost(url) == "127.0.0.1" || UrlHost(url) == "localhost") &&
+         url.ends_with("/api/v1");
 }
 
 inline bool OpenaiUrl(std::string url) {

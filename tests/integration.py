@@ -560,6 +560,7 @@ def test_wait_background_events(root, home):
         end = output.find(b"\xe2\x86\x90 wait_background:", second)
         assert_true(second > first and end > second, output)
         assert_true(b"\r\x1b[2m" in output[second:end], output[second:end])
+        assert_true(b"| wait_background" in output[second:end], output[second:end])
     finally:
         server.close()
 
@@ -567,7 +568,19 @@ def test_wait_background_events(root, home):
 def test_streamed_search_citations(root, home):
     citation = {
         "type": "url_citation",
-        "url_citation": {"url": "https://example.com/source", "title": "Source"},
+        "url_citation": {
+            "url": "https://example.com/source",
+            "title": "Source",
+            "content": "search snippet",
+        },
+    }
+    citation_without_usage = {
+        "type": "url_citation",
+        "url_citation": {
+            "url": "https://example.com/legacy",
+            "title": "Legacy source",
+            "content": "legacy snippet",
+        },
     }
     server = Server(
         [
@@ -583,15 +596,30 @@ def test_streamed_search_citations(root, home):
                     "completion_tokens": 1,
                     "server_tool_use": {"web_search_requests": 1},
                 },
-            }
+            },
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "content": "legacy",
+                            "annotations": [citation_without_usage],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+            },
         ]
     )
     try:
-        result = run(root, base_env(home, server.url), "-p", "probe")
+        result = run_dialog(root, base_env(home, server.url), "probe\nagain\n/trace\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
-        assert_true("grounded" in result.stdout, result.stdout)
+        assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)
+        assert_true("web_search ×1 · 1 source" in result.stdout, result.stdout)
+        assert_true("legacy\n  ← 1 source" in result.stdout, result.stdout)
         assert_true("Sources:" in result.stdout, result.stdout)
         assert_true("https://example.com/source" in result.stdout, result.stdout)
+        assert_true("legacy snippet" in result.stdout, result.stdout)
     finally:
         server.close()
 

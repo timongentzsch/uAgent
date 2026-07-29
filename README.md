@@ -107,6 +107,9 @@ urgent. See [checkpoint design](docs/CHECKPOINTS.md).
 
 Sessions are stored under `~/.uagent/history`. Debug JSONL traces are opt-in
 with `--debug[=PATH]` and may contain private source and reasoning.
+The global spinner names quiet model, tool, and background activity. Native web
+searches leave a compact source receipt; `/trace` shows the latest completed
+turn's pruned tool results and available search snippets.
 
 ## Skills
 
@@ -178,6 +181,7 @@ debugging at `chrome://inspect/#remote-debugging`.
 | `/models [FILTER\|all]`, `/model MODEL` | Query or switch models |
 | `/effort LEVEL\|default` | Set provider reasoning effort |
 | `/compact` | Summarize active history |
+| `/trace` | Show the latest completed tool/search trace |
 | `/online` | Toggle OpenRouter online mode |
 | `/yolo` | Toggle automatic approval |
 | `/quit` | Exit |

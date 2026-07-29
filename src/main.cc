@@ -391,10 +391,11 @@ int Main(int argc, char** argv) {
   std::vector<Tool> tools =
       BuiltinTools(processes, CanonicalAccessPath(CanonicalCwd()),
                    inline_images, &side_tasks);
-  bool has_openrouter = OpenrouterUrl(api.base_url) ||
+  bool has_openrouter = OpenrouterCompatibleUrl(api.base_url) ||
                         std::any_of(model_routes.begin(), model_routes.end(),
                                     [](const ModelRoute& route) {
-                                      return OpenrouterUrl(route.base_url);
+                                      return OpenrouterCompatibleUrl(
+                                          route.base_url);
                                     });
   if (has_openrouter) {
     tools.push_back(
@@ -605,6 +606,9 @@ int Main(int argc, char** argv) {
           }
           break;
         }
+        case SlashCommandId::kTrace:
+          agent.PrintTrace();
+          break;
         case SlashCommandId::kModels:
           if (command.argument.empty()) {
             PrintModelRoutes(model_routes, api);

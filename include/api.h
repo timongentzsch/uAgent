@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/citations.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
@@ -143,30 +144,6 @@ struct ChatResult {
   bool suppressed =
       false;  // content looked like a text-protocol call; not printed
 };
-
-inline std::string CitationMarkdown(const json& annotations) {
-  if (!annotations.is_array()) return "";
-  std::vector<std::string> urls;
-  for (const json& annotation : annotations) {
-    if (!annotation.is_object()) continue;
-    const json& citation = annotation.contains("url_citation") &&
-                                   annotation["url_citation"].is_object()
-                               ? annotation["url_citation"]
-                               : annotation;
-    std::string url = JsonString(citation, "url");
-    bool safe = (url.starts_with("https://") || url.starts_with("http://")) &&
-                url.find_first_of(" \t\r\n<>") == std::string::npos;
-    if (!safe || std::find(urls.begin(), urls.end(), url) != urls.end()) {
-      continue;
-    }
-    urls.push_back(std::move(url));
-    if (urls.size() == 20) break;
-  }
-  if (urls.empty()) return "";
-  std::string out = "\n\nSources:\n";
-  for (const std::string& url : urls) out += "- <" + url + ">\n";
-  return out;
-}
 
 // text-protocol delimiters (shared with agent.h's parser)
 inline constexpr const char* kTtOpen = "[uagent_tool_call]";
@@ -372,11 +349,13 @@ class Api {
   RuntimeConfig config;
 
   json BuildChatBody(const json& messages, const json& tool_schemas,
-                     const std::string& session_id = "") const {
+                     const std::string& session_id = "",
+                     bool* web_available = nullptr) const {
+    if (web_available) *web_available = false;
     json body = {{"model", model}, {"messages", messages}, {"stream", true}};
     if (native_tools && !tool_schemas.empty()) {
       json request_tools = json::array();
-      bool server_search = OpenrouterUrl(base_url) &&
+      bool server_search = OpenrouterCompatibleUrl(base_url) &&
                            config.web_search_server && openrouter_web_search;
       bool search_offered = false;
       for (const json& tool : tool_schemas) {
@@ -385,12 +364,14 @@ class Api {
             tool["function"].is_object() &&
             JsonString(tool["function"], "name") == "web_search";
         search_offered = search_offered || legacy_search;
-        if (legacy_search && (server_search || !OpenrouterUrl(base_url))) {
+        if (legacy_search &&
+            (server_search || !OpenrouterCompatibleUrl(base_url))) {
           continue;
         }
         request_tools.push_back(tool);
       }
       if (server_search && search_offered) {
+        if (web_available) *web_available = true;
         json parameters = {
             {"engine", config.web_search_engine},
             {"max_results", config.web_search_max_results},
@@ -442,7 +423,9 @@ class Api {
           "request exceeds " + std::to_string(config.request_bytes) + " bytes";
       return res;
     }
-    json body = BuildChatBody(messages, tool_schemas, session_id);
+    bool web_available = false;
+    json body =
+        BuildChatBody(messages, tool_schemas, session_id, &web_available);
     std::string payload = JsonDump(body);
     if (config.request_bytes > 0 &&
         payload.size() > static_cast<size_t>(config.request_bytes)) {
@@ -491,7 +474,9 @@ class Api {
     }
 
     SteeringGuard steering;
-    TerminalSpinner spinner;
+    std::string activity =
+        web_available ? "working · web available" : "working";
+    TerminalSpinner spinner(true, SpinnerLabel(std::move(activity)));
     ctx.spinner = &spinner;
 
     CURLcode rc = CURLE_OK;

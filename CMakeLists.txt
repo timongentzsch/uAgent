@@ -26,7 +26,11 @@ if(UAGENT_WARNINGS_AS_ERRORS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(uagent_options INTERFACE -Werror)
 endif()
 
-add_library(uagent_core src/api/openai_stream.cc src/transport/sse.cc)
+add_library(
+  uagent_core
+  src/agent/session_store.cc
+  src/api/openai_stream.cc
+  src/transport/sse.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
 
 add_executable(uagent src/main.cc)

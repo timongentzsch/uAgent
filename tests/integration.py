@@ -209,6 +209,35 @@ def test_plain_turn(root, home):
         server.close()
 
 
+def test_stream_error_is_not_an_empty_response(root, home):
+    server = Server([{"error": {"message": "upstream overloaded", "type": "server_error"}}])
+    try:
+        result = run(root, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("upstream overloaded" in result.stderr, result.stderr)
+        assert_true("empty response" not in result.stderr, result.stderr)
+    finally:
+        server.close()
+
+
+def test_empty_response_does_not_enter_history(root, home):
+    def verify(_, body):
+        empty_assistant = any(
+            message.get("role") == "assistant" and not message.get("content")
+            for message in body["messages"]
+        )
+        return event({"content": "history-bad" if empty_assistant else "history-clean"})
+
+    server = Server([event(), verify])
+    try:
+        result = run_dialog(root, base_env(home, server.url), "first\nsecond\n/q\n")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("history-clean" in result.stdout, result.stdout)
+        assert_true("history-bad" not in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
 def test_command_help(root, home):
     server = Server([event({"content": "unused"})])
     try:
@@ -2608,6 +2637,8 @@ def main():
         home.mkdir()
         tests = [
             test_plain_turn,
+            test_stream_error_is_not_an_empty_response,
+            test_empty_response_does_not_enter_history,
             test_command_help,
             test_project_instructions_precede_first_turn,
             test_attach_tool_puts_bytes_in_context,

@@ -533,6 +533,16 @@ void TestOpenRouterServerSearch() {
       R"(data: {"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})");
   stream.HandleLine(
       R"(data: {"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})");
+  stream.HandleLine(
+      R"(data: {"error":{"message":"upstream overloaded","type":"server_error"}})");
+  CHECK(result.error == "upstream overloaded");
+  stream.status = 200;
+  stream.started = std::chrono::steady_clock::now();
+  stream.last_byte = stream.started - std::chrono::seconds(1);
+  auto prior_byte = stream.last_byte;
+  CHECK(stream.Feed(": keepalive\n\n", 13) == 13);
+  CHECK(stream.last_byte > prior_byte);
+  CHECK(result.first_event_ms < 0);
   std::string citations = CitationMarkdown(result.annotations);
   CHECK(citations.find("<https://example.com/a>") != std::string::npos);
   CHECK(citations.find("<https://example.com/b>") != std::string::npos);

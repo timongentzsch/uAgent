@@ -166,6 +166,7 @@ struct StreamCtx {
   size_t response_cap = 32 * 1024 * 1024;
   size_t received = 0;
   std::string timeout_reason;
+  bool render_output = true;
   MdStream md;  // renders streamed content as ANSI-styled markdown (TTY only)
 
   // Hold content back while it could still be a text-protocol tool call, so
@@ -186,25 +187,26 @@ struct StreamCtx {
   }
 
   void BeginOutput() {  // stop the spinner before any visible bytes
-    if (spinner) spinner->Stop();
+    if (render_output && spinner) spinner->Stop();
   }
 
   void OutputText(const std::string& c) {
+    if (!render_output) return;
     BeginOutput();
     if (in_reasoning) {
-      printf("%s\n", RST());
+      md.Control(RST());
+      md.FeedPlain("\n");
       in_reasoning = false;
     }
-    md.Feed(TerminalSafe(c));
+    md.Feed(c);
   }
 
   void OutputReasoning(const std::string& r) {
+    if (!render_output) return;
     BeginOutput();
-    fputs(DIM(), stdout);
+    if (!in_reasoning) md.Control(DIM());
     in_reasoning = true;
-    std::string safe = TerminalSafe(r);
-    fputs(safe.c_str(), stdout);
-    fflush(stdout);
+    md.FeedPlain(r);
   }
 
   void EmitContent(const std::string& c) {
@@ -241,6 +243,10 @@ struct StreamCtx {
     if (payload.empty() || payload == "[DONE]") return;
     json j = json::parse(payload, nullptr, false);
     if (j.is_discarded()) return;
+    if (j.contains("error")) {
+      res->error = JsonErrorMessage(j, "stream failed");
+      return;
+    }
     if (j.contains("usage") && !j["usage"].is_null()) res->usage = j["usage"];
     if (!j.contains("choices") || !j["choices"].is_array() ||
         j["choices"].empty()) {
@@ -338,6 +344,7 @@ class Api {
       true;  // omit after a 400 that rejects `parallel_tool_calls`
   bool openrouter_web_search =
       true;  // dropped after a 400 that rejects the beta server tool
+  bool render_stream = true;  // false for headless callers that only need data
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment())
       : config(std::move(config)), handle_(curl_easy_init()) {}
@@ -446,6 +453,7 @@ class Api {
     ctx.last_byte = ctx.started;
     ctx.first_event_timeout_s = config.first_event_timeout_s;
     ctx.idle_timeout_s = config.stream_idle_timeout_s;
+    ctx.render_output = render_stream;
     int64_t response_cap = config.response_bytes;
     ctx.response_cap = response_cap > 0 ? static_cast<size_t>(response_cap) : 0;
     struct curl_slist* hdrs = nullptr;
@@ -476,21 +484,22 @@ class Api {
     SteeringGuard steering;
     std::string activity =
         web_available ? "working · web available" : "working";
-    TerminalSpinner spinner(true, SpinnerLabel(std::move(activity)));
+    TerminalSpinner spinner(render_stream, SpinnerLabel(std::move(activity)));
     ctx.spinner = &spinner;
 
     CURLcode rc = CURLE_OK;
     bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
     steering.Stop();
-    res.duration_ms = ElapsedMs(ctx.started);
     ctx.BeginOutput();  // stops the spinner if nothing was ever printed
     ctx.Finish();
     if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
       ctx.OutputText(res.content);  // held fragment that never resolved
     }
-    ctx.md
-        .Flush();  // render anything still held (open styles, a trailing table)
-    if (ctx.in_reasoning) printf("%s\n", RST());
+    if (ctx.render_output) {
+      ctx.md.Flush();  // resolve open styles or a trailing table
+      if (ctx.in_reasoning) printf("%s\n", RST());
+    }
+    res.duration_ms = ElapsedMs(ctx.started);
     curl_slist_free_all(hdrs);
 
     if (!ctx.timeout_reason.empty()) {
@@ -511,14 +520,7 @@ class Api {
     if (res.http_status >= 400) {
       std::string msg = ctx.error_body;
       json error_response = json::parse(ctx.error_body, nullptr, false);
-      if (error_response.is_object() && error_response.contains("error")) {
-        const json& error = error_response["error"];
-        if (error.is_string()) {
-          msg = error.get<std::string>();
-        } else if (error.is_object()) {
-          msg = JsonString(error, "message", msg);
-        }
-      }
+      msg = JsonErrorMessage(error_response, std::move(msg));
       res.error = "HTTP " + std::to_string(res.http_status) + ": " + msg;
       return res;
     }

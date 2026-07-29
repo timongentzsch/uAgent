@@ -11,6 +11,7 @@
 // line and re-rendering. TTY only (piped output stays byte-exact);
 // UAGENT_MARKDOWN=0 disables.
 
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -52,15 +53,31 @@ struct MdStream {
     std::string safe = TerminalSafe(s);
     if (!on) {
       fputs(safe.c_str(), stdout);
-      fflush(stdout);
+      FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
       return;
     }
     for (char c : safe) Step(c);
-    fflush(stdout);
+    FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+  }
+
+  // Reasoning is plain terminal text, but shares sanitization and flush
+  // pacing with Markdown output so every streamed path has one safety boundary.
+  void FeedPlain(const std::string& s) {
+    std::string safe = TerminalSafe(s);
+    fputs(safe.c_str(), stdout);
+    FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+  }
+
+  void Control(const char* s) {
+    fputs(s, stdout);
+    pending_output += strlen(s);
   }
 
   void Flush() {  // stream end: resolve everything still held
-    if (!on) return;
+    if (!on) {
+      FlushOutput(0, false, true);
+      return;
+    }
     if (star) {
       Pv(star == 2 ? "**" : "*");
       star = 0;
@@ -82,10 +99,29 @@ struct MdStream {
     math = 0;
     dollar = math_dollar = slash = false;
     linestart = true;
-    fflush(stdout);
+    FlushOutput(0, false, true);
   }
 
  private:
+  static constexpr size_t kFlushBytes = 256;
+  static constexpr auto kFlushInterval = std::chrono::milliseconds(16);
+  size_t pending_output = 0;
+  bool output_started = false;
+  std::chrono::steady_clock::time_point last_flush =
+      std::chrono::steady_clock::now();
+
+  void FlushOutput(size_t bytes, bool newline, bool force = false) {
+    pending_output += bytes;
+    auto now = std::chrono::steady_clock::now();
+    if (force || newline || !output_started || pending_output >= kFlushBytes ||
+        now - last_flush >= kFlushInterval) {
+      fflush(stdout);
+      pending_output = 0;
+      output_started = true;
+      last_flush = now;
+    }
+  }
+
   static size_t Ulen(const std::string& s) { return DisplayWidth(s); }
   void Pv(const std::string& s) {
     fputs(s.c_str(), stdout);

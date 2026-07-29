@@ -12,12 +12,13 @@
 #include <atomic>
 #include <cstdio>
 #include <map>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/api/citations.h"
+#include "include/api/openai_stream.h"
+#include "include/api/types.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
@@ -25,125 +26,14 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/usage.h"
 #include "include/md.h"
+#include "include/transport/sse.h"
 #include "third_party/json.hpp"
 
 namespace uagent {
 
 using nlohmann::json;
-
-struct ToolCall {
-  std::string id, name, args;  // args: raw JSON string
-};
-
-struct Usage {
-  int64_t input = 0, output = 0, cache_read = 0, reasoning = 0;
-  double cost =
-      0;  // credits (~USD), e.g. OpenRouter's `usage.cost`; 0 = not reported
-  int64_t cache_write = 0;
-  int64_t web_searches = 0;
-  void Merge(const Usage& o) {
-    input += o.input;
-    output += o.output;
-    cache_read += o.cache_read;
-    reasoning += o.reasoning;
-    cost += o.cost;
-    cache_write += o.cache_write;
-    web_searches += o.web_searches;
-  }
-  // OpenAI convention: input excludes cached tokens, output excludes reasoning.
-  // A server reporting a token count as a string must not abort the turn.
-  void Add(const json& u) {
-    if (!u.is_object()) return;
-    auto detail = [&](const char* k, const char* f) {
-      return u.contains(k) && u[k].is_object() ? JsonInt(u[k], f) : int64_t{0};
-    };
-    int64_t cache = detail("prompt_tokens_details", "cached_tokens");
-    int64_t cache_write_tokens =
-        detail("prompt_tokens_details", "cache_write_tokens");
-    if (!cache_write_tokens) {
-      cache_write_tokens = detail("cache_details", "cache_write_tokens");
-    }
-    if (!cache_write_tokens) {
-      cache_write_tokens = JsonInt(u, "cache_write_tokens");
-    }
-    int64_t reason = detail("completion_tokens_details", "reasoning_tokens");
-    input += JsonInt(u, "prompt_tokens") - cache;
-    output += JsonInt(u, "completion_tokens") - reason;
-    cache_read += cache;
-    cache_write += cache_write_tokens;
-    reasoning += reason;
-    cost += JsonNumber(u, "cost");
-    if (u.contains("server_tool_use") && u["server_tool_use"].is_object()) {
-      web_searches += JsonInt(u["server_tool_use"], "web_search_requests");
-    }
-  }
-};
-
-inline json UsageJson(const Usage& usage) {
-  return {{"input", usage.input},
-          {"output", usage.output},
-          {"cache_read", usage.cache_read},
-          {"cache_write", usage.cache_write},
-          {"reasoning", usage.reasoning},
-          {"cost", usage.cost},
-          {"web_searches", usage.web_searches}};
-}
-
-// inverse of usage_json — reads back a total this or another process wrote
-inline Usage UsageFromJson(const json& j) {
-  Usage u;
-  if (!j.is_object()) return u;
-  u.input = JsonValue(j, "input", int64_t{0});
-  u.output = JsonValue(j, "output", int64_t{0});
-  u.cache_read = JsonValue(j, "cache_read", int64_t{0});
-  u.cache_write = JsonValue(j, "cache_write", int64_t{0});
-  u.reasoning = JsonValue(j, "reasoning", int64_t{0});
-  u.cost = JsonValue(j, "cost", 0.0);
-  u.web_searches = JsonValue(j, "web_searches", int64_t{0});
-  return u;
-}
-
-// Usage from concurrent side-requests (web_search) and subagent processes.
-// This is session-owned rather than process-global so independent Agent
-// instances cannot accidentally bill one another.
-class UsageAccumulator {
- public:
-  void Add(const json& usage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    usage_.Add(usage);
-  }
-  void Add(const Usage& usage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    usage_.Merge(usage);
-  }
-  Usage Take() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    Usage usage = usage_;
-    usage_ = {};
-    return usage;
-  }
-
- private:
-  std::mutex mutex_;
-  Usage usage_;
-};
-
-struct ChatResult {
-  std::string content;
-  std::string reasoning;  // retained only in debug mode
-  std::vector<ToolCall> tool_calls;
-  json annotations = json::array();
-  json usage;  // null unless the server streamed one
-  int64_t http_status = 0;
-  double first_event_ms = -1;  // first content/reasoning/tool delta
-  double duration_ms = -1;     // complete streamed request
-  std::string finish_reason;
-  std::string error;  // non-empty on failure
-  bool interrupted = false;
-  bool suppressed =
-      false;  // content looked like a text-protocol call; not printed
-};
 
 // text-protocol delimiters (shared with agent.h's parser)
 inline constexpr const char* kTtOpen = "[uagent_tool_call]";
@@ -153,7 +43,6 @@ inline constexpr const char* kTtClose = "[/uagent_tool_call]";
 struct StreamCtx {
   CURL* handle = nullptr;
   ChatResult* res = nullptr;
-  std::string buf;         // partial SSE line
   std::string error_body;  // body when HTTP status >= 400
   int64_t status = 0;
   bool in_reasoning = false;
@@ -167,6 +56,7 @@ struct StreamCtx {
   size_t received = 0;
   std::string timeout_reason;
   bool render_output = true;
+  SseParser sse;
   MdStream md;  // renders streamed content as ANSI-styled markdown (TTY only)
 
   // Hold content back while it could still be a text-protocol tool call, so
@@ -177,13 +67,6 @@ struct StreamCtx {
 
   void MarkEvent() {
     if (res->first_event_ms < 0) res->first_event_ms = ElapsedMs(started);
-  }
-
-  void AddAnnotations(const json& annotations) {
-    if (!annotations.is_array()) return;
-    for (const json& annotation : annotations) {
-      if (annotation.is_object()) res->annotations.push_back(annotation);
-    }
   }
 
   void BeginOutput() {  // stop the spinner before any visible bytes
@@ -236,70 +119,14 @@ struct StreamCtx {
 
   // This runs inside a libcurl callback, so malformed server JSON is validated
   // explicitly and never crosses the C boundary.
-  void HandleLine(std::string line) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (!line.starts_with("data:")) return;  // ignore comments/keep-alives
-    std::string payload = Trim(line.substr(5));
-    if (payload.empty() || payload == "[DONE]") return;
-    json j = json::parse(payload, nullptr, false);
-    if (j.is_discarded()) return;
-    if (j.contains("error")) {
-      res->error = JsonErrorMessage(j, "stream failed");
-      return;
+  void HandleEvent(const SseEvent& event) {
+    OpenAiStreamDelta delta = DecodeOpenAiStreamEvent(event.data, *res, calls);
+    if (delta.activity) MarkEvent();
+    if (!delta.reasoning.empty()) {
+      if (g_debug.Enabled()) res->reasoning += delta.reasoning;
+      OutputReasoning(delta.reasoning);
     }
-    if (j.contains("usage") && !j["usage"].is_null()) res->usage = j["usage"];
-    if (!j.contains("choices") || !j["choices"].is_array() ||
-        j["choices"].empty()) {
-      return;
-    }
-    const json& ch = j["choices"][0];
-    if (!ch.is_object()) return;
-    if (ch.contains("finish_reason") && ch["finish_reason"].is_string()) {
-      res->finish_reason = ch["finish_reason"].get<std::string>();
-    }
-    if (ch.contains("annotations")) AddAnnotations(ch["annotations"]);
-    if (ch.contains("message") && ch["message"].is_object() &&
-        ch["message"].contains("annotations")) {
-      AddAnnotations(ch["message"]["annotations"]);
-    }
-    if (!ch.contains("delta") || !ch["delta"].is_object()) return;
-    const json& d = ch["delta"];
-    if (d.contains("annotations")) AddAnnotations(d["annotations"]);
-    // dim "thinking" text from reasoning models (MiniMax, DeepSeek-R1, ...)
-    if (d.contains("reasoning_content") && d["reasoning_content"].is_string()) {
-      std::string r = d["reasoning_content"].get<std::string>();
-      if (!r.empty()) {
-        MarkEvent();
-        if (g_debug.Enabled()) res->reasoning += r;
-        OutputReasoning(r);
-      }
-    }
-    if (d.contains("content") && d["content"].is_string()) {
-      std::string c = d["content"].get<std::string>();
-      if (!c.empty()) {
-        MarkEvent();
-        EmitContent(c);
-      }
-    }
-    if (d.contains("tool_calls") && d["tool_calls"].is_array()) {
-      if (!d["tool_calls"].empty()) MarkEvent();
-      for (const json& tc : d["tool_calls"]) {
-        if (!tc.is_object()) continue;
-        ToolCall& slot = calls[JsonInt(tc, "index")];
-        if (tc.contains("id") && tc["id"].is_string()) {
-          slot.id += tc["id"].get<std::string>();
-        }
-        if (tc.contains("function") && tc["function"].is_object()) {
-          const json& fn = tc["function"];
-          if (fn.contains("name") && fn["name"].is_string()) {
-            slot.name += fn["name"].get<std::string>();
-          }
-          if (fn.contains("arguments") && fn["arguments"].is_string()) {
-            slot.args += fn["arguments"].get<std::string>();
-          }
-        }
-      }
-    }
+    if (!delta.content.empty()) EmitContent(delta.content);
   }
 
   size_t Feed(const char* data, size_t len) {
@@ -315,21 +142,20 @@ struct StreamCtx {
       error_body.append(data, len);
       return len;
     }
-    buf.append(data, len);
-    size_t start = 0, pos;
-    while ((pos = buf.find('\n', start)) != std::string::npos) {
-      HandleLine(buf.substr(start, pos - start));
-      start = pos + 1;
+    if (!sse.Feed(std::string_view(data, len))) {
+      res->error = sse.Error();
+      return 0;
     }
-    buf.erase(0, start);
+    for (const SseEvent& event : sse.TakeEvents()) HandleEvent(event);
     return len;
   }
 
-  void Finish() {  // flush a final line that arrived without a trailing newline
-    if (!buf.empty()) {
-      HandleLine(buf);
-      buf.clear();
+  void Finish() {
+    if (!sse.Finish()) {
+      res->error = sse.Error();
+      return;
     }
+    for (const SseEvent& event : sse.TakeEvents()) HandleEvent(event);
   }
 };
 
@@ -456,6 +282,7 @@ class Api {
     ctx.render_output = render_stream;
     int64_t response_cap = config.response_bytes;
     ctx.response_cap = response_cap > 0 ? static_cast<size_t>(response_cap) : 0;
+    ctx.sse = SseParser(ctx.response_cap);
     struct curl_slist* hdrs = nullptr;
     hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
     hdrs =

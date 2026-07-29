@@ -80,8 +80,7 @@ inline ToolResult ToolCancelled(std::string output) {
 }
 
 inline ToolResult ToolTimedOut(std::string output) {
-  return {CompletionStatus::kTimedOut, std::move(output),
-          ToolErrorCode::kNone};
+  return {CompletionStatus::kTimedOut, std::move(output), ToolErrorCode::kNone};
 }
 
 struct ToolContext {

@@ -30,10 +30,7 @@ namespace uagent {
 
 struct ShellCommandResult {
   ToolResult result;
-  std::optional<int> wait_status;
-
-  ShellCommandResult(ToolResult value, std::optional<int> status = std::nullopt)
-      : result(std::move(value)), wait_status(status) {}
+  std::optional<int> wait_status = std::nullopt;
 };
 
 // window_s: -1 = default poll window (~3 s), 0 = wait until it finishes,

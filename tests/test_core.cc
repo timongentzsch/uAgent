@@ -457,6 +457,42 @@ void TestSseChunkPartitions() {
   CHECK(result.content == "complete");
 }
 
+void TestSseFraming() {
+  const std::string wire =
+      ": keepalive\r\n"
+      "id: 7\r\n"
+      "event: update\r\n"
+      "data: first\r\n"
+      "data: second\r\n\r\n"
+      "data:\n\n";
+  for (size_t split = 0; split <= wire.size(); ++split) {
+    SseParser parser;
+    CHECK(parser.Feed(std::string_view(wire).substr(0, split)));
+    CHECK(parser.Feed(std::string_view(wire).substr(split)));
+    CHECK(parser.Finish());
+    std::vector<SseEvent> events = parser.TakeEvents();
+    CHECK(events.size() == 2);
+    if (events.size() == 2) {
+      CHECK(events[0].event == "update");
+      CHECK(events[0].data == "first\nsecond");
+      CHECK(events[0].id == "7");
+      CHECK(events[1].event == "message");
+      CHECK(events[1].data.empty());
+      CHECK(events[1].id == "7");
+    }
+  }
+
+  SseParser final_event;
+  CHECK(final_event.Feed("data: tail"));
+  CHECK(final_event.TakeEvents().empty());
+  CHECK(final_event.Finish());
+  CHECK(final_event.TakeEvents()[0].data == "tail");
+
+  SseParser bounded(8);
+  CHECK(!bounded.Feed("data: payload-too-large\n\n"));
+  CHECK(!bounded.Error().empty());
+}
+
 void TestBackgroundValidation() {
   namespace fs = std::filesystem;
   ProcessSupervisor supervisor;
@@ -581,14 +617,11 @@ void TestToolExecutionPolicy() {
 
   Tool bounded_tool =
       MakeTool("bounded", "bounded", json::object(),
-               [](const json&, const ToolContext&) {
-                 return ToolSuccess("");
-               });
+               [](const json&, const ToolContext&) { return ToolSuccess(""); });
   bounded_tool.max_calls_per_turn = 2;
-  Tool unbounded = MakeTool("unbounded", "unbounded", json::object(),
-                            [](const json&, const ToolContext&) {
-                              return ToolSuccess("");
-                            });
+  Tool unbounded =
+      MakeTool("unbounded", "unbounded", json::object(),
+               [](const json&, const ToolContext&) { return ToolSuccess(""); });
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
   json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
@@ -709,12 +742,18 @@ void TestOpenRouterServerSearch() {
   ChatResult result;
   StreamCtx stream;
   stream.res = &result;
-  stream.HandleLine(
-      R"(data: {"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})");
-  stream.HandleLine(
-      R"(data: {"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})");
-  stream.HandleLine(
-      R"(data: {"error":{"message":"upstream overloaded","type":"server_error"}})");
+  stream.HandleEvent(
+      {"message",
+       R"({"choices":[{"delta":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/a"}}]}}]})",
+       ""});
+  stream.HandleEvent(
+      {"message",
+       R"({"choices":[{"message":{"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com/b"}}]}}]})",
+       ""});
+  stream.HandleEvent(
+      {"message",
+       R"({"error":{"message":"upstream overloaded","type":"server_error"}})",
+       ""});
   CHECK(result.error == "upstream overloaded");
   stream.status = 200;
   stream.started = std::chrono::steady_clock::now();
@@ -1888,6 +1927,7 @@ int RunTests() {
   TestFileTools();
   TestTerminalSafety();
   TestSseChunkPartitions();
+  TestSseFraming();
   TestBackgroundValidation();
   TestToolExecutionPolicy();
   TestOpenRouterServerSearch();

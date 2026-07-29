@@ -89,11 +89,14 @@ inline std::vector<Tool> BuiltinTools(
                  auto additional = a.find("edits");
                  if (additional != a.end()) {
                    if (!additional->is_array()) {
-                     return std::string("error: `edits` must be an array");
+                     return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                        "error: `edits` must be an array");
                    }
                    if (additional->size() + 1 > kMaxFileEdits) {
-                     return "error: `edit_file` is limited to " +
-                            std::to_string(kMaxFileEdits) + " edits per call";
+                     return ToolFailure(ToolErrorCode::kLimitExceeded,
+                                        "error: `edit_file` is limited to " +
+                                            std::to_string(kMaxFileEdits) +
+                                            " edits per call");
                    }
                    for (const json& item : *additional) {
                      if (!item.is_object() || !item.contains("old") ||
@@ -101,7 +104,8 @@ inline std::vector<Tool> BuiltinTools(
                          !item["new"].is_string() ||
                          (item.contains("replace_all") &&
                           !item["replace_all"].is_boolean())) {
-                       return std::string(
+                       return ToolFailure(
+                           ToolErrorCode::kInvalidArguments,
                            "error: each `edits` entry requires "
                            "string `old`/`new` and optional boolean "
                            "`replace_all`");
@@ -317,7 +321,9 @@ inline std::vector<Tool> BuiltinTools(
                     "keep_last_n_results":{"type":"integer","minimum":0,"maximum":3,
                       "description":"recent results (default 0)"}},"required":["state"]})json"),
           [](const json&, const ToolContext&) {
-            return "error: checkpoint must be handled by the agent runtime";
+            return ToolFailure(
+                ToolErrorCode::kInternal,
+                "error: checkpoint must be handled by the agent runtime");
           }));
   checkpoint.summary = [](const json& a) {
     return FirstLine(JsonValue(a, "state", ""));

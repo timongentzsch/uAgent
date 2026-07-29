@@ -232,10 +232,10 @@ class Agent {
                     {"side_effects", side_effects_},
                     {"context_tokens", ContextUsed()},
                     {"usage", UsageJson(session_usage_)}};
-    std::string result =
+    ToolResult result =
         ToolWritePrivateFile(path, JsonDump(header) + "\n" + JsonDump(payload));
-    if (result.starts_with("error:")) {
-      error = std::move(result);
+    if (!result.Ok()) {
+      error = std::move(result.output);
       return false;
     }
     return true;

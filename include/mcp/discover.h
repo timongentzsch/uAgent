@@ -149,10 +149,12 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
     Tool tool = MakeTool(
         std::move(tool_name), McpCapDesc(description), std::move(input_schema),
         [server, remote_name, call_timeout](
-            const json& arguments, const ToolContext& context) -> std::string {
+            const json& arguments, const ToolContext& context) -> ToolResult {
           if (!server->alive) {
-            return "error: mcp server " + server->name +
-                   " has exited (stderr: " + McpLogPath(server->name) + ")";
+            return ToolFailure(
+                ToolErrorCode::kUnavailable,
+                "error: mcp server " + server->name +
+                    " has exited (stderr: " + McpLogPath(server->name) + ")");
           }
           json response;
           if (RunCancellable([&] {
@@ -161,7 +163,7 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                            {{"name", remote_name}, {"arguments", arguments}},
                            context.RemainingSeconds(call_timeout), true);
               })) {
-            return "error: call cancelled by user";
+            return ToolCancelled("error: call cancelled by user");
           }
           return McpResultText(*server, response);
         });

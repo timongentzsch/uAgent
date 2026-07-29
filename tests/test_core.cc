@@ -96,15 +96,10 @@ void TestToolResults() {
   CHECK(failure.error == ToolErrorCode::kPermissionDenied);
   CHECK(failure.output == "user denied this action");
 
-  ToolResult legacy_error =
-      AdaptLegacyToolStringResult("error: legacy failure");
-  CHECK(!legacy_error.Ok());
-  CHECK(legacy_error.error == ToolErrorCode::kInternal);
-  CHECK(legacy_error.output == "error: legacy failure");
-  CHECK(AdaptLegacyToolStringResult("successful error: text").Ok());
-
   CHECK(ToolCancelled("cancelled").status == CompletionStatus::kCancelled);
+  CHECK(ToolCancelled("cancelled").error == ToolErrorCode::kNone);
   CHECK(ToolTimedOut("timed out").status == CompletionStatus::kTimedOut);
+  CHECK(ToolTimedOut("timed out").error == ToolErrorCode::kNone);
 }
 
 void TestRegistries() {
@@ -195,68 +190,94 @@ void TestFileTools() {
       fs::temp_directory_path() /
       ("uagent-test-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root);
+  ToolResult missing_read =
+      ToolReadFile((root / "missing.txt").string(), int64_t{1}, int64_t{1});
+  CHECK(!missing_read.Ok());
+  CHECK(missing_read.error == ToolErrorCode::kNotFound);
+  CHECK(ToolReadFile((root / "missing.txt").string(), 1, 1).output ==
+        missing_read.output);
+  ToolResult missing_list = ToolListDir((root / "missing-dir").string());
+  CHECK(!missing_list.Ok());
+  CHECK(missing_list.error == ToolErrorCode::kNotFound);
   fs::path file = root / "file.txt";
-  CHECK(ToolWriteFile(file.string(), "one\ntwo\n").starts_with("wrote "));
-  std::string read = ToolReadFile(file.string(), 1, 1);
+  CHECK(
+      ToolWriteFile(file.string(), "one\ntwo\n").output.starts_with("wrote "));
+  std::string read = ToolReadFile(file.string(), 1, 1).output;
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
-  CHECK(ToolEditFile(file.string(), "two", "three").starts_with("edited "));
+  CHECK(ToolEditFile(file.string(), "two", "three")
+            .output.starts_with("edited "));
+  ToolResult missing_edit =
+      ToolEditFile(file.string(), "missing", "replacement");
+  CHECK(!missing_edit.Ok());
+  CHECK(missing_edit.error == ToolErrorCode::kNotFound);
+  ToolResult empty_edit = ToolEditFile(file.string(), std::vector<FileEdit>{});
+  CHECK(!empty_edit.Ok());
+  CHECK(empty_edit.error == ToolErrorCode::kInvalidArguments);
 
   struct stat before{}, after{};
   CHECK(stat(file.c_str(), &before) == 0);
-  CHECK(ToolEditFile(file.string(), "three", "three").find("makes no change") !=
-        std::string::npos);
+  CHECK(ToolEditFile(file.string(), "three", "three")
+            .output.find("makes no change") != std::string::npos);
   CHECK(stat(file.c_str(), &after) == 0);
   CHECK(before.st_ino == after.st_ino);
 
   fs::path crlf = root / "crlf.txt";
-  CHECK(ToolWriteFile(crlf.string(), "one\r\ntwo\r\n").starts_with("wrote "));
+  CHECK(ToolWriteFile(crlf.string(), "one\r\ntwo\r\n")
+            .output.starts_with("wrote "));
   CHECK(ToolEditFile(crlf.string(), "one\ntwo\n", "ONE\ntwo\n")
-            .starts_with("edited "));
+            .output.starts_with("edited "));
   CHECK(contents(crlf) == "ONE\r\ntwo\r\n");
-  CHECK(
-      ToolEditFile(crlf.string(), "two", "two\nthree").starts_with("edited "));
+  CHECK(ToolEditFile(crlf.string(), "two", "two\nthree")
+            .output.starts_with("edited "));
   CHECK(contents(crlf) == "ONE\r\ntwo\r\nthree\r\n");
   CHECK(ToolEditFile(file.string(), "one\r\nthree\r\n", "ONE\r\nthree\r\n")
-            .starts_with("edited "));
+            .output.starts_with("edited "));
   CHECK(contents(file) == "ONE\nthree\n");
 
   fs::path mixed = root / "mixed.txt";
-  CHECK(ToolWriteFile(mixed.string(), "a\r\nb\nc\n").starts_with("wrote "));
-  CHECK(ToolEditFile(mixed.string(), "c", "x\ny").starts_with("edited "));
+  CHECK(ToolWriteFile(mixed.string(), "a\r\nb\nc\n")
+            .output.starts_with("wrote "));
+  CHECK(
+      ToolEditFile(mixed.string(), "c", "x\ny").output.starts_with("edited "));
   CHECK(contents(mixed) == "a\r\nb\nx\ny\n");
 
   fs::path literal_crlf = root / "literal-crlf.txt";
-  CHECK(
-      ToolWriteFile(literal_crlf.string(), "payload\n").starts_with("wrote "));
+  CHECK(ToolWriteFile(literal_crlf.string(), "payload\n")
+            .output.starts_with("wrote "));
   CHECK(ToolEditFile(literal_crlf.string(), "payload", "a\r\nb")
-            .starts_with("edited "));
+            .output.starts_with("edited "));
   CHECK(contents(literal_crlf) == "a\r\nb\n");
 
   fs::path bom = root / "bom.txt";
-  CHECK(ToolWriteFile(bom.string(), "\xEF\xBB\xBFone\n").starts_with("wrote "));
-  CHECK(ToolEditFile(bom.string(), "one", "two").starts_with("edited "));
+  CHECK(ToolWriteFile(bom.string(), "\xEF\xBB\xBFone\n")
+            .output.starts_with("wrote "));
+  CHECK(ToolEditFile(bom.string(), "one", "two").output.starts_with("edited "));
   CHECK(contents(bom) == "\xEF\xBB\xBFtwo\n");
 
   fs::path batch = root / "batch.txt";
   CHECK(ToolWriteFile(batch.string(), "alpha one alpha two\n")
-            .starts_with("wrote "));
-  std::string batch_result = ToolEditFile(
-      batch.string(), {{"alpha", "beta", true}, {"beta two", "gamma", false}});
+            .output.starts_with("wrote "));
+  std::string batch_result =
+      ToolEditFile(batch.string(),
+                   {{"alpha", "beta", true}, {"beta two", "gamma", false}})
+          .output;
   CHECK(batch_result.find("3 replacements across 2 edits") !=
         std::string::npos);
   CHECK(contents(batch) == "beta one gamma\n");
-  CHECK(ToolWriteFile(batch.string(), "same same\n").starts_with("wrote "));
-  CHECK(ToolEditFile(batch.string(), "same", "other").find("matches 2 times") !=
-        std::string::npos);
+  CHECK(ToolWriteFile(batch.string(), "same same\n")
+            .output.starts_with("wrote "));
+  CHECK(ToolEditFile(batch.string(), "same", "other")
+            .output.find("matches 2 times") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
   CHECK(ToolEditFile(batch.string(), {{"same", "changed", true},
                                       {"missing", "never written", false}})
-            .find("edit 2 `old` not found") != std::string::npos);
+            .output.find("edit 2 `old` not found") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
 
   fs::path registered = root / "registered.txt";
-  CHECK(ToolWriteFile(registered.string(), "a a c\n").starts_with("wrote "));
+  CHECK(ToolWriteFile(registered.string(), "a a c\n")
+            .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
   const Tool* edit_tool = FindTool(tools, "edit_file");
@@ -269,18 +290,25 @@ void TestFileTools() {
                      {"replace_all", true},
                      {"edits", json::array({{{"old", "c"}, {"new", "d"}}})}},
                     {})
-              .starts_with("edited "));
+              .output.starts_with("edited "));
     CHECK(contents(registered) == "b b d\n");
+    ToolResult invalid = edit_tool->run({{"path", registered.string()},
+                                         {"old", "b"},
+                                         {"new", "c"},
+                                         {"edits", "not-an-array"}},
+                                        {});
+    CHECK(!invalid.Ok());
+    CHECK(invalid.error == ToolErrorCode::kInvalidArguments);
   }
 
   fs::path private_file = root / "private";
   CHECK(ToolWritePrivateFile(private_file.string(), "secret")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   struct stat st{};
   CHECK(stat(private_file.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
   CHECK(ToolEditFile(private_file.string(), "secret", "private")
-            .starts_with("edited "));
+            .output.starts_with("edited "));
   CHECK(stat(private_file.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
   fs::path ledger = root / "ledger";
@@ -289,7 +317,8 @@ void TestFileTools() {
   CHECK(AppendPrivateLine(ledger.string(), "two", append_error));
   CHECK(stat(ledger.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
-  CHECK(ToolReadFile(ledger.string(), 1, -1).find("two") != std::string::npos);
+  CHECK(ToolReadFile(ledger.string(), 1, -1).output.find("two") !=
+        std::string::npos);
   CHECK(PathWithin(CanonicalAccessPath(file.string()),
                    CanonicalAccessPath(root.string())));
   CHECK(!PathWithin(CanonicalAccessPath(root.parent_path().string()),
@@ -431,15 +460,17 @@ void TestSseChunkPartitions() {
 void TestBackgroundValidation() {
   namespace fs = std::filesystem;
   ProcessSupervisor supervisor;
-  CHECK(ToolWaitBackground(supervisor, 0).starts_with("error:"));
-  CHECK(ToolWaitBackground(supervisor, 999999).starts_with("error:"));
+  CHECK(ToolWaitBackground(supervisor, 0).error == ToolErrorCode::kNotFound);
+  CHECK(ToolWaitBackground(supervisor, 999999).error ==
+        ToolErrorCode::kNotFound);
   auto add_job = [&](BgJob job) {
     supervisor.WithJobs([&](std::vector<BgJob>& jobs) { jobs.push_back(job); });
   };
   add_job({999998, "", "", false, true, {}, ""});
   CHECK(!supervisor.PendingCount());
   CHECK(supervisor.DetachedCount() == 1);
-  CHECK(ToolWaitBackground(supervisor, 999998).starts_with("[detached job"));
+  CHECK(ToolWaitBackground(supervisor, 999998)
+            .output.starts_with("[detached job"));
   add_job({999997, "", "", false, false, {}, ""});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
@@ -466,7 +497,7 @@ void TestBackgroundValidation() {
                      {"new", "b"},
                      {"edits", json::array({"bad"})}},
                     {})
-              .find("each `edits` entry") != std::string::npos);
+              .output.find("each `edits` entry") != std::string::npos);
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
@@ -482,7 +513,8 @@ void TestBackgroundValidation() {
   fs::path log =
       fs::temp_directory_path() /
       ("uagent-utf8-tail-" + std::to_string(static_cast<int64_t>(getpid())));
-  CHECK(ToolWritePrivateFile(log.string(), "abc😀tail").starts_with("wrote "));
+  CHECK(ToolWritePrivateFile(log.string(), "abc😀tail")
+            .output.starts_with("wrote "));
   std::string tail = ReadLogTail(log.string(), 7);  // begins inside 😀
   CHECK(JsonDump(json(tail)).find("\x9F") == std::string::npos);
   std::error_code ec;
@@ -514,23 +546,24 @@ void TestToolExecutionPolicy() {
       "probe", "quick",
       [](const std::atomic<bool>&) {
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        return std::string("done");
+        return ToolSuccess("done");
       },
       1);
   CHECK(id > 0);
   CHECK(side_tasks.Joinable() == 1);
   CHECK(side_tasks.Start(
             "probe", "over limit",
-            [](const std::atomic<bool>&) { return std::string(); }, 1) == 0);
+            [](const std::atomic<bool>&) { return ToolSuccess(""); }, 1) == 0);
   CHECK(!side_tasks.Wait(id, std::chrono::milliseconds(1)).has_value());
   auto result = ToolWaitSideTask(side_tasks, id);
-  CHECK(result.find("[Background result: probe `quick`]") != std::string::npos);
-  CHECK(result.find("done") != std::string::npos);
+  CHECK(result.output.find("[Background result: probe `quick`]") !=
+        std::string::npos);
+  CHECK(result.output.find("done") != std::string::npos);
   CHECK(side_tasks.Joinable() == 0);
 
   CHECK(side_tasks.Start(
             "probe", "detached",
-            [](const std::atomic<bool>&) { return std::string("done"); }, 1,
+            [](const std::atomic<bool>&) { return ToolSuccess("done"); }, 1,
             false) > 0);
   CHECK(side_tasks.Joinable() == 0);
   side_tasks.CancelAll();
@@ -540,7 +573,7 @@ void TestToolExecutionPolicy() {
             [](const std::atomic<bool>& cancel) {
               while (!cancel.load())
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-              return std::string("cancelled");
+              return ToolCancelled("cancelled");
             },
             1) > 0);
   CHECK(side_tasks.CancelAll() == 1);
@@ -548,10 +581,14 @@ void TestToolExecutionPolicy() {
 
   Tool bounded_tool =
       MakeTool("bounded", "bounded", json::object(),
-               [](const json&, const ToolContext&) { return ""; });
+               [](const json&, const ToolContext&) {
+                 return ToolSuccess("");
+               });
   bounded_tool.max_calls_per_turn = 2;
   Tool unbounded = MakeTool("unbounded", "unbounded", json::object(),
-                            [](const json&, const ToolContext&) { return ""; });
+                            [](const json&, const ToolContext&) {
+                              return ToolSuccess("");
+                            });
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
   json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
@@ -569,20 +606,20 @@ void TestToolExecutionPolicy() {
   CHECK(kill && kill->mutating);
   CHECK(kill && kill->summary(json{{"id", 7}}) == "task 7");
 
-  std::string launched =
+  ToolResult launched =
       ToolRunBash(task_processes, "sleep 0.2; printf task-done", 3, false, base,
                   true, false, "bash", true, "task");
-  CHECK(launched.starts_with("[backgrounded] task id "));
+  CHECK(launched.output.starts_with("[backgrounded] task id "));
   std::vector<pid_t> task_ids = task_processes.PendingPids();
   CHECK(task_ids.size() == 1);
   if (!task_ids.empty()) {
     int64_t task_id = task_ids[0];
-    CHECK(!ToolGetTaskOutput(task_processes, task_id).starts_with("error:"));
+    CHECK(ToolGetTaskOutput(task_processes, task_id).Ok());
     ToolContext wait_context{std::chrono::steady_clock::now() +
                              std::chrono::seconds(2)};
-    std::string waited = ToolWaitTasks(task_processes, json::array({task_id}),
-                                       true, wait_context);
-    CHECK(waited.find("task-done") != std::string::npos);
+    ToolResult waited = ToolWaitTasks(task_processes, json::array({task_id}),
+                                      true, wait_context);
+    CHECK(waited.output.find("task-done") != std::string::npos);
     CHECK(!task_processes.PendingCount());
   }
 
@@ -591,8 +628,9 @@ void TestToolExecutionPolicy() {
   task_ids = task_processes.PendingPids();
   CHECK(task_ids.size() == 1);
   if (!task_ids.empty()) {
-    CHECK(ToolKillTask(task_processes, task_ids[0]).find("cancelled") !=
-          std::string::npos);
+    ToolResult killed = ToolKillTask(task_processes, task_ids[0]);
+    CHECK(killed.status == CompletionStatus::kCancelled);
+    CHECK(killed.output.find("cancelled") != std::string::npos);
     CHECK(!task_processes.PendingCount());
   }
 
@@ -605,12 +643,12 @@ void TestToolExecutionPolicy() {
   if (task_ids.size() == 2) {
     ToolContext wait_context{std::chrono::steady_clock::now() +
                              std::chrono::seconds(2)};
-    std::string first =
+    ToolResult first =
         ToolWaitTasks(task_processes, json::array({task_ids[0], task_ids[1]}),
                       false, wait_context);
-    CHECK(first.find("first") != std::string::npos);
+    CHECK(first.output.find("first") != std::string::npos);
     CHECK(task_processes.PendingCount() == 1);
-    CHECK(ToolKillTask(task_processes, task_ids[1]).find("cancelled") !=
+    CHECK(ToolKillTask(task_processes, task_ids[1]).output.find("cancelled") !=
           std::string::npos);
   }
 }
@@ -722,7 +760,7 @@ void TestAttachmentEncoding() {
                    std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root);
   fs::path file = root / "tiny.txt";
-  CHECK(ToolWriteFile(file.string(), "x").starts_with("wrote "));
+  CHECK(ToolWriteFile(file.string(), "x").output.starts_with("wrote "));
   Attachment attachment;
   std::string error;
   CHECK(InspectAttachment(file.string(), attachment, error));
@@ -733,7 +771,7 @@ void TestAttachmentEncoding() {
   CHECK(!error.empty());
 
   fs::path image_path = root / "tiny.png";
-  CHECK(ToolWriteFile(image_path.string(), "png").starts_with("wrote "));
+  CHECK(ToolWriteFile(image_path.string(), "png").output.starts_with("wrote "));
   Attachment image_attachment;
   error.clear();
   CHECK(InspectAttachment(image_path.string(), image_attachment, error));
@@ -813,18 +851,20 @@ void TestGrepTool() {
   fs::path source = root / "source files" / "one.cpp";
   fs::path ignored = root / "source files" / "two.txt";
   CHECK(ToolWriteFile(source.string(), "needle one\nneedle two\nneedle three\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile(ignored.string(), "needle ignored\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
   setenv("UAGENT_GREP_RESULTS", "2", 1);
-  std::string result = ToolGrep(supervisor, "needle", root.string(), "*.cpp");
+  ToolResult result = ToolGrep(supervisor, "needle", root.string(), "*.cpp");
   unsetenv("UAGENT_GREP_RESULTS");
-  CHECK(result.find("one.cpp") != std::string::npos);
-  CHECK(result.find("two.txt") == std::string::npos);
-  CHECK(result.find("more available") != std::string::npos);
-  CHECK(ToolGrep(supervisor, "absent", root.string(), "") == "(no matches)");
-  CHECK(ToolGrep(supervisor, "(", root.string(), "").starts_with("error:"));
+  CHECK(result.output.find("one.cpp") != std::string::npos);
+  CHECK(result.output.find("two.txt") == std::string::npos);
+  CHECK(result.output.find("more available") != std::string::npos);
+  CHECK(ToolGrep(supervisor, "absent", root.string(), "").output ==
+        "(no matches)");
+  CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
+        ToolErrorCode::kProcessFailed);
 
   fs::path marker = root / "injected";
   result = ToolGrep(supervisor, "needle'; touch " + marker.string() + "; '",
@@ -843,8 +883,8 @@ void TestGrepTool() {
   CHECK(!ec);
   setenv("PATH", fallback_bin.c_str(), 1);
   result = ToolGrep(supervisor, "needle", source.string(), "");
-  CHECK(result.find("[grep") == 0);
-  CHECK(result.find("needle one") != std::string::npos);
+  CHECK(result.output.find("[grep") == 0);
+  CHECK(result.output.find("needle one") != std::string::npos);
   if (prior_path_value) {
     setenv("PATH", prior_path.c_str(), 1);
   } else {
@@ -890,7 +930,7 @@ void TestPythonTool() {
             "  shift\n"
             "done\n"
             "exit 2\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(chmod(uv.c_str(), 0700) == 0);
 
   const char* prior_path_value = getenv("PATH");
@@ -898,32 +938,32 @@ void TestPythonTool() {
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
   ProcessSupervisor supervisor;
-  std::string result =
+  ToolResult result =
       ToolRunPython(supervisor, "print(6 * 7)", json::array({"numpy>=2"}), 0);
-  CHECK(result == "42\n");
+  CHECK(result.output == "42\n");
 
   fs::path marker = root / "injected";
   result = ToolRunPython(supervisor, "print('safe')",
                          json::array({"x; touch " + marker.string()}), 0);
-  CHECK(result == "safe\n");
+  CHECK(result.output == "safe\n");
   CHECK(!fs::exists(marker));
 
   result = ToolRunPython(supervisor,
                          "import time; time.sleep(2); print('background-ok')",
                          json::array(), 1);
-  CHECK(result.starts_with("[backgrounded]"));
+  CHECK(result.output.starts_with("[backgrounded]"));
   std::vector<pid_t> pending = supervisor.PendingPids();
   CHECK(pending.size() == 1);
   if (!pending.empty()) {
     CHECK(supervisor.JoinableCount() == 1);
     int64_t pid = pending.front();
-    for (int attempt = 0;
-         attempt < 3 && result.find("[exit code 0]") == std::string::npos;
+    for (int attempt = 0; attempt < 3 && result.output.find("[exit code 0]") ==
+                                             std::string::npos;
          ++attempt) {
       result = ToolWaitBackground(supervisor, pid);
     }
-    CHECK(result.find("background-ok") != std::string::npos);
-    CHECK(result.find("[exit code 0]") != std::string::npos);
+    CHECK(result.output.find("background-ok") != std::string::npos);
+    CHECK(result.output.find("[exit code 0]") != std::string::npos);
   }
 
   result = ToolRunPython(
@@ -931,49 +971,52 @@ void TestPythonTool() {
       "import time\nprint('ready', flush=True)\ntime.sleep(2)\n"
       "print('progress', flush=True)\ntime.sleep(2)\nprint('done')",
       json::array(), 1);
-  CHECK(result.starts_with("[backgrounded]"));
+  CHECK(result.output.starts_with("[backgrounded]"));
   pending = supervisor.PendingPids();
   CHECK(pending.size() == 1);
   if (!pending.empty()) {
     int64_t pid = pending.front();
     result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.starts_with("[process still running — current output]"));
-    CHECK(result.find("ready") != std::string::npos);
+    CHECK(
+        result.output.starts_with("[process still running — current output]"));
+    CHECK(result.output.find("ready") != std::string::npos);
     CHECK(supervisor.PendingCount() == 1);
     result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.starts_with("[process still running — new output]"));
-    CHECK(result.find("progress") != std::string::npos);
+    CHECK(result.output.starts_with("[process still running — new output]"));
+    CHECK(result.output.find("progress") != std::string::npos);
     result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.find("done") != std::string::npos);
-    if (result.find("[exit code 0]") == std::string::npos) {
+    CHECK(result.output.find("done") != std::string::npos);
+    if (result.output.find("[exit code 0]") == std::string::npos) {
       result = ToolWaitBackground(supervisor, pid);
     }
-    CHECK(result.find("[exit code 0]") != std::string::npos);
+    CHECK(result.output.find("[exit code 0]") != std::string::npos);
   }
 
   result = ToolRunPython(
       supervisor, "import time\nprint('Password:', flush=True)\ntime.sleep(4)",
       json::array(), 1);
-  CHECK(result.starts_with("[backgrounded]"));
+  CHECK(result.output.starts_with("[backgrounded]"));
   pending = supervisor.PendingPids();
   CHECK(pending.size() == 1);
   if (!pending.empty()) {
     int64_t pid = pending.front();
     auto started = std::chrono::steady_clock::now();
     result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.find("Password:") != std::string::npos);
+    CHECK(result.output.find("Password:") != std::string::npos);
     CHECK(ElapsedMs(started) < 500);
   }
 
   result = ToolRunPython(supervisor, "import definitely_missing_uagent_package",
                          json::array(), 0);
-  CHECK(result.starts_with("error: Python execution failed."));
-  CHECK(result.find("run_python.packages") != std::string::npos);
+  CHECK(result.error == ToolErrorCode::kProcessFailed);
+  CHECK(result.output.starts_with("error: Python execution failed."));
+  CHECK(result.output.find("run_python.packages") != std::string::npos);
 
   setenv("PATH", root.c_str(), 1);  // no uv
   result = ToolRunPython(supervisor, "print('x')", json::array({"numpy"}), 0);
-  CHECK(result.find("packages require uv on PATH") != std::string::npos);
-  CHECK(result.find("Install") != std::string::npos);
+  CHECK(result.error == ToolErrorCode::kUnavailable);
+  CHECK(result.output.find("packages require uv on PATH") != std::string::npos);
+  CHECK(result.output.find("Install") != std::string::npos);
 
   if (prior_path_value) {
     setenv("PATH", prior_path.c_str(), 1);
@@ -1085,7 +1128,7 @@ void TestAgentConfigAllowlist() {
                       "OPENROUTER_API_KEY=$secret\n"
                       "OPENROUTER_MODEL=vendor/model\n"
                       "OPENROUTER_EFFORT=high\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
 
   const char* inherited_home = getenv("HOME");
   const char* inherited_config = getenv("UAGENT_CONFIG_FILE");
@@ -1277,21 +1320,21 @@ void TestProjectInstructionDiscovery() {
   fs::create_directories(repo / ".git");
   fs::create_directories(empty);
   CHECK(ToolWriteFile((home / ".uagent/AGENTS.md").string(), "global")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((repo / "AGENTS.md").string(), "root-agent")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((repo / "CLAUDE.md").string(), "root-claude")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((child / "AGENTS.md").string(), "ignored-agent")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((child / "AGENTS.override.md").string(), "child-override")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((child / "CLAUDE.md").string(), "child-claude")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((empty / "AGENTS.override.md").string(), " \n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((empty / "AGENTS.md").string(), "must-not-load")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
 
   const char* inherited_home = getenv("HOME");
   std::string prior_home = inherited_home ? inherited_home : "";
@@ -1313,7 +1356,7 @@ void TestProjectInstructionDiscovery() {
   fs::path only_claude = repo / "claude-only";
   fs::create_directories(only_claude);
   CHECK(ToolWriteFile((only_claude / "CLAUDE.md").string(), "claude-fallback")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(LoadProjectInstructions(only_claude, 32 * 1024)
             .text.find("claude-fallback") != std::string::npos);
 
@@ -1411,7 +1454,9 @@ void TestMcpContractHelpers() {
                                   {"uri", "file:///tmp/value"},
                                   {"name", "value"}}})},
         {"structuredContent", {{"ok", true}}}}}};
-  std::string rendered = McpResultText(server, response);
+  ToolResult mcp_result = McpResultText(server, response);
+  CHECK(mcp_result.Ok());
+  std::string rendered = std::move(mcp_result.output);
   CHECK(rendered.find("plain") != std::string::npos);
   CHECK(rendered.find("aW1hZ2U=") == std::string::npos);
   CHECK(rendered.find("[mcp image saved: ") != std::string::npos);
@@ -1424,6 +1469,23 @@ void TestMcpContractHelpers() {
                     std::istreambuf_iterator<char>()) == "image");
   CHECK(rendered.find("file:///tmp/value") != std::string::npos);
   CHECK(rendered.find("structuredContent") != std::string::npos);
+  ToolResult error_text = McpResultText(
+      server,
+      {{"result",
+        {{"content",
+          json::array({{{"type", "text"}, {"text", "error: plain content"}}})},
+         {"isError", false}}}});
+  CHECK(error_text.Ok());
+  CHECK(error_text.output == "error: plain content");
+  ToolResult remote_error = McpResultText(
+      server,
+      {{"result",
+        {{"content",
+          json::array({{{"type", "text"}, {"text", "remote rejected call"}}})},
+         {"isError", true}}}});
+  CHECK(!remote_error.Ok());
+  CHECK(remote_error.error == ToolErrorCode::kRemoteError);
+  CHECK(remote_error.output == "error: remote rejected call");
   if (inherited_home) {
     setenv("HOME", prior_home.c_str(), 1);
   } else {
@@ -1480,7 +1542,7 @@ void TestWorkspaceScopedSession() {
     payload["context_tokens"] = 12345;
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
-              .starts_with("wrote "));
+              .output.starts_with("wrote "));
   }
   struct stat st{};
   CHECK(stat(session.c_str(), &st) == 0);
@@ -1512,17 +1574,17 @@ void TestProjectTrustTracksSemanticConfig() {
   fs::current_path(workspace);
 
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"one"}}})")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   std::string error;
   CHECK(TrustProjectConfig(error));
   CHECK(ProjectConfigTrusted());
   CHECK(
       ToolWriteFile(".mcp.json",
                     "{\n  \"mcpServers\": {\"x\": {\"command\": \"one\"}}\n}\n")
-          .starts_with("wrote "));
+          .output.starts_with("wrote "));
   CHECK(ProjectConfigTrusted());  // formatting-only edit
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"two"}}})")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
 
   // A project config is the second surface trust covers, on its own or beside
@@ -1532,7 +1594,7 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(!ProjectMcpPresent());
   CHECK(ProjectAgentConfigPresent() == false);
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ProjectAgentConfigPresent());
   CHECK(ProjectConfigPresent());
   CHECK(!ProjectConfigTrusted());
@@ -1540,10 +1602,10 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(ProjectConfigTrusted());
   CHECK(
       ToolWriteFile(".uagent/.config", "# comment\nUAGENT_MODEL=vendor/model\n")
-          .starts_with("wrote "));
+          .output.starts_with("wrote "));
   CHECK(ProjectConfigTrusted());  // comment-only edit
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
 
   fs::current_path(original);
@@ -1581,14 +1643,14 @@ void TestScopedBaseAndMemory() {
 
   // A global memory lands in the home directory even from inside a workspace.
   CHECK(ToolMemory("prefers-tabs", "global", "The user prefers tabs.")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(fs::is_regular_file(home / ".uagent/memory/prefers-tabs.md"));
 
   // Saving a project memory is what opts the workspace in, which then also
   // moves the config and uv locations.
   CHECK(
       ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
-          .starts_with("wrote "));
+          .output.starts_with("wrote "));
   fs::path project_memory = workspace / ".uagent/memory/build-uses-ninja.md";
   CHECK(fs::is_regular_file(project_memory));
   CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
@@ -1600,23 +1662,26 @@ void TestScopedBaseAndMemory() {
 
   // Names become safe file components, oversize content is refused, an existing
   // name is replaced, and empty content forgets.
-  CHECK(ToolMemory("../escape", "project", "x").starts_with("wrote "));
+  CHECK(ToolMemory("../escape", "project", "x").output.starts_with("wrote "));
   CHECK(fs::is_regular_file(workspace / ".uagent/memory/___escape.md"));
-  CHECK(ToolMemory("", "global", "x").starts_with("error:"));
-  CHECK(ToolMemory("name", "elsewhere", "x").starts_with("error:"));
+  CHECK(ToolMemory("", "global", "x").output.starts_with("error:"));
+  CHECK(ToolMemory("name", "elsewhere", "x").output.starts_with("error:"));
   CHECK(ToolMemory("huge", "global", std::string(4096, 'x'))
-            .starts_with("error:"));
+            .output.starts_with("error:"));
   CHECK(ToolMemory("build-uses-ninja", "project", "Now it builds with make.")
-            .starts_with("wrote "));
-  CHECK(ToolMemory("build-uses-ninja", "project", "").starts_with("forgot "));
+            .output.starts_with("wrote "));
+  CHECK(ToolMemory("build-uses-ninja", "project", "")
+            .output.starts_with("forgot "));
   CHECK(!fs::exists(project_memory));
-  CHECK(ToolMemory("build-uses-ninja", "project", "").starts_with("error:"));
+  CHECK(ToolMemory("build-uses-ninja", "project", "")
+            .output.starts_with("error:"));
 
   // Both scopes reach the instruction rail, project after global, each labeled.
-  CHECK(ToolWriteFile("AGENTS.md", "workspace rules").starts_with("wrote "));
+  CHECK(ToolWriteFile("AGENTS.md", "workspace rules")
+            .output.starts_with("wrote "));
   CHECK(
       ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
-          .starts_with("wrote "));
+          .output.starts_with("wrote "));
   ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
   CHECK(loaded.text.find("workspace rules") != std::string::npos);
   CHECK(loaded.text.find("## memory: prefers-tabs") != std::string::npos);
@@ -1630,10 +1695,10 @@ void TestScopedBaseAndMemory() {
 
   // A trusted project config wins key by key; the global file fills the rest.
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   CHECK(ToolWriteFile((home / ".uagent/.config").string(),
                       "UAGENT_MODEL=global/model\nUAGENT_API_KEY=global-key\n")
-            .starts_with("wrote "));
+            .output.starts_with("wrote "));
   const char* prior_config = getenv("UAGENT_CONFIG_FILE");
   std::string prior_config_value = prior_config ? prior_config : "";
   unsetenv("UAGENT_CONFIG_FILE");
@@ -1681,8 +1746,8 @@ void TestSkillDiscovery() {
 
   auto write_skill = [](const fs::path& dir, const std::string& text) {
     std::filesystem::create_directories(dir);
-    CHECK(
-        ToolWriteFile((dir / "SKILL.md").string(), text).starts_with("wrote "));
+    CHECK(ToolWriteFile((dir / "SKILL.md").string(), text)
+              .output.starts_with("wrote "));
   };
 
   CHECK(LoadSkills(workspace).empty());
@@ -1700,10 +1765,11 @@ void TestSkillDiscovery() {
 
   // The body arrives without its front matter and names its own directory, so
   // relative references inside it resolve.
-  std::string body = ReadSkillBody(skills[0]);
-  CHECK(body.find("Run the checks, then tag.") != std::string::npos);
-  CHECK(body.find("description:") == std::string::npos);
-  CHECK(body.find(skills[0].dir) != std::string::npos);
+  SkillReadResult body = ReadSkillBody(skills[0]);
+  CHECK(body.ok);
+  CHECK(body.output.find("Run the checks, then tag.") != std::string::npos);
+  CHECK(body.output.find("description:") == std::string::npos);
+  CHECK(body.output.find(skills[0].dir) != std::string::npos);
 
   // A workspace skill of the same name shadows the global one.
   write_skill(
@@ -1791,9 +1857,12 @@ void TestSkillDiscovery() {
   CHECK(!tool.mutating);
   json names = tool.parameters["properties"]["name"]["enum"];
   CHECK(names.size() == 3);
-  CHECK(tool.run({{"name", "lint"}}, {}).find("Run ruff.") !=
+  CHECK(tool.run({{"name", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
-  CHECK(tool.run({{"name", "nope"}}, {}).starts_with("error:"));
+  ToolResult missing_skill = tool.run({{"name", "nope"}}, {});
+  CHECK(!missing_skill.Ok());
+  CHECK(missing_skill.error == ToolErrorCode::kNotFound);
+  CHECK(missing_skill.output.starts_with("error:"));
 
   fs::current_path(original);
   if (had_home) {

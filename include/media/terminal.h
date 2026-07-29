@@ -18,6 +18,7 @@
 #include "include/core/env.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
+#include "include/tools/tool.h"
 
 extern char** environ;
 
@@ -145,39 +146,55 @@ inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-inline std::string ToolShowImage(const std::string& path, int64_t columns = 0) {
+inline ToolResult ToolShowImage(const std::string& path, int64_t columns = 0) {
   if (!g_tty || !isatty(STDOUT_FILENO)) {
-    return "error: image display requires an interactive terminal";
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "error: image display requires an interactive terminal");
   }
   Attachment attachment;
   std::string error;
-  if (!InspectAttachment(path, attachment, error)) return "error: " + error;
-  if (!attachment.image) return "error: not an image: " + path;
-  if (attachment.bytes == 0) return "error: image is empty: " + path;
+  if (!InspectAttachment(path, attachment, error)) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+  }
+  if (!attachment.image) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: not an image: " + path);
+  }
+  if (attachment.bytes == 0) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: image is empty: " + path);
+  }
   int64_t available = std::max(int64_t{1}, TerminalColumns() - 1);
   int64_t max_columns = std::min(available, ImageMaxColumns());
   if (columns <= 0) columns = ImageColumns(available);
   columns = std::clamp(columns, int64_t{1}, max_columns);
   TerminalImageProtocol protocol = DetectTerminalImageProtocol();
   if (protocol == TerminalImageProtocol::kNone) {
-    return "error: this terminal does not support native inline images";
+    return ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "error: this terminal does not support native inline images");
   }
   if (protocol == TerminalImageProtocol::kItty &&
       attachment.mime != "image/png") {
     if (!ExecutableOnPath("chafa")) {
-      return "error: Kitty displays PNG directly; install Chafa for other "
-             "formats";
+      return ToolFailure(
+          ToolErrorCode::kUnavailable,
+          "error: Kitty displays PNG directly; install Chafa for other "
+          "formats");
     }
     if (!EmitChafaKittyImage(attachment.path, columns)) {
-      return "error: Chafa could not convert " + attachment.path +
-             " to Kitty format";
+      return ToolFailure(ToolErrorCode::kProcessFailed,
+                         "error: Chafa could not convert " + attachment.path +
+                             " to Kitty format");
     }
-    return "displayed " + attachment.path + " inline via kitty";
+    return ToolSuccess("displayed " + attachment.path + " inline via kitty");
   }
   int64_t limit_mb = TerminalImageLimitMb();
   uintmax_t limit = static_cast<uintmax_t>(limit_mb) * 1024 * 1024;
   std::string data = Base64File(attachment, limit, error);
-  if (!error.empty()) return "error: " + error;
+  if (!error.empty()) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
+  }
 
   auto write_part = [](std::string_view part) {
     fwrite(part.data(), 1, part.size(), stdout);
@@ -189,8 +206,8 @@ inline std::string ToolShowImage(const std::string& path, int64_t columns = 0) {
     EmitKittyPng(data, columns, write_part);
   }
   fflush(stdout);
-  return "displayed " + attachment.path + " inline via " +
-         TerminalImageProtocolName(protocol);
+  return ToolSuccess("displayed " + attachment.path + " inline via " +
+                     TerminalImageProtocolName(protocol));
 }
 
 }  // namespace uagent

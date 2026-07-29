@@ -149,25 +149,29 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
            {"required", json::array({"mode"})},
            {"additionalProperties", false}},
           [chrome, &config](const json& args,
-                            const ToolContext& context) -> std::string {
+                            const ToolContext& context) -> ToolResult {
             std::string mode = JsonValue(args, "mode", "");
             if (mode != "isolated" && mode != "user") {
-              return "error: mode must be isolated or user";
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: mode must be isolated or user");
             }
             if (chrome->alive && JsonValue(chrome->config, "__uagent_mode",
                                            "isolated") == mode) {
-              return "Chrome DevTools is already using the " + mode +
-                     " session";
+              return ToolSuccess("Chrome DevTools is already using the " +
+                                 mode + " session");
             }
             json next = ChromeMcpConfig(mode);
             std::string error;
             if (!McpRestart(*chrome, next, config,
                             context.RemainingSeconds(config.mcp_timeout_s),
                             error)) {
-              return "error: could not switch Chrome DevTools: " + error;
+              return ToolFailure(
+                  ToolErrorCode::kUnavailable,
+                  "error: could not switch Chrome DevTools: " + error);
             }
-            return mode == "user" ? "User Chrome session selected"
-                                  : "Isolated Chrome session selected";
+            return ToolSuccess(mode == "user"
+                                   ? "User Chrome session selected"
+                                   : "Isolated Chrome session selected");
           }));
   tool.mutating = true;
   tool.provider = "builtin:chrome";

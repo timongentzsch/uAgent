@@ -37,12 +37,18 @@ inline Tool SkillTool(std::vector<Skill> skills) {
       "Open a skill: a stored procedure for a task this project or user has "
       "written down. Read it before improvising when one matches.",
       std::move(parameters),
-      [skills = std::move(skills)](const json& a, const ToolContext&) {
+      [skills = std::move(skills)](const json& a,
+                                   const ToolContext&) -> ToolResult {
         std::string want = JsonValue(a, "name", "");
         for (const Skill& skill : skills) {
-          if (skill.name == want) return ReadSkillBody(skill);
+          if (skill.name != want) continue;
+          SkillReadResult result = ReadSkillBody(skill);
+          return result.ok ? ToolSuccess(std::move(result.output))
+                           : ToolFailure(ToolErrorCode::kInternal,
+                                         std::move(result.output));
         }
-        return "error: no such skill: " + TerminalSafe(want);
+        return ToolFailure(ToolErrorCode::kNotFound,
+                           "error: no such skill: " + TerminalSafe(want));
       });
   // Reading a procedure changes nothing; whatever the skill then asks for goes
   // through the tools that do require approval.

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -19,58 +20,71 @@
 #include "include/mcp/server.h"
 #include "include/media.h"
 #include "include/tools/files.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 
-inline std::string McpImageResult(const json& content) {
+inline ToolResult McpImageResult(const json& content) {
   if (!content.contains("data") || !content["data"].is_string()) {
-    return "error: MCP image is missing base64 data";
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "error: MCP image is missing base64 data");
   }
   std::string mime = JsonValue(content, "mimeType", "image/png");
   std::string extension = ImageExtension(mime);
-  if (extension.empty()) return "error: unsupported MCP image type " + mime;
+  if (extension.empty()) {
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "error: unsupported MCP image type " + mime);
+  }
   int64_t limit_mb = TerminalImageLimitMb();
   std::string bytes;
   if (!Base64Decode(content["data"].get_ref<const std::string&>(), bytes,
                     static_cast<size_t>(limit_mb) * 1024 * 1024)) {
-    return "error: MCP image is invalid or exceeds " +
-           std::to_string(limit_mb) + " MB";
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "error: MCP image is invalid or exceeds " +
+                           std::to_string(limit_mb) + " MB");
   }
   static std::atomic<uint64_t> sequence{0};
   std::string path =
       UagentDir(kMcpDir) + "/image-" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
       std::to_string(getpid()) + "-" + std::to_string(sequence++) + extension;
-  std::string saved = ToolWritePrivateFile(path, bytes);
-  if (saved.starts_with("error:")) return saved;
+  ToolResult saved = ToolWritePrivateFile(path, bytes);
+  if (!saved.Ok()) return saved;
   // A tool result is text-only, so the image cannot travel back inside it.
   // Queue it instead: it rides in on the next request and the model can
   // actually look at it. Printing it to the terminal was never what made it
   // readable — that only showed it to the human, on every single call.
-  std::string attached = g_attachments.Add(path);
-  if (attached.starts_with("error:")) {
-    return "[mcp image saved: " + path +
-           "; not attached: " + attached.substr(7) + "]";
+  ToolResult attached = g_attachments.Add(path);
+  if (!attached.Ok()) {
+    std::string reason = std::move(attached.output);
+    constexpr std::string_view kErrorPrefix = "error: ";
+    if (reason.starts_with(kErrorPrefix)) reason.erase(0, kErrorPrefix.size());
+    return ToolSuccess("[mcp image saved: " + path +
+                       "; not attached: " + reason + "]");
   }
-  return "[mcp image saved: " + path +
-         "; attached — readable in your next step. Use show_image to put it on "
-         "the user's terminal]";
+  return ToolSuccess(
+      "[mcp image saved: " + path +
+      "; attached — readable in your next step. Use show_image to put it on "
+      "the user's terminal]");
 }
 
 // tools/call response -> bounded model-readable text. Binary images are saved
 // and queued separately; their base64 never enters the tool result history.
-inline std::string McpResultText(const McpServer& s, const json& resp) {
+inline ToolResult McpResultText(const McpServer& s, const json& resp) {
   if (!resp.contains("result")) {
     std::string msg = "unknown error";
     if (resp.contains("error") && resp["error"].is_object()) {
       msg = JsonValue(resp["error"], "message", msg);
     }
-    return "error: mcp(" + s.name + "): " + msg;
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "error: mcp(" + s.name + "): " + msg);
   }
   const json& r = resp["result"];
   if (!r.is_object()) {
-    return "error: mcp(" + s.name + "): result must be an object";
+    return ToolFailure(ToolErrorCode::kRemoteError,
+                       "error: mcp(" + s.name + "): result must be an object");
   }
   std::string text;
+  ToolErrorCode local_error = ToolErrorCode::kNone;
   if (r.contains("content") && r["content"].is_array()) {
     for (const json& c : r["content"]) {
       if (!text.empty()) text += '\n';
@@ -82,7 +96,11 @@ inline std::string McpResultText(const McpServer& s, const json& resp) {
           c["text"].is_string()) {
         text += c["text"].get<std::string>();
       } else if (type == "image" && c.is_object()) {
-        text += McpImageResult(c);
+        ToolResult image = McpImageResult(c);
+        text += image.output;
+        if (!image.Ok() && local_error == ToolErrorCode::kNone) {
+          local_error = image.error;
+        }
       } else {
         text +=
             "[mcp " + (type.empty() ? "content" : type) + "]\n" + JsonDump(c);
@@ -97,7 +115,13 @@ inline std::string McpResultText(const McpServer& s, const json& resp) {
   bool is_error = r.contains("isError") && r["isError"].is_boolean() &&
                   r["isError"].get<bool>();
   if (is_error && !text.starts_with("error")) text = "error: " + text;
-  return text;
+  if (is_error) {
+    return ToolFailure(ToolErrorCode::kRemoteError, std::move(text));
+  }
+  if (local_error != ToolErrorCode::kNone) {
+    return ToolFailure(local_error, std::move(text));
+  }
+  return ToolSuccess(std::move(text));
 }
 
 // cap without splitting a UTF-8 codepoint

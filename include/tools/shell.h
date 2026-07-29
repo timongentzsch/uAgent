@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,23 +28,31 @@
 
 namespace uagent {
 
+struct ShellCommandResult {
+  ToolResult result;
+  std::optional<int> wait_status;
+
+  ShellCommandResult(ToolResult value, std::optional<int> status = std::nullopt)
+      : result(std::move(value)), wait_status(status) {}
+};
+
 // window_s: -1 = default poll window (~3 s), 0 = wait until it finishes,
 // N = wait up to N seconds — then background instead of killing.
-inline std::string ToolRunBash(ProcessSupervisor& supervisor,
-                               const std::string& cmd, int64_t window_s,
-                               bool join_before_final = false,
-                               const ToolContext& context = {},
-                               bool allow_background = true,
-                               bool detach = false, std::string shell = "bash",
-                               bool immediate_background = false,
-                               std::string job_kind = "") {
+inline ShellCommandResult RunShellCommand(
+    ProcessSupervisor& supervisor, const std::string& cmd, int64_t window_s,
+    bool join_before_final, const ToolContext& context, bool allow_background,
+    bool detach, std::string shell, bool immediate_background,
+    std::string job_kind) {
   if (shell.empty() || shell.find('\0') != std::string::npos) {
-    return "error: shell must be a non-empty executable name or path";
+    return {ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "error: shell must be a non-empty executable name or path")};
   }
   int64_t max_jobs = MaxBackgroundJobs();
   if (static_cast<int64_t>(supervisor.PendingCount()) >= max_jobs) {
-    return "error: background job limit reached (" + std::to_string(max_jobs) +
-           ")";
+    return {ToolFailure(ToolErrorCode::kLimitExceeded,
+                        "error: background job limit reached (" +
+                            std::to_string(max_jobs) + ")")};
   }
   int64_t window =
       (detach || immediate_background)
@@ -60,7 +69,10 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
   temp.push_back('\0');
   int lfd = mkstemp(temp.data());
   std::string log = temp.data();
-  if (lfd < 0) return "error: cannot create log file " + log;
+  if (lfd < 0) {
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: cannot create log file " + log)};
+  }
   fchmod(lfd, 0600);
   int64_t log_bytes = BashLogBytes();
   // Foreground commands may be stopped at the cap. Detached servers instead
@@ -117,7 +129,9 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
   if (spawn_error != 0) {
     close(lfd);
     unlink(log.c_str());
-    return "error: cannot spawn shell: " + std::string(strerror(spawn_error));
+    return {ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
   close(lfd);
   if (!detach) {
@@ -128,14 +142,14 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     }
   }
   if (detach) {
-    std::string saved = SaveDetachedRecord(pid, log, cmd);
-    if (saved.starts_with("error:")) {
+    ToolResult saved = SaveDetachedRecord(pid, log, cmd);
+    if (!saved.Ok()) {
       if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
       int status = 0;
       waitpid(pid, &status, 0);
       unlink(log.c_str());
       unlink((log + ".1").c_str());
-      return saved;
+      return {std::move(saved)};
     }
   }
 
@@ -166,8 +180,11 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     unlink(log.c_str());
     unlink((log + ".1").c_str());
     if (detach) unlink(DetachedRecordPath(pid).c_str());
-    if (cancelled) return "error: command cancelled by user";
-    return out + FmtExit(status, /*show_ok=*/false);
+    if (cancelled) {
+      return {ToolCancelled("error: command cancelled by user"), status};
+    }
+    out += FmtExit(status, /*show_ok=*/false);
+    return {ProcessResult(std::move(out), status), status};
   }
   if (!allow_background) {
     if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
@@ -175,7 +192,8 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     unlink(log.c_str());
     unlink((log + ".1").c_str());
     if (detach) unlink(DetachedRecordPath(pid).c_str());
-    return "error: search exceeded its execution deadline";
+    return {ToolTimedOut("error: search exceeded its execution deadline"),
+            status};
   }
   BgJob job{pid,    log, cmd,     detach ? false : join_before_final,
             detach, {},  job_kind};
@@ -184,43 +202,75 @@ inline std::string ToolRunBash(ProcessSupervisor& supervisor,
     waitpid(pid, &status, 0);
     unlink(log.c_str());
     unlink((log + ".1").c_str());
-    return "error: background job limit reached (" + std::to_string(max_jobs) +
-           ")";
+    return {ToolFailure(ToolErrorCode::kLimitExceeded,
+                        "error: background job limit reached (" +
+                            std::to_string(max_jobs) + ")")};
   }
   if (detach) {
-    return "[detached] pid " + std::to_string(pid) + ", log: " + log +
-           " — read with terminal_output(pid=" + std::to_string(pid) + ")";
+    return {ToolSuccess(
+        "[detached] pid " + std::to_string(pid) + ", log: " + log +
+        " — read with terminal_output(pid=" + std::to_string(pid) + ")")};
   }
   BgTrackSignal(pid, true);
   if (job_kind == "task") {
-    return "[backgrounded] task id " + std::to_string(pid) +
-           " — check with get_task_output(id=" + std::to_string(pid) +
-           ") or wait_tasks(ids=[" + std::to_string(pid) + "])";
+    return {
+        ToolSuccess("[backgrounded] task id " + std::to_string(pid) +
+                    " — check with get_task_output(id=" + std::to_string(pid) +
+                    ") or wait_tasks(ids=[" + std::to_string(pid) + "])")};
   }
-  return "[backgrounded] pid " + std::to_string(pid) + ", log: " + log +
-         " — peek with read_file, or wait_background(pid=" +
-         std::to_string(pid) + ")";
+  return {ToolSuccess("[backgrounded] pid " + std::to_string(pid) + ", log: " +
+                      log + " — peek with read_file, or wait_background(pid=" +
+                      std::to_string(pid) + ")")};
 }
 
-inline std::string ToolRunPython(ProcessSupervisor& supervisor,
-                                 const std::string& code, const json& packages,
-                                 int64_t window_s,
-                                 const ToolContext& context = {}) {
-  if (code.empty()) return "error: Python code must not be empty";
-  if (code.size() > 128 * 1024 || code.find('\0') != std::string::npos) {
-    return "error: Python code exceeds the 128 KiB limit or contains NUL";
+inline ToolResult ToolRunBash(ProcessSupervisor& supervisor,
+                              const std::string& cmd, int64_t window_s,
+                              bool join_before_final = false,
+                              const ToolContext& context = {},
+                              bool allow_background = true, bool detach = false,
+                              std::string shell = "bash",
+                              bool immediate_background = false,
+                              std::string job_kind = "") {
+  return RunShellCommand(supervisor, cmd, window_s, join_before_final, context,
+                         allow_background, detach, std::move(shell),
+                         immediate_background, std::move(job_kind))
+      .result;
+}
+
+inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
+                                const std::string& code, const json& packages,
+                                int64_t window_s,
+                                const ToolContext& context = {}) {
+  if (code.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: Python code must not be empty");
   }
-  if (!packages.is_array()) return "error: packages must be an array";
-  if (packages.size() > 12) return "error: packages is limited to 12 entries";
+  if (code.size() > 128 * 1024 || code.find('\0') != std::string::npos) {
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        "error: Python code exceeds the 128 KiB limit or contains NUL");
+  }
+  if (!packages.is_array()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: packages must be an array");
+  }
+  if (packages.size() > 12) {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: packages is limited to 12 entries");
+  }
 
   std::string with;
   for (const json& value : packages) {
-    if (!value.is_string()) return "error: package entries must be strings";
+    if (!value.is_string()) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: package entries must be strings");
+    }
     std::string package = value.get<std::string>();
     if (package.empty() || package.size() > 256 ||
         package.find_first_of("\r\n") != std::string::npos ||
         package.find('\0') != std::string::npos) {
-      return "error: invalid package entry";
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: invalid package entry");
     }
     with += " --with " + ShellQuote(package);
   }
@@ -228,9 +278,11 @@ inline std::string ToolRunPython(ProcessSupervisor& supervisor,
   // stdlib-only code still runs on plain python3 rather than being refused.
   bool uv = ExecutableOnPath("uv");
   if (!uv && !with.empty()) {
-    return "error: packages require uv on PATH. Install it from "
-           "https://docs.astral.sh/uv/getting-started/installation/ "
-           "(macOS: brew install uv), or use only the standard library";
+    return ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "error: packages require uv on PATH. Install it from "
+        "https://docs.astral.sh/uv/getting-started/installation/ "
+        "(macOS: brew install uv), or use only the standard library");
   }
   // Isolated environments are materialised in uv's cache, so pointing the cache
   // at the agent directory is what keeps them with the project (or the user).
@@ -246,32 +298,40 @@ inline std::string ToolRunPython(ProcessSupervisor& supervisor,
                with + " -- python"
          : "MPLBACKEND=Agg python3";
   command += " -c " + ShellQuote(code);
-  std::string result = ToolRunBash(supervisor, command, window_s,
-                                   /*join_before_final=*/true, context);
-  if (result.find("\n[exit code ") != std::string::npos ||
-      result.find("\n[killed by signal ") != std::string::npos) {
+  ShellCommandResult result =
+      RunShellCommand(supervisor, command, window_s,
+                      /*join_before_final=*/true, context,
+                      /*allow_background=*/true, /*detach=*/false, "bash",
+                      /*immediate_background=*/false, "");
+  if (result.result.error == ToolErrorCode::kProcessFailed) {
     std::string hint;
-    if (result.find("No module named") != std::string::npos) {
+    if (result.result.output.find("No module named") != std::string::npos) {
       hint =
           " Declare every third-party dependency in run_python.packages; "
           "do not install it with pip or run.";
     }
-    return "error: Python execution failed." + hint + "\n" + result;
+    result.result.output =
+        "error: Python execution failed." + hint + "\n" + result.result.output;
   }
-  return result;
+  return std::move(result.result);
 }
 
-inline std::string ToolGrep(ProcessSupervisor& supervisor,
-                            const std::string& pattern, const std::string& path,
-                            const std::string& glob,
-                            const ToolContext& context = {}) {
-  if (pattern.empty()) return "error: search pattern must not be empty";
+inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
+                           const std::string& pattern, const std::string& path,
+                           const std::string& glob,
+                           const ToolContext& context = {}) {
+  if (pattern.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: search pattern must not be empty");
+  }
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
   auto status = std::filesystem::status(target, path_error);
   if (path_error || (!std::filesystem::is_regular_file(status) &&
                      !std::filesystem::is_directory(status))) {
-    return "error: search path is not a readable file or directory: " + target;
+    return ToolFailure(
+        ToolErrorCode::kNotFound,
+        "error: search path is not a readable file or directory: " + target);
   }
   int64_t max_results = GrepResults();
   int64_t bytes = GrepBytes();
@@ -289,25 +349,25 @@ inline std::string ToolGrep(ProcessSupervisor& supervisor,
             ShellQuote(target) + " 2>&1 | head -n " +
             std::to_string(max_results + 1) + " | head -c " +
             std::to_string(bytes);
-  std::string output =
-      ToolRunBash(supervisor, command, 0, false, context, false);
-  auto exit_suffix = [&](int code) {
-    return "\n[exit code " + std::to_string(code) + "]";
-  };
-  auto has_exit = [&](int code) {
-    std::string suffix = exit_suffix(code);
-    return output.size() >= suffix.size() &&
-           output.compare(output.size() - suffix.size(), suffix.size(),
-                          suffix) == 0;
-  };
-  if (has_exit(1)) return "(no matches)";
-  if (has_exit(141)) {
-    output.resize(output.size() - exit_suffix(141).size());
-  } else if (output.find("\n[exit code ") != std::string::npos) {
-    return "error: search command failed:\n" + output;
+  ShellCommandResult execution = RunShellCommand(
+      supervisor, command, 0, false, context, false, false, "bash", false, "");
+  std::string output = std::move(execution.result.output);
+  int exit_code = execution.wait_status && WIFEXITED(*execution.wait_status)
+                      ? WEXITSTATUS(*execution.wait_status)
+                      : -1;
+  if (exit_code == 1) return ToolSuccess("(no matches)");
+  if (exit_code == 141) {
+    std::string suffix = FmtExit(*execution.wait_status, false);
+    if (output.size() >= suffix.size())
+      output.resize(output.size() - suffix.size());
+  } else if (!execution.result.Ok()) {
+    if (execution.result.error != ToolErrorCode::kProcessFailed) {
+      return std::move(execution.result);
+    }
+    return ToolFailure(ToolErrorCode::kProcessFailed,
+                       "error: search command failed:\n" + output);
   }
-  if (output == "(no output)") return "(no matches)";
-  if (output.starts_with("error:")) return output;
+  if (output == "(no output)") return ToolSuccess("(no matches)");
 
   bool byte_limited = static_cast<int64_t>(output.size()) >= bytes;
   size_t scan = 0, cut = std::string::npos;
@@ -327,7 +387,7 @@ inline std::string ToolGrep(ProcessSupervisor& supervisor,
       std::to_string(std::min(lines, max_results)) +
       (more_results ? "+ matches; more available" : " matches") + "]\n";
   if (byte_limited) header += "[output byte limit reached]\n";
-  return header + output;
+  return ToolSuccess(header + output);
 }
 
 }  // namespace uagent

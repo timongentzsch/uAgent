@@ -141,9 +141,10 @@ inline void Agent::ApplyCheckpoint(
   json skipped = json::array();
   size_t reread = 0;
   for (const auto& path : paths) {
-    std::string content = CapResult(
-        ToolReadFile(path.string(), int64_t{1}, CheckpointFileLines()));
-    if (content.starts_with("error:")) {
+    ToolResult read =
+        ToolReadFile(path.string(), int64_t{1}, CheckpointFileLines());
+    std::string content = CapResult(std::move(read.output));
+    if (!read.Ok()) {
       skipped.push_back(
           {{"path", path.string()}, {"reason", OneLine(content, 160)}});
       continue;

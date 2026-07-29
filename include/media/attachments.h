@@ -22,6 +22,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/tools/tool.h"
 #include "third_party/json.hpp"
 
 namespace uagent {
@@ -120,12 +121,14 @@ inline std::string ImageInputError(const Attachment& attachment) {
 
 class AttachmentQueue {
  public:
-  std::string Add(const std::string& path) {
+  ToolResult Add(const std::string& path) {
     Attachment attachment;
     std::string error;
-    if (!InspectAttachment(path, attachment, error)) return "error: " + error;
+    if (!InspectAttachment(path, attachment, error)) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
+    }
     if (!(error = ImageInputError(attachment)).empty()) {
-      return "error: " + error;
+      return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
     }
     std::string result = "attached " + attachment.name + " (" +
                          attachment.mime + "); readable in your next step";
@@ -133,11 +136,12 @@ class AttachmentQueue {
     // MCP servers queue images without a model call to budget against, so the
     // ceiling lives here rather than only on the attach tool.
     if (static_cast<int64_t>(pending_.size()) >= MaxPendingAttachments()) {
-      return "error: too many attachments pending for one step (" +
-             std::to_string(MaxPendingAttachments()) + ")";
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: too many attachments pending for one step (" +
+                             std::to_string(MaxPendingAttachments()) + ")");
     }
     pending_.push_back(std::move(attachment));
-    return result;
+    return ToolSuccess(std::move(result));
   }
   std::vector<Attachment> Take() {
     std::lock_guard<std::mutex> lock(mutex_);

@@ -84,12 +84,12 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   ToolContext call_context = context.WithTimeout(timeout);
   json arguments = task.args;
   arguments.erase("timeout");  // runtime policy, never a provider argument
-  task.result = AdaptLegacyToolStringResult(
-      CapResult(EscapeToolTags(task.tool->run(arguments, call_context)),
-                task.tool->result_chars));
+  task.result = task.tool->run(arguments, call_context);
+  task.result.output =
+      CapResult(EscapeToolTags(task.result.output), task.tool->result_chars);
   if (g_steering.Requested()) {
     task.result.status = CompletionStatus::kCancelled;
-    task.result.error = ToolErrorCode::kCancelled;
+    task.result.error = ToolErrorCode::kNone;
     task.trace_status = "steered";
   } else {
     task.trace_status = task.result.Ok() ? "ok" : "error";

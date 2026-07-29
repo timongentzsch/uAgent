@@ -28,8 +28,9 @@ enum class ToolErrorCode {
   kPermissionDenied,
   kNotFound,
   kLimitExceeded,
-  kTimedOut,
-  kCancelled,
+  kUnavailable,
+  kProcessFailed,
+  kRemoteError,
   kInternal,
 };
 
@@ -45,10 +46,12 @@ inline const char* ToolErrorCodeName(ToolErrorCode code) {
       return "not_found";
     case ToolErrorCode::kLimitExceeded:
       return "limit_exceeded";
-    case ToolErrorCode::kTimedOut:
-      return "timed_out";
-    case ToolErrorCode::kCancelled:
-      return "cancelled";
+    case ToolErrorCode::kUnavailable:
+      return "unavailable";
+    case ToolErrorCode::kProcessFailed:
+      return "process_failed";
+    case ToolErrorCode::kRemoteError:
+      return "remote_error";
     case ToolErrorCode::kInternal:
       return "internal";
   }
@@ -73,20 +76,12 @@ inline ToolResult ToolFailure(ToolErrorCode error, std::string output) {
 
 inline ToolResult ToolCancelled(std::string output) {
   return {CompletionStatus::kCancelled, std::move(output),
-          ToolErrorCode::kCancelled};
+          ToolErrorCode::kNone};
 }
 
 inline ToolResult ToolTimedOut(std::string output) {
   return {CompletionStatus::kTimedOut, std::move(output),
-          ToolErrorCode::kTimedOut};
-}
-
-// Temporary migration boundary. Remove once every Tool::Run returns ToolResult.
-inline ToolResult AdaptLegacyToolStringResult(std::string output) {
-  if (output.starts_with("error:")) {
-    return ToolFailure(ToolErrorCode::kInternal, std::move(output));
-  }
-  return ToolSuccess(std::move(output));
+          ToolErrorCode::kNone};
 }
 
 struct ToolContext {
@@ -119,7 +114,7 @@ struct ToolContext {
 };
 
 struct Tool {
-  using Run = std::function<std::string(const json&, const ToolContext&)>;
+  using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
   using Approval = std::function<bool(const json&)>;
 

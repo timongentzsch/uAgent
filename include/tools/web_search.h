@@ -40,9 +40,11 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
             "description":"one to four queries in one request"}}})json"),
       [&api, &usage, &side_tasks](const json& a,
-                                  const ToolContext& context) -> std::string {
+                                  const ToolContext& context) -> ToolResult {
         if (!OpenrouterCompatibleUrl(api.base_url)) {
-          return "error: web_search is available only for OpenRouter";
+          return ToolFailure(
+              ToolErrorCode::kUnavailable,
+              "error: web_search is available only for OpenRouter");
         }
         std::vector<std::string> queries;
         if (a.contains("queries") && a["queries"].is_array()) {
@@ -56,9 +58,13 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           std::string query = Trim(JsonValue(a, "query", ""));
           if (!query.empty()) queries.push_back(std::move(query));
         }
-        if (queries.empty()) return "error: query or queries is required";
+        if (queries.empty()) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: query or queries is required");
+        }
         if (queries.size() > 4) {
-          return "error: queries is limited to four items";
+          return ToolFailure(ToolErrorCode::kLimitExceeded,
+                             "error: queries is limited to four items");
         }
         std::string query;
         for (size_t i = 0; i < queries.size(); ++i) {
@@ -105,10 +111,10 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                         {"cancelled", cancel.load()},
                         {"response", r.is_discarded() ? json(nullptr) : r}});
               if (cancel.load()) {
-                return std::string("error: web search abandoned");
+                return ToolCancelled("error: web search abandoned");
               }
               if (AbortRequested()) {
-                return std::string("error: search cancelled by user");
+                return ToolCancelled("error: search cancelled by user");
               }
               if (r.is_object() && r.contains("usage")) usage.Add(r["usage"]);
               if (r.is_object() && r.contains("choices") &&
@@ -127,28 +133,34 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                 if (JsonString(choice, "finish_reason") == "length") {
                   output += "\n[truncated; raise UAGENT_WEB_SEARCH_MAX_TOKENS]";
                 }
-                return output;
+                return ToolSuccess(std::move(output));
               }
               if (r.is_object() && r.contains("error") &&
                   r["error"].is_object()) {
-                return "error: " +
-                       JsonString(r["error"], "message", "search failed");
+                return ToolFailure(ToolErrorCode::kRemoteError,
+                                   "error: " + JsonString(r["error"], "message",
+                                                          "search failed"));
               }
-              return std::string("error: web search failed");
+              return ToolFailure(ToolErrorCode::kRemoteError,
+                                 "error: web search failed");
             },
             ToolConcurrency());
-        if (!id) return "error: concurrent side-task limit reached";
+        if (!id) {
+          return ToolFailure(ToolErrorCode::kLimitExceeded,
+                             "error: concurrent side-task limit reached");
+        }
         int64_t grace = context.timeout_s == 0
                             ? timeout
                             : std::min(context.timeout_s, timeout);
         if (auto result = side_tasks.Wait(id, std::chrono::seconds(grace))) {
-          return result->output;
+          return {result->status, std::move(result->output), result->error};
         }
         DebugLog("side_backgrounded",
                  {{"kind", "web_search"}, {"id", id}, {"query", query}});
-        return "[backgrounded] web search job " + std::to_string(id) +
-               "; continue other work or call wait_background(id=" +
-               std::to_string(id) + ")";
+        return ToolSuccess("[backgrounded] web search job " +
+                           std::to_string(id) +
+                           "; continue other work or call wait_background(id=" +
+                           std::to_string(id) + ")");
       });
   t.mutating = true;
   t.summary = [](const json& a) {

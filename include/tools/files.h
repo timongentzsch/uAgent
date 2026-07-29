@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -16,28 +17,48 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/tools/tool.h"
 
 namespace uagent {
 
-inline std::string ToolReadFile(const std::string& path, int64_t offset,
-                                int64_t limit) {
+inline ToolErrorCode FileToolError(const std::error_code& error) {
+  if (error == std::errc::no_such_file_or_directory) {
+    return ToolErrorCode::kNotFound;
+  }
+  if (error == std::errc::permission_denied ||
+      error == std::errc::operation_not_permitted ||
+      error == std::errc::read_only_file_system) {
+    return ToolErrorCode::kPermissionDenied;
+  }
+  return ToolErrorCode::kInternal;
+}
+
+inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
+                               int64_t limit) {
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   int64_t max_lines = ReadFileMaxLines();
   if (limit <= 0 || limit > max_lines) limit = max_lines;
   int64_t max_bytes = ReadFileBytes();
   if (offset < 1) offset = 1;
+  errno = 0;
   std::ifstream f(path);
-  if (!f) return "error: cannot open " + path;
+  if (!f) {
+    std::error_code error(errno, std::generic_category());
+    return ToolFailure(
+        path.empty() ? ToolErrorCode::kInvalidArguments : FileToolError(error),
+        "error: cannot open " + path);
+  }
   std::string line, out;
   int64_t total = 0, shown = 0, first = 0, last = 0;
   bool output_limited = false;
   while (shown < limit && std::getline(f, line)) {
-    if (AbortRequested()) return "error: read cancelled";
+    if (AbortRequested()) return ToolCancelled("error: read cancelled");
     ++total;
     if (total >= offset) {
       if (out.size() + line.size() + 1 > static_cast<size_t>(max_bytes)) {
@@ -58,16 +79,18 @@ inline std::string ToolReadFile(const std::string& path, int64_t offset,
     char blk[1 << 16];
     bool ended_nl = true;
     while (f.read(blk, sizeof blk), f.gcount() > 0) {
-      if (AbortRequested()) return "error: read cancelled";
+      if (AbortRequested()) return ToolCancelled("error: read cancelled");
       total += static_cast<int64_t>(std::count(blk, blk + f.gcount(), '\n'));
       ended_nl = blk[f.gcount() - 1] == '\n';
     }
     if (!ended_nl) ++total;  // final line without trailing newline
   }
-  if (total == 0) return "(empty file)";
+  if (total == 0) return ToolSuccess("(empty file)");
   if (offset > total && !more) {
-    return "error: offset " + std::to_string(offset) + " is beyond EOF (" +
-           std::to_string(total) + " lines)";
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: offset " + std::to_string(offset) +
+                           " is beyond EOF (" + std::to_string(total) +
+                           " lines)");
   }
   std::string header = "[" + path + " lines " + std::to_string(first) + "-" +
                        std::to_string(last);
@@ -78,30 +101,33 @@ inline std::string ToolReadFile(const std::string& path, int64_t offset,
   } else {
     header += " of " + std::to_string(total);
   }
-  return header + "]\n" + out;
+  return ToolSuccess(header + "]\n" + out);
 }
 
 // Atomic write: temp file in the same directory, then rename — a disk-full or
 // crash mid-write can never leave the target truncated. Keeps an existing
 // file's permissions.
-inline std::string ToolWriteFileMode(const std::string& path,
-                                     const std::string& content,
-                                     mode_t create_mode) {
+inline ToolResult ToolWriteFileMode(const std::string& path,
+                                    const std::string& content,
+                                    mode_t create_mode) {
   std::string error;
   if (!AtomicWriteFile(path, content, create_mode, /*preserve_mode=*/true,
                        error)) {
-    return "error: " + error;
+    return ToolFailure(path.empty() ? ToolErrorCode::kInvalidArguments
+                                    : ToolErrorCode::kInternal,
+                       "error: " + error);
   }
-  return "wrote " + std::to_string(content.size()) + " bytes to " + path;
+  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
+                     path);
 }
 
-inline std::string ToolWriteFile(const std::string& path,
-                                 const std::string& content) {
+inline ToolResult ToolWriteFile(const std::string& path,
+                                const std::string& content) {
   return ToolWriteFileMode(path, content, 0644);
 }
 
-inline std::string ToolWritePrivateFile(const std::string& path,
-                                        const std::string& content) {
+inline ToolResult ToolWritePrivateFile(const std::string& path,
+                                       const std::string& content) {
   return ToolWriteFileMode(path, content, 0600);
 }
 
@@ -233,24 +259,36 @@ inline void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
   data.swap(out);
 }
 
-inline std::string ToolEditFile(const std::string& path,
-                                const std::vector<FileEdit>& edits) {
-  if (edits.empty()) return "error: at least one edit is required";
+inline ToolResult ToolEditFile(const std::string& path,
+                               const std::vector<FileEdit>& edits) {
+  if (edits.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: at least one edit is required");
+  }
+  errno = 0;
   std::ifstream f(path, std::ios::binary);
-  if (!f) return "error: cannot open " + path;
+  if (!f) {
+    std::error_code error(errno, std::generic_category());
+    return ToolFailure(
+        path.empty() ? ToolErrorCode::kInvalidArguments : FileToolError(error),
+        "error: cannot open " + path);
+  }
   std::error_code size_ec;
   auto bytes = std::filesystem::file_size(path, size_ec);
   int64_t max_bytes = EditFileBytes();
   if (!size_ec && max_bytes > 0 && bytes > static_cast<uintmax_t>(max_bytes)) {
-    return "error: " + path + " is too large to edit atomically (" +
-           std::to_string(bytes) + " bytes; limit " +
-           std::to_string(max_bytes) + ")";
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: " + path + " is too large to edit atomically (" +
+                           std::to_string(bytes) + " bytes; limit " +
+                           std::to_string(max_bytes) + ")");
   }
   std::string data((std::istreambuf_iterator<char>(f)),
                    std::istreambuf_iterator<char>());
   f.close();
   if (max_bytes > 0 && data.size() > static_cast<size_t>(max_bytes)) {
-    return "error: " + path + " grew beyond the edit limit while reading";
+    return ToolFailure(
+        ToolErrorCode::kLimitExceeded,
+        "error: " + path + " grew beyond the edit limit while reading");
   }
 
   const size_t original_size = data.size();
@@ -258,8 +296,9 @@ inline std::string ToolEditFile(const std::string& path,
   for (size_t i = 0; i < edits.size(); ++i) {
     const FileEdit& edit = edits[i];
     if (edit.old_text.empty()) {
-      return "error: edit " + std::to_string(i + 1) +
-             " has an empty `old` value";
+      return ToolFailure(
+          ToolErrorCode::kInvalidArguments,
+          "error: edit " + std::to_string(i + 1) + " has an empty `old` value");
     }
     const bool file_crlf = MostlyCrLf(data);
     std::string old_eff = edit.old_text;
@@ -282,13 +321,16 @@ inline std::string ToolEditFile(const std::string& path,
       }
     }
     if (count == 0) {
-      return "error: edit " + std::to_string(i + 1) + " `old` not found in " +
-             path;
+      return ToolFailure(ToolErrorCode::kNotFound,
+                         "error: edit " + std::to_string(i + 1) +
+                             " `old` not found in " + path);
     }
     if (!edit.replace_all && count > 1) {
-      return "error: edit " + std::to_string(i + 1) + " `old` matches " +
-             std::to_string(count) + " times in " + path +
-             "; add surrounding context or set `replace_all`";
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: edit " + std::to_string(i + 1) +
+                             " `old` matches " + std::to_string(count) +
+                             " times in " + path +
+                             "; add surrounding context or set `replace_all`");
     }
     size_t match = data.find(old_eff);
     bool replacement_crlf =
@@ -297,14 +339,17 @@ inline std::string ToolEditFile(const std::string& path,
     std::string new_eff =
         FileLineEnding(edit.new_text, replacement_crlf, normalized_old);
     if (old_eff == new_eff) {
-      return "error: edit " + std::to_string(i + 1) + " makes no change";
+      return ToolFailure(
+          ToolErrorCode::kInvalidArguments,
+          "error: edit " + std::to_string(i + 1) + " makes no change");
     }
     int64_t applied = edit.replace_all ? count : 1;
     size_t next_size = 0;
     if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
                     max_bytes, next_size)) {
-      return "error: edit " + std::to_string(i + 1) +
-             " would exceed the edit byte limit";
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: edit " + std::to_string(i + 1) +
+                             " would exceed the edit byte limit");
     }
     if (edit.replace_all) {
       ReplaceAllOccurrences(data, old_eff, new_eff, next_size);
@@ -313,27 +358,27 @@ inline std::string ToolEditFile(const std::string& path,
     }
     replacements += applied;
   }
-  std::string w =
+  ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
-  if (w.starts_with("error:")) return w;
-  return "edited " + path + " (" + std::to_string(replacements) +
-         (replacements == 1 ? " replacement across "
-                            : " replacements across ") +
-         std::to_string(edits.size()) +
-         (edits.size() == 1 ? " edit; " : " edits; ") +
-         std::to_string(original_size) + " -> " + std::to_string(data.size()) +
-         " bytes)";
+  if (!write.Ok()) return write;
+  return ToolSuccess(
+      "edited " + path + " (" + std::to_string(replacements) +
+      (replacements == 1 ? " replacement across " : " replacements across ") +
+      std::to_string(edits.size()) +
+      (edits.size() == 1 ? " edit; " : " edits; ") +
+      std::to_string(original_size) + " -> " + std::to_string(data.size()) +
+      " bytes)");
 }
 
-inline std::string ToolEditFile(const std::string& path,
-                                const std::string& old_s,
-                                const std::string& new_s,
-                                bool replace_all = false) {
+inline ToolResult ToolEditFile(const std::string& path,
+                               const std::string& old_s,
+                               const std::string& new_s,
+                               bool replace_all = false) {
   return ToolEditFile(path, {{old_s, new_s, replace_all}});
 }
 
-inline std::string ToolListDir(const std::string& path, int64_t offset = 0,
-                               int64_t limit = 0) {
+inline ToolResult ToolListDir(const std::string& path, int64_t offset = 0,
+                              int64_t limit = 0) {
   std::string p = path.empty() ? "." : path;
   if (offset < 0) offset = 0;
   if (limit <= 0) limit = ListDirEntries();
@@ -342,19 +387,23 @@ inline std::string ToolListDir(const std::string& path, int64_t offset = 0,
   std::vector<std::string> names;
   for (auto& e : std::filesystem::directory_iterator(p, ec)) {
     if (static_cast<int64_t>(names.size()) >= scan_cap) {
-      return "error: directory exceeds scan limit (" +
-             std::to_string(scan_cap) + " entries)";
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: directory exceeds scan limit (" +
+                             std::to_string(scan_cap) + " entries)");
     }
     std::error_code ec2;
     names.push_back(e.path().filename().string() +
                     (e.is_directory(ec2) ? "/" : ""));
   }
-  if (ec) return "error: cannot open directory " + p;
+  if (ec) {
+    return ToolFailure(FileToolError(ec), "error: cannot open directory " + p);
+  }
   std::sort(names.begin(), names.end());
-  if (names.empty()) return "(empty directory)";
+  if (names.empty()) return ToolSuccess("(empty directory)");
   if (offset >= static_cast<int64_t>(names.size())) {
-    return "error: offset is beyond directory entries (" +
-           std::to_string(names.size()) + ")";
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: offset is beyond directory entries (" +
+                           std::to_string(names.size()) + ")");
   }
   size_t end = std::min(names.size(), static_cast<size_t>(offset + limit));
   std::string out = "[" + p + " entries " + std::to_string(offset + 1) + "-" +
@@ -364,36 +413,48 @@ inline std::string ToolListDir(const std::string& path, int64_t offset = 0,
     out += names[i];
     out += '\n';
   }
-  return out;
+  return ToolSuccess(std::move(out));
 }
 
 // Durable notes the agent writes for itself, reloaded with the project
 // instructions at the start of every session. Global memories follow the user,
 // project memories stay with the workspace that opted into ./.uagent — writing
 // one is what creates that directory, and the call needs approval first.
-inline std::string ToolMemory(const std::string& name, const std::string& scope,
-                              const std::string& content) {
+inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
+                             const std::string& content) {
   namespace fs = std::filesystem;
-  if (Trim(name).empty()) return "error: memory name must not be empty";
+  if (Trim(name).empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: memory name must not be empty");
+  }
   if (scope != "project" && scope != "global") {
-    return "error: scope must be \"project\" or \"global\"";
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: scope must be \"project\" or \"global\"");
   }
   int64_t max_bytes = MemoryBytes();
   if (static_cast<int64_t>(content.size()) > max_bytes) {
-    return "error: a memory is limited to " + std::to_string(max_bytes) +
-           " bytes; keep it to the durable lesson";
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: a memory is limited to " +
+                           std::to_string(max_bytes) +
+                           " bytes; keep it to the durable lesson");
   }
   std::error_code ec;
   std::string base = GlobalBase();
   if (scope == "project") {
     fs::path cwd = fs::current_path(ec);
-    if (ec) return "error: cannot resolve the workspace: " + ec.message();
+    if (ec) {
+      return ToolFailure(
+          FileToolError(ec),
+          "error: cannot resolve the workspace: " + ec.message());
+    }
     base = ProjectBase(cwd).string();
   }
   std::string dir = MakePrivateDir(base, kMemoryDir);
   std::string file = dir + "/" + SafeFileComponent(name) + ".md";
   if (Trim(content).empty()) {
-    return fs::remove(file, ec) ? "forgot " + file : "error: no such memory";
+    if (fs::remove(file, ec)) return ToolSuccess("forgot " + file);
+    return ToolFailure(ec ? FileToolError(ec) : ToolErrorCode::kNotFound,
+                       "error: no such memory");
   }
   int64_t max_files = MaxMemories();
   if (!fs::exists(file, ec)) {
@@ -403,9 +464,10 @@ inline std::string ToolMemory(const std::string& name, const std::string& scope,
       count += it->path().extension() == ".md";
     }
     if (count >= max_files) {
-      return "error: " + scope + " memory is full (" +
-             std::to_string(max_files) +
-             "); delete or consolidate one before adding another";
+      return ToolFailure(
+          ToolErrorCode::kLimitExceeded,
+          "error: " + scope + " memory is full (" + std::to_string(max_files) +
+              "); delete or consolidate one before adding another");
     }
   }
   return ToolWritePrivateFile(file, content);

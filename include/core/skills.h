@@ -27,6 +27,11 @@ struct Skill {
   std::string path;         // the SKILL.md itself
 };
 
+struct SkillReadResult {
+  bool ok = false;
+  std::string output;
+};
+
 // `key: value` pairs between the opening and closing `---`. Enough YAML for
 // the two keys a skill declares; anything else in the block is ignored.
 inline void ParseSkillFrontMatter(std::istream& input, std::string& name,
@@ -135,9 +140,9 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
 
 // The body without its front matter, bounded. The directory is prepended so
 // relative references inside the skill resolve for read_file and run.
-inline std::string ReadSkillBody(const Skill& skill) {
+inline SkillReadResult ReadSkillBody(const Skill& skill) {
   std::ifstream input(skill.path, std::ios::binary);
-  if (!input) return "error: cannot read " + skill.path;
+  if (!input) return {false, "error: cannot read " + skill.path};
   std::string name, description;
   ParseSkillFrontMatter(input, name, description);
   size_t cap = static_cast<size_t>(SkillBodyBytes());
@@ -147,11 +152,13 @@ inline std::string ReadSkillBody(const Skill& skill) {
   bool truncated = read > cap;
   body.resize(std::min(read, cap));
   body = Utf8Prefix(std::move(body), cap);
-  if (Trim(body).empty()) return "error: " + skill.path + " has no body";
+  if (Trim(body).empty()) {
+    return {false, "error: " + skill.path + " has no body"};
+  }
   std::string out =
       "[skill " + skill.name + " — files in " + skill.dir + "]\n" + Trim(body);
   if (truncated) out += "\n[truncated; raise UAGENT_SKILL_BYTES]";
-  return out;
+  return {true, std::move(out)};
 }
 
 }  // namespace uagent

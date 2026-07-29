@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/tools/tool.h"
+
 namespace uagent {
 
 // The shell runner writes stdout+stderr to a bounded log. Longer commands keep
@@ -99,6 +101,8 @@ class ProcessSupervisor {
 struct SideTaskResult {
   int64_t id = 0;
   std::string kind, label, output;
+  CompletionStatus status = CompletionStatus::kSuccess;
+  ToolErrorCode error = ToolErrorCode::kNone;
   double duration_ms = 0;
 };
 
@@ -107,7 +111,7 @@ struct SideTaskResult {
 // owns a cancellation flag and is joined before its session-owned supervisor.
 class SideTaskSupervisor {
  public:
-  using Work = std::function<std::string(const std::atomic<bool>&)>;
+  using Work = std::function<ToolResult(const std::atomic<bool>&)>;
 
   ~SideTaskSupervisor() { CancelAll(); }
   SideTaskSupervisor() = default;
@@ -138,7 +142,10 @@ class SideTaskSupervisor {
           result.id = id;
           result.kind = std::move(kind);
           result.label = std::move(label);
-          result.output = work(*cancel);
+          ToolResult outcome = work(*cancel);
+          result.output = std::move(outcome.output);
+          result.status = outcome.status;
+          result.error = outcome.error;
           result.duration_ms = ElapsedMs(started);
           return result;
         });

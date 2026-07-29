@@ -48,6 +48,13 @@ inline std::string FmtExit(int status, bool show_ok) {
   return "";
 }
 
+inline ToolResult ProcessResult(std::string output, int status) {
+  if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+    return ToolSuccess(std::move(output));
+  }
+  return ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));
+}
+
 inline std::string ReadLogTail(const std::string& path, int64_t cap) {
   auto tail = [](const std::string& file, int64_t bytes) {
     std::ifstream f(file, std::ios::binary | std::ios::ate);
@@ -161,8 +168,8 @@ inline std::vector<json> DetachedRecords() {
   return records;
 }
 
-inline std::string SaveDetachedRecord(pid_t pid, const std::string& log,
-                                      const std::string& cmd) {
+inline ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
+                                     const std::string& cmd) {
   std::error_code ec;
   std::string cwd = std::filesystem::current_path(ec).string();
   json record = {{"pid", pid},
@@ -170,14 +177,20 @@ inline std::string SaveDetachedRecord(pid_t pid, const std::string& log,
                  {"command", cmd},
                  {"cwd", ec ? "" : cwd},
                  {"started_at", UtcStamp()}};
-  return ToolWritePrivateFile(DetachedRecordPath(pid),
-                              JsonDump(record, 2) + "\n");
+  std::string content = JsonDump(record, 2) + "\n";
+  std::string error;
+  std::string path = DetachedRecordPath(pid);
+  if (!AtomicWriteFile(path, content, 0600, /*preserve_mode=*/true, error)) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
+  }
+  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
+                     path);
 }
 
-inline std::string ToolTerminalOutput(int64_t pid) {
+inline ToolResult ToolTerminalOutput(int64_t pid) {
   std::vector<json> records = DetachedRecords();
   if (pid <= 0) {
-    if (records.empty()) return "(no detached terminals)";
+    if (records.empty()) return ToolSuccess("(no detached terminals)");
     std::string out;
     for (const json& record : records) {
       pid_t record_pid = JsonValue(record, "pid", 0);
@@ -192,7 +205,7 @@ inline std::string ToolTerminalOutput(int64_t pid) {
       out = Utf8Trunc(std::move(out), static_cast<size_t>(cap));
       out += "\n[terminal list truncated]";
     }
-    return out;
+    return ToolSuccess(std::move(out));
   }
 
   auto found =
@@ -200,16 +213,17 @@ inline std::string ToolTerminalOutput(int64_t pid) {
         return JsonValue(record, "pid", int64_t{0}) == pid;
       });
   if (found == records.end()) {
-    return "error: pid " + std::to_string(pid) +
-           " is not a uagent detached terminal";
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: pid " + std::to_string(pid) +
+                           " is not a uagent detached terminal");
   }
   const json& record = *found;
   std::string status =
       JsonValue(record, "_alive", false) ? "running" : "exited";
-  return "[" + status + " · pid " + std::to_string(pid) + " · " +
-         JsonValue(record, "cwd", "") + " · log " +
-         JsonValue(record, "log", "") + "]\n" +
-         ReadLogTail(JsonValue(record, "log", ""), ToolResultCap());
+  return ToolSuccess(
+      "[" + status + " · pid " + std::to_string(pid) + " · " +
+      JsonValue(record, "cwd", "") + " · log " + JsonValue(record, "log", "") +
+      "]\n" + ReadLogTail(JsonValue(record, "log", ""), ToolResultCap()));
 }
 
 // Drain finished bg jobs: return notification strings for any completed pids.
@@ -275,9 +289,6 @@ inline void BgShutdownAll(ProcessSupervisor& supervisor) {
 
 inline ProcessSupervisor::~ProcessSupervisor() { BgShutdownAll(*this); }
 
-inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
-                                      int64_t pid, const ToolContext& context);
-
 inline bool IsTrackedTask(ProcessSupervisor& supervisor, int64_t id) {
   return supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
     return std::any_of(jobs.begin(), jobs.end(), [&](const BgJob& job) {
@@ -287,10 +298,10 @@ inline bool IsTrackedTask(ProcessSupervisor& supervisor, int64_t id) {
 }
 
 // Reap one completed task without retaining another copy of its bounded log.
-inline std::optional<std::string> TakeCompletedTask(
+inline std::optional<ToolResult> TakeCompletedTask(
     ProcessSupervisor& supervisor, int64_t id) {
   pid_t process = static_cast<pid_t>(id);
-  std::optional<std::string> output;
+  std::optional<ToolResult> output;
   supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
     auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& job) {
       return job.pid == process && job.kind == "task";
@@ -303,76 +314,97 @@ inline std::optional<std::string> TakeCompletedTask(
     std::string out = ReadLogTail(it->log, ToolResultCap());
     if (result == process) {
       out += FmtExit(status, /*show_ok=*/true);
+      output = ProcessResult(std::move(out), status);
     } else {
       out = "[process exited — status unavailable]\n" + out;
+      output = ToolFailure(ToolErrorCode::kProcessFailed, std::move(out));
     }
     unlink(it->log.c_str());
     unlink((it->log + ".1").c_str());
     jobs.erase(it);
-    output = std::move(out);
   });
   if (output) BgTrackSignal(process, false);
   return output;
 }
 
-inline std::string ToolGetTaskOutput(ProcessSupervisor& supervisor,
-                                     int64_t id) {
+inline ToolResult ToolWaitBackground(ProcessSupervisor& supervisor, int64_t pid,
+                                     const ToolContext& context);
+
+inline ToolResult ToolGetTaskOutput(ProcessSupervisor& supervisor, int64_t id) {
   if (id <= 0 || !IsTrackedTask(supervisor, id)) {
-    return "error: task id " + std::to_string(id) +
-           " is not a live uagent background task";
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: task id " + std::to_string(id) +
+                           " is not a live uagent background task");
   }
   ToolContext immediate;
   immediate.deadline = std::chrono::steady_clock::now();
   return ToolWaitBackground(supervisor, id, immediate);
 }
 
-inline std::string ToolWaitTasks(ProcessSupervisor& supervisor, const json& ids,
-                                 bool wait_all,
-                                 const ToolContext& context = {}) {
+inline ToolResult ToolWaitTasks(ProcessSupervisor& supervisor, const json& ids,
+                                bool wait_all,
+                                const ToolContext& context = {}) {
   if (!ids.is_array() || ids.empty() || ids.size() > 20) {
-    return "error: ids must contain 1-20 task ids";
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: ids must contain 1-20 task ids");
   }
   std::vector<int64_t> pending;
   for (const json& value : ids) {
     if (!value.is_number_integer()) {
-      return "error: every task id must be integer";
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: every task id must be integer");
     }
     int64_t id = value.get<int64_t>();
     if (id <= 0 ||
         std::find(pending.begin(), pending.end(), id) != pending.end()) {
-      return "error: task ids must be positive and unique";
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: task ids must be positive and unique");
     }
     if (!IsTrackedTask(supervisor, id)) {
-      return "error: task id " + std::to_string(id) +
-             " is not a live uagent background task";
+      return ToolFailure(ToolErrorCode::kNotFound,
+                         "error: task id " + std::to_string(id) +
+                             " is not a live uagent background task");
     }
     pending.push_back(id);
   }
 
   std::string out;
+  bool process_failed = false;
   while (!AbortRequested() &&
          std::chrono::steady_clock::now() < context.deadline) {
     for (auto it = pending.begin(); it != pending.end();) {
-      std::optional<std::string> result = TakeCompletedTask(supervisor, *it);
+      std::optional<ToolResult> result = TakeCompletedTask(supervisor, *it);
       if (!result) {
         ++it;
         continue;
       }
-      out += "[task " + std::to_string(*it) + " completed]\n" + *result + "\n";
+      process_failed = process_failed || !result->Ok();
+      out += "[task " + std::to_string(*it) + " completed]\n" + result->output +
+             "\n";
       it = pending.erase(it);
-      if (!wait_all) return out;
+      if (!wait_all) {
+        return process_failed
+                   ? ToolFailure(ToolErrorCode::kProcessFailed, std::move(out))
+                   : ToolSuccess(std::move(out));
+      }
     }
-    if (pending.empty()) return out;
+    if (pending.empty()) {
+      return process_failed
+                 ? ToolFailure(ToolErrorCode::kProcessFailed, std::move(out))
+                 : ToolSuccess(std::move(out));
+    }
     usleep(100 * 1000);
   }
 
   out += std::string(AbortRequested() ? "[wait cancelled" : "[wait timed out") +
          " — running task ids:";
   for (int64_t id : pending) out += " " + std::to_string(id);
-  return out + "]";
+  out += "]";
+  return AbortRequested() ? ToolCancelled(std::move(out))
+                          : ToolTimedOut(std::move(out));
 }
 
-inline std::string ToolKillTask(ProcessSupervisor& supervisor, int64_t id) {
+inline ToolResult ToolKillTask(ProcessSupervisor& supervisor, int64_t id) {
   BgJob job;
   bool found = supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
     auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& current) {
@@ -384,8 +416,9 @@ inline std::string ToolKillTask(ProcessSupervisor& supervisor, int64_t id) {
     return true;
   });
   if (id <= 0 || !found) {
-    return "error: task id " + std::to_string(id) +
-           " is not a live uagent background task";
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: task id " + std::to_string(id) +
+                           " is not a live uagent background task");
   }
 
   int status = 0;
@@ -409,15 +442,16 @@ inline std::string ToolKillTask(ProcessSupervisor& supervisor, int64_t id) {
   unlink(job.log.c_str());
   unlink((job.log + ".1").c_str());
   if (already_completed) {
-    return "[task " + std::to_string(id) + " already completed]\n" + output +
-           FmtExit(status, /*show_ok=*/true);
+    output = "[task " + std::to_string(id) + " already completed]\n" + output +
+             FmtExit(status, /*show_ok=*/true);
+    return ProcessResult(std::move(output), status);
   }
-  return "[task " + std::to_string(id) + " cancelled]\n" + output;
+  return ToolCancelled("[task " + std::to_string(id) + " cancelled]\n" +
+                       output);
 }
 
-inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
-                                      int64_t pid,
-                                      const ToolContext& context = {}) {
+inline ToolResult ToolWaitBackground(ProcessSupervisor& supervisor, int64_t pid,
+                                     const ToolContext& context = {}) {
   BgJob registered;
   bool found = supervisor.WithJobs([&](std::vector<BgJob>& jobs) {
     auto it = std::find_if(jobs.begin(), jobs.end(), [&](const BgJob& job) {
@@ -428,13 +462,14 @@ inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
     return true;
   });
   if (pid <= 0 || !found) {
-    return "error: pid " + std::to_string(pid) +
-           " is not a live uagent background job";
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: pid " + std::to_string(pid) +
+                           " is not a live uagent background job");
   }
   if (registered.detached) {
-    return "[detached job " + std::to_string(pid) +
-           " is persistent; output so far]\n" +
-           ReadLogTail(registered.log, ToolResultCap());
+    return ToolSuccess("[detached job " + std::to_string(pid) +
+                       " is persistent; output so far]\n" +
+                       ReadLogTail(registered.log, ToolResultCap()));
   }
   const pid_t process = static_cast<pid_t>(pid);
   uintmax_t bytes = LogBytes(registered.log);
@@ -486,26 +521,48 @@ inline std::string ToolWaitBackground(ProcessSupervisor& supervisor,
   if (finished) {
     BgTrackSignal(process, false);
   }
-  return out;
+  if (result == process) return ProcessResult(std::move(out), status);
+  if (finished) {
+    return ToolFailure(ToolErrorCode::kProcessFailed, std::move(out));
+  }
+  if (cancelled) return ToolCancelled(std::move(out));
+  if (registered.observed_log_bytes &&
+      std::chrono::steady_clock::now() >= context.deadline) {
+    return ToolTimedOut(std::move(out));
+  }
+  return ToolSuccess(std::move(out));
 }
 
-inline std::string ToolWaitSideTask(SideTaskSupervisor& supervisor, int64_t id,
-                                    const ToolContext& context = {}) {
+inline ToolResult ToolWaitSideTask(SideTaskSupervisor& supervisor, int64_t id,
+                                   const ToolContext& context = {}) {
   if (id <= 0 || !supervisor.Contains(id)) {
-    return "error: id " + std::to_string(id) +
-           " is not a live uagent background job";
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: id " + std::to_string(id) +
+                           " is not a live uagent background job");
   }
   while (!AbortRequested() &&
          std::chrono::steady_clock::now() < context.deadline) {
     if (auto result = supervisor.Wait(id, std::chrono::milliseconds(0))) {
-      return "[Background result: " + result->kind + " `" +
-             FirstLine(result->label) + "`]\n" + result->output;
+      std::string output = "[Background result: " + result->kind + " `" +
+                           FirstLine(result->label) + "`]\n" + result->output;
+      if (result->status == CompletionStatus::kCancelled) {
+        return ToolCancelled(std::move(output));
+      }
+      if (result->status == CompletionStatus::kTimedOut) {
+        return ToolTimedOut(std::move(output));
+      }
+      return result->status == CompletionStatus::kSuccess
+                 ? ToolSuccess(std::move(output))
+                 : ToolFailure(result->error, std::move(output));
     }
     supervisor.WaitForOne(std::chrono::milliseconds(100));
   }
-  return std::string(AbortRequested() ? "[wait cancelled"
-                                      : "[turn deadline reached") +
-         " — background job still running]";
+  std::string output =
+      std::string(AbortRequested() ? "[wait cancelled"
+                                   : "[turn deadline reached") +
+      " — background job still running]";
+  return AbortRequested() ? ToolCancelled(std::move(output))
+                          : ToolTimedOut(std::move(output));
 }
 
 }  // namespace uagent

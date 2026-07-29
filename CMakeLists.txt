@@ -12,7 +12,6 @@ endif()
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
-add_executable(uagent src/main.cc)
 add_library(uagent_options INTERFACE)
 target_include_directories(
   uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -26,7 +25,12 @@ option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 if(UAGENT_WARNINGS_AS_ERRORS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(uagent_options INTERFACE -Werror)
 endif()
-target_link_libraries(uagent PRIVATE uagent_options)
+
+add_library(uagent_core src/api/openai_stream.cc src/transport/sse.cc)
+target_link_libraries(uagent_core PUBLIC uagent_options)
+
+add_executable(uagent src/main.cc)
+target_link_libraries(uagent PRIVATE uagent_core)
 
 # Enable LTO where the compiler supports it.
 include(CheckIPOSupported)
@@ -47,7 +51,7 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   add_executable(uagent_tests tests/test_core.cc)
-  target_link_libraries(uagent_tests PRIVATE uagent_options)
+  target_link_libraries(uagent_tests PRIVATE uagent_core)
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME integration
@@ -62,7 +66,7 @@ endif()
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
   add_executable(uagent_bench benchmarks/bench_core.cc)
-  target_link_libraries(uagent_bench PRIVATE uagent_options)
+  target_link_libraries(uagent_bench PRIVATE uagent_core)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

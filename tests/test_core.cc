@@ -381,6 +381,12 @@ void TestFileTools() {
   ToolResult directory_read = ToolReadFile(root.string(), 1, 1);
   CHECK(!directory_read.Ok());
   CHECK(directory_read.output.find("non-regular") != std::string::npos);
+  fs::path dangling = root / "dangling";
+  fs::create_symlink(root / "missing-target", dangling);
+  ToolResult dangling_write = ToolWriteFile(dangling.string(), "blocked");
+  CHECK(!dangling_write.Ok());
+  CHECK(dangling_write.error == ToolErrorCode::kPermissionDenied);
+  CHECK(dangling_write.output.find("dangling symlink") != std::string::npos);
 
   std::error_code ec;
   fs::remove_all(root, ec);
@@ -963,6 +969,13 @@ void TestGrepTool() {
         "(no matches)");
   CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
         ToolErrorCode::kProcessFailed);
+  setenv("UAGENT_MAX_BACKGROUND_JOBS", "1", 1);
+  CHECK(supervisor.TryAdd({999991, "", "busy", false, false, {}, ""}, 1));
+  ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
+  CHECK(limited.error == ToolErrorCode::kLimitExceeded);
+  CHECK(limited.output.find("background job limit") != std::string::npos);
+  CHECK(supervisor.TakeAll().size() == 1);
+  unsetenv("UAGENT_MAX_BACKGROUND_JOBS");
 
   fs::path marker = root / "injected";
   result = ToolGrep(supervisor, "needle'; touch " + marker.string() + "; '",

@@ -215,6 +215,14 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     for (auto& worker : workers) worker.get();
     begin = end;
   }
+  for (size_t index : runnable) {
+    CallTask& task = tasks[index];
+    if (task.started) continue;
+    task.result = ToolCancelled(g_steering.Requested() ? "cancelled by steering"
+                                                       : "cancelled by user");
+    task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
+    LogToolResult(task, calls[index], turn_id_, step);
+  }
   spinner.Stop();
   steering.Stop();
 

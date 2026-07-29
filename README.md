@@ -202,9 +202,9 @@ uv sync --frozen
 uv run --frozen ruff check tests
 uv run --frozen ruff format --check tests
 
-cmake -S . -B build -DUAGENT_WARNINGS_AS_ERRORS=ON
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug --output-on-failure
 ```
 
 First-party C++ follows the

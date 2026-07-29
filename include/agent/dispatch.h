@@ -30,6 +30,7 @@ struct CallTask {
   std::string label, ordinal;
   double duration_ms = 0;
   bool execute = false;
+  bool started = false;
 };
 
 inline void LogToolResult(const CallTask& task, const ToolCall& call,
@@ -44,7 +45,6 @@ inline void LogToolResult(const CallTask& task, const ToolCall& call,
        {"status", task.trace_status},
        {"completion_status", CompletionStatusName(task.result.status)},
        {"error_code", ToolErrorCodeName(task.result.error)},
-       {"detail", task.trace_status},
        {"duration_ms", task.duration_ms},
        {"result", task.result.output},
        {"result_chars", task.result.output.size()}});
@@ -54,6 +54,7 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t step, const ToolContext& context,
                         int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
+  task.started = true;
   if (g_steering.Requested() || AbortRequested()) {
     task.result = ToolCancelled(g_steering.Requested() ? "cancelled by steering"
                                                        : "cancelled by user");

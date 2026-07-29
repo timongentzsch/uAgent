@@ -20,11 +20,8 @@ enum class PathTarget {
 };
 
 inline bool PathApprovalRequired(const std::string& path,
-                                 const std::filesystem::path& workspace,
-                                 const char* fallback = "") {
-  return !PathWithin(
-      CanonicalAccessPath(path.empty() ? std::string(fallback) : path),
-      workspace);
+                                 const std::filesystem::path& workspace) {
+  return !PathWithin(CanonicalAccessPath(path), workspace);
 }
 
 inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
@@ -52,6 +49,11 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
   std::error_code status_error;
   fs::file_status status = fs::status(path, status_error);
   if (status_error) {
+    if (link.type() == fs::file_type::symlink &&
+        status_error == std::errc::no_such_file_or_directory) {
+      return ToolFailure(ToolErrorCode::kPermissionDenied,
+                         "error: refusing dangling symlink: " + path);
+    }
     return ToolFailure(
         status_error == std::errc::permission_denied
             ? ToolErrorCode::kPermissionDenied

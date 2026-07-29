@@ -31,8 +31,9 @@ project `.env` files are never loaded. Named OpenAI-compatible routes can be
 defined with `UAGENT_PROVIDERS`. Legacy `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
 and `UAGENT_MODEL` configuration remains supported.
 
-Provider models need not be duplicated in config: `/models NAME` queries that
-provider's live catalog, and `/model NAME/MODEL` switches lazily.
+Provider models need not be duplicated in config: `/models NAME/*` queries one
+live catalog, `/models all` combines them, and `/model NAME/MODEL` switches
+lazily.
 
 A workspace opts into its own settings by creating a `.uagent` directory. Its
 `.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
@@ -180,9 +181,10 @@ debugging at `chrome://inspect/#remote-debugging`.
 
 | Command | Action |
 | --- | --- |
+| `/help` | Show command help |
 | `/attach PATH`, `/detach` | Manage next-turn attachments |
 | `/sessions`, `/reset` | Resume or reset a session |
-| `/models [PROVIDER\|FILTER\|all]`, `/model MODEL` | Query or switch models |
+| `/models [TARGET]`, `/model MODEL` | Query or switch models |
 | `/effort LEVEL\|default` | Set provider reasoning effort |
 | `/compact` | Summarize active history |
 | `/trace` | Show the latest completed tool/search trace |

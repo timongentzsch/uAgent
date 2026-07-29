@@ -614,16 +614,22 @@ int Main(int argc, char** argv) {
         case SlashCommandId::kTrace:
           agent.PrintTrace();
           break;
+        case SlashCommandId::kHelp:
+          PrintCommandHelp();
+          break;
         case SlashCommandId::kModels:
           if (command.argument.empty()) {
             PrintModelRoutes(model_routes, named_providers, api);
             printf(
-                "%s· /models all for the live catalog; "
-                "/models FILTER to search%s\n",
+                "%s· /models all for every catalog; "
+                "/models PROVIDER/* or FILTER to narrow%s\n",
                 DIM(), RST());
-          } else if (const NamedProvider* named =
-                         FindNamedProvider(named_providers, command.argument)) {
-            PrintAvailableModels(api, "all", named);
+          } else if (command.argument == "all") {
+            PrintAllModels(api, named_providers);
+          } else if (std::optional<ModelQuery> query = ResolveProviderQuery(
+                         named_providers, command.argument)) {
+            PrintAvailableModels(api, std::move(query->filter),
+                                 query->provider);
           } else {
             PrintAvailableModels(api, command.argument);
           }
@@ -759,7 +765,8 @@ int Main(int argc, char** argv) {
       continue;
     }
     if (input[0] == '/') {
-      PrintCommandHelp();
+      printf("%s· unknown command %s; use /help%s\n", RED(),
+             TerminalSafe(input).c_str(), RST());
       continue;
     }
 

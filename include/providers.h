@@ -36,6 +36,11 @@ struct ProviderCatalog {
   std::vector<ModelRoute> models;
 };
 
+struct ModelQuery {
+  const NamedProvider* provider = nullptr;
+  std::string filter;
+};
+
 struct ModelInfo {
   std::string id, default_effort;
   std::vector<std::string> efforts;
@@ -185,14 +190,6 @@ inline ProviderCatalog LoadProviderCatalog() {
   return catalog;
 }
 
-inline const ModelRoute* FindModelRoute(const std::vector<ModelRoute>& routes,
-                                        const std::string& name) {
-  for (const ModelRoute& route : routes) {
-    if (route.name == name) return &route;
-  }
-  return nullptr;
-}
-
 inline const NamedProvider* FindNamedProvider(
     const std::vector<NamedProvider>& providers, const std::string& name) {
   for (const NamedProvider& provider : providers) {
@@ -201,11 +198,26 @@ inline const NamedProvider* FindNamedProvider(
   return nullptr;
 }
 
+inline std::optional<ModelQuery> ResolveProviderQuery(
+    const std::vector<NamedProvider>& providers, const std::string& query) {
+  if (const NamedProvider* provider = FindNamedProvider(providers, query)) {
+    return ModelQuery{provider, ""};
+  }
+  size_t slash = query.find('/');
+  if (slash == std::string::npos) return std::nullopt;
+  const NamedProvider* provider =
+      FindNamedProvider(providers, query.substr(0, slash));
+  if (!provider) return std::nullopt;
+  std::string filter = query.substr(slash + 1);
+  if (filter == "*") filter.clear();
+  return ModelQuery{provider, std::move(filter)};
+}
+
 inline std::optional<ModelRoute> ResolveModelRoute(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers, const std::string& selection) {
-  if (const ModelRoute* route = FindModelRoute(routes, selection)) {
-    return *route;
+  for (const ModelRoute& route : routes) {
+    if (route.name == selection) return route;
   }
   size_t slash = selection.find('/');
   if (slash == std::string::npos || slash + 1 == selection.size()) {
@@ -315,7 +327,6 @@ inline std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
 
 inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
                                                          std::string filter) {
-  if (filter == "all") filter.clear();
   std::transform(filter.begin(), filter.end(), filter.begin(),
                  [](unsigned char c) { return static_cast<char>(tolower(c)); });
   if (!response.is_object() || !response.contains("data") ||

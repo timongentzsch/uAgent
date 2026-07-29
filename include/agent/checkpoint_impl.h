@@ -45,7 +45,7 @@ inline void Agent::RecordSideEffect(const CallTask& task,
                                     const ToolCall& call) {
   if (!task.execute || !task.tool || !task.tool->mutating) return;
   json entry = {
-      {"turn", turn_id_}, {"tool", call.name}, {"status", task.status}};
+      {"turn", turn_id_}, {"tool", call.name}, {"status", task.trace_status}};
   if (task.args.contains("path") && task.args["path"].is_string()) {
     auto path = CanonicalAccessPath(task.args["path"].get<std::string>());
     entry["path"] = CheckpointDisplayPath(path);
@@ -208,17 +208,20 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
   printf("%s→ checkpoint(%s)%s\n", CYAN(), safe_label.c_str(), RST());
   auto started = std::chrono::steady_clock::now();
   std::string error;
+  ToolErrorCode error_code = ToolErrorCode::kInvalidArguments;
   bool not_needed = false;
   if (task.args.is_discarded() || !task.args.is_object()) {
     error = "malformed tool arguments (not valid JSON)";
   } else if (!task.tool) {
     error = "checkpoint tool is unavailable";
+    error_code = ToolErrorCode::kNotFound;
   } else if (!(error = MissingRequired(*task.tool, task.args)).empty()) {
     error = "missing required argument `" + error + "`";
   } else if (!(error = InvalidArgumentType(*task.tool, task.args)).empty()) {
     error = "invalid tool argument: " + error;
   } else if (api_.config.checkpoint_mode == "off") {
     error = "checkpointing is disabled";
+    error_code = ToolErrorCode::kPermissionDenied;
   } else if (!checkpoint_hint_active_) {
     error =
         "checkpoint is not needed now; follow the latest user request "
@@ -226,6 +229,7 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
     not_needed = true;
   } else if (last_checkpoint_turn_ == turn_id_) {
     error = "checkpoint already applied during this turn";
+    error_code = ToolErrorCode::kLimitExceeded;
   }
 
   std::string state;
@@ -274,6 +278,7 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
         auto path = CanonicalAccessPath(value.get<std::string>());
         if (const char* path_error = CheckpointPathError(path)) {
           error = path_error;
+          error_code = ToolErrorCode::kPermissionDenied;
           break;
         }
         paths.push_back(std::move(path));
@@ -283,16 +288,17 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
 
   task.duration_ms = ElapsedMs(started);
   if (!error.empty()) {
-    task.result = not_needed ? error : "error: " + error;
-    task.status = not_needed ? "not_needed" : "error";
+    task.result = not_needed ? ToolSuccess(error)
+                             : ToolFailure(error_code, "error: " + error);
+    task.trace_status = not_needed ? "not_needed" : "error";
     if (api_.config.checkpoint_mode == "apply" && checkpoint_hint_active_ &&
         task.args.is_discarded()) {
       checkpoint_turn_complete_ = true;
     }
-    AppendToolResult(call, text_mode, task.result);
+    AppendToolResult(call, text_mode, task.result.output);
     LogToolResult(task, call, turn_id_, step);
-    printf("%s  ← checkpoint: %s%s\n", DIM(), TerminalSafe(task.result).c_str(),
-           RST());
+    printf("%s  ← checkpoint: %s%s\n", DIM(),
+           TerminalSafe(task.result.output).c_str(), RST());
     return false;
   }
 
@@ -316,11 +322,12 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
   if (api_.config.checkpoint_mode == "shadow") {
     last_checkpoint_turn_ = turn_id_;
     checkpoint_hint_active_ = false;
-    task.result =
-        "checkpoint candidate recorded (shadow mode); active history unchanged";
-    task.status = "shadow";
-    AppendToolResult(call, text_mode, task.result);
-    printf("%s  ← %s%s\n", DIM(), task.result.c_str(), RST());
+    task.result = ToolSuccess(
+        "checkpoint candidate recorded (shadow mode); active history "
+        "unchanged");
+    task.trace_status = "shadow";
+    AppendToolResult(call, text_mode, task.result.output);
+    printf("%s  ← %s%s\n", DIM(), task.result.output.c_str(), RST());
   } else {
     json saved_paths = json::array();
     for (const auto& path : paths) saved_paths.push_back(path.string());
@@ -336,16 +343,16 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
                            {"verbatim", verbatim}};
     last_checkpoint_turn_ = turn_id_;
     checkpoint_hint_active_ = false;
-    task.result =
-        "checkpoint prepared; active history remains until the next user turn";
-    task.status = "prepared";
+    task.result = ToolSuccess(
+        "checkpoint prepared; active history remains until the next user turn");
+    task.trace_status = "prepared";
     checkpoint_turn_complete_ = true;
-    AppendToolResult(call, text_mode, task.result);
+    AppendToolResult(call, text_mode, task.result.output);
     DebugLog("checkpoint_prepared", {{"turn", turn_id_},
                                      {"state_chars", state.size()},
                                      {"paths", paths.size()},
                                      {"keep_last_n_results", keep_results}});
-    printf("%s  ← %s%s\n", DIM(), task.result.c_str(), RST());
+    printf("%s  ← %s%s\n", DIM(), task.result.output.c_str(), RST());
   }
   task.duration_ms = ElapsedMs(started);
   LogToolResult(task, call, turn_id_, step);

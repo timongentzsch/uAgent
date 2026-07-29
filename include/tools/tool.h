@@ -7,6 +7,7 @@
 // registry; nothing in the agent loop changes.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -15,10 +16,78 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/outcome.h"
 
 namespace uagent {
 
 using nlohmann::json;
+
+enum class ToolErrorCode {
+  kNone,
+  kInvalidArguments,
+  kPermissionDenied,
+  kNotFound,
+  kLimitExceeded,
+  kTimedOut,
+  kCancelled,
+  kInternal,
+};
+
+inline const char* ToolErrorCodeName(ToolErrorCode code) {
+  switch (code) {
+    case ToolErrorCode::kNone:
+      return "none";
+    case ToolErrorCode::kInvalidArguments:
+      return "invalid_arguments";
+    case ToolErrorCode::kPermissionDenied:
+      return "permission_denied";
+    case ToolErrorCode::kNotFound:
+      return "not_found";
+    case ToolErrorCode::kLimitExceeded:
+      return "limit_exceeded";
+    case ToolErrorCode::kTimedOut:
+      return "timed_out";
+    case ToolErrorCode::kCancelled:
+      return "cancelled";
+    case ToolErrorCode::kInternal:
+      return "internal";
+  }
+  return "internal";
+}
+
+struct ToolResult {
+  CompletionStatus status = CompletionStatus::kSuccess;
+  std::string output;
+  ToolErrorCode error = ToolErrorCode::kNone;
+
+  bool Ok() const { return status == CompletionStatus::kSuccess; }
+};
+
+inline ToolResult ToolSuccess(std::string output) {
+  return {CompletionStatus::kSuccess, std::move(output), ToolErrorCode::kNone};
+}
+
+inline ToolResult ToolFailure(ToolErrorCode error, std::string output) {
+  return {CompletionStatus::kFailed, std::move(output), error};
+}
+
+inline ToolResult ToolCancelled(std::string output) {
+  return {CompletionStatus::kCancelled, std::move(output),
+          ToolErrorCode::kCancelled};
+}
+
+inline ToolResult ToolTimedOut(std::string output) {
+  return {CompletionStatus::kTimedOut, std::move(output),
+          ToolErrorCode::kTimedOut};
+}
+
+// Temporary migration boundary. Remove once every Tool::Run returns ToolResult.
+inline ToolResult AdaptLegacyToolStringResult(std::string output) {
+  if (output.starts_with("error:")) {
+    return ToolFailure(ToolErrorCode::kInternal, std::move(output));
+  }
+  return ToolSuccess(std::move(output));
+}
 
 struct ToolContext {
   std::chrono::steady_clock::time_point deadline =

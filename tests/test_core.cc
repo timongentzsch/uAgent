@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -78,6 +79,32 @@ void TestTextToolProtocol() {
   CHECK(calls[0].name == "read_file");
   CHECK(ParseTextToolCalls("example [uagent_tool_call]{}[/uagent_tool_call]")
             .empty());
+}
+
+void TestToolResults() {
+  ToolResult success = ToolSuccess("error-free output");
+  CHECK(success.Ok());
+  CHECK(success.status == CompletionStatus::kSuccess);
+  CHECK(success.error == ToolErrorCode::kNone);
+  CHECK(success.output == "error-free output");
+  CHECK(ToolSuccess("error: still explicitly successful").Ok());
+
+  ToolResult failure =
+      ToolFailure(ToolErrorCode::kPermissionDenied, "user denied this action");
+  CHECK(!failure.Ok());
+  CHECK(failure.status == CompletionStatus::kFailed);
+  CHECK(failure.error == ToolErrorCode::kPermissionDenied);
+  CHECK(failure.output == "user denied this action");
+
+  ToolResult legacy_error =
+      AdaptLegacyToolStringResult("error: legacy failure");
+  CHECK(!legacy_error.Ok());
+  CHECK(legacy_error.error == ToolErrorCode::kInternal);
+  CHECK(legacy_error.output == "error: legacy failure");
+  CHECK(AdaptLegacyToolStringResult("successful error: text").Ok());
+
+  CHECK(ToolCancelled("cancelled").status == CompletionStatus::kCancelled);
+  CHECK(ToolTimedOut("timed out").status == CompletionStatus::kTimedOut);
 }
 
 void TestRegistries() {
@@ -276,6 +303,24 @@ void TestTerminalSafety() {
   g_tty = true;
   CHECK(std::string(RST()).find("\033[49m") != std::string::npos);
   CHECK(TerminalSafe("ok\x1b]52;bad\a") == "ok\\x1b]52;bad\\x07");
+  CHECK(TerminalSafe("\x1b]0;title\a") == "\\x1b]0;title\\x07");
+  CHECK(TerminalSafe("\x1b]8;;https://example.com\a"
+                     "label"
+                     "\x1b]8;;\a") ==
+        "\\x1b]8;;https://example.com\\x07"
+        "label"
+        "\\x1b]8;;\\x07");
+  CHECK(TerminalSafe("\x1b[?1049h\x1b[2J\x1b[H") ==
+        "\\x1b[?1049h\\x1b[2J\\x1b[H");
+  CHECK(TerminalSafe("replace\rhidden\b!\x7f") ==
+        "replace\\rhidden\\x08!\\x7f");
+  CHECK(TerminalSafe("line\ncolumn\tvalue") == "line\ncolumn\tvalue");
+  std::string long_osc = "\x1b]52;c;" + std::string(4096, 'A') + "\a";
+  std::string safe_long_osc = TerminalSafe(long_osc);
+  CHECK(safe_long_osc.starts_with("\\x1b]52;c;"));
+  CHECK(safe_long_osc.ends_with("\\x07"));
+  CHECK(safe_long_osc.find('\x1b') == std::string::npos);
+  CHECK(safe_long_osc.find('\a') == std::string::npos);
   g_tty = false;
   CHECK(TerminalSafe("\x1b") == "\x1b");
   g_tty = prior;
@@ -284,6 +329,103 @@ void TestTerminalSafety() {
   CHECK(SafeFileComponent("../../escape") == "______escape");
   CHECK(FirstLine(std::string(200, 'x')).size() == 200);
   CHECK(FirstLine("first\nsecond") == "first");
+}
+
+void TestSseChunkPartitions() {
+  auto event = [](json value, const char* ending = "\n\n") {
+    return "data: " + value.dump() + ending;
+  };
+
+  std::string wire = ": keepalive\r\n\r\n";
+  wire += "event: message\n";
+  wire += "data: malformed-json\n\n";
+  wire += event({{"usage", {{"prompt_tokens", 7}, {"completion_tokens", 3}}}});
+  wire += event({{"choices", {{{"delta", {{"content", "Hel"}}}}}}}, "\r\n\r\n");
+  wire += event({{"choices", {{{"delta", {{"content", "lo"}}}}}}});
+  wire += event({{"choices",
+                  {{{"delta",
+                     {{"tool_calls",
+                       json::array({{{"index", 0},
+                                     {"id", "call_"},
+                                     {"function",
+                                      {{"name", "read_"},
+                                       {"arguments", "{\"path\":"}}}}})}}}}}}});
+  wire += event(
+      {{"choices",
+        {{{"delta",
+           {{"tool_calls", json::array({{{"index", 0},
+                                         {"id", "1"},
+                                         {"function",
+                                          {{"name", "file"},
+                                           {"arguments", "\"x\"}"}}}}})}}}}}}});
+  wire +=
+      event({{"choices",
+              {{{"delta",
+                 {{"annotations",
+                   json::array({{{"type", "url_citation"},
+                                 {"url_citation",
+                                  {{"url", "https://example.com"}}}}})}}}}}}});
+  wire += event({{"choices", {{{"finish_reason", "tool_calls"}}}}});
+  wire += "data: [DONE]\n\n";
+
+  struct Parsed {
+    ChatResult result;
+    std::map<int, ToolCall> calls;
+  };
+  auto parse = [&](size_t split, bool bytewise = false) {
+    Parsed parsed;
+    StreamCtx stream;
+    stream.res = &parsed.result;
+    stream.status = 200;
+    stream.render_output = false;
+    stream.started = std::chrono::steady_clock::now();
+    if (bytewise) {
+      for (char byte : wire) CHECK(stream.Feed(&byte, 1) == 1);
+    } else {
+      CHECK(stream.Feed(wire.data(), split) == split);
+      CHECK(stream.Feed(wire.data() + split, wire.size() - split) ==
+            wire.size() - split);
+    }
+    stream.Finish();
+    parsed.calls = std::move(stream.calls);
+    return parsed;
+  };
+  auto verify_parsed = [&](const Parsed& parsed) {
+    CHECK(parsed.result.content == "Hello");
+    CHECK(parsed.result.error.empty());
+    CHECK(parsed.result.finish_reason == "tool_calls");
+    CHECK(parsed.result.first_event_ms >= 0);
+    CHECK(parsed.result.usage["prompt_tokens"] == 7);
+    CHECK(parsed.result.usage["completion_tokens"] == 3);
+    CHECK(parsed.result.annotations.size() == 1);
+    CHECK(parsed.calls.size() == 1);
+    if (parsed.calls.size() == 1) {
+      const ToolCall& call = parsed.calls.begin()->second;
+      CHECK(call.id == "call_1");
+      CHECK(call.name == "read_file");
+      CHECK(call.args == R"({"path":"x"})");
+    }
+  };
+
+  verify_parsed(parse(wire.size()));
+  verify_parsed(parse(0, true));
+  for (size_t split = 0; split <= wire.size(); ++split) {
+    verify_parsed(parse(split));
+  }
+
+  std::string final_line =
+      event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
+  final_line.resize(final_line.size() - 2);
+  ChatResult result;
+  StreamCtx stream;
+  stream.res = &result;
+  stream.status = 200;
+  stream.render_output = false;
+  stream.started = std::chrono::steady_clock::now();
+  CHECK(stream.Feed(final_line.data(), final_line.size()) == final_line.size());
+  CHECK(result.content.empty());
+  stream.Finish();
+  CHECK(result.content == "complete");
 }
 
 void TestBackgroundValidation() {
@@ -1669,12 +1811,14 @@ int RunTests() {
   std::setlocale(LC_CTYPE, "");
   curl_global_init(CURL_GLOBAL_DEFAULT);
   TestTextToolProtocol();
+  TestToolResults();
   TestRegistries();
   TestLineNumberStripping();
   TestMarkdownMath();
   TestCapsAndEscaping();
   TestFileTools();
   TestTerminalSafety();
+  TestSseChunkPartitions();
   TestBackgroundValidation();
   TestToolExecutionPolicy();
   TestOpenRouterServerSearch();

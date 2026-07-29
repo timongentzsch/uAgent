@@ -386,7 +386,7 @@ class Application {
         printf("\n");
         break;
       }
-      std::string input = Trim(std::move(line));
+      std::string input = Trim(line);
       if (input.empty()) continue;
       if (input[0] == '/') DebugLog("command", {{"command", input}});
 

@@ -101,7 +101,7 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   }
   std::string body{std::istreambuf_iterator<char>(input),
                    std::istreambuf_iterator<char>()};
-  body = Trim(std::move(body));
+  body = Trim(body);
   if (body.empty()) {
     return {Error(SessionStoreError::kCorrupt, "session is incomplete"),
             std::nullopt};

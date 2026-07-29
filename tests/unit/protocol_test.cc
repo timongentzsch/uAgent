@@ -13,6 +13,7 @@ std::string RenderMarkdown(const std::string& markdown) {
   fflush(stdout);
   int saved = dup(STDOUT_FILENO);
   FILE* capture = tmpfile();
+  if (!capture) return "";
   dup2(fileno(capture), STDOUT_FILENO);
   bool prior_tty = g_tty;
   g_tty = true;

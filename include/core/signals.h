@@ -88,11 +88,9 @@ inline void SigintHandler(int signal_number) {
     }
   }
   if (g_signal_tty) {
-    ssize_t restored =
-        write(STDOUT_FILENO, kTerminalRestore, sizeof(kTerminalRestore) - 1);
-    restored = write(STDOUT_FILENO, kTerminalModeReset,
-                     sizeof(kTerminalModeReset) - 1);
-    (void)restored;
+    (void)write(STDOUT_FILENO, kTerminalRestore, sizeof(kTerminalRestore) - 1);
+    (void)write(STDOUT_FILENO, kTerminalModeReset,
+                sizeof(kTerminalModeReset) - 1);
   }
   _exit(128 + signal_number);
 }

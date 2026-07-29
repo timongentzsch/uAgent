@@ -44,11 +44,12 @@ void BenchmarkStream(bool tty, bool render = true) {
   ChatResult result;
   StreamCtx stream;
   stream.res = &result;
+  stream.status = 200;
   stream.render_output = render;
   stream.started = std::chrono::steady_clock::now();
   const std::string event =
       "data: {\"choices\":[{\"delta\":{\"content\":"
-      "\"stream benchmark payload \"},\"finish_reason\":null}]}";
+      "\"stream benchmark payload \"},\"finish_reason\":null}]}\n\n";
   constexpr size_t kEvents = 10000;
 
   fflush(stdout);
@@ -56,8 +57,10 @@ void BenchmarkStream(bool tty, bool render = true) {
   int null = open("/dev/null", O_WRONLY);
   dup2(null, STDOUT_FILENO);
   close(null);
-  double milliseconds =
-      Measure(kEvents, [&] { return stream.HandleLine(event), size_t{1}; });
+  double milliseconds = Measure(kEvents, [&] {
+    return stream.Feed(event.data(), event.size()) == event.size() ? size_t{1}
+                                                                   : size_t{0};
+  });
   if (render) stream.md.Flush();
   fflush(stdout);
   dup2(saved, STDOUT_FILENO);

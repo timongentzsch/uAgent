@@ -49,9 +49,9 @@ other version tags fail before publication. A separate style job enforces the
 Google formatter, semantic/naming checks, and `cpplint` on first-party C++.
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
+cmake --preset release
+cmake --build --preset release
+ctest --preset release --output-on-failure
 UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 /tmp/uagent-prefix/bin/uagent --version
 ```

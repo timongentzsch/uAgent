@@ -27,10 +27,9 @@ inline std::vector<Tool> BuiltinTools(
     bool inline_images = false, SideTaskSupervisor* side_tasks = nullptr) {
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
-  auto path_tool = [&](Tool tool, const char* fallback) -> Tool& {
-    tool.needs_approval = [workspace, fallback](const json& args) {
-      return PathApprovalRequired(JsonValue(args, "path", ""), workspace,
-                                  fallback);
+  auto path_tool = [&](Tool tool) -> Tool& {
+    tool.needs_approval = [workspace](const json& args) {
+      return PathApprovalRequired(JsonValue(args, "path", ""), workspace);
     };
     return AddTool(tools, std::move(tool));
   };
@@ -46,8 +45,7 @@ inline std::vector<Tool> BuiltinTools(
                                         JsonValue(a, "path", ""),
                                         JsonValue(a, "offset", int64_t{1}),
                                         JsonValue(a, "limit", int64_t{0}));
-                                  }),
-                         "");
+                                  }));
   read.parallel_safe = true;
 
   Tool& write =
@@ -58,8 +56,7 @@ inline std::vector<Tool> BuiltinTools(
                          [](const json& a, const ToolContext&) {
                            return ToolWriteFile(JsonValue(a, "path", ""),
                                                 JsonValue(a, "content", ""));
-                         }),
-                "");
+                         }));
   write.mutating = true;
   write.summary = [](const json& a) {
     return JsonValue(a, "path", "") + " (" +
@@ -67,9 +64,9 @@ inline std::vector<Tool> BuiltinTools(
            " bytes)";
   };
 
-  Tool& edit = path_tool(
-      MakeTool("edit_file", "Apply exact edits atomically in order.",
-               schema(R"json({"type":"object","properties":{
+  Tool& edit = path_tool(MakeTool(
+      "edit_file", "Apply exact edits atomically in order.",
+      schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},"old":{"type":"string"},
                     "new":{"type":"string"},
                     "replace_all":{"type":"boolean","description":"replace every match of old"},
@@ -80,46 +77,44 @@ inline std::vector<Tool> BuiltinTools(
                         "replace_all":{"type":"boolean"}},
                         "required":["old","new"]}}},
                     "required":["path","old","new"]})json"),
-               [](const json& a, const ToolContext&) {
-                 std::vector<FileEdit> edits{{
-                     JsonValue(a, "old", ""),
-                     JsonValue(a, "new", ""),
-                     JsonValue(a, "replace_all", false),
-                 }};
-                 auto additional = a.find("edits");
-                 if (additional != a.end()) {
-                   if (!additional->is_array()) {
-                     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                        "error: `edits` must be an array");
-                   }
-                   if (additional->size() + 1 > kMaxFileEdits) {
-                     return ToolFailure(ToolErrorCode::kLimitExceeded,
-                                        "error: `edit_file` is limited to " +
-                                            std::to_string(kMaxFileEdits) +
-                                            " edits per call");
-                   }
-                   for (const json& item : *additional) {
-                     if (!item.is_object() || !item.contains("old") ||
-                         !item["old"].is_string() || !item.contains("new") ||
-                         !item["new"].is_string() ||
-                         (item.contains("replace_all") &&
-                          !item["replace_all"].is_boolean())) {
-                       return ToolFailure(
-                           ToolErrorCode::kInvalidArguments,
-                           "error: each `edits` entry requires "
-                           "string `old`/`new` and optional boolean "
-                           "`replace_all`");
-                     }
-                     edits.push_back({
-                         JsonValue(item, "old", ""),
-                         JsonValue(item, "new", ""),
-                         JsonValue(item, "replace_all", false),
-                     });
-                   }
-                 }
-                 return ToolEditFile(JsonValue(a, "path", ""), edits);
-               }),
-      "");
+      [](const json& a, const ToolContext&) {
+        std::vector<FileEdit> edits{{
+            JsonValue(a, "old", ""),
+            JsonValue(a, "new", ""),
+            JsonValue(a, "replace_all", false),
+        }};
+        auto additional = a.find("edits");
+        if (additional != a.end()) {
+          if (!additional->is_array()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: `edits` must be an array");
+          }
+          if (additional->size() + 1 > kMaxFileEdits) {
+            return ToolFailure(ToolErrorCode::kLimitExceeded,
+                               "error: `edit_file` is limited to " +
+                                   std::to_string(kMaxFileEdits) +
+                                   " edits per call");
+          }
+          for (const json& item : *additional) {
+            if (!item.is_object() || !item.contains("old") ||
+                !item["old"].is_string() || !item.contains("new") ||
+                !item["new"].is_string() ||
+                (item.contains("replace_all") &&
+                 !item["replace_all"].is_boolean())) {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: each `edits` entry requires "
+                                 "string `old`/`new` and optional boolean "
+                                 "`replace_all`");
+            }
+            edits.push_back({
+                JsonValue(item, "old", ""),
+                JsonValue(item, "new", ""),
+                JsonValue(item, "replace_all", false),
+            });
+          }
+        }
+        return ToolEditFile(JsonValue(a, "path", ""), edits);
+      }));
   edit.mutating = true;
   edit.summary = [](const json& a) {
     size_t count = 1;
@@ -140,8 +135,7 @@ inline std::vector<Tool> BuiltinTools(
                                         JsonValue(a, "path", "."),
                                         JsonValue(a, "offset", int64_t{0}),
                                         JsonValue(a, "limit", int64_t{0}));
-                                  }),
-                         ".");
+                                  }));
   list.parallel_safe = true;
 
   Tool& grep = path_tool(
@@ -153,8 +147,7 @@ inline std::vector<Tool> BuiltinTools(
                  return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
                                  JsonValue(a, "path", "."),
                                  JsonValue(a, "glob", ""), context);
-               }),
-      ".");
+               }));
   grep.parallel_safe = true;  // read-only, like read_file and list_dir
   grep.summary = [](const json& a) {
     return JsonValue(a, "pattern", "") + " in " + JsonValue(a, "path", ".");
@@ -168,23 +161,20 @@ inline std::vector<Tool> BuiltinTools(
                               "path":{"type":"string"}},"required":["path"]})json"),
                  [](const json& a, const ToolContext&) {
                    return ToolShowImage(JsonValue(a, "path", ""));
-                 }),
-        "");
+                 }));
   }
 
   // read_file only handles text. This puts the bytes themselves in front of
   // the model, so it can read what it cannot parse.
-  Tool& attach = path_tool(
-      MakeTool(
-          "attach",
-          "Load an image or document into model context when read_file cannot "
-          "parse it (PDF, Office, CSV, HTML).",
-          schema(R"json({"type":"object","properties":{
+  Tool& attach = path_tool(MakeTool(
+      "attach",
+      "Load an image or document into model context when read_file cannot "
+      "parse it (PDF, Office, CSV, HTML).",
+      schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"}},"required":["path"]})json"),
-          [](const json& a, const ToolContext&) {
-            return g_attachments.Add(JsonValue(a, "path", ""));
-          }),
-      "");
+      [](const json& a, const ToolContext&) {
+        return g_attachments.Add(JsonValue(a, "path", ""));
+      }));
   attach.parallel_safe = true;
   attach.max_calls_per_turn = 4;  // each one rides on the next request
 

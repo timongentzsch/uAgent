@@ -15,12 +15,14 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <system_error>
 #include <utility>
 #include <vector>
 
+#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"

@@ -33,7 +33,7 @@ class SseParser {
   bool Append(std::string& target, std::string_view value);
   void ResetEvent();
 
-  static constexpr size_t kMaxPendingEvents = 1024;
+  static constexpr size_t kMaxPendingEvents = 4096;
 
   size_t max_event_bytes_;
   bool pending_cr_ = false;

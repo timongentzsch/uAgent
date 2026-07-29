@@ -10,6 +10,7 @@ main.cc
   │  ├─ Api                 HTTP/SSE and provider request shaping
   │  ├─ ProcessSupervisor   shell/subagent process groups and logs
   │  ├─ UsageAccumulator    concurrent side-request accounting
+  │  ├─ SideTaskSupervisor  bounded in-process background work
   │  └─ McpRuntime          configured/default stdio transports and child lifetimes
   ├─ cli.h                command registry, input, completion and steering UI
   ├─ providers.h          provider config, model routes and live catalog parsing
@@ -22,21 +23,25 @@ main.cc
 
 | Module | Responsibility |
 | --- | --- |
-| `src/main.cc` | Runtime composition, argument parsing, REPL dispatch |
+| `src/main.cc` | Trust/bootstrap flow and REPL dispatch |
+| `include/app/`, `src/app/` | CLI options and ordered runtime ownership/shutdown |
 | `include/ui/` | Session picker and terminal rendering for the REPL |
 | `include/cli.h` | Slash-command registry, input, completion and steering UI |
 | `include/providers.h` | Provider setup, model routing, effort and catalog metadata |
-| `include/agent.h` | Model/tool loop, active history and sessions |
-| `include/agent/` | Checkpoint folding, protocol fallback and tool dispatch |
-| `include/api.h` | OpenAI-compatible HTTP/SSE; no tool execution |
+| `include/agent.h` | Agent coordination and active history |
+| `include/agent/`, `src/agent/` | Session storage, checkpoints and tool-loop execution |
+| `include/api.h`, `src/api/` | OpenAI-compatible HTTP and protocol normalization |
+| `include/transport/`, `src/transport/` | Bounded provider-independent SSE framing |
 | `include/tools/` | Tool interface, file adapters, process supervision, registry |
 | `include/mcp/` | Bounded stdio JSON-RPC, default Chrome MCP, session switching |
 | `include/core/` | Limits, private config, diagnostics, terminal/platform helpers |
 | `include/media/` | Model attachments and terminal image rendering |
 | `include/md.h` | Streaming Markdown-to-ANSI rendering |
 
-Headers are grouped by subsystem and stay header-only; the include graph is
-acyclic, with `core/` at the bottom and no module depending on `main.cc`.
+Small reusable utilities remain inline. Stateful orchestration, persistence,
+and streaming parsers live in implementation units behind the private
+`uagent_core` target. The include graph is acyclic, with `core/` at the bottom
+and no module depending on `main.cc`.
 
 `Agent` alone may replace model-visible history. `Api`, MCP, and tools do not
 own conversation state. Background processes, MCP children, and side usage have
@@ -49,6 +54,10 @@ approval, timeout, result budget and ownership policy cannot drift with
 aggregate field order. Per-tool turn budgets use the same registry. Core
 request, MCP, and persistence settings register their environment key, bounds,
 and diagnostic name once in `RuntimeConfig::kLongOptions`.
+
+Every handler returns `ToolResult`. `CompletionStatus` represents success,
+failure, cancellation, or timeout; `ToolErrorCode` classifies failures.
+Model-readable text is presentation only and is never parsed for control flow.
 
 Zero-configuration provider setup is data-driven through `ProviderTemplate`.
 Each template declares its endpoint, environment keys, default model, and URL
@@ -66,7 +75,9 @@ checkpoints        small model-proposed states and evaluation records
 ```
 
 Workspace-scoped session files persist all three plus token totals and a stable
-provider session ID. Saves are atomic. Archives evict oldest segments first and
+provider session ID. `SessionStore` validates the complete versioned record
+before live state changes, rejects unsupported schemas, and leaves corrupt
+files untouched. Saves are atomic. Archives evict oldest segments first and
 record the eviction count.
 
 ## Turn flow
@@ -108,12 +119,15 @@ silent or noisy jobs.
 Contiguous `parallel_safe` calls share a bounded worker group. A stateful call
 is a barrier. Side-request usage merges under a mutex. MCP registry changes are
 applied between batches, after old tool pointers are no longer in use.
+Process records are claimed from the registry before `waitpid`, signals, log
+I/O, or callbacks; no external operation runs under its mutex. Claimed live
+jobs are restored, while completed jobs are reaped exactly once.
 
 ## Checkpoint folding
 
 History stays append-only below 65% projected context. At 65% a suffix asks the
 model to checkpoint once state is stable; at 85% it becomes urgent. Hints are
-debounced. Legacy model compaction remains an emergency path at 95%.
+debounced. Model compaction remains an emergency path at 95%.
 
 The tool is always registered to keep schema bytes stable and is intercepted
 by `Agent`. It must be the only call in its batch, may run only after a hint,
@@ -158,8 +172,8 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 
 ## Failure model
 
-- Transport failures use `ChatResult.error`; tool failures return bounded
-  model-readable errors.
+- Transport failures use `ChatResult.error`; typed tool outcomes carry a
+  completion state, error category, and bounded model-readable explanation.
 - Unsupported request features degrade once: parallel hint, usage streaming,
   OpenRouter server search, then native tools.
 - Image-input rejection removes only image parts, retains paths and documents,
@@ -172,7 +186,7 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
 - Checkpoint validation failures remain paired tool results, preserving API
   message ordering.
 - Ctrl+C cancels the active model/tool operation. Managed process groups are
-  terminated and reaped on normal shutdown.
+  terminated and reaped during an explicit, idempotent shutdown phase.
 - Debug records are structured and opt-in; terminal failures remain visible in
   headless stderr and exit status.
 
@@ -191,3 +205,12 @@ CI builds Debug and Release on Linux/macOS with warnings as errors, runs
 ASan/UBSan on Linux, and enforces the Google formatter, `clang-tidy`, and
 `cpplint`. Add characterization coverage before changing a boundary, then
 verify externally visible behavior with integration tests.
+
+## Adding a capability
+
+New tools must use `MakeTool`, return `ToolResult`, set mutation/approval and
+parallel-safety metadata, and define input/result/time/call bounds. Filesystem
+tools reuse `path_policy.h`; asynchronous work has one explicit owner and a
+tested cancellation/shutdown path. Provider changes belong in protocol
+normalization rather than curl callbacks. Add a focused unit test and a
+hermetic integration case for any stateful boundary.

@@ -8,10 +8,12 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/core/checked.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 

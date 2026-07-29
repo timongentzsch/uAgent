@@ -348,7 +348,8 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
             std::to_string(bytes);
   ShellCommandResult execution = RunShellCommand(
       supervisor, command, 0, false, context, false, false, "bash", false, "");
-  std::string output = std::move(execution.result.output);
+  ToolResult outcome = std::move(execution.result);
+  std::string output = std::move(outcome.output);
   int exit_code = execution.wait_status && WIFEXITED(*execution.wait_status)
                       ? WEXITSTATUS(*execution.wait_status)
                       : -1;
@@ -357,9 +358,10 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
     std::string suffix = FmtExit(*execution.wait_status, false);
     if (output.size() >= suffix.size())
       output.resize(output.size() - suffix.size());
-  } else if (!execution.result.Ok()) {
-    if (execution.result.error != ToolErrorCode::kProcessFailed) {
-      return std::move(execution.result);
+  } else if (!outcome.Ok()) {
+    if (outcome.error != ToolErrorCode::kProcessFailed) {
+      outcome.output = std::move(output);
+      return outcome;
     }
     return ToolFailure(ToolErrorCode::kProcessFailed,
                        "error: search command failed:\n" + output);

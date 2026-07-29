@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdio>
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "include/api/citations.h"
 #include "include/api/openai_stream.h"
 #include "include/api/types.h"
+#include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"

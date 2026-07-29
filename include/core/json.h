@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 
 #include "third_party/json.hpp"
 
@@ -52,6 +53,18 @@ inline std::string JsonString(const json& object, const char* key,
   auto value = object.find(key);
   return value != object.end() && value->is_string() ? value->get<std::string>()
                                                      : fallback;
+}
+
+// OpenAI-compatible APIs use either {"error":"..."} or
+// {"error":{"message":"..."}} for HTTP and streamed failures.
+inline std::string JsonErrorMessage(const json& object,
+                                    std::string fallback = {}) {
+  if (!object.is_object()) return fallback;
+  auto error = object.find("error");
+  if (error == object.end()) return fallback;
+  if (error->is_string()) return error->get<std::string>();
+  return error->is_object() ? JsonString(*error, "message", std::move(fallback))
+                            : fallback;
 }
 
 inline bool JsonValue(const json& object, const char* key, bool fallback) {

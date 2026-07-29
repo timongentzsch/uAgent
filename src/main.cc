@@ -255,6 +255,7 @@ int Main(int argc, char** argv) {
   AppRuntime runtime(std::move(parsed_config));
   RuntimeConfig& runtime_config = runtime.config;
   Api& api = runtime.api;
+  api.render_stream = prompt.empty();
   ProjectInstructions project_instructions = LoadProjectInstructions(
       CanonicalAccessPath(CanonicalCwd()),
       static_cast<size_t>(runtime_config.project_doc_bytes));

@@ -654,6 +654,13 @@ class Agent {
         }
       }
 
+      if (calls.empty() && r.content.empty()) {
+        outcome = "error";
+        last_error_ = "model returned an empty response";
+        printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+        break;
+      }
+
       json amsg = {{"role", "assistant"}, {"content", r.content}};
       if (!calls.empty() && !text_mode) {
         json tcs = json::array();
@@ -697,12 +704,8 @@ class Agent {
           printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
           break;
         }
-        complete = !r.content.empty();
-        outcome = complete ? "complete" : "error";
-        if (!complete) {
-          last_error_ = "model returned an empty response";
-          printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
-        }
+        complete = true;
+        outcome = "complete";
         break;  // plain prose -> turn is done
       }
       if (line_open) printf("\n");

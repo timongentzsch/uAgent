@@ -293,6 +293,7 @@ int Main(int argc, char** argv) {
   }
   ProviderSetup provider = ConfigureProvider(api);
   std::vector<ModelRoute>& model_routes = provider.routes;
+  std::vector<NamedProvider>& named_providers = provider.providers;
   if (!provider.warning.empty()) {
     fprintf(stderr, "%s%s%s\n", YEL(), TerminalSafe(provider.warning).c_str(),
             RST());
@@ -396,6 +397,10 @@ int Main(int argc, char** argv) {
       std::any_of(model_routes.begin(), model_routes.end(),
                   [](const ModelRoute& route) {
                     return OpenrouterCompatibleUrl(route.base_url);
+                  }) ||
+      std::any_of(named_providers.begin(), named_providers.end(),
+                  [](const NamedProvider& provider) {
+                    return OpenrouterCompatibleUrl(provider.base_url);
                   });
   if (has_openrouter) {
     tools.push_back(
@@ -611,28 +616,33 @@ int Main(int argc, char** argv) {
           break;
         case SlashCommandId::kModels:
           if (command.argument.empty()) {
-            PrintModelRoutes(model_routes, api);
+            PrintModelRoutes(model_routes, named_providers, api);
             printf(
                 "%s· /models all for the live catalog; "
                 "/models FILTER to search%s\n",
                 DIM(), RST());
+          } else if (const NamedProvider* named =
+                         FindNamedProvider(named_providers, command.argument)) {
+            PrintAvailableModels(api, "all", named);
           } else {
             PrintAvailableModels(api, command.argument);
           }
           break;
         case SlashCommandId::kModel: {
           if (command.argument.empty()) {
-            PrintModelRoutes(model_routes, api);
+            PrintModelRoutes(model_routes, named_providers, api);
             break;
           }
           std::string selected =
-              SelectModel(api, model_routes, command.argument);
+              SelectModel(api, model_routes, named_providers, command.argument);
           if (selected.empty()) {
             printf("%s· unknown model %s; use /models%s\n", RED(),
                    TerminalSafe(command.argument).c_str(), RST());
             break;
           }
-          bool named_route = FindModelRoute(model_routes, selected) != nullptr;
+          bool named_route =
+              ResolveModelRoute(model_routes, named_providers, selected)
+                  .has_value();
           std::string preference_error;
           bool preference_saved = SaveModelPreference(
               {selected, api.base_url, named_route}, preference_error);

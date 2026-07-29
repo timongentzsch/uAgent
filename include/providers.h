@@ -26,6 +26,16 @@ struct ModelRoute {
   int64_t context = 0;
 };
 
+struct NamedProvider {
+  std::string name, base_url, api_key;
+  int64_t context = 0;
+};
+
+struct ProviderCatalog {
+  std::vector<NamedProvider> providers;
+  std::vector<ModelRoute> models;
+};
+
 struct ModelInfo {
   std::string id, default_effort;
   std::vector<std::string> efforts;
@@ -134,22 +144,25 @@ inline bool ValidEffort(const std::string& effort) {
                    effort) != std::end(kReasoningEfforts);
 }
 
-inline std::vector<ModelRoute> LoadModelRoutes() {
+inline ProviderCatalog LoadProviderCatalog() {
   json providers = json::parse(EnvStr("UAGENT_PROVIDERS"), nullptr, false);
-  std::vector<ModelRoute> routes;
-  if (!providers.is_object()) return routes;
+  ProviderCatalog catalog;
+  if (!providers.is_object()) return catalog;
   for (const auto& [provider_name, provider] : providers.items()) {
-    if (!provider.is_object() || provider_name.find('/') != std::string::npos) {
+    if (!provider.is_object() || provider_name.empty() ||
+        provider_name == "all" ||
+        provider_name.find('/') != std::string::npos) {
       continue;
     }
     std::string base_url = JsonString(provider, "base_url");
-    if (base_url.empty() || !provider.contains("models") ||
-        !provider["models"].is_object()) {
-      continue;
-    }
+    if (base_url.empty()) continue;
     base_url = StripTrailingSlashes(std::move(base_url));
     std::string api_key = JsonString(provider, "api_key", "sk-noop");
     int64_t context = JsonInt(provider, "context");
+    catalog.providers.push_back({provider_name, base_url, api_key, context});
+    if (!provider.contains("models") || !provider["models"].is_object()) {
+      continue;
+    }
     for (const auto& [alias, spec] : provider["models"].items()) {
       if (alias.empty() || alias.find('/') != std::string::npos) continue;
       ModelRoute route;
@@ -165,11 +178,11 @@ inline std::vector<ModelRoute> LoadModelRoutes() {
       }
       if (!route.context) route.context = context;
       if (!route.model.empty() && ValidEffort(route.effort)) {
-        routes.push_back(std::move(route));
+        catalog.models.push_back(std::move(route));
       }
     }
   }
-  return routes;
+  return catalog;
 }
 
 inline const ModelRoute* FindModelRoute(const std::vector<ModelRoute>& routes,
@@ -178,6 +191,35 @@ inline const ModelRoute* FindModelRoute(const std::vector<ModelRoute>& routes,
     if (route.name == name) return &route;
   }
   return nullptr;
+}
+
+inline const NamedProvider* FindNamedProvider(
+    const std::vector<NamedProvider>& providers, const std::string& name) {
+  for (const NamedProvider& provider : providers) {
+    if (provider.name == name) return &provider;
+  }
+  return nullptr;
+}
+
+inline std::optional<ModelRoute> ResolveModelRoute(
+    const std::vector<ModelRoute>& routes,
+    const std::vector<NamedProvider>& providers, const std::string& selection) {
+  if (const ModelRoute* route = FindModelRoute(routes, selection)) {
+    return *route;
+  }
+  size_t slash = selection.find('/');
+  if (slash == std::string::npos || slash + 1 == selection.size()) {
+    return std::nullopt;
+  }
+  const NamedProvider* provider =
+      FindNamedProvider(providers, selection.substr(0, slash));
+  if (!provider) return std::nullopt;
+  return ModelRoute{selection,
+                    provider->base_url,
+                    provider->api_key,
+                    selection.substr(slash + 1),
+                    "",
+                    provider->context};
 }
 
 inline void ExportRoute(const Api& api) {
@@ -201,6 +243,7 @@ inline void ApplyRoute(Api& api, const ModelRoute& route) {
 
 struct ProviderSetup {
   std::vector<ModelRoute> routes;
+  std::vector<NamedProvider> providers;
   std::string warning;
 };
 
@@ -211,14 +254,17 @@ inline ProviderSetup ConfigureProvider(Api& api) {
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
   api.ctx_window = ContextWindow();
 
-  ProviderSetup setup{LoadModelRoutes(), {}};
-  if (const ModelRoute* route = FindModelRoute(setup.routes, api.model)) {
+  ProviderCatalog catalog = LoadProviderCatalog();
+  ProviderSetup setup{
+      std::move(catalog.models), std::move(catalog.providers), {}};
+  if (std::optional<ModelRoute> route =
+          ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
   } else if (api.model.empty()) {  // no explicit model: restore the last /model
     ModelPreference preference = LoadModelPreference();
     if (preference.route) {
-      if (const ModelRoute* route =
-              FindModelRoute(setup.routes, preference.selection)) {
+      if (std::optional<ModelRoute> route = ResolveModelRoute(
+              setup.routes, setup.providers, preference.selection)) {
         ApplyRoute(api, *route);
       }
     } else if (!preference.selection.empty()) {
@@ -249,8 +295,10 @@ inline ProviderSetup ConfigureProvider(Api& api) {
 }
 
 inline std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
+                               const std::vector<NamedProvider>& providers,
                                const std::string& name) {
-  if (const ModelRoute* route = FindModelRoute(routes, name)) {
+  if (std::optional<ModelRoute> route =
+          ResolveModelRoute(routes, providers, name)) {
     ApplyRoute(api, *route);
     return route->name;
   }
@@ -310,6 +358,14 @@ inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
 inline std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
                                                          std::string filter) {
   return ParseModels(api.Get("/models"), std::move(filter));
+}
+
+inline std::optional<std::vector<ModelInfo>> QueryModels(
+    const Api& api, const NamedProvider& provider, std::string filter) {
+  Api catalog_api(api.config);
+  catalog_api.base_url = provider.base_url;
+  catalog_api.api_key = provider.api_key;
+  return QueryModels(catalog_api, std::move(filter));
 }
 
 }  // namespace uagent

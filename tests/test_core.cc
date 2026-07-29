@@ -1037,6 +1037,52 @@ void TestProviderTemplates() {
   }
 }
 
+void TestNamedProviders() {
+  const char* inherited = getenv("UAGENT_PROVIDERS");
+  std::string prior = inherited ? inherited : "";
+  json configured = {
+      {"", {{"base_url", "https://empty.test/v1"}}},
+      {"all", {{"base_url", "https://reserved.test/v1"}}},
+      {"bad/name", {{"base_url", "https://invalid.test/v1"}}},
+      {"codex-local",
+       {{"base_url", "http://127.0.0.1:8787/api/v1/"},
+        {"api_key", "local-key"},
+        {"context", 16384}}},
+      {"static",
+       {{"base_url", "https://static.test/v1"},
+        {"models", {{"fast", "actual-model"}}}}},
+  };
+  setenv("UAGENT_PROVIDERS", JsonDump(configured).c_str(), 1);
+  ProviderCatalog catalog = LoadProviderCatalog();
+  CHECK(catalog.providers.size() == 2);
+  CHECK(catalog.models.size() == 1);
+  const NamedProvider* codex =
+      FindNamedProvider(catalog.providers, "codex-local");
+  CHECK(codex != nullptr);
+  CHECK(codex && codex->base_url == "http://127.0.0.1:8787/api/v1");
+  CHECK(codex && codex->api_key == "local-key");
+  CHECK(codex && codex->context == 16384);
+
+  std::optional<ModelRoute> dynamic = ResolveModelRoute(
+      catalog.models, catalog.providers, "codex-local/org/model");
+  CHECK(dynamic.has_value());
+  CHECK(dynamic && dynamic->model == "org/model");
+  CHECK(dynamic && dynamic->context == 16384);
+  std::optional<ModelRoute> fixed =
+      ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
+  CHECK(fixed.has_value());
+  CHECK(fixed && fixed->model == "actual-model");
+  CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "missing/model"));
+  CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
+  CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
+
+  if (inherited) {
+    setenv("UAGENT_PROVIDERS", prior.c_str(), 1);
+  } else {
+    unsetenv("UAGENT_PROVIDERS");
+  }
+}
+
 void TestSafeJsonValues() {
   json values = {{"boolean", "true"},
                  {"integer", "12"},
@@ -1547,6 +1593,15 @@ void TestSkillDiscovery() {
   CHECK(skills[0].name == "vendor-only");
   unsetenv("UAGENT_SKILL_PATH");
 
+  // Individual skills can be hidden without replacing every discovery root.
+  setenv("UAGENT_SKILL_EXCLUDE", "vendor-only, missing", 1);
+  skills = LoadSkills(workspace);
+  CHECK(skills.size() == 2);
+  CHECK(std::none_of(skills.begin(), skills.end(), [](const Skill& skill) {
+    return skill.name == "vendor-only";
+  }));
+  unsetenv("UAGENT_SKILL_EXCLUDE");
+
   // The cap keeps the highest-precedence entries rather than filling up on
   // user/vendor skills before the workspace is scanned.
   setenv("UAGENT_SKILLS", "1", 1);
@@ -1612,6 +1667,7 @@ int RunTests() {
   TestAgentConfigAllowlist();
   TestModelPreference();
   TestProviderTemplates();
+  TestNamedProviders();
   TestSafeJsonValues();
   TestProjectInstructionDiscovery();
   TestMcpContractHelpers();

@@ -75,6 +75,14 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
   return path;
 }
 
+inline bool SkillExcluded(const std::string& name) {
+  for (const std::string& entry :
+       SplitPathList(EnvStr("UAGENT_SKILL_EXCLUDE"), ',')) {
+    if (Trim(entry) == name) return true;
+  }
+  return false;
+}
+
 inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<Skill> found;
@@ -95,7 +103,7 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       // The directory name wins: it is what the model names, and it cannot
       // collide with another skill or carry a path separator.
       name = SafeFileComponent(dir.filename().string());
-      if (Trim(description).empty()) continue;
+      if (SkillExcluded(name) || Trim(description).empty()) continue;
       description = Utf8Trunc(std::move(description),
                               static_cast<size_t>(SkillDescriptionBytes()));
       Skill skill{name, description, dir.string(), file.string()};

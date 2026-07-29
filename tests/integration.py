@@ -1403,6 +1403,64 @@ def test_model_route_switch(root, home):
         second.close()
 
 
+def test_dynamic_provider_catalog_and_model(root, home):
+    first = Server([event({"content": "original-route-ok"})])
+
+    def switched(handler, body):
+        valid = (
+            body.get("model") == "gpt-live"
+            and handler.headers.get("Authorization") == "Bearer key-b"
+        )
+        return event({"content": "dynamic-route-ok" if valid else "dynamic-route-bad"})
+
+    catalog = {"data": [{"id": "gpt-live", "context_length": 16384}]}
+    second = Server([switched], get_response=catalog)
+    providers = {
+        "second": {
+            "base_url": second.url,
+            "api_key": "key-b",
+            "context": 16384,
+        }
+    }
+    try:
+        env = base_env(home, first.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        catalog_result = run_dialog(
+            root,
+            env,
+            "/models second\nprobe\n/q\n",
+        )
+        assert_true(catalog_result.returncode == 0, catalog_result.stderr)
+        assert_true(
+            "querying 127.0.0.1/models" in catalog_result.stdout,
+            catalog_result.stdout,
+        )
+        assert_true("second/gpt-live" in catalog_result.stdout, catalog_result.stdout)
+        assert_true("original-route-ok" in catalog_result.stdout, catalog_result.stdout)
+        assert_true(second.get_requests == ["/v1/models"], second.get_requests)
+        assert_true(len(first.requests) == 1, first.requests)
+
+        selected = run_dialog(
+            root,
+            env,
+            "/model second/gpt-live\nprobe\n/q\n",
+        )
+        assert_true(selected.returncode == 0, selected.stderr)
+        assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
+        assert_true(second.get_requests == ["/v1/models"], second.get_requests)
+
+        restart_env = base_env(home, first.url)
+        restart_env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        restart_env.pop("UAGENT_MODEL")
+        restarted = run(root, restart_env, "-p", "probe")
+        assert_true(restarted.returncode == 0, restarted.stderr)
+        assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
+        assert_true(len(first.requests) == 1, first.requests)
+    finally:
+        first.close()
+        second.close()
+
+
 def test_model_preference_survives_restart(root, home):
     first = Server([event({"content": "explicit-model-ok"})])
 
@@ -2552,6 +2610,7 @@ def main():
             test_mcp_tool_list_changed,
             test_user_config_interpolation,
             test_model_route_switch,
+            test_dynamic_provider_catalog_and_model,
             test_model_preference_survives_restart,
             test_live_model_catalog,
             test_checkpoint_apply,

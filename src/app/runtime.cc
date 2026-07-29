@@ -6,6 +6,8 @@
 
 #include <utility>
 
+#include "include/tools/jobs.h"
+
 namespace uagent {
 
 CurlRuntime::CurlRuntime()
@@ -17,5 +19,13 @@ CurlRuntime::~CurlRuntime() {
 
 AppRuntime::AppRuntime(RuntimeConfig parsed)
     : config(std::move(parsed)), api(config) {}
+
+void AppRuntime::Shutdown() {
+  if (shutdown_) return;
+  shutdown_ = true;
+  side_tasks.CancelAll();
+  mcp.ShutdownAll();
+  BgShutdownAll(processes);
+}
 
 }  // namespace uagent

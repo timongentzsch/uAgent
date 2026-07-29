@@ -29,8 +29,8 @@ inline std::vector<Tool> BuiltinTools(
   std::vector<Tool> tools;
   auto path_tool = [&](Tool tool, const char* fallback) -> Tool& {
     tool.needs_approval = [workspace, fallback](const json& args) {
-      return !PathWithin(CanonicalAccessPath(JsonValue(args, "path", fallback)),
-                         workspace);
+      return PathApprovalRequired(JsonValue(args, "path", ""), workspace,
+                                  fallback);
     };
     return AddTool(tools, std::move(tool));
   };

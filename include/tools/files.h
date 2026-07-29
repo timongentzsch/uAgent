@@ -24,6 +24,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
+#include "include/tools/path_policy.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -42,6 +43,9 @@ inline ToolErrorCode FileToolError(const std::error_code& error) {
 
 inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
                                int64_t limit) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
+    return std::move(*invalid);
+  }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   int64_t max_lines = ReadFileMaxLines();
   if (limit <= 0 || limit > max_lines) limit = max_lines;
@@ -62,7 +66,10 @@ inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
     if (AbortRequested()) return ToolCancelled("error: read cancelled");
     ++total;
     if (total >= offset) {
-      if (out.size() + line.size() + 1 > static_cast<size_t>(max_bytes)) {
+      std::optional<size_t> with_line = CheckedAdd(out.size(), line.size());
+      std::optional<size_t> with_newline =
+          with_line ? CheckedAdd(*with_line, 1) : std::nullopt;
+      if (!with_newline || *with_newline > static_cast<size_t>(max_bytes)) {
         output_limited = true;
         break;
       }
@@ -111,6 +118,9 @@ inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
 inline ToolResult ToolWriteFileMode(const std::string& path,
                                     const std::string& content,
                                     mode_t create_mode) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
+    return std::move(*invalid);
+  }
   std::string error;
   if (!AtomicWriteFile(path, content, create_mode, /*preserve_mode=*/true,
                        error)) {
@@ -266,6 +276,9 @@ inline ToolResult ToolEditFile(const std::string& path,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: at least one edit is required");
   }
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
+    return std::move(*invalid);
+  }
   errno = 0;
   std::ifstream f(path, std::ios::binary);
   if (!f) {
@@ -381,6 +394,9 @@ inline ToolResult ToolEditFile(const std::string& path,
 inline ToolResult ToolListDir(const std::string& path, int64_t offset = 0,
                               int64_t limit = 0) {
   std::string p = path.empty() ? "." : path;
+  if (auto invalid = ValidatePathTarget(p, PathTarget::kDirectory)) {
+    return std::move(*invalid);
+  }
   if (offset < 0) offset = 0;
   if (limit <= 0) limit = ListDirEntries();
   int64_t scan_cap = ListDirScanEntries();

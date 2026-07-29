@@ -453,7 +453,7 @@ int Main(int argc, char** argv) {
       }
     }
     std::string answer = agent.LastText();
-    BgShutdownAll(processes);
+    runtime.Shutdown();
     if (answer
             .empty()) {  // a caller reading stdout must not see silent failure
       std::string error = agent.LastError().empty()
@@ -735,7 +735,7 @@ int Main(int argc, char** argv) {
 
   save_session();  // final flush: the last turn, or a /compact with no
                    // follow-up
-  BgShutdownAll(processes);
+  runtime.Shutdown();
   std::remove(UsageLedger().c_str());  // a recycled pid must not inherit it
 
   if (g_debug.Enabled()) {

@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/tools/tool.h"
@@ -176,7 +177,23 @@ inline std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
     return "";
   }
   std::string out = prefix;
-  out.reserve(prefix.size() + static_cast<size_t>((current_bytes + 2) / 3 * 4));
+  if (current_bytes > std::numeric_limits<size_t>::max()) {
+    error = "attachment is too large to encode: " + attachment.path;
+    fclose(file);
+    return "";
+  }
+  std::optional<size_t> padded =
+      CheckedAdd(static_cast<size_t>(current_bytes), 2);
+  std::optional<size_t> encoded =
+      padded ? CheckedMul(*padded / 3, 4) : std::nullopt;
+  std::optional<size_t> reserved =
+      encoded ? CheckedAdd(prefix.size(), *encoded) : std::nullopt;
+  if (!reserved) {
+    error = "attachment size overflow";
+    fclose(file);
+    return "";
+  }
+  out.reserve(*reserved);
   unsigned char in[3];
   uintmax_t read_bytes = 0;
   while (!feof(file)) {
@@ -217,11 +234,14 @@ inline bool Base64Decode(std::string_view input, std::string& output,
     }
     return values;
   }();
-  if (input.size() % 4 != 0 || input.size() / 4 * 3 > max_bytes + 2) {
-    return false;
-  }
+  if (input.size() % 4 != 0) return false;
+  std::optional<size_t> decoded = CheckedMul(input.size() / 4, 3);
+  if (!decoded) return false;
+  if (!input.empty() && input.back() == '=') --*decoded;
+  if (input.size() >= 2 && input[input.size() - 2] == '=') --*decoded;
+  if (*decoded > max_bytes) return false;
   output.clear();
-  output.reserve(std::min(max_bytes, input.size() / 4 * 3));
+  output.reserve(*decoded);
   for (size_t i = 0; i < input.size(); i += 4) {
     int a = kTable[static_cast<unsigned char>(input[i])];
     int b = kTable[static_cast<unsigned char>(input[i + 1])];

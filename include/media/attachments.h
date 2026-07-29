@@ -196,9 +196,16 @@ inline std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
   out.reserve(*reserved);
   unsigned char in[3];
   uintmax_t read_bytes = 0;
-  while (!feof(file)) {
+  bool read_failed = false;
+  while (true) {
     size_t n = fread(in, 1, 3, file);
-    if (!n) break;
+    if (!n) {
+      if (ferror(file)) {
+        error = "failed to read " + attachment.path;
+        read_failed = true;
+      }
+      break;
+    }
     read_bytes += n;
     if (read_bytes > max_bytes) {
       error = "attachment grew beyond the byte limit while reading: " +
@@ -212,14 +219,16 @@ inline std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
                ? kBase64Alphabet[((in[1] & 15) << 2) | (n > 2 ? in[2] >> 6 : 0)]
                : '=';
     out += n > 2 ? kBase64Alphabet[in[2] & 63] : '=';
-  }
-  if (ferror(file)) {
-    error = "failed to read " + attachment.path;
-    fclose(file);
-    return "";
+    if (n < 3) {
+      if (ferror(file)) {
+        error = "failed to read " + attachment.path;
+        read_failed = true;
+      }
+      break;
+    }
   }
   fclose(file);
-  return out;
+  return read_failed ? "" : out;
 }
 
 inline bool Base64Decode(std::string_view input, std::string& output,

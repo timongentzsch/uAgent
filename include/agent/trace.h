@@ -86,8 +86,8 @@ inline bool PrintSearchReceipt(int64_t searches, const json& annotations,
                       : std::to_string(sources.size()) + " source" +
                             (sources.size() == 1 ? "" : "s");
   if (searches > 0) {
-    printf("%s  ← web_search ×%lld · %s%s\n", DIM(),
-           static_cast<long long>(searches), source_summary.c_str(), RST());
+    printf("%s  ← web_search ×%s · %s%s\n", DIM(),
+           std::to_string(searches).c_str(), source_summary.c_str(), RST());
   } else {
     printf("%s  ← %s%s\n", DIM(), source_summary.c_str(), RST());
   }

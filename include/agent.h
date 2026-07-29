@@ -1038,8 +1038,7 @@ class Agent {
       return drop(api_.include_usage, "stream_options");
     }
     if (OpenrouterCompatibleUrl(api_.base_url) &&
-        api_.config.web_search_server &&
-        api_.openrouter_web_search &&
+        api_.config.web_search_server && api_.openrouter_web_search &&
         (lowered.find("openrouter:web_search") != std::string::npos ||
          lowered.find("web_search") != std::string::npos ||
          lowered.find("web search") != std::string::npos ||

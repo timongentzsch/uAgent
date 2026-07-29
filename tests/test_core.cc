@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/app/options.h"
 #include "include/cli.h"
 #include "include/core/config.h"
 #include "include/core/env.h"
@@ -139,6 +140,39 @@ void TestRegistries() {
     CHECK((*models)[0].efforts.size() == 2);
     CHECK((*models)[0].default_effort == "low");
   }
+}
+
+void TestOptions() {
+  char executable[] = "uagent";
+  char yolo[] = "--yolo";
+  char prompt_flag[] = "-p";
+  char prompt[] = "hello";
+  char attach_flag[] = "--attach";
+  char attachment[] = "image.png";
+  char debug[] = "--debug=trace.jsonl";
+  char* arguments[] = {executable,  yolo,       prompt_flag, prompt,
+                       attach_flag, attachment, debug};
+  ParsedOptions parsed = ParseOptions(7, arguments);
+  CHECK(parsed.Ok());
+  CHECK(parsed.action == OptionsAction::kRun);
+  CHECK(parsed.options.yolo);
+  CHECK(parsed.options.prompt == "hello");
+  CHECK(parsed.options.attach_paths == std::vector<std::string>({"image.png"}));
+  CHECK(parsed.options.debug);
+  CHECK(parsed.options.debug_path == "trace.jsonl");
+
+  char help[] = "--help";
+  char* help_arguments[] = {executable, help};
+  CHECK(ParseOptions(2, help_arguments).action == OptionsAction::kHelp);
+
+  char unknown[] = "--unknown";
+  char* unknown_arguments[] = {executable, unknown};
+  CHECK(!ParseOptions(2, unknown_arguments).Ok());
+
+  char* missing_value[] = {executable, attach_flag};
+  ParsedOptions missing = ParseOptions(2, missing_value);
+  CHECK(!missing.Ok());
+  CHECK(missing.error.find("requires a value") != std::string::npos);
 }
 
 void TestLineNumberStripping() {
@@ -1938,6 +1972,7 @@ int RunTests() {
   TestTextToolProtocol();
   TestToolResults();
   TestRegistries();
+  TestOptions();
   TestLineNumberStripping();
   TestMarkdownMath();
   TestCapsAndEscaping();

@@ -1091,33 +1091,8 @@ class Agent {
   }
 
   void AppendToolResult(const ToolCall& call, bool text_mode,
-                        const std::string& result) {
-    if (text_mode) {
-      messages_.push_back(
-          {{"role", "user"},
-           {"content", "[tool_result " + call.name + "]\n" + result}});
-    } else {
-      messages_.push_back(
-          {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}});
-    }
-  }
-
-  std::vector<std::string> RecentToolResults(int64_t count) const {
-    std::vector<std::string> out;
-    for (auto it = messages_.rbegin();
-         it != messages_.rend() && static_cast<int64_t>(out.size()) < count;
-         ++it) {
-      std::string role = it->value("role", "");
-      if (!it->contains("content") || !(*it)["content"].is_string()) continue;
-      std::string content = (*it)["content"].get<std::string>();
-      if (role == "tool" ||
-          (role == "user" && content.starts_with("[tool_result "))) {
-        out.push_back(CapResult(content));
-      }
-    }
-    std::reverse(out.begin(), out.end());
-    return out;
-  }
+                        const std::string& result);
+  std::vector<std::string> RecentToolResults(int64_t count) const;
 
   void InvalidatePendingCheckpoint(const char* reason);
   void RecordSideEffect(const CallTask& task, const ToolCall& call);
@@ -1133,182 +1108,7 @@ class Agent {
   bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
                 int64_t& tool_count,
                 std::unordered_map<std::string, int64_t>& tool_counts,
-                int64_t step, std::chrono::steady_clock::time_point deadline) {
-    if (calls.size() == 1 && calls[0].name == "checkpoint") {
-      return RunCheckpointCall(calls[0], text_mode, tool_count, step);
-    }
-    if (pending_checkpoint_.is_object() &&
-        JsonValue(pending_checkpoint_, "turn", int64_t{-1}) == turn_id_) {
-      InvalidatePendingCheckpoint("tool call followed checkpoint");
-    }
-    std::vector<CallTask> tasks(calls.size());
-    for (size_t i = 0; i < calls.size(); ++i) {
-      const ToolCall& c = calls[i];
-      CallTask& task = tasks[i];
-      if (calls.size() > 1) task.ordinal = "[" + std::to_string(i + 1) + "] ";
-      if (g_debug.Enabled()) {
-        g_debug.Write("tool_call", {{"turn", turn_id_},
-                                    {"step", step},
-                                    {"id", c.id},
-                                    {"name", c.name},
-                                    {"arguments", c.args},
-                                    {"text_protocol", text_mode}});
-      }
-      task.args = json::parse(c.args, nullptr, false);
-      task.tool = FindTool(tools_, c.name);
-      const Tool* tool = task.tool;
-      const json& args = task.args;
-      std::string missing;
-      if (args.is_discarded() || !args.is_object()) {
-        task.result =
-            ToolFailure(ToolErrorCode::kInvalidArguments,
-                        "error: malformed tool arguments (not valid JSON)");
-        task.trace_status = "malformed_arguments";
-      } else if (!tool) {
-        task.result = ToolFailure(ToolErrorCode::kNotFound,
-                                  "error: unknown tool " + c.name);
-        task.trace_status = "unknown_tool";
-      } else if (!(missing = MissingRequired(*tool, args)).empty()) {
-        task.result =
-            ToolFailure(ToolErrorCode::kInvalidArguments,
-                        "error: missing required argument `" + missing + "`");
-        task.trace_status = "missing_argument";
-      } else if (!(missing = InvalidArgumentType(*tool, args)).empty()) {
-        task.result = ToolFailure(ToolErrorCode::kInvalidArguments,
-                                  "error: invalid tool argument: " + missing);
-        task.trace_status = "invalid_argument";
-      } else if (c.name == "checkpoint") {
-        task.result = ToolFailure(
-            ToolErrorCode::kInvalidArguments,
-            "error: checkpoint must be the only call in its tool batch");
-        task.trace_status = "invalid_batch";
-      } else if (tool->max_calls_per_turn >= 0 &&
-                 tool_counts[c.name] >= tool->max_calls_per_turn) {
-        task.result = ToolFailure(
-            ToolErrorCode::kLimitExceeded,
-            "error: " + c.name + " reached its per-turn call limit (" +
-                std::to_string(tool->max_calls_per_turn) +
-                "); answer from the results you have or delegate the "
-                "rest with task — do not reimplement it with run");
-        task.trace_status = "call_limit";
-      } else {
-        task.label = ToolSummary(*tool, args);
-        std::string prefix = "→ " + task.ordinal + TerminalSafe(c.name);
-        if (tool->full_terminal_output) {
-          printf("%s%s%s\n%s\n", CYAN(), prefix.c_str(), RST(),
-                 TerminalSafe(task.label).c_str());
-        } else {
-          printf("%s%s(%s)%s\n", CYAN(), prefix.c_str(),
-                 TerminalSafe(FirstLine(task.label)).c_str(), RST());
-        }
-        bool approval_required = tool->mutating || (tool->needs_approval &&
-                                                    tool->needs_approval(args));
-        if (!approval_required || approve_(*tool, args)) {
-          task.execute = true;
-          ++tool_count;
-          ++tool_counts[c.name];
-        } else {
-          task.result = ToolFailure(
-              ToolErrorCode::kPermissionDenied,
-              "user denied this action; ask for guidance or try a different "
-              "approach");
-          task.trace_status = "denied";
-          printf("%s  denied%s\n", RED(), RST());
-        }
-      }
-      if (!task.execute) LogToolResult(task, c, turn_id_, step);
-    }
-
-    std::vector<size_t> runnable;
-    for (size_t i = 0; i < tasks.size(); ++i) {
-      if (tasks[i].execute) runnable.push_back(i);
-    }
-    int64_t limit = std::max(int64_t{1}, ToolConcurrency());
-    bool parallel = false;
-    if (limit > 1) {
-      for (size_t begin = 0; begin < runnable.size();) {
-        if (!tasks[runnable[begin]].tool->parallel_safe) {
-          ++begin;
-          continue;
-        }
-        size_t end = begin;
-        while (end < runnable.size() &&
-               tasks[runnable[end]].tool->parallel_safe) {
-          ++end;
-        }
-        parallel = parallel || end - begin > 1;
-        begin = end;
-      }
-    }
-    if (g_debug.Enabled()) {
-      g_debug.Write("tool_batch", {{"turn", turn_id_},
-                                   {"step", step},
-                                   {"calls", calls.size()},
-                                   {"runnable", runnable.size()},
-                                   {"parallel", parallel},
-                                   {"concurrency_limit", limit}});
-    }
-    SteeringGuard steering(!runnable.empty());
-    bool quiet = std::none_of(runnable.begin(), runnable.end(), [&](size_t i) {
-      return calls[i].name == "show_image";
-    });
-    std::string activity = runnable.size() == 1
-                               ? calls[runnable.front()].name
-                               : std::to_string(runnable.size()) + " tools";
-    TerminalSpinner spinner(!runnable.empty() && quiet,
-                            SpinnerLabel(std::move(activity)));
-    ToolContext context{deadline};
-    for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
-      size_t first = runnable[begin];
-      if (limit <= 1 || !tasks[first].tool->parallel_safe) {
-        ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                    api_.config.tool_timeout_s);
-        ++begin;
-        continue;
-      }
-      size_t end = begin;
-      while (end < runnable.size() &&
-             tasks[runnable[end]].tool->parallel_safe) {
-        ++end;
-      }
-      if (end - begin == 1) {
-        ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                    api_.config.tool_timeout_s);
-        begin = end;
-        continue;
-      }
-      std::atomic<size_t> next{begin};
-      size_t workers_count = std::min(end - begin, static_cast<size_t>(limit));
-      std::vector<std::future<void>> workers;
-      for (size_t i = 0; i < workers_count; ++i) {
-        workers.push_back(std::async(std::launch::async, [&] {
-          for (size_t j; !AbortRequested() && (j = next.fetch_add(1)) < end;) {
-            ExecuteCall(tasks[runnable[j]], calls[runnable[j]], turn_id_, step,
-                        context, api_.config.tool_timeout_s);
-          }
-        }));
-      }
-      for (auto& worker : workers) worker.get();
-      begin = end;
-    }
-    spinner.Stop();
-    steering.Stop();
-    // Remember the interrupt before clearing it: Ctrl+C means "stop", not
-    // "this tool failed", so the turn has to end rather than press on.
-    bool cancelled = AbortRequested() && !g_steering.Requested();
-    if (!g_steering.Requested()) {
-      ClearAbort();  // Ctrl+C may cancel a parallel batch
-    }
-
-    for (size_t i = 0; i < tasks.size(); ++i) {
-      const ToolCall& c = calls[i];
-      CallTask& task = tasks[i];
-      if (task.execute) PrintCallResult(task, c);
-      RecordSideEffect(task, c);
-      AppendToolResult(c, text_mode, task.result.output);
-    }
-    return cancelled;
-  }
+                int64_t step, std::chrono::steady_clock::time_point deadline);
 
   void RebuildToolSchemas() {
     schemas_ = ToolSchemas(tools_, api_.config.tool_timeout_s);
@@ -1357,7 +1157,5 @@ class Agent {
 };
 
 }  // namespace uagent
-
-#include "include/agent/checkpoint_impl.h"
 
 #endif  // UAGENT_INCLUDE_AGENT_H_

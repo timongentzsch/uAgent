@@ -28,6 +28,8 @@
 
 #include "include/agent.h"
 #include "include/api.h"
+#include "include/app/options.h"
+#include "include/app/runtime.h"
 #include "include/cli.h"
 #include "include/core/config.h"
 #include "include/core/debug.h"
@@ -56,33 +58,6 @@
 
 namespace uagent {
 
-class CurlRuntime {
- public:
-  CurlRuntime() : ready_(curl_global_init(CURL_GLOBAL_DEFAULT) == CURLE_OK) {}
-  ~CurlRuntime() {
-    if (ready_) curl_global_cleanup();
-  }
-  bool Ready() const { return ready_; }
-
- private:
-  bool ready_;
-};
-
-// One explicit owner for state whose lifetime spans a CLI session. Tools and
-// Agent receive references to these components; none of them rely on hidden
-// header-level process state for MCP, background jobs, or side-request usage.
-struct AppRuntime {
-  explicit AppRuntime(RuntimeConfig parsed)
-      : config(std::move(parsed)), api(config) {}
-
-  RuntimeConfig config;
-  Api api;
-  ProcessSupervisor processes;
-  UsageAccumulator side_usage;
-  SideTaskSupervisor side_tasks;
-  McpRuntime mcp;
-};
-
 int Main(int argc, char** argv) {
   if (argc == 4 && std::string(argv[1]) == "--log-pump") {
     char* end = nullptr;
@@ -100,56 +75,30 @@ int Main(int argc, char** argv) {
 #if defined(HAVE_EDITLINE)
   rl_getc_function = EscGetc;
 #endif
-  bool yolo = false;
-  bool debug = false;
-  bool trust_project = false;
-  json trusted_project_config = nullptr;
-  std::string debug_path;
-  std::string prompt;
-  std::vector<std::string> attach_paths;
-  bool resume_latest = false, resume_pick = false;
-  g_argv0 = argv[0];
-  for (int i = 1; i < argc; i++) {
-    std::string a = argv[i];
-    if (a == "--yolo") {
-      yolo = true;
-    } else if (a == "-p" && i + 1 < argc) {
-      prompt = argv[++i];
-    } else if (a == "--attach" && i + 1 < argc) {
-      attach_paths.push_back(argv[++i]);
-    } else if (a == "--continue" || a == "-c") {
-      resume_latest = true;
-    } else if (a == "--resume") {
-      resume_pick = true;
-    } else if (a == "--trust-project-config") {
-      trust_project = true;
-    } else if (a == "--debug") {
-      debug = true;
-    } else if (a == "--version") {
-      printf("uagent %s\n", kVersion);
-      return 0;
-    } else if (a.starts_with("--debug=")) {
-      debug = true;
-      debug_path = a.substr(8);
-    } else if (a == "-h" || a == "--help") {
-      printf(
-          "usage: uagent [--yolo] [--trust-project-config] [--debug[=PATH]] "
-          "[-p PROMPT] [--attach PATH] [-c] [--resume]\n\n"
-          "  -p PROMPT   run one turn, print only the final answer, exit\n"
-          "  --attach PATH  send an image or document with the first message\n"
-          "  -c          resume the most recent saved session\n"
-          "  --resume    pick a saved session to resume at startup\n"
-          "  --version   print the installed version\n"
-          "  --trust-project-config  allow this workspace's .mcp.json and "
-          ".uagent/.config\n\n"
-          "config: ./.uagent/.config when trusted, then ~/.uagent/.config; "
-          "process UAGENT_* variables override both\n");
-      return 0;
-    } else {
-      fprintf(stderr, "unknown flag: %s\n", a.c_str());
-      return 2;
-    }
+  ParsedOptions parsed = ParseOptions(argc, argv);
+  if (!parsed.Ok()) {
+    fprintf(stderr, "%s\n", parsed.error.c_str());
+    return 2;
   }
+  if (parsed.action == OptionsAction::kHelp) {
+    printf("%s", UsageText());
+    return 0;
+  }
+  if (parsed.action == OptionsAction::kVersion) {
+    printf("uagent %s\n", kVersion);
+    return 0;
+  }
+  bool yolo = parsed.options.yolo;
+  bool debug = parsed.options.debug;
+  bool trust_project = parsed.options.trust_project;
+  json trusted_project_config = nullptr;
+  std::string debug_path = std::move(parsed.options.debug_path);
+  std::string prompt = std::move(parsed.options.prompt);
+  std::vector<std::string> attach_paths =
+      std::move(parsed.options.attach_paths);
+  bool resume_latest = parsed.options.resume_latest;
+  bool resume_pick = parsed.options.resume_pick;
+  g_argv0 = argv[0];
 
   // Project MCP configuration is executable code, and a project .uagent/.config
   // can redirect every request. Trust comes only from an inherited

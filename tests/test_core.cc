@@ -1592,6 +1592,23 @@ void TestWorkspaceScopedSession() {
   CHECK(!agent.Load(session.string(), root.string(), error));
   CHECK(error.find("session belongs to") != std::string::npos);
 
+  SessionLoadResult missing =
+      SessionStore::Load((root / "missing.json").string(), CanonicalCwd());
+  CHECK(missing.status.error == SessionStoreError::kNotFound);
+
+  std::string corrupt =
+      R"({"format":1,"cwd":")" + CanonicalCwd() +
+      R"(","model":"test","session_id":"old","turns":0,"title":""})"
+      "\n{}";
+  CHECK(ToolWritePrivateFile(session.string(), corrupt).Ok());
+  error.clear();
+  CHECK(!agent.Load(session.string(), CanonicalCwd(), error));
+  CHECK(error.find("unsupported") != std::string::npos);
+  CHECK(agent.SessionId() == session_id);
+  std::ifstream preserved(session);
+  CHECK(std::string(std::istreambuf_iterator<char>(preserved),
+                    std::istreambuf_iterator<char>()) == corrupt);
+
   std::error_code ec;
   fs::remove_all(root, ec);
 }

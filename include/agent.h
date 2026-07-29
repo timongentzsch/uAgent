@@ -26,6 +26,7 @@
 
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
+#include "include/agent/session_store.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/debug.h"
@@ -218,93 +219,51 @@ class Agent {
     }
   }
 
-  // Persist the whole conversation as two lines: a cheap header the /sessions
-  // picker can read without parsing the history, then the full payload.
   bool Save(const std::string& path, std::string& error) const {
-    json header = {{"format", 2},          {"cwd", CanonicalCwd()},
-                   {"model", api_.model},  {"session_id", session_id_},
-                   {"turns", UserTurns()}, {"title", FirstUserText()}};
-    json payload = {{"messages", messages_},
-                    {"archive", archive_},
-                    {"archive_dropped_segments", archive_dropped_segments_},
-                    {"checkpoint_candidates", checkpoint_candidates_},
-                    {"pending_checkpoint", pending_checkpoint_},
-                    {"side_effects", side_effects_},
-                    {"context_tokens", ContextUsed()},
-                    {"usage", UsageJson(session_usage_)}};
-    ToolResult result =
-        ToolWritePrivateFile(path, JsonDump(header) + "\n" + JsonDump(payload));
-    if (!result.Ok()) {
-      error = std::move(result.output);
+    SessionRecord record;
+    record.metadata = {CanonicalCwd(), api_.model, session_id_, UserTurns(),
+                       FirstUserText()};
+    record.state = {messages_,
+                    archive_,
+                    archive_dropped_segments_,
+                    checkpoint_candidates_,
+                    pending_checkpoint_,
+                    side_effects_,
+                    ContextUsed(),
+                    session_usage_};
+    SessionStoreStatus status = SessionStore::Save(path, record);
+    if (!status.Ok()) {
+      error = std::move(status.message);
       return false;
     }
     return true;
   }
 
-  // Restore a saved conversation. The system message is regenerated, never
-  // trusted: a session saved in text-protocol mode baked a now-stale tool list
-  // into messages_[0], and in native mode it is identical anyway.
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error) {
-    std::ifstream f(path);
-    if (!f) {
-      error = "cannot open session";
+    SessionLoadResult loaded = SessionStore::Load(path, expected_cwd);
+    if (!loaded.Ok()) {
+      error = std::move(loaded.status.message);
       return false;
     }
-    std::string head, body;
-    if (!std::getline(f, head) || !std::getline(f, body)) {
-      error = "session is incomplete";
-      return false;
-    }
-    json header = json::parse(head, nullptr, false);
-    if (!header.is_object()) {
-      error = "session header is invalid";
-      return false;
-    }
-    std::error_code ec;
-    std::filesystem::path saved =
-        std::filesystem::weakly_canonical(JsonValue(header, "cwd", ""), ec);
-    std::filesystem::path expected =
-        std::filesystem::weakly_canonical(expected_cwd, ec);
-    if (saved != expected) {
-      error =
-          "session belongs to " + saved.string() + ", not " + expected.string();
-      return false;
-    }
-    json j = json::parse(body, nullptr, false);
-    if (j.is_discarded() || !j.contains("messages") ||
-        !j["messages"].is_array() || j["messages"].empty()) {
-      error = "session payload is invalid";
-      return false;
-    }
-    messages_ = j["messages"];
+    SessionRecord record = std::move(*loaded.record);
+    messages_ = std::move(record.state.messages);
     turn_time_ = LocalStamp();
     RefreshBaseline();
-    archive_ = JsonValue(j, "archive", json::array());
-    if (!archive_.is_array()) archive_ = json::array();
+    archive_ = std::move(record.state.archive);
     archive_bytes_ = archive_.empty()
                          ? 0
                          : static_cast<int64_t>(JsonDump(archive_).size()) - 2;
-    archive_dropped_segments_ = std::max(
-        int64_t{0}, JsonValue(j, "archive_dropped_segments", int64_t{0}));
-    checkpoint_candidates_ =
-        JsonValue(j, "checkpoint_candidates", json::array());
-    if (!checkpoint_candidates_.is_array()) {
-      checkpoint_candidates_ = json::array();
-    }
-    pending_checkpoint_ = JsonValue(j, "pending_checkpoint", json(nullptr));
-    if (!pending_checkpoint_.is_null() && !pending_checkpoint_.is_object()) {
-      pending_checkpoint_ = nullptr;
-    }
-    side_effects_ = JsonValue(j, "side_effects", json::array());
-    if (!side_effects_.is_array()) side_effects_ = json::array();
-    session_usage_ = UsageFromJson(JsonValue(j, "usage", json::object()));
-    session_id_ = JsonValue(header, "session_id", MakeSessionId());
+    archive_dropped_segments_ = record.state.archive_dropped_segments;
+    checkpoint_candidates_ = std::move(record.state.checkpoint_candidates);
+    pending_checkpoint_ = std::move(record.state.pending_checkpoint);
+    side_effects_ = std::move(record.state.side_effects);
+    session_usage_ = record.state.usage;
+    session_id_ = std::move(record.metadata.session_id);
     if (session_id_.empty()) session_id_ = MakeSessionId();
-    total_user_turns_ = JsonValue(header, "turns", int64_t{0});
-    session_title_ = JsonValue(header, "title", "");
-    ctx_used_ =
-        std::max(int64_t{0}, JsonValue(j, "context_tokens", int64_t{0}));
+    total_user_turns_ = record.metadata.turns;
+    session_title_ = std::move(record.metadata.title);
+    ctx_used_ = record.state.context_tokens;
     logged_msgs_ = 0;
     last_checkpoint_hint_turn_ = 0;
     urgent_hints_ignored_ = 0;

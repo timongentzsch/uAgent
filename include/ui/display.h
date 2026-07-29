@@ -5,6 +5,7 @@
 // Terminal rendering for the REPL: path abbreviation, the model and
 // route listings, completion setup, and the status line.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -45,8 +46,9 @@ inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
 #endif
 
 inline void PrintModelRoutes(const std::vector<ModelRoute>& routes,
+                             const std::vector<NamedProvider>& providers,
                              const Api& api) {
-  if (routes.empty()) {
+  if (routes.empty() && providers.empty()) {
     printf("%s* %-20s %s @ %s%s\n", BOLD(), api.model.c_str(),
            api.model.c_str(), ApiHost(api.base_url).c_str(), RST());
     return;
@@ -59,28 +61,44 @@ inline void PrintModelRoutes(const std::vector<ModelRoute>& routes,
     if (!route.effort.empty()) printf(" · %s", route.effort.c_str());
     printf(" @ %s%s\n", ApiHost(route.base_url).c_str(), RST());
   }
+  for (const NamedProvider& provider : providers) {
+    bool has_static_models =
+        std::any_of(routes.begin(), routes.end(), [&](const ModelRoute& route) {
+          return route.name.starts_with(provider.name + "/");
+        });
+    if (has_static_models) continue;
+    bool active = provider.base_url == api.base_url;
+    printf("%s%c %-20s live catalog @ %s%s\n", active ? BOLD() : DIM(),
+           active ? '*' : ' ', (provider.name + "/*").c_str(),
+           ApiHost(provider.base_url).c_str(), RST());
+  }
 }
 
-inline void PrintAvailableModels(Api& api, std::string filter) {
-  printf("%s· querying %s/models…%s\n", DIM(), ApiHost(api.base_url).c_str(),
+inline void PrintAvailableModels(Api& api, std::string filter,
+                                 const NamedProvider* provider = nullptr) {
+  std::string base_url = provider ? provider->base_url : api.base_url;
+  printf("%s· querying %s/models…%s\n", DIM(), ApiHost(base_url).c_str(),
          RST());
   std::optional<std::vector<ModelInfo>> models =
-      QueryModels(api, std::move(filter));
+      provider ? QueryModels(api, *provider, std::move(filter))
+               : QueryModels(api, std::move(filter));
   if (!models) {
     printf("%s· model catalog unavailable%s\n", RED(), RST());
     return;
   }
   for (const ModelInfo& model : *models) {
-    bool active = model.id == api.model;
+    std::string selection =
+        provider ? provider->name + "/" + model.id : model.id;
+    bool active = base_url == api.base_url && model.id == api.model;
 #if defined(HAVE_EDITLINE)
-    RegisterCompletion(CommandCompletion::kModels, model.id);
+    RegisterCompletion(CommandCompletion::kModels, selection);
 #endif
     if (active && model.context > 0) {
       api.ctx_window = model.context;
       setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
     }
     printf("%s%c %s", active ? BOLD() : DIM(), active ? '*' : ' ',
-           model.id.c_str());
+           selection.c_str());
     if (model.context > 0) {
       printf(" · ctx %s", FmtTokens(model.context).c_str());
     }

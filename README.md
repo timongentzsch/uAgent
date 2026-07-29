@@ -31,6 +31,9 @@ project `.env` files are never loaded. Named OpenAI-compatible routes can be
 defined with `UAGENT_PROVIDERS`. Legacy `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
 and `UAGENT_MODEL` configuration remains supported.
 
+Provider models need not be duplicated in config: `/models NAME` queries that
+provider's live catalog, and `/model NAME/MODEL` switches lazily.
+
 A workspace opts into its own settings by creating a `.uagent` directory. Its
 `.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
 `run_python` keeps its uv environments in `.uagent/uv` instead of the user-level
@@ -131,9 +134,10 @@ increasing precedence, deduplicated by name:
 
 A workspace skill therefore overrides a user one, and µAgent's own overrides a
 vendor copy of the same name. `UAGENT_SKILL_PATH` replaces the list outright
-with a colon-separated one. Startup reports how many were found and what their
-descriptions cost per request, since that part of a skill is always sent.
-If the configured count limit is reached, higher-precedence entries displace
+with a colon-separated one; `UAGENT_SKILL_EXCLUDE` hides comma-separated names
+without changing discovery. Startup reports how many were found and what their
+descriptions cost per request, since that part of a skill is always sent. If
+the configured count limit is reached, higher-precedence entries displace
 lower-precedence ones.
 
 `SKILL.md` may reference sibling files; the tool result names the skill's
@@ -178,7 +182,7 @@ debugging at `chrome://inspect/#remote-debugging`.
 | --- | --- |
 | `/attach PATH`, `/detach` | Manage next-turn attachments |
 | `/sessions`, `/reset` | Resume or reset a session |
-| `/models [FILTER\|all]`, `/model MODEL` | Query or switch models |
+| `/models [PROVIDER\|FILTER\|all]`, `/model MODEL` | Query or switch models |
 | `/effort LEVEL\|default` | Set provider reasoning effort |
 | `/compact` | Summarize active history |
 | `/trace` | Show the latest completed tool/search trace |

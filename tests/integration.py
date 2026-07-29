@@ -209,6 +209,22 @@ def test_plain_turn(root, home):
         server.close()
 
 
+def test_command_help(root, home):
+    server = Server([event({"content": "unused"})])
+    try:
+        result = run_dialog(root, base_env(home, server.url), "/wat\n/help\n/q\n")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
+        assert_true("commands\n" in result.stdout, result.stdout)
+        assert_true("  /attach PATH" in result.stdout, result.stdout)
+        assert_true("attach a file to the next turn" in result.stdout, result.stdout)
+        assert_true("  /help" in result.stdout, result.stdout)
+        assert_true("show this help" in result.stdout, result.stdout)
+        assert_true("commands:" not in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
 def test_project_instructions_precede_first_turn(root, home):
     workspace = root / "instructions-workspace"
     nested = workspace / "nested"
@@ -1404,7 +1420,11 @@ def test_model_route_switch(root, home):
 
 
 def test_dynamic_provider_catalog_and_model(root, home):
-    first = Server([event({"content": "original-route-ok"})])
+    active_catalog = {"data": [{"id": "active-live"}]}
+    first = Server(
+        [event({"content": "original-route-ok"})],
+        get_response=active_catalog,
+    )
 
     def switched(handler, body):
         valid = (
@@ -1428,16 +1448,21 @@ def test_dynamic_provider_catalog_and_model(root, home):
         catalog_result = run_dialog(
             root,
             env,
-            "/models second\nprobe\n/q\n",
+            "/models second/*\n/models all\nprobe\n/q\n",
         )
         assert_true(catalog_result.returncode == 0, catalog_result.stderr)
         assert_true(
-            "querying 127.0.0.1/models" in catalog_result.stdout,
+            "querying second @ 127.0.0.1" in catalog_result.stdout,
             catalog_result.stdout,
         )
         assert_true("second/gpt-live" in catalog_result.stdout, catalog_result.stdout)
+        assert_true("active-live" in catalog_result.stdout, catalog_result.stdout)
         assert_true("original-route-ok" in catalog_result.stdout, catalog_result.stdout)
-        assert_true(second.get_requests == ["/v1/models"], second.get_requests)
+        assert_true(
+            second.get_requests == ["/v1/models", "/v1/models"],
+            second.get_requests,
+        )
+        assert_true(first.get_requests == ["/v1/models"], first.get_requests)
         assert_true(len(first.requests) == 1, first.requests)
 
         selected = run_dialog(
@@ -1447,7 +1472,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         )
         assert_true(selected.returncode == 0, selected.stderr)
         assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
-        assert_true(second.get_requests == ["/v1/models"], second.get_requests)
+        assert_true(len(second.get_requests) == 2, second.get_requests)
 
         restart_env = base_env(home, first.url)
         restart_env["UAGENT_PROVIDERS"] = json.dumps(providers)
@@ -2583,6 +2608,7 @@ def main():
         home.mkdir()
         tests = [
             test_plain_turn,
+            test_command_help,
             test_project_instructions_precede_first_turn,
             test_attach_tool_puts_bytes_in_context,
             test_attach_flag_headless,

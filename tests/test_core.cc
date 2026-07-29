@@ -1068,6 +1068,14 @@ void TestNamedProviders() {
   CHECK(dynamic.has_value());
   CHECK(dynamic && dynamic->model == "org/model");
   CHECK(dynamic && dynamic->context == 16384);
+  std::optional<ModelQuery> all =
+      ResolveProviderQuery(catalog.providers, "codex-local/*");
+  CHECK(all && all->provider == codex && all->filter.empty());
+  std::optional<ModelQuery> filtered =
+      ResolveProviderQuery(catalog.providers, "codex-local/gpt-5.6");
+  CHECK(filtered && filtered->provider == codex);
+  CHECK(filtered && filtered->filter == "gpt-5.6");
+  CHECK(!ResolveProviderQuery(catalog.providers, "unknown/filter"));
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   CHECK(fixed.has_value());

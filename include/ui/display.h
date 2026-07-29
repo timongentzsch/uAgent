@@ -74,17 +74,19 @@ inline void PrintModelRoutes(const std::vector<ModelRoute>& routes,
   }
 }
 
-inline void PrintAvailableModels(Api& api, std::string filter,
-                                 const NamedProvider* provider = nullptr) {
+inline size_t PrintAvailableModels(Api& api, std::string filter,
+                                   const NamedProvider* provider = nullptr,
+                                   bool show_count = true) {
   std::string base_url = provider ? provider->base_url : api.base_url;
-  printf("%s· querying %s/models…%s\n", DIM(), ApiHost(base_url).c_str(),
-         RST());
+  std::string label =
+      provider ? provider->name + " @ " + ApiHost(base_url) : ApiHost(base_url);
+  printf("%s· querying %s…%s\n", DIM(), label.c_str(), RST());
   std::optional<std::vector<ModelInfo>> models =
       provider ? QueryModels(api, *provider, std::move(filter))
                : QueryModels(api, std::move(filter));
   if (!models) {
-    printf("%s· model catalog unavailable%s\n", RED(), RST());
-    return;
+    printf("%s· %s catalog unavailable%s\n", RED(), label.c_str(), RST());
+    return 0;
   }
   for (const ModelInfo& model : *models) {
     std::string selection =
@@ -113,8 +115,25 @@ inline void PrintAvailableModels(Api& api, std::string filter,
     }
     printf("%s\n", RST());
   }
-  printf("%s· %zu model%s%s\n", DIM(), models->size(),
-         models->size() == 1 ? "" : "s", RST());
+  if (show_count) {
+    printf("%s· %zu model%s%s\n", DIM(), models->size(),
+           models->size() == 1 ? "" : "s", RST());
+  }
+  return models->size();
+}
+
+inline void PrintAllModels(Api& api,
+                           const std::vector<NamedProvider>& providers) {
+  bool active_is_named = std::any_of(providers.begin(), providers.end(),
+                                     [&](const NamedProvider& provider) {
+                                       return provider.base_url == api.base_url;
+                                     });
+  size_t count =
+      active_is_named ? 0 : PrintAvailableModels(api, "", nullptr, false);
+  for (const NamedProvider& provider : providers) {
+    count += PrintAvailableModels(api, "", &provider, false);
+  }
+  printf("%s· %zu model%s%s\n", DIM(), count, count == 1 ? "" : "s", RST());
 }
 
 // Prompt metadata stays in normal scrollback rather than a pinned TUI region.

@@ -34,6 +34,7 @@ enum class SlashCommandId {
   kCompact,
   kDetach,
   kEffort,
+  kHelp,
   kModel,
   kModels,
   kOnline,
@@ -48,32 +49,41 @@ struct SlashCommandSpec {
   SlashCommandId id;
   const char* name;
   const char* argument;
+  const char* description;
   CommandCompletion completion;
-  bool visible;
 };
 
 inline constexpr SlashCommandSpec kSlashCommands[] = {
-    {SlashCommandId::kAttach, "/attach", "PATH", CommandCompletion::kFilenames,
-     true},
-    {SlashCommandId::kCompact, "/compact", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kDetach, "/detach", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kEffort, "/effort", "LEVEL", CommandCompletion::kEfforts,
-     true},
-    {SlashCommandId::kModel, "/model", "NAME", CommandCompletion::kModels,
-     true},
-    {SlashCommandId::kModels, "/models", "[FILTER|all]",
-     CommandCompletion::kNone, true},
-    {SlashCommandId::kOnline, "/online", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kQuit, "/quit", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kReset, "/reset", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kSessions, "/sessions", "", CommandCompletion::kNone,
-     true},
-    {SlashCommandId::kTrace, "/trace", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kYolo, "/yolo", "", CommandCompletion::kNone, true},
-    {SlashCommandId::kQuit, "/exit", "", CommandCompletion::kNone, false},
-    {SlashCommandId::kQuit, "/q", "", CommandCompletion::kNone, false},
-    {SlashCommandId::kReset, "/clear", "", CommandCompletion::kNone, false},
-    {SlashCommandId::kReset, "/new", "", CommandCompletion::kNone, false},
+    {SlashCommandId::kAttach, "/attach", "PATH",
+     "attach a file to the next turn", CommandCompletion::kFilenames},
+    {SlashCommandId::kCompact, "/compact", "", "summarize active context",
+     CommandCompletion::kNone},
+    {SlashCommandId::kDetach, "/detach", "", "clear pending attachments",
+     CommandCompletion::kNone},
+    {SlashCommandId::kEffort, "/effort", "LEVEL", "set reasoning effort",
+     CommandCompletion::kEfforts},
+    {SlashCommandId::kHelp, "/help", "", "show this help",
+     CommandCompletion::kNone},
+    {SlashCommandId::kModel, "/model", "NAME", "switch model or provider",
+     CommandCompletion::kModels},
+    {SlashCommandId::kModels, "/models", "[TARGET]",
+     "query provider, filter, or all", CommandCompletion::kNone},
+    {SlashCommandId::kOnline, "/online", "", "toggle OpenRouter web search",
+     CommandCompletion::kNone},
+    {SlashCommandId::kQuit, "/quit", "", "exit µAgent",
+     CommandCompletion::kNone},
+    {SlashCommandId::kReset, "/reset", "", "start a fresh session",
+     CommandCompletion::kNone},
+    {SlashCommandId::kSessions, "/sessions", "", "resume a saved session",
+     CommandCompletion::kNone},
+    {SlashCommandId::kTrace, "/trace", "", "show latest tool and search trace",
+     CommandCompletion::kNone},
+    {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval",
+     CommandCompletion::kNone},
+    {SlashCommandId::kQuit, "/exit", "", "", CommandCompletion::kNone},
+    {SlashCommandId::kQuit, "/q", "", "", CommandCompletion::kNone},
+    {SlashCommandId::kReset, "/clear", "", "", CommandCompletion::kNone},
+    {SlashCommandId::kReset, "/new", "", "", CommandCompletion::kNone},
 };
 
 inline const SlashCommandSpec* SlashCommand(const std::string& name) {
@@ -100,14 +110,21 @@ inline ParsedSlashCommand ParseSlashCommand(const std::string& input) {
 }
 
 inline void PrintCommandHelp() {
-  printf("%scommands:", DIM());
+  size_t width = 0;
   for (const SlashCommandSpec& command : kSlashCommands) {
-    if (command.visible) {
-      printf(" %s%s%s", command.name, *command.argument ? " " : "",
-             command.argument);
-    }
+    if (!*command.description) continue;
+    width = std::max(
+        width, strlen(command.name) +
+                   (*command.argument ? strlen(command.argument) + 1 : 0));
   }
-  printf("%s\n", RST());
+  printf("%scommands%s\n", BOLD(), RST());
+  for (const SlashCommandSpec& command : kSlashCommands) {
+    if (!*command.description) continue;
+    std::string usage = command.name;
+    if (*command.argument) usage += " " + std::string(command.argument);
+    printf("  %s%-*s%s  %s%s%s\n", BOLD(), static_cast<int>(width),
+           usage.c_str(), RST(), DIM(), command.description, RST());
+  }
 }
 
 #if defined(HAVE_EDITLINE)
@@ -235,7 +252,7 @@ inline void ConfigureCompletion(const std::vector<std::string>& models,
   readline_models = models;
   readline_efforts = efforts;
   for (const SlashCommandSpec& command : kSlashCommands) {
-    if (command.visible) readline_commands.push_back(command.name);
+    if (*command.description) readline_commands.push_back(command.name);
   }
   std::sort(readline_models.begin(), readline_models.end());
   std::sort(readline_efforts.begin(), readline_efforts.end());

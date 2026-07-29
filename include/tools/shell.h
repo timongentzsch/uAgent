@@ -356,8 +356,9 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
   if (exit_code == 1) return ToolSuccess("(no matches)");
   if (exit_code == 141) {
     std::string suffix = FmtExit(*execution.wait_status, false);
-    if (output.size() >= suffix.size())
+    if (output.size() >= suffix.size()) {
       output.resize(output.size() - suffix.size());
+    }
   } else if (!outcome.Ok()) {
     if (outcome.error != ToolErrorCode::kProcessFailed) {
       outcome.output = std::move(output);

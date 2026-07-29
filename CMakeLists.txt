@@ -28,8 +28,12 @@ endif()
 
 add_library(
   uagent_core
+  src/agent/checkpoint.cc
   src/agent/session_store.cc
+  src/agent/tool_loop.cc
   src/api/openai_stream.cc
+  src/app/options.cc
+  src/app/runtime.cc
   src/transport/sse.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
 

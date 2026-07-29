@@ -1,8 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_AGENT_CHECKPOINT_IMPL_H_
-#define UAGENT_INCLUDE_AGENT_CHECKPOINT_IMPL_H_
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -13,16 +10,19 @@
 #include <utility>
 #include <vector>
 
-namespace uagent {
+#include "include/agent.h"
 
-inline std::string CheckpointDisplayPath(const std::filesystem::path& path) {
+namespace uagent {
+namespace {
+
+std::string CheckpointDisplayPath(const std::filesystem::path& path) {
   std::error_code error;
   std::string display =
       std::filesystem::relative(path, CanonicalCwd(), error).string();
   return error || display.empty() ? path.string() : display;
 }
 
-inline const char* CheckpointPathError(const std::filesystem::path& path) {
+const char* CheckpointPathError(const std::filesystem::path& path) {
   if (!PathWithin(path, CanonicalAccessPath(CanonicalCwd()))) {
     return "checkpoint paths must stay inside the workspace";
   }
@@ -31,7 +31,9 @@ inline const char* CheckpointPathError(const std::filesystem::path& path) {
              : nullptr;
 }
 
-inline void Agent::InvalidatePendingCheckpoint(const char* reason) {
+}  // namespace
+
+void Agent::InvalidatePendingCheckpoint(const char* reason) {
   if (!pending_checkpoint_.is_object()) return;
   DebugLog(
       "checkpoint_invalidated",
@@ -41,8 +43,7 @@ inline void Agent::InvalidatePendingCheckpoint(const char* reason) {
   pending_checkpoint_ = nullptr;
 }
 
-inline void Agent::RecordSideEffect(const CallTask& task,
-                                    const ToolCall& call) {
+void Agent::RecordSideEffect(const CallTask& task, const ToolCall& call) {
   if (!task.execute || !task.tool || !task.tool->mutating) return;
   json entry = {
       {"turn", turn_id_}, {"tool", call.name}, {"status", task.trace_status}};
@@ -56,7 +57,7 @@ inline void Agent::RecordSideEffect(const CallTask& task,
   }
 }
 
-inline void Agent::ApplyPendingCheckpoint() {
+void Agent::ApplyPendingCheckpoint() {
   if (!pending_checkpoint_.is_object()) return;
   if (api_.config.checkpoint_mode != "apply") {
     InvalidatePendingCheckpoint("apply mode is no longer active");
@@ -100,10 +101,10 @@ inline void Agent::ApplyPendingCheckpoint() {
   ApplyCheckpoint(state, paths, results, verbatim);
 }
 
-inline void Agent::ApplyCheckpoint(
-    const std::string& state, const std::vector<std::filesystem::path>& paths,
-    const std::vector<std::string>& results,
-    const std::vector<std::string>& verbatim) {
+void Agent::ApplyCheckpoint(const std::string& state,
+                            const std::vector<std::filesystem::path>& paths,
+                            const std::vector<std::string>& results,
+                            const std::vector<std::string>& verbatim) {
   int64_t before_tokens = ContextUsed();
   size_t before_messages = messages_.size();
   int64_t artifact_budget = std::max(int64_t{1024}, ToolResultCap());
@@ -190,8 +191,8 @@ inline void Agent::ApplyCheckpoint(
          retained_results, retained_results == 1 ? "" : "s", RST());
 }
 
-inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
-                                     int64_t& tool_count, int64_t step) {
+bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
+                              int64_t& tool_count, int64_t step) {
   if (g_debug.Enabled()) {
     g_debug.Write("tool_call", {{"turn", turn_id_},
                                 {"step", step},
@@ -361,5 +362,3 @@ inline bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
 }
 
 }  // namespace uagent
-
-#endif  // UAGENT_INCLUDE_AGENT_CHECKPOINT_IMPL_H_

@@ -391,12 +391,12 @@ int Main(int argc, char** argv) {
   std::vector<Tool> tools =
       BuiltinTools(processes, CanonicalAccessPath(CanonicalCwd()),
                    inline_images, &side_tasks);
-  bool has_openrouter = OpenrouterCompatibleUrl(api.base_url) ||
-                        std::any_of(model_routes.begin(), model_routes.end(),
-                                    [](const ModelRoute& route) {
-                                      return OpenrouterCompatibleUrl(
-                                          route.base_url);
-                                    });
+  bool has_openrouter =
+      OpenrouterCompatibleUrl(api.base_url) ||
+      std::any_of(model_routes.begin(), model_routes.end(),
+                  [](const ModelRoute& route) {
+                    return OpenrouterCompatibleUrl(route.base_url);
+                  });
   if (has_openrouter) {
     tools.push_back(
         WebSearchTool(api, side_usage, side_tasks));  // billed side-request

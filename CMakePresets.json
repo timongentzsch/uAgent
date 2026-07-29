@@ -44,6 +44,28 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "UAGENT_BUILD_BENCHMARKS": "ON"
       }
+    },
+    {
+      "name": "tsan",
+      "inherits": "debug",
+      "cacheVariables": {
+        "UAGENT_ENABLE_TSAN": "ON"
+      }
+    },
+    {
+      "name": "coverage",
+      "inherits": "debug",
+      "cacheVariables": {
+        "UAGENT_ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "fuzz",
+      "inherits": "debug",
+      "cacheVariables": {
+        "BUILD_TESTING": "OFF",
+        "UAGENT_BUILD_FUZZERS": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -62,6 +84,18 @@
     {
       "name": "tidy",
       "configurePreset": "tidy"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
     }
   ],
   "testPresets": [
@@ -86,6 +120,23 @@
         "ASAN_OPTIONS": "detect_leaks=1:strict_string_checks=1",
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
       },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1:second_deadlock_stack=1"
+      },
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
       "output": {
         "outputOnFailure": true
       }

@@ -10,15 +10,18 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <map>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "include/api/citations.h"
 #include "include/api/openai_stream.h"
+#include "include/api/retry.h"
 #include "include/api/types.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
@@ -68,6 +71,7 @@ struct StreamCtx {
   enum class Show { kUndecided, kPrint, kSuppress } show = Show::kUndecided;
 
   void MarkEvent() {
+    res->semantic_progress = true;
     if (res->first_event_ms < 0) res->first_event_ms = ElapsedMs(started);
   }
 
@@ -274,6 +278,75 @@ class Api {
       return res;
     }
 
+    int64_t request_timeout =
+        timeout_s > 0 ? timeout_s : config.request_timeout_s;
+    auto started = std::chrono::steady_clock::now();
+    auto deadline = started + std::chrono::seconds(request_timeout);
+    for (int attempt = 1; attempt <= kChatAttempts; ++attempt) {
+      int64_t attempt_timeout = request_timeout;
+      if (request_timeout > 0) {
+        auto remaining = std::chrono::duration_cast<std::chrono::seconds>(
+            deadline - std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(999));
+        if (remaining.count() <= 0) {
+          res.error = "request deadline exhausted before retry";
+          res.duration_ms = ElapsedMs(started);
+          return res;
+        }
+        attempt_timeout = remaining.count();
+      }
+      auto attempt_started = std::chrono::steady_clock::now();
+      res = PerformChat(payload, web_available, attempt_timeout, session_id);
+      if (res.first_event_ms >= 0) {
+        res.first_event_ms +=
+            std::chrono::duration<double, std::milli>(attempt_started - started)
+                .count();
+      }
+      res.duration_ms = ElapsedMs(started);
+      if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
+
+      uint64_t jitter_seed = static_cast<uint64_t>(
+          std::chrono::steady_clock::now().time_since_epoch().count());
+      std::chrono::milliseconds delay = RetryDelay(attempt, jitter_seed);
+      if (request_timeout > 0 &&
+          std::chrono::steady_clock::now() + delay >= deadline) {
+        return res;
+      }
+      DebugLog("api_retry", {{"attempt", attempt},
+                             {"max_attempts", kChatAttempts},
+                             {"delay_ms", delay.count()},
+                             {"http_status", res.http_status},
+                             {"remote_error_type", res.remote_error_type},
+                             {"remote_error_code", res.remote_error_code}});
+      if (render_stream) {
+        printf("%s· transient provider failure — retry %d/%d in %.1fs%s\n",
+               DIM(), attempt, kChatAttempts - 1, delay.count() / 1000.0,
+               RST());
+      }
+      if (!WaitForRetry(delay)) {
+        res.error.clear();
+        res.interrupted = true;
+        return res;
+      }
+    }
+    return res;
+  }
+
+  // quiet JSON POST — no streaming, no printing; Ctrl+C cancels.
+  // Used by the web_search tool's side-request.
+  json Post(const std::string& path, const json& body, int64_t timeout_s = 120,
+            const std::atomic<bool>* cancel = nullptr) {
+    std::string payload = JsonDump(body);
+    return Fetch(path, &payload, timeout_s, /*abortable=*/true, cancel);
+  }
+
+  // GET base_url+path, parsed JSON (discarded value on failure)
+  json Get(const std::string& path) { return Fetch(path, nullptr, 15, false); }
+
+ private:
+  ChatResult PerformChat(const std::string& payload, bool web_available,
+                         int64_t timeout_s, const std::string& session_id) {
+    ChatResult res;
     CURL* h = Prepare(base_url + "/chat/completions");
     if (!h) {
       res.error = "curl init failed";
@@ -304,17 +377,13 @@ class Api {
                      static_cast<curl_off_t>(payload.size()));
     curl_easy_setopt(
         h, CURLOPT_WRITEFUNCTION,
-        +[](char* d, size_t s, size_t n, void* u) -> size_t {
-          std::optional<size_t> bytes = CheckedMul(s, n);
-          return bytes ? static_cast<StreamCtx*>(u)->Feed(d, *bytes) : 0;
+        +[](char* data, size_t size, size_t count, void* user) -> size_t {
+          std::optional<size_t> bytes = CheckedMul(size, count);
+          return bytes ? static_cast<StreamCtx*>(user)->Feed(data, *bytes) : 0;
         });
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &ctx);
     SetAbortable(h, &ctx);
-    int64_t request_timeout =
-        timeout_s > 0 ? timeout_s : config.request_timeout_s;
-    if (request_timeout > 0) {
-      curl_easy_setopt(h, CURLOPT_TIMEOUT, request_timeout);
-    }
+    if (timeout_s > 0) curl_easy_setopt(h, CURLOPT_TIMEOUT, timeout_s);
 
     SteeringGuard steering;
     std::string activity =
@@ -325,13 +394,13 @@ class Api {
     CURLcode rc = CURLE_OK;
     bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
     steering.Stop();
-    ctx.BeginOutput();  // stops the spinner if nothing was ever printed
+    ctx.BeginOutput();
     ctx.Finish();
     if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
-      ctx.OutputText(res.content);  // held fragment that never resolved
+      ctx.OutputText(res.content);
     }
     if (ctx.render_output) {
-      ctx.md.Flush();  // resolve open styles or a trailing table
+      ctx.md.Flush();
       if (ctx.in_reasoning) printf("%s\n", RST());
     }
     res.duration_ms = ElapsedMs(ctx.started);
@@ -348,35 +417,46 @@ class Api {
     if (!res.error.empty()) return res;
     if (rc != CURLE_OK) {
       res.error = std::string("connection error: ") + curl_easy_strerror(rc);
+      res.retryable = true;
       return res;
     }
-    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE,
-                      &res.http_status);  // even bodiless replies
+    curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &res.http_status);
     if (res.http_status >= 400) {
-      std::string msg = ctx.error_body;
+      std::string message = ctx.error_body;
       json error_response = json::parse(ctx.error_body, nullptr, false);
-      msg = JsonErrorMessage(error_response, std::move(msg));
-      res.error = "HTTP " + std::to_string(res.http_status) + ": " + msg;
+      if (error_response.is_object() && error_response.contains("error")) {
+        const json& error = error_response["error"];
+        res.remote_error_type = JsonValue(error, "type", "");
+        res.remote_error_code = JsonValue(error, "code", "");
+      }
+      message = JsonErrorMessage(error_response, std::move(message));
+      res.error = "HTTP " + std::to_string(res.http_status) + ": " + message;
+      res.retryable =
+          RetryableHttpStatus(res.http_status) ||
+          RetryableRemoteError(res.remote_error_type, res.remote_error_code);
       return res;
     }
-    for (auto& [idx, tc] : ctx.calls) {
-      if (!tc.name.empty()) res.tool_calls.push_back(tc);
+    for (auto& [index, call] : ctx.calls) {
+      (void)index;
+      if (!call.name.empty()) res.tool_calls.push_back(std::move(call));
     }
     return res;
   }
 
-  // quiet JSON POST — no streaming, no printing; Ctrl+C cancels.
-  // Used by the web_search tool's side-request.
-  json Post(const std::string& path, const json& body, int64_t timeout_s = 120,
-            const std::atomic<bool>* cancel = nullptr) {
-    std::string payload = JsonDump(body);
-    return Fetch(path, &payload, timeout_s, /*abortable=*/true, cancel);
+  bool WaitForRetry(std::chrono::milliseconds delay) const {
+    TerminalSpinner spinner(render_stream, SpinnerLabel("retrying"));
+    auto deadline = std::chrono::steady_clock::now() + delay;
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (AbortRequested()) return false;
+      auto remaining = deadline - std::chrono::steady_clock::now();
+      auto quantum =
+          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              std::chrono::milliseconds(50));
+      std::this_thread::sleep_for(std::min(remaining, quantum));
+    }
+    return !AbortRequested();
   }
 
-  // GET base_url+path, parsed JSON (discarded value on failure)
-  json Get(const std::string& path) { return Fetch(path, nullptr, 15, false); }
-
- private:
   // shared non-streaming request: POSTs payload when given, else GETs;
   // returns parsed JSON (discarded value on failure)
   json Fetch(const std::string& path, const std::string* payload,

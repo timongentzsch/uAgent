@@ -39,7 +39,7 @@ stable.
 5. Commit immediately before the next real user message.
 6. Invalidate pending state after a failed turn or while background work lives.
 7. Archive removed raw traces within the configured local byte limit.
-8. Retain legacy `/compact` as a 95% emergency path.
+8. Keep manual `/compact` and use compaction as the 95% emergency path.
 
 Projected occupancy includes an output reserve. Folding deliberately gives up
 the old prefix cache; it should happen once at a useful boundary, not as a

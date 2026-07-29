@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_AGENT_PROTOCOL_H_
 #define UAGENT_INCLUDE_AGENT_PROTOCOL_H_
 // The text-protocol fallback used when a server rejects native `tools`,
-// the system prompt, and the predicates classifying a stored message.
+// and the system prompt.
 
 #include <cstdint>
 #include <filesystem>
@@ -121,27 +121,6 @@ inline std::string TextProtocolPrompt(const std::vector<Tool>& tools,
     s += t.name + "(" + args + ")\n";
   }
   return s;
-}
-
-inline bool InternalUserText(const std::string& text) {
-  static constexpr const char* kPrefixes[] = {
-      "[now ",
-      "[tool_result ",
-      "[Background result:",
-      "[context checkpoint ",
-      "[checkpoint",
-      "# AGENTS.md instructions for ",
-      "Prior context:",
-      "(response interrupted; partial output was discarded)",
-  };
-  for (const char* prefix : kPrefixes) {
-    if (text.starts_with(prefix)) return true;
-  }
-  return false;
-}
-
-inline bool InternalAssistantText(const std::string& text) {
-  return text.starts_with("[checkpoint ");
 }
 
 inline bool SecretCheckpointPath(const std::filesystem::path& path) {

@@ -30,8 +30,12 @@ struct ChatResult {
   double duration_ms = -1;
   std::string finish_reason;
   std::string error;
+  std::string remote_error_type;
+  std::string remote_error_code;
   bool interrupted = false;
   bool suppressed = false;
+  bool semantic_progress = false;
+  bool retryable = false;
 };
 
 }  // namespace uagent

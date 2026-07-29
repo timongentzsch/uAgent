@@ -24,6 +24,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/context_policy.h"
+#include "include/agent/conversation.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
@@ -44,6 +46,7 @@
 #include "include/tools/jobs.h"
 #include "include/tools/process.h"
 #include "include/tools/tool.h"
+#include "include/ui/conversation.h"
 #include "third_party/json.hpp"
 
 namespace uagent {
@@ -89,25 +92,20 @@ class Agent {
   }
 
   void Reset() {
-    DebugLog("session_reset", {{"dropped_messages", messages_.size()},
+    DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                                {"prior_usage", UsageJson(session_usage_)}});
     turn_time_ = LocalStamp();
-    messages_ = BaselineMessages();
-    archive_ = json::array();
-    archive_bytes_ = 0;
-    archive_dropped_segments_ = 0;
+    conversation_.Reset(BaselineMessages(), BaselineKinds());
     turn_search_trace_.Reset();
     checkpoint_candidates_ = json::array();
     pending_checkpoint_ = nullptr;
     side_effects_ = json::array();
     session_usage_ = Usage{};
-    ctx_used_ = 0;
+    context_policy_.Reset();
     logged_msgs_ = 0;
     total_user_turns_ = 0;
     session_title_.clear();
     session_id_ = MakeSessionId();
-    last_checkpoint_hint_turn_ = 0;
-    urgent_hints_ignored_ = 0;
     last_checkpoint_turn_ = 0;
     g_image_input = true;
     ++revision_;
@@ -116,35 +114,26 @@ class Agent {
   const Usage& SessionUsage() const { return session_usage_; }
   const std::string& LastError() const { return last_error_; }
   const std::string& SessionId() const { return session_id_; }
-  size_t ArchivedSegments() const { return archive_.size(); }
-  int64_t ArchivedBytes() const { return archive_bytes_; }
-  int64_t ArchiveDroppedSegments() const { return archive_dropped_segments_; }
+  size_t ArchivedSegments() const { return conversation_.ArchivedSegments(); }
+  int64_t ArchivedBytes() const { return conversation_.ArchivedBytes(); }
+  int64_t ArchiveDroppedSegments() const {
+    return conversation_.DroppedSegments();
+  }
   size_t CheckpointCandidates() const { return checkpoint_candidates_.size(); }
   uint64_t Revision() const { return revision_; }
 
   // Show the most recent completed turn's pruned tool traffic without keeping
   // a second transcript. Server search can expose sources and snippets, but
   // not necessarily the provider-internal query.
-  void PrintTrace() const { PrintLatestTrace(archive_, tools_); }
+  void PrintTrace() const { PrintLatestTrace(conversation_.Archive(), tools_); }
 
   // final assistant prose — the whole result of a headless (-p) run
-  std::string LastText() const {
-    for (auto it = messages_.rbegin(); it != messages_.rend(); ++it) {
-      if (it->value("role", "") == "assistant" &&
-          !it->value("content", "").empty()) {
-        std::string text = it->value("content", "");
-        if (!InternalAssistantText(text)) return text;
-      }
-    }
-    return "";
-  }
+  std::string LastText() const { return conversation_.LastAssistantText(); }
 
-  size_t MessageCount() const {
-    return messages_.size() - (project_instructions_.text.empty() ? 0 : 1);
-  }
+  size_t MessageCount() const { return conversation_.UserVisibleCount(); }
 
   void RouteChanged() {
-    ctx_used_ = 0;
+    context_policy_.SetReported(0);
     session_id_ = MakeSessionId();
     g_image_input = true;
     ++revision_;
@@ -153,79 +142,28 @@ class Agent {
   // first user message, for the session picker's one-line title
   std::string FirstUserText() const {
     if (!session_title_.empty()) return session_title_;
-    for (const auto& m : messages_) {
-      if (JsonValue(m, "role", "") == "user" && m["content"].is_string()) {
-        std::string text = m["content"].get<std::string>();
-        if (!InternalUserText(text)) return FirstLine(text);
-      }
-    }
-    return "(no messages)";
+    return conversation_.FirstUserText();
   }
 
-  // Real user prompts, derived from messages_ so the count survives a resume.
-  // Some protocol records also use role "user"; exclude only those explicit
-  // formats so prompts such as "[priority] fix this" remain user-owned state.
+  // Real user prompts are tracked out of band from model-readable text.
   int64_t UserTurns() const {
     if (total_user_turns_ > 0) return total_user_turns_;
-    int64_t n = 0;
-    for (const auto& m : messages_) {
-      if (JsonValue(m, "role", "") == "user" && m["content"].is_string() &&
-          !InternalUserText(m["content"].get<std::string>())) {
-        ++n;
-      }
-    }
-    return n;
+    return conversation_.UserTurns();
   }
 
   // Replay the conversation to the terminal, in the live REPL's visual
   // language (user prompts, rendered assistant prose, dim tool traffic), so a
   // resumed session shows the context it is picking up from.
-  void PrintHistory() const {
-    static const json kEmpty;
-    for (const auto& m : messages_) {
-      const std::string role = JsonValue(m, "role", "");
-      const json& content = m.contains("content") ? m["content"] : kEmpty;
-      if (role == "system") continue;
-      if (role == "tool" && content.is_string()) {  // native tool result
-        PrintToolResultText(content.get<std::string>());
-      } else if (role == "assistant") {
-        if (content.is_string() && !content.get<std::string>().empty()) {
-          std::string text = content.get<std::string>();
-          if (InternalAssistantText(text)) {
-            printf("%s  ← %s%s\n", DIM(), TerminalSafe(FirstLine(text)).c_str(),
-                   RST());
-          } else {
-            MdPrint(text);
-            printf("\n");
-          }
-        }
-        if (m.contains("tool_calls")) {
-          for (const auto& tc : m["tool_calls"]) {
-            PrintToolCallSummary(tc, tools_);
-          }
-        }
-      } else if (role == "user" && content.is_string()) {
-        std::string c = content.get<std::string>();
-        if (InternalUserText(c)) {
-          printf("%s  ← %s%s\n", DIM(), TerminalSafe(FirstLine(c)).c_str(),
-                 RST());
-        } else {
-          std::string safe = TerminalSafe(c);
-          printf("%s> %s%s\n", BOLD(), safe.c_str(), RST());
-        }
-      } else if (role == "user") {
-        printf("%s> [attachment]%s\n", BOLD(), RST());
-      }
-    }
-  }
+  void PrintHistory() const { PrintConversationHistory(conversation_, tools_); }
 
   bool Save(const std::string& path, std::string& error) const {
     SessionRecord record;
     record.metadata = {CanonicalCwd(), api_.model, session_id_, UserTurns(),
                        FirstUserText()};
-    record.state = {messages_,
-                    archive_,
-                    archive_dropped_segments_,
+    record.state = {conversation_.Messages(),
+                    conversation_.Kinds(),
+                    conversation_.Archive(),
+                    conversation_.DroppedSegments(),
                     checkpoint_candidates_,
                     pending_checkpoint_,
                     side_effects_,
@@ -247,14 +185,15 @@ class Agent {
       return false;
     }
     SessionRecord record = std::move(*loaded.record);
-    messages_ = std::move(record.state.messages);
+    if (!conversation_.Restore(std::move(record.state.messages),
+                               std::move(record.state.message_kinds),
+                               std::move(record.state.archive),
+                               record.state.archive_dropped_segments)) {
+      error = "session conversation state is invalid";
+      return false;
+    }
     turn_time_ = LocalStamp();
     RefreshBaseline();
-    archive_ = std::move(record.state.archive);
-    archive_bytes_ = archive_.empty()
-                         ? 0
-                         : static_cast<int64_t>(JsonDump(archive_).size()) - 2;
-    archive_dropped_segments_ = record.state.archive_dropped_segments;
     checkpoint_candidates_ = std::move(record.state.checkpoint_candidates);
     pending_checkpoint_ = std::move(record.state.pending_checkpoint);
     side_effects_ = std::move(record.state.side_effects);
@@ -263,10 +202,9 @@ class Agent {
     if (session_id_.empty()) session_id_ = MakeSessionId();
     total_user_turns_ = record.metadata.turns;
     session_title_ = std::move(record.metadata.title);
-    ctx_used_ = record.state.context_tokens;
+    context_policy_.Reset();
+    context_policy_.SetReported(record.state.context_tokens);
     logged_msgs_ = 0;
-    last_checkpoint_hint_turn_ = 0;
-    urgent_hints_ignored_ = 0;
     last_checkpoint_turn_ = 0;
     turn_search_trace_.Reset();
     ++revision_;
@@ -276,9 +214,8 @@ class Agent {
   // tokens the next request will occupy: the server-reported size of the
   // last exchange, or a chars/4 estimate before any usage arrives
   int64_t ContextUsed() const {
-    size_t chars = JsonEstimatedBytes(messages_);
-    if (api_.native_tools) chars += schema_chars_;
-    return ctx_used_ ? ctx_used_ : static_cast<int64_t>(chars) / 4;
+    return context_policy_.Used(JsonEstimatedBytes(conversation_.Messages()),
+                                schema_chars_, api_.native_tools);
   }
 
   // summarize the conversation with the model, then restart the session
@@ -290,14 +227,15 @@ class Agent {
       return;
     }
     DebugLog("compact_start", {{"automatic", automatic},
-                               {"messages", messages_.size()},
+                               {"messages", conversation_.Size()},
                                {"context_tokens", ContextUsed()}});
     printf("%s· %scompacting…%s\n", DIM(), automatic ? "auto-" : "", RST());
-    messages_.push_back({{"role", "user"},
-                         {"content",
-                          "Summarize for a fresh context: goal, decisions, "
-                          "current state, relevant paths, and next steps. "
-                          "Be concise."}});
+    conversation_.Push(
+        {{"role", "user"},
+         {"content",
+          "Summarize for a fresh context: goal, decisions, current state, "
+          "relevant paths, and next steps. Be concise."}},
+        MessageKind::kInternal);
     ChatResult r = Chat("compact", -1, json::array());
     if (r.interrupted || !r.error.empty()) {
       DebugLog("compact_end",
@@ -307,16 +245,17 @@ class Agent {
       if (!r.error.empty()) {
         printf("%s%s%s\n", RED(), TerminalSafe(r.error).c_str(), RST());
       }
-      messages_.erase(messages_.end() - 1);  // keep the session usable
+      conversation_.PopBack();  // keep the session usable
       return;
     }
     session_usage_.Add(r.usage);
     ArchiveAll(automatic ? "auto_compact" : "manual_compact");
-    messages_ = BaselineMessages();
-    messages_.push_back(
-        {{"role", "user"}, {"content", "Prior context:\n" + r.content}});
-    ctx_used_ = 0;
-    urgent_hints_ignored_ = 0;
+    conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
+    conversation_.Push(
+        {{"role", "user"}, {"content", "Prior context:\n" + r.content}},
+        MessageKind::kInternal);
+    context_policy_.SetReported(0);
+    context_policy_.ResetUrgency();
     ++revision_;
     DebugLog("compact_end", {{"automatic", automatic},
                              {"outcome", "ok"},
@@ -357,17 +296,19 @@ class Agent {
       if (spinner) spinner->Stop();
       printf("%s· bg job finished %s%s\n", DIM(),
              TerminalSafe(FirstLine(note)).c_str(), RST());
-      messages_.push_back({{"role", "user"}, {"content", std::move(note)}});
+      conversation_.Push({{"role", "user"}, {"content", std::move(note)}},
+                         MessageKind::kInternal);
       changed = true;
     }
     for (auto& result : side_tasks_.TakeCompleted()) {
       if (spinner) spinner->Stop();
       printf("%s· %s finished %s%s\n", DIM(), result.kind.c_str(),
              TerminalSafe(FirstLine(result.label)).c_str(), RST());
-      messages_.push_back(
+      conversation_.Push(
           {{"role", "user"},
            {"content", "[Background result: " + result.kind + " `" +
-                           FirstLine(result.label) + "`]\n" + result.output}});
+                           FirstLine(result.label) + "`]\n" + result.output}},
+          MessageKind::kInternal);
       DebugLog("side_task_completed", {{"id", result.id},
                                        {"kind", result.kind},
                                        {"label", result.label},
@@ -385,11 +326,12 @@ class Agent {
     if (pending.empty()) return false;
     std::string error;
     json content = AttachmentContent("[attached on request]", pending, error);
-    messages_.push_back(
+    conversation_.Push(
         {{"role", "user"},
          {"content", error.empty() ? std::move(content)
-                                   : json("[attachment failed] " + error)}});
-    ctx_used_ = 0;
+                                   : json("[attachment failed] " + error)}},
+        MessageKind::kAttachment);
+    context_policy_.SetReported(0);
     DebugLog("attachments_added",
              {{"turn", turn_id_}, {"count", pending.size()}, {"error", error}});
     return true;
@@ -445,7 +387,9 @@ class Agent {
     if (session_title_.empty()) session_title_ = FirstLine(user_input);
     turn_time_ = LocalStamp();
     ApplyPendingCheckpoint();
-    if (!messages_.empty()) messages_[0] = SysMsg();
+    if (!conversation_.Empty()) {
+      conversation_.Set(0, SysMsg(), MessageKind::kSystem);
+    }
     DebugLog("turn_start",
              {{"turn", turn_id_},
               {"local_time", turn_time_},
@@ -453,7 +397,7 @@ class Agent {
               {"attachments", user_content.is_array() && !user_content.empty()
                                   ? user_content.size() - 1
                                   : 0},
-              {"messages", messages_.size()},
+              {"messages", conversation_.Size()},
               {"context_tokens", ContextUsed()}});
     size_t pending_chars = user_content.is_null()
                                ? user_input.size()
@@ -466,18 +410,24 @@ class Agent {
                             {"steps", 0}});
       return;
     }
-    if (!turn_time_.empty()) messages_.push_back(TurnTimeMsg());
+    if (!turn_time_.empty()) {
+      conversation_.Push(TurnTimeMsg(), MessageKind::kInternal);
+    }
     size_t turn_start =
-        messages_.size();  // the user message; prune_* index from it
-    messages_.push_back(
+        conversation_.Size();  // the user message; prune_* index from it
+    MessageKind user_kind =
+        user_content.is_null() ? MessageKind::kUser : MessageKind::kAttachment;
+    conversation_.Push(
         {{"role", "user"},
-         {"content", user_content.is_null() ? json(user_input)
-                                            : std::move(user_content)}});
+         {"content",
+          user_content.is_null() ? json(user_input) : std::move(user_content)}},
+        user_kind);
     if (!checkpoint_hint.empty()) {
-      messages_.push_back(
-          {{"role", "user"}, {"content", std::move(checkpoint_hint)}});
+      conversation_.Push(
+          {{"role", "user"}, {"content", std::move(checkpoint_hint)}},
+          MessageKind::kInternal);
       checkpoint_hint_active_ = true;
-      last_checkpoint_hint_turn_ = turn_id_;
+      context_policy_.HintIssued(turn_id_);
     }
     Usage usage;
     turn_search_trace_.Reset();
@@ -531,10 +481,11 @@ class Agent {
         outcome = g_steering.Requested() ? "steered" : "interrupted";
         last_error_ = outcome;
         printf("\n%s· %s%s\n", YEL(), outcome.c_str(), RST());
-        messages_.push_back({{"role", "user"},
-                             {"content",
-                              "(response interrupted; partial output was "
-                              "discarded)"}});
+        conversation_.Push(
+            {{"role", "user"},
+             {"content",
+              "(response interrupted; partial output was discarded)"}},
+            MessageKind::kInternal);
         break;
       }
       if (!r.error.empty()) {
@@ -576,8 +527,9 @@ class Agent {
       }
       // context size = full prompt + what the model just added
       if (r.usage.is_object()) {
-        ctx_used_ = JsonValue(r.usage, "prompt_tokens", int64_t{0}) +
-                    JsonValue(r.usage, "completion_tokens", int64_t{0});
+        context_policy_.SetReported(
+            JsonValue(r.usage, "prompt_tokens", int64_t{0}) +
+            JsonValue(r.usage, "completion_tokens", int64_t{0}));
       }
       std::vector<ToolCall> calls = r.tool_calls;
       bool text_mode =
@@ -631,7 +583,7 @@ class Agent {
         }
         amsg["tool_calls"] = tcs;
       }
-      messages_.push_back(amsg);
+      conversation_.Push(std::move(amsg), MessageKind::kAssistant);
 
       if (calls.empty()) {
         ttt_ms = r.first_event_ms;
@@ -752,7 +704,7 @@ class Agent {
                           {"tokens_per_second", tokens_per_second},
                           {"usage", UsageJson(usage)},
                           {"session_usage", UsageJson(session_usage_)},
-                          {"messages", messages_.size()},
+                          {"messages", conversation_.Size()},
                           {"context_tokens", ContextUsed()}});
     checkpoint_hint_active_ = false;
     active_deadline_ = std::chrono::steady_clock::time_point::max();
@@ -761,43 +713,14 @@ class Agent {
  private:
   void ArchiveRange(const char* reason, size_t begin, size_t end,
                     json metadata = json::object()) {
-    if (!metadata.is_object()) metadata = json::object();
-    end = std::min(end, messages_.size());
-    json saved = json::array();
-    if (begin < end && begin < messages_.size()) {
-      for (size_t i = begin; i < end; ++i) saved.push_back(messages_[i]);
-    }
-    if (saved.empty() && metadata.empty()) return;
-    json segment = {
-        {"turn", turn_id_}, {"reason", reason}, {"messages", std::move(saved)}};
-    for (auto& [key, value] : metadata.items()) {
-      if (!segment.contains(key)) segment[key] = std::move(value);
-    }
-    int64_t segment_bytes = static_cast<int64_t>(JsonDump(segment).size());
-    int64_t bytes = segment_bytes + (archive_.empty() ? 0 : 1);
-    int64_t cap = api_.config.session_archive_bytes;
-    if (cap <= 0) {
-      ++archive_dropped_segments_;
-      return;
-    }
-    if (segment_bytes > cap) {
-      ++archive_dropped_segments_;
-      return;
-    }
-    while (!archive_.empty() && archive_bytes_ + bytes > cap) {
-      archive_bytes_ -=
-          static_cast<int64_t>(JsonDump(archive_.front()).size()) +
-          (archive_.size() > 1 ? 1 : 0);
-      archive_.erase(archive_.begin());
-      ++archive_dropped_segments_;
-      bytes = segment_bytes + (archive_.empty() ? 0 : 1);
-    }
-    archive_.push_back(std::move(segment));
-    archive_bytes_ += segment_bytes + (archive_.size() > 1 ? 1 : 0);
+    conversation_.ArchiveRange(reason, begin, end, turn_id_,
+                               api_.config.session_archive_bytes,
+                               std::move(metadata));
   }
 
   void ArchiveAll(const char* reason) {
-    ArchiveRange(reason, BaselineSize(), messages_.size());
+    conversation_.ArchiveAll(reason, BaselineSize(), turn_id_,
+                             api_.config.session_archive_bytes);
   }
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas) {
@@ -813,30 +736,30 @@ class Agent {
                      {"purpose", purpose},
                      {"model", api_.model},
                      {"session_id", session_id_},
-                     {"total_messages", messages_.size()},
+                     {"total_messages", conversation_.Size()},
                      {"tool_schemas", schemas.size()},
                      {"schema_chars", JsonDump(schemas).size()},
                      {"native_tools", api_.native_tools},
                      {"parallel_tools", api_.parallel_tools},
                      {"include_usage", api_.include_usage}};
-      if (step <= 0 || logged_msgs_ > messages_.size()) {
-        record["messages"] = messages_;
-        record["message_chars"] = JsonEstimatedBytes(messages_);
+      if (step <= 0 || logged_msgs_ > conversation_.Size()) {
+        record["messages"] = conversation_.Messages();
+        record["message_chars"] = JsonEstimatedBytes(conversation_.Messages());
       } else {
         json added = json::array();
-        for (size_t i = logged_msgs_; i < messages_.size(); ++i) {
-          added.push_back(messages_[i]);
+        for (size_t i = logged_msgs_; i < conversation_.Size(); ++i) {
+          added.push_back(conversation_.At(i));
         }
         record["new_message_chars"] = JsonEstimatedBytes(added);
         record["new_messages"] = std::move(added);
       }
-      logged_msgs_ = messages_.size();
+      logged_msgs_ = conversation_.Size();
       g_debug.Write("model_request", std::move(record));
     }
     int64_t request_timeout = ToolContext{active_deadline_}.RemainingSeconds(
         api_.config.request_timeout_s);
-    ChatResult result =
-        api_.Chat(messages_, schemas, request_timeout, session_id_);
+    ChatResult result = api_.Chat(conversation_.Messages(), schemas,
+                                  request_timeout, session_id_);
     if (g_debug.Enabled()) {
       json calls = json::array();
       for (const ToolCall& call : result.tool_calls) {
@@ -865,51 +788,34 @@ class Agent {
   }
 
   std::string PrepareContext(size_t pending_chars) {
-    int64_t compact_threshold =
-        std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
-    int64_t assess_threshold =
-        std::clamp(CheckpointPct(), int64_t{0}, int64_t{100});
-    int64_t urgent_threshold =
-        std::clamp(CheckpointUrgentPct(), assess_threshold, int64_t{100});
-    int64_t reserve = api_.ctx_window > 0
-                          ? std::min(MaxOutputTokens(), api_.ctx_window / 4)
-                          : 0;
-    int64_t projected =
-        ContextUsed() + static_cast<int64_t>(pending_chars / 4) + reserve;
-    int64_t pct = 0;
-    if (api_.ctx_window > 0) {
-      pct = projected * 100 / std::max(int64_t{1}, api_.ctx_window);
-    } else if (api_.config.request_bytes > 0) {
-      pct = static_cast<int64_t>(
-          (JsonEstimatedBytes(messages_) + pending_chars) * 100 /
-          static_cast<size_t>(api_.config.request_bytes));
-    }
-    if (pct < urgent_threshold) urgent_hints_ignored_ = 0;
-
-    if (compact_threshold > 0 && pct >= compact_threshold) {
+    ContextDecision decision = context_policy_.Prepare(
+        {.message_bytes = JsonEstimatedBytes(conversation_.Messages()),
+         .pending_bytes = pending_chars,
+         .message_count = conversation_.Size(),
+         .schema_bytes = schema_chars_,
+         .native_tools = api_.native_tools,
+         .context_window = api_.ctx_window,
+         .request_bytes = api_.config.request_bytes,
+         .max_output_tokens = MaxOutputTokens(),
+         .compact_pct = AutoCompactPct(),
+         .checkpoint_pct = CheckpointPct(),
+         .urgent_pct = CheckpointUrgentPct(),
+         .checkpoint_enabled = api_.config.checkpoint_mode != "off",
+         .turn = turn_id_});
+    if (decision.action == ContextAction::kCompact) {
+      if (decision.forced) {
+        DebugLog(
+            "checkpoint_forced",
+            {{"turn", turn_id_}, {"projected_pct", decision.projected_pct}});
+      }
       Compact(true);
       return "";
     }
-    if (api_.config.checkpoint_mode == "off" || assess_threshold == 0 ||
-        pct < assess_threshold || messages_.size() < 2) {
-      return "";
-    }
-    if (last_checkpoint_hint_turn_ > 0 &&
-        turn_id_ - last_checkpoint_hint_turn_ < 3) {
-      return "";
-    }
-
-    bool urgent = pct >= urgent_threshold;
-    // The fold is model-authored, so a model that ignores urgent hints would
-    // coast to the emergency threshold. Compact for it after two refusals.
-    if (urgent && ++urgent_hints_ignored_ > 2) {
-      DebugLog("checkpoint_forced",
-               {{"turn", turn_id_}, {"projected_pct", pct}});
-      Compact(true);
-      return "";
-    }
-    DebugLog("checkpoint_hint",
-             {{"turn", turn_id_}, {"projected_pct", pct}, {"urgent", urgent}});
+    if (decision.action == ContextAction::kNone) return "";
+    bool urgent = decision.action == ContextAction::kUrgentCheckpoint;
+    DebugLog("checkpoint_hint", {{"turn", turn_id_},
+                                 {"projected_pct", decision.projected_pct},
+                                 {"urgent", urgent}});
     return urgent ? "[context checkpoint urgent] Call checkpoint now with "
                     "standalone "
                     "durable state unless evidence is unresolved."
@@ -923,20 +829,9 @@ class Agent {
   // Covers the whole turn, not just its first message: the model can attach
   // mid-turn, and those bytes are no more durable than the user's.
   void PruneAttachments(size_t turn_start) {
-    size_t attachments = 0;
-    for (size_t i = turn_start; i < messages_.size(); ++i) {
-      if (!messages_[i].contains("content")) continue;
-      json& content = messages_[i]["content"];
-      if (!content.is_array()) continue;
-      attachments += content.size() > 0 ? content.size() - 1 : 0;
-      std::string text;
-      if (!content.empty() && content[0].is_object()) {
-        text = JsonValue(content[0], "text", "");
-      }
-      content = text + "\n[attachments omitted after processing]";
-    }
+    size_t attachments = conversation_.PruneAttachments(turn_start);
     if (!attachments) return;
-    ctx_used_ = 0;
+    context_policy_.SetReported(0);
     DebugLog("attachments_pruned",
              {{"turn", turn_id_}, {"attachments", attachments}});
   }
@@ -944,20 +839,15 @@ class Agent {
   // A completed turn's final answer is the durable summary. Drop intermediate
   // calls/results (often entire files) so every future request stays lean.
   void PruneTurn(size_t turn_start) {
-    bool has_tools = messages_.size() > turn_start + 2;
+    bool has_tools = conversation_.Size() > turn_start + 2;
     if (!has_tools && turn_search_trace_.Empty()) return;
-    size_t before = messages_.size();
-    ArchiveRange("trace_pruned", turn_start + 1, messages_.size() - 1,
-                 turn_search_trace_.ArchiveMetadata());
-    json answer = std::move(messages_.back());
-    auto first =
-        messages_.begin() + static_cast<json::difference_type>(turn_start + 1);
-    messages_.erase(first, messages_.end());
-    messages_.push_back(std::move(answer));
-    ctx_used_ = 0;  // recompute from the now-smaller history
+    size_t removed = conversation_.PruneTurn(
+        turn_start, turn_id_, api_.config.session_archive_bytes,
+        turn_search_trace_.ArchiveMetadata());
+    context_policy_.SetReported(0);
     DebugLog("trace_pruned", {{"turn", turn_id_},
-                              {"kept_messages", messages_.size()},
-                              {"removed_messages", before - messages_.size()}});
+                              {"kept_messages", conversation_.Size()},
+                              {"removed_messages", removed}});
   }
 
   // A rejected capability -> drop it and retry. Ordered most-specific first:
@@ -974,7 +864,7 @@ class Agent {
          lowered.find("support") != std::string::npos ||
          lowered.find("modalit") != std::string::npos)) {
       g_image_input = false;
-      size_t rewritten = StripImageContentParts(messages_);
+      size_t rewritten = conversation_.StripImageParts();
       DebugLog("feature_degraded", {{"feature", "image_input"},
                                     {"error", r.error},
                                     {"messages_rewritten", rewritten}});
@@ -1014,7 +904,7 @@ class Agent {
     }
     if (api_.native_tools && lowered.find("tool") != std::string::npos) {
       drop(api_.native_tools, "native_tools");
-      messages_[0] = SysMsg();  // now carries protocol + tool list
+      conversation_.Set(0, SysMsg(), MessageKind::kSystem);
       printf(
           "%s· server rejected native tools — falling back to text "
           "protocol%s\n",
@@ -1033,13 +923,13 @@ class Agent {
     return s;
   }
 
-  // messages_[0], the one place its shape is defined. Always rebuilt rather
+  // Message 0 is the one place the system shape is defined. Always rebuilt
   // than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const {
     return {{"role", "system"}, {"content", SystemPrompt()}};
   }
 
-  // The clock rides on the turn, never in messages_[0]: rewriting the system
+  // The clock rides on the turn, never in message 0: rewriting the system
   // message each turn would invalidate the provider's cached prefix for all
   // of history. Appended, so every prior byte stays identical.
   json TurnTimeMsg() const {
@@ -1065,22 +955,18 @@ class Agent {
     return messages;
   }
 
-  void RefreshBaseline() {
-    if (messages_.empty()) {
-      messages_ = BaselineMessages();
-      return;
-    }
-    messages_[0] = SysMsg();
-    if (messages_.size() > 1 && JsonValue(messages_[1], "role", "") == "user" &&
-        messages_[1].contains("content") &&
-        messages_[1]["content"].is_string() &&
-        messages_[1]["content"].get_ref<const std::string&>().rfind(
-            "# AGENTS.md instructions for ", 0) == 0) {
-      messages_.erase(messages_.begin() + 1);
-    }
+  std::vector<MessageKind> BaselineKinds() const {
+    std::vector<MessageKind> kinds = {MessageKind::kSystem};
     if (!project_instructions_.text.empty()) {
-      messages_.insert(messages_.begin() + 1, ProjectInstructionMsg());
+      kinds.push_back(MessageKind::kProjectInstructions);
     }
+    return kinds;
+  }
+
+  void RefreshBaseline() {
+    json project = ProjectInstructionMsg();
+    conversation_.RefreshBaseline(
+        SysMsg(), project_instructions_.text.empty() ? nullptr : &project);
   }
 
   json CheckpointSysMsg() const {
@@ -1113,7 +999,9 @@ class Agent {
   void RebuildToolSchemas() {
     schemas_ = ToolSchemas(tools_, api_.config.tool_timeout_s);
     schema_chars_ = JsonDump(schemas_).size();
-    if (!messages_.empty()) messages_[0] = SysMsg();
+    if (!conversation_.Empty()) {
+      conversation_.Set(0, SysMsg(), MessageKind::kSystem);
+    }
     DebugLog("tool_registry_refreshed",
              {{"tools", tools_.size()}, {"schema_chars", schema_chars_}});
   }
@@ -1128,10 +1016,8 @@ class Agent {
   Approver approve_;
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
-  json messages_;
-  json archive_ = json::array();
-  int64_t archive_bytes_ = 0;
-  int64_t archive_dropped_segments_ = 0;
+  Conversation conversation_;
+  ContextPolicy context_policy_;
   SearchTrace turn_search_trace_;
   json checkpoint_candidates_ = json::array();
   json pending_checkpoint_ = nullptr;
@@ -1141,13 +1027,10 @@ class Agent {
   std::string session_title_;
   std::string turn_time_;  // refreshed once per user turn, stable within it
   int64_t total_user_turns_ = 0;
-  int64_t ctx_used_ = 0;    // last server-reported prompt+completion tokens
   size_t logged_msgs_ = 0;  // messages already written to the debug trace
   int64_t turn_id_ = 0;
   int64_t request_id_ = 0;
   uint64_t revision_ = 0;
-  int64_t last_checkpoint_hint_turn_ = 0;
-  int64_t urgent_hints_ignored_ = 0;  // consecutive urgent hints without a fold
   int64_t last_checkpoint_turn_ = 0;
   bool checkpoint_hint_active_ = false;
   bool checkpoint_turn_complete_ = false;

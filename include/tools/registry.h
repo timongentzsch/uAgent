@@ -192,10 +192,10 @@ inline std::vector<Tool> BuiltinTools(
                       "description":"persist process and log across sessions"}},
                     "required":["command"]})json"),
                [&supervisor](const json& a, const ToolContext& context) {
-                 return ToolRunBash(supervisor, JsonValue(a, "command", ""),
-                                    context.timeout_s, false, context, true,
-                                    JsonValue(a, "detach", false),
-                                    JsonValue(a, "shell", "bash"));
+                 return ToolRunApprovedShell(
+                     supervisor, JsonValue(a, "command", ""), context.timeout_s,
+                     context, JsonValue(a, "detach", false),
+                     JsonValue(a, "shell", "bash"));
                }));
   run.mutating = true;
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };

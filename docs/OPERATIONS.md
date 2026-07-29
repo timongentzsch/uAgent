@@ -11,6 +11,7 @@ These are local safety bounds, not provider service objectives.
 | Concern | Default |
 | --- | ---: |
 | first event / stream idle / request | 120 / 90 / 300 s |
+| transient request retries / base backoff | 2 / 0.5, 1 s with jitter |
 | complete turn | 900 s |
 | model rounds / tool calls | 40 / 100 |
 | subagent depth / child rounds / calls | 2 / 25 / 60 |
@@ -37,16 +38,23 @@ job/log bounds, caps source at 128 KiB and accepts at most 12 package
 requirements. Raise limits only with a representative workload and
 memory/request measurement.
 
+Child processes omit credential-like environment variables. If an approved
+shell command needs one, list its exact name in
+`UAGENT_SHELL_ENV_ALLOW=GH_TOKEN,SSH_AUTH_SOCK`. This exception applies only to
+the `run` tool; MCP, delegation, and Python subprocesses stay sanitized.
+
 Detached-terminal records older than `UAGENT_TERMINAL_DAYS=7` are pruned when
 listed. Their rotating logs remain bounded independently.
 
 ## Release check
 
 GitHub Actions builds and tests Debug and Release natively on Linux x86_64,
-Linux arm64, and macOS arm64. Release jobs upload versioned archives and SHA-256
-files. A `v<project version>` tag publishes those assets as a GitHub Release;
-other version tags fail before publication. A separate style job enforces the
-Google formatter, semantic/naming checks, and `cpplint` on first-party C++.
+Linux arm64, and macOS arm64. Linux jobs add ASan/UBSan, TSan, short
+deterministic parser fuzzing, and branch-coverage artifacts. Release jobs upload
+versioned archives and SHA-256 files. A `v<project version>` tag publishes those
+assets as a GitHub Release; other version tags fail before publication. A
+separate style job enforces the Google formatter, selected semantic/analyzer
+checks, and `cpplint` on first-party C++.
 
 ```sh
 cmake --preset release
@@ -59,16 +67,17 @@ UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 Also:
 
 1. Build Debug and Release with warnings as errors.
-2. Run ASan/UBSan on Linux.
-3. Compare `uagent_bench` on the same machine and build type.
-4. Exercise one real provider turn, the default isolated Chrome MCP, its user
+2. Run ASan/UBSan and TSan on Linux; smoke the standalone parser fuzzers.
+3. Inspect branch coverage for newly changed failure and cancellation paths.
+4. Compare `uagent_bench` on the same machine and build type.
+5. Exercise one real provider turn, the default isolated Chrome MCP, its user
    attach mode, and each configured MCP server. Record the npm version resolved
    by `chrome-devtools-mcp@latest` when diagnosing or releasing.
-5. Inspect a private debug trace for resolved model/window, time to first
+6. Inspect a private debug trace for resolved model/window, time to first
    event, tool duration, cache usage, cost, limits, and terminal outcome.
-6. Run `python3 tests/agent_workflow_live.py --run` after orchestration,
+7. Run `python3 tests/agent_workflow_live.py --run` after orchestration,
    routing, checkpoint, or delegation changes.
-7. Before deploying a new model route, run correction, failure, multi-fold,
+8. Before deploying a new model route, run correction, failure, multi-fold,
    and large-context checkpoint cases in `shadow`, then promote it only after
    exact-fact and no-mutation checks pass.
 

@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/conversation.h"
 #include "include/api/citations.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -114,20 +115,22 @@ inline void PrintLatestTrace(const json& archive,
     printf("%s· no completed tool trace%s\n", DIM(), RST());
     return;
   }
-  for (const json& message : JsonValue(*trace, "messages", json::array())) {
+  const json& messages = JsonValue(*trace, "messages", json::array());
+  const json& kinds = JsonValue(*trace, "message_kinds", json::array());
+  for (size_t index = 0; index < messages.size(); ++index) {
+    const json& message = messages[index];
     std::string role = JsonValue(message, "role", "");
+    MessageKind kind = MessageKind::kInternal;
+    if (index < kinds.size() && kinds[index].is_string()) {
+      ParseMessageKind(kinds[index].get<std::string>(), kind);
+    }
     if (role == "assistant" && message.contains("tool_calls") &&
         message["tool_calls"].is_array()) {
       for (const json& call : message["tool_calls"]) {
         PrintToolCallSummary(call, tools);
       }
-    } else if (role == "tool" && message.contains("content") &&
-               message["content"].is_string()) {
-      PrintToolResultText(message["content"].get<std::string>());
-    } else if (role == "user" && message.contains("content") &&
-               message["content"].is_string() &&
-               message["content"].get_ref<const std::string&>().starts_with(
-                   "[tool_result ")) {
+    } else if (kind == MessageKind::kToolResult &&
+               message.contains("content") && message["content"].is_string()) {
       PrintToolResultText(message["content"].get<std::string>());
     }
   }

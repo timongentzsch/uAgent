@@ -198,6 +198,18 @@ inline const NamedProvider* FindNamedProvider(
   return nullptr;
 }
 
+inline void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
+  for (const ProviderTemplate& provider : kProviderTemplates) {
+    std::string api_key = EnvStr(provider.api_key_env);
+    if (api_key.empty() ||
+        FindNamedProvider(catalog.providers, provider.name)) {
+      continue;
+    }
+    catalog.providers.push_back(
+        {provider.name, provider.base_url, std::move(api_key), 0});
+  }
+}
+
 inline std::optional<ModelQuery> ResolveProviderQuery(
     const std::vector<NamedProvider>& providers, const std::string& query) {
   if (const NamedProvider* provider = FindNamedProvider(providers, query)) {
@@ -236,7 +248,6 @@ inline std::optional<ModelRoute> ResolveModelRoute(
 
 inline void ExportRoute(const Api& api) {
   setenv("UAGENT_BASE_URL", api.base_url.c_str(), 1);
-  setenv("UAGENT_API_KEY", api.api_key.c_str(), 1);
   setenv("UAGENT_MODEL", api.model.c_str(), 1);
   setenv("UAGENT_REASONING_EFFORT", api.reasoning_effort.c_str(), 1);
   setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
@@ -267,6 +278,7 @@ inline ProviderSetup ConfigureProvider(Api& api) {
   api.ctx_window = ContextWindow();
 
   ProviderCatalog catalog = LoadProviderCatalog();
+  AddAvailableProviderTemplates(catalog);
   ProviderSetup setup{
       std::move(catalog.models), std::move(catalog.providers), {}};
   if (std::optional<ModelRoute> route =

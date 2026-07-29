@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 
+#include "include/api/retry.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 
@@ -15,7 +16,10 @@ namespace {
 void AddAnnotations(const json& annotations, ChatResult& result) {
   if (!annotations.is_array()) return;
   for (const json& annotation : annotations) {
-    if (annotation.is_object()) result.annotations.push_back(annotation);
+    if (annotation.is_object()) {
+      result.annotations.push_back(annotation);
+      result.semantic_progress = true;
+    }
   }
 }
 
@@ -31,11 +35,17 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   json value = json::parse(payload, nullptr, false);
   if (value.is_discarded()) return delta;
   if (value.contains("error")) {
+    const json& error = value["error"];
+    result.remote_error_type = JsonValue(error, "type", "");
+    result.remote_error_code = JsonValue(error, "code", "");
+    result.retryable = RetryableRemoteError(result.remote_error_type,
+                                            result.remote_error_code);
     result.error = JsonErrorMessage(value, "stream failed");
     return delta;
   }
   if (value.contains("usage") && !value["usage"].is_null()) {
     result.usage = value["usage"];
+    result.semantic_progress = true;
   }
   if (!value.contains("choices") || !value["choices"].is_array() ||
       value["choices"].empty() || !value["choices"][0].is_object()) {

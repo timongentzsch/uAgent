@@ -28,12 +28,13 @@ OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 
 The config file is kept at `0600`; environment variables override it, and
 project `.env` files are never loaded. Named OpenAI-compatible routes can be
-defined with `UAGENT_PROVIDERS`. Legacy `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
-and `UAGENT_MODEL` configuration remains supported.
+defined with `UAGENT_PROVIDERS`. `UAGENT_BASE_URL`, `UAGENT_API_KEY`, and
+`UAGENT_MODEL` define one direct route.
 
 Provider models need not be duplicated in config: `/models NAME/*` queries one
 live catalog, `/models all` combines them, and `/model NAME/MODEL` switches
-lazily.
+lazily. A configured OpenRouter key keeps its live catalog available even while
+a named local provider is selected.
 
 A workspace opts into its own settings by creating a `.uagent` directory. Its
 `.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
@@ -73,8 +74,13 @@ Independent read-only tools can run concurrently. Mutating, shell, network,
 delegation, and MCP calls require approval unless `--yolo` is active. Requests,
 results, processes, logs, costs, and retained history are bounded.
 
-OpenRouter search runs inside the model request and falls back to the legacy
-side request if the beta server tool is rejected. Search defaults to `auto`,
+Child processes do not inherit credentials by default. Approved `run` commands
+may receive specific sensitive variables through
+`UAGENT_SHELL_ENV_ALLOW=GH_TOKEN,SSH_AUTH_SOCK`; MCP servers, delegated agents,
+and `run_python` remain sanitized.
+
+OpenRouter search runs inside the model request and falls back to a bounded
+side request if the server tool is rejected. Search defaults to `auto`,
 five results, and three uses per request; `UAGENT_WEB_SEARCH_ENGINE`,
 `UAGENT_WEB_SEARCH_MAX_RESULTS`, `UAGENT_WEB_SEARCH_MAX_USES`, and optional
 `UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. Set `UAGENT_WEB_SEARCH_SERVER=0` to
@@ -89,6 +95,11 @@ required background work is quiet. `run_python` uses
 protocol. `edit_file` can apply ordered exact replacements with one atomic
 write; replacing every match must be explicit, and existing line endings are
 preserved.
+
+Transient connection failures, HTTP 408/409/429/5xx responses, and structured
+server-overload errors are retried twice with short exponential backoff only
+when the stream has produced no content, reasoning, tool call, annotation, or
+usage. A partially visible stream is never replayed.
 
 ## Context and sessions
 
@@ -214,6 +225,7 @@ rules, `cpplint`, warnings-as-errors builds, and tests on Linux and macOS.
 
 See [architecture](docs/ARCHITECTURE.md) and
 [operations](docs/OPERATIONS.md) for design, limits, configuration, and release
-checks.
+checks. [Persistence](docs/PERSISTENCE.md) documents local state, and
+[CONTRIBUTING.md](CONTRIBUTING.md) defines extension requirements.
 
 µAgent is a local single-user POSIX CLI, not an OS sandbox.

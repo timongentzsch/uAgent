@@ -15,12 +15,11 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/child_env.h"
 #include "include/core/env.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
-
-extern char** environ;
 
 namespace uagent {
 
@@ -136,7 +135,9 @@ inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {
   args.push_back(nullptr);
   fflush(stdout);
   pid_t pid = 0;
-  if (posix_spawnp(&pid, "chafa", nullptr, nullptr, args.data(), environ)) {
+  ChildEnvironment environment;
+  if (posix_spawnp(&pid, "chafa", nullptr, nullptr, args.data(),
+                   environment.Data())) {
     return false;
   }
   int status = 0;

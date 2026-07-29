@@ -25,7 +25,11 @@ endpoint and every MCP server as trusted infrastructure.
 - Requests, responses, attachments, tool output, scans, jobs, turns, costs, MCP
   data, and logs are bounded.
 - API redirects are rejected and bearer-auth transfers use HTTP(S) only.
-- Shell commands and subagents run in managed process groups.
+- Shell commands and subagents run in managed process groups. Child processes
+  receive a centralized secret-deny environment; only class-specific
+  credentials are deliberately re-added. Approved `run` commands can opt in
+  exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
+  MCP servers, delegated agents, or `run_python`.
 - Model, MCP, and tool text is terminal-sanitized.
 
 Approval grants the current user's filesystem and network permissions. Use a

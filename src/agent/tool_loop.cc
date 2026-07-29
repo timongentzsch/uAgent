@@ -18,33 +18,19 @@ namespace uagent {
 void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
                              const std::string& result) {
   if (text_mode) {
-    messages_.push_back(
+    conversation_.Push(
         {{"role", "user"},
-         {"content", "[tool_result " + call.name + "]\n" + result}});
+         {"content", "[tool_result " + call.name + "]\n" + result}},
+        MessageKind::kToolResult);
   } else {
-    messages_.push_back(
-        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}});
+    conversation_.Push(
+        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}},
+        MessageKind::kToolResult);
   }
 }
 
 std::vector<std::string> Agent::RecentToolResults(int64_t count) const {
-  std::vector<std::string> results;
-  for (auto message = messages_.rbegin();
-       message != messages_.rend() &&
-       static_cast<int64_t>(results.size()) < count;
-       ++message) {
-    std::string role = message->value("role", "");
-    if (!message->contains("content") || !(*message)["content"].is_string()) {
-      continue;
-    }
-    std::string content = (*message)["content"].get<std::string>();
-    if (role == "tool" ||
-        (role == "user" && content.starts_with("[tool_result "))) {
-      results.push_back(CapResult(content));
-    }
-  }
-  std::reverse(results.begin(), results.end());
-  return results;
+  return conversation_.RecentToolResults(count);
 }
 
 bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,

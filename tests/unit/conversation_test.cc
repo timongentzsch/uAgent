@@ -1,0 +1,63 @@
+// Copyright 2026 Timon Gentzsch
+
+#include <vector>
+
+#include "tests/unit/test_support.h"
+
+namespace uagent {
+
+void TestConversationAndContextPolicy() {
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  conversation.Push(
+      {{"role", "user"}, {"content", "Prior context: this is user text"}},
+      MessageKind::kUser);
+  conversation.Push(
+      {{"role", "assistant"}, {"content", "[checkpoint internal]"}},
+      MessageKind::kInternal);
+  conversation.Push({{"role", "assistant"}, {"content", "answer"}},
+                    MessageKind::kAssistant);
+  CHECK(conversation.FirstUserText() == "Prior context: this is user text");
+  CHECK(conversation.UserTurns() == 1);
+  CHECK(conversation.LastAssistantText() == "answer");
+
+  conversation.ArchiveRange("test", 1, conversation.Size(), 1, 4096);
+  CHECK(conversation.ArchivedSegments() == 1);
+  CHECK(conversation.Archive()[0]["message_kinds"].size() == 3);
+  CHECK(conversation.Archive()[0]["message_kinds"][0] == "user");
+
+  json kinds = MessageKindsJson(conversation.Kinds());
+  std::vector<MessageKind> parsed;
+  CHECK(ParseMessageKinds(kinds, conversation.Size(), parsed));
+  CHECK(parsed == conversation.Kinds());
+  kinds[0] = "unknown";
+  CHECK(!ParseMessageKinds(kinds, conversation.Size(), parsed));
+
+  ContextPolicy policy;
+  policy.SetReported(80);
+  ContextPolicyInput input{
+      .message_bytes = 100,
+      .message_count = 4,
+      .context_window = 100,
+      .checkpoint_pct = 70,
+      .urgent_pct = 80,
+      .checkpoint_enabled = true,
+      .turn = 1,
+  };
+  ContextDecision first = policy.Prepare(input);
+  CHECK(first.action == ContextAction::kUrgentCheckpoint);
+  CHECK(first.projected_pct == 80);
+  policy.HintIssued(1);
+  input.turn = 2;
+  CHECK(policy.Prepare(input).action == ContextAction::kNone);
+  input.turn = 4;
+  CHECK(policy.Prepare(input).action == ContextAction::kUrgentCheckpoint);
+  policy.HintIssued(4);
+  input.turn = 7;
+  ContextDecision forced = policy.Prepare(input);
+  CHECK(forced.action == ContextAction::kCompact);
+  CHECK(forced.forced);
+}
+
+}  // namespace uagent

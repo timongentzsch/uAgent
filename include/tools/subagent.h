@@ -45,22 +45,25 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           "required":["prompt"]})json"),
       [self, child_depth, &api, yolo, debug, &processes](
           const json& a, const ToolContext& context) {
-        std::string cmd =
-            "UAGENT_DEPTH=" + child_depth +
-            " UAGENT_MAX_STEPS=" + std::to_string(SubagentMaxSteps()) +
-            " UAGENT_MAX_TOOL_CALLS=" + std::to_string(SubagentMaxToolCalls()) +
-            " UAGENT_MODEL=" + ShellQuote(api.model) +
-            " UAGENT_CONTEXT=" + std::to_string(api.ctx_window) +
-            " UAGENT_REASONING_EFFORT=" + ShellQuote(api.reasoning_effort) +
-            " UAGENT_USAGE_FILE=" + ShellQuote(UsageLedger()) + " " +
-            ShellQuote(self) + (yolo ? " --yolo" : "") +
-            (debug ? " --debug" : "") + " -p " +
-            ShellQuote(JsonValue(a, "prompt", ""));
+        EnvironmentOverrides environment = {
+            {"UAGENT_DEPTH", child_depth},
+            {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
+            {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
+            {"UAGENT_BASE_URL", api.base_url},
+            {"UAGENT_API_KEY", api.api_key},
+            {"UAGENT_MODEL", api.model},
+            {"UAGENT_CONTEXT", std::to_string(api.ctx_window)},
+            {"UAGENT_REASONING_EFFORT", api.reasoning_effort},
+            {"UAGENT_USAGE_FILE", UsageLedger()},
+        };
+        std::string cmd = ShellQuote(self) + (yolo ? " --yolo" : "") +
+                          (debug ? " --debug" : "") + " -p " +
+                          ShellQuote(JsonValue(a, "prompt", ""));
         bool background = JsonValue(a, "run_in_background", false);
         return ToolRunBash(processes, cmd, context.timeout_s,
                            /*join_before_final=*/!background, context,
                            /*allow_background=*/true, /*detach=*/false, "bash",
-                           background, "task");
+                           background, "task", environment);
       });
   t.mutating = true;
   t.summary = [](const json& a) { return JsonValue(a, "prompt", ""); };

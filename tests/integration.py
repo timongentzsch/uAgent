@@ -875,7 +875,7 @@ def test_escape_steers_while_waiting_for_task(root, home):
                 (b"delegate\n", b"waiting for delegated work"),
                 (b"\x1b", b"steer>"),
                 (b"stop now\n", b"\x1b[?2004h"),
-                b"\x04",
+                b"/q\n",
             ],
             args=("--yolo",),
             timeout=12,

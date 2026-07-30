@@ -6,9 +6,11 @@
 // there is nothing to abort; handlers touch async-signal-safe state only.
 
 #include <signal.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <atomic>
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <string>
@@ -77,8 +79,11 @@ inline void SigintHandler(int signal_number) {
   }
   for (int i = 0; i < kBgMax; i++) {
     if (g_bg_pids[i] > 0) {
-      kill(-static_cast<pid_t>(g_bg_pids[i]), SIGTERM);
-      kill(static_cast<pid_t>(g_bg_pids[i]), SIGTERM);
+      pid_t pid = static_cast<pid_t>(g_bg_pids[i]);
+      kill(-pid, SIGKILL);
+      kill(pid, SIGKILL);
+      while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
+      }
     }
   }
   for (int i = 0; i < kMcpMax; i++) {

@@ -34,13 +34,13 @@ struct ShellCommandResult {
   std::optional<int> wait_status = std::nullopt;
 };
 
-// window_s: -1 = default poll window (~3 s), 0 = wait until it finishes,
-// N = wait up to N seconds — then background instead of killing.
+// Foreground work waits until the shared tool deadline. Only explicitly
+// asynchronous callers allow the process to outlive this call.
 inline ShellCommandResult RunShellCommand(
-    ProcessSupervisor& supervisor, const std::string& cmd, int64_t window_s,
-    bool join_before_final, const ToolContext& context, bool allow_background,
-    bool detach, std::string shell, bool immediate_background,
-    std::string job_kind, const EnvironmentOverrides& environment = {},
+    ProcessSupervisor& supervisor, const std::string& cmd,
+    const ToolContext& context, bool allow_background, bool detach,
+    std::string shell, bool immediate_background, std::string job_kind,
+    const EnvironmentOverrides& environment = {},
     ChildEnvironmentPolicy environment_policy =
         ChildEnvironmentPolicy::kSanitized) {
   if (shell.empty() || shell.find('\0') != std::string::npos) {
@@ -54,14 +54,9 @@ inline ShellCommandResult RunShellCommand(
                         "error: background job limit reached (" +
                             std::to_string(max_jobs) + ")")};
   }
-  int64_t window =
-      (detach || immediate_background)
-          ? 0
-          : (window_s < 0 ? BashPollSeconds()
-                          : (window_s == 0 ? (int64_t{1} << 30) : window_s));
-  if (!detach && !immediate_background) {
-    window = context.RemainingSeconds(window);
-  }
+  int64_t window = (detach || immediate_background)
+                       ? 0
+                       : context.RemainingSeconds(int64_t{1} << 30);
   const char* log_kind = detach ? "terminals" : "bg";
   std::string pattern =
       UagentDir(log_kind) + "/pending-" + std::to_string(getpid()) + "-XXXXXX";
@@ -177,27 +172,31 @@ inline ShellCommandResult RunShellCommand(
   TrackPid(g_child_pgids, kFgMax, pid, false);
 
   if (exited) {
-    std::string out = ReadLogTail(log, ToolResultCap());
-    unlink(log.c_str());
-    unlink((log + ".1").c_str());
     if (detach) unlink(DetachedRecordPath(pid).c_str());
     if (cancelled) {
+      RemoveLog(log);
       return {ToolCancelled("error: command cancelled by user"), status};
     }
+    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
+    std::string out = std::move(collected.output);
     out += FmtExit(status, /*show_ok=*/false);
-    return {ProcessResult(std::move(out), status), status};
+    ToolResult result = ProcessResult(std::move(out), status);
+    result.artifact = std::move(collected.artifact);
+    return {std::move(result), status};
   }
   if (!allow_background) {
     if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
     waitpid(pid, &status, 0);
-    unlink(log.c_str());
-    unlink((log + ".1").c_str());
     if (detach) unlink(DetachedRecordPath(pid).c_str());
-    return {ToolTimedOut("error: search exceeded its execution deadline"),
-            status};
+    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
+    std::string output = std::move(collected.output);
+    if (!output.empty() && output.back() != '\n') output += '\n';
+    output += "error: command exceeded its execution deadline";
+    ToolResult result = ToolTimedOut(std::move(output));
+    result.artifact = std::move(collected.artifact);
+    return {std::move(result), status};
   }
-  BgJob job{pid,    log, cmd,     detach ? false : join_before_final,
-            detach, {},  job_kind};
+  BgJob job{pid, log, cmd, detach, job_kind};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     if (kill(-pid, SIGKILL) != 0) kill(pid, SIGKILL);
     waitpid(pid, &status, 0);
@@ -214,46 +213,41 @@ inline ShellCommandResult RunShellCommand(
   }
   BgTrackSignal(pid, true);
   if (job_kind == "task") {
-    return {
-        ToolSuccess("[backgrounded] task id " + std::to_string(pid) +
-                    " — check with get_task_output(id=" + std::to_string(pid) +
-                    ") or wait_tasks(ids=[" + std::to_string(pid) + "])")};
+    return {ToolSuccess("[started] task id " + std::to_string(pid) +
+                        "; result will be delivered automatically")};
   }
-  return {ToolSuccess("[backgrounded] pid " + std::to_string(pid) + ", log: " +
-                      log + " — peek with read_file, or wait_background(pid=" +
-                      std::to_string(pid) + ")")};
+  return {ToolSuccess("[running] pid " + std::to_string(pid) +
+                      "; result will be delivered automatically")};
 }
 
-inline ToolResult ToolRunBash(
-    ProcessSupervisor& supervisor, const std::string& cmd, int64_t window_s,
-    bool join_before_final = false, const ToolContext& context = {},
-    bool allow_background = true, bool detach = false,
-    std::string shell = "bash", bool immediate_background = false,
-    std::string job_kind = "", const EnvironmentOverrides& environment = {},
-    ChildEnvironmentPolicy environment_policy =
-        ChildEnvironmentPolicy::kSanitized) {
-  return RunShellCommand(supervisor, cmd, window_s, join_before_final, context,
-                         allow_background, detach, std::move(shell),
-                         immediate_background, std::move(job_kind), environment,
-                         environment_policy)
+inline ToolResult ToolRunBash(ProcessSupervisor& supervisor,
+                              const std::string& cmd,
+                              const ToolContext& context = {},
+                              bool allow_background = true, bool detach = false,
+                              std::string shell = "bash",
+                              bool immediate_background = false,
+                              std::string job_kind = "",
+                              const EnvironmentOverrides& environment = {},
+                              ChildEnvironmentPolicy environment_policy =
+                                  ChildEnvironmentPolicy::kSanitized) {
+  return RunShellCommand(supervisor, cmd, context, allow_background, detach,
+                         std::move(shell), immediate_background,
+                         std::move(job_kind), environment, environment_policy)
       .result;
 }
 
 inline ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                        const std::string& command,
-                                       int64_t window_s,
                                        const ToolContext& context, bool detach,
                                        std::string shell) {
-  return ToolRunBash(supervisor, command, window_s, /*join_before_final=*/false,
-                     context,
-                     /*allow_background=*/true, detach, std::move(shell),
+  return ToolRunBash(supervisor, command, context, /*allow_background=*/detach,
+                     detach, std::move(shell),
                      /*immediate_background=*/false, "", {},
                      ChildEnvironmentPolicy::kApprovedShell);
 }
 
 inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
                                 const std::string& code, const json& packages,
-                                int64_t window_s,
                                 const ToolContext& context = {}) {
   if (code.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -313,9 +307,8 @@ inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
          : "MPLBACKEND=Agg python3";
   command += " -c " + ShellQuote(code);
   ShellCommandResult result =
-      RunShellCommand(supervisor, command, window_s,
-                      /*join_before_final=*/true, context,
-                      /*allow_background=*/true, /*detach=*/false, "bash",
+      RunShellCommand(supervisor, command, context, /*allow_background=*/false,
+                      /*detach=*/false, "bash",
                       /*immediate_background=*/false, "");
   if (result.result.error == ToolErrorCode::kProcessFailed) {
     std::string hint;
@@ -364,7 +357,7 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
             std::to_string(max_results + 1) + " | head -c " +
             std::to_string(bytes);
   ShellCommandResult execution = RunShellCommand(
-      supervisor, command, 0, false, context, false, false, "bash", false, "");
+      supervisor, command, context, false, false, "bash", false, "");
   ToolResult outcome = std::move(execution.result);
   std::string output = std::move(outcome.output);
   int exit_code = execution.wait_status && WIFEXITED(*execution.wait_status)

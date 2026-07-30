@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -58,35 +59,59 @@ inline const char* ToolErrorCodeName(ToolErrorCode code) {
   return "internal";
 }
 
+struct ToolArtifact {
+  std::string path;
+  uint64_t bytes = 0;
+};
+
+inline std::string ArtifactHint(const ToolArtifact& artifact) {
+  return "\n[captured log: " + artifact.path + " (" +
+         std::to_string(artifact.bytes) +
+         " bytes); query with jq/python via run or read selected ranges; do "
+         "not read it whole]";
+}
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   std::string output;
   ToolErrorCode error = ToolErrorCode::kNone;
+  std::optional<ToolArtifact> artifact;
+  // Optional model-facing override for this call. Most tools inherit their
+  // registry cap; a bounded richer result can raise it.
+  int64_t result_chars = -1;
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };
 
-inline ToolResult ToolSuccess(std::string output) {
-  return {CompletionStatus::kSuccess, std::move(output), ToolErrorCode::kNone};
+inline ToolResult ToolSuccess(std::string output, int64_t result_chars = -1) {
+  return {CompletionStatus::kSuccess, std::move(output), ToolErrorCode::kNone,
+          std::nullopt, result_chars};
 }
 
 inline ToolResult ToolFailure(ToolErrorCode error, std::string output) {
-  return {CompletionStatus::kFailed, std::move(output), error};
+  return {CompletionStatus::kFailed, std::move(output), error, std::nullopt,
+          -1};
 }
 
 inline ToolResult ToolCancelled(std::string output) {
-  return {CompletionStatus::kCancelled, std::move(output),
-          ToolErrorCode::kNone};
+  return {CompletionStatus::kCancelled, std::move(output), ToolErrorCode::kNone,
+          std::nullopt, -1};
 }
 
 inline ToolResult ToolTimedOut(std::string output) {
-  return {CompletionStatus::kTimedOut, std::move(output), ToolErrorCode::kNone};
+  return {CompletionStatus::kTimedOut, std::move(output), ToolErrorCode::kNone,
+          std::nullopt, -1};
 }
 
 struct ToolContext {
   std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::time_point::max();
   int64_t timeout_s = 0;
+
+  bool Expired() const {
+    return deadline != std::chrono::steady_clock::time_point::max() &&
+           std::chrono::steady_clock::now() >= deadline;
+  }
 
   ToolContext WithTimeout(int64_t seconds) const {
     ToolContext out = *this;
@@ -122,17 +147,26 @@ struct Tool {
   json parameters;        // JSON-schema for the args
   bool mutating = false;  // gated behind user approval
   Run run;
-  Summary summary;             // args -> one-line display
-  bool parallel_safe = false;  // safe beside another tool call
-  Approval needs_approval;     // dynamic policy (e.g. external read)
-  std::string provider;        // owner for live registry refresh
-  json output_schema;          // optional MCP output contract
-  int64_t timeout_s = -1;      // -1 = global default; 0 = turn limit
-  int64_t max_timeout_s = -1;  // -1 = uncapped; else clamps `timeout`
-  bool accepts_timeout = true;
-  int64_t result_chars = -1;          // -1 = global result cap
-  int64_t max_calls_per_turn = -1;    // -1 = global turn budget
-  bool full_terminal_output = false;  // show complete call + result
+  Summary summary;                  // args -> one-line display
+  bool parallel_safe = false;       // safe beside another tool call
+  Approval needs_approval;          // dynamic policy (e.g. external read)
+  std::string provider;             // owner for live registry refresh
+  json output_schema;               // optional MCP output contract
+  int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
+  int64_t result_chars = -1;        // -1 = global result cap
+  int64_t max_calls_per_turn = -1;  // -1 = global turn budget
+  bool available_in_lean = true;    // omit implementation-only schemas in tasks
+  enum class Visibility {
+    kAlways,
+    kCheckpointHint,
+    kDetachedTerminal,
+  };
+  Visibility visibility = Visibility::kAlways;
+};
+
+struct ToolAvailability {
+  bool checkpoint_hint = false;
+  bool detached_terminal = false;
 };
 
 inline Tool MakeTool(std::string name, std::string description, json parameters,
@@ -150,6 +184,11 @@ inline Tool& AddTool(std::vector<Tool>& tools, Tool tool) {
   return tools.back();
 }
 
+inline void KeepLeanTools(std::vector<Tool>& tools) {
+  std::erase_if(tools,
+                [](const Tool& tool) { return !tool.available_in_lean; });
+}
+
 inline std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
   // Mark tools that actually overlap, so the base prompt's batching rule is
@@ -161,24 +200,13 @@ inline std::string ToolDescription(const Tool& tool) {
   return s;
 }
 
-// One execution policy for built-ins, MCP, and future providers. Tool-specific
-// schemas may refine the wording; tools expose the shared foreground timeout
-// unless they explicitly opt out.
-inline json ToolParameters(const Tool& tool, int64_t default_timeout_s = 30) {
+inline json ToolParameters(const Tool& tool) {
   json parameters = tool.parameters;
   if (!parameters.is_object()) parameters = json::object();
   if (!parameters.contains("type")) parameters["type"] = "object";
   if (!parameters.contains("properties") ||
       !parameters["properties"].is_object()) {
     parameters["properties"] = json::object();
-  }
-  if (tool.accepts_timeout && !parameters["properties"].contains("timeout")) {
-    int64_t timeout = tool.timeout_s >= 0 ? tool.timeout_s : default_timeout_s;
-    parameters["properties"]["timeout"] = {
-        {"type", "integer"},
-        {"minimum", 0},
-        {"description", "foreground seconds; default " +
-                            std::to_string(timeout) + "; 0=turn"}};
   }
   return parameters;
 }
@@ -241,26 +269,36 @@ inline std::string InvalidArgumentType(const Tool& tool, const json& args) {
   return "";
 }
 
+inline json ToolSchema(const Tool& tool) {
+  return {{"type", "function"},
+          {"function",
+           {{"name", tool.name},
+            {"description", ToolDescription(tool)},
+            {"parameters", ToolParameters(tool)}}}};
+}
+
 // registry -> the `tools` array for a chat request
-inline json ToolSchemas(const std::vector<Tool>& tools,
-                        int64_t default_timeout_s = 30) {
+inline json ToolSchemas(const std::vector<Tool>& tools) {
   json out = json::array();
-  for (auto& t : tools) {
-    out.push_back({{"type", "function"},
-                   {"function",
-                    {{"name", t.name},
-                     {"description", ToolDescription(t)},
-                     {"parameters", ToolParameters(t, default_timeout_s)}}}});
+  for (const Tool& tool : tools) {
+    out.push_back(ToolSchema(tool));
   }
   return out;
 }
 
 inline json AvailableToolSchemas(
     const std::vector<Tool>& tools, const json& schemas,
-    const std::unordered_map<std::string, int64_t>& counts) {
+    const std::unordered_map<std::string, int64_t>& counts,
+    ToolAvailability availability = {}) {
   json available = json::array();
   for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
     const Tool& tool = tools[i];
+    if ((tool.visibility == Tool::Visibility::kCheckpointHint &&
+         !availability.checkpoint_hint) ||
+        (tool.visibility == Tool::Visibility::kDetachedTerminal &&
+         !availability.detached_terminal)) {
+      continue;
+    }
     auto count = counts.find(tool.name);
     if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
         count->second >= tool.max_calls_per_turn) {

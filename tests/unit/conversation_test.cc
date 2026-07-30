@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <string>
 #include <vector>
 
 #include "tests/unit/test_support.h"
@@ -16,15 +17,28 @@ void TestConversationAndContextPolicy() {
   conversation.Push(
       {{"role", "assistant"}, {"content", "[checkpoint internal]"}},
       MessageKind::kInternal);
+  conversation.Push(
+      {{"role", "user"}, {"content", "[environment: date old; cwd /old]"}},
+      MessageKind::kEnvironment);
+  conversation.Push(
+      {{"role", "user"}, {"content", "[environment: date today; cwd /work]"}},
+      MessageKind::kEnvironment);
   conversation.Push({{"role", "assistant"}, {"content", "answer"}},
                     MessageKind::kAssistant);
   CHECK(conversation.FirstUserText() == "Prior context: this is user text");
   CHECK(conversation.UserTurns() == 1);
   CHECK(conversation.LastAssistantText() == "answer");
+  CHECK(conversation.LastText(MessageKind::kEnvironment) ==
+        "[environment: date today; cwd /work]");
+  CHECK(std::string(MessageKindName(MessageKind::kEnvironment)) ==
+        "environment");
+  MessageKind environment_kind = MessageKind::kInternal;
+  CHECK(ParseMessageKind("environment", environment_kind));
+  CHECK(environment_kind == MessageKind::kEnvironment);
 
   conversation.ArchiveRange("test", 1, conversation.Size(), 1, 4096);
   CHECK(conversation.ArchivedSegments() == 1);
-  CHECK(conversation.Archive()[0]["message_kinds"].size() == 3);
+  CHECK(conversation.Archive()[0]["message_kinds"].size() == 5);
   CHECK(conversation.Archive()[0]["message_kinds"][0] == "user");
 
   json kinds = MessageKindsJson(conversation.Kinds());
@@ -58,6 +72,13 @@ void TestConversationAndContextPolicy() {
   ContextDecision forced = policy.Prepare(input);
   CHECK(forced.action == ContextAction::kCompact);
   CHECK(forced.forced);
+
+  ContextPolicy growing;
+  growing.SetReported(100);
+  CHECK(growing.Used(/*message_bytes=*/800, /*schema_bytes=*/0,
+                     /*native_tools=*/false) == 200);
+  CHECK(growing.Used(/*message_bytes=*/400, /*schema_bytes=*/800,
+                     /*native_tools=*/true) == 300);
 }
 
 }  // namespace uagent

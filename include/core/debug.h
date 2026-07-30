@@ -47,6 +47,15 @@ inline std::string LocalStamp() {
   return out;
 }
 
+inline std::string LocalDay() {
+  std::time_t now = std::time(nullptr);
+  std::tm tm{};
+  localtime_r(&now, &tm);
+  char out[48];
+  std::strftime(out, sizeof out, "%Y-%m-%d %Z (UTC%z)", &tm);
+  return out;
+}
+
 // Subagents are separate processes, so they append what they spent here for
 // this session to fold into its own totals. Named by the parent's pid; pruned
 // with the other background files.

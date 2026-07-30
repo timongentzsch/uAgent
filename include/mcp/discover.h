@@ -15,12 +15,30 @@
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
+#include "include/mcp/invoke.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+inline bool McpSupportsPostActionSnapshot(const json& input_schema) {
+  if (!input_schema.is_object() || !input_schema.contains("properties") ||
+      !input_schema["properties"].is_object()) {
+    return false;
+  }
+  const json& properties = input_schema["properties"];
+  return properties.contains("includeSnapshot") &&
+         properties["includeSnapshot"].is_object() &&
+         JsonValue(properties["includeSnapshot"], "type", "") == "boolean";
+}
+
+inline bool McpDefaultsPostActionSnapshot(const McpServer& server,
+                                          const json& input_schema) {
+  return JsonValue(server.config, "__uagent_builtin", "") == kChromeMcpName &&
+         McpSupportsPostActionSnapshot(input_schema);
+}
 
 inline bool McpFetchToolDefinitions(
     McpServer& s, const RuntimeConfig& config,
@@ -127,6 +145,8 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       McpNote(s.name, remote_name + " skipped (inputSchema is not an object)");
       continue;
     }
+    const bool include_snapshot =
+        McpDefaultsPostActionSnapshot(s, input_schema);
 
     std::string tool_name = McpToolName(s.name, remote_name);
     if (tool_name.empty() || occupied.contains(tool_name)) {
@@ -148,24 +168,10 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
     int64_t call_timeout = config.mcp_timeout_s;
     Tool tool = MakeTool(
         std::move(tool_name), McpCapDesc(description), std::move(input_schema),
-        [server, remote_name, call_timeout](
+        [server, remote_name, call_timeout, include_snapshot](
             const json& arguments, const ToolContext& context) -> ToolResult {
-          if (!server->alive) {
-            return ToolFailure(
-                ToolErrorCode::kUnavailable,
-                "error: mcp server " + server->name +
-                    " has exited (stderr: " + McpLogPath(server->name) + ")");
-          }
-          json response;
-          if (RunCancellable([&] {
-                response =
-                    McpRpc(*server, "tools/call",
-                           {{"name", remote_name}, {"arguments", arguments}},
-                           context.RemainingSeconds(call_timeout), true);
-              })) {
-            return ToolCancelled("error: call cancelled by user");
-          }
-          return McpResultText(*server, response);
+          return McpInvokeTool(*server, remote_name, arguments, call_timeout,
+                               context, include_snapshot);
         });
     if (definition.contains("outputSchema") &&
         definition["outputSchema"].is_object()) {

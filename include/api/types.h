@@ -22,6 +22,7 @@ struct ToolCall {
 struct ChatResult {
   std::string content;
   std::string reasoning;
+  json reasoning_details = json::array();
   std::vector<ToolCall> tool_calls;
   json annotations = json::array();
   json usage;

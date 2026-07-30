@@ -19,6 +19,7 @@ enum class MessageKind {
   kAssistant,
   kToolResult,
   kAttachment,
+  kEnvironment,
   kInternal,
 };
 
@@ -35,6 +36,7 @@ class Conversation {
   size_t Size() const { return messages_.size(); }
   const json& At(size_t index) const { return messages_[index]; }
   MessageKind KindAt(size_t index) const { return kinds_[index]; }
+  bool HasKind(MessageKind kind) const;
 
   size_t ArchivedSegments() const { return archive_.size(); }
   int64_t ArchivedBytes() const { return archive_bytes_; }
@@ -52,6 +54,7 @@ class Conversation {
   void Erase(size_t begin, size_t end);
 
   std::string LastAssistantText() const;
+  std::string LastText(MessageKind kind) const;
   std::string FirstUserText() const;
   int64_t UserTurns() const;
   size_t UserVisibleCount() const;

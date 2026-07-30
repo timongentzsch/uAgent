@@ -22,7 +22,9 @@ These are local safety bounds, not provider service objectives.
 | skill body / description / count | 16 KiB / 512 B / 64 |
 | attachment / terminal image | 10 / 10 MiB |
 | attachments pending per step | 8 |
-| tool result | 8,000 characters |
+| generic tool result / batch content | 8,000 / 16,000 characters |
+| source read | 1,000 default / 10,000 max lines; 32 KiB |
+| small-directory inspection | 4 regular text files / 32 KiB |
 | grep | 200 matches, 8,000 characters |
 | background jobs / safe tool workers | 8 / 4 |
 | OpenRouter server search | 5 results/search, 3 searches/request |
@@ -31,12 +33,20 @@ These are local safety bounds, not provider service objectives.
 | emergency compaction | 95% |
 | saved removed-trace archive | newest 16 MiB |
 
-Other bounds include 4 MiB assembled reads, 10 MiB editable files, 64 ordered
-edits per `edit_file` call, 64 MiB rotating shell logs, 1 MiB MCP config, 16 MiB
+Other bounds include 10 MiB editable files, 64 ordered edits per `edit_file`
+call, 64 MiB rotating shell logs, 1 MiB MCP config, 16 MiB
 MCP response/log, and 256 KiB schema per server. `run_python` shares the shell
 job/log bounds, caps source at 128 KiB and accepts at most 12 package
 requirements. Raise limits only with a representative workload and
 memory/request measurement.
+
+The generic batch bound is twice `UAGENT_TOOL_RESULT_CHARS`. A tool or per-call
+result with an explicit larger window raises a mixed batch to that one window;
+parallel reads share it. Protocol envelopes and JSON escaping are additional.
+A complete workspace-local directory listing also includes file contents when
+it contains at most four regular non-symlink text files within the same
+source-read bound; external, nested, binary, symlinked, larger, or paginated
+listings remain names-only.
 
 Child processes omit credential-like environment variables. If an approved
 shell command needs one, list its exact name in
@@ -94,8 +104,8 @@ features, uncached/cached/write tokens, cost, and peak RSS.
   reasoning; logging is off by default.
 - Memories are model-written and load into every later session. Review
   `<base>/memory` before sharing it; delete a file to retract what it taught.
-- Skill descriptions are sent on every request and skill bodies only when
-  opened. A skill with no `description` in its front matter is skipped.
+- Skill names and descriptions are returned only through deferred discovery;
+  bodies arrive only when opened. A skill with no `description` is skipped.
 - A workspace `.uagent/.config` is ignored until trusted. Headless runs warn and
   fall back to `~/.uagent/.config` rather than failing.
 - A model that refuses image input degrades for the current route: image parts

@@ -117,9 +117,7 @@ void TestSkillDiscovery() {
   CHECK(skills[0].dir == (workspace / ".uagent/skills/release").string());
   unsetenv("UAGENT_SKILLS");
 
-  // Descriptions ride every request, so an over-long one is truncated rather
-  // than dropping the skill. The cap bounds the text; the ellipsis marking the
-  // cut is allowed on top of it.
+  // Discovery descriptions are bounded before the tool returns them.
   setenv("UAGENT_SKILL_DESC_BYTES", "16", 1);
   skills = LoadSkills(workspace);
   int64_t marked = 0;
@@ -130,15 +128,32 @@ void TestSkillDiscovery() {
   CHECK(marked > 0);  // the over-long ones say so; short ones are left alone
   unsetenv("UAGENT_SKILL_DESC_BYTES");
 
-  // The tool advertises every skill by name and returns the one asked for.
+  std::vector<Skill> catalogue_skills;
+  for (int i = 0; i < 64; ++i) {
+    catalogue_skills.push_back(
+        {"skill-" + std::to_string(i), std::string(512, 'x'), "", ""});
+  }
+  std::string catalogue = SkillCatalogue(catalogue_skills, "");
+  CHECK(catalogue.size() < 8000);
+  CHECK(catalogue.find("skill-63") != std::string::npos);
+  CHECK(catalogue.find(':') == std::string::npos);
+
+  // The wire schema is fixed-size: exact names open directly, a sole query
+  // match opens in one call, and an ambiguous query returns the small catalog.
   skills = LoadSkills(workspace);
   Tool tool = SkillTool(skills);
   CHECK(tool.name == "skill");
+  CHECK(!ToolParameters(tool).at("properties").contains("timeout"));
   CHECK(!tool.mutating);
-  json names = tool.parameters["properties"]["name"]["enum"];
-  CHECK(names.size() == 3);
+  CHECK(!tool.parameters["properties"]["name"].contains("enum"));
+  CHECK(JsonDump(tool.parameters).find("Run ruff.") == std::string::npos);
   CHECK(tool.run({{"name", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
+  CHECK(tool.run({{"query", "lint"}}, {}).output.find("Run ruff.") !=
+        std::string::npos);
+  CHECK(tool.run(json::object(), {}).output.find("release") !=
+        std::string::npos);
+  CHECK(!tool.run({{"query", "missing topic"}}, {}).Ok());
   ToolResult missing_skill = tool.run({{"name", "nope"}}, {});
   CHECK(!missing_skill.Ok());
   CHECK(missing_skill.error == ToolErrorCode::kNotFound);

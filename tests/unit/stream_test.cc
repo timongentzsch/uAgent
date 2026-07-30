@@ -18,6 +18,23 @@ void TestSseChunkPartitions() {
   wire += "event: message\n";
   wire += "data: malformed-json\n\n";
   wire += event({{"usage", {{"prompt_tokens", 7}, {"completion_tokens", 3}}}});
+  wire += event(
+      {{"choices",
+        {{{"delta",
+           {{"reasoning", "think "},
+            {"reasoning_content", "duplicate alias"},
+            {"reasoning_details", json::array({{{"type", "reasoning.text"},
+                                                {"format", "unknown"},
+                                                {"index", 0},
+                                                {"text", "think "}}})}}}}}}});
+  wire += event({{"choices",
+                  {{{"delta",
+                     {{"reasoning_content", "carefully"},
+                      {"reasoning_details",
+                       json::array({{{"type", "reasoning.text"},
+                                     {"format", "unknown"},
+                                     {"index", 0},
+                                     {"text", "carefully"}}})}}}}}}});
   wire += event({{"choices", {{{"delta", {{"content", "Hel"}}}}}}}, "\r\n\r\n");
   wire += event({{"choices", {{{"delta", {{"content", "lo"}}}}}}});
   wire += event({{"choices",
@@ -28,6 +45,14 @@ void TestSseChunkPartitions() {
                                      {"function",
                                       {{"name", "read_"},
                                        {"arguments", "{\"path\":"}}}}})}}}}}}});
+  wire += event(
+      {{"choices",
+        {{{"delta",
+           {{"reasoning", "after"},
+            {"reasoning_details", json::array({{{"type", "reasoning.text"},
+                                                {"format", "unknown"},
+                                                {"index", 0},
+                                                {"text", "after"}}})}}}}}}});
   wire += event(
       {{"choices",
         {{{"delta",
@@ -70,6 +95,12 @@ void TestSseChunkPartitions() {
   };
   auto verify_parsed = [&](const Parsed& parsed) {
     CHECK(parsed.result.content == "Hello");
+    CHECK(parsed.result.reasoning == "think carefullyafter");
+    CHECK(parsed.result.reasoning_details.size() == 1);
+    if (parsed.result.reasoning_details.size() == 1) {
+      CHECK(parsed.result.reasoning_details[0]["text"] ==
+            "think carefullyafter");
+    }
     CHECK(parsed.result.error.empty());
     CHECK(parsed.result.finish_reason == "tool_calls");
     CHECK(parsed.result.first_event_ms >= 0);
@@ -91,6 +122,23 @@ void TestSseChunkPartitions() {
     verify_parsed(parse(split));
   }
 
+  ChatResult unindexed;
+  std::map<int, ToolCall> no_calls;
+  auto reasoning_event = [](const char* text, const char* data) {
+    return JsonDump(
+        {{"choices",
+          {{{"delta",
+             {{"reasoning_details",
+               json::array(
+                   {{{"type", "reasoning.text"}, {"text", text}},
+                    {{"type", "reasoning.encrypted"}, {"data", data}}})}}}}}}});
+  };
+  DecodeOpenAiStreamEvent(reasoning_event("one", "a"), unindexed, no_calls);
+  DecodeOpenAiStreamEvent(reasoning_event(" two", "b"), unindexed, no_calls);
+  CHECK(unindexed.reasoning_details.size() == 2);
+  CHECK(unindexed.reasoning_details[0]["text"] == "one two");
+  CHECK(unindexed.reasoning_details[1]["data"] == "ab");
+
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
   final_line.resize(final_line.size() - 2);
@@ -104,6 +152,39 @@ void TestSseChunkPartitions() {
   CHECK(result.content.empty());
   stream.Finish();
   CHECK(result.content == "complete");
+
+  std::map<int, ToolCall> missing_id = {
+      {0, ToolCall{"", "read_file", R"({"path":"x"})"}}};
+  ChatResult invalid;
+  CHECK(!CollectToolCalls(missing_id, invalid));
+  CHECK(invalid.error.find("missing id") != std::string::npos);
+  CHECK(invalid.tool_calls.empty());
+
+  std::map<int, ToolCall> duplicate_ids = {
+      {0, ToolCall{"same", "read_file", R"({"path":"x"})"}},
+      {1, ToolCall{"same", "list_dir", R"({"path":"."})"}}};
+  invalid = {};
+  CHECK(!CollectToolCalls(duplicate_ids, invalid));
+  CHECK(invalid.error.find("duplicate id") != std::string::npos);
+  CHECK(invalid.tool_calls.empty());
+
+  std::map<int, ToolCall> malformed = {
+      {0, ToolCall{"call", "read_file", R"({"path")"}}};
+  invalid = {};
+  CHECK(!CollectToolCalls(malformed, invalid));
+  CHECK(invalid.error.find("incomplete function") != std::string::npos);
+  CHECK(invalid.tool_calls.empty());
+
+  ChatResult usage_then_error;
+  std::map<int, ToolCall> no_tool_calls;
+  DecodeOpenAiStreamEvent(
+      R"({"usage":{"prompt_tokens":1,"completion_tokens":0}})",
+      usage_then_error, no_tool_calls);
+  CHECK(usage_then_error.semantic_progress);
+  DecodeOpenAiStreamEvent(
+      R"({"error":{"type":"server_error","code":"server_error","message":"retry"}})",
+      usage_then_error, no_tool_calls);
+  CHECK(!SafeToRetry(usage_then_error));
 }
 
 void TestSseFraming() {
@@ -145,26 +226,20 @@ void TestSseFraming() {
 void TestBackgroundValidation() {
   namespace fs = std::filesystem;
   ProcessSupervisor supervisor;
-  CHECK(ToolWaitBackground(supervisor, 0).error == ToolErrorCode::kNotFound);
-  CHECK(ToolWaitBackground(supervisor, 999999).error ==
-        ToolErrorCode::kNotFound);
   auto add_job = [&](BgJob job) {
     CHECK(supervisor.TryAdd(std::move(job), 100));
   };
-  add_job({999998, "", "", false, true, {}, ""});
+  add_job({999998, "", "", true, ""});
   CHECK(!supervisor.PendingCount());
   CHECK(supervisor.DetachedCount() == 1);
-  CHECK(ToolWaitBackground(supervisor, 999998)
-            .output.starts_with("[detached job"));
-  add_job({999997, "", "", false, false, {}, ""});
+  add_job({999997, "", "", false, ""});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
-  CHECK(!supervisor.TryAdd({999996, "", "", false, false, {}, ""}, 1));
+  CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
   CHECK(!supervisor.TakeAll().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
-  const Tool* wait = FindTool(tools, "wait_background");
-  CHECK(wait && !wait->accepts_timeout);
+  CHECK(FindTool(tools, "wait_background") == nullptr);
   const Tool* edit = FindTool(tools, "edit_file");
   CHECK(edit && edit->parameters["properties"].contains("replace_all"));
   CHECK(edit && edit->parameters["properties"].contains("edits"));

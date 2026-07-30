@@ -63,7 +63,7 @@ inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
   }
   std::string line, out;
   int64_t total = 0, shown = 0, first = 0, last = 0;
-  bool output_limited = false;
+  bool output_limited = false, line_truncated = false;
   while (shown < limit && std::getline(f, line)) {
     if (AbortRequested()) return ToolCancelled("error: read cancelled");
     ++total;
@@ -72,6 +72,12 @@ inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
       std::optional<size_t> with_newline =
           with_line ? CheckedAdd(*with_line, 1) : std::nullopt;
       if (!with_newline || *with_newline > static_cast<size_t>(max_bytes)) {
+        if (out.empty()) {
+          out = Utf8Prefix(std::move(line), static_cast<size_t>(max_bytes));
+          first = last = total;
+          shown = 1;
+          line_truncated = true;
+        }
         output_limited = true;
         break;
       }
@@ -105,7 +111,8 @@ inline ToolResult ToolReadFile(const std::string& path, int64_t offset,
   std::string header = "[" + path + " lines " + std::to_string(first) + "-" +
                        std::to_string(last);
   if (output_limited) {
-    header += "; output byte limit reached; more available";
+    header += line_truncated ? "; line prefix limited; more available"
+                             : "; output byte limit reached; more available";
   } else if (more && !ReadFileCountsTotal()) {
     header += "; more available";
   } else {
@@ -393,8 +400,25 @@ inline ToolResult ToolEditFile(const std::string& path,
   return ToolEditFile(path, {{old_s, new_s, replace_all}});
 }
 
+inline bool LikelyTextFile(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return false;
+  char sample[4096];
+  input.read(sample, sizeof sample);
+  std::streamsize size = input.gcount();
+  if (!input && !input.eof()) return false;
+  for (std::streamsize i = 0; i < size; ++i) {
+    unsigned char value = static_cast<unsigned char>(sample[i]);
+    if (value == 0 || value < 0x09 || (value > 0x0d && value < 0x20)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 inline ToolResult ToolListDir(const std::string& path, int64_t offset = 0,
-                              int64_t limit = 0) {
+                              int64_t limit = 0,
+                              bool include_small_files = false) {
   std::string p = path.empty() ? "." : path;
   if (auto invalid = ValidatePathTarget(p, PathTarget::kDirectory)) {
     return std::move(*invalid);
@@ -403,36 +427,84 @@ inline ToolResult ToolListDir(const std::string& path, int64_t offset = 0,
   if (limit <= 0) limit = ListDirEntries();
   int64_t scan_cap = ListDirScanEntries();
   std::error_code ec;
-  std::vector<std::string> names;
+  struct Entry {
+    std::string name;
+  };
+  std::vector<Entry> entries;
   for (auto& e : std::filesystem::directory_iterator(p, ec)) {
-    if (static_cast<int64_t>(names.size()) >= scan_cap) {
+    if (static_cast<int64_t>(entries.size()) >= scan_cap) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          "error: directory exceeds scan limit (" +
                              std::to_string(scan_cap) + " entries)");
     }
-    std::error_code ec2;
-    names.push_back(e.path().filename().string() +
-                    (e.is_directory(ec2) ? "/" : ""));
+    std::error_code type_error;
+    bool directory = e.is_directory(type_error);
+    entries.push_back({e.path().filename().string() + (directory ? "/" : "")});
   }
   if (ec) {
     return ToolFailure(FileToolError(ec), "error: cannot open directory " + p);
   }
-  std::sort(names.begin(), names.end());
-  if (names.empty()) return ToolSuccess("(empty directory)");
-  if (offset >= static_cast<int64_t>(names.size())) {
+  std::sort(
+      entries.begin(), entries.end(),
+      [](const Entry& lhs, const Entry& rhs) { return lhs.name < rhs.name; });
+  if (entries.empty()) return ToolSuccess("(empty directory)");
+  if (offset >= static_cast<int64_t>(entries.size())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: offset is beyond directory entries (" +
-                           std::to_string(names.size()) + ")");
+                           std::to_string(entries.size()) + ")");
   }
-  size_t end = std::min(names.size(), static_cast<size_t>(offset + limit));
+  size_t begin = static_cast<size_t>(offset);
+  size_t available = entries.size() - begin;
+  size_t count = limit > static_cast<int64_t>(available)
+                     ? available
+                     : static_cast<size_t>(limit);
+  size_t end = begin + count;
   std::string out = "[" + p + " entries " + std::to_string(offset + 1) + "-" +
                     std::to_string(end) + " of " +
-                    std::to_string(names.size()) + "]\n";
+                    std::to_string(entries.size()) + "]\n";
   for (size_t i = static_cast<size_t>(offset); i < end; ++i) {
-    out += names[i];
+    out += entries[i].name;
     out += '\n';
   }
-  return ToolSuccess(std::move(out));
+
+  constexpr size_t kPreviewFiles = 4;
+  if (!include_small_files || offset != 0 || end != entries.size() ||
+      entries.size() > kPreviewFiles) {
+    return ToolSuccess(std::move(out));
+  }
+
+  uintmax_t total_bytes = 0;
+  uintmax_t max_bytes = static_cast<uintmax_t>(ReadFileBytes());
+  for (const Entry& entry : entries) {
+    std::filesystem::path entry_path = std::filesystem::path(p) / entry.name;
+    std::error_code type_error;
+    if (!std::filesystem::is_regular_file(
+            std::filesystem::symlink_status(entry_path, type_error)) ||
+        type_error) {
+      return ToolSuccess(std::move(out));
+    }
+    std::error_code size_error;
+    uintmax_t bytes = std::filesystem::file_size(entry_path, size_error);
+    if (size_error || bytes > max_bytes - total_bytes) {
+      return ToolSuccess(std::move(out));
+    }
+    total_bytes += bytes;
+
+    if (!LikelyTextFile(entry_path)) return ToolSuccess(std::move(out));
+  }
+
+  std::string preview = out + "\n[small directory contents]\n";
+  for (const Entry& entry : entries) {
+    ToolResult read =
+        ToolReadFile((std::filesystem::path(p) / entry.name).string(), 1, -1);
+    if (!read.Ok()) return ToolSuccess(std::move(out));
+    preview += "\n";
+    preview += read.output;
+    if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
+      return ToolSuccess(std::move(out));
+    }
+  }
+  return ToolSuccess(std::move(preview), ReadFileResultChars());
 }
 
 // Durable notes the agent writes for itself, reloaded with the project

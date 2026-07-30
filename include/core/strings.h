@@ -44,6 +44,19 @@ inline void ReplaceAll(std::string& s, const std::string& from,
   }
 }
 
+inline std::string AsciiLower(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return text;
+}
+
+inline bool ContainsCaseInsensitive(std::string text,
+                                    const std::string& query) {
+  return query.empty() || AsciiLower(std::move(text)).find(AsciiLower(query)) !=
+                              std::string::npos;
+}
+
 // drop one layer of matching surrounding quotes, if present
 inline std::string Unquote(std::string s) {
   if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
@@ -256,6 +269,18 @@ inline int64_t TerminalColumns() {
   return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
 }
 
+inline std::string TerminalSummary(const std::string& text,
+                                   size_t reserved_columns = 0) {
+  std::string summary = TerminalSafe(FirstLine(text));
+  size_t newline = text.find('\n');
+  if (newline != std::string::npos && newline + 1 < text.size()) {
+    summary += " …";
+  }
+  size_t width = static_cast<size_t>(std::max(
+      int64_t{1}, TerminalColumns() - static_cast<int64_t>(reserved_columns)));
+  return DisplayTrunc(std::move(summary), width);
+}
+
 inline std::string SpinnerLabel(std::string label) {
   size_t columns =
       static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 2));
@@ -289,9 +314,7 @@ inline std::string UrlHost(std::string url) {
   if (auto p = url.find(':'); p != std::string::npos) {
     url.resize(p);
   }
-  std::transform(url.begin(), url.end(), url.begin(),
-                 [](unsigned char c) { return static_cast<char>(tolower(c)); });
-  return url;
+  return AsciiLower(std::move(url));
 }
 
 inline bool OpenrouterUrl(std::string url) {
@@ -302,11 +325,15 @@ inline bool OpenrouterUrl(std::string url) {
                                                 strlen(kSuffix), kSuffix) == 0);
 }
 
+inline bool LoopbackUrl(std::string url) {
+  std::string host = UrlHost(std::move(url));
+  return host == "127.0.0.1" || host == "localhost";
+}
+
 inline bool OpenrouterCompatibleUrl(std::string url) {
   if (OpenrouterUrl(url)) return true;
   url = StripTrailingSlashes(std::move(url));
-  return (UrlHost(url) == "127.0.0.1" || UrlHost(url) == "localhost") &&
-         url.ends_with("/api/v1");
+  return LoopbackUrl(url) && url.ends_with("/api/v1");
 }
 
 inline bool OpenaiUrl(std::string url) {

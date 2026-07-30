@@ -81,7 +81,8 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
                                               "__uagent_config_dir",
                                               "__uagent_builtin",
                                               "__uagent_lazy",
-                                              "__uagent_mode"};
+                                              "__uagent_mode",
+                                              "__uagent_toolset"};
   for (const auto& [field, ignored] : conf.items()) {
     (void)ignored;
     if (!kNown.contains(field)) {

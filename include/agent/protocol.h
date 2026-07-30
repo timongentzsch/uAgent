@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/api.h"
@@ -63,12 +64,27 @@ inline std::string EscapeToolTags(std::string s) {
 inline std::string CapResult(std::string s, int64_t cap = -1) {
   if (cap < 0) cap = ToolResultCap();
   if (cap <= 0 || static_cast<int64_t>(s.size()) <= cap) return s;
-  size_t half = static_cast<size_t>(cap) / 2;
-  size_t head_end = Utf8BoundaryBefore(s, half);
-  size_t tail_start = Utf8BoundaryAfter(s, s.size() - half);
-  return s.substr(0, head_end) + "\n... [" +
-         std::to_string(tail_start - head_end) + " bytes truncated] ...\n" +
-         s.substr(tail_start);
+  size_t limit = static_cast<size_t>(cap);
+  if (limit <= 3) return std::string(limit, '.');
+
+  size_t omitted = s.size() - limit;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    std::string marker =
+        "\n... [" + std::to_string(omitted) + " bytes truncated] ...\n";
+    if (marker.size() >= limit) {
+      return Utf8Prefix(std::move(s), limit - 3) + "...";
+    }
+    size_t keep = limit - marker.size();
+    size_t head_end = Utf8BoundaryBefore(s, keep / 2);
+    size_t tail_start = Utf8BoundaryAfter(s, s.size() - (keep - keep / 2));
+    if (tail_start < head_end) tail_start = head_end;
+    size_t actual_omitted = tail_start - head_end;
+    if (actual_omitted == omitted) {
+      return s.substr(0, head_end) + marker + s.substr(tail_start);
+    }
+    omitted = actual_omitted;
+  }
+  return Utf8Prefix(std::move(s), limit - 3) + "...";
 }
 
 // --- the agent ---------------------------------------------------------------
@@ -77,18 +93,32 @@ inline std::string CapResult(std::string s, int64_t cap = -1) {
 // anyway. The text protocol (plus a tool list, since schemas are no longer
 // sent) is appended only after a server rejects native tool calls.
 inline constexpr const char* kSystemPrompt =
-    "You are a coding agent in the current directory. Resolve the request "
-    "completely: inspect, edit, and verify with tools; do not guess. Keep "
-    "changes minimal and focused, preserve unrelated work, and run relevant "
-    "checks before claiming success. Commit or push only when asked. Batch "
-    "independent calls and delegate independent subtasks. Direct instructions "
-    "win; nearer AGENTS.md or CLAUDE.md overrides broader guidance—read "
-    "applicable files before entering subtrees. Ask only when blocked. Prefer "
-    "Unicode math; use LaTeX only when raw source is requested. Be concise and "
-    "report blockers.";
+    "You are a coding agent in the current workspace. Complete the request "
+    "with the fewest useful model/tool rounds consistent with correctness. "
+    "Gather only the evidence needed. Batch all known independent reads and "
+    "checks in one response. Do not reread unchanged inputs. Once the evidence "
+    "is sufficient, act instead of continuing discovery. "
+    "Make the smallest focused change and preserve unrelated work. Run the "
+    "smallest relevant validation once, then finish when the request is "
+    "satisfied and it passes. Broaden or retry only after missing, failed, or "
+    "contradictory evidence. "
+    "Delegate only isolated work likely to save multiple parent rounds; "
+    "otherwise use direct parallel tools. "
+    "Do not guess. Ask only when blocked. Commit or push only when asked. "
+    "Follow applicable AGENTS.md or CLAUDE.md; nearer instructions win. Lead "
+    "the final answer with the outcome and any blocker.";
 
-inline std::string TextProtocolPrompt(const std::vector<Tool>& tools,
-                                      int64_t default_timeout_s = 30) {
+inline std::string EnvironmentContext(const std::string& date,
+                                      const std::string& cwd) {
+  std::string context =
+      "[environment: date " + date + "; cwd " + cwd + "; shell bash";
+  if (!ExecutableOnPath("python") && ExecutableOnPath("python3")) {
+    context += "; python=python3";
+  }
+  return context + "]";
+}
+
+inline std::string TextProtocolPrompt(const std::vector<Tool>& tools) {
   std::string s =
       "\n\nNative tools unavailable. Reply only with one tool block per "
       "independent call, then wait:\n"
@@ -97,7 +127,7 @@ inline std::string TextProtocolPrompt(const std::vector<Tool>& tools,
       "[/uagent_tool_call]\n"
       "Tools (? optional):\n";
   for (auto& t : tools) {
-    json parameters = ToolParameters(t, default_timeout_s);
+    json parameters = ToolParameters(t);
     auto required = [&](const std::string& k) {
       if (parameters.contains("required")) {
         for (auto& r : parameters["required"]) {

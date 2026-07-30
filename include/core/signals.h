@@ -96,17 +96,14 @@ inline void SigintHandler(int signal_number) {
   _exit(128 + signal_number);
 }
 
-// Run fn with Ctrl+C wired to cancel it instead of exiting the
-// program; returns true if the user cancelled. Centralizes the flag dance so
-// the reset order can't drift between call sites.
+// Run fn with Ctrl+C wired to cancel it instead of exiting the program. The
+// caller owns the abort flag because an outer operation may need to observe it.
 template <class F>
 inline bool RunCancellable(F&& fn) {
   g_streaming = 1;
   if (!AbortRequested()) fn();
   g_streaming = 0;
-  bool cancelled = AbortRequested();
-  ClearAbort();
-  return cancelled;
+  return AbortRequested();
 }
 
 }  // namespace uagent

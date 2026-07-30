@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/ui/tool_output.h"
 
 namespace uagent {
 
@@ -66,6 +67,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     const Tool* tool = task.tool;
     const json& arguments = task.args;
     std::string invalid;
+    bool valid = false;
     if (arguments.is_discarded() || !arguments.is_object()) {
       task.result =
           ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -100,14 +102,10 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
       task.trace_status = "call_limit";
     } else {
       task.label = ToolSummary(*tool, arguments);
-      std::string prefix = "→ " + task.ordinal + TerminalSafe(call.name);
-      if (tool->full_terminal_output) {
-        printf("%s%s%s\n%s\n", CYAN(), prefix.c_str(), RST(),
-               TerminalSafe(task.label).c_str());
-      } else {
-        printf("%s%s(%s)%s\n", CYAN(), prefix.c_str(),
-               TerminalSafe(FirstLine(task.label)).c_str(), RST());
-      }
+      valid = true;
+    }
+    PrintToolCall(task, call, verbose_);
+    if (valid) {
       bool approval_required =
           tool->mutating ||
           (tool->needs_approval && tool->needs_approval(arguments));
@@ -121,7 +119,6 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
             "user denied this action; ask for guidance or try a different "
             "approach");
         task.trace_status = "denied";
-        printf("%s  denied%s\n", RED(), RST());
       }
     }
     if (!task.execute) LogToolResult(task, call, turn_id_, step);
@@ -132,23 +129,23 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     if (tasks[index].execute) runnable.push_back(index);
   }
   int64_t limit = std::max(int64_t{1}, ToolConcurrency());
-  bool parallel = false;
-  if (limit > 1) {
-    for (size_t begin = 0; begin < runnable.size();) {
-      if (!tasks[runnable[begin]].tool->parallel_safe) {
-        ++begin;
-        continue;
-      }
-      size_t end = begin;
-      while (end < runnable.size() &&
-             tasks[runnable[end]].tool->parallel_safe) {
-        ++end;
-      }
-      parallel = parallel || end - begin > 1;
-      begin = end;
-    }
-  }
   if (g_debug.Enabled()) {
+    bool parallel = false;
+    if (limit > 1) {
+      for (size_t begin = 0; begin < runnable.size();) {
+        if (!tasks[runnable[begin]].tool->parallel_safe) {
+          ++begin;
+          continue;
+        }
+        size_t end = begin;
+        while (end < runnable.size() &&
+               tasks[runnable[end]].tool->parallel_safe) {
+          ++end;
+        }
+        parallel = parallel || end - begin > 1;
+        begin = end;
+      }
+    }
     g_debug.Write("tool_batch", {{"turn", turn_id_},
                                  {"step", step},
                                  {"calls", calls.size()},
@@ -168,6 +165,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
                           SpinnerLabel(std::move(activity)));
   ToolContext context{deadline};
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
+    if (context.Expired()) break;
     size_t first = runnable[begin];
     if (limit <= 1 || !tasks[first].tool->parallel_safe) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
@@ -190,8 +188,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     std::vector<std::future<void>> workers;
     for (size_t index = 0; index < workers_count; ++index) {
       workers.push_back(std::async(std::launch::async, [&] {
-        for (size_t work;
-             !AbortRequested() && (work = next.fetch_add(1)) < end;) {
+        for (size_t work; !AbortRequested() && !context.Expired() &&
+                          (work = next.fetch_add(1)) < end;) {
           size_t call_index = runnable[work];
           ExecuteCall(tasks[call_index], calls[call_index], turn_id_, step,
                       context, api_.config.tool_timeout_s);
@@ -204,9 +202,15 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
   for (size_t index : runnable) {
     CallTask& task = tasks[index];
     if (task.started) continue;
-    task.result = ToolCancelled(g_steering.Requested() ? "cancelled by steering"
-                                                       : "cancelled by user");
-    task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
+    if (context.Expired()) {
+      task.result = ToolTimedOut("error: turn deadline reached");
+      task.trace_status = "timed_out";
+    } else {
+      task.result =
+          ToolCancelled(g_steering.Requested() ? "cancelled by steering"
+                                               : "cancelled by user");
+      task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
+    }
     LogToolResult(task, calls[index], turn_id_, step);
   }
   spinner.Stop();
@@ -214,12 +218,24 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
 
   bool cancelled = AbortRequested() && !g_steering.Requested();
   if (!g_steering.Requested()) ClearAbort();
+  std::vector<std::string> model_results = ModelFacingToolResults(tasks);
+  size_t original_chars = 0;
+  size_t model_chars = 0;
   for (size_t index = 0; index < tasks.size(); ++index) {
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
-    if (task.execute) PrintCallResult(task, call);
+    PrintToolResult(task, call, model_results[index], verbose_);
     RecordSideEffect(task, call);
-    AppendToolResult(call, text_mode, task.result.output);
+    original_chars = SaturatingAdd(original_chars, task.result.output.size());
+    model_chars = SaturatingAdd(model_chars, model_results[index].size());
+    AppendToolResult(call, text_mode, model_results[index]);
+  }
+  if (g_debug.Enabled() && model_chars < original_chars) {
+    g_debug.Write("tool_batch_capped", {{"turn", turn_id_},
+                                        {"step", step},
+                                        {"results", tasks.size()},
+                                        {"original_chars", original_chars},
+                                        {"model_chars", model_chars}});
   }
   return cancelled;
 }

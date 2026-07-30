@@ -23,7 +23,6 @@ AppRuntime::AppRuntime(RuntimeConfig parsed)
 void AppRuntime::Shutdown() {
   if (shutdown_) return;
   shutdown_ = true;
-  side_tasks.CancelAll();
   mcp.ShutdownAll();
   BgShutdownAll(processes);
 }

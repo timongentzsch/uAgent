@@ -126,8 +126,7 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
                                     const RuntimeConfig& config) {
   McpServer* chrome = nullptr;
   for (const auto& server : runtime.Servers()) {
-    if (JsonValue(server->config, "__uagent_builtin", "") ==
-        "chrome-devtools") {
+    if (JsonValue(server->config, "__uagent_builtin", "") == kChromeMcpName) {
       chrome = server.get();
       break;
     }
@@ -136,46 +135,60 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
 
   Tool& tool = AddTool(
       tools,
-      MakeTool(
-          "chrome_session",
-          "Start or switch the default Chrome MCP. isolated uses a fresh "
-          "profile; user attaches to the configured or Chrome-approved user "
-          "session. Browser tools register after this call.",
-          {{"type", "object"},
-           {"properties",
-            {{"mode",
-              {{"type", "string"},
-               {"enum", json::array({"isolated", "user"})}}}}},
-           {"required", json::array({"mode"})},
-           {"additionalProperties", false}},
-          [chrome, &config](const json& args,
-                            const ToolContext& context) -> ToolResult {
-            std::string mode = JsonValue(args, "mode", "");
-            if (mode != "isolated" && mode != "user") {
-              return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                 "error: mode must be isolated or user");
-            }
-            if (chrome->alive && JsonValue(chrome->config, "__uagent_mode",
-                                           "isolated") == mode) {
-              return ToolSuccess("Chrome DevTools is already using the " +
-                                 mode + " session");
-            }
-            json next = ChromeMcpConfig(mode);
-            std::string error;
-            if (!McpRestart(*chrome, next, config,
-                            context.RemainingSeconds(config.mcp_timeout_s),
-                            error)) {
-              return ToolFailure(
-                  ToolErrorCode::kUnavailable,
-                  "error: could not switch Chrome DevTools: " + error);
-            }
-            return ToolSuccess(mode == "user"
-                                   ? "User Chrome session selected"
-                                   : "Isolated Chrome session selected");
-          }));
+      MakeTool("chrome_session",
+               "Start/switch Chrome MCP. slim (default) provides navigate, "
+               "evaluate, screenshot; full adds granular UI, network, console "
+               "and performance tools.",
+               {{"type", "object"},
+                {"properties",
+                 {{"mode",
+                   {{"type", "string"},
+                    {"enum", json::array({"isolated", "user"})}}},
+                  {"toolset",
+                   {{"type", "string"},
+                    {"enum", json::array({"slim", "full"})},
+                    {"description", "default slim"}}}}},
+                {"required", json::array({"mode"})},
+                {"additionalProperties", false}},
+               [chrome, &config](const json& args,
+                                 const ToolContext& context) -> ToolResult {
+                 std::string mode = JsonValue(args, "mode", "");
+                 std::string toolset = JsonValue(args, "toolset", "slim");
+                 if (mode != "isolated" && mode != "user") {
+                   return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                      "error: mode must be isolated or user");
+                 }
+                 if (toolset != "slim" && toolset != "full") {
+                   return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                      "error: toolset must be slim or full");
+                 }
+                 if (chrome->alive &&
+                     JsonValue(chrome->config, "__uagent_mode", "isolated") ==
+                         mode &&
+                     JsonValue(chrome->config, "__uagent_toolset", "slim") ==
+                         toolset) {
+                   return ToolSuccess("Chrome DevTools is already using " +
+                                      mode + "/" + toolset);
+                 }
+                 json next = ChromeMcpConfig(mode, toolset);
+                 std::string error;
+                 if (!McpRestart(*chrome, next, config,
+                                 context.RemainingSeconds(config.mcp_timeout_s),
+                                 error)) {
+                   return ToolFailure(
+                       ToolErrorCode::kUnavailable,
+                       "error: could not switch Chrome DevTools: " + error);
+                 }
+                 return ToolSuccess((mode == "user" ? "User" : "Isolated") +
+                                    std::string(" Chrome session selected (") +
+                                    toolset + ")");
+               }));
   tool.mutating = true;
   tool.provider = "builtin:chrome";
-  tool.summary = [](const json& args) { return JsonValue(args, "mode", ""); };
+  tool.summary = [](const json& args) {
+    return JsonValue(args, "mode", "") + "/" +
+           JsonValue(args, "toolset", "slim");
+  };
 }
 
 // Spawn configured servers, handshake, and append one Tool per server tool.

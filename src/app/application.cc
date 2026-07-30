@@ -185,6 +185,13 @@ class Application {
       case SlashCommandId::kTrace:
         agent_.PrintTrace();
         break;
+      case SlashCommandId::kVerbose:
+        agent_.SetVerbose(!agent_.Verbose());
+        printf("%s· verbose %s%s\n", DIM(),
+               agent_.Verbose() ? "ON — expanded bounded tool output"
+                                : "off — compact tool output",
+               RST());
+        break;
       case SlashCommandId::kHelp:
         PrintCommandHelp();
         break;
@@ -199,6 +206,7 @@ class Application {
         break;
       case SlashCommandId::kYolo:
         context_.options.yolo = !context_.options.yolo;
+        api_.server_tools_authorized = context_.options.yolo;
         printf("%s· yolo %s%s\n", DIM(),
                context_.options.yolo ? "ON — auto-approving everything" : "off",
                RST());
@@ -222,26 +230,40 @@ class Application {
 
   void HandleModels(const std::string& argument) {
     if (argument.empty()) {
-      PrintModelRoutes(context_.provider.routes, context_.provider.providers,
-                       api_);
       printf(
-          "%s· /models all for every catalog; "
-          "/models PROVIDER/* or FILTER to narrow%s\n",
+          "%s· use /models QUERY to search every provider, or /models all "
+          "for the full catalog%s\n",
           DIM(), RST());
-    } else if (argument == "all") {
-      PrintAllModels(api_, context_.provider.providers);
-    } else if (std::optional<ModelQuery> query = ResolveProviderQuery(
-                   context_.provider.providers, argument)) {
-      PrintAvailableModels(api_, std::move(query->filter), query->provider);
-    } else {
-      PrintAvailableModels(api_, argument);
+      return;
     }
+    std::string suffix =
+        argument == "all" ? "" : " for " + TerminalSafe(argument);
+    printf("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
+           RST());
+    SteeringGuard steering;
+    TerminalSpinner spinner(true, SpinnerLabel("searching model catalogs"));
+    ModelSearch search = SearchModels(api_, context_.provider.routes,
+                                      context_.provider.providers, argument);
+    spinner.Stop();
+    steering.Stop();
+    if (AbortRequested()) {
+      ClearAbort();
+      printf("%s· model search cancelled%s\n", YEL(), RST());
+      return;
+    }
+    std::optional<ModelCandidate> selected = PickModel(search, api_);
+    if (!selected) return;
+    ApplyRoute(api_, selected->route);
+    bool named_route =
+        ResolveModelRoute(context_.provider.routes, context_.provider.providers,
+                          selected->selection)
+            .has_value();
+    SaveSelectedModel(selected->selection, named_route);
   }
 
   void HandleModel(const std::string& argument) {
     if (argument.empty()) {
-      PrintModelRoutes(context_.provider.routes, context_.provider.providers,
-                       api_);
+      HandleModels("");
       return;
     }
     std::string selected = SelectModel(api_, context_.provider.routes,
@@ -254,6 +276,10 @@ class Application {
     bool named_route = ResolveModelRoute(context_.provider.routes,
                                          context_.provider.providers, selected)
                            .has_value();
+    SaveSelectedModel(selected, named_route);
+  }
+
+  void SaveSelectedModel(const std::string& selected, bool named_route) {
     std::string error;
     bool saved =
         SaveModelPreference({selected, api_.base_url, named_route}, error);

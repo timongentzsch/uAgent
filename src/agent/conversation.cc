@@ -30,6 +30,8 @@ const char* MessageKindName(MessageKind kind) {
       return "tool_result";
     case MessageKind::kAttachment:
       return "attachment";
+    case MessageKind::kEnvironment:
+      return "environment";
     case MessageKind::kInternal:
       return "internal";
   }
@@ -47,6 +49,7 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
       {"assistant", MessageKind::kAssistant},
       {"tool_result", MessageKind::kToolResult},
       {"attachment", MessageKind::kAttachment},
+      {"environment", MessageKind::kEnvironment},
       {"internal", MessageKind::kInternal},
   };
   for (const auto& item : kKinds) {
@@ -129,6 +132,10 @@ void Conversation::Erase(size_t begin, size_t end) {
                kinds_.begin() + static_cast<std::ptrdiff_t>(end));
 }
 
+bool Conversation::HasKind(MessageKind kind) const {
+  return std::find(kinds_.begin(), kinds_.end(), kind) != kinds_.end();
+}
+
 std::string Conversation::LastAssistantText() const {
   for (size_t index = messages_.size(); index > 0; --index) {
     const json& message = messages_[index - 1];
@@ -138,6 +145,18 @@ std::string Conversation::LastAssistantText() const {
     }
     std::string text = JsonValue(message, "content", "");
     if (!text.empty()) return text;
+  }
+  return "";
+}
+
+std::string Conversation::LastText(MessageKind kind) const {
+  for (size_t index = messages_.size(); index > 0; --index) {
+    if (kinds_[index - 1] != kind) continue;
+    const json& message = messages_[index - 1];
+    if (!message.contains("content") || !message["content"].is_string()) {
+      continue;
+    }
+    return message["content"].get<std::string>();
   }
   return "";
 }

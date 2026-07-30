@@ -42,6 +42,7 @@ enum class SlashCommandId {
   kReset,
   kSessions,
   kTrace,
+  kVerbose,
   kYolo,
 };
 
@@ -64,10 +65,10 @@ inline constexpr SlashCommandSpec kSlashCommands[] = {
      CommandCompletion::kEfforts},
     {SlashCommandId::kHelp, "/help", "", "show this help",
      CommandCompletion::kNone},
-    {SlashCommandId::kModel, "/model", "NAME", "switch model or provider",
+    {SlashCommandId::kModel, "/model", "NAME", "switch model or route",
      CommandCompletion::kModels},
-    {SlashCommandId::kModels, "/models", "[TARGET]",
-     "query provider, filter, or all", CommandCompletion::kNone},
+    {SlashCommandId::kModels, "/models", "[QUERY]",
+     "search and select across providers", CommandCompletion::kNone},
     {SlashCommandId::kOnline, "/online", "", "toggle OpenRouter web search",
      CommandCompletion::kNone},
     {SlashCommandId::kQuit, "/quit", "", "exit µAgent",
@@ -77,6 +78,8 @@ inline constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kSessions, "/sessions", "", "resume a saved session",
      CommandCompletion::kNone},
     {SlashCommandId::kTrace, "/trace", "", "show latest tool and search trace",
+     CommandCompletion::kNone},
+    {SlashCommandId::kVerbose, "/verbose", "", "toggle full tool traces",
      CommandCompletion::kNone},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval",
      CommandCompletion::kNone},
@@ -132,7 +135,8 @@ inline std::queue<unsigned char>
     readline_pending;  // bytes read ahead, replayed first
 inline std::string readline_initial;
 inline size_t readline_initial_pos = 0;
-inline bool steering_prompt = false, steering_cancelled = false;
+inline bool steering_prompt = false, steering_cancelled = false,
+            choice_prompt = false, choice_cancelled = false;
 inline std::vector<std::string> readline_commands, readline_models,
     readline_efforts;
 inline const std::vector<std::string>* readline_candidates = nullptr;
@@ -198,6 +202,10 @@ inline int EscGetc(FILE* file) {
     if (poll(&event, 1, 50) == 0) {
       if (steering_prompt) {
         steering_cancelled = true;
+        return '\n';
+      }
+      if (choice_prompt) {
+        choice_cancelled = true;
         return '\n';
       }
       readline_pending.push(0x0b);
@@ -333,6 +341,22 @@ inline std::string ReadInputLine(const std::string& prompt, bool* eof,
   }
   fputs(RST(), stdout);
   return initial + input;
+}
+
+inline std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
+                                  bool& eof) {
+#if defined(HAVE_EDITLINE)
+  choice_prompt = true;
+  choice_cancelled = false;
+#endif
+  std::string input = Trim(ReadInputLine(prompt, &eof, false));
+#if defined(HAVE_EDITLINE)
+  cancelled = choice_cancelled;
+  choice_prompt = choice_cancelled = false;
+#else
+  cancelled = input.find('\x1b') != std::string::npos;
+#endif
+  return cancelled ? "" : input;
 }
 
 inline std::string SteeringReplacement(bool& cancelled) {

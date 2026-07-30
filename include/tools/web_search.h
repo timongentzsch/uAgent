@@ -2,11 +2,10 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
 #define UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
-// OpenRouter-only web search as a tool, billed only when the model chooses
-// to call it — unlike the /online toggle, which pays on every request.
+// OpenRouter-compatible web search, billed only when the model chooses to call
+// it — unlike the /online toggle, which pays on every request.
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <string>
 #include <utility>
@@ -32,27 +31,23 @@ struct WebSearchRoute {
   }
 };
 
-// OpenRouter-only: lets the model reach the web when IT decides it needs to,
-// via a quiet side-request to <model>:online. Costs one search-enabled
+// Lets the model reach the web through an OpenRouter-compatible endpoint via a
+// quiet side-request to <model>:online. Costs one search-enabled
 // completion per call — but only when actually used, unlike the /online
 // toggle which pays on every request.
 inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
-                          SideTaskSupervisor& side_tasks,
                           WebSearchRoute fallback = {}) {
   Tool t = MakeTool(
       "web_search",
-      "Search via OpenRouter with source URLs. Batch up to four queries. Slow "
-      "searches "
-      "background automatically; continue useful work and join only when "
-      "needed. "
-      "Do not repeat.",
+      "Search OpenRouter with URLs; batch up to four queries. Independent "
+      "calls overlap. Do not repeat.",
       json::parse(R"json({"type":"object","properties":{
-          "query":{"type":"string","description":"one query (legacy shorthand)"},
+          "query":{"type":"string","description":"single query"},
           "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
-            "description":"one to four queries in one request"}}})json"),
-      [&api, &usage, &side_tasks, fallback = std::move(fallback)](
+            "description":"1-4 queries"}}})json"),
+      [&api, &usage, fallback = std::move(fallback)](
           const json& a, const ToolContext& context) -> ToolResult {
-        bool active_openrouter = OpenrouterCompatibleUrl(api.base_url);
+        bool active_openrouter = OpenrouterUrl(api.base_url);
         WebSearchRoute route =
             active_openrouter
                 ? WebSearchRoute{api.base_url, api.api_key, api.model}
@@ -105,77 +100,47 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         if (!config.web_search_effort.empty()) {
           body["reasoning"] = {{"effort", config.web_search_effort}};
         }
-        int64_t timeout =
-            std::max(config.web_search_timeout_s, context.timeout_s);
-        int64_t id = side_tasks.Start(
-            "web search", query,
-            [base_url = std::move(route.base_url),
-             api_key = std::move(route.api_key), config, body = std::move(body),
-             timeout, &usage](const std::atomic<bool>& cancel) {
-              auto started = std::chrono::steady_clock::now();
-              DebugLog("side_request", {{"kind", "web_search"},
-                                        {"path", "/chat/completions"},
-                                        {"body", body}});
-              Api side(config);
-              side.base_url = base_url;
-              side.api_key = api_key;
-              json r = side.Post("/chat/completions", body, timeout, &cancel);
-              DebugLog("side_response",
-                       {{"kind", "web_search"},
-                        {"duration_ms", ElapsedMs(started)},
-                        {"cancelled", cancel.load()},
-                        {"response", r.is_discarded() ? json(nullptr) : r}});
-              if (cancel.load()) {
-                return ToolCancelled("error: web search abandoned");
-              }
-              if (AbortRequested()) {
-                return ToolCancelled("error: search cancelled by user");
-              }
-              if (r.is_object() && r.contains("usage")) usage.Add(r["usage"]);
-              if (r.is_object() && r.contains("choices") &&
-                  r["choices"].is_array() && !r["choices"].empty() &&
-                  r["choices"][0].is_object()) {
-                const json& choice = r["choices"][0];
-                std::string content = "(empty answer)";
-                if (choice.contains("message") &&
-                    choice["message"].is_object()) {
-                  content = JsonString(choice["message"], "content", content);
-                }
-                std::string output =
-                    "[web search result; refetch only if verification is "
-                    "necessary]\n" +
-                    content;
-                if (JsonString(choice, "finish_reason") == "length") {
-                  output += "\n[truncated; raise UAGENT_WEB_SEARCH_MAX_TOKENS]";
-                }
-                return ToolSuccess(std::move(output));
-              }
-              if (r.is_object() && r.contains("error") &&
-                  r["error"].is_object()) {
-                return ToolFailure(ToolErrorCode::kRemoteError,
-                                   "error: " + JsonString(r["error"], "message",
-                                                          "search failed"));
-              }
-              return ToolFailure(ToolErrorCode::kRemoteError,
-                                 "error: web search failed");
-            },
-            ToolConcurrency());
-        if (!id) {
-          return ToolFailure(ToolErrorCode::kLimitExceeded,
-                             "error: concurrent side-task limit reached");
+        int64_t timeout = context.RemainingSeconds(config.web_search_timeout_s);
+        auto started = std::chrono::steady_clock::now();
+        DebugLog("side_request", {{"kind", "web_search"},
+                                  {"path", "/chat/completions"},
+                                  {"body", body}});
+        Api side(config);
+        side.base_url = std::move(route.base_url);
+        side.api_key = std::move(route.api_key);
+        json r = side.Post("/chat/completions", body, timeout);
+        DebugLog("side_response",
+                 {{"kind", "web_search"},
+                  {"duration_ms", ElapsedMs(started)},
+                  {"cancelled", AbortRequested()},
+                  {"response", r.is_discarded() ? json(nullptr) : r}});
+        if (AbortRequested()) {
+          return ToolCancelled("error: search cancelled by user");
         }
-        int64_t grace = context.timeout_s == 0
-                            ? timeout
-                            : std::min(context.timeout_s, timeout);
-        if (auto result = side_tasks.Wait(id, std::chrono::seconds(grace))) {
-          return {result->status, std::move(result->output), result->error};
+        if (r.is_object() && r.contains("usage")) usage.Add(r["usage"]);
+        if (r.is_object() && r.contains("choices") && r["choices"].is_array() &&
+            !r["choices"].empty() && r["choices"][0].is_object()) {
+          const json& choice = r["choices"][0];
+          std::string content = "(empty answer)";
+          if (choice.contains("message") && choice["message"].is_object()) {
+            content = JsonString(choice["message"], "content", content);
+          }
+          std::string output =
+              "[web search result; refetch only if verification is "
+              "necessary]\n" +
+              content;
+          if (JsonString(choice, "finish_reason") == "length") {
+            output += "\n[truncated; raise UAGENT_WEB_SEARCH_MAX_TOKENS]";
+          }
+          return ToolSuccess(std::move(output));
         }
-        DebugLog("side_backgrounded",
-                 {{"kind", "web_search"}, {"id", id}, {"query", query}});
-        return ToolSuccess("[backgrounded] web search job " +
-                           std::to_string(id) +
-                           "; continue other work or call wait_background(id=" +
-                           std::to_string(id) + ")");
+        if (r.is_object() && r.contains("error") && r["error"].is_object()) {
+          return ToolFailure(
+              ToolErrorCode::kRemoteError,
+              "error: " + JsonString(r["error"], "message", "search failed"));
+        }
+        return ToolFailure(ToolErrorCode::kRemoteError,
+                           "error: web search failed");
       });
   t.mutating = true;
   t.summary = [](const json& a) {
@@ -192,7 +157,6 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
     return JsonValue(a, "query", "");
   };
   t.parallel_safe = true;
-  t.timeout_s = 5;
   t.max_calls_per_turn = api.config.web_search_calls;
   return t;
 }

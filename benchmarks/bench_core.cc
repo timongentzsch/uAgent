@@ -122,6 +122,10 @@ int RunBenchmarks() {
             << lean_schema - grep_schema << " bytes; edit adds "
             << lean_schema - no_edit_schema << " bytes; inline image adds "
             << image_schema - lean_schema << " bytes\n";
+  for (const Tool& tool : lean_tools) {
+    std::cout << "  " << std::left << std::setw(24) << tool.name << std::right
+              << JsonDump(ToolSchema(tool)).size() << " bytes\n";
+  }
   std::cout << "sink " << sink << '\n';
   return 0;
 }

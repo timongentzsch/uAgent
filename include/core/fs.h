@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/strings.h"
 
@@ -65,6 +66,7 @@ inline constexpr const char* kMemoryDir = "memory";
 inline constexpr const char* kHistoryDir = "history";
 inline constexpr const char* kSessionsDir = "sessions";
 inline constexpr const char* kBgDir = "bg";
+inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
 
@@ -235,6 +237,7 @@ inline void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kHistoryDir), HistoryDays(), HistoryFiles());
   PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
   PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
+  PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());
   PruneArtifactTree(UagentDir(kMcpDir), McpLogDays(), McpLogFiles());
 }
 
@@ -300,6 +303,52 @@ inline bool AppendPrivateLine(const std::string& path, const std::string& line,
   flock(fd, LOCK_UN);
   close(fd);
   return true;
+}
+
+// Atomically drain a small private append-only file. Truncating the locked
+// inode instead of unlinking it keeps writers that opened before the lock from
+// appending to an unreachable file.
+inline bool TakePrivateText(const std::string& path, std::string& content,
+                            std::string& error) {
+  content.clear();
+  int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+  if (fd < 0) {
+    if (errno == ENOENT) return true;
+    error = strerror(errno);
+    return false;
+  }
+  if (flock(fd, LOCK_EX) != 0) {
+    error = strerror(errno);
+    close(fd);
+    return false;
+  }
+  constexpr size_t kMaxBytes = 16 * 1024 * 1024;
+  char buffer[4096];
+  bool ok = true;
+  for (;;) {
+    ssize_t count = read(fd, buffer, sizeof buffer);
+    if (count < 0 && errno == EINTR) continue;
+    if (count < 0) {
+      error = strerror(errno);
+      ok = false;
+      break;
+    }
+    if (count == 0) break;
+    size_t bytes = static_cast<size_t>(count);
+    if (AdditionExceeds(content.size(), bytes, kMaxBytes)) {
+      error = "private file exceeds 16 MiB";
+      ok = false;
+      break;
+    }
+    content.append(buffer, bytes);
+  }
+  if (ok && ftruncate(fd, 0) != 0) {
+    error = strerror(errno);
+    ok = false;
+  }
+  flock(fd, LOCK_UN);
+  close(fd);
+  return ok;
 }
 
 inline std::filesystem::path CanonicalAccessPath(const std::string& path) {

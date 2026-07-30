@@ -24,7 +24,7 @@ namespace uagent {
 inline std::vector<Tool> BuiltinTools(
     ProcessSupervisor& supervisor,
     const std::filesystem::path& workspace = CanonicalAccessPath("."),
-    bool inline_images = false, SideTaskSupervisor* side_tasks = nullptr) {
+    bool inline_images = false) {
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
   auto path_tool = [&](Tool tool) -> Tool& {
@@ -38,7 +38,7 @@ inline std::vector<Tool> BuiltinTools(
                                   schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line (default 1)"},
-                    "limit":{"type":"integer","description":"line count (default 200)"}},
+                    "limit":{"type":"integer","description":"line count (default 1000)"}},
                     "required":["path"]})json"),
                                   [](const json& a, const ToolContext&) {
                                     return ToolReadFile(
@@ -47,9 +47,13 @@ inline std::vector<Tool> BuiltinTools(
                                         JsonValue(a, "limit", int64_t{0}));
                                   }));
   read.parallel_safe = true;
+  // Reads get a larger, contiguous window than logs and remote output. This
+  // avoids paying another model round merely to continue an ordinary source
+  // file while keeping every other tool on the global result cap.
+  read.result_chars = ReadFileResultChars();
 
   Tool& write =
-      path_tool(MakeTool("write_file", "Write (overwrite) a file",
+      path_tool(MakeTool("write_file", "Overwrite a file.",
                          schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},"content":{"type":"string"}},
                     "required":["path","content"]})json"),
@@ -58,6 +62,7 @@ inline std::vector<Tool> BuiltinTools(
                                                 JsonValue(a, "content", ""));
                          }));
   write.mutating = true;
+  write.available_in_lean = false;
   write.summary = [](const json& a) {
     return JsonValue(a, "path", "") + " (" +
            std::to_string(JsonValue(a, "content", std::string()).size()) +
@@ -69,7 +74,7 @@ inline std::vector<Tool> BuiltinTools(
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},"old":{"type":"string"},
                     "new":{"type":"string"},
-                    "replace_all":{"type":"boolean","description":"replace every match of old"},
+                    "replace_all":{"type":"boolean","description":"replace all matches"},
                     "edits":{"type":"array","maxItems":63,
                       "description":"additional edits in order",
                       "items":{"type":"object","properties":{
@@ -116,6 +121,7 @@ inline std::vector<Tool> BuiltinTools(
         return ToolEditFile(JsonValue(a, "path", ""), edits);
       }));
   edit.mutating = true;
+  edit.available_in_lean = false;
   edit.summary = [](const json& a) {
     size_t count = 1;
     auto additional = a.find("edits");
@@ -126,20 +132,22 @@ inline std::vector<Tool> BuiltinTools(
            (count == 1 ? " edit)" : " edits)");
   };
 
-  Tool& list = path_tool(MakeTool("list_dir", "List a directory",
-                                  schema(R"json({"type":"object","properties":{
+  Tool& list = path_tool(MakeTool(
+      "list_dir",
+      "List a directory; small workspace-only text directories include files.",
+      schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},"offset":{"type":"integer"},
                     "limit":{"type":"integer"}}})json"),
-                                  [](const json& a, const ToolContext&) {
-                                    return ToolListDir(
-                                        JsonValue(a, "path", "."),
-                                        JsonValue(a, "offset", int64_t{0}),
-                                        JsonValue(a, "limit", int64_t{0}));
-                                  }));
+      [workspace](const json& a, const ToolContext&) {
+        std::string path = JsonValue(a, "path", ".");
+        bool preview = !PathApprovalRequired(path, workspace);
+        return ToolListDir(path, JsonValue(a, "offset", int64_t{0}),
+                           JsonValue(a, "limit", int64_t{0}), preview);
+      }));
   list.parallel_safe = true;
 
   Tool& grep = path_tool(
-      MakeTool("grep", "Search project files by regex; optional path/glob.",
+      MakeTool("grep", "Regex-search files; optional path/glob.",
                schema(R"json({"type":"object","properties":{
                     "pattern":{"type":"string"},"path":{"type":"string"},
                     "glob":{"type":"string"}},"required":["pattern"]})json"),
@@ -168,8 +176,7 @@ inline std::vector<Tool> BuiltinTools(
   // the model, so it can read what it cannot parse.
   Tool& attach = path_tool(MakeTool(
       "attach",
-      "Load an image or document into model context when read_file cannot "
-      "parse it (PDF, Office, CSV, HTML).",
+      "Add an image/document to model context when read_file cannot parse it.",
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"}},"required":["path"]})json"),
       [](const json& a, const ToolContext&) {
@@ -181,46 +188,42 @@ inline std::vector<Tool> BuiltinTools(
   Tool& run = AddTool(
       tools,
       MakeTool("run",
-               "Run a command (bash by default). Slow jobs return an id for "
-               "wait_background. detach=true persists a server and log across "
-               "sessions for terminal_output. Input is disabled; use "
-               "noninteractive flags such as sudo -n.",
+               "Run a command to completion in cwd (bash default; omit cd; no "
+               "stdin). Use detach only for persistent terminal_output.",
                schema(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
-                    "shell":{"type":"string","description":"shell executable (default bash)"},
+                    "shell":{"type":"string","description":"default bash"},
                     "detach":{"type":"boolean",
-                      "description":"persist process and log across sessions"}},
+                      "description":"persist terminal and log"}},
                     "required":["command"]})json"),
                [&supervisor](const json& a, const ToolContext& context) {
                  return ToolRunApprovedShell(
-                     supervisor, JsonValue(a, "command", ""), context.timeout_s,
-                     context, JsonValue(a, "detach", false),
+                     supervisor, JsonValue(a, "command", ""), context,
+                     JsonValue(a, "detach", false),
                      JsonValue(a, "shell", "bash"));
                }));
   run.mutating = true;
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
-  run.timeout_s = 3;
-  run.full_terminal_output = true;
-  // Each call owns its pid slot, log file, and job-table entry, so independent
-  // commands (network fetches especially) overlap instead of queueing.
+  run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
+  // Each call owns its process group and log, so independent commands
+  // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
 
   Tool& python = AddTool(
       tools,
       MakeTool(
           "run_python",
-          "Run isolated uv Python; declare all third-party packages. "
-          "Environments "
-          "cache; pip/venv state does not persist. Save plots for show_image.",
+          "Run isolated uv Python; list third-party packages. Environments "
+          "cache; pip/venv state does not. Save plots for show_image.",
           schema(R"json({"type":"object","properties":{
                     "code":{"type":"string"},
                     "packages":{"type":"array","items":{"type":"string"},"maxItems":12,
-                      "description":"all third-party PEP 508 requirements; omit for stdlib"}},
+                      "description":"PEP 508 requirements; omit stdlib"}},
                     "required":["code"]})json"),
           [&supervisor](const json& a, const ToolContext& context) {
             return ToolRunPython(supervisor, JsonValue(a, "code", ""),
                                  JsonValue(a, "packages", json::array()),
-                                 context.timeout_s, context);
+                                 context);
           }));
   python.mutating = true;
   python.summary = [](const json& a) {
@@ -229,32 +232,7 @@ inline std::vector<Tool> BuiltinTools(
     return packages ? summary + "\n[packages: " + JsonDump(a["packages"]) + "]"
                     : summary;
   };
-  python.timeout_s = 3;
-  python.full_terminal_output = true;
-
-  Tool& wait = AddTool(
-      tools,
-      MakeTool(
-          "wait_background",
-          "Wait for a background job. Current output returns immediately; "
-          "later calls return on new output or exit.",
-          schema(R"json({"type":"object","properties":{
-                    "id":{"type":"integer","minimum":1,
-                      "description":"job id; process jobs use their OS pid"},
-                    "pid":{"type":"integer","minimum":1,
-                      "description":"legacy alias for id"}}})json"),
-          [&supervisor, side_tasks](const json& a, const ToolContext& context) {
-            int64_t id = JsonValue(a, "id", JsonValue(a, "pid", int64_t{0}));
-            if (side_tasks && side_tasks->Contains(id)) {
-              return ToolWaitSideTask(*side_tasks, id, context);
-            }
-            return ToolWaitBackground(supervisor, id, context);
-          }));
-  wait.summary = [](const json& a) {
-    return "job " +
-           std::to_string(JsonValue(a, "id", JsonValue(a, "pid", int64_t{0})));
-  };
-  wait.accepts_timeout = false;
+  python.timeout_s = 0;  // bounded by the turn; no model-driven polling
 
   Tool& terminal = AddTool(
       tools,
@@ -267,6 +245,7 @@ inline std::vector<Tool> BuiltinTools(
                }));
   terminal.parallel_safe = true;
   terminal.result_chars = 6000;
+  terminal.visibility = Tool::Visibility::kDetachedTerminal;
   terminal.summary = [](const json& a) {
     int64_t pid = JsonValue(a, "pid", int64_t{0});
     return pid ? "pid " + std::to_string(pid) : "list";
@@ -276,15 +255,14 @@ inline std::vector<Tool> BuiltinTools(
       tools,
       MakeTool(
           "memory",
-          "Save a durable lesson, convention, or preference for future "
-          "sessions; they are reloaded at the start of every one. Use it for "
-          "what stays true, not for this turn's state.",
+          "Save, replace, or forget a durable project/global lesson. Use only "
+          "facts that remain true across sessions.",
           schema(R"json({"type":"object","properties":{
-                    "name":{"type":"string","description":"short kebab-case slug; reusing one replaces it"},
+                    "name":{"type":"string","description":"kebab-case slug; reuse replaces"},
                     "scope":{"type":"string","enum":["project","global"],
-                      "description":"project: this workspace only; global: every workspace"},
+                      "description":"project workspace or all workspaces"},
                     "content":{"type":"string",
-                      "description":"markdown body; omit to forget this memory"}},
+                      "description":"markdown; omit to forget"}},
                     "required":["name","scope"]})json"),
           [](const json& a, const ToolContext&) {
             return ToolMemory(JsonValue(a, "name", ""),
@@ -292,17 +270,17 @@ inline std::vector<Tool> BuiltinTools(
                               JsonValue(a, "content", ""));
           }));
   memory.mutating = true;
+  memory.available_in_lean = false;
   memory.summary = [](const json& a) {
     return JsonValue(a, "scope", "") + "/" + JsonValue(a, "name", "");
   };
 
   Tool& checkpoint = AddTool(
       tools,
-      MakeTool(
-          "checkpoint",
-          "After a checkpoint hint, store durable facts and validation, never "
-          "commands, permissions, or plans.",
-          schema(R"json({"type":"object","properties":{
+      MakeTool("checkpoint",
+               "After a checkpoint hint, save durable facts and validation—not "
+               "commands, permissions, or plans.",
+               schema(R"json({"type":"object","properties":{
                     "state":{"type":"string","description":"standalone durable state"},
                     "verbatim":{"type":"array","items":{"type":"string","maxLength":256},
                       "maxItems":8,"description":"exact literals"},
@@ -310,14 +288,15 @@ inline std::vector<Tool> BuiltinTools(
                       "description":"relevant non-secret files"},
                     "keep_last_n_results":{"type":"integer","minimum":0,"maximum":3,
                       "description":"recent results (default 0)"}},"required":["state"]})json"),
-          [](const json&, const ToolContext&) {
-            return ToolFailure(
-                ToolErrorCode::kInternal,
-                "error: checkpoint must be handled by the agent runtime");
-          }));
+               [](const json&, const ToolContext&) {
+                 return ToolFailure(
+                     ToolErrorCode::kInternal,
+                     "error: checkpoint must be handled by the agent runtime");
+               }));
   checkpoint.summary = [](const json& a) {
     return FirstLine(JsonValue(a, "state", ""));
   };
+  checkpoint.visibility = Tool::Visibility::kCheckpointHint;
   return tools;
 }
 

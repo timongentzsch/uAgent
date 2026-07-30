@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,10 +33,6 @@ inline std::string Tilde(const std::string& path) {
   return path;
 }
 
-inline std::string ApiHost(const std::string& base_url) {
-  return UrlHost(base_url);
-}
-
 #if defined(HAVE_EDITLINE)
 inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
   std::vector<std::string> models, efforts{"default"};
@@ -45,103 +43,74 @@ inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
 }
 #endif
 
-inline void PrintModelRoutes(const std::vector<ModelRoute>& routes,
-                             const std::vector<NamedProvider>& providers,
-                             const Api& api) {
-  if (routes.empty() && providers.empty()) {
-    printf("%s* %-20s %s @ %s%s\n", BOLD(), api.model.c_str(),
-           api.model.c_str(), ApiHost(api.base_url).c_str(), RST());
-    return;
-  }
-  for (const ModelRoute& route : routes) {
-    bool active = route.base_url == api.base_url && route.model == api.model &&
-                  route.effort == api.reasoning_effort;
-    printf("%s%c %-20s %s", active ? BOLD() : DIM(), active ? '*' : ' ',
-           route.name.c_str(), route.model.c_str());
-    if (!route.effort.empty()) printf(" · %s", route.effort.c_str());
-    printf(" @ %s%s\n", ApiHost(route.base_url).c_str(), RST());
-  }
-  for (const NamedProvider& provider : providers) {
-    bool has_static_models =
-        std::any_of(routes.begin(), routes.end(), [&](const ModelRoute& route) {
-          return route.name.starts_with(provider.name + "/");
-        });
-    if (has_static_models) continue;
-    bool active = provider.base_url == api.base_url;
-    printf("%s%c %-20s live catalog @ %s%s\n", active ? BOLD() : DIM(),
-           active ? '*' : ' ', (provider.name + "/*").c_str(),
-           ApiHost(provider.base_url).c_str(), RST());
-  }
-}
-
-inline size_t PrintAvailableModels(Api& api, std::string filter,
-                                   const NamedProvider* provider = nullptr,
-                                   bool show_count = true) {
-  std::string base_url = provider ? provider->base_url : api.base_url;
-  std::string label =
-      provider ? provider->name + " @ " + ApiHost(base_url) : ApiHost(base_url);
-  printf("%s· querying %s…%s\n", DIM(), label.c_str(), RST());
-  std::optional<std::vector<ModelInfo>> models =
-      provider ? QueryModels(api, *provider, std::move(filter))
-               : QueryModels(api, std::move(filter));
-  if (!models) {
-    printf("%s· %s catalog unavailable%s\n", RED(), label.c_str(), RST());
-    return 0;
-  }
-  for (const ModelInfo& model : *models) {
-    std::string selection =
-        provider ? provider->name + "/" + model.id : model.id;
-    bool active = base_url == api.base_url && model.id == api.model;
-#if defined(HAVE_EDITLINE)
-    RegisterCompletion(CommandCompletion::kModels, selection);
-#endif
-    if (active && model.context > 0) {
-      api.ctx_window = model.context;
-      setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
-    }
-    printf("%s%c %s", active ? BOLD() : DIM(), active ? '*' : ' ',
-           selection.c_str());
-    if (model.context > 0) {
-      printf(" · ctx %s", FmtTokens(model.context).c_str());
-    }
-    if (!model.efforts.empty()) {
-      printf(" · effort ");
-      for (size_t i = 0; i < model.efforts.size(); ++i) {
-        printf("%s%s", i ? "," : "", model.efforts[i].c_str());
+inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
+  std::string current = api.model;
+  for (size_t i = 0; i < search.matches.size(); ++i) {
+    const ModelCandidate& candidate = search.matches[i];
+    bool active = candidate.route.base_url == api.base_url &&
+                  candidate.route.model == api.model;
+    if (active) {
+      current = candidate.selection;
+      if (candidate.info.context > 0) {
+        api.ctx_window = candidate.info.context;
+        setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
       }
-      if (!model.default_effort.empty()) {
-        printf(" (default %s)", model.default_effort.c_str());
+    }
+#if defined(HAVE_EDITLINE)
+    RegisterCompletion(CommandCompletion::kModels, candidate.selection);
+#endif
+    printf("%s[%zu]%s %s%c %s", CYAN(), i + 1, RST(), active ? BOLD() : DIM(),
+           active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
+    if (candidate.info.context > 0) {
+      printf(" · ctx %s", FmtTokens(candidate.info.context).c_str());
+    }
+    if (!candidate.info.efforts.empty()) {
+      printf(" · effort ");
+      for (size_t effort = 0; effort < candidate.info.efforts.size();
+           ++effort) {
+        printf("%s%s", effort ? "," : "",
+               candidate.info.efforts[effort].c_str());
+      }
+      if (!candidate.info.default_effort.empty()) {
+        printf(" (default %s)", candidate.info.default_effort.c_str());
       }
     }
     printf("%s\n", RST());
   }
-  if (show_count) {
-    printf("%s· %zu model%s%s\n", DIM(), models->size(),
-           models->size() == 1 ? "" : "s", RST());
+  for (const std::string& unavailable : search.unavailable) {
+    printf("%s· %s catalog unavailable%s\n", YEL(),
+           TerminalSafe(unavailable).c_str(), RST());
   }
-  return models->size();
+  printf("%s· %zu model%s%s\n", DIM(), search.matches.size(),
+         search.matches.size() == 1 ? "" : "s", RST());
+  if (search.matches.empty()) return std::nullopt;
+
+  bool cancelled = false;
+  bool eof = false;
+  std::string answer = ReadChoiceLine(
+      "model # (blank/Esc keeps " + TerminalSafe(current) + "): ", cancelled,
+      eof);
+  if (cancelled || eof || answer.empty()) {
+    printf("%s· keeping %s%s\n", DIM(), TerminalSafe(current).c_str(), RST());
+    return std::nullopt;
+  }
+  char* end = nullptr;
+  int64_t selected = strtoll(answer.c_str(), &end, 10);
+  if (!end || *end != '\0' || selected < 1 ||
+      selected > static_cast<int64_t>(search.matches.size())) {
+    printf("%s· not a listed number; keeping %s%s\n", YEL(),
+           TerminalSafe(current).c_str(), RST());
+    return std::nullopt;
+  }
+  return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
-inline void PrintAllModels(Api& api,
-                           const std::vector<NamedProvider>& providers) {
-  bool active_is_named = std::any_of(providers.begin(), providers.end(),
-                                     [&](const NamedProvider& provider) {
-                                       return provider.base_url == api.base_url;
-                                     });
-  size_t count =
-      active_is_named ? 0 : PrintAvailableModels(api, "", nullptr, false);
-  for (const NamedProvider& provider : providers) {
-    count += PrintAvailableModels(api, "", &provider, false);
-  }
-  printf("%s· %zu model%s%s\n", DIM(), count, count == 1 ? "" : "s", RST());
-}
-
-// Prompt metadata stays in normal scrollback rather than a pinned TUI region.
+// Compact session metadata for the prompt header.
 inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
                              size_t attachments,
                              const ProcessSupervisor& processes) {
   const Usage& u = agent.SessionUsage();
-  std::string host = ApiHost(api.base_url);
+  std::string host = UrlHost(api.base_url);
   int64_t used = agent.ContextUsed();
   std::string s = api.model + " @ " + host + " · ctx " + FmtTokens(used);
   if (api.ctx_window > 0) {
@@ -157,6 +126,7 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   }
   size_t terminals = processes.DetachedCount();
   if (terminals) s += " · terminals:" + std::to_string(terminals);
+  if (agent.Verbose()) s += " · verbose";
   if (yolo) s += " · YOLO";
   if (attachments) s += " · " + std::to_string(attachments) + " attached";
   return s;

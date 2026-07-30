@@ -34,7 +34,6 @@ struct AppRuntime {
   Api api;
   ProcessSupervisor processes;
   UsageAccumulator side_usage;
-  SideTaskSupervisor side_tasks;
   McpRuntime mcp;
 
  private:

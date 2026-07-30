@@ -911,7 +911,7 @@ def test_escape_steers_while_running_command(root, home):
                 (b"run slowly\n", b"sleep 30"),
                 (b"\x1b", b"steer>"),
                 (b"stop now\n", b"\x1b[?2004h"),
-                b"\x04",
+                b"/q\n",
             ],
             args=("--yolo",),
             timeout=12,
@@ -3101,7 +3101,12 @@ def test_subagent_auto_join_continues_turn(root, home):
 
 
 def test_parallel_subagents_auto_join(root, home):
+    children_lock = threading.Lock()
+    active_children = 0
+    max_active_children = 0
+
     def route(_, body):
+        nonlocal active_children, max_active_children
         messages = body["messages"]
         child = next(
             (
@@ -3113,8 +3118,15 @@ def test_parallel_subagents_auto_join(root, home):
             None,
         )
         if child:
-            time.sleep(1)
-            return event({"content": f"{child}-result"})
+            with children_lock:
+                active_children += 1
+                max_active_children = max(max_active_children, active_children)
+            try:
+                time.sleep(1)
+                return event({"content": f"{child}-result"})
+            finally:
+                with children_lock:
+                    active_children -= 1
         combined = "\n".join(str(message.get("content", "")) for message in messages)
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
@@ -3137,7 +3149,6 @@ def test_parallel_subagents_auto_join(root, home):
 
     server = Server([route])
     try:
-        started = time.time()
         result = run(
             root,
             base_env(home, server.url),
@@ -3146,10 +3157,9 @@ def test_parallel_subagents_auto_join(root, home):
             "delegate twice",
             timeout=8,
         )
-        elapsed = time.time() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "parallel-task-ok", result.stdout)
-        assert_true(elapsed < 2.5, f"delegated children did not overlap: {elapsed:.1f}s")
+        assert_true(max_active_children == 2, max_active_children)
         parent_requests = [
             body
             for _, body in server.requests

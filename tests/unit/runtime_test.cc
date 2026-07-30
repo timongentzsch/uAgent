@@ -1,6 +1,11 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
+#include <atomic>
+#include <filesystem>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "tests/unit/test_support.h"
 
@@ -10,6 +15,11 @@ void TestRuntimeOwnershipHelpers() {
   AppRuntime runtime(RuntimeConfig{});
   runtime.Shutdown();
   runtime.Shutdown();
+
+  g_signal_abort = 1;
+  CHECK(RunCancellable([] {}));
+  CHECK(AbortRequested());
+  ClearAbort();
 
   UsageAccumulator accumulator;
   accumulator.Add(json{{"prompt_tokens", 5},
@@ -23,6 +33,43 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(total.cache_write == 2);
   CHECK(total.cost == 0.25);
   CHECK(accumulator.Take().input == 0);
+
+  std::filesystem::path ledger = std::filesystem::temp_directory_path() /
+                                 ("uagent-ledger-" + std::to_string(getpid()));
+  std::filesystem::remove(ledger);
+  std::atomic<int> writers_done{0};
+  std::atomic<bool> append_ok{true};
+  auto append = [&] {
+    for (int i = 0; i < 100; ++i) {
+      std::string error;
+      if (!AppendPrivateLine(ledger.string(), "usage", error)) {
+        append_ok = false;
+        break;
+      }
+    }
+    ++writers_done;
+  };
+  std::thread first(append);
+  std::thread second(append);
+  size_t lines = 0;
+  while (writers_done.load() < 2) {
+    std::string drained;
+    std::string error;
+    CHECK(TakePrivateText(ledger.string(), drained, error));
+    lines +=
+        static_cast<size_t>(std::count(drained.begin(), drained.end(), '\n'));
+  }
+  first.join();
+  second.join();
+  CHECK(append_ok.load());
+  std::string drained;
+  std::string drain_error;
+  CHECK(TakePrivateText(ledger.string(), drained, drain_error));
+  lines +=
+      static_cast<size_t>(std::count(drained.begin(), drained.end(), '\n'));
+  CHECK(lines == 200);
+  CHECK(std::filesystem::file_size(ledger) == 0);
+  std::filesystem::remove(ledger);
 
   setenv("UAGENT_MAX_STEPS", "0", 1);
   setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
@@ -89,6 +136,31 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body.value("reasoning_effort", "") == "high");
   CHECK(body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
+
+  json assistant = {{"role", "assistant"}, {"content", ""}};
+  ChatResult reasoning_result;
+  reasoning_result.reasoning = "reasoning state";
+  reasoning_result.reasoning_details =
+      json::array({{{"type", "reasoning.text"},
+                    {"index", 0},
+                    {"text", "reasoning state"}}});
+  api.base_url = "https://openrouter.ai/api/v1";
+  api.PreserveAssistantReasoning(assistant, reasoning_result);
+  CHECK(!assistant.contains("reasoning"));
+  CHECK(assistant["reasoning_details"] == reasoning_result.reasoning_details);
+  reasoning_result.reasoning_details = json::array();
+  json text_assistant = {{"role", "assistant"}, {"content", ""}};
+  api.PreserveAssistantReasoning(text_assistant, reasoning_result);
+  CHECK(text_assistant.value("reasoning", "") == "reasoning state");
+  api.base_url = "http://127.0.0.1:8787/api/v1";
+  json local_assistant = {{"role", "assistant"}, {"content", ""}};
+  api.PreserveAssistantReasoning(local_assistant, reasoning_result);
+  CHECK(local_assistant.value("reasoning", "") == "reasoning state");
+  api.base_url = "https://example.com/v1";
+  json generic_assistant = {{"role", "assistant"}, {"content", ""}};
+  api.PreserveAssistantReasoning(generic_assistant, reasoning_result);
+  CHECK(!generic_assistant.contains("reasoning"));
+  CHECK(!generic_assistant.contains("reasoning_details"));
 }
 
 void TestAgentConfigAllowlist() {
@@ -259,6 +331,13 @@ void TestProviderTemplates() {
 }
 
 void TestNamedProviders() {
+  std::vector<std::pair<const char*, std::optional<std::string>>> prior_route;
+  for (const char* key : {"UAGENT_BASE_URL", "UAGENT_MODEL",
+                          "UAGENT_REASONING_EFFORT", "UAGENT_CONTEXT"}) {
+    const char* value = getenv(key);
+    prior_route.emplace_back(
+        key, value ? std::optional<std::string>(value) : std::nullopt);
+  }
   const char* inherited = getenv("UAGENT_PROVIDERS");
   std::string prior = inherited ? inherited : "";
   const char* inherited_openrouter = getenv("OPENROUTER_API_KEY");
@@ -292,14 +371,27 @@ void TestNamedProviders() {
   CHECK(dynamic.has_value());
   CHECK(dynamic && dynamic->model == "org/model");
   CHECK(dynamic && dynamic->context == 16384);
-  std::optional<ModelQuery> all =
-      ResolveProviderQuery(catalog.providers, "codex-local/*");
-  CHECK(all && all->provider == codex && all->filter.empty());
-  std::optional<ModelQuery> filtered =
-      ResolveProviderQuery(catalog.providers, "codex-local/gpt-5.6");
-  CHECK(filtered && filtered->provider == codex);
-  CHECK(filtered && filtered->filter == "gpt-5.6");
-  CHECK(!ResolveProviderQuery(catalog.providers, "unknown/filter"));
+  RuntimeConfig config;
+  Api routed(config);
+  routed.reasoning_effort = "medium";
+  ApplyRoute(routed, *dynamic);
+  CHECK(routed.reasoning_effort == "medium");
+  ModelRoute fixed_effort = *dynamic;
+  fixed_effort.effort = "low";
+  ApplyRoute(routed, fixed_effort);
+  CHECK(routed.reasoning_effort == "low");
+  CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
+  CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
+  CHECK(!ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "deepseek"));
+  CHECK(NormalizeModelQuery("all").empty());
+  CHECK(NormalizeModelQuery("*").empty());
+  CHECK(NormalizeModelQuery(" codex-local/* ") == "codex-local/");
+  CHECK(NormalizeModelQuery("gpt-5.6") == "gpt-5.6");
+  Api openrouter_api(config);
+  openrouter_api.base_url = "https://openrouter.ai/api/v1";
+  CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
+  openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
+  CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   CHECK(fixed.has_value());
@@ -307,6 +399,13 @@ void TestNamedProviders() {
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "missing/model"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
+  Api no_catalog(RuntimeConfig{});
+  std::vector<ModelRoute> aliases = {
+      {"static/low", "https://static.test/v1", "key", "same-model", "low", 0},
+      {"static/high", "https://static.test/v1", "key", "same-model", "high",
+       0}};
+  ModelSearch alias_search = SearchModels(no_catalog, aliases, {}, "static");
+  CHECK(alias_search.matches.size() == 2);
 
   setenv("OPENROUTER_API_KEY", "openrouter-key", 1);
   AddAvailableProviderTemplates(catalog);
@@ -327,6 +426,13 @@ void TestNamedProviders() {
     setenv("OPENROUTER_API_KEY", prior_openrouter.c_str(), 1);
   } else {
     unsetenv("OPENROUTER_API_KEY");
+  }
+  for (const auto& [key, value] : prior_route) {
+    if (value) {
+      setenv(key, value->c_str(), 1);
+    } else {
+      unsetenv(key);
+    }
   }
 }
 

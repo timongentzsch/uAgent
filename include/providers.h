@@ -6,9 +6,12 @@
 // it does not parse provider JSON or mutate route environment variables itself.
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
+#include <future>
 #include <iterator>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,15 +39,38 @@ struct ProviderCatalog {
   std::vector<ModelRoute> models;
 };
 
-struct ModelQuery {
-  const NamedProvider* provider = nullptr;
-  std::string filter;
-};
+inline std::string NormalizeModelId(std::string model) {
+  model = Trim(model);
+  bool separator = false;
+  std::string normalized;
+  normalized.reserve(model.size());
+  for (unsigned char value : model) {
+    if (std::isspace(value)) {
+      separator = !normalized.empty();
+      continue;
+    }
+    if (separator && normalized.back() != '-') normalized += '-';
+    separator = false;
+    normalized += static_cast<char>(value);
+  }
+  return normalized;
+}
 
 struct ModelInfo {
   std::string id, default_effort;
   std::vector<std::string> efforts;
   int64_t context = 0;
+};
+
+struct ModelCandidate {
+  std::string selection;
+  ModelRoute route;
+  ModelInfo info;
+};
+
+struct ModelSearch {
+  std::vector<ModelCandidate> matches;
+  std::vector<std::string> unavailable;
 };
 
 struct ModelPreference {
@@ -210,21 +236,6 @@ inline void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
   }
 }
 
-inline std::optional<ModelQuery> ResolveProviderQuery(
-    const std::vector<NamedProvider>& providers, const std::string& query) {
-  if (const NamedProvider* provider = FindNamedProvider(providers, query)) {
-    return ModelQuery{provider, ""};
-  }
-  size_t slash = query.find('/');
-  if (slash == std::string::npos) return std::nullopt;
-  const NamedProvider* provider =
-      FindNamedProvider(providers, query.substr(0, slash));
-  if (!provider) return std::nullopt;
-  std::string filter = query.substr(slash + 1);
-  if (filter == "*") filter.clear();
-  return ModelQuery{provider, std::move(filter)};
-}
-
 inline std::optional<ModelRoute> ResolveModelRoute(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers, const std::string& selection) {
@@ -257,7 +268,7 @@ inline void ApplyRoute(Api& api, const ModelRoute& route) {
   api.base_url = route.base_url;
   api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
   api.model = route.model;
-  api.reasoning_effort = route.effort;
+  if (!route.effort.empty()) api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
   api.native_tools = api.include_usage = api.parallel_tools =
       api.openrouter_web_search = true;
@@ -318,6 +329,11 @@ inline ProviderSetup ConfigureProvider(Api& api) {
   return setup;
 }
 
+inline bool CanUseRawModel(const Api& api, std::string_view name) {
+  return OpenrouterUrl(api.base_url) &&
+         name.find('/') != std::string_view::npos;
+}
+
 inline std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                                const std::vector<NamedProvider>& providers,
                                const std::string& name) {
@@ -326,9 +342,7 @@ inline std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     ApplyRoute(api, *route);
     return route->name;
   }
-  if (!OpenrouterUrl(api.base_url) || name.find('/') == std::string::npos) {
-    return "";
-  }
+  if (!CanUseRawModel(api, name)) return "";
   if (api.model != name) {
     api.model = name;
     api.ctx_window = 0;
@@ -337,10 +351,7 @@ inline std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
   return api.model;
 }
 
-inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
-                                                         std::string filter) {
-  std::transform(filter.begin(), filter.end(), filter.begin(),
-                 [](unsigned char c) { return static_cast<char>(tolower(c)); });
+inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
   if (!response.is_object() || !response.contains("data") ||
       !response["data"].is_array()) {
     return std::nullopt;
@@ -350,14 +361,7 @@ inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
   for (const json& model : response["data"]) {
     if (!model.is_object()) continue;
     std::string id = JsonString(model, "id");
-    std::string lower = id;
-    std::transform(
-        lower.begin(), lower.end(), lower.begin(),
-        [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    if (id.empty() ||
-        (!filter.empty() && lower.find(filter) == std::string::npos)) {
-      continue;
-    }
+    if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, JsonInt(model, "context_length")};
     if (model.contains("reasoning") && model["reasoning"].is_object()) {
       const json& reasoning = model["reasoning"];
@@ -378,17 +382,107 @@ inline std::optional<std::vector<ModelInfo>> ParseModels(const json& response,
   return models;
 }
 
-inline std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
-                                                         std::string filter) {
-  return ParseModels(api.Get("/models"), std::move(filter));
+inline std::optional<std::vector<ModelInfo>> QueryModels(
+    Api& api, bool abortable = false) {
+  return ParseModels(api.Get("/models", abortable));
 }
 
-inline std::optional<std::vector<ModelInfo>> QueryModels(
-    const Api& api, const NamedProvider& provider, std::string filter) {
-  Api catalog_api(api.config);
-  catalog_api.base_url = provider.base_url;
-  catalog_api.api_key = provider.api_key;
-  return QueryModels(catalog_api, std::move(filter));
+inline std::string NormalizeModelQuery(std::string query) {
+  query = Trim(query);
+  if (query == "all" || query == "*") return "";
+  if (query.ends_with("/*")) query.pop_back();
+  return query;
+}
+
+// Search every configured provider, regardless of the active route. Catalog
+// requests run concurrently; configured aliases remain usable when a live
+// catalog is unavailable.
+inline ModelSearch SearchModels(const Api& api,
+                                const std::vector<ModelRoute>& routes,
+                                const std::vector<NamedProvider>& providers,
+                                std::string query) {
+  query = NormalizeModelQuery(std::move(query));
+  ModelSearch result;
+  std::set<std::string> selections;
+  std::set<std::string> route_identities;
+  for (const ModelRoute& route : routes) {
+    if (!ContainsCaseInsensitive(route.name + " " + route.model, query)) {
+      continue;
+    }
+    std::string identity = route.base_url + "\n" + route.model;
+    if (!selections.insert(route.name).second) continue;
+    route_identities.insert(std::move(identity));
+    ModelInfo info{route.model, {}, {}, route.context};
+    result.matches.push_back({route.name, route, std::move(info)});
+  }
+
+  struct Catalog {
+    std::string name, base_url, api_key;
+    int64_t context = 0;
+    bool named = false;
+  };
+  std::vector<Catalog> catalogs;
+  for (const NamedProvider& provider : providers) {
+    catalogs.push_back({provider.name, provider.base_url, provider.api_key,
+                        provider.context, true});
+  }
+  bool active_is_named = std::any_of(
+      catalogs.begin(), catalogs.end(),
+      [&](const Catalog& source) { return source.base_url == api.base_url; });
+  if (!active_is_named && !api.base_url.empty()) {
+    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window, false});
+  }
+
+  using CatalogModels = std::optional<std::vector<ModelInfo>>;
+  std::vector<CatalogModels> responses(catalogs.size());
+  std::atomic<size_t> next{0};
+  size_t worker_count =
+      std::min(catalogs.size(), static_cast<size_t>(ToolConcurrency()));
+  std::vector<std::future<void>> workers;
+  workers.reserve(worker_count);
+  for (size_t worker = 0; worker < worker_count; ++worker) {
+    workers.push_back(std::async(std::launch::async, [&] {
+      for (size_t index; !AbortRequested() &&
+                         (index = next.fetch_add(1)) < catalogs.size();) {
+        const Catalog& source = catalogs[index];
+        Api catalog_api(api.config);
+        catalog_api.base_url = source.base_url;
+        catalog_api.api_key = source.api_key;
+        responses[index] = QueryModels(catalog_api, /*abortable=*/true);
+      }
+    }));
+  }
+  for (auto& worker : workers) worker.get();
+  for (size_t i = 0; i < catalogs.size(); ++i) {
+    const Catalog& source = catalogs[i];
+    CatalogModels models = std::move(responses[i]);
+    if (!models) {
+      result.unavailable.push_back(
+          source.name.empty() ? UrlHost(source.base_url) : source.name);
+      continue;
+    }
+    for (ModelInfo& info : *models) {
+      std::string selection =
+          source.named ? source.name + "/" + info.id : info.id;
+      std::string identity = source.base_url + "\n" + info.id;
+      if (!ContainsCaseInsensitive(selection, query) ||
+          !selections.insert(selection).second ||
+          !route_identities.insert(std::move(identity)).second) {
+        continue;
+      }
+      int64_t context = info.context > 0 ? info.context : source.context;
+      ModelRoute route{selection, source.base_url, source.api_key, info.id,
+                       "",        context};
+      if (info.context == 0) info.context = context;
+      result.matches.push_back(
+          {std::move(selection), std::move(route), std::move(info)});
+    }
+  }
+  std::sort(result.matches.begin(), result.matches.end(),
+            [](const ModelCandidate& a, const ModelCandidate& b) {
+              return a.selection < b.selection;
+            });
+  return result;
 }
 
 }  // namespace uagent

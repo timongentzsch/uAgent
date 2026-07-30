@@ -98,7 +98,8 @@ struct McpServer {
 inline constexpr const char* kChromeMcpName = "chrome-devtools";
 inline constexpr const char* kChromeMcpPackage = "chrome-devtools-mcp@latest";
 
-inline json ChromeMcpConfig(const std::string& mode = "isolated") {
+inline json ChromeMcpConfig(const std::string& mode = "isolated",
+                            const std::string& toolset = "slim") {
   json args = json::array({"-y", kChromeMcpPackage, "--no-usage-statistics",
                            "--no-performance-crux"});
   if (mode == "user") {
@@ -112,11 +113,13 @@ inline json ChromeMcpConfig(const std::string& mode = "isolated") {
   } else {
     args.push_back("--isolated");
   }
+  if (toolset != "full") args.push_back("--slim");
   return {{"command", "npx"},
           {"args", std::move(args)},
-          {"__uagent_builtin", "chrome-devtools"},
+          {"__uagent_builtin", kChromeMcpName},
           {"__uagent_lazy", true},
-          {"__uagent_mode", mode}};
+          {"__uagent_mode", mode},
+          {"__uagent_toolset", toolset == "full" ? "full" : "slim"}};
 }
 
 inline bool McpConfigLazy(const json& config) {

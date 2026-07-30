@@ -6,6 +6,7 @@
 // child's reasoning and tool trace stay in its own context.
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/api.h"
@@ -14,6 +15,7 @@
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/providers.h"
 #include "include/tools/process.h"
 #include "include/tools/shell.h"
 #include "include/tools/tool.h"
@@ -23,105 +25,92 @@ namespace uagent {
 // Delegation: re-invoke this same binary on a scoped sub-task. The child's
 // reasoning and tool trace stay in its own context and its own log; only the
 // final answer comes back, so a wide search costs the coordinator a paragraph
-// instead of fifty tool results. The shell runner does the rest — a quick
-// sub-task answers inline, a slow one backgrounds itself and is collected by
-// pid.
+// instead of fifty tool results. Calls spawn immediately, overlap, then join
+// before the coordinator's next model step.
 inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
-                         bool yolo, bool debug) {
+                         const std::vector<ModelRoute>& routes,
+                         const std::vector<NamedProvider>& providers,
+                         bool debug) {
   std::string self = g_argv0;
   std::string child_depth = std::to_string(AgentDepth() + 1);
+  json properties = {
+      {"prompt",
+       {{"type", "string"}, {"description", "complete standalone brief"}}},
+      {"mode",
+       {{"type", "string"},
+        {"enum", json::array({"lean", "full"})},
+        {"description", "lean default; full includes implementation tools"}}},
+      {"model",
+       {{"type", "string"},
+        {"description",
+         "optional model or provider/model selection; default parent"}}}};
   Tool t = MakeTool(
       "task",
-      "Delegate substantial independent research or analysis. Issue one call "
-      "per independent subtask in the same response: the spawns serialise but "
-      "the children then run concurrently. The child sees no conversation, so "
-      "include every path and constraint. Background tasks do not auto-join; "
-      "collect them with get_task_output or wait_tasks before the final "
-      "answer.",
-      json::parse(R"json({"type":"object","properties":{
-          "prompt":{"type":"string","description":"complete standalone brief"},
-          "run_in_background":{"type":"boolean",
-            "description":"return immediately with a task id (default false)"}},
-          "required":["prompt"]})json"),
-      [self, child_depth, &api, yolo, debug, &processes](
+      "Delegate an isolated subtask only when its compact result avoids "
+      "multiple parent rounds. The child has no conversation; include every "
+      "required path, constraint, and success condition. Issue independent "
+      "tasks together.",
+      {{"type", "object"},
+       {"properties", std::move(properties)},
+       {"required", json::array({"prompt"})}},
+      [self, child_depth, &api, &routes, &providers, debug, &processes](
           const json& a, const ToolContext& context) {
+        std::string mode = JsonValue(a, "mode", "lean");
+        if (mode != "lean" && mode != "full") {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: mode must be lean or full");
+        }
+        std::string selection = NormalizeModelId(JsonValue(a, "model", ""));
+        std::string base_url = api.base_url;
+        std::string api_key = api.api_key;
+        std::string model = selection.empty() ? api.model : selection;
+        std::string effort = api.reasoning_effort;
+        int64_t context_window = api.ctx_window;
+        if (!selection.empty()) {
+          if (std::optional<ModelRoute> route =
+                  ResolveModelRoute(routes, providers, selection)) {
+            base_url = route->base_url;
+            api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
+            model = route->model;
+            if (!route->effort.empty()) effort = route->effort;
+            context_window = route->context;
+          } else if (selection.find('/') != std::string::npos &&
+                     !CanUseRawModel(api, selection)) {
+            return ToolFailure(
+                ToolErrorCode::kInvalidArguments,
+                "error: unknown model route: " + TerminalSafe(selection));
+          }
+        }
         EnvironmentOverrides environment = {
             {"UAGENT_DEPTH", child_depth},
             {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
             {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
-            {"UAGENT_BASE_URL", api.base_url},
-            {"UAGENT_API_KEY", api.api_key},
-            {"UAGENT_MODEL", api.model},
-            {"UAGENT_CONTEXT", std::to_string(api.ctx_window)},
-            {"UAGENT_REASONING_EFFORT", api.reasoning_effort},
+            {"UAGENT_BASE_URL", std::move(base_url)},
+            {"UAGENT_API_KEY", std::move(api_key)},
+            {"UAGENT_MODEL", std::move(model)},
+            {"UAGENT_CONTEXT", std::to_string(context_window)},
+            {"UAGENT_REASONING_EFFORT", std::move(effort)},
             {"UAGENT_USAGE_FILE", UsageLedger()},
+            {"UAGENT_TOOLSET", std::move(mode)},
         };
-        std::string cmd = ShellQuote(self) + (yolo ? " --yolo" : "") +
+        std::string cmd = ShellQuote(self) + " --yolo" +
                           (debug ? " --debug" : "") + " -p " +
                           ShellQuote(JsonValue(a, "prompt", ""));
-        bool background = JsonValue(a, "run_in_background", false);
-        return ToolRunBash(processes, cmd, context.timeout_s,
-                           /*join_before_final=*/!background, context,
+        return ToolRunBash(processes, cmd, context,
                            /*allow_background=*/true, /*detach=*/false, "bash",
-                           background, "task", environment);
+                           /*immediate_background=*/true, "task", environment);
       });
   t.mutating = true;
-  t.summary = [](const json& a) { return JsonValue(a, "prompt", ""); };
-  t.timeout_s = 3;
-  // Delegation only overlaps if each spawn backgrounds fast. A model-supplied
-  // `timeout` must not stretch the foreground window and serialise the fleet.
-  t.max_timeout_s = t.timeout_s;
+  t.summary = [](const json& a) {
+    std::string mode = JsonValue(a, "mode", "lean");
+    std::string model = JsonValue(a, "model", "");
+    std::string prompt = JsonValue(a, "prompt", "");
+    std::string label = mode == "full" ? "full" : "";
+    if (!model.empty()) label += (label.empty() ? "" : " · ") + model;
+    return label.empty() ? prompt : "[" + label + "] " + prompt;
+  };
   return t;  // not parallel_safe: process spawning and sync cancellation are
 }  // single-slot, so spawns serialise — the children still overlap
-
-inline void AddTaskLifecycleTools(std::vector<Tool>& tools,
-                                  ProcessSupervisor& processes) {
-  Tool::Summary task_summary = [](const json& a) {
-    return "task " + std::to_string(JsonValue(a, "id", int64_t{0}));
-  };
-  Tool& get = AddTool(
-      tools,
-      MakeTool(
-          "get_task_output",
-          "Get a background task's current bounded output without waiting.",
-          json::parse(R"json({"type":"object","properties":{
-            "id":{"type":"integer","minimum":1}},"required":["id"]})json"),
-          [&processes](const json& a, const ToolContext&) {
-            return ToolGetTaskOutput(processes, JsonValue(a, "id", int64_t{0}));
-          }));
-  get.accepts_timeout = false;
-  get.summary = task_summary;
-
-  Tool& wait = AddTool(
-      tools, MakeTool("wait_tasks",
-                      "Wait until any or all selected background tasks finish.",
-                      json::parse(R"json({"type":"object","properties":{
-            "ids":{"type":"array","items":{"type":"integer","minimum":1},
-              "minItems":1,"maxItems":20},
-            "wait_all":{"type":"boolean","description":"wait for all; default false"}},
-            "required":["ids"]})json"),
-                      [&processes](const json& a, const ToolContext& context) {
-                        return ToolWaitTasks(
-                            processes, JsonValue(a, "ids", json::array()),
-                            JsonValue(a, "wait_all", false), context);
-                      }));
-  wait.summary = [](const json& a) {
-    return JsonDump(JsonValue(a, "ids", json::array()));
-  };
-
-  Tool& kill = AddTool(
-      tools,
-      MakeTool("kill_task",
-               "Cancel one tracked background task and its process group.",
-               json::parse(R"json({"type":"object","properties":{
-            "id":{"type":"integer","minimum":1}},"required":["id"]})json"),
-               [&processes](const json& a, const ToolContext&) {
-                 return ToolKillTask(processes, JsonValue(a, "id", int64_t{0}));
-               }));
-  kill.accepts_timeout = false;
-  kill.mutating = true;
-  kill.summary = task_summary;
-}
 
 }  // namespace uagent
 

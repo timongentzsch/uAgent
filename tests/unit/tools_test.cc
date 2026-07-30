@@ -12,59 +12,18 @@ void TestToolExecutionPolicy() {
   Tool tool;
   tool.name = "probe";
   tool.parameters = {{"type", "object"}, {"properties", json::object()}};
-  json parameters = ToolParameters(tool, 17);
-  CHECK(parameters["properties"]["timeout"].value("minimum", -1) == 0);
-  CHECK(parameters["properties"]["timeout"]
-            .value("description", "")
-            .find("default 17") != std::string::npos);
-  CHECK(!tool.parameters["properties"].contains("timeout"));
+  CHECK(!ToolParameters(tool)["properties"].contains("timeout"));
+  tool.parameters["properties"]["timeout"] = {
+      {"type", "string"}, {"description", "provider argument"}};
+  CHECK(ToolParameters(tool)["properties"]["timeout"] ==
+        tool.parameters["properties"]["timeout"]);
   tool.timeout_s = 4;
-  CHECK(ToolParameters(tool, 17)["properties"]["timeout"]
-            .value("description", "")
-            .find("default 4") != std::string::npos);
+  CHECK(tool.timeout_s == 4);
 
   ToolContext base{std::chrono::steady_clock::now() + std::chrono::seconds(30)};
   ToolContext bounded = base.WithTimeout(2);
   CHECK(bounded.timeout_s == 2);
   CHECK(bounded.deadline <= base.deadline);
-
-  SideTaskSupervisor side_tasks;
-  int64_t id = side_tasks.Start(
-      "probe", "quick",
-      [](const std::atomic<bool>&) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));
-        return ToolSuccess("done");
-      },
-      1);
-  CHECK(id > 0);
-  CHECK(side_tasks.Joinable() == 1);
-  CHECK(side_tasks.Start(
-            "probe", "over limit",
-            [](const std::atomic<bool>&) { return ToolSuccess(""); }, 1) == 0);
-  CHECK(!side_tasks.Wait(id, std::chrono::milliseconds(1)).has_value());
-  auto result = ToolWaitSideTask(side_tasks, id);
-  CHECK(result.output.find("[Background result: probe `quick`]") !=
-        std::string::npos);
-  CHECK(result.output.find("done") != std::string::npos);
-  CHECK(side_tasks.Joinable() == 0);
-
-  CHECK(side_tasks.Start(
-            "probe", "detached",
-            [](const std::atomic<bool>&) { return ToolSuccess("done"); }, 1,
-            false) > 0);
-  CHECK(side_tasks.Joinable() == 0);
-  side_tasks.CancelAll();
-
-  CHECK(side_tasks.Start(
-            "probe", "cancel",
-            [](const std::atomic<bool>& cancel) {
-              while (!cancel.load())
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-              return ToolCancelled("cancelled");
-            },
-            1) > 0);
-  CHECK(side_tasks.CancelAll() == 1);
-  CHECK(side_tasks.Empty());
 
   Tool bounded_tool =
       MakeTool("bounded", "bounded", json::object(),
@@ -73,68 +32,130 @@ void TestToolExecutionPolicy() {
   Tool unbounded =
       MakeTool("unbounded", "unbounded", json::object(),
                [](const json&, const ToolContext&) { return ToolSuccess(""); });
+  Tool implementation = unbounded;
+  implementation.name = "implementation";
+  implementation.available_in_lean = false;
+  std::vector<Tool> lean_tools{unbounded, implementation};
+  KeepLeanTools(lean_tools);
+  CHECK(lean_tools.size() == 1);
+  CHECK(lean_tools[0].name == "unbounded");
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
   json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "unbounded");
 
-  ProcessSupervisor task_processes;
-  std::vector<Tool> task_tools;
-  AddTaskLifecycleTools(task_tools, task_processes);
-  CHECK(FindTool(task_tools, "get_task_output") != nullptr);
-  CHECK(FindTool(task_tools, "wait_tasks") != nullptr);
-  const Tool* get = FindTool(task_tools, "get_task_output");
-  const Tool* kill = FindTool(task_tools, "kill_task");
-  CHECK(get && get->summary(json{{"id", 7}}) == "task 7");
-  CHECK(kill && kill->mutating);
-  CHECK(kill && kill->summary(json{{"id", 7}}) == "task 7");
+  Tool checkpoint_only = unbounded;
+  checkpoint_only.name = "checkpoint_only";
+  checkpoint_only.visibility = Tool::Visibility::kCheckpointHint;
+  Tool terminal_only = unbounded;
+  terminal_only.name = "terminal_only";
+  terminal_only.visibility = Tool::Visibility::kDetachedTerminal;
+  policies = {unbounded, checkpoint_only, terminal_only};
+  schemas = ToolSchemas(policies);
+  available = AvailableToolSchemas(policies, schemas, {});
+  CHECK(available.size() == 1);
+  available =
+      AvailableToolSchemas(policies, schemas, {}, {.checkpoint_hint = true});
+  CHECK(available.size() == 2);
+  CHECK(available[1]["function"]["name"] == "checkpoint_only");
+  available = AvailableToolSchemas(
+      policies, schemas, {},
+      {.checkpoint_hint = false, .detached_terminal = true});
+  CHECK(available.size() == 2);
+  CHECK(available[1]["function"]["name"] == "terminal_only");
 
-  ToolResult launched =
-      ToolRunBash(task_processes, "sleep 0.2; printf task-done", 3, false, base,
-                  true, false, "bash", true, "task");
-  CHECK(launched.output.starts_with("[backgrounded] task id "));
+  namespace fs = std::filesystem;
+  fs::path log_root = fs::temp_directory_path() /
+                      ("uagent-log-artifact-" + std::to_string(getpid()));
+  fs::create_directories(log_root);
+  fs::path small_log = log_root / "small.log";
+  {
+    std::ofstream output(small_log);
+    output << "small";
+  }
+  CollectedLog small_log_result = CollectCompletedLog(small_log.string(), 16);
+  CHECK(small_log_result.output == "small");
+  CHECK(!small_log_result.artifact);
+  CHECK(!fs::exists(small_log));
+
+  fs::path large_log = log_root / "large.log";
+  {
+    std::ofstream output(large_log);
+    output << std::string(64, 'x');
+  }
+  const char* current_home = getenv("HOME");
+  std::optional<std::string> saved_home =
+      current_home ? std::optional<std::string>(current_home) : std::nullopt;
+  setenv("HOME", log_root.c_str(), 1);
+  CollectedLog large_log_result = CollectCompletedLog(large_log.string(), 16);
+  if (saved_home) {
+    setenv("HOME", saved_home->c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  CHECK(large_log_result.artifact.has_value());
+  CHECK(large_log_result.artifact &&
+        large_log_result.artifact->path != large_log.string());
+  CHECK(large_log_result.artifact && large_log_result.artifact->bytes == 64);
+  CHECK(!fs::exists(large_log));
+  CHECK(large_log_result.artifact &&
+        fs::exists(large_log_result.artifact->path));
+  if (large_log_result.artifact) {
+    std::ifstream input(large_log_result.artifact->path, std::ios::binary);
+    std::string retained{std::istreambuf_iterator<char>(input),
+                         std::istreambuf_iterator<char>()};
+    CHECK(retained == std::string(64, 'x'));
+    struct stat artifact_status{};
+    struct stat directory_status{};
+    CHECK(stat(large_log_result.artifact->path.c_str(), &artifact_status) == 0);
+    CHECK((artifact_status.st_mode & 0777) == 0600);
+    std::string artifact_dir =
+        fs::path(large_log_result.artifact->path).parent_path().string();
+    CHECK(stat(artifact_dir.c_str(), &directory_status) == 0);
+    CHECK((directory_status.st_mode & 0777) == 0700);
+  }
+
+  fs::path fallback_home = log_root / "fallback-home";
+  fs::create_directories(fallback_home);
+  {
+    std::ofstream blocker(fallback_home / ".uagent");
+    blocker << "not a directory";
+  }
+  fs::path fallback_log = log_root / "fallback.log";
+  {
+    std::ofstream output(fallback_log);
+    output << std::string(64, 'y');
+  }
+  setenv("HOME", fallback_home.c_str(), 1);
+  CollectedLog fallback_result = CollectCompletedLog(fallback_log.string(), 16);
+  if (saved_home) {
+    setenv("HOME", saved_home->c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  CHECK(fallback_result.artifact.has_value());
+  CHECK(fallback_result.artifact &&
+        fallback_result.artifact->path == fallback_log.string());
+  CHECK(fs::exists(fallback_log));
+  RemoveLog(fallback_log.string());
+  fs::remove_all(log_root);
+
+  ProcessSupervisor task_processes;
+  BgJob task_header{7, "", "uagent -p 'very long delegated prompt'", false,
+                    "task"};
+  CHECK(BgResultHeader(task_header) == "[Background result: task id 7]");
+  CHECK(BgResultHeader(task_header).find("delegated prompt") ==
+        std::string::npos);
+  ToolResult launched = ToolRunBash(task_processes, "sleep 10", base, true,
+                                    false, "bash", true, "task");
+  CHECK(launched.output.starts_with("[started] task id "));
+  CHECK(task_processes.JoinableCount() == 1);
   std::vector<pid_t> task_ids = task_processes.PendingPids();
   CHECK(task_ids.size() == 1);
-  if (!task_ids.empty()) {
-    int64_t task_id = task_ids[0];
-    CHECK(ToolGetTaskOutput(task_processes, task_id).Ok());
-    ToolContext wait_context{std::chrono::steady_clock::now() +
-                             std::chrono::seconds(2)};
-    ToolResult waited = ToolWaitTasks(task_processes, json::array({task_id}),
-                                      true, wait_context);
-    CHECK(waited.output.find("task-done") != std::string::npos);
-    CHECK(!task_processes.PendingCount());
-  }
-
-  launched = ToolRunBash(task_processes, "sleep 10", 3, false, base, true,
-                         false, "bash", true, "task");
-  task_ids = task_processes.PendingPids();
-  CHECK(task_ids.size() == 1);
-  if (!task_ids.empty()) {
-    ToolResult killed = ToolKillTask(task_processes, task_ids[0]);
-    CHECK(killed.status == CompletionStatus::kCancelled);
-    CHECK(killed.output.find("cancelled") != std::string::npos);
-    CHECK(!task_processes.PendingCount());
-  }
-
-  ToolRunBash(task_processes, "sleep 0.1; printf first", 3, false, base, true,
-              false, "bash", true, "task");
-  ToolRunBash(task_processes, "sleep 10", 3, false, base, true, false, "bash",
-              true, "task");
-  task_ids = task_processes.PendingPids();
-  CHECK(task_ids.size() == 2);
-  if (task_ids.size() == 2) {
-    ToolContext wait_context{std::chrono::steady_clock::now() +
-                             std::chrono::seconds(2)};
-    ToolResult first =
-        ToolWaitTasks(task_processes, json::array({task_ids[0], task_ids[1]}),
-                      false, wait_context);
-    CHECK(first.output.find("first") != std::string::npos);
-    CHECK(task_processes.PendingCount() == 1);
-    CHECK(ToolKillTask(task_processes, task_ids[1]).output.find("cancelled") !=
-          std::string::npos);
-  }
+  CHECK(BgCancelTasks(task_processes) == 1);
+  CHECK(!task_processes.PendingCount());
+  if (!task_ids.empty()) CHECK(!ProcessAlive(task_ids[0]));
 }
 
 void TestOpenRouterServerSearch() {
@@ -150,6 +171,10 @@ void TestOpenRouterServerSearch() {
          {{"name", "read_file"}, {"parameters", json::object()}}}}});
 
   json body = api.BuildChatBody(json::array(), schemas);
+  CHECK(body["tools"].size() == 2);
+  CHECK(body["tools"][0]["function"]["name"] == "web_search");
+  api.server_tools_authorized = true;
+  body = api.BuildChatBody(json::array(), schemas);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][0]["function"]["name"] == "read_file");
   CHECK(body["tools"][1]["type"] == "openrouter:web_search");
@@ -169,8 +194,8 @@ void TestOpenRouterServerSearch() {
 
   api.base_url = "http://127.0.0.1:8080/v1";
   body = api.BuildChatBody(json::array(), schemas);
-  CHECK(body["tools"].size() == 1);
-  CHECK(body["tools"][0]["function"]["name"] == "read_file");
+  CHECK(body["tools"].size() == 2);
+  CHECK(body["tools"][0]["function"]["name"] == "web_search");
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
   api.openrouter_web_search = true;
@@ -356,7 +381,7 @@ void TestGrepTool() {
   CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
         ToolErrorCode::kProcessFailed);
   setenv("UAGENT_MAX_BACKGROUND_JOBS", "1", 1);
-  CHECK(supervisor.TryAdd({999991, "", "busy", false, false, {}, ""}, 1));
+  CHECK(supervisor.TryAdd({999991, "", "busy", false, ""}, 1));
   ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
   CHECK(limited.error == ToolErrorCode::kLimitExceeded);
   CHECK(limited.output.find("background job limit") != std::string::npos);
@@ -397,16 +422,16 @@ void TestGrepTool() {
   if (run) {
     CHECK(run->parameters["properties"].contains("detach"));
     CHECK(run->parameters["properties"].contains("shell"));
-    CHECK(run->full_terminal_output);
+    CHECK(run->timeout_s == 0);
   }
   const Tool* python = FindTool(lean_tools, "run_python");
-  CHECK(python && python->full_terminal_output);
+  CHECK(python != nullptr);
+  CHECK(python && python->timeout_s == 0);
+  CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   CHECK(FindTool(lean_tools, "terminal_output") != nullptr);
-  for (const auto& registered : ToolSchemas(lean_tools, 17)) {
-    bool has_timeout =
-        registered["function"]["parameters"]["properties"].contains("timeout");
-    CHECK(has_timeout ==
-          (registered["function"].value("name", "") != "wait_background"));
+  for (const auto& registered : ToolSchemas(lean_tools)) {
+    CHECK(!registered["function"]["parameters"]["properties"].contains(
+        "timeout"));
   }
   fs::remove_all(root, ec);
 }
@@ -432,85 +457,36 @@ void TestPythonTool() {
 
   const char* prior_path_value = getenv("PATH");
   std::string prior_path = prior_path_value ? prior_path_value : "";
+  ProcessSupervisor supervisor;
+  std::vector<Tool> python_tools = BuiltinTools(supervisor, root, false);
+  const Tool* run = FindTool(python_tools, "run");
+  CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
-  ProcessSupervisor supervisor;
   ToolResult result =
-      ToolRunPython(supervisor, "print(6 * 7)", json::array({"numpy>=2"}), 0);
+      ToolRunPython(supervisor, "print(6 * 7)", json::array({"numpy>=2"}));
   CHECK(result.output == "42\n");
 
   fs::path marker = root / "injected";
   result = ToolRunPython(supervisor, "print('safe')",
-                         json::array({"x; touch " + marker.string()}), 0);
+                         json::array({"x; touch " + marker.string()}));
   CHECK(result.output == "safe\n");
   CHECK(!fs::exists(marker));
 
-  result = ToolRunPython(supervisor,
-                         "import time; time.sleep(2); print('background-ok')",
-                         json::array(), 1);
-  CHECK(result.output.starts_with("[backgrounded]"));
-  std::vector<pid_t> pending = supervisor.PendingPids();
-  CHECK(pending.size() == 1);
-  if (!pending.empty()) {
-    CHECK(supervisor.JoinableCount() == 1);
-    int64_t pid = pending.front();
-    for (int attempt = 0; attempt < 3 && result.output.find("[exit code 0]") ==
-                                             std::string::npos;
-         ++attempt) {
-      result = ToolWaitBackground(supervisor, pid);
-    }
-    CHECK(result.output.find("background-ok") != std::string::npos);
-    CHECK(result.output.find("[exit code 0]") != std::string::npos);
-  }
-
-  result = ToolRunPython(
-      supervisor,
-      "import time\nprint('ready', flush=True)\ntime.sleep(2)\n"
-      "print('progress', flush=True)\ntime.sleep(2)\nprint('done')",
-      json::array(), 1);
-  CHECK(result.output.starts_with("[backgrounded]"));
-  pending = supervisor.PendingPids();
-  CHECK(pending.size() == 1);
-  if (!pending.empty()) {
-    int64_t pid = pending.front();
-    result = ToolWaitBackground(supervisor, pid);
-    CHECK(
-        result.output.starts_with("[process still running — current output]"));
-    CHECK(result.output.find("ready") != std::string::npos);
-    CHECK(supervisor.PendingCount() == 1);
-    result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.output.starts_with("[process still running — new output]"));
-    CHECK(result.output.find("progress") != std::string::npos);
-    result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.output.find("done") != std::string::npos);
-    if (result.output.find("[exit code 0]") == std::string::npos) {
-      result = ToolWaitBackground(supervisor, pid);
-    }
-    CHECK(result.output.find("[exit code 0]") != std::string::npos);
-  }
-
-  result = ToolRunPython(
-      supervisor, "import time\nprint('Password:', flush=True)\ntime.sleep(4)",
-      json::array(), 1);
-  CHECK(result.output.starts_with("[backgrounded]"));
-  pending = supervisor.PendingPids();
-  CHECK(pending.size() == 1);
-  if (!pending.empty()) {
-    int64_t pid = pending.front();
-    auto started = std::chrono::steady_clock::now();
-    result = ToolWaitBackground(supervisor, pid);
-    CHECK(result.output.find("Password:") != std::string::npos);
-    CHECK(ElapsedMs(started) < 500);
-  }
+  result =
+      ToolRunPython(supervisor, "import time; time.sleep(.2); print('slow-ok')",
+                    json::array());
+  CHECK(result.output == "slow-ok\n");
+  CHECK(supervisor.PendingCount() == 0);
 
   result = ToolRunPython(supervisor, "import definitely_missing_uagent_package",
-                         json::array(), 0);
+                         json::array());
   CHECK(result.error == ToolErrorCode::kProcessFailed);
   CHECK(result.output.starts_with("error: Python execution failed."));
   CHECK(result.output.find("run_python.packages") != std::string::npos);
 
   setenv("PATH", root.c_str(), 1);  // no uv
-  result = ToolRunPython(supervisor, "print('x')", json::array({"numpy"}), 0);
+  result = ToolRunPython(supervisor, "print('x')", json::array({"numpy"}));
   CHECK(result.error == ToolErrorCode::kUnavailable);
   CHECK(result.output.find("packages require uv on PATH") != std::string::npos);
   CHECK(result.output.find("Install") != std::string::npos);

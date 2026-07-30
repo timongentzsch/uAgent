@@ -9,11 +9,11 @@
 #include <curl/curl.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -40,7 +40,7 @@ namespace uagent {
 
 using nlohmann::json;
 
-// text-protocol delimiters (shared with agent.h's parser)
+// Text-protocol delimiters shared with the agent protocol parser.
 inline constexpr const char* kTtOpen = "[uagent_tool_call]";
 inline constexpr const char* kTtClose = "[/uagent_tool_call]";
 
@@ -129,7 +129,7 @@ struct StreamCtx {
     OpenAiStreamDelta delta = DecodeOpenAiStreamEvent(event.data, *res, calls);
     if (delta.activity) MarkEvent();
     if (!delta.reasoning.empty()) {
-      if (g_debug.Enabled()) res->reasoning += delta.reasoning;
+      res->reasoning += delta.reasoning;
       OutputReasoning(delta.reasoning);
     }
     if (!delta.content.empty()) EmitContent(delta.content);
@@ -170,6 +170,33 @@ struct StreamCtx {
   }
 };
 
+inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
+                             ChatResult& result) {
+  std::set<std::string> ids;
+  for (auto& [index, call] : streamed) {
+    (void)index;
+    if (call.id.empty()) {
+      result.error = "invalid model tool call: missing id";
+      return false;
+    }
+    if (!ids.insert(call.id).second) {
+      result.error = "invalid model tool call: duplicate id";
+      return false;
+    }
+    json arguments = json::parse(call.args, nullptr, false);
+    if (call.name.empty() || arguments.is_discarded() ||
+        !arguments.is_object()) {
+      result.error = "invalid model tool call: incomplete function";
+      return false;
+    }
+  }
+  for (auto& [index, call] : streamed) {
+    (void)index;
+    result.tool_calls.push_back(std::move(call));
+  }
+  return true;
+}
+
 class Api {
  public:
   std::string base_url, api_key, model, reasoning_effort;
@@ -181,6 +208,8 @@ class Api {
       true;  // omit after a 400 that rejects `parallel_tool_calls`
   bool openrouter_web_search =
       true;  // dropped after a 400 that rejects the beta server tool
+  bool server_tools_authorized =
+      false;                  // native tools bypass the local approval callback
   bool render_stream = true;  // false for headless callers that only need data
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment())
@@ -192,6 +221,16 @@ class Api {
   Api& operator=(const Api&) = delete;
   RuntimeConfig config;
 
+  void PreserveAssistantReasoning(json& message,
+                                  const ChatResult& result) const {
+    if (!OpenrouterCompatibleUrl(base_url)) return;
+    if (!result.reasoning_details.empty()) {
+      message["reasoning_details"] = result.reasoning_details;
+    } else if (!result.reasoning.empty()) {
+      message["reasoning"] = result.reasoning;
+    }
+  }
+
   json BuildChatBody(const json& messages, const json& tool_schemas,
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const {
@@ -200,18 +239,16 @@ class Api {
     if (native_tools && !tool_schemas.empty()) {
       json request_tools = json::array();
       bool server_search = OpenrouterCompatibleUrl(base_url) &&
-                           config.web_search_server && openrouter_web_search;
+                           config.web_search_server && openrouter_web_search &&
+                           server_tools_authorized;
       bool search_offered = false;
       for (const json& tool : tool_schemas) {
-        bool legacy_search =
+        bool compatibility_search =
             tool.is_object() && tool.contains("function") &&
             tool["function"].is_object() &&
             JsonString(tool["function"], "name") == "web_search";
-        search_offered = search_offered || legacy_search;
-        if (legacy_search &&
-            (server_search || !OpenrouterCompatibleUrl(base_url))) {
-          continue;
-        }
+        search_offered = search_offered || compatibility_search;
+        if (compatibility_search && server_search) continue;
         request_tools.push_back(tool);
       }
       if (server_search && search_offered) {
@@ -334,14 +371,16 @@ class Api {
 
   // quiet JSON POST — no streaming, no printing; Ctrl+C cancels.
   // Used by the web_search tool's side-request.
-  json Post(const std::string& path, const json& body, int64_t timeout_s = 120,
-            const std::atomic<bool>* cancel = nullptr) {
+  json Post(const std::string& path, const json& body,
+            int64_t timeout_s = 120) {
     std::string payload = JsonDump(body);
-    return Fetch(path, &payload, timeout_s, /*abortable=*/true, cancel);
+    return Fetch(path, &payload, timeout_s, /*abortable=*/true);
   }
 
   // GET base_url+path, parsed JSON (discarded value on failure)
-  json Get(const std::string& path) { return Fetch(path, nullptr, 15, false); }
+  json Get(const std::string& path, bool abortable = false) {
+    return Fetch(path, nullptr, 15, abortable);
+  }
 
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,
@@ -393,6 +432,7 @@ class Api {
 
     CURLcode rc = CURLE_OK;
     bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
+    if (cancelled) ClearAbort();
     steering.Stop();
     ctx.BeginOutput();
     ctx.Finish();
@@ -436,32 +476,31 @@ class Api {
           RetryableRemoteError(res.remote_error_type, res.remote_error_code);
       return res;
     }
-    for (auto& [index, call] : ctx.calls) {
-      (void)index;
-      if (!call.name.empty()) res.tool_calls.push_back(std::move(call));
-    }
+    if (!CollectToolCalls(ctx.calls, res)) return res;
     return res;
   }
 
   bool WaitForRetry(std::chrono::milliseconds delay) const {
     TerminalSpinner spinner(render_stream, SpinnerLabel("retrying"));
+    SteeringGuard steering;
     auto deadline = std::chrono::steady_clock::now() + delay;
-    while (std::chrono::steady_clock::now() < deadline) {
-      if (AbortRequested()) return false;
-      auto remaining = deadline - std::chrono::steady_clock::now();
-      auto quantum =
-          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-              std::chrono::milliseconds(50));
-      std::this_thread::sleep_for(std::min(remaining, quantum));
-    }
-    return !AbortRequested();
+    bool cancelled = RunCancellable([&] {
+      while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
+        auto remaining = deadline - std::chrono::steady_clock::now();
+        auto quantum =
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::min(remaining, quantum));
+      }
+    });
+    if (cancelled) ClearAbort();
+    return !cancelled;
   }
 
   // shared non-streaming request: POSTs payload when given, else GETs;
   // returns parsed JSON (discarded value on failure)
   json Fetch(const std::string& path, const std::string* payload,
-             int64_t timeout_s, bool abortable,
-             const std::atomic<bool>* cancel = nullptr) {
+             int64_t timeout_s, bool abortable) {
     CURL* h = Prepare(base_url + path);
     if (!h) return json(json::value_t::discarded);
     struct FetchBuffer {
@@ -495,13 +534,7 @@ class Api {
           return *bytes;
         });
     curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
-    if (abortable) {
-      if (cancel) {
-        SetCancelable(h, cancel);
-      } else {
-        SetAbortable(h);
-      }
-    }
+    if (abortable) SetAbortable(h);
     curl_easy_setopt(h, CURLOPT_TIMEOUT, timeout_s);
     curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING,
                      "");  // 531 KB -> 63 KB on /models
@@ -538,17 +571,6 @@ class Api {
           return 0;
         });
     curl_easy_setopt(h, CURLOPT_XFERINFODATA, ctx);
-    curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
-  }
-
-  static void SetCancelable(CURL* h, const std::atomic<bool>* cancel) {
-    curl_easy_setopt(
-        h, CURLOPT_XFERINFOFUNCTION,
-        +[](void* user, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int {
-          const auto* cancel = static_cast<const std::atomic<bool>*>(user);
-          return AbortRequested() || cancel->load();
-        });
-    curl_easy_setopt(h, CURLOPT_XFERINFODATA, cancel);
     curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);
   }
 

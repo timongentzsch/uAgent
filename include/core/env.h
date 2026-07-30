@@ -44,6 +44,12 @@ inline double EnvDouble(const char* name, double dflt) {
 inline int64_t ToolResultCap() {
   return EnvLong("UAGENT_TOOL_RESULT_CHARS", 8000);
 }
+inline int64_t ToolBatchResultCap() {
+  int64_t per_result = ToolResultCap();
+  if (per_result <= 0) return per_result;
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  return per_result > kMax / 2 ? kMax : per_result * 2;
+}
 inline int64_t AutoCompactPct() {
   return EnvLong("UAGENT_AUTO_COMPACT_PCT", 95);
 }
@@ -64,6 +70,7 @@ inline bool CanDelegate() {
   return AgentDepth() <
          std::max(int64_t{0}, EnvLong("UAGENT_SUBAGENT_DEPTH", 2));
 }
+inline bool LeanToolset() { return EnvStr("UAGENT_TOOLSET") == "lean"; }
 // Budgets handed to a delegated child. Lower than the coordinator's own, so one
 // flailing subagent cannot spend the whole turn.
 inline int64_t SubagentMaxSteps() {
@@ -79,14 +86,19 @@ inline bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
 // with its default and its clamp, so the set can be read — and compared with
 // docs/OPERATIONS.md — without hunting through the modules that apply them.
 inline int64_t ReadFileLines() {
-  return EnvLong("UAGENT_READ_FILE_LINES", 200);
+  return EnvLong("UAGENT_READ_FILE_LINES", 1000);
 }
 inline int64_t ReadFileMaxLines() {
   return std::max(int64_t{1}, EnvLong("UAGENT_READ_FILE_MAX_LINES", 10000));
 }
 inline int64_t ReadFileBytes() {
-  return std::max(int64_t{1024},
-                  EnvLong("UAGENT_READ_FILE_BYTES", 4 * 1024 * 1024));
+  return std::max(int64_t{1024}, EnvLong("UAGENT_READ_FILE_BYTES", 32 * 1024));
+}
+inline int64_t ReadFileResultChars() {
+  constexpr int64_t kHeaderAllowance = 2048;
+  int64_t bytes = ReadFileBytes();
+  constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+  return bytes > kMax - kHeaderAllowance ? kMax : bytes + kHeaderAllowance;
 }
 // Exact totals mean scanning the tail of the file; off by default.
 inline bool ReadFileCountsTotal() {
@@ -110,8 +122,8 @@ inline int64_t MaxMemories() {
 inline int64_t SkillBodyBytes() {
   return std::max(int64_t{1024}, EnvLong("UAGENT_SKILL_BYTES", 16 * 1024));
 }
-// Descriptions are sent with every request, so they are bounded far more
-// tightly than bodies, which are sent only when a skill is actually used.
+// Descriptions stay bounded because discovery may return several at once;
+// bodies are sent only when a skill is opened.
 inline int64_t SkillDescriptionBytes() {
   return std::max(int64_t{16}, EnvLong("UAGENT_SKILL_DESC_BYTES", 512));
 }
@@ -124,7 +136,6 @@ inline int64_t GrepResults() {
 inline int64_t GrepBytes() {
   return std::max(int64_t{1024}, EnvLong("UAGENT_GREP_BYTES", ToolResultCap()));
 }
-inline int64_t BashPollSeconds() { return EnvLong("UAGENT_BASH_POLL", 3); }
 inline int64_t BashLogBytes() {
   return std::max(int64_t{1024},
                   EnvLong("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024));

@@ -272,10 +272,9 @@ def run_agent(
 def evaluate_analysis(binary: Path, workspace: Path, home: Path, env: dict[str, str]) -> Result:
     prompt = """Analyze the pinned SWE-bench Verified issue in this fixture.
 Your first tool call must be run with exactly
-{"command":"python3 slow_analysis.py","timeout":1}; do not change that timeout.
-After it backgrounds, use grep/read_file to inspect dataset/SWE_BENCH_ISSUE.md,
-astropy/modeling/separable.py, and its tests; then collect the background
-result. Report the exact nested-model defect, affected function and file, why
+{"command":"python3 slow_analysis.py"}. After it completes, use grep/read_file
+to inspect dataset/SWE_BENCH_ISSUE.md, astropy/modeling/separable.py, and its
+tests. Report the exact nested-model defect, affected function and file, why
 the right-hand matrix loses information, missing regression cases, and a
 minimal repair direction. Do not modify files and do not inspect a gold patch.
 The final answer must be exactly five bullets and at most 180 words: defect,
@@ -292,23 +291,18 @@ location, cause, regression tests, repair."""
     output = run.stdout.strip()
     lower = output.lower()
     required = ("separable.py", "_cstack", "nested", "right", "test")
-    backgrounded = any(
-        "[backgrounded]" in event.get("data", {}).get("result", "")
+    slow_run_completed = any(
+        "STATIC-REPORT:" in event.get("data", {}).get("result", "")
         for event in tool_events(events, "run")
     )
-    waited = bool(tool_events(events, "wait_background")) or trace_contains(
-        events, "[Background result:"
-    )
-    passed = (
-        run.returncode == 0 and all(term in lower for term in required) and backgrounded and waited
-    )
+    passed = run.returncode == 0 and all(term in lower for term in required) and slow_run_completed
     tool_names = [
         event.get("data", {}).get("name") for event in events if event.get("event") == "tool_result"
     ]
     raw_usage = raw_response_usage(events)
     detail = (
         f"tools={sum(e.get('event') == 'tool_result' for e in events)}, "
-        f"backgrounded={backgrounded}, collected={waited}, "
+        f"slow_run_completed={slow_run_completed}, "
         f"tool_names={tool_names}, raw_usage_events={len(raw_usage)}"
     )
     return Result(
@@ -625,12 +619,12 @@ def evaluate_subagents(binary: Path, workspace: Path, home: Path, env: dict[str,
     }
     briefs = "\n".join(
         f"- {name}: delegate a standalone task that first runs "
-        f"`python3 slow_probe.py {name}` with run timeout=0, then reads "
+        f"`python3 slow_probe.py {name}`, then reads "
         f"{path} and {instruction}."
         for name, (path, _, instruction) in specifications.items()
     )
     prompt = f"""Exercise delegation concurrency. In your first action issue
-exactly three task calls in the same tool response, each with timeout=1, using
+exactly three task calls in the same tool response, using
 these complete standalone briefs:
 {briefs}
 The children must perform the slow probe before reading. Keep the parent alive,
@@ -643,9 +637,7 @@ facts. Do not perform their work in the parent."""
     intervals, overlap = probe_intervals(workspace)
     output = run.stdout.strip()
     task_events = tool_events(events, "task")
-    backgrounded = sum(
-        "[backgrounded]" in event.get("data", {}).get("result", "") for event in task_events
-    )
+    started = sum("[started]" in event.get("data", {}).get("result", "") for event in task_events)
     task_batches = [
         event
         for event in events
@@ -655,14 +647,14 @@ facts. Do not perform their work in the parent."""
     passed = (
         run.returncode == 0
         and len(task_events) == 3
-        and backgrounded >= 2
+        and started == 3
         and len(intervals) == 3
         and overlap
         and all(marker in output for _, marker, _ in specifications.values())
         and not parent_parallel
     )
     detail = (
-        f"tasks={len(task_events)}, backgrounded={backgrounded}, "
+        f"tasks={len(task_events)}, started={started}, "
         f"child_traces={len(child_traces)}, probes={len(intervals)}, "
         f"overlap={overlap}, parent_parallel={parent_parallel}"
     )

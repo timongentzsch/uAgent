@@ -23,6 +23,49 @@ void AddAnnotations(const json& annotations, ChatResult& result) {
   }
 }
 
+void AddReasoningDetails(const json& details, ChatResult& result) {
+  if (!details.is_array()) return;
+  for (const json& detail : details) {
+    if (!detail.is_object()) continue;
+    int64_t index = JsonInt(detail, "index", -1);
+    json* target = nullptr;
+    if (index >= 0) {
+      for (json& existing : result.reasoning_details) {
+        if (existing.is_object() && JsonInt(existing, "index", -1) == index) {
+          target = &existing;
+          break;
+        }
+      }
+    } else {
+      std::string type = JsonValue(detail, "type", "");
+      if (!type.empty()) {
+        for (auto existing = result.reasoning_details.rbegin();
+             existing != result.reasoning_details.rend(); ++existing) {
+          if (existing->is_object() &&
+              JsonValue(*existing, "type", "") == type) {
+            target = &*existing;
+            break;
+          }
+        }
+      }
+    }
+    if (!target) {
+      result.reasoning_details.push_back(detail);
+      continue;
+    }
+    for (const auto& [key, value] : detail.items()) {
+      if ((key == "text" || key == "data" || key == "signature") &&
+          value.is_string() && target->contains(key) &&
+          (*target)[key].is_string()) {
+        (*target)[key] =
+            (*target)[key].get<std::string>() + value.get<std::string>();
+      } else if (!target->contains(key) || (*target)[key].is_null()) {
+        (*target)[key] = value;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
@@ -69,9 +112,21 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   if (event_delta.contains("annotations")) {
     AddAnnotations(event_delta["annotations"], result);
   }
-  if (event_delta.contains("reasoning_content") &&
-      event_delta["reasoning_content"].is_string()) {
-    delta.reasoning = event_delta["reasoning_content"].get<std::string>();
+  if (event_delta.contains("reasoning_details")) {
+    AddReasoningDetails(event_delta["reasoning_details"], result);
+    delta.activity =
+        delta.activity || !event_delta["reasoning_details"].empty();
+  }
+  const json* reasoning = nullptr;
+  if (event_delta.contains("reasoning") &&
+      event_delta["reasoning"].is_string()) {
+    reasoning = &event_delta["reasoning"];
+  } else if (event_delta.contains("reasoning_content") &&
+             event_delta["reasoning_content"].is_string()) {
+    reasoning = &event_delta["reasoning_content"];
+  }
+  if (reasoning) {
+    delta.reasoning = reasoning->get<std::string>();
     delta.activity = delta.activity || !delta.reasoning.empty();
   }
   if (event_delta.contains("content") && event_delta["content"].is_string()) {

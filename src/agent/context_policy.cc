@@ -29,9 +29,8 @@ int64_t EstimatedTokens(size_t message_bytes, size_t schema_bytes,
 
 int64_t ContextPolicy::Used(size_t message_bytes, size_t schema_bytes,
                             bool native_tools) const {
-  return reported_tokens_ > 0
-             ? reported_tokens_
-             : EstimatedTokens(message_bytes, schema_bytes, native_tools);
+  return std::max(reported_tokens_,
+                  EstimatedTokens(message_bytes, schema_bytes, native_tools));
 }
 
 void ContextPolicy::SetReported(int64_t tokens) {

@@ -40,6 +40,7 @@
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
+#include "include/ui/tool_output.h"
 
 namespace uagent {
 

@@ -107,15 +107,11 @@ void PrintProjectContext(const ProjectInstructions& instructions,
 void PrintSkills(const std::vector<Skill>& skills) {
   if (skills.empty()) return;
   std::string list;
-  size_t bytes = 0;
   for (const Skill& skill : skills) {
     if (!list.empty()) list += ", ";
     list += skill.name;
-    bytes += skill.name.size() + skill.description.size();
   }
-  std::string summary = std::to_string(skills.size()) + ", ~" +
-                        FmtTokens(static_cast<int64_t>(bytes) / 4) +
-                        " tokens/request — " + list;
+  std::string summary = std::to_string(skills.size()) + " available — " + list;
   printf("%s· skills: %s%s\n", DIM(), TerminalSafe(summary).c_str(), RST());
 }
 
@@ -168,30 +164,27 @@ std::vector<Tool> BuildTools(AppContext& context, json trusted_snapshot,
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
-  std::vector<Tool> tools =
-      BuiltinTools(runtime.processes, CanonicalAccessPath(CanonicalCwd()),
-                   inline_images, &runtime.side_tasks);
+  std::vector<Tool> tools = BuiltinTools(
+      runtime.processes, CanonicalAccessPath(CanonicalCwd()), inline_images);
   WebSearchRoute search_fallback;
   for (const NamedProvider& provider : context.provider.providers) {
-    if (provider.name != "openrouter" &&
-        !OpenrouterCompatibleUrl(provider.base_url)) {
-      continue;
-    }
+    if (provider.name != "openrouter") continue;
     search_fallback = {provider.base_url, provider.api_key,
                        EnvStr("OPENROUTER_MODEL", "openrouter/auto")};
     break;
   }
-  if (OpenrouterCompatibleUrl(api.base_url) || search_fallback.Valid()) {
-    tools.push_back(WebSearchTool(api, runtime.side_usage, runtime.side_tasks,
-                                  std::move(search_fallback)));
+  if (OpenrouterUrl(api.base_url) || search_fallback.Valid()) {
+    tools.push_back(
+        WebSearchTool(api, runtime.side_usage, std::move(search_fallback)));
   }
   McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
   if (CanDelegate()) {
-    tools.push_back(SubagentTool(api, runtime.processes, context.options.yolo,
-                                 context.debug));
-    AddTaskLifecycleTools(tools, runtime.processes);
+    tools.push_back(SubagentTool(api, runtime.processes,
+                                 context.provider.routes,
+                                 context.provider.providers, context.debug));
   }
   if (!skills.empty()) tools.push_back(SkillTool(std::move(skills)));
+  if (LeanToolset()) KeepLeanTools(tools);
   return tools;
 }
 
@@ -206,6 +199,7 @@ void LogReady(const AppContext& context) {
                  {"configured_models", context.provider.routes.size()},
                  {"context_window", api.ctx_window},
                  {"tools", context.tools.size()},
+                 {"toolset", LeanToolset() ? "lean" : "full"},
                  {"yolo", context.options.yolo},
                  {"auto_compact_pct", AutoCompactPct()},
                  {"checkpoint_mode", config.checkpoint_mode},
@@ -215,6 +209,7 @@ void LogReady(const AppContext& context) {
                  {"openrouter_fallbacks", config.openrouter_fallbacks},
                  {"tool_concurrency", ToolConcurrency()},
                  {"tool_result_chars", ToolResultCap()},
+                 {"tool_batch_result_chars", ToolBatchResultCap()},
                  {"attachment_mb", AttachmentLimitMb()},
                  {"image_detail", ImageDetail()},
                  {"steering", SteeringEnabled()},
@@ -332,19 +327,20 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   }
 
   printf("%sµAgent%s\n", BOLD(), RST());
+  api.server_tools_authorized = context->options.yolo;
   context->tools =
       BuildTools(*context, std::move(trusted_snapshot), std::move(skills));
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,
-      context->runtime.side_tasks, context->runtime.side_usage,
+      context->runtime.side_usage,
       [app](const Tool& tool, const json& arguments) {
         bool granted = true;
         if (!app->options.yolo) {
           std::string question =
               std::string(YEL()) + "allow " + TerminalSafe(tool.name) + ": " +
-              TerminalSafe(FirstLine(ToolSummary(tool, arguments))) +
-              "? [Y/n] " + RST();
+              TerminalSummary(ToolSummary(tool, arguments), 20) + "? [Y/n] " +
+              RST();
           bool eof = false;
           std::string answer =
               Trim(ReadInputLine(question, &eof, /*keep_history=*/false));

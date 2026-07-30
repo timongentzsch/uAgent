@@ -6,6 +6,11 @@
 A small C++20 coding agent for OpenAI-compatible APIs: one binary, direct HTTP,
 bounded tools, and optional MCP integration.
 
+Compared with Codex and other full-screen agent TUIs, µAgent keeps the interface
+inline and uses the terminal's native scrollback. It adds only prompts, status,
+tool traces, and a global activity spinner—no custom scrolling surface—so normal
+terminal search, selection, and history keep working.
+
 ## Quick start
 
 Requires CMake, a C++20 compiler, libcurl, and optionally libedit. Node.js/npm
@@ -31,10 +36,11 @@ project `.env` files are never loaded. Named OpenAI-compatible routes can be
 defined with `UAGENT_PROVIDERS`. `UAGENT_BASE_URL`, `UAGENT_API_KEY`, and
 `UAGENT_MODEL` define one direct route.
 
-Provider models need not be duplicated in config: `/models NAME/*` queries one
-live catalog, `/models all` combines them, and `/model NAME/MODEL` switches
-lazily. A configured OpenRouter key keeps its live catalog available even while
-a named local provider is selected.
+Provider models need not be duplicated in config. `/models QUERY` searches
+every configured live catalog concurrently, shows one numbered list, and
+switches to the chosen entry. Blank Enter or Escape keeps the current model;
+`/models all` requests the full catalog, and `/model NAME/MODEL` remains a
+direct shortcut.
 
 A workspace opts into its own settings by creating a `.uagent` directory. Its
 `.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
@@ -58,14 +64,14 @@ uagent --yolo
 | --- | --- |
 | `read_file`, `list_dir`, `grep` | Inspect the repository |
 | `write_file`, `edit_file` | Make atomic file changes |
-| `run`, `wait_background`, `terminal_output` | Manage supervised processes |
+| `run`, `terminal_output` | Run commands or manage detached terminals |
 | `run_python` | Run isolated Python with optional uv packages |
 | `show_image` | Display a local image in the terminal |
 | `attach` | Add a local image or document to the model's next request |
-| `openrouter:web_search` | Let an OpenRouter model search and cite sources |
+| `web_search` | Search the web and return cited sources |
 | `<server>_<tool>` | Use a tool exposed by a configured MCP server |
 | `chrome_session` | Select the default Chrome MCP's isolated or user profile |
-| `task`, `get_task_output`, `wait_tasks`, `kill_task` | Delegate and manage depth-bounded subagents |
+| `task` | Run depth-bounded work in parallel, optionally on another model |
 | `memory` | Keep a lesson for later sessions, per project or global |
 | `skill` | Open a stored procedure from `~/.uagent/skills` or the project |
 | `checkpoint` | Fold context into a durable checkpoint |
@@ -86,9 +92,14 @@ five results, and three uses per request; `UAGENT_WEB_SEARCH_ENGINE`,
 `UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. Set `UAGENT_WEB_SEARCH_SERVER=0` to
 force the fallback.
 
-Slow commands and tasks can continue in the background. `task` keeps its short
-adaptive foreground window unless `run_in_background=true` requests an
-immediate task id. One spinner remains visible while the model, a tool batch, or
+Ordinary shell and Python calls complete inside one tool step; Escape can steer
+while they run. `run(detach=true)` is the explicit path for a persistent
+terminal. Multiple `task` calls spawn immediately, run concurrently, and return
+every delegated result before the next model step. A task may select a
+`provider/model`; otherwise it inherits the parent route. Tasks default to a
+lean toolset; use `mode=full` when implementation tools are needed. Approving a
+task authorizes that separate-context child to execute its scoped brief without
+further prompts. One spinner remains visible while the model, a tool batch, or
 required background work is quiet. `run_python` uses
 `uv run --isolated --no-project`, so packages must be listed in the tool call.
 `show_image` is available only when the terminal supports a native image
@@ -98,8 +109,9 @@ preserved.
 
 Transient connection failures, HTTP 408/409/429/5xx responses, and structured
 server-overload errors are retried twice with short exponential backoff only
-when the stream has produced no content, reasoning, tool call, annotation, or
-usage. A partially visible stream is never replayed.
+when the stream has produced no content, reasoning, tool call, or annotation.
+Accounting-only events do not block a safe retry; a partially visible stream is
+never replayed.
 
 ## Context and sessions
 
@@ -115,10 +127,15 @@ concluded, so they load last and are trimmed first. Delete a file to retract it.
 
 Use `/attach PATH` or repeat `--attach PATH` to add images and documents.
 Attachments are size-bounded and their encoded data is removed after the turn.
-The prompt and ordered tool schemas remain stable for provider caching.
+The prompt and ordinary tool order stay stable for provider caching; rare
+state-only tools appear only while their action is valid. Date, working
+directory, and runtime hints are appended once and repeated only when they
+change.
 
 At 65% projected context the model may checkpoint; at 85% the request becomes
-urgent. See [checkpoint design](docs/CHECKPOINTS.md).
+urgent. At emergency pressure, a long tool turn can fold once between rounds;
+the exact request survives while completed tool traffic is summarized. See
+[checkpoint design](docs/CHECKPOINTS.md).
 
 Sessions are stored under `~/.uagent/history`. Debug JSONL traces are opt-in
 with `--debug[=PATH]` and may contain private source and reasoning.
@@ -131,9 +148,10 @@ turn's pruned tool results and available search snippets.
 A skill is a directory under `<base>/skills` holding a `SKILL.md`: YAML front
 matter with a `description` and usually a `name`, then the procedure. The
 directory name is authoritative. Only the front matter is read at startup — it
-becomes one line in the `skill` tool's schema — and the body reaches the model
-when it opens that skill. Owning many skills therefore costs a line of schema
-each, not a document each.
+stays behind one fixed `skill` discovery schema — and the body reaches the
+model only when opened. An exact name opens directly; a short query opens a
+sole match or returns the matching names and descriptions. Owning more skills
+therefore does not enlarge every model request.
 
 `SKILL.md` is an open format that around thirty agents read, so a skill
 installed for any of them already works here. Directories are searched in
@@ -147,9 +165,8 @@ increasing precedence, deduplicated by name:
 A workspace skill therefore overrides a user one, and µAgent's own overrides a
 vendor copy of the same name. `UAGENT_SKILL_PATH` replaces the list outright
 with a colon-separated one; `UAGENT_SKILL_EXCLUDE` hides comma-separated names
-without changing discovery. Startup reports how many were found and what their
-descriptions cost per request, since that part of a skill is always sent. If
-the configured count limit is reached, higher-precedence entries displace
+without changing discovery. Startup reports how many were found. If the
+configured count limit is reached, higher-precedence entries displace
 lower-precedence ones.
 
 `SKILL.md` may reference sibling files; the tool result names the skill's
@@ -172,7 +189,13 @@ attached to the model's next step.
 the default MCP server. Its browser tools use the same MCP path as every other
 server. `chrome_session` exists only to start it lazily or switch between a
 fresh isolated profile and the user's Chrome. User mode requires Chrome remote
-debugging at `chrome://inspect/#remote-debugging`.
+debugging at `chrome://inspect/#remote-debugging`. The default `slim` toolset
+uses the upstream navigate/evaluate/screenshot primitives; request
+`toolset=full` for granular UI, network, console, or performance debugging.
+Slim navigation returns a bounded page-state observation in the same step, and
+screenshots attach automatically. Built-in Chrome actions that advertise
+`includeSnapshot` default it on to avoid a separate observation round; an
+explicit `false` is preserved. Custom MCP arguments pass through unchanged.
 `UAGENT_CHROME_MODE=user` changes the default mode;
 `UAGENT_CHROME_DEVTOOLS=0` disables the default server.
 
@@ -195,10 +218,11 @@ debugging at `chrome://inspect/#remote-debugging`.
 | `/help` | Show command help |
 | `/attach PATH`, `/detach` | Manage next-turn attachments |
 | `/sessions`, `/reset` | Resume or reset a session |
-| `/models [TARGET]`, `/model MODEL` | Query or switch models |
+| `/models [QUERY]`, `/model MODEL` | Search all providers or switch directly |
 | `/effort LEVEL\|default` | Set provider reasoning effort |
 | `/compact` | Summarize active history |
 | `/trace` | Show the latest completed tool/search trace |
+| `/verbose` | Toggle expanded bounded tool summaries and results |
 | `/online` | Toggle OpenRouter online mode |
 | `/yolo` | Toggle automatic approval |
 | `/quit` | Exit |

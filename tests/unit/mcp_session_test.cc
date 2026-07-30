@@ -9,6 +9,23 @@
 namespace uagent {
 
 void TestMcpContractHelpers() {
+  json action_schema = {
+      {"type", "object"},
+      {"properties", {{"includeSnapshot", {{"type", "boolean"}}}}}};
+  CHECK(McpSupportsPostActionSnapshot(action_schema));
+  CHECK(!McpSupportsPostActionSnapshot(
+      {{"type", "object"}, {"properties", json::object()}}));
+  CHECK(McpCallArguments({{"uid", "7"}}, true)["includeSnapshot"] == true);
+  CHECK(McpCallArguments(
+            {{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}}, true) ==
+        json({{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}}));
+  CHECK(McpCallArguments({{"timeout", 9}}, false) == json({{"timeout", 9}}));
+  McpServer custom;
+  custom.config = json{{"command", "custom"}};
+  CHECK(!McpDefaultsPostActionSnapshot(custom, action_schema));
+  custom.config["__uagent_builtin"] = "chrome-devtools";
+  CHECK(McpDefaultsPostActionSnapshot(custom, action_schema));
+
   std::string decoded;
   CHECK(Base64Decode("aW1hZ2U=", decoded, 5));
   CHECK(decoded == "image");
@@ -22,10 +39,16 @@ void TestMcpContractHelpers() {
 
   json isolated = ChromeMcpConfig();
   CHECK(isolated["args"].dump().find("--isolated") != std::string::npos);
+  CHECK(isolated["args"].dump().find("--slim") != std::string::npos);
+  CHECK(isolated["__uagent_toolset"] == "slim");
   CHECK(isolated["args"].dump().find(kChromeMcpPackage) != std::string::npos);
   json user = ChromeMcpConfig("user");
   CHECK(user["args"].dump().find("--auto-connect") != std::string::npos);
   CHECK(user["args"].dump().find("--isolated") == std::string::npos);
+  CHECK(user["args"].dump().find("--slim") != std::string::npos);
+  json full = ChromeMcpConfig("isolated", "full");
+  CHECK(full["args"].dump().find("--slim") == std::string::npos);
+  CHECK(full["__uagent_toolset"] == "full");
   setenv("UAGENT_CHROME_BROWSER_URL", "http://127.0.0.1:9222", 1);
   user = ChromeMcpConfig("user");
   CHECK(user["args"].dump().find("--browser-url") != std::string::npos);
@@ -102,6 +125,15 @@ void TestMcpContractHelpers() {
                     std::istreambuf_iterator<char>()) == "image");
   CHECK(rendered.find("file:///tmp/value") != std::string::npos);
   CHECK(rendered.find("structuredContent") != std::string::npos);
+  ToolResult missing_screenshot =
+      ToolSuccess((image_home / "missing.png").string());
+  missing_screenshot = AttachChromeScreenshot(std::move(missing_screenshot));
+  CHECK(!missing_screenshot.Ok());
+  CHECK(missing_screenshot.output.find("cannot read") != std::string::npos);
+  ToolResult screenshot_text =
+      AttachChromeScreenshot(ToolSuccess("screenshot complete"));
+  CHECK(screenshot_text.Ok());
+  CHECK(screenshot_text.output == "screenshot complete");
   ToolResult error_text = McpResultText(
       server,
       {{"result",
@@ -140,10 +172,9 @@ void TestWorkspaceScopedSession() {
   Api api(config);
   api.model = "test";
   ProcessSupervisor processes;
-  SideTaskSupervisor side_tasks;
   UsageAccumulator usage;
   std::vector<Tool> tools;
-  Agent agent(api, tools, processes, side_tasks, usage,
+  Agent agent(api, tools, processes, usage,
               [](const Tool&, const json&) { return false; });
   g_image_input = false;
   agent.RouteChanged();
@@ -166,8 +197,8 @@ void TestWorkspaceScopedSession() {
     CHECK(payload["archive"].is_array());
     CHECK(payload["message_kinds"].is_array());
     CHECK(payload["message_kinds"].size() == payload["messages"].size());
-    // the clock rides on the turn, never in the cacheable prefix
-    CHECK(payload["messages"][0].value("content", "").find("[now ") ==
+    // Stable environment metadata follows the cacheable system prefix.
+    CHECK(payload["messages"][0].value("content", "").find("[environment:") ==
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
     CHECK(payload["checkpoint_candidates"].is_array());

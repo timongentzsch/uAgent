@@ -4,8 +4,8 @@
 #define UAGENT_INCLUDE_CORE_SKILLS_H_
 // Skill discovery. A skill is a directory holding SKILL.md: front matter
 // naming it, then the procedure itself. Only the front matter is read at
-// startup — the body arrives when the model asks for it, so owning many
-// skills costs one line of schema each rather than one document each.
+// startup. Discovery is deferred behind one fixed tool schema, and the body
+// arrives only when the model selects a skill.
 
 #include <algorithm>
 #include <filesystem>
@@ -22,7 +22,7 @@ namespace uagent {
 
 struct Skill {
   std::string name;         // directory name, and what the model calls
-  std::string description;  // front-matter summary; rides every request
+  std::string description;  // front-matter summary used during discovery
   std::string dir;          // absolute, so SKILL.md can reference siblings
   std::string path;         // the SKILL.md itself
 };

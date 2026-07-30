@@ -67,7 +67,7 @@ void Agent::ApplyPendingCheckpoint() {
     InvalidatePendingCheckpoint("candidate was not completed");
     return;
   }
-  if (processes_.PendingCount() || !side_tasks_.Empty()) {
+  if (processes_.PendingCount()) {
     InvalidatePendingCheckpoint("background work is still active");
     return;
   }

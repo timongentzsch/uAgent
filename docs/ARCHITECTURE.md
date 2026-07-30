@@ -11,7 +11,6 @@ main.cc
      │  ├─ Api                 HTTP/SSE and provider request shaping
      │  ├─ ProcessSupervisor   shell/subagent process groups and logs
      │  ├─ UsageAccumulator    concurrent side-request accounting
-     │  ├─ SideTaskSupervisor  bounded in-process background work
      │  └─ McpRuntime          configured/default stdio transports and child lifetimes
      ├─ cli.h                command registry, input, completion and steering UI
      ├─ providers.h          provider config, model routes and live catalog parsing
@@ -58,6 +57,9 @@ approval, timeout, result budget and ownership policy cannot drift with
 aggregate field order. Per-tool turn budgets use the same registry. Core
 request, MCP, and persistence settings register their environment key, bounds,
 and diagnostic name once in `RuntimeConfig::kLongOptions`.
+Delegated tasks default to the lean subset: each tool declares centrally
+whether its schema is useful to a focused child, while `mode=full` retains the
+complete registry for implementation work.
 
 Every handler returns `ToolResult`. `CompletionStatus` represents success,
 failure, cancellation, or timeout; `ToolErrorCode` classifies failures.
@@ -93,7 +95,7 @@ load bounded project instructions and memories before the first request
   → stream model response
   → validate and approve tool calls
   → execute bounded safe calls concurrently; stateful calls serially, under one spinner
-  → inject completed background side requests between model steps
+  → join required delegated processes before the next model step
   → append results in model call order
   → repeat until prose
   → archive/prune intermediate trace
@@ -104,38 +106,41 @@ Each turn has time, step, tool-call, repeated-call, and optional reported-cost
 limits. Request bodies, responses, tool results, scans, attachments, logs, jobs,
 MCP registries, and archives are independently bounded.
 
-`Tool` is the execution-policy registry: its default plus the global fallback
-centrally adds a model-overridable `timeout` to every schema. Handlers receive
-the resulting deadline through `ToolContext`; background-safe work reports via
-the session-owned supervisor instead of blocking a tool batch.
+`Tool` is the execution-policy registry. Harness configuration sets execution
+deadlines through `ToolContext`; provider arguments remain untouched and tool
+schemas contain only real tool inputs. Asynchronous process work has one
+`ProcessSupervisor`; bounded searches remain ordinary synchronous tool calls
+and may overlap within a parallel-safe batch.
 
-Background work declares whether it must join before a final answer. Prose is
-provisional while required work remains; the runtime waits within the turn
-deadline, injects every result, and resumes the model. Adaptive subagents join;
-explicit background tasks and intentionally long-lived shell/Python jobs do not.
-A shared job-id
-interface lets `wait_background` join process and in-process side work alike.
-Each process wait reports current output immediately, then returns on new output
-or exit. Task-specific peek, multi-wait, and cancellation tools reuse the same
-process table and bounded logs. The turn deadline and global call budget bound
-silent or noisy jobs.
+Ordinary shell and Python calls remain inside their tool step until completion
+or the turn deadline, avoiding model-driven polling rounds. Escape remains
+responsive, and persistent commands require explicit `run(detach=true)`.
+Delegated tasks spawn immediately and join before the next model step, so
+multiple children overlap without exposing polling tools.
 
 Contiguous `parallel_safe` calls share a bounded worker group. A stateful call
-is a barrier. Side-request usage merges under a mutex. MCP registry changes are
-applied between batches, after old tool pointers are no longer in use.
-Process records are claimed from the registry before `waitpid`, signals, log
-I/O, or callbacks; no external operation runs under its mutex. Claimed live
-jobs are restored, while completed jobs are reaped exactly once.
+is a barrier. Web searches participate in the same worker group and return
+within their configured timeout, so waiting never consumes another model
+round. Small results are preserved while larger siblings fairly share one
+model-facing batch budget; diagnostics retain the individually capped results.
+Side-request usage merges under a mutex. MCP registry changes are applied
+between batches, after old tool pointers are no longer in use.
+Process records are swapped out before `waitpid`, signals, or log I/O; no
+external operation runs under the registry mutex. Live jobs are restored, while
+completed jobs are reaped exactly once.
 
 ## Checkpoint folding
 
 History stays append-only below 65% projected context. At 65% a suffix asks the
 model to checkpoint once state is stable; at 85% it becomes urgent. Hints are
-debounced. Model compaction remains an emergency path at 95%.
+debounced. Model compaction remains an emergency path at 95%. Pressure is
+rechecked between tool rounds using the current messages and advertised schema.
+At a quiescent boundary, one atomic fold may retain the exact active prompt and
+replace completed tool traffic with a non-authoritative assistant summary.
 
-The tool is always registered to keep schema bytes stable and is intercepted
-by `Agent`. It must be the only call in its batch, may run only after a hint,
-and may run once per turn.
+The tool stays in the registry but is advertised only after a checkpoint hint,
+when the call is valid. `Agent` intercepts it; it must be the only call in its
+batch and may run once per turn.
 
 Default `apply` mode prepares the candidate, ends that turn without another
 model request, and commits only before the next real user turn. `shadow` records
@@ -161,13 +166,24 @@ ends and makes the newest user request authoritative by role and position.
 ## Cache model
 
 The cacheable prefix is the lean system message, project instructions, stable
-ordered tool schemas, and append-only active history. OpenRouter request shaping
-replaces the compatibility `web_search` function with its model-decided server
-tool; compact/title requests remain tool-free. Citations are normalized into
-portable Markdown links, and server search counts merge into ordinary usage.
-A persistent curl handle reuses connections.
+ordinary tool order, and append-only active history. Rare state-only schemas
+trade a cache-prefix change for fewer bytes on the many requests where they
+cannot be called. Structured environment metadata is appended only when its
+date, working directory, or runtime hints change. OpenRouter request shaping
+replaces the compatibility
+`web_search` function with its model-decided server tool; compact/title requests
+remain tool-free. Citations are normalized into portable Markdown links, and
+server search counts merge into ordinary usage. A persistent curl handle reuses
+connections.
 OpenRouter receives the saved session ID; provider preference is optional and
 is not a correctness input.
+
+The built-in Chrome MCP starts lazily with its upstream three-tool `slim`
+catalog. `chrome_session(toolset=full)` explicitly trades a larger schema for
+specialized network, console, performance, and granular interaction tools.
+Slim navigation composes a bounded JavaScript page-state observation inside
+the same harness step; slim screenshot paths enter the attachment queue
+automatically.
 
 A fold intentionally invalidates the old prefix. Its value comes from lower
 future input and restored headroom, not from preserving the old cache hit.

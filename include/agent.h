@@ -2,11 +2,10 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_H_
 #define UAGENT_INCLUDE_AGENT_H_
-// The agent loop. An Agent owns its own message history and drives
-// model -> tool -> model until the model answers in prose. Because history
-// and tools are per-instance, a future subagent is just a Tool whose handler
-// constructs another Agent (same Api, its own messages) and returns its
-// final answer.
+// The agent loop. An Agent owns its message history and drives
+// model -> tool -> model until the model answers in prose. Delegated work
+// runs in a separate uagent process, so only its final result enters this
+// conversation.
 
 #include <algorithm>
 #include <atomic>
@@ -55,22 +54,21 @@ using nlohmann::json;
 
 class Agent {
  public:
-  // Asks the user to approve a mutating call; wired up by the host (the CLI
-  // prompts, a future subagent inherits its parent's policy).
+  // Asks the user to approve a mutating call; wired up by the host. Approving a
+  // task authorizes its separate headless child for that scoped brief.
   using Approver = std::function<bool(const Tool&, const json& args)>;
   using ToolRefresher =
       std::function<bool(std::chrono::steady_clock::time_point)>;
 
   Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
-        SideTaskSupervisor& side_tasks, UsageAccumulator& side_usage,
-        Approver approve, ToolRefresher refresh_tools = {},
+        UsageAccumulator& side_usage, Approver approve,
+        ToolRefresher refresh_tools = {},
         ProjectInstructions project_instructions = {})
       : api_(api),
         tools_(tools),
         processes_(processes),
-        side_tasks_(side_tasks),
         side_usage_(side_usage),
-        schemas_(ToolSchemas(tools, api.config.tool_timeout_s)),
+        schemas_(ToolSchemas(tools)),
         approve_(std::move(approve)),
         refresh_tools_(std::move(refresh_tools)),
         project_instructions_(std::move(project_instructions)) {
@@ -94,7 +92,6 @@ class Agent {
   void Reset() {
     DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                                {"prior_usage", UsageJson(session_usage_)}});
-    turn_time_ = LocalStamp();
     conversation_.Reset(BaselineMessages(), BaselineKinds());
     turn_search_trace_.Reset();
     checkpoint_candidates_ = json::array();
@@ -131,6 +128,8 @@ class Agent {
   std::string LastText() const { return conversation_.LastAssistantText(); }
 
   size_t MessageCount() const { return conversation_.UserVisibleCount(); }
+  bool Verbose() const { return verbose_; }
+  void SetVerbose(bool verbose) { verbose_ = verbose; }
 
   void RouteChanged() {
     context_policy_.SetReported(0);
@@ -192,7 +191,6 @@ class Agent {
       error = "session conversation state is invalid";
       return false;
     }
-    turn_time_ = LocalStamp();
     RefreshBaseline();
     checkpoint_candidates_ = std::move(record.state.checkpoint_candidates);
     pending_checkpoint_ = std::move(record.state.pending_checkpoint);
@@ -211,8 +209,8 @@ class Agent {
     return true;
   }
 
-  // tokens the next request will occupy: the server-reported size of the
-  // last exchange, or a chars/4 estimate before any usage arrives
+  // Conservative size of the next request: never below either the last
+  // server-reported exchange or the current serialized prompt estimate.
   int64_t ContextUsed() const {
     return context_policy_.Used(JsonEstimatedBytes(conversation_.Messages()),
                                 schema_chars_, api_.native_tools);
@@ -220,16 +218,18 @@ class Agent {
 
   // summarize the conversation with the model, then restart the session
   // from that summary — frees the context without losing the thread
-  void Compact(bool automatic = false) {
+  bool Compact(bool automatic = false, Usage* turn_usage = nullptr) {
     if (MessageCount() < 2) {
       DebugLog("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
       printf("%s· nothing to compact%s\n", DIM(), RST());
-      return;
+      return false;
     }
     DebugLog("compact_start", {{"automatic", automatic},
                                {"messages", conversation_.Size()},
                                {"context_tokens", ContextUsed()}});
     printf("%s· %scompacting…%s\n", DIM(), automatic ? "auto-" : "", RST());
+    size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
+    size_t baseline_bytes = JsonEstimatedBytes(BaselineMessages());
     conversation_.Push(
         {{"role", "user"},
          {"content",
@@ -237,22 +237,39 @@ class Agent {
           "relevant paths, and next steps. Be concise."}},
         MessageKind::kInternal);
     ChatResult r = Chat("compact", -1, json::array());
-    if (r.interrupted || !r.error.empty()) {
-      DebugLog("compact_end",
-               {{"automatic", automatic},
-                {"outcome", r.interrupted ? "interrupted" : "error"},
-                {"error", r.error}});
+    conversation_.PopBack();  // never archive the summarization instruction
+    Usage compact_usage;
+    compact_usage.Add(r.usage);
+    session_usage_.Merge(compact_usage);
+    if (turn_usage) turn_usage->Merge(compact_usage);
+    bool invalid_summary = r.content.empty() || !r.tool_calls.empty() ||
+                           !ParseTextToolCalls(r.content).empty() ||
+                           source_bytes <= baseline_bytes ||
+                           r.content.size() >= source_bytes - baseline_bytes;
+    if (r.interrupted || !r.error.empty() || invalid_summary) {
+      std::string outcome =
+          r.interrupted
+              ? "interrupted"
+              : (!r.error.empty()
+                     ? "error"
+                     : (r.content.empty() ? "empty" : "invalid_summary"));
+      DebugLog(
+          "compact_end",
+          {{"automatic", automatic}, {"outcome", outcome}, {"error", r.error}});
       if (!r.error.empty()) {
         printf("%s%s%s\n", RED(), TerminalSafe(r.error).c_str(), RST());
       }
-      conversation_.PopBack();  // keep the session usable
-      return;
+      return false;
     }
-    session_usage_.Add(r.usage);
+    PruneAttachments(BaselineSize());
     ArchiveAll(automatic ? "auto_compact" : "manual_compact");
     conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
     conversation_.Push(
-        {{"role", "user"}, {"content", "Prior context:\n" + r.content}},
+        {{"role", "assistant"},
+         {"content",
+          "[model-generated context summary; non-authoritative]\nPrior "
+          "context:\n" +
+              r.content}},
         MessageKind::kInternal);
     context_policy_.SetReported(0);
     context_policy_.ResetUrgency();
@@ -261,25 +278,24 @@ class Agent {
                              {"outcome", "ok"},
                              {"summary_chars", r.content.size()}});
     printf("\n%s· compacted%s\n", DIM(), RST());
+    return true;
   }
 
-  // Report finished background jobs to the user and hand them to the model.
-  // Called before every model round and at the idle prompt, so a job that
-  // lands between turns reaches the model exactly like one that lands inside
-  // a turn — the drain reaps and deletes the log, so whoever calls it owns
-  // the only copy of the result.
   // Fold in what subagent processes spent. They bill against the same key, so
   // without this their cost is missing from the footer and the status bar.
   void DrainSubagentUsage() {
     std::string path = UsageLedger();
-    std::ifstream f(path);
-    if (!f) return;
+    std::string data;
+    std::string error;
+    if (!TakePrivateText(path, data, error)) {
+      DebugLog("usage_ledger_error", {{"error", error}});
+      return;
+    }
     Usage spent;
-    for (std::string line; std::getline(f, line);) {
+    std::istringstream input(data);
+    for (std::string line; std::getline(input, line);) {
       spent.Merge(UsageFromJson(json::parse(line, nullptr, false)));
     }
-    f.close();
-    std::remove(path.c_str());
     side_usage_.Add(spent);
   }
 
@@ -290,6 +306,8 @@ class Agent {
     session_usage_.Merge(spent);
   }
 
+  // Report finished background jobs to the user and hand them to the model.
+  // The drain reaps and deletes each log, so its caller owns the only copy.
   void DrainBackground(TerminalSpinner* spinner = nullptr) {
     bool changed = false;
     for (auto& note : BgTakeCompleted(processes_)) {
@@ -298,21 +316,6 @@ class Agent {
              TerminalSafe(FirstLine(note)).c_str(), RST());
       conversation_.Push({{"role", "user"}, {"content", std::move(note)}},
                          MessageKind::kInternal);
-      changed = true;
-    }
-    for (auto& result : side_tasks_.TakeCompleted()) {
-      if (spinner) spinner->Stop();
-      printf("%s· %s finished %s%s\n", DIM(), result.kind.c_str(),
-             TerminalSafe(FirstLine(result.label)).c_str(), RST());
-      conversation_.Push(
-          {{"role", "user"},
-           {"content", "[Background result: " + result.kind + " `" +
-                           FirstLine(result.label) + "`]\n" + result.output}},
-          MessageKind::kInternal);
-      DebugLog("side_task_completed", {{"id", result.id},
-                                       {"kind", result.kind},
-                                       {"label", result.label},
-                                       {"duration_ms", result.duration_ms}});
       changed = true;
     }
     if (DrainAttachments()) changed = true;
@@ -330,20 +333,19 @@ class Agent {
         {{"role", "user"},
          {"content", error.empty() ? std::move(content)
                                    : json("[attachment failed] " + error)}},
-        MessageKind::kAttachment);
+        error.empty() ? MessageKind::kAttachment : MessageKind::kInternal);
     context_policy_.SetReported(0);
     DebugLog("attachments_added",
              {{"turn", turn_id_}, {"count", pending.size()}, {"error", error}});
     return true;
   }
 
-  size_t JoinableBackground() const {
-    return processes_.JoinableCount() + side_tasks_.Joinable();
-  }
+  size_t JoinableBackground() const { return processes_.JoinableCount(); }
 
   bool WaitForBackground(std::chrono::steady_clock::time_point deadline,
                          Usage& usage) {
     DebugLog("background_join_start", {{"pending", JoinableBackground()}});
+    SteeringGuard steering;
     TerminalSpinner spinner(false, SpinnerLabel("waiting for background"));
     while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
       DrainBackground(&spinner);
@@ -357,16 +359,29 @@ class Agent {
       auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
           deadline - std::chrono::steady_clock::now());
       auto slice = std::min(remaining, std::chrono::milliseconds(100));
-      if (!side_tasks_.Empty()) {
-        side_tasks_.WaitForOne(slice);
-      } else {
-        std::this_thread::sleep_for(slice);
-      }
+      std::this_thread::sleep_for(slice);
     }
     spinner.Stop();
     DebugLog("background_join_end",
              {{"outcome", AbortRequested() ? "interrupted" : "turn_timeout"},
               {"pending", JoinableBackground()}});
+    return false;
+  }
+
+  bool JoinBackgroundOrReport(std::chrono::steady_clock::time_point deadline,
+                              Usage& usage, int64_t max_turn_seconds,
+                              std::string& outcome) {
+    if (WaitForBackground(deadline, usage)) return true;
+    BgCancelTasks(processes_);
+    if (AbortRequested()) {
+      ClearAbort();
+      last_error_ = outcome = "interrupted";
+    } else {
+      last_error_ =
+          "turn time limit reached (" + std::to_string(max_turn_seconds) + "s)";
+      outcome = "budget_exceeded";
+    }
+    printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
     return false;
   }
 
@@ -385,14 +400,14 @@ class Agent {
     ++revision_;
     ++total_user_turns_;
     if (session_title_.empty()) session_title_ = FirstLine(user_input);
-    turn_time_ = LocalStamp();
+    std::string local_time = LocalStamp();
     ApplyPendingCheckpoint();
     if (!conversation_.Empty()) {
       conversation_.Set(0, SysMsg(), MessageKind::kSystem);
     }
     DebugLog("turn_start",
              {{"turn", turn_id_},
-              {"local_time", turn_time_},
+              {"local_time", local_time},
               {"input", user_input},
               {"attachments", user_content.is_array() && !user_content.empty()
                                   ? user_content.size() - 1
@@ -410,9 +425,7 @@ class Agent {
                             {"steps", 0}});
       return;
     }
-    if (!turn_time_.empty()) {
-      conversation_.Push(TurnTimeMsg(), MessageKind::kInternal);
-    }
+    EnsureEnvironmentContext();
     size_t turn_start =
         conversation_.Size();  // the user message; prune_* index from it
     MessageKind user_kind =
@@ -444,8 +457,12 @@ class Agent {
     int64_t repeated_calls = 0;
     bool complete = false;
     bool line_open = false;
+    bool empty_response_recovered = false;
+    std::optional<size_t> empty_recovery_message;
+    bool detached_records_available = !DetachedRecords().empty();
     double ttt_ms = -1, tokens_per_second = 0;
     std::string outcome = "step_limit";
+    bool midturn_compaction_enabled = true;
 
     int64_t step = 0;
     for (; step < max_steps; ++step) {
@@ -473,8 +490,34 @@ class Agent {
         printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
         break;
       }
-      ChatResult r = Chat("turn", step,
-                          AvailableToolSchemas(tools_, schemas_, tool_counts));
+      ToolAvailability availability{
+          .checkpoint_hint = checkpoint_hint_active_,
+          .detached_terminal =
+              processes_.DetachedCount() > 0 || detached_records_available,
+      };
+      json available_schemas =
+          AvailableToolSchemas(tools_, schemas_, tool_counts, availability);
+      MidturnCompact compact = MidturnCompact::kNotNeeded;
+      if (step > 0 && midturn_compaction_enabled) {
+        compact = MaybeCompactDuringTurn(available_schemas, user_input, usage,
+                                         turn_start);
+      }
+      if (compact != MidturnCompact::kNotNeeded) {
+        midturn_compaction_enabled = false;
+        --step;
+        continue;
+      }
+      if (g_steering.Requested()) {
+        outcome = "steered";
+        last_error_ = outcome;
+        break;
+      }
+      ChatResult r = Chat("turn", step, available_schemas);
+      if (empty_recovery_message) {
+        conversation_.Erase(*empty_recovery_message,
+                            *empty_recovery_message + 1);
+        empty_recovery_message.reset();
+      }
 
       if (r.interrupted) {
         line_open = false;
@@ -508,8 +551,8 @@ class Agent {
       turn_search_trace_.Add(response_usage.web_searches, r.annotations);
       line_open =
           !r.suppressed && !r.content.empty() && r.content.back() != '\n';
-      if (PrintSearchReceipt(response_usage.web_searches, r.annotations, false,
-                             line_open)) {
+      if (PrintSearchReceipt(response_usage.web_searches, r.annotations,
+                             verbose_, line_open)) {
         line_open = false;
       }
       std::string citations = CitationMarkdown(r.annotations);
@@ -545,13 +588,6 @@ class Agent {
         }
         bool repeated = false;
         for (const ToolCall& call : calls) {
-          // Identical waits and peeks can each deliver new process output.
-          if (call.name == "wait_background" ||
-              call.name == "get_task_output" || call.name == "wait_tasks") {
-            repeated_calls = 0;
-            last_call.clear();
-            continue;
-          }
           std::string signature = call.name + "\n" + call.args;
           repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
           last_call = std::move(signature);
@@ -566,6 +602,20 @@ class Agent {
       }
 
       if (calls.empty() && r.content.empty()) {
+        if (!empty_response_recovered && tool_count > 0) {
+          empty_response_recovered = true;
+          conversation_.Push(
+              {{"role", "user"},
+               {"content",
+                "[empty model response] Return the final answer from existing "
+                "results. Do not repeat completed work."}},
+              MessageKind::kInternal);
+          empty_recovery_message = conversation_.Size() - 1;
+          DebugLog("empty_response_recovery",
+                   {{"turn", turn_id_}, {"step", step}});
+          printf("%s· recovering empty response%s\n", DIM(), RST());
+          continue;
+        }
         outcome = "error";
         last_error_ = "model returned an empty response";
         printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
@@ -582,6 +632,7 @@ class Agent {
                {"function", {{"name", c.name}, {"arguments", c.args}}}});
         }
         amsg["tool_calls"] = tcs;
+        api_.PreserveAssistantReasoning(amsg, r);
       }
       conversation_.Push(std::move(amsg), MessageKind::kAssistant);
 
@@ -603,16 +654,10 @@ class Agent {
           line_open = false;
           printf("%s· waiting for %zu background task%s%s\n", DIM(), pending,
                  pending == 1 ? "" : "s", RST());
-          if (WaitForBackground(deadline, usage)) continue;
-          if (AbortRequested()) {
-            ClearAbort();
-            last_error_ = outcome = "interrupted";
-          } else {
-            last_error_ = "turn time limit reached (" +
-                          std::to_string(max_turn_seconds) + "s)";
-            outcome = "budget_exceeded";
+          if (JoinBackgroundOrReport(deadline, usage, max_turn_seconds,
+                                     outcome)) {
+            continue;
           }
-          printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
           break;
         }
         complete = true;
@@ -623,6 +668,14 @@ class Agent {
       bool cancelled =
           RunCalls(calls, text_mode, tool_count, tool_counts, step, deadline);
       line_open = false;
+      if (cancelled || g_steering.Requested()) BgCancelTasks(processes_);
+      if (!cancelled && !g_steering.Requested() && JoinableBackground() > 0) {
+        printf("%s· waiting for delegated work%s\n", DIM(), RST());
+        if (!JoinBackgroundOrReport(deadline, usage, max_turn_seconds,
+                                    outcome)) {
+          break;
+        }
+      }
       if (checkpoint_turn_complete_) {
         complete = true;
         outcome = "checkpoint_prepared";
@@ -643,7 +696,7 @@ class Agent {
     if (complete && !checkpoint_turn_complete_) PruneTurn(turn_start);
     if (pending_checkpoint_.is_object() &&
         JsonValue(pending_checkpoint_, "turn", int64_t{-1}) == turn_id_) {
-      if (complete && !processes_.PendingCount() && side_tasks_.Empty()) {
+      if (complete && !processes_.PendingCount()) {
         pending_checkpoint_["ready"] = true;
         DebugLog(
             "checkpoint_ready",
@@ -726,10 +779,8 @@ class Agent {
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas) {
     int64_t request = ++request_id_;
     if (g_debug.Enabled()) {
-      // History is append-only within a turn and only ever shrinks (prune,
-      // compact, reset) before a chat with step <= 0 — so a full snapshot
-      // there plus per-step deltas reconstructs every request exactly,
-      // without re-dumping the whole history on every step (O(n^2) traces).
+      // A full snapshot after any shrink plus per-step deltas reconstructs
+      // every request without re-dumping the whole history on every step.
       json record = {{"request", request},
                      {"turn", turn_id_},
                      {"step", step},
@@ -822,6 +873,46 @@ class Agent {
                   : "[context checkpoint suggested] If state is stable, call "
                     "checkpoint "
                     "with standalone durable state; otherwise continue.";
+  }
+
+  enum class MidturnCompact {
+    kNotNeeded,
+    kSucceeded,
+    kFailed,
+  };
+
+  MidturnCompact MaybeCompactDuringTurn(const json& available_schemas,
+                                        const std::string& active_prompt,
+                                        Usage& usage, size_t& turn_start) {
+    // Encoded parts must reach the model once. They are pruned at the turn
+    // boundary and must never be fed to the summarizer instead.
+    if (conversation_.HasKind(MessageKind::kAttachment)) {
+      return MidturnCompact::kNotNeeded;
+    }
+    ContextDecision decision = context_policy_.Prepare(
+        {.message_bytes = JsonEstimatedBytes(conversation_.Messages()),
+         .message_count = conversation_.Size(),
+         .schema_bytes = JsonEstimatedBytes(available_schemas),
+         .native_tools = api_.native_tools,
+         .context_window = api_.ctx_window,
+         .request_bytes = api_.config.request_bytes,
+         .max_output_tokens = MaxOutputTokens(),
+         .compact_pct = AutoCompactPct(),
+         .checkpoint_enabled = false,
+         .turn = turn_id_});
+    if (decision.action != ContextAction::kCompact) {
+      return MidturnCompact::kNotNeeded;
+    }
+    DebugLog("midturn_compact", {{"turn", turn_id_},
+                                 {"projected_pct", decision.projected_pct},
+                                 {"messages", conversation_.Size()}});
+    if (!Compact(true, &usage)) return MidturnCompact::kFailed;
+    EnsureEnvironmentContext();
+    turn_start = conversation_.Size();
+    conversation_.Push({{"role", "user"}, {"content", active_prompt}},
+                       MessageKind::kUser);
+    checkpoint_hint_active_ = false;
+    return MidturnCompact::kSucceeded;
   }
 
   // Encoded attachment bytes are never durable conversation state, including
@@ -918,22 +1009,24 @@ class Agent {
     std::string s = kSystemPrompt;
     s += TerminalImageInstruction();
     if (!api_.native_tools) {
-      s += TextProtocolPrompt(tools_, api_.config.tool_timeout_s);
+      s += TextProtocolPrompt(tools_);
     }
     return s;
   }
 
   // Message 0 is the one place the system shape is defined. Always rebuilt
-  // than restored, so it tracks the current tools/protocol (see load()).
+  // rather than restored, so it tracks the current tools/protocol (see load()).
   json SysMsg() const {
     return {{"role", "system"}, {"content", SystemPrompt()}};
   }
 
-  // The clock rides on the turn, never in message 0: rewriting the system
-  // message each turn would invalidate the provider's cached prefix for all
-  // of history. Appended, so every prior byte stays identical.
-  json TurnTimeMsg() const {
-    return {{"role", "user"}, {"content", "[now " + turn_time_ + "]"}};
+  // Append environment state only when it changes. This preserves every prior
+  // request byte for provider caching without repeating cwd metadata each turn.
+  void EnsureEnvironmentContext() {
+    std::string content = EnvironmentContext(LocalDay(), CanonicalCwd());
+    if (conversation_.LastText(MessageKind::kEnvironment) == content) return;
+    conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
+                       MessageKind::kEnvironment);
   }
 
   json ProjectInstructionMsg() const {
@@ -997,7 +1090,7 @@ class Agent {
                 int64_t step, std::chrono::steady_clock::time_point deadline);
 
   void RebuildToolSchemas() {
-    schemas_ = ToolSchemas(tools_, api_.config.tool_timeout_s);
+    schemas_ = ToolSchemas(tools_);
     schema_chars_ = JsonDump(schemas_).size();
     if (!conversation_.Empty()) {
       conversation_.Set(0, SysMsg(), MessageKind::kSystem);
@@ -1009,7 +1102,6 @@ class Agent {
   Api& api_;
   std::vector<Tool>& tools_;
   ProcessSupervisor& processes_;
-  SideTaskSupervisor& side_tasks_;
   UsageAccumulator& side_usage_;
   json schemas_;  // request-shaped tool schemas, rebuilt after MCP changes
   size_t schema_chars_ = 0;
@@ -1025,7 +1117,6 @@ class Agent {
   Usage session_usage_;
   std::string session_id_;
   std::string session_title_;
-  std::string turn_time_;  // refreshed once per user turn, stable within it
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;  // messages already written to the debug trace
   int64_t turn_id_ = 0;
@@ -1034,6 +1125,7 @@ class Agent {
   int64_t last_checkpoint_turn_ = 0;
   bool checkpoint_hint_active_ = false;
   bool checkpoint_turn_complete_ = false;
+  bool verbose_ = false;
   std::chrono::steady_clock::time_point active_deadline_ =
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;

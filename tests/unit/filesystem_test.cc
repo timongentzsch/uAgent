@@ -27,12 +27,58 @@ void TestFileTools() {
   ToolResult missing_list = ToolListDir((root / "missing-dir").string());
   CHECK(!missing_list.Ok());
   CHECK(missing_list.error == ToolErrorCode::kNotFound);
+  fs::path small_directory = root / "small-directory";
+  fs::create_directories(small_directory);
+  CHECK(ToolWriteFile((small_directory / "one.cc").string(), "ONE_BODY\n")
+            .output.starts_with("wrote "));
+  CHECK(ToolWriteFile((small_directory / "two.cc").string(), "TWO_BODY\n")
+            .output.starts_with("wrote "));
+  ToolResult names_only = ToolListDir(small_directory.string(), 0, 0, false);
+  CHECK(names_only.output.find("one.cc") != std::string::npos);
+  CHECK(names_only.output.find("ONE_BODY") == std::string::npos);
+  ToolResult preview = ToolListDir(small_directory.string(), 0, 0, true);
+  CHECK(preview.output.find("ONE_BODY") != std::string::npos);
+  CHECK(preview.output.find("TWO_BODY") != std::string::npos);
+  CHECK(preview.result_chars == ReadFileResultChars());
+  fs::create_directories(small_directory / "nested");
+  CHECK(ToolListDir(small_directory.string(), 0, 0, true)
+            .output.find("ONE_BODY") == std::string::npos);
+  fs::path binary_directory = root / "binary-directory";
+  fs::create_directories(binary_directory);
+  CHECK(ToolWriteFile((binary_directory / "data.bin").string(),
+                      std::string("text\0binary", 11))
+            .output.starts_with("wrote "));
+  CHECK(ToolListDir(binary_directory.string(), 0, 0, true)
+            .output.find("small directory contents") == std::string::npos);
+  fs::path symlink_directory = root / "symlink-directory";
+  fs::create_directories(symlink_directory);
+  fs::create_symlink(small_directory / "one.cc",
+                     symlink_directory / "linked.cc");
+  CHECK(ToolListDir(symlink_directory.string(), 0, 0, true)
+            .output.find("ONE_BODY") == std::string::npos);
   fs::path file = root / "file.txt";
   CHECK(
       ToolWriteFile(file.string(), "one\ntwo\n").output.starts_with("wrote "));
   std::string read = ToolReadFile(file.string(), 1, 1).output;
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
+  fs::path long_line = root / "long-line.txt";
+  CHECK(ToolWriteFile(long_line.string(), std::string(40 * 1024, 'x'))
+            .output.starts_with("wrote "));
+  std::string long_read = ToolReadFile(long_line.string(), 1, 1).output;
+  CHECK(long_read.find("lines 1-1; line prefix limited") != std::string::npos);
+  CHECK(long_read.find(std::string(1024, 'x')) != std::string::npos);
+  fs::path ordinary_source = root / "ordinary-source.txt";
+  std::string ordinary_source_text;
+  for (int line = 1; line <= 300; ++line) {
+    ordinary_source_text += "line " + std::to_string(line) + "\n";
+  }
+  CHECK(ToolWriteFile(ordinary_source.string(), ordinary_source_text)
+            .output.starts_with("wrote "));
+  std::string ordinary_read =
+      ToolReadFile(ordinary_source.string(), 1, 0).output;
+  CHECK(ordinary_read.find("line 300\n") != std::string::npos);
+  CHECK(ordinary_read.find("more available") == std::string::npos);
   CHECK(ToolEditFile(file.string(), "two", "three")
             .output.starts_with("edited "));
   ToolResult missing_edit =
@@ -108,6 +154,21 @@ void TestFileTools() {
             .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
+  const Tool* read_tool = FindTool(tools, "read_file");
+  CHECK(read_tool != nullptr);
+  CHECK(read_tool && read_tool->result_chars == ReadFileResultChars());
+  CHECK(read_tool &&
+        read_tool->parameters["properties"]["limit"]["description"] ==
+            "line count (default 1000)");
+  fs::path external =
+      root.parent_path() / ("uagent-external-list-" + std::to_string(getpid()));
+  fs::create_directories(external);
+  CHECK(ToolWriteFile((external / "outside.cc").string(), "OUTSIDE_BODY\n")
+            .output.starts_with("wrote "));
+  const Tool* list_tool = FindTool(tools, "list_dir");
+  CHECK(list_tool != nullptr);
+  CHECK(list_tool && list_tool->run({{"path", external.string()}}, {})
+                             .output.find("OUTSIDE_BODY") == std::string::npos);
   const Tool* edit_tool = FindTool(tools, "edit_file");
   CHECK(edit_tool != nullptr);
   if (edit_tool) {
@@ -175,6 +236,7 @@ void TestFileTools() {
 
   std::error_code ec;
   fs::remove_all(root, ec);
+  fs::remove_all(external, ec);
 }
 
 void TestTerminalSafety() {

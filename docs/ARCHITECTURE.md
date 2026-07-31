@@ -89,7 +89,7 @@ segments first and record the eviction count.
 ## Turn flow
 
 ```text
-load bounded project instructions and memories before the first request
+load bounded project instructions and the deferred memory index
   → user input
   → estimate projected context and optionally append checkpoint hint
   → stream model response
@@ -128,6 +128,16 @@ between batches, after old tool pointers are no longer in use.
 Process records are swapped out before `waitpid`, signals, or log I/O; no
 external operation runs under the registry mutex. Live jobs are restored, while
 completed jobs are reaped exactly once.
+
+These choices intentionally track the useful overlap among mature harnesses
+without copying their larger surfaces. [Pi](https://github.com/badlogic/pi-mono/blob/main/packages/agent/src/agent-loop.ts)
+executes independent sibling calls concurrently but publishes final results in
+assistant call order; [OpenCode](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/tool/read.ts)
+likewise exposes bounded offset/limit reads and instructs models to parallelize
+independent calls. µAgent keeps those properties through `parallel_safe`,
+ordered result append, and useful contiguous `read_file` windows. It does not
+add a multi-file mega-tool: ordinary repeated tool calls already batch, keep
+per-call validation and approval visible, and avoid another schema.
 
 ## Checkpoint folding
 
@@ -222,6 +232,7 @@ Therefore apply mode is pressure-triggered; unvalidated model routes can use
   approvals, limits, shutdown, and checkpoint behavior including a 500k-window
   pressure case.
 - `tests/context_policy_sim.py`: deterministic context-policy comparison.
+- `tests/live_evaluation_test.py`: hermetic contract, provenance and trace-metric checks.
 - `tests/agent_workflow_live.py`: opt-in billable workflow validation.
 - `benchmarks/bench_core.cc`: dependency-free microbenchmarks.
 

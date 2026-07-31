@@ -808,6 +808,8 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(b"multiline-paste-ok" in output, output)
         assert_true(b"/4.1K (" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
+        assert_true(b"\x1b[48;5;" not in output, output)
+        assert_true(b"\x1b[1m> " in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
     finally:
         server.close()
@@ -831,6 +833,36 @@ def test_response_stats(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("tok/s" in result.stdout, result.stdout)
         assert_true("first " in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_narrow_terminal_context_and_table_fallback(root, home):
+    table = "| Name | Description |\n| --- | --- |\n| alpha | a deliberately wide description |\n"
+    server = Server([event({"content": table})])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"show table\n", b"Description:"), b"/q\n"],
+            columns=24,
+        )
+        assert_true(code == 0, output)
+        blink = b"\x1b[?25h\x1b[5 q"
+        cursor_reset = b"\x1b[?25h\x1b[0 q"
+        assert_true(blink in output, output)
+        assert_true(output.find(blink) < output.find(b"deliberately wide"), output)
+        assert_true(output.find(cursor_reset, output.find(blink)) > output.find(blink), output)
+        assert_true(b"Description:" in output, output)
+        assert_true(b"deliberately wide" in output, output)
+        messages = server.requests[0][1]["messages"]
+        environments = [
+            str(message.get("content", ""))
+            for message in messages
+            if str(message.get("content", "")).startswith("[environment:")
+        ]
+        assert_true(len(environments) == 1, environments)
+        assert_true("terminal_columns=24" in environments[0], environments)
     finally:
         server.close()
 
@@ -1044,6 +1076,45 @@ def test_headless_debug_session_end(root, home):
         server.close()
 
 
+def test_three_tool_failures_emit_one_advisory(root, home):
+    trace = root / "failure-advisory.jsonl"
+
+    def verify_advisory(_, body):
+        advisories = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "user"
+            and "[tool failure advisory]" in message.get("content", "")
+        ]
+        return event({"content": "advisory-ok" if len(advisories) == 1 else "advisory-bad"})
+
+    server = Server(
+        [
+            tool_call("run", {"command": "false"}),
+            tool_call("run", {"command": "false"}),
+            tool_call("run", {"command": "false"}),
+            verify_advisory,
+        ]
+    )
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            f"--debug={trace}",
+            "-p",
+            "recover from failures",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "advisory-ok", result.stdout)
+        records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+        advisories = [record for record in records if record["event"] == "tool_failure_advisory"]
+        assert_true(len(advisories) == 1, advisories)
+        assert_true(advisories[0]["data"]["consecutive_failures"] == 3, advisories)
+    finally:
+        server.close()
+
+
 def test_grep_tool_round_trip(root, home):
     workspace = root / "grep-workspace"
     workspace.mkdir()
@@ -1055,7 +1126,11 @@ def test_grep_tool_round_trip(root, home):
             message["content"] for message in body["messages"] if message.get("role") == "tool"
         )
         valid = (
-            "one.cpp" in result and "ignored.txt" not in result and "project_wide_symbol" in result
+            "one.cpp" in result
+            and "ignored.txt" not in result
+            and "project_wide_symbol" in result
+            and "alpha" in result
+            and "omega" in result
         )
         return event({"content": "grep-ok" if valid else "grep-bad"})
 
@@ -1067,6 +1142,7 @@ def test_grep_tool_round_trip(root, home):
                     "pattern": "project_wide_symbol",
                     "path": ".",
                     "glob": "*.cpp",
+                    "context": 1,
                 },
             ),
             final,
@@ -1235,21 +1311,47 @@ def test_memory_reaches_context_by_scope(root, home):
     other.mkdir()
 
     def verify(_, body):
-        instructions = str(body["messages"][1].get("content", ""))
+        messages = body["messages"]
+        memories = next(
+            (
+                str(message.get("content", ""))
+                for message in messages
+                if str(message.get("content", "")).startswith(
+                    "[memory index; non-authoritative metadata]"
+                )
+            ),
+            "",
+        )
         valid = (
-            "## memory: style" in instructions
-            and "global-memory-sentinel" in instructions
-            and "## memory: build" in instructions
-            and "project-memory-sentinel" in instructions
+            bool(memories)
+            and "global/style" in memories
+            and "global-memory-sentinel" not in memories
+            and "project/build" in memories
+            and "project-memory-sentinel" not in memories
+            and next(
+                message.get("role")
+                for message in messages
+                if str(message.get("content", "")).startswith(
+                    "[memory index; non-authoritative metadata]"
+                )
+            )
+            == "assistant"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})
 
     def verify_isolated(_, body):
         messages = body["messages"]
-        instructions = str(messages[1].get("content", "")) if len(messages) > 1 else ""
+        memories = " ".join(
+            str(message.get("content", ""))
+            for message in messages
+            if str(message.get("content", "")).startswith(
+                "[memory index; non-authoritative metadata]"
+            )
+        )
         valid = (
-            "global-memory-sentinel" in instructions
-            and "project-memory-sentinel" not in instructions
+            "global/style" in memories
+            and "project/build" not in memories
+            and "global-memory-sentinel" not in memories
         )
         return event({"content": "isolated-ok" if valid else "isolated-bad"})
 

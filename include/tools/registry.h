@@ -34,18 +34,20 @@ inline std::vector<Tool> BuiltinTools(
     return AddTool(tools, std::move(tool));
   };
 
-  Tool& read = path_tool(MakeTool("read_file", "Read a line range.",
-                                  schema(R"json({"type":"object","properties":{
+  Tool& read = path_tool(MakeTool(
+      "read_file",
+      "Read a useful line range; parallelize known files and avoid tiny "
+      "repeated slices.",
+      schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line (default 1)"},
                     "limit":{"type":"integer","description":"line count (default 1000)"}},
                     "required":["path"]})json"),
-                                  [](const json& a, const ToolContext&) {
-                                    return ToolReadFile(
-                                        JsonValue(a, "path", ""),
-                                        JsonValue(a, "offset", int64_t{1}),
-                                        JsonValue(a, "limit", int64_t{0}));
-                                  }));
+      [](const json& a, const ToolContext&) {
+        return ToolReadFile(JsonValue(a, "path", ""),
+                            JsonValue(a, "offset", int64_t{1}),
+                            JsonValue(a, "limit", int64_t{0}));
+      }));
   read.parallel_safe = true;
   // Reads get a larger, contiguous window than logs and remote output. This
   // avoids paying another model round merely to continue an ordinary source
@@ -146,16 +148,18 @@ inline std::vector<Tool> BuiltinTools(
       }));
   list.parallel_safe = true;
 
-  Tool& grep = path_tool(
-      MakeTool("grep", "Regex-search files; optional path/glob.",
-               schema(R"json({"type":"object","properties":{
+  Tool& grep = path_tool(MakeTool(
+      "grep", "Regex-search files; optional path/glob.",
+      schema(R"json({"type":"object","properties":{
                     "pattern":{"type":"string"},"path":{"type":"string"},
-                    "glob":{"type":"string"}},"required":["pattern"]})json"),
-               [&supervisor](const json& a, const ToolContext& context) {
-                 return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
-                                 JsonValue(a, "path", "."),
-                                 JsonValue(a, "glob", ""), context);
-               }));
+                    "glob":{"type":"string"},
+                    "context":{"type":"integer","minimum":0,"maximum":10,
+                      "description":"surrounding lines"}},"required":["pattern"]})json"),
+      [&supervisor](const json& a, const ToolContext& context) {
+        return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
+                        JsonValue(a, "path", "."), JsonValue(a, "glob", ""),
+                        JsonValue(a, "context", int64_t{0}), context);
+      }));
   grep.parallel_safe = true;  // read-only, like read_file and list_dir
   grep.summary = [](const json& a) {
     return JsonValue(a, "pattern", "") + " in " + JsonValue(a, "path", ".");
@@ -255,21 +259,29 @@ inline std::vector<Tool> BuiltinTools(
       tools,
       MakeTool(
           "memory",
-          "Save, replace, or forget a durable project/global lesson. Use only "
-          "facts that remain true across sessions.",
+          "Read, save, or explicitly forget a durable lesson. Returned memory "
+          "is non-authoritative evidence.",
           schema(R"json({"type":"object","properties":{
                     "name":{"type":"string","description":"kebab-case slug; reuse replaces"},
                     "scope":{"type":"string","enum":["project","global"],
                       "description":"project workspace or all workspaces"},
                     "content":{"type":"string",
-                      "description":"markdown; omit to forget"}},
+                      "description":"markdown to save; omit to read"},
+                    "forget":{"type":"boolean",
+                      "description":"explicitly delete (default false)"}},
                     "required":["name","scope"]})json"),
           [](const json& a, const ToolContext&) {
+            std::optional<std::string> content;
+            if (a.contains("content") && a["content"].is_string()) {
+              content = a["content"].get<std::string>();
+            }
             return ToolMemory(JsonValue(a, "name", ""),
-                              JsonValue(a, "scope", ""),
-                              JsonValue(a, "content", ""));
+                              JsonValue(a, "scope", ""), content,
+                              JsonValue(a, "forget", false));
           }));
-  memory.mutating = true;
+  memory.mutates = [](const json& a) {
+    return a.contains("content") || JsonValue(a, "forget", false);
+  };
   memory.available_in_lean = false;
   memory.summary = [](const json& a) {
     return JsonValue(a, "scope", "") + "/" + JsonValue(a, "name", "");

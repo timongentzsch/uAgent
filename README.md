@@ -87,10 +87,10 @@ and `run_python` remain sanitized.
 
 OpenRouter search runs inside the model request and falls back to a bounded
 side request if the server tool is rejected. Search defaults to `auto`,
-five results, and three uses per request; `UAGENT_WEB_SEARCH_ENGINE`,
+five results per search and a 15-result request budget; `UAGENT_WEB_SEARCH_ENGINE`,
 `UAGENT_WEB_SEARCH_MAX_RESULTS`, `UAGENT_WEB_SEARCH_MAX_USES`, and optional
-`UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. Set `UAGENT_WEB_SEARCH_SERVER=0` to
-force the fallback.
+`UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. The request budget is results times
+uses. Set `UAGENT_WEB_SEARCH_SERVER=0` to force the fallback.
 
 Ordinary shell and Python calls complete inside one tool step; Escape can steer
 while they run. `run(detach=true)` is the explicit path for a persistent
@@ -120,10 +120,11 @@ the repository root to the working directory, preferring `AGENTS.override.md`,
 then `AGENTS.md`, then `CLAUDE.md`. `~/.uagent` supplies global instructions.
 Everything loaded is listed at startup.
 
-The `memory` tool appends to the same context: one markdown file per lesson
-under `<base>/memory`, global in `~/.uagent` or scoped to a workspace in its
-`.uagent`. Instruction files are what you tell the agent; memories are what it
-concluded, so they load last and are trimmed first. Delete a file to retract it.
+The `memory` tool stores one markdown lesson under `<base>/memory`, global in
+`~/.uagent` or scoped to a workspace in its `.uagent`. Startup exposes only a
+small name/scope index; bodies are read on demand as non-authoritative evidence,
+so model-written text never joins human instructions automatically. Use
+`forget=true` to delete one explicitly.
 
 Use `/attach PATH` or repeat `--attach PATH` to add images and documents.
 Attachments are size-bounded and their encoded data is removed after the turn.

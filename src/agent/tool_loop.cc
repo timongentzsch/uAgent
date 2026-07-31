@@ -38,7 +38,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
                      int64_t& tool_count,
                      std::unordered_map<std::string, int64_t>& tool_counts,
                      int64_t step,
-                     std::chrono::steady_clock::time_point deadline) {
+                     std::chrono::steady_clock::time_point deadline,
+                     int64_t& consecutive_failed_tools) {
   if (calls.size() == 1 && calls[0].name == "checkpoint") {
     return RunCheckpointCall(calls[0], text_mode, tool_count, step);
   }
@@ -107,7 +108,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     PrintToolCall(task, call, verbose_);
     if (valid) {
       bool approval_required =
-          tool->mutating ||
+          ToolMutates(*tool, arguments) ||
           (tool->needs_approval && tool->needs_approval(arguments));
       if (!approval_required || approve_(*tool, arguments)) {
         task.execute = true;
@@ -230,6 +231,14 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, text_mode, model_results[index]);
   }
+  bool any_succeeded =
+      std::any_of(tasks.begin(), tasks.end(),
+                  [](const CallTask& task) { return task.result.Ok(); });
+  int64_t failed =
+      std::count_if(tasks.begin(), tasks.end(),
+                    [](const CallTask& task) { return !task.result.Ok(); });
+  consecutive_failed_tools =
+      any_succeeded ? 0 : consecutive_failed_tools + failed;
   if (g_debug.Enabled() && model_chars < original_chars) {
     g_debug.Write("tool_batch_capped", {{"turn", turn_id_},
                                         {"step", step},

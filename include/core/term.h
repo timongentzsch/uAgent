@@ -10,8 +10,6 @@
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -25,6 +23,8 @@ inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
+inline constexpr char kCursorBlink[] = "\033[?25h\033[5 q";
+inline constexpr char kCursorReset[] = "\033[?25h\033[0 q";
 inline const char* DIM() { return g_tty ? "\033[2m" : ""; }
 inline const char* RST() { return g_tty ? kTerminalRestore : ""; }
 inline const char* CYAN() { return g_tty ? "\033[36m" : ""; }
@@ -37,37 +37,16 @@ inline const char* ItalOff() { return g_tty ? "\033[23m" : ""; }
 inline const char* FgDfl() {
   return g_tty ? "\033[39m" : "";
 }  // default foreground
-inline bool LightUi() {
-  static const bool kLight = [] {
-    const char* theme = getenv("UAGENT_THEME");
-    if (theme && strcmp(theme, "light") == 0) return true;
-    if (theme && strcmp(theme, "dark") == 0) return false;
-    const char* value = getenv("COLORFGBG");
-    const char* bg = value ? strrchr(value, ';') : nullptr;
-    return bg && strtol(bg + 1, nullptr, 10) >= 7;
-  }();
-  return kLight;
-}
-inline const char* PANEL() {
-  return !g_tty      ? ""
-         : LightUi() ? "\033[38;5;234m\033[48;5;255m"
-                     : "\033[38;5;255m\033[48;5;234m";
-}
-inline const char* PanelMuted() {
-  return !g_tty      ? ""
-         : LightUi() ? "\033[38;5;243m\033[48;5;255m"
-                     : "\033[38;5;244m\033[48;5;234m";
-}
-inline void PanelClearLine() {
-  if (!g_tty) return;
-  fputs(PANEL(), stdout);
-  fputs("\r\033[2K\r", stdout);
-  fflush(stdout);
-}
 inline void TerminalRestore() {
   if (!g_tty) return;
   fputs(kTerminalRestore, stdout);
   fputs(kTerminalModeReset, stdout);
+  fputs(kCursorReset, stdout);
+  fflush(stdout);
+}
+inline void TerminalCursorBlink(bool on) {
+  if (!g_tty) return;
+  fputs(on ? kCursorBlink : kCursorReset, stdout);
   fflush(stdout);
 }
 inline void TerminalClearToEnd() {

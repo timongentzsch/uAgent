@@ -1,10 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/api/stream.h"
+
 #include <map>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/api/retry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

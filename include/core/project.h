@@ -21,7 +21,9 @@ namespace uagent {
 
 struct ProjectInstructions {
   std::string text;
+  std::string memory_index;
   std::vector<std::string> sources;
+  std::vector<std::string> memory_sources;
   bool truncated = false;
 };
 
@@ -55,7 +57,8 @@ inline ProjectInstructions LoadProjectInstructions(
   std::reverse(dirs.begin(), dirs.end());
 
   size_t used = 0;
-  auto append = [&](const fs::path& path, const std::string& header = "") {
+  auto append = [&](const fs::path& path, std::string& destination,
+                    const std::string& header = "") {
     std::optional<size_t> with_header = CheckedAdd(used, header.size());
     if (!with_header || *with_header >= max_bytes) {
       loaded.truncated = true;
@@ -73,11 +76,10 @@ inline ProjectInstructions LoadProjectInstructions(
     }
     content = Utf8Prefix(std::move(content), remaining);
     if (Trim(content).empty()) return false;
-    if (!loaded.text.empty()) loaded.text += "\n\n";
+    if (!destination.empty()) destination += "\n\n";
     used = SaturatingAdd(used, header.size());
     used = SaturatingAdd(used, content.size());
-    loaded.text += header + content;
-    loaded.sources.push_back(path.string());
+    destination += header + content;
     return true;
   };
   // One file per directory, as Codex does. CLAUDE.md is a compatibility
@@ -87,16 +89,17 @@ inline ProjectInstructions LoadProjectInstructions(
       std::error_code ec;
       fs::path candidate = dir / name;
       if (fs::is_regular_file(candidate, ec)) {
-        append(candidate);
+        if (append(candidate, loaded.text)) {
+          loaded.sources.push_back(candidate.string());
+        }
         break;
       }
     }
   };
 
-  // Memories the agent wrote itself, one file per lesson. They share the
-  // instruction budget and come last, so a tight budget trims what the agent
-  // learned before what the user wrote.
-  auto append_memories = [&](const fs::path& base) {
+  // Only memory names/scopes enter the prompt. Bodies stay deferred behind the
+  // memory tool and the shared budget always favors human instructions.
+  auto append_memories = [&](const fs::path& base, const char* scope) {
     std::error_code list_error;
     std::vector<fs::path> files;
     for (fs::directory_iterator it(base / kMemoryDir, list_error), end;
@@ -105,7 +108,16 @@ inline ProjectInstructions LoadProjectInstructions(
     }
     std::sort(files.begin(), files.end());
     for (const fs::path& file : files) {
-      append(file, "## memory: " + file.stem().string() + "\n\n");
+      std::string entry =
+          "- " + std::string(scope) + "/" + file.stem().string() + "\n";
+      std::optional<size_t> total = CheckedAdd(used, entry.size());
+      if (!total || *total > max_bytes) {
+        loaded.truncated = true;
+        break;
+      }
+      used = *total;
+      loaded.memory_index += entry;
+      loaded.memory_sources.push_back(file.string());
     }
   };
 
@@ -116,10 +128,10 @@ inline ProjectInstructions LoadProjectInstructions(
   for (const fs::path& dir : dirs) {
     if (dir != global) append_dir(dir);
   }
-  append_memories(GlobalBase());
+  append_memories(GlobalBase(), "global");
   fs::path scoped = ProjectBase(cwd);
   if (fs::is_directory(scoped, ec) && scoped.string() != GlobalBase()) {
-    append_memories(scoped);
+    append_memories(scoped, "project");
   }
   return loaded;
 }

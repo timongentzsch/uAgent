@@ -44,7 +44,9 @@ void Agent::InvalidatePendingCheckpoint(const char* reason) {
 }
 
 void Agent::RecordSideEffect(const CallTask& task, const ToolCall& call) {
-  if (!task.execute || !task.tool || !task.tool->mutating) return;
+  if (!task.execute || !task.tool || !ToolMutates(*task.tool, task.args)) {
+    return;
+  }
   json entry = {
       {"turn", turn_id_}, {"tool", call.name}, {"status", task.trace_status}};
   if (task.args.contains("path") && task.args["path"].is_string()) {

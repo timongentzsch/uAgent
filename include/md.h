@@ -60,12 +60,12 @@ struct MdStream {
     FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
   }
 
-  // Reasoning is plain terminal text, but shares sanitization and flush
-  // pacing with Markdown output so every streamed path has one safety boundary.
+  // Reasoning is plain terminal text. Flush every provider delta so the client
+  // never adds batching to its upstream-defined cadence.
   void FeedPlain(const std::string& s) {
     std::string safe = TerminalSafe(s);
     fputs(safe.c_str(), stdout);
-    FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
+    FlushOutput(safe.size(), false, true);
   }
 
   void Control(const char* s) {
@@ -690,6 +690,32 @@ struct MdStream {
         if (c >= w.size()) w.resize(c + 1, 0);
         if (vis > w[c]) w[c] = vis;
       }
+    }
+    size_t table_width = 1 + w.size() * 3;
+    for (size_t width : w) table_width += width;
+    if (table_width > static_cast<size_t>(TerminalColumns())) {
+      size_t header = 0;
+      while (header < rows.size() && sep[header]) ++header;
+      bool after_separator = false;
+      for (size_t r = 0; r < rows.size(); ++r) {
+        if (sep[r]) {
+          after_separator = true;
+          continue;
+        }
+        if (!after_separator && r == header) continue;
+        if (r != header && r > 0) putchar('\n');
+        for (size_t c = 0; c < rows[r].size(); ++c) {
+          std::string label = header < rows.size() && c < rows[header].size()
+                                  ? rows[header][c].first
+                                  : "Column " + std::to_string(c + 1);
+          printf("%s%s:%s %s\n", DIM(), label.c_str(), RST(),
+                 rows[r][c].first.c_str());
+        }
+      }
+      table.clear();
+      prev_raw.clear();
+      prev_vis = 0;
+      return;
     }
     for (size_t r = 0; r < rows.size(); r++) {
       if (sep[r]) {

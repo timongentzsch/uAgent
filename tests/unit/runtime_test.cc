@@ -121,6 +121,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body.value("session_id", "") == "stable-session");
   CHECK(body["provider"]["order"][0] == "streamlake");
   CHECK(body["provider"].value("allow_fallbacks", false));
+  CHECK(!body.contains("stream_options"));
   api.reasoning_effort = "low";
   body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
@@ -136,6 +137,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body.value("reasoning_effort", "") == "high");
   CHECK(body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
+  CHECK(body["stream_options"].value("include_usage", false));
 
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;

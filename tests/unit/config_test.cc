@@ -37,9 +37,13 @@ void TestProjectInstructionDiscovery() {
   fs::path child = repo / "child";
   fs::path empty = child / "empty";
   fs::create_directories(home / ".uagent");
+  fs::create_directories(home / ".uagent/memory");
   fs::create_directories(repo / ".git");
   fs::create_directories(empty);
   CHECK(ToolWriteFile((home / ".uagent/AGENTS.md").string(), "global")
+            .output.starts_with("wrote "));
+  CHECK(ToolWriteFile((home / ".uagent/memory/lesson.md").string(),
+                      "remembered-evidence")
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((repo / "AGENTS.md").string(), "root-agent")
             .output.starts_with("wrote "));
@@ -62,6 +66,7 @@ void TestProjectInstructionDiscovery() {
 
   ProjectInstructions loaded = LoadProjectInstructions(child, 32 * 1024);
   CHECK(loaded.sources.size() == 3);  // one file per directory
+  CHECK(loaded.memory_sources.size() == 1);
   CHECK(!loaded.truncated);
   CHECK(loaded.text.find("ignored-agent") == std::string::npos);
   // CLAUDE.md is a fallback, so it must not load beside an AGENTS file
@@ -71,6 +76,9 @@ void TestProjectInstructionDiscovery() {
   size_t root_agent = loaded.text.find("root-agent");
   size_t child_override = loaded.text.find("child-override");
   CHECK(global < root_agent && root_agent < child_override);
+  CHECK(loaded.text.find("remembered-evidence") == std::string::npos);
+  CHECK(loaded.memory_index.find("global/lesson") != std::string::npos);
+  CHECK(loaded.memory_index.find("remembered-evidence") == std::string::npos);
 
   // ...but it is used when the directory has no AGENTS file
   fs::path only_claude = repo / "claude-only";

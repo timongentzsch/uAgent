@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/api.h"
+#include "include/api/citations.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
@@ -123,7 +124,17 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           const json& choice = r["choices"][0];
           std::string content = "(empty answer)";
           if (choice.contains("message") && choice["message"].is_object()) {
-            content = JsonString(choice["message"], "content", content);
+            const json& message = choice["message"];
+            content = JsonString(message, "content");
+            if (content.size() < 600) {
+              std::string evidence = CitationEvidence(
+                  JsonValue(message, "annotations", json::array()));
+              if (!evidence.empty()) {
+                content += (content.empty() ? "" : "\n\n") +
+                           std::string("Source evidence:\n") + evidence;
+              }
+            }
+            if (content.empty()) content = "(empty answer)";
           }
           std::string output =
               "[web search result; refetch only if verification is "

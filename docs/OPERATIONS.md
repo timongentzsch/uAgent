@@ -17,7 +17,7 @@ These are local safety bounds, not provider service objectives.
 | subagent depth / child rounds / calls | 2 / 25 / 60 |
 | reported turn cost | $1.00 |
 | request / response | 64 / 32 MiB |
-| project instructions and memories | 32 KiB |
+| project instructions and memory index | 32 KiB |
 | memory entry / memories per scope | 2 KiB / 32 |
 | skill body / description / count | 16 KiB / 512 B / 64 |
 | attachment / terminal image | 10 / 10 MiB |
@@ -91,6 +91,28 @@ Also:
    and large-context checkpoint cases in `shadow`, then promote it only after
    exact-fact and no-mutation checks pass.
 
+For a fair model A/B, repeat `--model`; each candidate receives a fresh
+workspace, home, session, and fixture. Keep the JSON report with the change:
+
+```sh
+python3 tests/agent_workflow_live.py --run --scenario analysis \
+  --model deepseek/deepseek-v4-flash \
+  --model stepfun/step-3.7-flash \
+  --repetitions 3 \
+  --effort low \
+  --report /tmp/uagent-model-ab.json
+```
+
+Each trial receives a fresh workspace, home, session, and fixture. The report
+records contract violations, workspace and binary provenance, provider/tool
+timing, failures, dependency installs, exploration strategy, tokens, cost,
+wall time, and peak RSS. The cost ceiling is per model, so one candidate cannot
+consume another's budget.
+
+The research scenario deliberately disables OpenRouter server search to test
+µAgent's compatibility fallback. It batches two queries into one call and uses
+minimal side-search effort; production keeps the model-decided server tool.
+
 Investigate repeatable benchmark regressions above 10%; do not gate on one
 noisy run. Provider tests should capture p50/p95/p99 latency, errors, degraded
 features, uncached/cached/write tokens, cost, and peak RSS.
@@ -102,8 +124,9 @@ features, uncached/cached/write tokens, cost, and peak RSS.
 - MCP failures are server-local. Inspect `~/.uagent/mcp/<name>.log`.
 - Debug traces under `~/.uagent/sessions` can contain private source and model
   reasoning; logging is off by default.
-- Memories are model-written and load into every later session. Review
-  `<base>/memory` before sharing it; delete a file to retract what it taught.
+- Memories are model-written. Only their name/scope index loads automatically;
+  bodies are read on demand as non-authoritative evidence. Review
+  `<base>/memory` before sharing it and use `memory(forget=true)` to retract one.
 - Skill names and descriptions are returned only through deferred discovery;
   bodies arrive only when opened. A skill with no `description` is skipped.
 - A workspace `.uagent/.config` is ignored until trusted. Headless runs warn and

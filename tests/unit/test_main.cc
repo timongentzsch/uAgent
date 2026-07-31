@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <curl/curl.h>
+
 #include <iostream>
 
 #include "tests/unit/test_support.h"

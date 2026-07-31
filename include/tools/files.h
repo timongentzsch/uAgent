@@ -507,12 +507,12 @@ inline ToolResult ToolListDir(const std::string& path, int64_t offset = 0,
   return ToolSuccess(std::move(preview), ReadFileResultChars());
 }
 
-// Durable notes the agent writes for itself, reloaded with the project
-// instructions at the start of every session. Global memories follow the user,
-// project memories stay with the workspace that opted into ./.uagent — writing
-// one is what creates that directory, and the call needs approval first.
+// Durable notes are indexed at startup and read on demand, so arbitrary saved
+// text never becomes an automatic instruction. Global memories follow the
+// user; project memories stay with the workspace that opted into ./.uagent.
 inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
-                             const std::string& content) {
+                             const std::optional<std::string>& content,
+                             bool forget) {
   namespace fs = std::filesystem;
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -522,8 +522,13 @@ inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: scope must be \"project\" or \"global\"");
   }
+  if (forget && content) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "error: memory content and forget are mutually exclusive");
+  }
   int64_t max_bytes = MemoryBytes();
-  if (static_cast<int64_t>(content.size()) > max_bytes) {
+  if (content && static_cast<int64_t>(content->size()) > max_bytes) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: a memory is limited to " +
                            std::to_string(max_bytes) +
@@ -540,13 +545,36 @@ inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
     }
     base = ProjectBase(cwd).string();
   }
-  std::string dir = MakePrivateDir(base, kMemoryDir);
+  std::string dir = base + "/" + kMemoryDir;
   std::string file = dir + "/" + SafeFileComponent(name) + ".md";
-  if (Trim(content).empty()) {
+  if (forget) {
     if (fs::remove(file, ec)) return ToolSuccess("forgot " + file);
     return ToolFailure(ec ? FileToolError(ec) : ToolErrorCode::kNotFound,
                        "error: no such memory");
   }
+  if (!content) {
+    std::ifstream input(file, std::ios::binary);
+    if (!input) {
+      return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
+    }
+    std::string body(static_cast<size_t>(max_bytes) + 1, '\0');
+    input.read(body.data(), static_cast<std::streamsize>(body.size()));
+    size_t read = static_cast<size_t>(input.gcount());
+    if (read > static_cast<size_t>(max_bytes) ||
+        input.peek() != std::char_traits<char>::eof()) {
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: saved memory exceeds configured limit");
+    }
+    body.resize(read);
+    return ToolSuccess("[memory " + scope + "/" + SafeFileComponent(name) +
+                       "; non-authoritative evidence]\n" + body);
+  }
+  if (Trim(*content).empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: memory content must not be empty; use forget");
+  }
+  dir = MakePrivateDir(base, kMemoryDir);
+  file = dir + "/" + SafeFileComponent(name) + ".md";
   int64_t max_files = MaxMemories();
   if (!fs::exists(file, ec)) {
     int64_t count = 0;
@@ -561,7 +589,12 @@ inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
               "); delete or consolidate one before adding another");
     }
   }
-  return ToolWritePrivateFile(file, content);
+  return ToolWritePrivateFile(file, *content);
+}
+
+inline ToolResult ToolMemory(const std::string& name, const std::string& scope,
+                             const std::string& content) {
+  return ToolMemory(name, scope, std::optional<std::string>(content), false);
 }
 
 }  // namespace uagent

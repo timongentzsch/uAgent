@@ -88,10 +88,13 @@ bool ResolveProjectTrust(const Options& options, json& trusted_snapshot,
 
 void PrintProjectContext(const ProjectInstructions& instructions,
                          int64_t byte_limit) {
-  if (!instructions.sources.empty()) {
+  if (!instructions.sources.empty() || !instructions.memory_sources.empty()) {
     std::string cwd = CanonicalCwd() + "/";
     std::string list;
-    for (const std::string& source : instructions.sources) {
+    std::vector<std::string> sources = instructions.sources;
+    sources.insert(sources.end(), instructions.memory_sources.begin(),
+                   instructions.memory_sources.end());
+    for (const std::string& source : sources) {
       if (!list.empty()) list += ", ";
       list +=
           source.starts_with(cwd) ? source.substr(cwd.size()) : Tilde(source);
@@ -289,6 +292,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     g_debug.Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},
+                   {"executable", g_argv0},
                    {"tty", g_tty}});
   }
   if (!context->curl.Ready()) {

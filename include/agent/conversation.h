@@ -15,6 +15,7 @@ namespace uagent {
 enum class MessageKind {
   kSystem,
   kProjectInstructions,
+  kMemory,
   kUser,
   kAssistant,
   kToolResult,
@@ -46,7 +47,8 @@ class Conversation {
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
                int64_t dropped_segments);
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
-  void RefreshBaseline(json system, const json* project_instructions);
+  void RefreshBaseline(json system, const json* project_instructions,
+                       const json* memories);
 
   void Push(json message, MessageKind kind);
   void PopBack();

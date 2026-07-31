@@ -112,7 +112,8 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   const Usage& u = agent.SessionUsage();
   std::string host = UrlHost(api.base_url);
   int64_t used = agent.ContextUsed();
-  std::string s = api.model + " @ " + host + " · ctx " + FmtTokens(used);
+  std::string s = Tilde(CanonicalCwd()) + " · " + api.model + " @ " + host +
+                  " · ctx " + FmtTokens(used);
   if (api.ctx_window > 0) {
     int64_t pct = (used * 100 + api.ctx_window - 1) / api.ctx_window;
     s += "/" + FmtTokens(api.ctx_window) + " (" + std::to_string(pct) + "%)";

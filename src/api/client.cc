@@ -227,7 +227,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 
   SteeringGuard steering;
   std::string activity = web_available ? "working · web available" : "working";
-  if (render_stream) TerminalCursorBlink(true);
   TerminalSpinner spinner(render_stream, SpinnerLabel(std::move(activity)));
   ctx.spinner = &spinner;
 
@@ -244,7 +243,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     ctx.md.Flush();
     if (ctx.in_reasoning) printf("%s\n", RST());
   }
-  if (render_stream) TerminalCursorBlink(false);
   res.duration_ms = ElapsedMs(ctx.started);
   curl_slist_free_all(hdrs);
 

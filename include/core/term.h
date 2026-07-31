@@ -23,8 +23,6 @@ inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
-inline constexpr char kCursorBlink[] = "\033[?25h\033[5 q";
-inline constexpr char kCursorReset[] = "\033[?25h\033[0 q";
 inline const char* DIM() { return g_tty ? "\033[2m" : ""; }
 inline const char* RST() { return g_tty ? kTerminalRestore : ""; }
 inline const char* CYAN() { return g_tty ? "\033[36m" : ""; }
@@ -41,12 +39,6 @@ inline void TerminalRestore() {
   if (!g_tty) return;
   fputs(kTerminalRestore, stdout);
   fputs(kTerminalModeReset, stdout);
-  fputs(kCursorReset, stdout);
-  fflush(stdout);
-}
-inline void TerminalCursorBlink(bool on) {
-  if (!g_tty) return;
-  fputs(on ? kCursorBlink : kCursorReset, stdout);
   fflush(stdout);
 }
 inline void TerminalClearToEnd() {

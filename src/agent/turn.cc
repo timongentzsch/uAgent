@@ -180,7 +180,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     }
     std::string citations = CitationMarkdown(r.annotations);
     if (!citations.empty() && !r.content.empty()) {
-      MdPrint(citations);
+      PrintCitationSources(r.annotations);
       r.content += citations;
       line_open = false;
     }
@@ -384,6 +384,14 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   }
   footer << " · " << std::fixed << std::setprecision(1) << secs << 's' << RST()
          << '\n';
+  if (g_tty) {
+    footer << DIM();
+    int64_t separator_width = std::min(int64_t{48}, TerminalColumns() - 1);
+    for (int64_t column = 0; column < separator_width; ++column) {
+      footer << "─";
+    }
+    footer << RST() << '\n';
+  }
   std::cout << footer.str();
   DebugLog("turn_end", {{"turn", turn_id_},
                         {"outcome", outcome},

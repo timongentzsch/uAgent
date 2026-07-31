@@ -848,13 +848,10 @@ def test_narrow_terminal_context_and_table_fallback(root, home):
             columns=24,
         )
         assert_true(code == 0, output)
-        blink = b"\x1b[?25h\x1b[5 q"
-        cursor_reset = b"\x1b[?25h\x1b[0 q"
-        assert_true(blink in output, output)
-        assert_true(output.find(blink) < output.find(b"deliberately wide"), output)
-        assert_true(output.find(cursor_reset, output.find(blink)) > output.find(blink), output)
+        assert_true(os.path.realpath(root).encode() in output, output)
         assert_true(b"Description:" in output, output)
         assert_true(b"deliberately wide" in output, output)
+        assert_true(("─" * 23).encode() in output, output)
         messages = server.requests[0][1]["messages"]
         environments = [
             str(message.get("content", ""))
@@ -1040,6 +1037,43 @@ def test_streamed_search_citations(root, home):
         assert_true("Sources:" in result.stdout, result.stdout)
         assert_true("https://example.com/source" in result.stdout, result.stdout)
         assert_true("legacy snippet" in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_search_sources_use_reasoning_style(root, home):
+    citation = {
+        "type": "url_citation",
+        "url_citation": {
+            "url": "https://example.com/source",
+            "title": "Source",
+        },
+    }
+    server = Server(
+        [
+            {
+                "choices": [
+                    {
+                        "delta": {
+                            "content": "grounded",
+                            "annotations": [citation],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"completion_tokens": 1},
+            }
+        ]
+    )
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"search\n", b"https://example.com/source"), b"/q\n"],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"\x1b[2mSources:" in output, output)
+        assert_true(b"\x1b[2m- <https://example.com/source>" in output, output)
     finally:
         server.close()
 

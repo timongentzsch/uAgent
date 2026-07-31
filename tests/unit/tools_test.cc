@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/stream.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -180,7 +181,8 @@ void TestOpenRouterServerSearch() {
   CHECK(body["tools"][1]["type"] == "openrouter:web_search");
   CHECK(body["tools"][1]["parameters"]["engine"] == "auto");
   CHECK(body["tools"][1]["parameters"]["max_results"] == 5);
-  CHECK(body["tools"][1]["parameters"]["max_uses"] == 3);
+  CHECK(body["tools"][1]["parameters"]["max_total_results"] == 15);
+  CHECK(!body["tools"][1]["parameters"].contains("max_uses"));
   CHECK(!body["tools"][1]["parameters"].contains("search_context_size"));
 
   body = api.BuildChatBody(json::array(), json::array({schemas[1]}));
@@ -376,6 +378,12 @@ void TestGrepTool() {
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
   CHECK(result.output.find("more available") != std::string::npos);
+  ToolResult contextual =
+      ToolGrep(supervisor, "needle two", source.string(), "", 1);
+  CHECK(contextual.output.find("needle one") != std::string::npos);
+  CHECK(contextual.output.find("needle three") != std::string::npos);
+  CHECK(ToolGrep(supervisor, "needle", root.string(), "", 11).error ==
+        ToolErrorCode::kInvalidArguments);
   CHECK(ToolGrep(supervisor, "absent", root.string(), "").output ==
         "(no matches)");
   CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
@@ -426,6 +434,16 @@ void TestGrepTool() {
   }
   const Tool* python = FindTool(lean_tools, "run_python");
   CHECK(python != nullptr);
+  const Tool* memory = FindTool(lean_tools, "memory");
+  CHECK(memory != nullptr);
+  if (memory) {
+    CHECK(!ToolMutates(*memory, {{"name", "lesson"}, {"scope", "project"}}));
+    CHECK(ToolMutates(
+        *memory,
+        {{"name", "lesson"}, {"scope", "project"}, {"content", "fact"}}));
+    CHECK(ToolMutates(
+        *memory, {{"name", "lesson"}, {"scope", "project"}, {"forget", true}}));
+  }
   CHECK(python && python->timeout_s == 0);
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   CHECK(FindTool(lean_tools, "terminal_output") != nullptr);

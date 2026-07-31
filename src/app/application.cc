@@ -404,9 +404,8 @@ class Application {
       agent_.DrainBackground();
       PrintStatusBar(StatusBar(api_, agent_, context_.options.yolo,
                                attachments_.size(), runtime_.processes));
-      PanelClearLine();
       bool eof = false;
-      std::string line = ReadInputLine(PanelPrompt(), &eof);
+      std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {
         if (g_tty) printf("\r\033[2K\r");
         printf("\n");

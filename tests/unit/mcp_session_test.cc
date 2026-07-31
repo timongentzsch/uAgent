@@ -361,13 +361,14 @@ void TestScopedBaseAndMemory() {
             .output.starts_with("error:"));
   CHECK(ToolMemory("build-uses-ninja", "project", "Now it builds with make.")
             .output.starts_with("wrote "));
-  CHECK(ToolMemory("build-uses-ninja", "project", "")
+  CHECK(ToolMemory("build-uses-ninja", "project", std::nullopt, true)
             .output.starts_with("forgot "));
   CHECK(!fs::exists(project_memory));
-  CHECK(ToolMemory("build-uses-ninja", "project", "")
+  CHECK(ToolMemory("build-uses-ninja", "project", std::nullopt, true)
             .output.starts_with("error:"));
 
-  // Both scopes reach the instruction rail, project after global, each labeled.
+  // Both scopes reach the separate evidence rail, project after global, each
+  // labeled; human workspace rules remain the only project instructions.
   CHECK(ToolWriteFile("AGENTS.md", "workspace rules")
             .output.starts_with("wrote "));
   CHECK(
@@ -375,13 +376,16 @@ void TestScopedBaseAndMemory() {
           .output.starts_with("wrote "));
   ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
   CHECK(loaded.text.find("workspace rules") != std::string::npos);
-  CHECK(loaded.text.find("## memory: prefers-tabs") != std::string::npos);
-  CHECK(loaded.text.find("The user prefers tabs.") != std::string::npos);
-  CHECK(loaded.text.find("## memory: build-uses-ninja") != std::string::npos);
-  CHECK(loaded.text.find("workspace rules") <
-        loaded.text.find("## memory: prefers-tabs"));
-  CHECK(loaded.text.find("## memory: prefers-tabs") <
-        loaded.text.find("## memory: build-uses-ninja"));
+  CHECK(loaded.text.find("## memory: prefers-tabs") == std::string::npos);
+  CHECK(loaded.memory_index.find("global/prefers-tabs") != std::string::npos);
+  CHECK(loaded.memory_index.find("The user prefers tabs.") ==
+        std::string::npos);
+  CHECK(loaded.memory_index.find("project/build-uses-ninja") !=
+        std::string::npos);
+  CHECK(loaded.memory_index.find("global/prefers-tabs") <
+        loaded.memory_index.find("project/build-uses-ninja"));
+  CHECK(ToolMemory("prefers-tabs", "global", std::nullopt, false)
+            .output.find("The user prefers tabs.") != std::string::npos);
   CHECK(!loaded.truncated);
 
   // A trusted project config wins key by key; the global file fills the rest.

@@ -297,9 +297,8 @@ inline std::string RlHideEscapes(const std::string& prompt) {
 }
 #endif
 
-inline std::string PanelPrompt(const char* label = "") {
-  if (!g_tty) return std::string(label) + "> ";
-  return std::string(PANEL()) +
+inline std::string InputPrompt(const char* label = "") {
+  return std::string(BOLD()) +
          (label && *label ? std::string(label) + "> " : "> ");
 }
 
@@ -363,12 +362,11 @@ inline std::string SteeringReplacement(bool& cancelled) {
   std::string input;
   do {
     bool eof = false;
-    PanelClearLine();
 #if defined(HAVE_EDITLINE)
     steering_prompt = true;
     steering_cancelled = false;
 #endif
-    input = Trim(ReadInputLine(PanelPrompt("steer"), &eof, false));
+    input = Trim(ReadInputLine(InputPrompt("steer"), &eof, false));
 #if defined(HAVE_EDITLINE)
     cancelled = steering_cancelled;
     steering_prompt = steering_cancelled = false;

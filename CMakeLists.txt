@@ -52,8 +52,11 @@ add_library(
   src/agent/checkpoint.cc
   src/agent/context_policy.cc
   src/agent/conversation.cc
+  src/agent/request.cc
   src/agent/session_store.cc
   src/agent/tool_loop.cc
+  src/agent/turn.cc
+  src/api/client.cc
   src/api/openai_stream.cc
   src/app/application.cc
   src/app/bootstrap.cc
@@ -107,6 +110,9 @@ if(BUILD_TESTING)
   add_test(NAME context_policy_sim
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/context_policy_sim.py)
+  add_test(NAME live_evaluation_helpers
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/live_evaluation_test.py)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

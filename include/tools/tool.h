@@ -146,6 +146,7 @@ struct Tool {
   std::string description;
   json parameters;        // JSON-schema for the args
   bool mutating = false;  // gated behind user approval
+  Approval mutates;       // argument-dependent mutation (e.g. memory save)
   Run run;
   Summary summary;                  // args -> one-line display
   bool parallel_safe = false;       // safe beside another tool call
@@ -182,6 +183,10 @@ inline Tool MakeTool(std::string name, std::string description, json parameters,
 inline Tool& AddTool(std::vector<Tool>& tools, Tool tool) {
   tools.push_back(std::move(tool));
   return tools.back();
+}
+
+inline bool ToolMutates(const Tool& tool, const json& arguments) {
+  return tool.mutating || (tool.mutates && tool.mutates(arguments));
 }
 
 inline void KeepLeanTools(std::vector<Tool>& tools) {

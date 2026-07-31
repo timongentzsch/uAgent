@@ -138,7 +138,7 @@ inline void PrintStatusBar(const std::string& status) {
     printf("%s\n", safe.c_str());
     return;
   }
-  printf("%s%s\033[K%s\n", PanelMuted(), safe.c_str(), RST());
+  printf("%s%s\033[K%s\n", DIM(), safe.c_str(), RST());
 }
 
 }  // namespace uagent

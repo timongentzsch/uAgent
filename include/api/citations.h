@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -55,6 +56,22 @@ inline std::string CitationMarkdown(const json& annotations) {
   std::string out = "\n\nSources:\n";
   for (const CitationEntry& entry : entries) {
     out += "- <" + entry.url + ">\n";
+  }
+  return out;
+}
+
+inline std::string CitationEvidence(const json& annotations,
+                                    size_t max_entries = 5,
+                                    size_t excerpt_chars = 800) {
+  std::vector<CitationEntry> entries = CitationEntries(annotations);
+  std::string out;
+  for (size_t i = 0; i < std::min(entries.size(), max_entries); ++i) {
+    const CitationEntry& entry = entries[i];
+    out += (out.empty() ? "" : "\n\n") + entry.url;
+    if (!entry.title.empty()) out += "\n" + entry.title;
+    if (!entry.content.empty()) {
+      out += "\n" + Utf8Prefix(entry.content, excerpt_chars);
+    }
   }
   return out;
 }

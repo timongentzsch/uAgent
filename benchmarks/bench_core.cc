@@ -10,6 +10,7 @@
 #include <string>
 
 #include "include/agent.h"
+#include "include/api/stream.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
@@ -55,7 +56,13 @@ void BenchmarkStream(bool tty, bool render = true) {
   fflush(stdout);
   int saved = dup(STDOUT_FILENO);
   int null = open("/dev/null", O_WRONLY);
-  dup2(null, STDOUT_FILENO);
+  if (saved < 0 || null < 0 || dup2(null, STDOUT_FILENO) < 0) {
+    if (null >= 0) close(null);
+    if (saved >= 0) close(saved);
+    g_tty = prior_tty;
+    perror("cannot redirect benchmark output");
+    return;
+  }
   close(null);
   double milliseconds = Measure(kEvents, [&] {
     return stream.Feed(event.data(), event.size()) == event.size() ? size_t{1}
@@ -63,7 +70,12 @@ void BenchmarkStream(bool tty, bool render = true) {
   });
   if (render) stream.md.Flush();
   fflush(stdout);
-  dup2(saved, STDOUT_FILENO);
+  if (dup2(saved, STDOUT_FILENO) < 0) {
+    close(saved);
+    g_tty = prior_tty;
+    perror("cannot restore benchmark output");
+    return;
+  }
   close(saved);
   g_tty = prior_tty;
 

@@ -325,11 +325,15 @@ inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
 
 inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
                            const std::string& pattern, const std::string& path,
-                           const std::string& glob,
+                           const std::string& glob, int64_t context_lines = 0,
                            const ToolContext& context = {}) {
   if (pattern.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: search pattern must not be empty");
+  }
+  if (context_lines < 0 || context_lines > 10) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: grep context must be between 0 and 10 lines");
   }
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
@@ -347,9 +351,15 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
   std::string command;
   if (ripgrep) {
     command = "rg --line-number --column --no-heading --color=never";
+    if (context_lines > 0) {
+      command += " --context " + std::to_string(context_lines);
+    }
     if (!glob.empty()) command += " --glob " + ShellQuote(glob);
   } else {
     command = "grep -r -E -n -H -I --exclude-dir=.git";
+    if (context_lines > 0) {
+      command += " -C " + std::to_string(context_lines);
+    }
     if (!glob.empty()) command += " --include=" + ShellQuote(glob);
   }
   command = "set -o pipefail; " + command + " -- " + ShellQuote(pattern) + " " +
@@ -395,7 +405,8 @@ inline ToolResult ToolGrep(ProcessSupervisor& supervisor,
   std::string header =
       "[" + std::string(ripgrep ? "ripgrep" : "grep") + " · " +
       std::to_string(std::min(lines, max_results)) +
-      (more_results ? "+ matches; more available" : " matches") + "]\n";
+      (more_results ? "+ result lines; more available" : " result lines") +
+      "]\n";
   if (byte_limited) header += "[output byte limit reached]\n";
   return ToolSuccess(header + output);
 }

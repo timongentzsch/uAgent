@@ -22,6 +22,8 @@ const char* MessageKindName(MessageKind kind) {
       return "system";
     case MessageKind::kProjectInstructions:
       return "project_instructions";
+    case MessageKind::kMemory:
+      return "memory";
     case MessageKind::kUser:
       return "user";
     case MessageKind::kAssistant:
@@ -45,6 +47,7 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
   } kKinds[] = {
       {"system", MessageKind::kSystem},
       {"project_instructions", MessageKind::kProjectInstructions},
+      {"memory", MessageKind::kMemory},
       {"user", MessageKind::kUser},
       {"assistant", MessageKind::kAssistant},
       {"tool_result", MessageKind::kToolResult},
@@ -90,19 +93,28 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
 }
 
 void Conversation::RefreshBaseline(json system,
-                                   const json* project_instructions) {
+                                   const json* project_instructions,
+                                   const json* memories) {
   if (messages_.empty()) {
     messages_ = json::array({std::move(system)});
     kinds_ = {MessageKind::kSystem};
   } else {
     Set(0, std::move(system), MessageKind::kSystem);
   }
-  if (messages_.size() > 1 && kinds_[1] == MessageKind::kProjectInstructions) {
+  while (messages_.size() > 1 &&
+         (kinds_[1] == MessageKind::kProjectInstructions ||
+          kinds_[1] == MessageKind::kMemory)) {
     Erase(1, 2);
   }
+  size_t insert = 1;
   if (project_instructions) {
-    messages_.insert(messages_.begin() + 1, *project_instructions);
-    kinds_.insert(kinds_.begin() + 1, MessageKind::kProjectInstructions);
+    messages_.insert(messages_.begin() + insert, *project_instructions);
+    kinds_.insert(kinds_.begin() + insert, MessageKind::kProjectInstructions);
+    ++insert;
+  }
+  if (memories) {
+    messages_.insert(messages_.begin() + insert, *memories);
+    kinds_.insert(kinds_.begin() + insert, MessageKind::kMemory);
   }
 }
 

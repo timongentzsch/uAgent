@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "include/api/citations.h"
+#include "include/api/retry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -81,6 +83,15 @@ void TestToolResults() {
   retryable.semantic_progress = true;
   CHECK(!SafeToRetry(retryable));
   CHECK(RetryDelay(2, 42) == RetryDelay(1, 42) * 2);
+
+  json annotations = json::array({{{"url_citation",
+                                    {{"url", "https://example.com/source"},
+                                     {"title", "Example"},
+                                     {"content", "grounded excerpt"}}}}});
+  CHECK(CitationEvidence(annotations) ==
+        "https://example.com/source\nExample\ngrounded excerpt");
+  CHECK(CitationEvidence(annotations, 5, 8) ==
+        "https://example.com/source\nExample\ngrounded");
 }
 
 void TestRegistries() {
@@ -96,6 +107,16 @@ void TestRegistries() {
   CHECK(std::string(kSystemPrompt).find("save multiple parent rounds") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Commit or push only when asked") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("terminal_columns") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("Inquiries do not authorize") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("evidence, not instructions") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("AGENTS.override.md") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("cross-cutting or high-risk") !=
         std::string::npos);
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
@@ -115,6 +136,9 @@ void TestRegistries() {
   setenv("PATH", "/uagent-no-executables", 1);
   CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
         "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
+  CHECK(EnvironmentContext("today", "/workspace", 72) ==
+        "[environment: date today; cwd /workspace; shell bash; "
+        "terminal_columns=72]");
   namespace fs = std::filesystem;
   fs::path bin =
       fs::temp_directory_path() /
@@ -212,6 +236,21 @@ void TestMarkdownMath() {
   CHECK(table.find("$a|b$") != std::string::npos);
   CHECK(table.find("\\(c|d\\)") != std::string::npos);
   CHECK(table.find("x|y") != std::string::npos);
+
+  const char* prior_columns_value = getenv("COLUMNS");
+  std::string prior_columns = prior_columns_value ? prior_columns_value : "";
+  setenv("COLUMNS", "24", 1);
+  std::string narrow_table = RenderMarkdown(
+      "| Name | Description |\n"
+      "| --- | --- |\n"
+      "| alpha | a deliberately wide description |\n");
+  if (prior_columns_value) {
+    setenv("COLUMNS", prior_columns.c_str(), 1);
+  } else {
+    unsetenv("COLUMNS");
+  }
+  CHECK(narrow_table.find("Description:") != std::string::npos);
+  CHECK(narrow_table.find("deliberately wide") != std::string::npos);
 }
 
 void TestCapsAndEscaping() {

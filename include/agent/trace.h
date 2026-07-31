@@ -105,6 +105,15 @@ inline bool PrintSearchReceipt(int64_t searches, const json& annotations,
   return true;
 }
 
+inline void PrintCitationSources(const json& annotations) {
+  std::vector<CitationEntry> sources = CitationEntries(annotations);
+  if (sources.empty()) return;
+  printf("\n%sSources:%s\n", DIM(), RST());
+  for (const CitationEntry& source : sources) {
+    printf("%s- <%s>%s\n", DIM(), TerminalSafe(source.url).c_str(), RST());
+  }
+}
+
 inline void PrintLatestTrace(const json& archive,
                              const std::vector<Tool>& tools) {
   auto trace =

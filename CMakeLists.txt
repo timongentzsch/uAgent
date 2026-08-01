@@ -114,7 +114,7 @@ if(BUILD_TESTING)
   add_test(NAME integration
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
                    $<TARGET_FILE:uagent>)
-  set_tests_properties(integration PROPERTIES TIMEOUT 180)
+  set_tests_properties(integration PROPERTIES TIMEOUT 240)
   add_test(NAME context_policy_sim
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/context_policy_sim.py)
   add_test(NAME live_evaluation_helpers

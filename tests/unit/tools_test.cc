@@ -536,6 +536,12 @@ void TestGrepTool() {
 
 void TestPythonTool() {
   namespace fs = std::filesystem;
+  CHECK(!PythonScriptHasDependencies(
+      "# /// script\n# dependencies = [\n# ]\n# ///\n"));
+  CHECK(PythonScriptHasDependencies(
+      "# /// script\n# dependencies = [\n#   \"numpy\",\n# ]\n# ///\n"));
+  CHECK(
+      PythonScriptHasDependencies("# /// script\n# dependencies = [\n# ///\n"));
   fs::path root =
       fs::temp_directory_path() /
       ("uagent-python-test-" + std::to_string(static_cast<int64_t>(getpid())));

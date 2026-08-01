@@ -29,7 +29,7 @@ inline std::vector<CitationEntry> CitationEntries(const json& annotations) {
                                    annotation["url_citation"].is_object()
                                ? annotation["url_citation"]
                                : annotation;
-    std::string url = JsonString(citation, "url");
+    std::string url = JsonValue(citation, "url", "");
     bool safe = (url.starts_with("https://") || url.starts_with("http://")) &&
                 url.find_first_of(" \t\r\n<>") == std::string::npos;
     if (!safe) continue;
@@ -37,12 +37,12 @@ inline std::vector<CitationEntry> CitationEntries(const json& annotations) {
         entries.begin(), entries.end(),
         [&](const CitationEntry& entry) { return entry.url == url; });
     if (found == entries.end()) {
-      entries.push_back({std::move(url), JsonString(citation, "title"),
-                         JsonString(citation, "content")});
+      entries.push_back({std::move(url), JsonValue(citation, "title", ""),
+                         JsonValue(citation, "content", "")});
     } else {
-      if (found->title.empty()) found->title = JsonString(citation, "title");
+      if (found->title.empty()) found->title = JsonValue(citation, "title", "");
       if (found->content.empty()) {
-        found->content = JsonString(citation, "content");
+        found->content = JsonValue(citation, "content", "");
       }
     }
     if (entries.size() == 20) break;

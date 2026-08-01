@@ -1,0 +1,65 @@
+name: µAgent
+description: Run native µAgent on a trusted checkout with a reported-cost budget
+inputs:
+  prompt:
+    description: Task for the agent
+    required: true
+  budget:
+    description: Maximum session spend in USD
+    required: false
+    default: "2"
+  version:
+    description: Release tag to install
+    required: false
+    default: v0.2.0
+outputs:
+  result:
+    description: uagent.headless.v1 JSON envelope
+    value: ${{ steps.run.outputs.result }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        UAGENT_ACTION_PROMPT: ${{ inputs.prompt }}
+        UAGENT_ACTION_BUDGET: ${{ inputs.budget }}
+        UAGENT_ACTION_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version=${UAGENT_ACTION_VERSION#v}
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64) target=linux-x86_64 ;;
+          Linux-aarch64|Linux-arm64) target=linux-arm64 ;;
+          Darwin-arm64) target=macos-arm64 ;;
+          *) echo "unsupported runner: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
+        esac
+        base="https://github.com/timongentzsch/uAgent/releases/download/${UAGENT_ACTION_VERSION}"
+        archive="uagent-${version}-${target}.tar.gz"
+        work=$(mktemp -d)
+        trap 'rm -rf "$work"' EXIT
+        curl -fsSLo "$work/$archive" "$base/$archive" || {
+          echo "µAgent release archive not found: ${UAGENT_ACTION_VERSION}/${archive}" >&2
+          exit 2
+        }
+        curl -fsSLo "$work/$archive.sha256" "$base/$archive.sha256" || {
+          echo "µAgent checksum not found: ${UAGENT_ACTION_VERSION}/${archive}.sha256" >&2
+          exit 2
+        }
+        if command -v sha256sum >/dev/null; then
+          (cd "$work" && sha256sum -c "$archive.sha256") >/dev/null
+        else
+          (cd "$work" && shasum -a 256 -c "$archive.sha256") >/dev/null
+        fi
+        tar -xzf "$work/$archive" -C "$work"
+        result=$(
+          "$work/uagent-$version/bin/uagent" --yolo \
+            --budget "$UAGENT_ACTION_BUDGET" --json -p "$UAGENT_ACTION_PROMPT"
+        )
+        printf '%s\n' "$result"
+        delimiter="uagent_result_${RANDOM}_$$"
+        {
+          printf 'result<<%s\n' "$delimiter"
+          printf '%s\n' "$result"
+          printf '%s\n' "$delimiter"
+        } >> "$GITHUB_OUTPUT"

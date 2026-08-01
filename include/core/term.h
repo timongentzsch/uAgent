@@ -17,8 +17,8 @@
 
 namespace uagent {
 
-inline bool g_tty = false;
-inline volatile sig_atomic_t g_signal_tty = 0;
+extern bool g_tty;
+extern volatile sig_atomic_t g_signal_tty;
 inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.

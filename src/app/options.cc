@@ -2,6 +2,8 @@
 
 #include "include/app/options.h"
 
+#include <cerrno>
+#include <cstdlib>
 #include <string>
 
 namespace uagent {
@@ -12,6 +14,22 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
     std::string argument = argv[index];
     if (argument == "--yolo") {
       parsed.options.yolo = true;
+    } else if (argument == "--json") {
+      parsed.options.json = true;
+    } else if (argument == "--json-stream") {
+      parsed.options.json_stream = true;
+    } else if (argument == "--budget") {
+      if (++index >= argc) {
+        parsed.error = "--budget requires a value";
+        return parsed;
+      }
+      char* end = nullptr;
+      errno = 0;
+      parsed.options.budget = strtod(argv[index], &end);
+      if (errno || !end || *end != '\0' || parsed.options.budget <= 0) {
+        parsed.error = "--budget must be a positive dollar amount";
+        return parsed;
+      }
     } else if (argument == "-p" || argument == "--attach") {
       if (++index >= argc) {
         parsed.error = argument + " requires a value";
@@ -44,13 +62,24 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       return parsed;
     }
   }
+  if (parsed.options.json && parsed.options.json_stream) {
+    parsed.error = "--json and --json-stream are mutually exclusive";
+  } else if ((parsed.options.json || parsed.options.json_stream) &&
+             parsed.options.prompt.empty()) {
+    parsed.error = "JSON output requires -p PROMPT";
+  }
   return parsed;
 }
 
 const char* UsageText() {
-  return "usage: uagent [--yolo] [--trust-project-config] [--debug[=PATH]] "
+  return "usage: uagent [--yolo] [--json|--json-stream] [--budget USD] "
+         "[--trust-project-config] "
+         "[--debug[=PATH]] "
          "[-p PROMPT] [--attach PATH] [-c] [--resume]\n\n"
          "  -p PROMPT   run one turn, print only the final answer, exit\n"
+         "  --json      emit a stable JSON envelope in headless mode\n"
+         "  --json-stream  emit versioned JSONL events in headless mode\n"
+         "  --budget USD  cap total session spend between model calls\n"
          "  --attach PATH  send an image or document with the first message\n"
          "  -c          resume the most recent saved session\n"
          "  --resume    pick a saved session to resume at startup\n"

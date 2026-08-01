@@ -141,6 +141,7 @@ struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
   using Approval = std::function<bool(const json&)>;
+  using Validate = std::function<std::string(const json&)>;
 
   std::string name;
   std::string description;
@@ -148,6 +149,7 @@ struct Tool {
   bool mutating = false;  // gated behind user approval
   Approval mutates;       // argument-dependent mutation (e.g. memory save)
   Run run;
+  Validate validate;                // args -> error before approval/execution
   Summary summary;                  // args -> one-line display
   bool parallel_safe = false;       // safe beside another tool call
   Approval needs_approval;          // dynamic policy (e.g. external read)

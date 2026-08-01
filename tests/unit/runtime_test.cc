@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <ctime>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -12,6 +13,8 @@
 namespace uagent {
 
 void TestRuntimeOwnershipHelpers() {
+  CHECK(RouteKey("http://localhost:8000/v1", "", "model", "low") ==
+        "localhost:8000||model|low");
   AppRuntime runtime(RuntimeConfig{});
   runtime.Shutdown();
   runtime.Shutdown();
@@ -72,8 +75,13 @@ void TestRuntimeOwnershipHelpers() {
   std::filesystem::remove(ledger);
 
   setenv("UAGENT_MAX_STEPS", "0", 1);
+  setenv("UAGENT_SESSION_BUDGET", "2.5", 1);
+  setenv("UAGENT_TASK_MODEL", "fast/model", 1);
   setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
   setenv("UAGENT_WEB_SEARCH_MODEL", "vendor/search", 1);
+  setenv("UAGENT_WEB_SEARCH_BACKEND", "responses", 1);
+  setenv("UAGENT_WEB_SEARCH_URL", "https://search.example/v1", 1);
+  setenv("UAGENT_WEB_SEARCH_API_KEY", "secret-search-key", 1);
   setenv("UAGENT_WEB_SEARCH_EFFORT", "low", 1);
   setenv("UAGENT_WEB_SEARCH_ENGINE", "invalid", 1);
   setenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge", 1);
@@ -85,25 +93,37 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_CHECKPOINT_MODE");
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 1);
+  CHECK(config.session_budget == 2.5);
+  CHECK(TaskModel() == "fast/model");
   CHECK(config.session_archive_bytes == 0);
   CHECK(config.checkpoint_mode == "apply");
   CHECK(config.web_search_model == "vendor/search");
+  CHECK(config.web_search_backend == "responses");
+  CHECK(config.web_search_url == "https://search.example/v1");
+  CHECK(config.web_search_api_key == "secret-search-key");
   CHECK(config.web_search_effort == "low");
   CHECK(config.web_search_engine == "auto");
   CHECK(config.web_search_context_size.empty());
   CHECK(config.web_search_max_results == 25);
   CHECK(config.web_search_max_uses == 1);
   CHECK(!config.web_search_server);
-  CHECK(config.DiagnosticJson().value("max_steps", int64_t{0}) ==
-        config.max_steps);
-  CHECK(config.DiagnosticJson().value("web_search_model", "") ==
-        config.web_search_model);
+  json diagnostics = config.DiagnosticJson();
+  CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
+  CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
+  CHECK(diagnostics.value("web_search_backend", "") ==
+        config.web_search_backend);
+  CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
   if (checkpoint_mode) {
     setenv("UAGENT_CHECKPOINT_MODE", prior_checkpoint_mode.c_str(), 1);
   }
   unsetenv("UAGENT_MAX_STEPS");
+  unsetenv("UAGENT_SESSION_BUDGET");
+  unsetenv("UAGENT_TASK_MODEL");
   unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
   unsetenv("UAGENT_WEB_SEARCH_MODEL");
+  unsetenv("UAGENT_WEB_SEARCH_BACKEND");
+  unsetenv("UAGENT_WEB_SEARCH_URL");
+  unsetenv("UAGENT_WEB_SEARCH_API_KEY");
   unsetenv("UAGENT_WEB_SEARCH_EFFORT");
   unsetenv("UAGENT_WEB_SEARCH_ENGINE");
   unsetenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE");
@@ -138,6 +158,54 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
   CHECK(body["stream_options"].value("include_usage", false));
+
+  std::filesystem::path profile_home =
+      std::filesystem::temp_directory_path() /
+      ("uagent-route-profile-" + std::to_string(getpid()));
+  std::filesystem::create_directories(profile_home / ".uagent/config");
+  const char* old_home = getenv("HOME");
+  std::string saved_home = old_home ? old_home : "";
+  setenv("HOME", profile_home.c_str(), 1);
+  std::string profile_error;
+  api.model = "profile-model";
+  api.config.openrouter_provider.clear();
+  api.config.checkpoint_mode = "apply";
+  api.parallel_tools = true;
+  api.image_input = true;
+  json saved_profile = {
+      {"schema", 1},
+      {"routes",
+       {{RouteProfileKey(api),
+         {{"samples", 2},
+          {"certified_at_unix", static_cast<int64_t>(std::time(nullptr))},
+          {"checkpoint_mode", "shadow"},
+          {"parallel_hint_support", false},
+          {"image_support", false}}}}}};
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  json profile = ApplyRouteProfile(api);
+  CHECK(!profile.empty());
+  CHECK(api.config.checkpoint_mode == "shadow");
+  CHECK(!api.parallel_tools);
+  CHECK(!api.image_input);
+  CHECK(api.route_certified);
+  saved_profile["routes"][RouteProfileKey(api)]["certified_at_unix"] = 1;
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  api.config.checkpoint_mode = "apply";
+  api.parallel_tools = true;
+  api.image_input = true;
+  api.route_certified = false;
+  CHECK(ApplyRouteProfile(api).empty());
+  CHECK(api.config.checkpoint_mode == "apply");
+  CHECK(api.parallel_tools);
+  CHECK(api.image_input);
+  if (old_home) {
+    setenv("HOME", saved_home.c_str(), 1);
+  } else {
+    unsetenv("HOME");
+  }
+  std::filesystem::remove_all(profile_home);
 
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;

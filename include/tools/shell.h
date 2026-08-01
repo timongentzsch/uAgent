@@ -10,10 +10,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -73,8 +76,9 @@ inline ShellCommandResult RunShellCommand(
   // Foreground commands may be stopped at the cap. Detached servers instead
   // stream through this binary's tiny rotating log pump and keep running.
   std::string bounded_cmd =
-      detach ? "(" + cmd + ") 2>&1 | " + ShellQuote(g_argv0) + " --log-pump " +
-                   ShellQuote(log) + " " + std::to_string(log_bytes)
+      detach ? "(" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
+                   " --log-pump " + ShellQuote(log) + " " +
+                   std::to_string(log_bytes)
              : "ulimit -f " + std::to_string((log_bytes + 1023) / 1024) + "; " +
                    cmd;
   posix_spawn_file_actions_t actions;
@@ -246,66 +250,163 @@ inline ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                      ChildEnvironmentPolicy::kApprovedShell);
 }
 
+inline bool StartsWithShellWord(const std::string& command,
+                                const std::string& word) {
+  std::string trimmed = Trim(command);
+  return trimmed == word ||
+         (trimmed.starts_with(word) && trimmed.size() > word.size() &&
+          std::isspace(static_cast<unsigned char>(trimmed[word.size()])));
+}
+
+inline std::string RunCommandPolicyError(const std::string& command) {
+  if (StartsWithShellWord(command, "sudo")) {
+    return "error: privileged commands are unavailable. Do not use sudo; "
+           "use workspace or user-local tools, or adapt to installed "
+           "dependencies.";
+  }
+  for (const char* executable : {"python", "python3", "pip", "pip3"}) {
+    if (StartsWithShellWord(command, executable)) {
+      return "error: do not invoke bare Python or pip through run. For project "
+             "Python use its existing runner (for example uv run or pytest); "
+             "for one-off computation use run_python with dependencies in the "
+             "scratch script's PEP 723 header.";
+    }
+  }
+  return "";
+}
+
+inline bool PythonScriptHasDependencies(const std::string& source) {
+  size_t metadata = source.find("# /// script");
+  if (metadata == std::string::npos) return false;
+  size_t dependencies = source.find("dependencies", metadata);
+  size_t end = source.find("# ///", metadata + 12);
+  if (dependencies == std::string::npos || end == std::string::npos ||
+      dependencies >= end) {
+    return true;  // malformed metadata is not safe for the plain fallback
+  }
+  size_t open = source.find('[', dependencies);
+  size_t close = open == std::string::npos ? open : source.find(']', open + 1);
+  return open == std::string::npos || close == std::string::npos ||
+         close >= end ||
+         !Trim(source.substr(open + 1, close - open - 1)).empty();
+}
+
 inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
-                                const std::string& code, const json& packages,
+                                const std::filesystem::path& workspace,
+                                const std::string& relative_path,
+                                const json& code, const json& packages,
                                 const ToolContext& context = {}) {
-  if (code.empty()) {
+  namespace fs = std::filesystem;
+  fs::path requested(relative_path);
+  if (relative_path.empty() || requested.is_absolute() ||
+      requested.extension() != ".py") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: Python code must not be empty");
+                       "error: path must be a relative .py file under "
+                       ".uagent/scratch");
   }
-  if (code.size() > 128 * 1024 || code.find('\0') != std::string::npos) {
-    return ToolFailure(
-        ToolErrorCode::kLimitExceeded,
-        "error: Python code exceeds the 128 KiB limit or contains NUL");
-  }
-  if (!packages.is_array()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: packages must be an array");
-  }
-  if (packages.size() > 12) {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: packages is limited to 12 entries");
+  for (const fs::path& component : requested) {
+    if (component == "..") {
+      return ToolFailure(ToolErrorCode::kPermissionDenied,
+                         "error: Python script path must not contain ..");
+    }
   }
 
-  std::string with;
-  for (const json& value : packages) {
-    if (!value.is_string()) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: package entries must be strings");
-    }
-    std::string package = value.get<std::string>();
-    if (package.empty() || package.size() > 256 ||
-        package.find_first_of("\r\n") != std::string::npos ||
-        package.find('\0') != std::string::npos) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: invalid package entry");
-    }
-    with += " --with " + ShellQuote(package);
+  fs::path scratch = workspace / ".uagent" / "scratch";
+  std::error_code ec;
+  fs::create_directories(scratch, ec);
+  if (ec) {
+    return ToolFailure(
+        ToolErrorCode::kInternal,
+        "error: cannot create Python scratch directory: " + ec.message());
   }
-  // uv whenever it is available: isolation plus declared packages. Without it,
-  // stdlib-only code still runs on plain python3 rather than being refused.
+  scratch = fs::canonical(scratch, ec);
+  fs::path script = CanonicalAccessPath((scratch / requested).string());
+  if (ec || !PathWithin(script, scratch)) {
+    return ToolFailure(ToolErrorCode::kPermissionDenied,
+                       "error: Python script path escapes .uagent/scratch");
+  }
+
+  std::string write_error;
+  fs::path ignore = scratch / ".gitignore";
+  if (!fs::exists(ignore, ec) &&
+      !AtomicWriteFile(ignore.string(), "*\n", 0644,
+                       /*preserve_mode=*/false, write_error)) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
+  }
+
+  bool create = code.is_string();
+  if (!create && !code.is_null()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: code must be a string when creating or null "
+                       "when rerunning");
+  }
+  if (create != packages.is_array() || (!create && !packages.is_null())) {
+    return ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "error: creation requires code plus a packages array; rerunning "
+        "requires code=null and packages=null");
+  }
+
+  if (create) {
+    std::string body = code.get<std::string>();
+    if (body.empty() || body.size() > 128 * 1024 ||
+        body.find('\0') != std::string::npos) {
+      return ToolFailure(
+          ToolErrorCode::kLimitExceeded,
+          "error: Python code is empty, exceeds 128 KiB, or contains NUL");
+    }
+    if (body.find("# /// script") != std::string::npos) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: code must contain only the script body; "
+                         "packages generate the PEP 723 header");
+    }
+    if (packages.size() > 12) {
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: packages is limited to 12 entries");
+    }
+    std::string source = "# /// script\n# dependencies = [\n";
+    for (const json& value : packages) {
+      if (!value.is_string()) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: package entries must be strings");
+      }
+      std::string package = value.get<std::string>();
+      if (package.empty() || package.size() > 256 ||
+          package.find_first_of("\r\n") != std::string::npos ||
+          package.find('\0') != std::string::npos) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: invalid package entry");
+      }
+      source += "#   " + JsonDump(package) + ",\n";
+    }
+    source += "# ]\n# ///\n\n" + body;
+    if (source.back() != '\n') source += '\n';
+    if (!AtomicWriteFile(script.string(), source, 0644,
+                         /*preserve_mode=*/true, write_error)) {
+      return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
+    }
+  } else if (!fs::is_regular_file(script, ec)) {
+    return ToolFailure(
+        ToolErrorCode::kNotFound,
+        "error: Python scratch script does not exist: " + relative_path);
+  }
+
+  std::ifstream input(script);
+  std::string source{std::istreambuf_iterator<char>(input),
+                     std::istreambuf_iterator<char>()};
+  bool dependencies = PythonScriptHasDependencies(source);
   bool uv = ExecutableOnPath("uv");
-  if (!uv && !with.empty()) {
+  if (!uv && dependencies) {
     return ToolFailure(
         ToolErrorCode::kUnavailable,
-        "error: packages require uv on PATH. Install it from "
-        "https://docs.astral.sh/uv/getting-started/installation/ "
-        "(macOS: brew install uv), or use only the standard library");
+        "error: this script declares third-party dependencies and requires "
+        "uv on PATH. Install uv or edit the PEP 723 dependency list");
   }
-  // Isolated environments are materialised in uv's cache, so pointing the cache
-  // at the agent directory is what keeps them with the project (or the user).
-  // An explicit UV_CACHE_DIR in the environment still wins.
-  std::string cache =
-      EnvStr("UV_CACHE_DIR").empty()
-          ? "UV_CACHE_DIR=" + ShellQuote(UagentScopedDir("uv")) + " "
-          : "";
   std::string command =
-      uv ? cache +
-               "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet "
-               "--isolated --no-project" +
-               with + " -- python"
-         : "MPLBACKEND=Agg python3";
-  command += " -c " + ShellQuote(code);
+      uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
+           "--script " +
+               ShellQuote(script.string())
+         : "MPLBACKEND=Agg python3 " + ShellQuote(script.string());
   ShellCommandResult result =
       RunShellCommand(supervisor, command, context, /*allow_background=*/false,
                       /*detach=*/false, "bash",
@@ -314,12 +415,14 @@ inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,
     std::string hint;
     if (result.result.output.find("No module named") != std::string::npos) {
       hint =
-          " Declare every third-party dependency in run_python.packages; "
+          " Add every third-party dependency to the script's PEP 723 header; "
           "do not install it with pip or run.";
     }
     result.result.output =
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
+  std::string shown = ".uagent/scratch/" + requested.generic_string();
+  result.result.output = "[script: " + shown + "]\n" + result.result.output;
   return std::move(result.result);
 }
 

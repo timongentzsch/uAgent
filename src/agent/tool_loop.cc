@@ -20,8 +20,7 @@ void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
                              const std::string& result) {
   if (text_mode) {
     conversation_.Push(
-        {{"role", "user"},
-         {"content", "[tool_result " + call.name + "]\n" + result}},
+        HarnessMessage("[tool_result " + call.name + "]\n" + result),
         MessageKind::kToolResult);
   } else {
     conversation_.Push(
@@ -55,14 +54,12 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     if (calls.size() > 1) {
       task.ordinal = "[" + std::to_string(index + 1) + "] ";
     }
-    if (g_debug.Enabled()) {
-      g_debug.Write("tool_call", {{"turn", turn_id_},
-                                  {"step", step},
-                                  {"id", call.id},
-                                  {"name", call.name},
-                                  {"arguments", call.args},
-                                  {"text_protocol", text_mode}});
-    }
+    DebugLog("tool_call", {{"turn", turn_id_},
+                           {"step", step},
+                           {"id", call.id},
+                           {"name", call.name},
+                           {"arguments", call.args},
+                           {"text_protocol", text_mode}});
     task.args = json::parse(call.args, nullptr, false);
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
@@ -87,6 +84,11 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
       task.result = ToolFailure(ToolErrorCode::kInvalidArguments,
                                 "error: invalid tool argument: " + invalid);
       task.trace_status = "invalid_argument";
+    } else if (tool->validate &&
+               !(invalid = tool->validate(arguments)).empty()) {
+      task.result =
+          ToolFailure(ToolErrorCode::kInvalidArguments, std::move(invalid));
+      task.trace_status = "rejected";
     } else if (call.name == "checkpoint") {
       task.result = ToolFailure(
           ToolErrorCode::kInvalidArguments,
@@ -130,7 +132,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     if (tasks[index].execute) runnable.push_back(index);
   }
   int64_t limit = std::max(int64_t{1}, ToolConcurrency());
-  if (g_debug.Enabled()) {
+  if (Debug().Enabled()) {
     bool parallel = false;
     if (limit > 1) {
       for (size_t begin = 0; begin < runnable.size();) {
@@ -147,7 +149,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
         begin = end;
       }
     }
-    g_debug.Write("tool_batch", {{"turn", turn_id_},
+    Debug().Write("tool_batch", {{"turn", turn_id_},
                                  {"step", step},
                                  {"calls", calls.size()},
                                  {"runnable", runnable.size()},
@@ -208,17 +210,17 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
       task.trace_status = "timed_out";
     } else {
       task.result =
-          ToolCancelled(g_steering.Requested() ? "cancelled by steering"
-                                               : "cancelled by user");
-      task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
+          ToolCancelled(SteeringState().Requested() ? "cancelled by steering"
+                                                    : "cancelled by user");
+      task.trace_status = SteeringState().Requested() ? "steered" : "cancelled";
     }
     LogToolResult(task, calls[index], turn_id_, step);
   }
   spinner.Stop();
   steering.Stop();
 
-  bool cancelled = AbortRequested() && !g_steering.Requested();
-  if (!g_steering.Requested()) ClearAbort();
+  bool cancelled = AbortRequested() && !SteeringState().Requested();
+  if (!SteeringState().Requested()) ClearAbort();
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
   size_t original_chars = 0;
   size_t model_chars = 0;
@@ -239,8 +241,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
                     [](const CallTask& task) { return !task.result.Ok(); });
   consecutive_failed_tools =
       any_succeeded ? 0 : consecutive_failed_tools + failed;
-  if (g_debug.Enabled() && model_chars < original_chars) {
-    g_debug.Write("tool_batch_capped", {{"turn", turn_id_},
+  if (Debug().Enabled() && model_chars < original_chars) {
+    Debug().Write("tool_batch_capped", {{"turn", turn_id_},
                                         {"step", step},
                                         {"results", tasks.size()},
                                         {"original_chars", original_chars},

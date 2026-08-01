@@ -117,12 +117,12 @@ inline ToolArtifact PromoteLogArtifact(const std::string& path,
     }
     int rename_error = errno;
     unlink(target.data());
-    if (g_debug.Enabled()) {
-      g_debug.Write("artifact_promotion_failed",
+    if (Debug().Enabled()) {
+      Debug().Write("artifact_promotion_failed",
                     {{"path", path}, {"error", strerror(rename_error)}});
     }
-  } else if (g_debug.Enabled()) {
-    g_debug.Write("artifact_promotion_failed",
+  } else if (Debug().Enabled()) {
+    Debug().Write("artifact_promotion_failed",
                   {{"path", path}, {"error", strerror(errno)}});
   }
   // Failure must not destroy the only recoverable copy.

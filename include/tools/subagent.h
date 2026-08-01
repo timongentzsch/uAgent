@@ -31,7 +31,7 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                          const std::vector<ModelRoute>& routes,
                          const std::vector<NamedProvider>& providers,
                          bool debug) {
-  std::string self = g_argv0;
+  std::string self = ExecutablePath();
   std::string child_depth = std::to_string(AgentDepth() + 1);
   json properties = {
       {"prompt",
@@ -61,6 +61,10 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                              "error: mode must be lean or full");
         }
         std::string selection = NormalizeModelId(JsonValue(a, "model", ""));
+        if (selection.empty()) selection = NormalizeModelId(TaskModel());
+        if (selection.empty() && OpenrouterUrl(api.base_url)) {
+          selection = "deepseek/deepseek-v4-flash";
+        }
         std::string base_url = api.base_url;
         std::string api_key = api.api_key;
         std::string model = selection.empty() ? api.model : selection;
@@ -81,6 +85,18 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                 "error: unknown model route: " + TerminalSafe(selection));
           }
         }
+        double remaining_budget = api.config.session_budget - api.session_cost;
+        if (api.config.session_budget > 0) {
+          if (remaining_budget <= 0) {
+            return ToolFailure(ToolErrorCode::kLimitExceeded,
+                               "error: session cost limit reached");
+          }
+          if (processes.JoinableCount() > 0) {
+            return ToolFailure(
+                ToolErrorCode::kLimitExceeded,
+                "error: budgeted task already running; wait for its result");
+          }
+        }
         EnvironmentOverrides environment = {
             {"UAGENT_DEPTH", child_depth},
             {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
@@ -93,6 +109,10 @@ inline Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {"UAGENT_USAGE_FILE", UsageLedger()},
             {"UAGENT_TOOLSET", std::move(mode)},
         };
+        if (api.config.session_budget > 0) {
+          environment.emplace_back("UAGENT_SESSION_BUDGET",
+                                   std::to_string(remaining_budget));
+        }
         std::string cmd = ShellQuote(self) + " --yolo" +
                           (debug ? " --debug" : "") + " -p " +
                           ShellQuote(JsonValue(a, "prompt", ""));

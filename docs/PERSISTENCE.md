@@ -11,8 +11,10 @@ model output, tool results, paths, and usage.
 | MCP logs | `~/.uagent/mcp/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
 | memories | `<base>/memory/*.md` |
+| one-off Python scratch scripts | `<workspace>/.uagent/scratch/*.py` |
 | project trust | `~/.uagent/config/trusted-projects.json` |
 | preferred model | `~/.uagent/config/model-preference.json` |
+| certified route profiles | `~/.uagent/config/routes.json` |
 
 Session format 3 persists active messages, their structured kinds, the bounded
 archive, checkpoints, usage, and provider session identity. Only the current
@@ -20,6 +22,12 @@ format is accepted: incompatible, incomplete, or corrupt records are reported
 without mutating live state or rewriting the source file. Missing files are a
 normal empty state. Saves validate the complete record, then use a private
 same-directory temporary file, `fsync`, and atomic rename.
+
+Route profiles are evaluator-generated, versioned, and atomically replaced.
+Runtime reads only the active route entry; full reports and fixture traces stay
+at the paths selected with `uagent eval --report` and `--artifacts`.
+Profiles use schema 1; detailed evaluation reports use their independent schema
+2. Profiles require multiple successful samples and expire after 30 days.
 
 There is deliberately no implicit schema migration. A future format change
 must ship an explicit, tested conversion or start a new session. Interrupted

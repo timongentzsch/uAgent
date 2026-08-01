@@ -126,11 +126,20 @@ void TestRegistries() {
   CHECK(command.spec && command.spec->id == SlashCommandId::kTrace);
   command = ParseSlashCommand("/verbose");
   CHECK(command.spec && command.spec->id == SlashCommandId::kVerbose);
+  command = ParseSlashCommand("/context");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
+  command = ParseSlashCommand("/ctx");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
   CHECK(!ParseSlashCommand("/unknown").spec);
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
   CHECK(DisplayTrunc("abcdef", 4) == "abc…");
   CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);
+  CHECK(FmtCount(999) == "999");
+  CHECK(FmtCount(1000) == "1.0K");
+  CHECK(FmtCount(1'000'000) == "1.0M");
+  CHECK(FmtCount(1'250'000) == "1.2M");
+  CHECK(FmtCount(1'000'000'000) == "1.0B");
   const char* prior_path_value = getenv("PATH");
   std::string prior_path = prior_path_value ? prior_path_value : "";
   setenv("PATH", "/uagent-no-executables", 1);
@@ -149,8 +158,7 @@ void TestRegistries() {
   CHECK(chmod(python3.c_str(), 0700) == 0);
   setenv("PATH", bin.c_str(), 1);
   CHECK(EnvironmentContext("today", "/workspace") ==
-        "[environment: date today; cwd /workspace; shell bash; "
-        "python=python3]");
+        "[environment: date today; cwd /workspace; shell bash]");
   fs::path python = bin / "python";
   CHECK(ToolWriteFile(python.string(), "#!/bin/sh\nexit 0\n").Ok());
   CHECK(chmod(python.c_str(), 0700) == 0);
@@ -189,9 +197,10 @@ void TestOptions() {
   char attach_flag[] = "--attach";
   char attachment[] = "image.png";
   char debug[] = "--debug=trace.jsonl";
+  char json[] = "--json";
   char* arguments[] = {executable,  yolo,       prompt_flag, prompt,
-                       attach_flag, attachment, debug};
-  ParsedOptions parsed = ParseOptions(7, arguments);
+                       attach_flag, attachment, debug,       json};
+  ParsedOptions parsed = ParseOptions(8, arguments);
   CHECK(parsed.Ok());
   CHECK(parsed.action == OptionsAction::kRun);
   CHECK(parsed.options.yolo);
@@ -199,6 +208,17 @@ void TestOptions() {
   CHECK(parsed.options.attach_paths == std::vector<std::string>({"image.png"}));
   CHECK(parsed.options.debug);
   CHECK(parsed.options.debug_path == "trace.jsonl");
+  CHECK(parsed.options.json);
+
+  char json_stream[] = "--json-stream";
+  char budget[] = "--budget";
+  char two_dollars[] = "2.50";
+  char* stream_arguments[] = {executable,  prompt_flag, prompt,
+                              json_stream, budget,      two_dollars};
+  ParsedOptions stream = ParseOptions(6, stream_arguments);
+  CHECK(stream.Ok());
+  CHECK(stream.options.json_stream);
+  CHECK(stream.options.budget == 2.5);
 
   char help[] = "--help";
   char* help_arguments[] = {executable, help};
@@ -212,6 +232,13 @@ void TestOptions() {
   ParsedOptions missing = ParseOptions(2, missing_value);
   CHECK(!missing.Ok());
   CHECK(missing.error.find("requires a value") != std::string::npos);
+
+  char* json_without_prompt[] = {executable, json};
+  CHECK(!ParseOptions(2, json_without_prompt).Ok());
+
+  char* conflicting_json[] = {executable, prompt_flag, prompt, json,
+                              json_stream};
+  CHECK(!ParseOptions(5, conflicting_json).Ok());
 }
 
 void TestLineNumberStripping() {

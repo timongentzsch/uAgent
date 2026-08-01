@@ -16,6 +16,42 @@
 
 namespace uagent {
 
+namespace {
+
+void NormalizeRole(json& message, MessageKind kind) {
+  switch (kind) {
+    case MessageKind::kUser:
+    case MessageKind::kAttachment:
+      message["role"] = "user";
+      return;
+    case MessageKind::kAssistant:
+      message["role"] = "assistant";
+      return;
+    case MessageKind::kToolResult:
+      // Native results keep their tool_call_id and role. Text-protocol results
+      // have no native call to reference, so they are harness-owned context.
+      if (JsonValue(message, "role", "") != "tool") {
+        message["role"] = "system";
+      }
+      return;
+    case MessageKind::kSystem:
+    case MessageKind::kProjectInstructions:
+    case MessageKind::kMemory:
+    case MessageKind::kRuntimeContext:
+    case MessageKind::kInternal:
+      message["role"] = "system";
+      return;
+  }
+}
+
+void NormalizeRoles(json& messages, const std::vector<MessageKind>& kinds) {
+  for (size_t index = 0; index < messages.size(); ++index) {
+    NormalizeRole(messages[index], kinds[index]);
+  }
+}
+
+}  // namespace
+
 const char* MessageKindName(MessageKind kind) {
   switch (kind) {
     case MessageKind::kSystem:
@@ -32,8 +68,8 @@ const char* MessageKindName(MessageKind kind) {
       return "tool_result";
     case MessageKind::kAttachment:
       return "attachment";
-    case MessageKind::kEnvironment:
-      return "environment";
+    case MessageKind::kRuntimeContext:
+      return "runtime_context";
     case MessageKind::kInternal:
       return "internal";
   }
@@ -52,7 +88,7 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
       {"assistant", MessageKind::kAssistant},
       {"tool_result", MessageKind::kToolResult},
       {"attachment", MessageKind::kAttachment},
-      {"environment", MessageKind::kEnvironment},
+      {"runtime_context", MessageKind::kRuntimeContext},
       {"internal", MessageKind::kInternal},
   };
   for (const auto& item : kKinds) {
@@ -77,6 +113,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
       messages.size() != kinds.size() || !archive.is_array()) {
     return false;
   }
+  NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
   archive_ = std::move(archive);
@@ -88,6 +125,7 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
 }
 
 void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
+  NormalizeRoles(baseline, kinds);
   messages_ = std::move(baseline);
   kinds_ = std::move(kinds);
 }
@@ -119,8 +157,19 @@ void Conversation::RefreshBaseline(json system,
 }
 
 void Conversation::Push(json message, MessageKind kind) {
+  NormalizeRole(message, kind);
   messages_.push_back(std::move(message));
   kinds_.push_back(kind);
+}
+
+void Conversation::Upsert(json message, MessageKind kind) {
+  for (size_t index = kinds_.size(); index > 0; --index) {
+    if (kinds_[index - 1] == kind) {
+      Set(index - 1, std::move(message), kind);
+      return;
+    }
+  }
+  Push(std::move(message), kind);
 }
 
 void Conversation::PopBack() {
@@ -130,6 +179,7 @@ void Conversation::PopBack() {
 }
 
 void Conversation::Set(size_t index, json message, MessageKind kind) {
+  NormalizeRole(message, kind);
   messages_[index] = std::move(message);
   kinds_[index] = kind;
 }
@@ -232,18 +282,12 @@ size_t Conversation::PruneAttachments(size_t begin) {
   return attachments;
 }
 
-size_t Conversation::PruneTurn(size_t turn_start, int64_t turn,
+void Conversation::ArchiveTurn(size_t turn_start, int64_t turn,
                                int64_t archive_cap, json metadata) {
-  if (messages_.size() <= turn_start + 1) return 0;
-  if (messages_.size() <= turn_start + 2 && metadata.empty()) return 0;
-  size_t before = messages_.size();
-  ArchiveRange("trace_pruned", turn_start + 1, messages_.size() - 1, turn,
+  if (messages_.size() <= turn_start + 1) return;
+  if (messages_.size() <= turn_start + 2 && metadata.empty()) return;
+  ArchiveRange("tool_trace", turn_start + 1, messages_.size() - 1, turn,
                archive_cap, std::move(metadata));
-  json answer = messages_.back();
-  MessageKind answer_kind = kinds_.back();
-  Erase(turn_start + 1, messages_.size());
-  Push(std::move(answer), answer_kind);
-  return before - messages_.size();
 }
 
 size_t Conversation::StripImageParts() {

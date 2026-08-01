@@ -20,6 +20,9 @@ using nlohmann::json;
 
 struct StreamCtx;
 
+// Single-owner client. Calls are intentionally serialized so one easy handle
+// can retain libcurl's connection cache between requests; Api is not reentrant
+// or thread-safe.
 class Api {
  public:
   std::string base_url, api_key, model, reasoning_effort;
@@ -30,6 +33,9 @@ class Api {
   bool openrouter_web_search = true;
   bool server_tools_authorized = false;
   bool render_stream = true;
+  bool image_input = true;
+  bool route_certified = false;
+  double session_cost = 0;
 
   explicit Api(RuntimeConfig config = RuntimeConfig::FromEnvironment());
   ~Api();

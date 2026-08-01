@@ -38,7 +38,7 @@ struct SearchTrace {
     for (CitationEntry& source : CitationEntries(added)) {
       bool duplicate = std::any_of(
           annotations.begin(), annotations.end(), [&](const json& annotation) {
-            return JsonString(annotation, "url") == source.url;
+            return JsonValue(annotation, "url", "") == source.url;
           });
       if (duplicate || annotations.size() >= kMaxSources) continue;
       annotations.push_back(
@@ -114,11 +114,74 @@ inline void PrintCitationSources(const json& annotations) {
   }
 }
 
+inline json ToolTraceMessages(const json& messages, const json& kinds) {
+  json trace = json::array();
+  for (size_t index = 0; index < messages.size(); ++index) {
+    const json& message = messages[index];
+    if (!message.is_object()) continue;
+    if (JsonValue(message, "role", "") == "assistant" &&
+        message.contains("tool_calls") && message["tool_calls"].is_array()) {
+      for (const json& call : message["tool_calls"]) {
+        if (!call.is_object() || !call.contains("function") ||
+            !call["function"].is_object()) {
+          continue;
+        }
+        const json& function = call["function"];
+        std::string raw = JsonValue(function, "arguments", "{}");
+        json arguments = json::parse(raw, nullptr, false);
+        if (arguments.is_discarded()) arguments = raw;
+        trace.push_back({{"type", "function"},
+                         {"id", JsonValue(call, "id", "")},
+                         {"name", JsonValue(function, "name", "")},
+                         {"arguments", std::move(arguments)},
+                         {"result", nullptr}});
+      }
+      continue;
+    }
+    MessageKind kind = MessageKind::kInternal;
+    if (index >= kinds.size() || !kinds[index].is_string() ||
+        !ParseMessageKind(kinds[index].get<std::string>(), kind) ||
+        kind != MessageKind::kToolResult) {
+      continue;
+    }
+    std::string id = JsonValue(message, "tool_call_id", "");
+    auto call = std::find_if(
+        trace.rbegin(), trace.rend(),
+        [&](const json& item) { return JsonValue(item, "id", "") == id; });
+    if (call != trace.rend()) {
+      (*call)["result"] = JsonValue(message, "content", "");
+    }
+  }
+  return trace;
+}
+
+inline json LatestToolTraceJson(const json& archive) {
+  auto segment =
+      std::find_if(archive.rbegin(), archive.rend(), [](const json& item) {
+        std::string reason = JsonValue(item, "reason", "");
+        return reason == "tool_trace" || reason == "trace_pruned";
+      });
+  if (segment == archive.rend()) return json::array();
+  json trace =
+      ToolTraceMessages(JsonValue(*segment, "messages", json::array()),
+                        JsonValue(*segment, "message_kinds", json::array()));
+  int64_t searches = JsonValue(*segment, "web_searches", int64_t{0});
+  if (searches > 0) {
+    trace.push_back(
+        {{"type", "server"},
+         {"name", "web_search"},
+         {"count", searches},
+         {"sources", JsonValue(*segment, "annotations", json::array())}});
+  }
+  return trace;
+}
+
 inline void PrintLatestTrace(const json& archive,
                              const std::vector<Tool>& tools) {
   auto trace =
       std::find_if(archive.rbegin(), archive.rend(), [](const json& segment) {
-        return JsonValue(segment, "reason", "") == "trace_pruned";
+        std::string reason = JsonValue(segment, "reason", "");
+        return reason == "tool_trace" || reason == "trace_pruned";
       });
   if (trace == archive.rend()) {
     printf("%s· no completed tool trace%s\n", DIM(), RST());

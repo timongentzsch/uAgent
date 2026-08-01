@@ -19,6 +19,30 @@
 
 namespace uagent {
 
+namespace {
+
+class CurlHeaders {
+ public:
+  CurlHeaders() = default;
+  ~CurlHeaders() { curl_slist_free_all(list_); }
+  CurlHeaders(const CurlHeaders&) = delete;
+  CurlHeaders& operator=(const CurlHeaders&) = delete;
+
+  bool Add(const std::string& header) {
+    curl_slist* appended = curl_slist_append(list_, header.c_str());
+    if (!appended) return false;
+    list_ = appended;
+    return true;
+  }
+
+  curl_slist* Get() const { return list_; }
+
+ private:
+  curl_slist* list_ = nullptr;
+};
+
+}  // namespace
+
 Api::Api(RuntimeConfig config)
     : config(std::move(config)), handle_(curl_easy_init()) {}
 
@@ -51,7 +75,7 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
       bool compatibility_search =
           tool.is_object() && tool.contains("function") &&
           tool["function"].is_object() &&
-          JsonString(tool["function"], "name") == "web_search";
+          JsonValue(tool["function"], "name", "") == "web_search";
       search_offered = search_offered || compatibility_search;
       if (compatibility_search && server_search) continue;
       request_tools.push_back(tool);
@@ -204,14 +228,18 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   int64_t response_cap = config.response_bytes;
   ctx.response_cap = response_cap > 0 ? static_cast<size_t>(response_cap) : 0;
   ctx.sse = SseParser(ctx.response_cap);
-  struct curl_slist* hdrs = nullptr;
-  hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
-  hdrs = curl_slist_append(hdrs, ("Authorization: Bearer " + api_key).c_str());
-  hdrs = curl_slist_append(hdrs, "Accept: text/event-stream");
+  CurlHeaders headers;
+  bool headers_ok = headers.Add("Content-Type: application/json") &&
+                    headers.Add("Authorization: Bearer " + api_key) &&
+                    headers.Add("Accept: text/event-stream");
   if (OpenrouterUrl(base_url) && !session_id.empty()) {
-    hdrs = curl_slist_append(hdrs, ("X-Session-Id: " + session_id).c_str());
+    headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
+  if (!headers_ok) {
+    res.error = "failed to allocate HTTP headers";
+    return res;
+  }
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload.c_str());
   curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE_LARGE,
                    static_cast<curl_off_t>(payload.size()));
@@ -244,8 +272,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     if (ctx.in_reasoning) printf("%s\n", RST());
   }
   res.duration_ms = ElapsedMs(ctx.started);
-  curl_slist_free_all(hdrs);
-
   if (!ctx.timeout_reason.empty()) {
     res.error = ctx.timeout_reason;
     return res;
@@ -308,15 +334,16 @@ json Api::Fetch(const std::string& path, const std::string* payload,
   } out;
   int64_t configured_cap = config.response_bytes;
   out.cap = configured_cap > 0 ? static_cast<size_t>(configured_cap) : 0;
-  struct curl_slist* hdrs = nullptr;
-  hdrs = curl_slist_append(hdrs, ("Authorization: Bearer " + api_key).c_str());
+  CurlHeaders headers;
+  bool headers_ok = headers.Add("Authorization: Bearer " + api_key);
   if (payload) {
-    hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
+    headers_ok = headers_ok && headers.Add("Content-Type: application/json");
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload->c_str());
     curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE_LARGE,
                      static_cast<curl_off_t>(payload->size()));
   }
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, hdrs);
+  if (!headers_ok) return json(json::value_t::discarded);
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
   curl_easy_setopt(
       h, CURLOPT_WRITEFUNCTION,
       +[](char* d, size_t s, size_t n, void* u) -> size_t {
@@ -336,7 +363,6 @@ json Api::Fetch(const std::string& path, const std::string* payload,
   curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING,
                    "");  // 531 KB -> 63 KB on /models
   CURLcode rc = curl_easy_perform(h);
-  curl_slist_free_all(hdrs);
   if (rc != CURLE_OK || out.exceeded) return json(json::value_t::discarded);
   return json::parse(out.data, nullptr, false);
 }

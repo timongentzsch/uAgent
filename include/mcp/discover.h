@@ -205,7 +205,7 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                std::make_move_iterator(replacement.end()));
   McpNote(s.name, std::to_string(replacement.size()) + " of " +
                       std::to_string(listed.size()) + " tools (~" +
-                      FmtTokens(static_cast<int64_t>(schema_bytes / 4)) +
+                      FmtCount(static_cast<int64_t>(schema_bytes / 4)) +
                       " schema tokens/request)");
   return true;
 }

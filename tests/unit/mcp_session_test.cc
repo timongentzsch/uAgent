@@ -176,12 +176,12 @@ void TestWorkspaceScopedSession() {
   std::vector<Tool> tools;
   Agent agent(api, tools, processes, usage,
               [](const Tool&, const json&) { return false; });
-  g_image_input = false;
+  SetImageInputAvailable(false);
   agent.RouteChanged();
-  CHECK(g_image_input.load());
-  g_image_input = false;
+  CHECK(ImageInputAvailable());
+  SetImageInputAvailable(false);
   agent.Reset();
-  CHECK(g_image_input.load());
+  CHECK(ImageInputAvailable());
   std::string session_id = agent.SessionId();
   std::string error;
   CHECK(agent.Save(session.string(), error));
@@ -197,7 +197,7 @@ void TestWorkspaceScopedSession() {
     CHECK(payload["archive"].is_array());
     CHECK(payload["message_kinds"].is_array());
     CHECK(payload["message_kinds"].size() == payload["messages"].size());
-    // Stable environment metadata follows the cacheable system prefix.
+    // Runtime metadata remains separate from the cacheable system prefix.
     CHECK(payload["messages"][0].value("content", "").find("[environment:") ==
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
@@ -328,8 +328,7 @@ void TestScopedBaseAndMemory() {
 
   // Without ./.uagent everything is global; the workspace never gets one by
   // being visited.
-  CHECK(UagentBase() == GlobalBase());
-  CHECK(ProjectConfigFilePath().empty());
+  CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
@@ -346,9 +345,7 @@ void TestScopedBaseAndMemory() {
   CHECK(fs::is_regular_file(project_memory));
   CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
         (fs::perms::owner_read | fs::perms::owner_write));
-  CHECK(UagentBase() == (workspace / ".uagent").string());
   CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
-  CHECK(UagentScopedDir("uv") == (workspace / ".uagent/uv").string());
   CHECK(UagentDir("history") == (home / ".uagent/history").string());
 
   // Names become safe file components, oversize content is refused, an existing

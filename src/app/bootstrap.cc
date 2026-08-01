@@ -141,13 +141,14 @@ bool ProbeModel(Api& api) {
     if (api.ctx_window == 0) {
       for (const json& model : data) {
         if (!model.is_object()) continue;
-        std::string id = JsonString(model, "id");
+        std::string id = JsonValue(model, "id", "");
         if (id != api.model && id != base) continue;
-        api.ctx_window = JsonInt(model, "context_length");
-        if (!api.ctx_window) api.ctx_window = JsonInt(model, "max_model_len");
+        api.ctx_window = JsonValue(model, "context_length", int64_t{0});
+        if (!api.ctx_window)
+          api.ctx_window = JsonValue(model, "max_model_len", int64_t{0});
         if (!api.ctx_window && model.contains("meta") &&
             model["meta"].is_object()) {
-          api.ctx_window = JsonInt(model["meta"], "n_ctx_train");
+          api.ctx_window = JsonValue(model["meta"], "n_ctx_train", int64_t{0});
         }
         break;
       }
@@ -169,16 +170,13 @@ std::vector<Tool> BuildTools(AppContext& context, json trusted_snapshot,
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
   std::vector<Tool> tools = BuiltinTools(
       runtime.processes, CanonicalAccessPath(CanonicalCwd()), inline_images);
-  WebSearchRoute search_fallback;
-  for (const NamedProvider& provider : context.provider.providers) {
-    if (provider.name != "openrouter") continue;
-    search_fallback = {provider.base_url, provider.api_key,
-                       EnvStr("OPENROUTER_MODEL", "openrouter/auto")};
-    break;
-  }
-  if (OpenrouterUrl(api.base_url) || search_fallback.Valid()) {
+  WebSearchRoute search_route =
+      SelectWebSearchRoute(api, context.provider.providers);
+  api.openrouter_web_search =
+      search_route.backend == WebSearchBackend::kOpenRouter;
+  if (search_route.Valid()) {
     tools.push_back(
-        WebSearchTool(api, runtime.side_usage, std::move(search_fallback)));
+        WebSearchTool(api, runtime.side_usage, std::move(search_route)));
   }
   McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
   if (CanDelegate()) {
@@ -192,10 +190,10 @@ std::vector<Tool> BuildTools(AppContext& context, json trusted_snapshot,
 }
 
 void LogReady(const AppContext& context) {
-  if (!g_debug.Enabled()) return;
+  if (!Debug().Enabled()) return;
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
-  g_debug.Write("session_ready",
+  Debug().Write("session_ready",
                 {{"base_url", api.base_url},
                  {"model", api.model},
                  {"reasoning_effort", api.reasoning_effort},
@@ -205,7 +203,7 @@ void LogReady(const AppContext& context) {
                  {"toolset", LeanToolset() ? "lean" : "full"},
                  {"yolo", context.options.yolo},
                  {"auto_compact_pct", AutoCompactPct()},
-                 {"checkpoint_mode", config.checkpoint_mode},
+                 {"checkpoint_mode", api.config.checkpoint_mode},
                  {"checkpoint_pct", CheckpointPct()},
                  {"checkpoint_urgent_pct", CheckpointUrgentPct()},
                  {"openrouter_provider", config.openrouter_provider},
@@ -252,7 +250,7 @@ AppContext::AppContext(RuntimeConfig config, Options parsed_options)
     : runtime(std::move(config)), options(std::move(parsed_options)) {}
 
 BootstrapResult Bootstrap(Options options, const char* executable) {
-  g_argv0 = executable;
+  SetExecutablePath(executable);
   json trusted_snapshot = nullptr;
   std::string error;
   int exit_code = 1;
@@ -264,6 +262,9 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
                  EnvStr("UAGENT_TRUST_PROJECT_CONFIG") == "1" ||
                  !trusted_snapshot.is_null();
   LoadConfigFile(trusted);
+  if (options.budget > 0) {
+    setenv("UAGENT_SESSION_BUDGET", std::to_string(options.budget).c_str(), 1);
+  }
   MaintainArtifacts();
   if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
   if (!options.debug) {
@@ -284,15 +285,15 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     return Failure("cannot redirect headless output");
   }
   context->debug = context->options.debug;
-  if (context->debug && !g_debug.Start(context->options.debug_path)) {
-    return Failure("cannot open debug log: " + g_debug.Error());
+  if (context->debug && !Debug().Start(context->options.debug_path)) {
+    return Failure("cannot open debug log: " + Debug().Error());
   }
-  if (g_debug.Enabled()) {
-    printf("%s· debug log: %s%s\n", DIM(), g_debug.Path().c_str(), RST());
-    g_debug.Write("process_start",
+  if (Debug().Enabled()) {
+    printf("%s· debug log: %s%s\n", DIM(), Debug().Path().c_str(), RST());
+    Debug().Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},
-                   {"executable", g_argv0},
+                   {"executable", ExecutablePath()},
                    {"tty", g_tty}});
   }
   if (!context->curl.Ready()) {
@@ -328,6 +329,11 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
              {{"error", "no usable model"}, {"base_url", api.base_url}});
     return Failure("UAGENT_MODEL is not set and " + api.base_url +
                    "/models returned nothing usable");
+  }
+  json route_profile = ApplyRouteProfile(api);
+  if (!route_profile.empty()) {
+    DebugLog("route_profile_applied",
+             {{"model", api.model}, {"profile", route_profile}});
   }
 
   printf("%sµAgent%s\n", BOLD(), RST());

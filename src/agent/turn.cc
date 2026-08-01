@@ -38,13 +38,13 @@ void Agent::Turn(const std::string& user_input, json user_content) {
                              : JsonEstimatedBytes(user_content);
   checkpoint_hint_active_ = false;
   std::string checkpoint_hint = PrepareContext(pending_chars);
-  if (g_steering.Requested()) {
+  if (SteeringState().Requested()) {
     DebugLog("turn_end", {{"turn", turn_id_},
                           {"outcome", "steered_during_compaction"},
                           {"steps", 0}});
     return;
   }
-  EnsureEnvironmentContext();
+  EnsureRuntimeContext();
   size_t turn_start =
       conversation_.Size();  // the user message; prune_* index from it
   MessageKind user_kind =
@@ -55,9 +55,8 @@ void Agent::Turn(const std::string& user_input, json user_content) {
         user_content.is_null() ? json(user_input) : std::move(user_content)}},
       user_kind);
   if (!checkpoint_hint.empty()) {
-    conversation_.Push(
-        {{"role", "user"}, {"content", std::move(checkpoint_hint)}},
-        MessageKind::kInternal);
+    conversation_.Push(HarnessMessage(std::move(checkpoint_hint)),
+                       MessageKind::kInternal);
     checkpoint_hint_active_ = true;
     context_policy_.HintIssued(turn_id_);
   }
@@ -70,6 +69,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   int64_t max_tool_calls = api_.config.max_tool_calls;
   int64_t max_turn_seconds = api_.config.max_turn_seconds;
   double max_turn_cost = api_.config.max_turn_cost;
+  double session_budget = api_.config.session_budget;
   auto deadline = t0 + std::chrono::seconds(max_turn_seconds);
   active_deadline_ = deadline;
   std::string last_call;
@@ -82,9 +82,26 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   std::optional<size_t> empty_recovery_message;
   std::optional<size_t> failure_advisory_message;
   bool detached_records_available = !DetachedRecords().empty();
-  double ttt_ms = -1, tokens_per_second = 0;
+  double ttt_ms = -1;
+  double model_response_ms = 0;
+  int64_t model_output_tokens = 0;
   std::string outcome = "step_limit";
   bool midturn_compaction_enabled = true;
+  auto cost_exceeded = [&] {
+    double limit = max_turn_cost;
+    double spent = usage.cost;
+    std::string scope = "turn";
+    if (session_budget > 0 && session_usage_.cost > session_budget) {
+      limit = session_budget;
+      spent = session_usage_.cost;
+      scope = "session";
+    }
+    if (limit <= 0 || spent <= limit) return false;
+    last_error_ = scope + " cost limit exceeded (" + FmtCost(limit) + ")";
+    outcome = "budget_exceeded";
+    printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+    return true;
+  };
 
   int64_t step = 0;
   for (; step < max_steps; ++step) {
@@ -105,12 +122,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     }
     DrainBackground();
     MergeSideUsage(usage);
-    if (max_turn_cost > 0 && usage.cost > max_turn_cost) {
-      last_error_ = "turn cost limit exceeded (" + FmtCost(max_turn_cost) + ")";
-      outcome = "budget_exceeded";
-      printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
-      break;
-    }
+    if (cost_exceeded()) break;
     ToolAvailability availability{
         .checkpoint_hint = checkpoint_hint_active_,
         .detached_terminal =
@@ -128,7 +140,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       --step;
       continue;
     }
-    if (g_steering.Requested()) {
+    if (SteeringState().Requested()) {
       outcome = "steered";
       last_error_ = outcome;
       break;
@@ -146,12 +158,12 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     if (r.interrupted) {
       line_open = false;
-      outcome = g_steering.Requested() ? "steered" : "interrupted";
+      outcome = SteeringState().Requested() ? "steered" : "interrupted";
       last_error_ = outcome;
       printf("\n%s· %s%s\n", YEL(), outcome.c_str(), RST());
       conversation_.Push(
-          {{"role", "user"},
-           {"content", "(response interrupted; partial output was discarded)"}},
+          HarnessMessage("(response interrupted; partial output was "
+                         "discarded)"),
           MessageKind::kInternal);
       break;
     }
@@ -169,8 +181,26 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     Usage response_usage;
     response_usage.Add(r.usage);
-    usage.Merge(response_usage);           // this turn's footer
-    session_usage_.Merge(response_usage);  // running session totals
+    if (session_budget > 0 && r.usage.is_object() &&
+        !response_usage.cost_reported && !cost_warning_shown_) {
+      cost_warning_shown_ = true;
+      printf(
+          "%s· provider does not report cost; dollar budget is not "
+          "enforceable%s\n",
+          YEL(), RST());
+      DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
+    }
+    // Providers may buffer a response and deliver it in one SSE burst.
+    // Measuring only from the first event to the last therefore reports
+    // transport burst speed rather than useful model throughput. Average all
+    // output over the successful model-request wall time for this turn instead.
+    if (r.duration_ms > 0) {
+      model_response_ms += r.duration_ms;
+      model_output_tokens += response_usage.output;
+    }
+    usage.Merge(response_usage);        // this turn's footer
+    MergeSessionUsage(response_usage);  // running session totals
+    AddRouteUsage(response_usage);
     tool_counts["web_search"] += response_usage.web_searches;
     turn_search_trace_.Add(response_usage.web_searches, r.annotations);
     line_open = !r.suppressed && !r.content.empty() && r.content.back() != '\n';
@@ -184,12 +214,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       r.content += citations;
       line_open = false;
     }
-    if (max_turn_cost > 0 && usage.cost > max_turn_cost) {
-      last_error_ = "turn cost limit exceeded (" + FmtCost(max_turn_cost) + ")";
-      outcome = "budget_exceeded";
-      printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
-      break;
-    }
+    if (cost_exceeded()) break;
     // context size = full prompt + what the model just added
     if (r.usage.is_object()) {
       context_policy_.SetReported(
@@ -227,10 +252,9 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       if (!empty_response_recovered && tool_count > 0) {
         empty_response_recovered = true;
         conversation_.Push(
-            {{"role", "user"},
-             {"content",
-              "[empty model response] Return the final answer from existing "
-              "results. Do not repeat completed work."}},
+            HarnessMessage("[empty model response] Return the final answer "
+                           "from existing results. Do not repeat completed "
+                           "work."),
             MessageKind::kInternal);
         empty_recovery_message = conversation_.Size() - 1;
         DebugLog("empty_response_recovery",
@@ -260,10 +284,6 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     if (calls.empty()) {
       ttt_ms = r.first_event_ms;
-      double generation_ms = r.duration_ms - r.first_event_ms;
-      if (response_usage.output > 0 && generation_ms > 0) {
-        tokens_per_second = response_usage.output * 1000.0 / generation_ms;
-      }
       // content that looked like a tool call was held back from the
       // stream; if it didn't parse into one, it's prose — show it now
       if (r.suppressed) {
@@ -293,12 +313,11 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     if (!failure_advisory_sent && consecutive_failed_tools >= 3) {
       failure_advisory_sent = true;
       conversation_.Push(
-          {{"role", "user"},
-           {"content",
-            "[tool failure advisory] Three consecutive tool calls failed. "
-            "Reassess the shared premise or execution environment before "
-            "trying another variant; use existing evidence or a different "
-            "approach when possible."}},
+          HarnessMessage("[tool failure advisory] Three consecutive tool "
+                         "calls failed. Reassess the shared premise or "
+                         "execution environment before trying another "
+                         "variant; use existing evidence or a different "
+                         "approach when possible."),
           MessageKind::kInternal);
       failure_advisory_message = conversation_.Size() - 1;
       DebugLog("tool_failure_advisory",
@@ -306,8 +325,9 @@ void Agent::Turn(const std::string& user_input, json user_content) {
                 {"step", step},
                 {"consecutive_failures", consecutive_failed_tools}});
     }
-    if (cancelled || g_steering.Requested()) BgCancelTasks(processes_);
-    if (!cancelled && !g_steering.Requested() && JoinableBackground() > 0) {
+    if (cancelled || SteeringState().Requested()) BgCancelTasks(processes_);
+    if (!cancelled && !SteeringState().Requested() &&
+        JoinableBackground() > 0) {
       printf("%s· waiting for delegated work%s\n", DIM(), RST());
       if (!JoinBackgroundOrReport(deadline, usage, max_turn_seconds, outcome)) {
         break;
@@ -318,7 +338,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       outcome = "checkpoint_prepared";
       break;
     }
-    if (g_steering.Requested() || cancelled) {
+    if (SteeringState().Requested() || cancelled) {
       outcome = cancelled ? "interrupted" : "steered";
       if (cancelled) printf("%s· interrupted%s\n", YEL(), RST());
       break;
@@ -330,7 +350,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
               << ") reached — stopping this turn" << RST() << '\n';
   }
   PruneAttachments(turn_start);
-  if (complete && !checkpoint_turn_complete_) PruneTurn(turn_start);
+  if (complete && !checkpoint_turn_complete_) ArchiveTurnTrace(turn_start);
   if (pending_checkpoint_.is_object() &&
       JsonValue(pending_checkpoint_, "turn", int64_t{-1}) == turn_id_) {
     if (complete && !processes_.PendingCount()) {
@@ -353,40 +373,45 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   double secs =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - t0)
           .count();
-  std::ostringstream footer;
-  footer << (line_open ? "\n" : "") << DIM() << "· " << FmtTokens(usage.input)
-         << " in";
+  double tokens_per_second =
+      model_response_ms > 0 ? model_output_tokens * 1000.0 / model_response_ms
+                            : 0;
+  std::ostringstream stats;
+  stats << "· " << FmtCount(usage.input) << " in";
   if (usage.cache_read) {
-    footer << " (+" << FmtTokens(usage.cache_read) << " cached)";
+    stats << " (+" << FmtCount(usage.cache_read) << " cached)";
   }
   if (usage.cache_write) {
-    footer << " (+" << FmtTokens(usage.cache_write) << " cache write)";
+    stats << " (+" << FmtCount(usage.cache_write) << " cache write)";
   }
-  footer << " · " << FmtTokens(usage.output) << " out";
+  stats << " · " << FmtCount(usage.output) << " out";
   if (usage.reasoning) {
-    footer << " (+" << FmtTokens(usage.reasoning) << " reasoning)";
+    stats << " (+" << FmtCount(usage.reasoning) << " reasoning)";
   }
-  if (usage.cost > 0) footer << " · " << FmtCost(usage.cost);
+  if (usage.cost > 0) stats << " · " << FmtCost(usage.cost);
   if (usage.web_searches) {
-    footer << " · " << usage.web_searches << " search"
-           << (usage.web_searches == 1 ? "" : "es");
+    stats << " · " << usage.web_searches << " search"
+          << (usage.web_searches == 1 ? "" : "es");
   }
   if (tool_count) {
-    footer << " · " << tool_count << " tool" << (tool_count == 1 ? "" : "s");
+    stats << " · " << tool_count << " tool" << (tool_count == 1 ? "" : "s");
   }
   if (tokens_per_second > 0) {
-    footer << " · " << std::fixed << std::setprecision(1) << tokens_per_second
-           << " tok/s";
+    stats << " · " << std::fixed << std::setprecision(1) << tokens_per_second
+          << " tok/s";
   }
   if (ttt_ms >= 0) {
-    footer << " · first " << std::fixed << std::setprecision(2)
-           << ttt_ms / 1000.0 << 's';
+    stats << " · first " << std::fixed << std::setprecision(2)
+          << ttt_ms / 1000.0 << 's';
   }
-  footer << " · " << std::fixed << std::setprecision(1) << secs << 's' << RST()
-         << '\n';
-  if (g_tty) {
+  stats << " · " << std::fixed << std::setprecision(1) << secs << 's';
+  std::string stats_line = stats.str();
+  std::ostringstream footer;
+  footer << (line_open ? "\n" : "") << DIM() << stats_line << RST() << '\n';
+  if (api_.render_stream) {
     footer << DIM();
-    int64_t separator_width = std::min(int64_t{48}, TerminalColumns() - 1);
+    int64_t separator_width = std::min(
+        static_cast<int64_t>(DisplayWidth(stats_line)), TerminalColumns() - 1);
     for (int64_t column = 0; column < separator_width; ++column) {
       footer << "─";
     }

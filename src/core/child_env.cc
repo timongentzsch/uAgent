@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-extern char** environ;
+#include "include/core/platform.h"
 
 namespace uagent {
 namespace {
@@ -56,8 +56,9 @@ bool SensitiveEnvironmentKey(std::string_view key) {
                    return static_cast<char>(std::toupper(value));
                  });
   if (upper == "UAGENT_API_KEY" || upper == "UAGENT_PROVIDERS" ||
-      upper == "UAGENT_USAGE_FILE" || upper == "OPENROUTER_API_KEY" ||
-      upper == "SSH_AUTH_SOCK" || upper == "XAUTHORITY") {
+      upper == "UAGENT_SESSION_BUDGET" || upper == "UAGENT_USAGE_FILE" ||
+      upper == "OPENROUTER_API_KEY" || upper == "SSH_AUTH_SOCK" ||
+      upper == "XAUTHORITY") {
     return true;
   }
   static constexpr std::string_view kMarkers[] = {
@@ -71,7 +72,7 @@ bool SensitiveEnvironmentKey(std::string_view key) {
 
 ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
                                    ChildEnvironmentPolicy policy) {
-  for (char** current = environ; current && *current; ++current) {
+  for (char** current = ProcessEnvironment(); current && *current; ++current) {
     std::string entry(*current);
     std::string key = KeyOf(entry);
     bool allowed =

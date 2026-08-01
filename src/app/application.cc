@@ -13,6 +13,7 @@
 
 #include "include/agent.h"
 #include "include/app/bootstrap.h"
+#include "include/app/headless.h"
 #include "include/cli.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -66,7 +67,7 @@ class Application {
       } else {
         agent_.Turn(input, std::move(content));
       }
-      if (!g_steering.Take()) return;
+      if (!SteeringState().Take()) return;
       bool cancelled = false;
       std::string replacement = SteeringReplacement(cancelled);
       if (cancelled) {
@@ -74,6 +75,7 @@ class Application {
         resume = true;
       } else {
         printf("%s· applying steering%s\n", DIM(), RST());
+        agent_.NudgeMemoryAfterCorrection();
         input = std::move(replacement);
         resume = false;
       }
@@ -82,10 +84,31 @@ class Application {
   }
 
   void LogSessionEnd(const char* reason) const {
-    if (!g_debug.Enabled()) return;
-    g_debug.Write("session_end", {{"reason", reason},
+    if (!Debug().Enabled()) return;
+    Debug().Write("session_end", {{"reason", reason},
                                   {"usage", UsageJson(agent_.SessionUsage())},
                                   {"context_tokens", agent_.ContextUsed()}});
+  }
+
+  int FinishHeadless(std::string answer, std::string error, int exit_code) {
+    runtime_.Shutdown();
+    std::remove(UsageLedger().c_str());
+    LogSessionEnd(exit_code == 0 ? "headless_complete" : "headless_error");
+    if (context_.options.json_stream || context_.options.json) {
+      json envelope = HeadlessResult(answer, error, agent_.LatestToolTrace(),
+                                     agent_.SessionUsage(),
+                                     agent_.RouteUsageJson(), exit_code);
+      if (context_.options.json_stream) {
+        Events().Emit(exit_code == 0 ? "answer" : "error", std::move(envelope));
+      } else {
+        printf("%s\n", JsonDump(envelope).c_str());
+      }
+    } else if (exit_code == 0) {
+      printf("%s\n", TerminalSafe(answer).c_str());
+    } else {
+      fprintf(stderr, "%s\n", TerminalSafe(error).c_str());
+    }
+    return exit_code;
   }
 
   int RunHeadless() {
@@ -94,8 +117,8 @@ class Application {
       std::string error;
       content = AttachmentContent(context_.options.prompt, attachments_, error);
       if (!error.empty()) {
-        fprintf(stderr, "%s\n", error.c_str());
-        return 2;
+        context_.output.Restore();
+        return FinishHeadless("", std::move(error), 2);
       }
     }
     RunTurns(context_.options.prompt, std::move(content));
@@ -104,24 +127,21 @@ class Application {
     std::string ledger = EnvStr("UAGENT_USAGE_FILE");
     if (!ledger.empty()) {
       std::string error;
-      if (!AppendPrivateLine(ledger, JsonDump(UsageJson(agent_.SessionUsage())),
-                             error)) {
+      json entry = {{"route", agent_.ActiveRoute()},
+                    {"routes", agent_.RouteUsageJson()},
+                    {"usage", UsageJson(agent_.SessionUsage())}};
+      if (!AppendPrivateLine(ledger, JsonDump(entry), error)) {
         fprintf(stderr, "cannot write usage ledger: %s\n", error.c_str());
       }
     }
     std::string answer = agent_.LastText();
-    runtime_.Shutdown();
     if (answer.empty()) {
-      LogSessionEnd("headless_error");
       std::string error = agent_.LastError().empty()
                               ? "agent produced no answer"
-                              : TerminalSafe(agent_.LastError());
-      fprintf(stderr, "%s\n", error.c_str());
-      return 1;
+                              : agent_.LastError();
+      return FinishHeadless("", std::move(error), 1);
     }
-    LogSessionEnd("headless_complete");
-    printf("%s\n", TerminalSafe(answer).c_str());
-    return 0;
+    return FinishHeadless(std::move(answer), "", 0);
   }
 
   void ResumeAtStartup() {
@@ -214,6 +234,15 @@ class Application {
       case SlashCommandId::kCompact:
         HandleCompact();
         break;
+      case SlashCommandId::kContext:
+        agent_.PrintContext();
+        break;
+      case SlashCommandId::kCost:
+        HandleCost();
+        break;
+      case SlashCommandId::kHandoff:
+        HandleHandoff(command.argument);
+        break;
       case SlashCommandId::kAttach:
         HandleAttach(command.argument);
         break;
@@ -261,6 +290,53 @@ class Application {
     SaveSelectedModel(selected->selection, named_route);
   }
 
+  void HandleCost() const {
+    json routes = agent_.RouteUsageJson();
+    if (routes.empty()) {
+      printf("%s· no session spend yet%s\n", DIM(), RST());
+      return;
+    }
+    for (const auto& [route, usage] : routes.items()) {
+      std::string cost = JsonValue(usage, "cost_reported", false)
+                             ? FmtCost(JsonValue(usage, "cost", 0.0))
+                             : "cost unavailable";
+      printf("%s· %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
+             cost.c_str(), RST());
+    }
+    printf("%s· total %s", DIM(),
+           agent_.SessionUsage().cost_reported
+               ? FmtCost(agent_.SessionUsage().cost).c_str()
+               : "cost unavailable");
+    if (api_.config.session_budget > 0) {
+      printf(" / %s", FmtCost(api_.config.session_budget).c_str());
+    }
+    printf("%s\n", RST());
+  }
+
+  void HandleHandoff(const std::string& argument) {
+    if (argument.empty()) {
+      printf("%s· use /handoff PROVIDER/MODEL%s\n", RED(), RST());
+      return;
+    }
+    if (api_.config.checkpoint_mode == "off") {
+      printf("%s· handoff disabled by UAGENT_CHECKPOINT_MODE=off%s\n", RED(),
+             RST());
+      return;
+    }
+    bool named = ResolveModelRoute(context_.provider.routes,
+                                   context_.provider.providers, argument)
+                     .has_value();
+    if (!named && !CanUseRawModel(api_, argument)) {
+      printf("%s· unknown model route %s; use /models%s\n", RED(),
+             TerminalSafe(argument).c_str(), RST());
+      return;
+    }
+    bool apply = api_.config.checkpoint_mode == "apply";
+    if (!agent_.Compact(false, nullptr, apply) || !apply) return;
+    HandleModel(argument);
+    DebugLog("handoff", {{"route", argument}, {"mode", "apply"}});
+  }
+
   void HandleModel(const std::string& argument) {
     if (argument.empty()) {
       HandleModels("");
@@ -280,6 +356,8 @@ class Application {
   }
 
   void SaveSelectedModel(const std::string& selected, bool named_route) {
+    api_.config.checkpoint_mode = runtime_.config.checkpoint_mode;
+    json route_profile = ApplyRouteProfile(api_);
     std::string error;
     bool saved =
         SaveModelPreference({selected, api_.base_url, named_route}, error);
@@ -326,7 +404,7 @@ class Application {
   void HandleCompact() {
     for (;;) {
       agent_.Compact();
-      if (!g_steering.Take()) return;
+      if (!SteeringState().Take()) return;
       bool cancelled = false;
       std::string next = SteeringReplacement(cancelled);
       if (cancelled) {

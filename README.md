@@ -3,26 +3,23 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A small C++20 coding agent for OpenAI-compatible APIs: one binary, direct HTTP,
-bounded tools, and optional MCP integration.
+µAgent started as a small, practical coding assistant and grew into a harness
+for exploring model tool use, provider behavior, and custom agent workflows.
 
-Compared with Codex and other full-screen agent TUIs, µAgent keeps the interface
-inline and uses the terminal's native scrollback. It adds only prompts, status,
-tool traces, and a global activity spinner—no custom scrolling surface—so normal
-terminal search, selection, and history keep working.
+It is a lean, modular C++20 binary with direct HTTP, bounded tools, optional
+MCP, and no language runtime or framework. It runs across supported Linux and
+macOS architectures, while structured traces make every workflow easy to
+inspect, compare, and improve.
 
 ## Quick start
 
-Requires CMake, a C++20 compiler, libcurl, and optionally libedit. Node.js/npm
-enables the default Chrome DevTools integration; [uv](https://docs.astral.sh/uv/)
-enables third-party packages in `run_python`.
+Requires CMake, a C++20 compiler, and libcurl. libedit enables richer input,
+Node.js enables Chrome DevTools MCP, and [uv](https://docs.astral.sh/uv/) enables
+Python scratch scripts and route evaluation.
 
 ```sh
 ./install.sh
 ```
-
-This installs `uagent` to `~/.local/bin`. Set `UAGENT_PREFIX` or
-`UAGENT_BUILD_DIR` to override the install or build directory.
 
 Create `~/.uagent/.config`:
 
@@ -31,205 +28,84 @@ OPENROUTER_API_KEY=replace-me
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 ```
 
-The config file is kept at `0600`; environment variables override it, and
-project `.env` files are never loaded. Named OpenAI-compatible routes can be
-defined with `UAGENT_PROVIDERS`. `UAGENT_BASE_URL`, `UAGENT_API_KEY`, and
-`UAGENT_MODEL` define one direct route.
-
-Provider models need not be duplicated in config. `/models QUERY` searches
-every configured live catalog concurrently, shows one numbered list, and
-switches to the chosen entry. Blank Enter or Escape keeps the current model;
-`/models all` requests the full catalog, and `/model NAME/MODEL` remains a
-direct shortcut.
-
-A workspace opts into its own settings by creating a `.uagent` directory. Its
-`.config` then wins key by key, with `~/.uagent/.config` supplying the rest, and
-`run_python` keeps its uv environments in `.uagent/uv` instead of the user-level
-one. Because that file can redirect every request, it needs the same trust as
-`.mcp.json` — an interactive prompt or `--trust-project-config`. Sessions, logs,
-and history stay global. µAgent never creates `.uagent` in a workspace on its
-own; you do, or the agent does when it saves a project memory.
+For any OpenAI-compatible endpoint, set `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
+and `UAGENT_MODEL`. `UAGENT_PROVIDERS` defines named routes. Environment values
+override the private config file; project `.env` files are never loaded.
 
 ```sh
 uagent
 uagent -p "inspect this repository"
-uagent -c
+uagent -p "inspect this repository" --json
+uagent -p "inspect this repository" --json-stream --budget 2
+uagent --debug=/tmp/uagent.jsonl
 uagent --resume
 uagent --yolo
 ```
 
-## Tools
+## Observe and compare
 
-| Tool | Purpose |
+Interactive status shows the route, context, tokens, cache, cost, and timing.
+`/context` prints the exact model request and tool schemas; `/trace` prints the
+latest tool/search exchange; `/cost` breaks spend down by route. `--debug`
+records reconstructable messages, responses, tools, timing, usage, and failures.
+The same evidence makes regressions attributable and guides prompt, tool,
+routing, and orchestration improvements instead of relying on anecdote.
+
+`--json` emits one stable `uagent.headless.v1` envelope containing `answer`,
+`error`, `trace`, `usage`, `routes`, and `exit_code`. `--json-stream` emits
+versioned lifecycle JSONL. Usage distinguishes reported zero cost from
+unavailable provider cost.
+
+`uagent eval` gives every model a fresh workspace, home, session, fixture,
+prompt contract, and cost ceiling:
+
+```sh
+uagent eval \
+  --model deepseek/deepseek-v4-flash \
+  --model anthropic/claude-sonnet-4.5 \
+  --scenario checkpoint --repetitions 3 \
+  --report /tmp/uagent-route-ab.json
+```
+
+Reports include violations, tokens, reported cost, wall time, and peak RSS.
+Fresh multi-sample results update expiring route profiles, allowing runtime to
+disable unsupported checkpoint, parallel-call, or image behavior before work.
+See [testing](docs/TESTING.md) for scenarios and extension.
+
+## Capabilities
+
+| Area | Built-ins |
 | --- | --- |
-| `read_file`, `list_dir`, `grep` | Inspect the repository |
-| `write_file`, `edit_file` | Make atomic file changes |
-| `run`, `terminal_output` | Run commands or manage detached terminals |
-| `run_python` | Run isolated Python with optional uv packages |
-| `show_image` | Display a local image in the terminal |
-| `attach` | Add a local image or document to the model's next request |
-| `web_search` | Search the web and return cited sources |
-| `<server>_<tool>` | Use a tool exposed by a configured MCP server |
-| `chrome_session` | Select the default Chrome MCP's isolated or user profile |
-| `task` | Run depth-bounded work in parallel, optionally on another model |
-| `memory` | Keep a lesson for later sessions, per project or global |
-| `skill` | Open a stored procedure from `~/.uagent/skills` or the project |
-| `checkpoint` | Fold context into a durable checkpoint |
+| repository | `read_file`, `list_dir`, `grep`, `write_file`, `edit_file` |
+| execution | `run`, detached terminals, uv-backed `run_python` |
+| evidence | attachments, terminal images, cited `web_search` |
+| extension | MCP, Chrome DevTools, skills, project/global memory |
+| orchestration | parallel tools, bounded `task`, checkpoint and handoff |
 
-Independent read-only tools can run concurrently. Mutating, shell, network,
-delegation, and MCP calls require approval unless `--yolo` is active. Requests,
-results, processes, logs, costs, and retained history are bounded.
+Mutating, shell, network, delegation, and MCP calls require approval unless
+`--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,
+processes, context, persistence, and reported spend are bounded.
 
-Child processes do not inherit credentials by default. Approved `run` commands
-may receive specific sensitive variables through
-`UAGENT_SHELL_ENV_ALLOW=GH_TOKEN,SSH_AUTH_SOCK`; MCP servers, delegated agents,
-and `run_python` remain sanitized.
+At context pressure, µAgent can fold history into a bounded non-authoritative
+checkpoint. `/handoff PROVIDER/MODEL` uses that clean cache boundary to change
+routes. Sessions live under `~/.uagent/history`; project configuration requires
+interactive trust or `--trust-project-config`.
 
-OpenRouter search runs inside the model request and falls back to a bounded
-side request if the server tool is rejected. Search defaults to `auto`,
-five results per search and a 15-result request budget; `UAGENT_WEB_SEARCH_ENGINE`,
-`UAGENT_WEB_SEARCH_MAX_RESULTS`, `UAGENT_WEB_SEARCH_MAX_USES`, and optional
-`UAGENT_WEB_SEARCH_CONTEXT_SIZE` tune it. The request budget is results times
-uses. Set `UAGENT_WEB_SEARCH_SERVER=0` to force the fallback.
-
-Ordinary shell and Python calls complete inside one tool step; Escape can steer
-while they run. `run(detach=true)` is the explicit path for a persistent
-terminal. Multiple `task` calls spawn immediately, run concurrently, and return
-every delegated result before the next model step. A task may select a
-`provider/model`; otherwise it inherits the parent route. Tasks default to a
-lean toolset; use `mode=full` when implementation tools are needed. Approving a
-task authorizes that separate-context child to execute its scoped brief without
-further prompts. One spinner remains visible while the model, a tool batch, or
-required background work is quiet. `run_python` uses
-`uv run --isolated --no-project`, so packages must be listed in the tool call.
-`show_image` is available only when the terminal supports a native image
-protocol. `edit_file` can apply ordered exact replacements with one atomic
-write; replacing every match must be explicit, and existing line endings are
-preserved.
-
-Transient connection failures, HTTP 408/409/429/5xx responses, and structured
-server-overload errors are retried twice with short exponential backoff only
-when the stream has produced no content, reasoning, tool call, or annotation.
-Accounting-only events do not block a safe retry; a partially visible stream is
-never replayed.
-
-## Context and sessions
-
-Before the first request, µAgent loads one instruction file per directory from
-the repository root to the working directory, preferring `AGENTS.override.md`,
-then `AGENTS.md`, then `CLAUDE.md`. `~/.uagent` supplies global instructions.
-Everything loaded is listed at startup.
-
-The `memory` tool stores one markdown lesson under `<base>/memory`, global in
-`~/.uagent` or scoped to a workspace in its `.uagent`. Startup exposes only a
-small name/scope index; bodies are read on demand as non-authoritative evidence,
-so model-written text never joins human instructions automatically. Use
-`forget=true` to delete one explicitly.
-
-Use `/attach PATH` or repeat `--attach PATH` to add images and documents.
-Attachments are size-bounded and their encoded data is removed after the turn.
-The prompt and ordinary tool order stay stable for provider caching; rare
-state-only tools appear only while their action is valid. Date, working
-directory, and runtime hints are appended once and repeated only when they
-change.
-
-At 65% projected context the model may checkpoint; at 85% the request becomes
-urgent. At emergency pressure, a long tool turn can fold once between rounds;
-the exact request survives while completed tool traffic is summarized. See
-[checkpoint design](docs/CHECKPOINTS.md).
-
-Sessions are stored under `~/.uagent/history`. Debug JSONL traces are opt-in
-with `--debug[=PATH]` and may contain private source and reasoning.
-The global spinner names quiet model, tool, and background activity. Native web
-searches leave a compact source receipt; `/trace` shows the latest completed
-turn's pruned tool results and available search snippets.
-
-## Skills
-
-A skill is a directory under `<base>/skills` holding a `SKILL.md`: YAML front
-matter with a `description` and usually a `name`, then the procedure. The
-directory name is authoritative. Only the front matter is read at startup — it
-stays behind one fixed `skill` discovery schema — and the body reaches the
-model only when opened. An exact name opens directly; a short query opens a
-sole match or returns the matching names and descriptions. Owning more skills
-therefore does not enlarge every model request.
-
-`SKILL.md` is an open format that around thirty agents read, so a skill
-installed for any of them already works here. Directories are searched in
-increasing precedence, deduplicated by name:
-
-```
-~/.agents/skills  ~/.claude/skills  ~/.codex/skills  ~/.uagent/skills
-./.agents/skills  ./.claude/skills  ./.codex/skills  ./.uagent/skills
-```
-
-A workspace skill therefore overrides a user one, and µAgent's own overrides a
-vendor copy of the same name. `UAGENT_SKILL_PATH` replaces the list outright
-with a colon-separated one; `UAGENT_SKILL_EXCLUDE` hides comma-separated names
-without changing discovery. Startup reports how many were found. If the
-configured count limit is reached, higher-precedence entries displace
-lower-precedence ones.
-
-`SKILL.md` may reference sibling files; the tool result names the skill's
-directory so relative paths resolve. Skills add no privilege of their own — a
-skill that says to run a script does so through `run`, which still asks. Like
-`AGENTS.md`, a project skill is instructions from the repository, so read one
-before trusting a checkout.
-
-`install.sh` installs the bundled skills in `skills/` into `~/.uagent/skills`,
-never overwriting one already there.
-
-## MCP
-
-User MCP configuration lives in `~/.mcp.json`. Project configuration requires
-interactive trust or `--trust-project-config`. MCP tools use
-`<server>_<tool>` names. Image results from any MCP server are saved and
-attached to the model's next step.
-
-[Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) is
-the default MCP server. Its browser tools use the same MCP path as every other
-server. `chrome_session` exists only to start it lazily or switch between a
-fresh isolated profile and the user's Chrome. User mode requires Chrome remote
-debugging at `chrome://inspect/#remote-debugging`. The default `slim` toolset
-uses the upstream navigate/evaluate/screenshot primitives; request
-`toolset=full` for granular UI, network, console, or performance debugging.
-Slim navigation returns a bounded page-state observation in the same step, and
-screenshots attach automatically. Built-in Chrome actions that advertise
-`includeSnapshot` default it on to avoid a separate observation round; an
-explicit `false` is preserved. Custom MCP arguments pass through unchanged.
-`UAGENT_CHROME_MODE=user` changes the default mode;
-`UAGENT_CHROME_DEVTOOLS=0` disables the default server.
-
-```json
-{
-  "mcpServers": {
-    "example": {
-      "command": "npx",
-      "args": ["-y", "@example/mcp-server"],
-      "env": {"TOKEN": "${EXAMPLE_TOKEN}"}
-    }
-  }
-}
-```
-
-## Interactive commands
+## Commands
 
 | Command | Action |
 | --- | --- |
-| `/help` | Show command help |
-| `/attach PATH`, `/detach` | Manage next-turn attachments |
-| `/sessions`, `/reset` | Resume or reset a session |
-| `/models [QUERY]`, `/model MODEL` | Search all providers or switch directly |
-| `/effort LEVEL\|default` | Set provider reasoning effort |
-| `/compact` | Summarize active history |
-| `/trace` | Show the latest completed tool/search trace |
-| `/verbose` | Toggle expanded bounded tool summaries and results |
-| `/online` | Toggle OpenRouter online mode |
-| `/yolo` | Toggle automatic approval |
-| `/quit` | Exit |
+| `/models [QUERY]`, `/model MODEL` | Search or change route |
+| `/effort LEVEL\|default` | Set reasoning effort |
+| `/attach PATH`, `/detach` | Manage attachments |
+| `/context`, `/trace`, `/cost` | Inspect request, execution, and spend |
+| `/compact`, `/handoff ROUTE` | Fold context or change route |
+| `/sessions`, `/reset` | Resume or reset state |
+| `/verbose`, `/online`, `/yolo` | Toggle runtime behavior |
+| `/help`, `/quit` | Help or exit |
 
-`/model` persists the selected route unless `UAGENT_MODEL` is set. Escape
-interrupts an active response and opens steering; a second Escape resumes.
+Escape interrupts an active response and opens steering; a second Escape
+resumes.
 
 ## Development
 
@@ -237,7 +113,6 @@ interrupts an active response and opens steering; a second Escape resumes.
 uv sync --frozen
 uv run --frozen ruff check tests
 uv run --frozen ruff format --check tests
-
 cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug --output-on-failure
@@ -245,12 +120,8 @@ ctest --preset debug --output-on-failure
 
 First-party C++ follows the
 [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
-CI enforces the checked-in formatter, `clang-tidy`, identifier and control-flow
-rules, `cpplint`, warnings-as-errors builds, and tests on Linux and macOS.
-
-See [architecture](docs/ARCHITECTURE.md) and
-[operations](docs/OPERATIONS.md) for design, limits, configuration, and release
-checks. [Persistence](docs/PERSISTENCE.md) documents local state, and
-[CONTRIBUTING.md](CONTRIBUTING.md) defines extension requirements.
+See [architecture](docs/ARCHITECTURE.md), [operations](docs/OPERATIONS.md),
+[persistence](docs/PERSISTENCE.md), [testing](docs/TESTING.md), and
+[contributing](CONTRIBUTING.md).
 
 µAgent is a local single-user POSIX CLI, not an OS sandbox.

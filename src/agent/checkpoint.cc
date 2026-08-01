@@ -193,21 +193,19 @@ void Agent::ApplyCheckpoint(const std::string& state,
                                   {"deferred", true},
                                   {"skipped", std::move(skipped)}});
   printf("%s· checkpoint applied · %s → ~%s · %zu file%s · %zu result%s%s\n",
-         DIM(), FmtTokens(before_tokens).c_str(),
-         FmtTokens(ContextUsed()).c_str(), reread, reread == 1 ? "" : "s",
+         DIM(), FmtCount(before_tokens).c_str(),
+         FmtCount(ContextUsed()).c_str(), reread, reread == 1 ? "" : "s",
          retained_results, retained_results == 1 ? "" : "s", RST());
 }
 
 bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
                               int64_t& tool_count, int64_t step) {
-  if (g_debug.Enabled()) {
-    g_debug.Write("tool_call", {{"turn", turn_id_},
-                                {"step", step},
-                                {"id", call.id},
-                                {"name", call.name},
-                                {"arguments", call.args},
-                                {"text_protocol", text_mode}});
-  }
+  DebugLog("tool_call", {{"turn", turn_id_},
+                         {"step", step},
+                         {"id", call.id},
+                         {"name", call.name},
+                         {"arguments", call.args},
+                         {"text_protocol", text_mode}});
   CallTask task;
   task.tool = FindTool(tools_, call.name);
   task.args = json::parse(call.args, nullptr, false);

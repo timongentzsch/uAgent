@@ -44,14 +44,18 @@ struct WebSearchRoute {
   }
 };
 
+inline std::string SelectedWebSearchModel(const RuntimeConfig& config,
+                                          std::string fallback) {
+  return config.web_search_model.empty() ? fallback : config.web_search_model;
+}
+
 inline WebSearchRoute ProviderSearchRoute(WebSearchBackend backend,
                                           const NamedProvider* provider,
                                           const RuntimeConfig& config,
                                           std::string default_model) {
   if (!provider) return {};
   return {backend, provider->base_url, provider->api_key,
-          config.web_search_model.empty() ? std::move(default_model)
-                                          : config.web_search_model};
+          SelectedWebSearchModel(config, std::move(default_model))};
 }
 
 // Explicit search configuration wins. Otherwise use a compatible active
@@ -68,9 +72,7 @@ inline WebSearchRoute SelectWebSearchRoute(
   auto active = [&](WebSearchBackend backend, std::string model) {
     if (api.base_url.empty() || api.api_key.empty()) return WebSearchRoute{};
     return WebSearchRoute{backend, api.base_url, api.api_key,
-                          config.web_search_model.empty()
-                              ? std::move(model)
-                              : config.web_search_model,
+                          SelectedWebSearchModel(config, std::move(model)),
                           true};
   };
   auto explicit_route = [&](WebSearchBackend backend) {
@@ -82,9 +84,7 @@ inline WebSearchRoute SelectWebSearchRoute(
                             : openai_model;
     return WebSearchRoute{backend, StripTrailingSlashes(config.web_search_url),
                           config.web_search_api_key,
-                          config.web_search_model.empty()
-                              ? std::move(model)
-                              : config.web_search_model};
+                          SelectedWebSearchModel(config, std::move(model))};
   };
   auto environment_openai = [&] {
     std::string key = EnvStr("OPENAI_API_KEY");

@@ -56,11 +56,13 @@ struct Usage {
     int64_t reason = detail("completion_tokens_details", "reasoning_tokens");
     if (!reason) reason = detail("output_tokens_details", "reasoning_tokens");
     int64_t input_tokens = JsonValue(value, "prompt_tokens", int64_t{0});
-    if (!input_tokens)
+    if (!input_tokens) {
       input_tokens = JsonValue(value, "input_tokens", int64_t{0});
+    }
     int64_t output_tokens = JsonValue(value, "completion_tokens", int64_t{0});
-    if (!output_tokens)
+    if (!output_tokens) {
       output_tokens = JsonValue(value, "output_tokens", int64_t{0});
+    }
     input += input_tokens - cache;
     output += output_tokens - reason;
     cache_read += cache;

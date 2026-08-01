@@ -286,9 +286,19 @@ inline bool PythonScriptHasDependencies(const std::string& source) {
   }
   size_t open = source.find('[', dependencies);
   size_t close = open == std::string::npos ? open : source.find(']', open + 1);
-  return open == std::string::npos || close == std::string::npos ||
-         close >= end ||
-         !Trim(source.substr(open + 1, close - open - 1)).empty();
+  if (open == std::string::npos || close == std::string::npos || close >= end) {
+    return true;
+  }
+  std::string list = source.substr(open + 1, close - open - 1);
+  for (size_t start = 0; start < list.size();) {
+    size_t newline = list.find('\n', start);
+    std::string line = Trim(list.substr(start, newline - start));
+    if (line.starts_with('#')) line = Trim(line.substr(1));
+    if (!line.empty()) return true;
+    if (newline == std::string::npos) break;
+    start = newline + 1;
+  }
+  return false;
 }
 
 inline ToolResult ToolRunPython(ProcessSupervisor& supervisor,

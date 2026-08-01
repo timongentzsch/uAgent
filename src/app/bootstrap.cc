@@ -144,8 +144,9 @@ bool ProbeModel(Api& api) {
         std::string id = JsonValue(model, "id", "");
         if (id != api.model && id != base) continue;
         api.ctx_window = JsonValue(model, "context_length", int64_t{0});
-        if (!api.ctx_window)
+        if (!api.ctx_window) {
           api.ctx_window = JsonValue(model, "max_model_len", int64_t{0});
+        }
         if (!api.ctx_window && model.contains("meta") &&
             model["meta"].is_object()) {
           api.ctx_window = JsonValue(model["meta"], "n_ctx_train", int64_t{0});

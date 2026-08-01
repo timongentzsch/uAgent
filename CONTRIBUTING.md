@@ -22,7 +22,8 @@ over local exceptions, and preserve behavior before redesigning a boundary.
 
 Add a focused unit test for local behavior and a hermetic integration test for
 stateful or externally visible behavior. Parser changes should also preserve
-chunk-boundary equivalence.
+chunk-boundary equivalence. See [the test guide](docs/TESTING.md) before adding
+or changing a billable route scenario.
 
 ## Verify
 

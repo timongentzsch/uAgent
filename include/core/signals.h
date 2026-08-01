@@ -6,51 +6,37 @@
 // there is nothing to abort; handlers touch async-signal-safe state only.
 
 #include <signal.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#include <sys/types.h>
 
 #include <atomic>
-#include <cerrno>
 #include <csignal>
-#include <cstdio>
 #include <string>
-
-#include "include/core/term.h"
 
 namespace uagent {
 
-inline volatile sig_atomic_t g_streaming = 0;
-inline volatile sig_atomic_t g_steering_active = 0;
+extern volatile sig_atomic_t g_streaming;
+extern volatile sig_atomic_t g_steering_active;
+extern volatile sig_atomic_t g_terminal_resized;
 // argv[0], so the agent can re-invoke itself for a subagent. A bare name is
 // resolved by the child's shell via PATH; a relative one still works because
 // fork keeps the cwd.
-inline std::string g_argv0;
+void SetExecutablePath(std::string path);
+const std::string& ExecutablePath();
 
 // Signals may only touch sig_atomic_t. Steering runs on an ordinary C++ thread
 // and therefore uses a real atomic; abort_requested() joins the two domains.
-inline volatile sig_atomic_t g_signal_abort = 0;
-inline std::atomic<bool> g_thread_abort{false};
+extern volatile sig_atomic_t g_signal_abort;
+extern std::atomic<bool> g_thread_abort;
 inline constexpr int kFgMax = 16;  // concurrent foreground shells
-inline volatile sig_atomic_t g_child_pgids[kFgMax] = {};
+extern volatile sig_atomic_t g_child_pgids[kFgMax];
 inline constexpr int kMcpMax = 64;  // tracked MCP server processes
-inline volatile sig_atomic_t g_mcp_pids[kMcpMax] =
-    {};  // live MCP pgids — TERMed on exit
+extern volatile sig_atomic_t g_mcp_pids[kMcpMax];
 inline constexpr int kBgMax = 64;
-inline volatile sig_atomic_t g_bg_pids[kBgMax] = {};
+extern volatile sig_atomic_t g_bg_pids[kBgMax];
 
 // Pid slot tables read by the signal handler. Parallel tool workers claim slots
 // concurrently, so writers serialise here; the handler only ever reads.
-inline void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid,
-                     bool add) {
-  static std::mutex slots_mutex;
-  std::lock_guard<std::mutex> lock(slots_mutex);
-  for (int i = 0; i < count; ++i) {
-    if (add ? slots[i] == 0 : slots[i] == pid) {
-      slots[i] = add ? pid : 0;
-      return;
-    }
-  }
-}
+void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add);
 
 inline bool AbortRequested() {
   return g_signal_abort != 0 || g_thread_abort.load(std::memory_order_relaxed);
@@ -65,41 +51,8 @@ inline void ClearAbort() {
   g_signal_abort = 0;
 }
 
-inline void SigintHandler(int signal_number) {
-  if (signal_number == SIGINT && (g_streaming || g_steering_active)) {
-    g_signal_abort = 1;
-    return;
-  }
-  for (int i = 0; i < kFgMax; i++) {
-    if (g_child_pgids[i] > 0 &&
-        kill(-static_cast<pid_t>(g_child_pgids[i]), SIGKILL) != 0) {
-      kill(static_cast<pid_t>(g_child_pgids[i]),
-           SIGKILL);  // may not have reached setsid()
-    }
-  }
-  for (int i = 0; i < kBgMax; i++) {
-    if (g_bg_pids[i] > 0) {
-      pid_t pid = static_cast<pid_t>(g_bg_pids[i]);
-      kill(-pid, SIGKILL);
-      kill(pid, SIGKILL);
-      while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
-      }
-    }
-  }
-  for (int i = 0; i < kMcpMax; i++) {
-    if (g_mcp_pids[i] > 0) {  // whole group: servers spawn their own workers
-      kill(-static_cast<pid_t>(g_mcp_pids[i]), SIGTERM);
-      kill(static_cast<pid_t>(g_mcp_pids[i]), SIGTERM);
-    }
-  }
-  if (g_signal_tty) {
-    (void)(write(STDOUT_FILENO, kTerminalRestore,
-                 sizeof(kTerminalRestore) - 1) < 0);
-    (void)(write(STDOUT_FILENO, kTerminalModeReset,
-                 sizeof(kTerminalModeReset) - 1) < 0);
-  }
-  _exit(128 + signal_number);
-}
+void SigintHandler(int signal_number);
+void SigwinchHandler(int signal_number);
 
 // Run fn with Ctrl+C wired to cancel it instead of exiting the program. The
 // caller owns the abort flag because an outer operation may need to observe it.

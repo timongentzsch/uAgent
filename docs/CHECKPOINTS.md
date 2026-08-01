@@ -61,35 +61,18 @@ Model-authored state never receives the user role. The newest user request is
 therefore the only new authority. File paths must remain inside the workspace;
 credential paths are rejected. Missing files are noted and skipped.
 
-## Promotion evidence
-
-The boundary-deferred exact-literal implementation passed five DeepSeek V4
-Flash 500k-window runs: 4/4 facts retained, zero extra tools, and unchanged
-protected files on every run.
-
-Qwen3.7 Plus then passed:
-
-| Gate | Result | Prompt | Cache read | Safety |
-| --- | --- | ---: | ---: | --- |
-| 16k boundary application | pass | representative fixture | 29,440 | unchanged |
-| 500k-window pressure | pass | 325,378 tokens | 323,456 | 4/4 facts, no extra tools or changes |
-
-Qwen3 Coder Flash retained 4/4 facts but ignored both suggested and urgent
-checkpoint hints in two 500k runs. It is not the validated Qwen route.
-
-These results justified making `apply` the default. They do not prove every
-model/provider route is compliant. Use `UAGENT_CHECKPOINT_MODE=shadow` when
-evaluating a new route and revert to it if continuation quality regresses.
-
 ## Verification
+
+The live commands require an installed `uagent`, `uv`, and provider credit.
 
 ```sh
 python3 tests/context_policy_sim.py
-python3 tests/agent_workflow_live.py --run --scenario checkpoint
-python3 tests/agent_workflow_live.py --run --scenario checkpoint500k
+uagent eval --scenario checkpoint
+uagent eval --scenario checkpoint500k
 ```
 
 The live scenarios are billable. Normal CTest covers boundary-deferred apply,
 shadow behavior, malformed calls, corrections, exact literals, background
 invalidation, secret paths, multi-fold behavior, and deterministic 500k-window
-pressure without network access.
+pressure without network access. Route-specific evidence belongs in generated
+reports and profiles, not this document. See [the test guide](TESTING.md).

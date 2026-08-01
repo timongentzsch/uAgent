@@ -18,10 +18,13 @@ struct Options {
   bool yolo = false;
   bool trust_project = false;
   bool debug = false;
+  bool json = false;
+  bool json_stream = false;
   bool resume_latest = false;
   bool resume_pick = false;
   std::string debug_path;
   std::string prompt;
+  double budget = -1;
   std::vector<std::string> attach_paths;
 };
 

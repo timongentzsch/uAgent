@@ -221,11 +221,11 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
       McpError(name, "invalid config: " + config_error);
       continue;
     }
-    if (JsonBool(conf, "disabled")) {
+    if (JsonValue(conf, "disabled", false)) {
       McpNote(name, "disabled");
       continue;
     }
-    std::string type = JsonString(conf, "type", "stdio");
+    std::string type = JsonValue(conf, "type", "stdio");
     if (type != "stdio") {
       McpNote(name, "skipped (transport `" + type + "` not supported)");
       continue;

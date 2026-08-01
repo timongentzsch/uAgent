@@ -1,0 +1,352 @@
+// Copyright 2026 Timon Gentzsch
+
+#include "include/core/strings.h"
+
+#include <sys/ioctl.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cwchar>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "include/core/checked.h"
+#include "include/core/env.h"
+#include "include/core/term.h"
+
+namespace uagent {
+
+std::string Trim(const std::string& s) {
+  size_t a = s.find_first_not_of(" \t\r\n");
+  if (a == std::string::npos) return "";
+  size_t b = s.find_last_not_of(" \t\r\n");
+  return s.substr(a, b - a + 1);
+}
+
+void ReplaceAll(std::string& s, const std::string& from,
+                const std::string& to) {
+  if (from.empty()) return;
+  for (size_t pos = 0; (pos = s.find(from, pos)) != std::string::npos;
+       pos += to.size()) {
+    s.replace(pos, from.size(), to);
+  }
+}
+
+std::string AsciiLower(std::string text) {
+  std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return text;
+}
+
+bool ContainsCaseInsensitive(std::string text, const std::string& query) {
+  return query.empty() || AsciiLower(std::move(text)).find(AsciiLower(query)) !=
+                              std::string::npos;
+}
+
+std::string Unquote(std::string s) {
+  if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
+                        (s.front() == '\'' && s.back() == '\''))) {
+    s = s.substr(1, s.size() - 2);
+  }
+  return s;
+}
+
+std::string ShellQuote(const std::string& s) {
+  std::string q = "'";
+  for (char c : s) c == '\'' ? q += "'\\''" : q += c;
+  return q + "'";
+}
+
+std::vector<std::string> SplitPathList(const std::string& value,
+                                       char separator) {
+  std::vector<std::string> entries;
+  for (size_t begin = 0;;) {
+    size_t end = value.find(separator, begin);
+    entries.push_back(end == std::string::npos
+                          ? value.substr(begin)
+                          : value.substr(begin, end - begin));
+    if (end == std::string::npos) break;
+    begin = end + 1;
+  }
+  return entries;
+}
+
+size_t Utf8BoundaryBefore(const std::string& s, size_t offset) {
+  offset = std::min(offset, s.size());
+  while (offset > 0 && offset < s.size() &&
+         (static_cast<unsigned char>(s[offset]) & 0xC0) == 0x80) {
+    --offset;
+  }
+  return offset;
+}
+
+size_t Utf8BoundaryAfter(const std::string& s, size_t offset) {
+  offset = std::min(offset, s.size());
+  while (offset < s.size() &&
+         (static_cast<unsigned char>(s[offset]) & 0xC0) == 0x80) {
+    ++offset;
+  }
+  return offset;
+}
+
+std::string Utf8Prefix(std::string s, size_t cap) {
+  if (s.size() <= cap) return s;
+  s.resize(Utf8BoundaryBefore(s, cap));
+  return s;
+}
+
+std::string Utf8Trunc(std::string s, size_t cap) {
+  if (s.size() <= cap) return s;
+  return Utf8Prefix(std::move(s), cap) + "…";
+}
+
+size_t DisplayWidth(const std::string& s) {
+  std::mbstate_t state{};
+  size_t width = 0;
+  for (size_t offset = 0; offset < s.size();) {
+    wchar_t wide = 0;
+    size_t consumed =
+        std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
+    if (consumed == static_cast<size_t>(-1) ||
+        consumed == static_cast<size_t>(-2)) {
+      state = {};
+      ++offset;
+      ++width;
+      continue;
+    }
+    if (consumed == 0) consumed = 1;
+    int columns = ::wcwidth(wide);
+    if (columns > 0) width += static_cast<size_t>(columns);
+    offset += consumed;
+  }
+  return width;
+}
+
+std::string DisplayTrunc(std::string s, size_t columns) {
+  if (DisplayWidth(s) <= columns) return s;
+  if (columns == 0) return "";
+  size_t limit = columns - 1;  // reserve one column for …
+  std::mbstate_t state{};
+  size_t offset = 0, width = 0;
+  while (offset < s.size()) {
+    wchar_t wide = 0;
+    size_t consumed =
+        std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
+    int glyph_width = 1;
+    if (consumed == static_cast<size_t>(-1) ||
+        consumed == static_cast<size_t>(-2)) {
+      state = {};
+      consumed = 1;
+    } else {
+      if (consumed == 0) consumed = 1;
+      glyph_width = std::max(0, ::wcwidth(wide));
+    }
+    if (width + static_cast<size_t>(glyph_width) > limit) break;
+    width += static_cast<size_t>(glyph_width);
+    offset += consumed;
+  }
+  return s.substr(0, offset) + "…";
+}
+
+size_t JsonEstimatedBytes(const json& value) {
+  if (value.is_string()) {
+    return SaturatingAdd(value.get_ref<const std::string&>().size(), 2);
+  }
+  size_t total = 16;
+  if (value.is_array()) {
+    for (const json& item : value) {
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
+    }
+  } else if (value.is_object()) {
+    for (const auto& [key, item] : value.items()) {
+      total = SaturatingAdd(total, key.size());
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
+    }
+  }
+  return total;
+}
+
+std::string StripTrailingSlashes(std::string s) {
+  while (!s.empty() && s.back() == '/') s.pop_back();
+  return s;
+}
+
+std::string FirstLine(const std::string& s) {
+  return s.substr(0, s.find('\n'));
+}
+
+std::string OneLine(const std::string& s, size_t cap) {
+  return Utf8Trunc(FirstLine(s), cap);
+}
+
+std::string TerminalSafe(const std::string& s) {
+  if (!g_tty) return s;
+  std::string out;
+  out.reserve(s.size());
+  for (unsigned char c : s) {
+    if (c == '\n' || c == '\t' || c >= 0x20) {
+      if (c == 0x7f) {
+        out += "\\x7f";
+      } else {
+        out += static_cast<char>(c);
+      }
+    } else if (c == '\r') {
+      out += "\\r";
+    } else {
+      static constexpr char kHex[] = "0123456789abcdef";
+      out += "\\x";
+      out += kHex[c >> 4];
+      out += kHex[c & 15];
+    }
+  }
+  return out;
+}
+
+std::string TerminalSummary(const std::string& text, size_t reserved_columns) {
+  std::string summary = TerminalSafe(FirstLine(text));
+  size_t newline = text.find('\n');
+  if (newline != std::string::npos && newline + 1 < text.size()) {
+    summary += " …";
+  }
+  size_t width = static_cast<size_t>(std::max(
+      int64_t{1}, TerminalColumns() - static_cast<int64_t>(reserved_columns)));
+  return DisplayTrunc(std::move(summary), width);
+}
+
+std::string SpinnerLabel(std::string label) {
+  size_t columns =
+      static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 2));
+  return DisplayTrunc(TerminalSafe(label), columns);
+}
+
+uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    hash ^= static_cast<unsigned char>(data[i]);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+std::string UrlHost(std::string url) {
+  if (auto p = url.find("://"); p != std::string::npos) {
+    url = url.substr(p + 3);
+  }
+  if (auto p = url.find('/'); p != std::string::npos) {
+    url.resize(p);
+  }
+  if (auto p = url.rfind('@'); p != std::string::npos) {
+    url = url.substr(p + 1);
+  }
+  if (auto p = url.find(':'); p != std::string::npos) {
+    url.resize(p);
+  }
+  return AsciiLower(std::move(url));
+}
+
+bool OpenrouterUrl(std::string url) {
+  url = UrlHost(std::move(url));
+  constexpr const char* kSuffix = ".openrouter.ai";
+  return url == "openrouter.ai" || (url.size() > strlen(kSuffix) &&
+                                    url.compare(url.size() - strlen(kSuffix),
+                                                strlen(kSuffix), kSuffix) == 0);
+}
+
+bool LoopbackUrl(std::string url) {
+  std::string host = UrlHost(std::move(url));
+  return host == "127.0.0.1" || host == "localhost";
+}
+
+bool OpenrouterCompatibleUrl(std::string url) {
+  if (OpenrouterUrl(url)) return true;
+  url = StripTrailingSlashes(std::move(url));
+  return LoopbackUrl(url) && url.ends_with("/api/v1");
+}
+
+bool OpenaiUrl(std::string url) {
+  return UrlHost(std::move(url)) == "api.openai.com";
+}
+
+std::string UrlAuthority(std::string url) {
+  if (auto pos = url.find("://"); pos != std::string::npos) {
+    url = url.substr(pos + 3);
+  }
+  if (auto pos = url.find('/'); pos != std::string::npos) {
+    url.resize(pos);
+  }
+  if (auto pos = url.rfind('@'); pos != std::string::npos) {
+    url = url.substr(pos + 1);
+  }
+  return AsciiLower(std::move(url));
+}
+
+std::string RouteKey(const std::string& base_url, const std::string& provider,
+                     const std::string& model, const std::string& effort) {
+  return UrlAuthority(base_url) + "|" + provider + "|" + model + "|" + effort;
+}
+
+bool ExecutableOnPath(const std::string& name) {
+  const char* path_value = getenv("PATH");
+  if (!path_value || name.empty()) return false;
+  for (std::string directory : SplitPathList(path_value)) {
+    if (directory.empty()) directory = ".";
+    if (access((directory + "/" + name).c_str(), X_OK) == 0) return true;
+  }
+  return false;
+}
+
+std::string FmtCount(int64_t number) {
+  if (number < 1000) return std::to_string(number);
+  const char* suffix = "K";
+  double divisor = 1000.0;
+  if (number >= 1'000'000'000) {
+    suffix = "B";
+    divisor = 1'000'000'000.0;
+  } else if (number >= 1'000'000) {
+    suffix = "M";
+    divisor = 1'000'000.0;
+  }
+  std::ostringstream output;
+  output << std::fixed << std::setprecision(1)
+         << static_cast<double>(number) / divisor << suffix;
+  return output.str();
+}
+
+std::string FmtCost(double cost) {
+  std::ostringstream output;
+  output << '$' << std::fixed << std::setprecision(cost < 1.0 ? 4 : 2) << cost;
+  return output.str();
+}
+
+std::string FmtAgo(int64_t seconds) {
+  if (seconds < 60) return "just now";
+  int64_t minutes = seconds / 60;
+  int64_t hours = minutes / 60;
+  int64_t days = hours / 24;
+  if (days > 0) return std::to_string(days) + "d ago";
+  if (hours > 0) return std::to_string(hours) + "h ago";
+  return std::to_string(minutes) + "m ago";
+}
+
+int64_t TerminalColumns() {
+  struct winsize size{};
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col > 0) {
+    return size.ws_col;
+  }
+  return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
+}
+
+std::string Hex64(uint64_t value) {
+  std::ostringstream output;
+  output << std::hex << std::setfill('0') << std::setw(16) << value;
+  return output.str();
+}
+
+}  // namespace uagent

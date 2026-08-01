@@ -33,6 +33,13 @@ inline std::string Tilde(const std::string& path) {
   return path;
 }
 
+inline std::string ContextUsage(int64_t used, int64_t window) {
+  std::string context = FmtCount(used);
+  if (window <= 0) return context;
+  int64_t pct = (used * 100 + window - 1) / window;
+  return context + "/" + FmtCount(window) + " (" + std::to_string(pct) + "%)";
+}
+
 #if defined(HAVE_EDITLINE)
 inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
   std::vector<std::string> models, efforts{"default"};
@@ -62,7 +69,7 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
     printf("%s[%zu]%s %s%c %s", CYAN(), i + 1, RST(), active ? BOLD() : DIM(),
            active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
     if (candidate.info.context > 0) {
-      printf(" · ctx %s", FmtTokens(candidate.info.context).c_str());
+      printf(" · ctx %s", FmtCount(candidate.info.context).c_str());
     }
     if (!candidate.info.efforts.empty()) {
       printf(" · effort ");
@@ -113,13 +120,9 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   std::string host = UrlHost(api.base_url);
   int64_t used = agent.ContextUsed();
   std::string s = Tilde(CanonicalCwd()) + " · " + api.model + " @ " + host +
-                  " · ctx " + FmtTokens(used);
-  if (api.ctx_window > 0) {
-    int64_t pct = (used * 100 + api.ctx_window - 1) / api.ctx_window;
-    s += "/" + FmtTokens(api.ctx_window) + " (" + std::to_string(pct) + "%)";
-  }
+                  " · ctx " + ContextUsage(used, api.ctx_window);
   if (!api.reasoning_effort.empty()) s += " · effort " + api.reasoning_effort;
-  if (u.cache_read) s += " · cache " + FmtTokens(u.cache_read) + " total";
+  if (u.cache_read) s += " · cache " + FmtCount(u.cache_read) + " total";
   if (u.cost > 0) s += " · spent " + FmtCost(u.cost);
   if (processes.PendingCount()) {
     s += " · bg:";

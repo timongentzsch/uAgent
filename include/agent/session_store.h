@@ -42,6 +42,7 @@ struct SessionState {
   json side_effects = json::array();
   int64_t context_tokens = 0;
   Usage usage;
+  RouteUsage route_usage;
 };
 
 struct SessionRecord {

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -21,6 +22,16 @@ def event(event_name: str, **data: object) -> dict[str, object]:
 
 
 def main() -> int:
+    assert {name for name, scenario in live.SCENARIOS.items() if scenario.default} == {
+        "analysis",
+        "research",
+        "checkpoint",
+        "image",
+        "subagents",
+    }
+    assert not live.SCENARIOS["prompt"].default
+    assert not live.SCENARIOS["checkpoint500k"].default
+
     events = [
         event("model_response", duration_ms=100, first_event_ms=70, content="", tool_calls=[{}]),
         event("tool_batch", parallel=True),
@@ -94,6 +105,76 @@ def main() -> int:
         (root / "same.txt").write_text("changed", encoding="utf-8")
         changed = live.check_contract(events, before, live.workspace_snapshot(root), read_only=True)
         assert changed["workspace_changes"] == ["same.txt"]
+
+        profiles = root / "routes.json"
+        live.write_route_profiles(
+            profiles,
+            [
+                {
+                    "model": "vendor/flash",
+                    "route": "openrouter.ai||vendor/flash",
+                    "provider": "default",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "scenario": "checkpoint-apply",
+                    "passed": False,
+                    "elapsed_seconds": 2.0,
+                    "reported_cost": 0.02,
+                    "capabilities": {
+                        "parallel_hint_support": True,
+                        "checkpoint_apply": False,
+                        "image_support": None,
+                    },
+                },
+                {
+                    "model": "vendor/flash",
+                    "route": "openrouter.ai||vendor/flash",
+                    "provider": "default",
+                    "base_url": "https://openrouter.ai/api/v1",
+                    "scenario": "image-input",
+                    "passed": True,
+                    "elapsed_seconds": 1.0,
+                    "reported_cost": 0.01,
+                    "capabilities": {
+                        "parallel_hint_support": True,
+                        "checkpoint_apply": False,
+                        "image_support": True,
+                    },
+                },
+            ],
+        )
+        saved = json.loads(profiles.read_text(encoding="utf-8"))
+        profile = saved["routes"]["openrouter.ai||vendor/flash"]
+        assert profile["checkpoint_mode"] == "shadow"
+        assert profile["parallel_hint_support"] is True
+        assert profile["image_support"] is True
+        assert profile["p95_latency_ms"] == 2000
+        assert profiles.stat().st_mode & 0o777 == 0o600
+
+        failed_profiles = root / "failed-routes.json"
+        live.write_route_profiles(
+            failed_profiles,
+            [
+                {
+                    "model": "vendor/broken",
+                    "route": "localhost:8000||vendor/broken|low",
+                    "provider": "default",
+                    "base_url": "http://localhost:8000/v1",
+                    "scenario": "checkpoint-apply",
+                    "passed": False,
+                    "outcome": "error",
+                    "elapsed_seconds": 1.0,
+                    "reported_cost": 0.0,
+                    "capabilities": {
+                        "parallel_hint_support": True,
+                        "checkpoint_apply": False,
+                        "image_support": None,
+                    },
+                }
+            ]
+            * 2,
+        )
+        failed = json.loads(failed_profiles.read_text(encoding="utf-8"))
+        assert failed["routes"] == {}
     return 0
 
 

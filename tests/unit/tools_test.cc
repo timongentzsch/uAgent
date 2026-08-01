@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "include/api/stream.h"
+#include "include/tools/web_search.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -215,7 +216,61 @@ void TestOpenRouterServerSearch() {
              {"completion_tokens", 2},
              {"server_tool_use", {{"web_search_requests", 3}}}});
   CHECK(usage.web_searches == 3);
+  CHECK(!usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).web_searches == 3);
+  usage.Add({{"cost", 0.0}});
+  CHECK(usage.cost_reported);
+  CHECK(UsageFromJson(UsageJson(usage)).cost_reported);
+  Usage responses_usage;
+  responses_usage.Add({{"input_tokens", 11},
+                       {"input_tokens_details", {{"cached_tokens", 3}}},
+                       {"output_tokens", 7},
+                       {"output_tokens_details", {{"reasoning_tokens", 2}}}});
+  CHECK(responses_usage.input == 8);
+  CHECK(responses_usage.cache_read == 3);
+  CHECK(responses_usage.output == 5);
+  CHECK(responses_usage.reasoning == 2);
+
+  RuntimeConfig responses_config;
+  responses_config.web_search_backend = "responses";
+  responses_config.web_search_url = "https://search.example/v1/";
+  responses_config.web_search_api_key = "search-key";
+  responses_config.web_search_model = "search-model";
+  Api responses_api(responses_config);
+  responses_api.base_url = "https://inference.example/v1";
+  responses_api.api_key = "inference-key";
+  WebSearchRoute route = SelectWebSearchRoute(responses_api, {});
+  CHECK(route.backend == WebSearchBackend::kResponses);
+  CHECK(route.base_url == "https://search.example/v1");
+  CHECK(route.api_key == "search-key");
+  CHECK(route.model == "search-model");
+  json search_body =
+      WebSearchRequest(route, responses_config, "current information");
+  CHECK(search_body["tools"][0]["type"] == "web_search");
+  CHECK(search_body["include"][0] == "web_search_call.action.sources");
+  CHECK(search_body["max_tool_calls"] == 3);
+  CHECK(search_body["stream"] == false);
+
+  WebSearchResult normalized = ParseResponsesSearch(
+      {{"status", "completed"},
+       {"output",
+        json::array(
+            {{{"type", "web_search_call"},
+              {"action",
+               {{"sources", json::array({{{"url", "https://example.com/source"},
+                                          {"title", "Source"}}})}}}},
+             {{"type", "message"},
+              {"content",
+               json::array(
+                   {{{"type", "output_text"},
+                     {"text", "grounded answer"},
+                     {"annotations",
+                      json::array(
+                          {{{"type", "url_citation"},
+                            {"url", "https://example.com/source"}}})}}})}}})}});
+  CHECK(normalized.text == "grounded answer");
+  CHECK(normalized.searches == 1);
+  CHECK(CitationEntries(normalized.annotations).size() == 1);
 
   ChatResult result;
   StreamCtx stream;
@@ -293,11 +348,11 @@ void TestAttachmentEncoding() {
   error.clear();
   CHECK(InspectAttachment(image_path.string(), image_attachment, error));
   CHECK(ImageInputError(image_attachment).empty());
-  g_image_input = false;
+  SetImageInputAvailable(false);
   CHECK(ImageInputError(image_attachment).find(image_path.string()) !=
         std::string::npos);
   CHECK(ImageInputError(attachment).empty());
-  g_image_input = true;
+  SetImageInputAvailable(true);
 
   error.clear();
   json content =
@@ -309,9 +364,14 @@ void TestAttachmentEncoding() {
       json::array({{{"role", "user"}, {"content", std::move(content)}}});
   CHECK(StripImageContentParts(messages) == 1);
   CHECK(messages[0]["content"].size() == 2);
-  CHECK(messages[0]["content"][0]["text"].get<std::string>().find(
-            "1 image withheld") != std::string::npos);
+  CHECK(messages[0]["content"][0]["text"].get<std::string>().find("withheld") ==
+        std::string::npos);
   CHECK(messages[0]["content"][1].value("type", "") == "file");
+  SetImageInputAvailable(false);
+  CHECK(std::string(ModelImageInputInstruction())
+            .find("Image input unavailable") != std::string::npos);
+  SetImageInputAvailable(true);
+  CHECK(std::string(ModelImageInputInstruction()).empty());
 
   setenv("UAGENT_IMAGE_PROTOCOL", "iterm", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kIterm);
@@ -431,9 +491,29 @@ void TestGrepTool() {
     CHECK(run->parameters["properties"].contains("detach"));
     CHECK(run->parameters["properties"].contains("shell"));
     CHECK(run->timeout_s == 0);
+    CHECK(static_cast<bool>(run->validate));
+    CHECK(run->validate({{"command", "cmake --build build"}}).empty());
+    CHECK(run->validate({{"command", "python -c 'print(1')"}})
+              .find("run_python") != std::string::npos);
+    CHECK(
+        run->validate({{"command", "python3 script.py"}}).find("run_python") !=
+        std::string::npos);
+    CHECK(
+        run->validate({{"command", "pip install reportlab"}}).find("PEP 723") !=
+        std::string::npos);
+    CHECK(run->validate({{"command", "sudo tlmgr install tcolorbox"}})
+              .find("privileged commands") != std::string::npos);
   }
   const Tool* python = FindTool(lean_tools, "run_python");
   CHECK(python != nullptr);
+  CHECK(python &&
+        ToolDescription(*python).find("Never use this") != std::string::npos);
+  CHECK(python &&
+        python->parameters.value("additionalProperties", true) == false);
+  CHECK(python && python->parameters["required"] ==
+                      json::array({"path", "code", "packages"}));
+  CHECK(python && python->parameters["properties"]["code"]["type"] ==
+                      json::array({"string", "null"}));
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {
@@ -466,7 +546,7 @@ void TestPythonTool() {
             uv.string(),
             "#!/bin/sh\n"
             "while [ \"$#\" -gt 0 ]; do\n"
-            "  if [ \"$1\" = python ]; then shift; exec python3 \"$@\"; fi\n"
+            "  if [ \"$1\" = --script ]; then shift; exec python3 \"$1\"; fi\n"
             "  shift\n"
             "done\n"
             "exit 2\n")
@@ -481,33 +561,54 @@ void TestPythonTool() {
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
-  ToolResult result =
-      ToolRunPython(supervisor, "print(6 * 7)", json::array({"numpy>=2"}));
-  CHECK(result.output == "42\n");
+  ToolResult result = ToolRunPython(supervisor, root, "math.py", "print(6 * 7)",
+                                    json::array({"numpy>=2"}));
+  CHECK(result.output == "[script: .uagent/scratch/math.py]\n42\n");
+  fs::path script = root / ".uagent/scratch/math.py";
+  CHECK(fs::is_regular_file(script));
+  CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
+  std::ifstream script_input(script);
+  std::string script_source{std::istreambuf_iterator<char>(script_input),
+                            std::istreambuf_iterator<char>()};
+  CHECK(script_source.find("# /// script") == 0);
+  CHECK(script_source.find("\"numpy>=2\"") != std::string::npos);
+
+  CHECK(ToolEditFile(script.string(), {{"6 * 7", "7 * 7", false}}).Ok());
+  result = ToolRunPython(supervisor, root, "math.py", nullptr, nullptr);
+  CHECK(result.output == "[script: .uagent/scratch/math.py]\n49\n");
 
   fs::path marker = root / "injected";
-  result = ToolRunPython(supervisor, "print('safe')",
+  result = ToolRunPython(supervisor, root, "safe.py", "print('safe')",
                          json::array({"x; touch " + marker.string()}));
-  CHECK(result.output == "safe\n");
+  CHECK(result.output == "[script: .uagent/scratch/safe.py]\nsafe\n");
   CHECK(!fs::exists(marker));
 
-  result =
-      ToolRunPython(supervisor, "import time; time.sleep(.2); print('slow-ok')",
-                    json::array());
-  CHECK(result.output == "slow-ok\n");
+  result = ToolRunPython(supervisor, root, "slow.py",
+                         "import time; time.sleep(.2); print('slow-ok')",
+                         json::array());
+  CHECK(result.output == "[script: .uagent/scratch/slow.py]\nslow-ok\n");
   CHECK(supervisor.PendingCount() == 0);
 
-  result = ToolRunPython(supervisor, "import definitely_missing_uagent_package",
-                         json::array());
+  result =
+      ToolRunPython(supervisor, root, "missing.py",
+                    "import definitely_missing_uagent_package", json::array());
   CHECK(result.error == ToolErrorCode::kProcessFailed);
-  CHECK(result.output.starts_with("error: Python execution failed."));
-  CHECK(result.output.find("run_python.packages") != std::string::npos);
+  CHECK(result.output.find("error: Python execution failed.") !=
+        std::string::npos);
+  CHECK(result.output.find("PEP 723 header") != std::string::npos);
+
+  result = ToolRunPython(supervisor, root, "../escape.py", "print('x')",
+                         json::array());
+  CHECK(result.error == ToolErrorCode::kPermissionDenied);
+  result = ToolRunPython(supervisor, root, "math.py", nullptr, json::array());
+  CHECK(result.error == ToolErrorCode::kInvalidArguments);
 
   setenv("PATH", root.c_str(), 1);  // no uv
-  result = ToolRunPython(supervisor, "print('x')", json::array({"numpy"}));
+  result = ToolRunPython(supervisor, root, "dependency.py", "print('x')",
+                         json::array({"numpy"}));
   CHECK(result.error == ToolErrorCode::kUnavailable);
-  CHECK(result.output.find("packages require uv on PATH") != std::string::npos);
-  CHECK(result.output.find("Install") != std::string::npos);
+  CHECK(result.output.find("declares third-party dependencies") !=
+        std::string::npos);
 
   if (prior_path_value) {
     setenv("PATH", prior_path.c_str(), 1);

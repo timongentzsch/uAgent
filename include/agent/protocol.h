@@ -110,6 +110,12 @@ inline constexpr const char* kSystemPrompt =
     "Finish when the request is satisfied and validation passes. "
     "Delegate only isolated work likely to save multiple parent rounds; "
     "otherwise use direct parallel tools. "
+    "Use offered tools to perform requested actions; never ask the user to do "
+    "work an available tool can do or claim success without tool evidence. "
+    "Use run_python only for one-off scratch computation that supports another "
+    "task, never for Python functionality the user asked to implement. Put "
+    "requested Python code in normal project files and test it through the "
+    "project workflow. Never invoke bare python/pip through run or use sudo. "
     "Do not guess. Ask only when blocked. Commit or push only when asked. "
     "Follow applicable AGENTS.md or CLAUDE.md; nearer instructions win. Lead "
     "the final answer with the outcome and any blocker. Fit Markdown tables to "
@@ -123,10 +129,11 @@ inline std::string EnvironmentContext(const std::string& date,
   if (terminal_columns > 0) {
     context += "; terminal_columns=" + std::to_string(terminal_columns);
   }
-  if (!ExecutableOnPath("python") && ExecutableOnPath("python3")) {
-    context += "; python=python3";
-  }
   return context + "]";
+}
+
+inline json HarnessMessage(std::string content) {
+  return {{"role", "system"}, {"content", std::move(content)}};
 }
 
 inline std::string TextProtocolPrompt(const std::vector<Tool>& tools) {

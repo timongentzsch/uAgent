@@ -27,11 +27,11 @@ void AddReasoningDetails(const json& details, ChatResult& result) {
   if (!details.is_array()) return;
   for (const json& detail : details) {
     if (!detail.is_object()) continue;
-    int64_t index = JsonInt(detail, "index", -1);
+    int64_t index = JsonValue(detail, "index", -1);
     json* target = nullptr;
     if (index >= 0) {
       for (json& existing : result.reasoning_details) {
-        if (existing.is_object() && JsonInt(existing, "index", -1) == index) {
+        if (existing.is_object() && JsonValue(existing, "index", -1) == index) {
           target = &existing;
           break;
         }
@@ -141,7 +141,7 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   delta.activity = delta.activity || !event_delta["tool_calls"].empty();
   for (const json& tool_call : event_delta["tool_calls"]) {
     if (!tool_call.is_object()) continue;
-    ToolCall& target = tool_calls[JsonInt(tool_call, "index")];
+    ToolCall& target = tool_calls[JsonValue(tool_call, "index", int64_t{0})];
     if (tool_call.contains("id") && tool_call["id"].is_string()) {
       target.id += tool_call["id"].get<std::string>();
     }

@@ -51,4 +51,8 @@ void PrintConversationHistory(const Conversation& conversation,
   }
 }
 
+void PrintModelContext(const json& request) {
+  printf("%s\n", TerminalSafe(JsonDump(request, 2)).c_str());
+}
+
 }  // namespace uagent

@@ -53,7 +53,7 @@ inline ToolResult McpImageResult(const json& content) {
   // Queue it instead: it rides in on the next request and the model can
   // actually look at it. Printing it to the terminal was never what made it
   // readable — that only showed it to the human, on every single call.
-  ToolResult attached = g_attachments.Add(path);
+  ToolResult attached = Attachments().Add(path);
   if (!attached.Ok()) {
     std::string reason = std::move(attached.output);
     constexpr std::string_view kErrorPrefix = "error: ";

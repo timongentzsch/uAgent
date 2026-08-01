@@ -17,38 +17,53 @@ namespace uagent {
 
 using nlohmann::json;
 
-inline bool JsonBool(const json& object, const char* key,
-                     bool fallback = false) {
+inline bool JsonValue(const json& object, const char* key,
+                      bool fallback = false) {
   if (!object.is_object()) return fallback;
   auto value = object.find(key);
   return value != object.end() && value->is_boolean() ? value->get<bool>()
                                                       : fallback;
 }
 
-inline int64_t JsonInt(const json& object, const char* key,
-                       int64_t fallback = 0) {
+template <std::integral Integer>
+  requires(!std::same_as<Integer, bool>)
+inline Integer JsonValue(const json& object, const char* key,
+                         Integer fallback) {
   if (!object.is_object()) return fallback;
   auto value = object.find(key);
   if (value == object.end()) return fallback;
   if (value->is_number_unsigned()) {
     uint64_t number = value->get<uint64_t>();
-    return number <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max())
-               ? static_cast<int64_t>(number)
+    return number <= static_cast<uint64_t>(std::numeric_limits<Integer>::max())
+               ? static_cast<Integer>(number)
                : fallback;
   }
-  return value->is_number_integer() ? value->get<int64_t>() : fallback;
+  if (!value->is_number_integer()) return fallback;
+  int64_t number = value->get<int64_t>();
+  if constexpr (std::signed_integral<Integer>) {
+    if (number < static_cast<int64_t>(std::numeric_limits<Integer>::lowest()) ||
+        number > static_cast<int64_t>(std::numeric_limits<Integer>::max())) {
+      return fallback;
+    }
+  } else if (number < 0 ||
+             static_cast<uint64_t>(number) >
+                 static_cast<uint64_t>(std::numeric_limits<Integer>::max())) {
+    return fallback;
+  }
+  return static_cast<Integer>(number);
 }
 
-inline double JsonNumber(const json& object, const char* key,
-                         double fallback = 0.0) {
+template <std::floating_point Number>
+inline Number JsonValue(const json& object, const char* key, Number fallback) {
   if (!object.is_object()) return fallback;
   auto value = object.find(key);
-  return value != object.end() && value->is_number() ? value->get<double>()
-                                                     : fallback;
+  return value != object.end() && value->is_number()
+             ? static_cast<Number>(value->get<double>())
+             : fallback;
 }
 
-inline std::string JsonString(const json& object, const char* key,
-                              std::string fallback = {}) {
+inline std::string JsonValue(const json& object, const char* key,
+                             std::string fallback) {
   if (!object.is_object()) return fallback;
   auto value = object.find(key);
   return value != object.end() && value->is_string() ? value->get<std::string>()
@@ -63,45 +78,13 @@ inline std::string JsonErrorMessage(const json& object,
   auto error = object.find("error");
   if (error == object.end()) return fallback;
   if (error->is_string()) return error->get<std::string>();
-  return error->is_object() ? JsonString(*error, "message", std::move(fallback))
+  return error->is_object() ? JsonValue(*error, "message", std::move(fallback))
                             : fallback;
-}
-
-inline bool JsonValue(const json& object, const char* key, bool fallback) {
-  return JsonBool(object, key, fallback);
-}
-
-template <std::integral Integer>
-  requires(!std::same_as<Integer, bool>)
-inline Integer JsonValue(const json& object, const char* key,
-                         Integer fallback) {
-  int64_t value = JsonInt(object, key, static_cast<int64_t>(fallback));
-  if constexpr (std::signed_integral<Integer>) {
-    if (value < static_cast<int64_t>(std::numeric_limits<Integer>::lowest()) ||
-        value > static_cast<int64_t>(std::numeric_limits<Integer>::max())) {
-      return fallback;
-    }
-  } else if (value < 0 ||
-             static_cast<uint64_t>(value) >
-                 static_cast<uint64_t>(std::numeric_limits<Integer>::max())) {
-    return fallback;
-  }
-  return static_cast<Integer>(value);
-}
-
-template <std::floating_point Number>
-inline Number JsonValue(const json& object, const char* key, Number fallback) {
-  return static_cast<Number>(JsonNumber(object, key, fallback));
 }
 
 inline std::string JsonValue(const json& object, const char* key,
                              const char* fallback) {
-  return JsonString(object, key, fallback);
-}
-
-inline std::string JsonValue(const json& object, const char* key,
-                             const std::string& fallback) {
-  return JsonString(object, key, fallback);
+  return JsonValue(object, key, std::string(fallback));
 }
 
 inline json JsonValue(const json& object, const char* key, json fallback) {

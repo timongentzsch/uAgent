@@ -16,6 +16,7 @@ import tempfile
 import termios
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Enough of a PNG for the attachment inspector to accept it.
@@ -65,9 +66,13 @@ class Server:
                     response = response(self, body)
                     if response is None:
                         return
-                data = sse(response)
+                streaming = body.get("stream", True)
+                data = sse(response) if streaming else json.dumps(response).encode()
                 self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
+                self.send_header(
+                    "Content-Type",
+                    "text/event-stream" if streaming else "application/json",
+                )
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 try:
@@ -182,10 +187,21 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
         payloads = [payload] if isinstance(payload, bytes) else payload
         for index, item in enumerate(payloads):
             marker = None
+            resized_columns = None
             if isinstance(item, tuple):
-                item, marker = item
+                if len(item) == 3:
+                    item, marker, resized_columns = item
+                else:
+                    item, marker = item
+                    resized_columns = None
             start = len(output)
             os.write(master, item)
+            if resized_columns:
+                fcntl.ioctl(
+                    master,
+                    termios.TIOCSWINSZ,
+                    struct.pack("HHHH", 24, resized_columns, 0, 0),
+                )
             if index + 1 < len(payloads):
                 if marker is not None and not read_until(marker, start):
                     break
@@ -268,7 +284,7 @@ def test_empty_response_after_tools_recovers_once(root, home):
         contents = [
             message.get("content", "")
             for message in body["messages"]
-            if message.get("role") == "user"
+            if message.get("role") == "system"
         ]
         valid = any(
             "Return the final answer from existing results" in str(content) for content in contents
@@ -457,7 +473,14 @@ def test_project_instructions_precede_first_turn(root, home):
         contents = [str(m.get("content", "")) for m in messages]
         valid = (
             messages[0].get("role") == "system"
-            and messages[1].get("role") == "user"
+            and messages[1].get("role") == "system"
+            and any(
+                message.get("role") == "system"
+                and str(message.get("content", "")).startswith("[environment:")
+                for message in messages
+            )
+            and [message.get("content") for message in messages if message.get("role") == "user"]
+            == ["reply"]
             and "reply" in contents
             and contents.index("reply") > 1  # instructions precede the prompt
             and "<INSTRUCTIONS>" in instructions
@@ -577,7 +600,10 @@ def test_full_run_and_python_terminal_trace(root, home):
     server = Server(
         [
             tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
-            tool_call("run_python", {"code": python_code}),
+            tool_call(
+                "run_python",
+                {"path": "trace.py", "code": python_code, "packages": []},
+            ),
             event({"content": "trace-ok"}),
         ]
     )
@@ -597,13 +623,133 @@ def test_full_run_and_python_terminal_trace(root, home):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "print('python-one')",
-            "print('python-two')",
+            "run_python(trace.py (create))",
+            "[script: .uagent/scratch/trace.py]",
             "python-one",
             "python-two",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_tool_traces_persist_until_compaction(root, home):
+    python_code = "from pathlib import Path\nPath('python.txt').write_text('PYTHON-SOURCE')"
+    shell_command = "printf SHELL-SOURCE > shell.txt"
+
+    def use_python_trace(_, body):
+        calls = [call for message in body["messages"] for call in message.get("tool_calls", [])]
+        retained = any(
+            call.get("function", {}).get("name") == "run_python"
+            and "PYTHON-SOURCE" in call.get("function", {}).get("arguments", "")
+            for call in calls
+        )
+        return (
+            tool_call("run", {"command": shell_command})
+            if retained
+            else event({"content": "python-trace-missing"})
+        )
+
+    def verify_all_traces(_, body):
+        calls = [call for message in body["messages"] for call in message.get("tool_calls", [])]
+        names = [call.get("function", {}).get("name") for call in calls]
+        valid = names == ["run_python", "run"] and root.joinpath("python.txt").exists()
+        valid = valid and root.joinpath("shell.txt").exists()
+        return event({"content": "tool-retention-ok" if valid else "tool-retention-bad"})
+
+    server = Server(
+        [
+            tool_call(
+                "run_python",
+                {"path": "retained.py", "code": python_code, "packages": []},
+            ),
+            event({"content": "python-created"}),
+            use_python_trace,
+            event({"content": "shell-created"}),
+            verify_all_traces,
+        ]
+    )
+    try:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "create it\nmodify it\ncheck history\n/q\n",
+            "--yolo",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("python-trace-missing" not in result.stdout, result.stdout)
+        assert_true("tool-retention-ok" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 5, server.requests)
+    finally:
+        server.close()
+
+
+def test_python_scratch_script_can_be_edited_and_rerun(root, home):
+    script = root / ".uagent/scratch/calculation.py"
+
+    def edit_saved_script(_, body):
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        valid = script.is_file() and any(
+            "[script: .uagent/scratch/calculation.py]" in value and "value=6" in value
+            for value in results
+        )
+        return (
+            tool_call(
+                "edit_file",
+                {
+                    "path": str(script),
+                    "old": "value = 2 * 3",
+                    "new": "value = 2 * 5",
+                },
+            )
+            if valid
+            else event({"content": "scratch-create-bad"})
+        )
+
+    def rerun_saved_script(_, body):
+        return tool_call(
+            "run_python",
+            {"path": "calculation.py", "code": None, "packages": None},
+        )
+
+    def verify_rerun(_, body):
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        valid = any("value=10" in value for value in results)
+        source = script.read_text(encoding="utf-8") if script.exists() else ""
+        valid = valid and "# /// script" in source and "value = 2 * 5" in source
+        ignored = root / ".uagent/scratch/.gitignore"
+        valid = valid and ignored.read_text(encoding="utf-8") == "*\n"
+        return event({"content": "scratch-rerun-ok" if valid else "scratch-rerun-bad"})
+
+    server = Server(
+        [
+            tool_call(
+                "run_python",
+                {
+                    "path": "calculation.py",
+                    "code": "value = 2 * 3\nprint(f'value={value}')",
+                    "packages": [],
+                },
+            ),
+            edit_saved_script,
+            rerun_saved_script,
+            verify_rerun,
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "calculate")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "scratch-rerun-ok", result.stdout)
+        assert_true(len(server.requests) == 4, server.requests)
     finally:
         server.close()
 
@@ -827,12 +973,109 @@ def test_signal_exit_restores_terminal(root, home):
 
 
 def test_response_stats(root, home):
-    server = Server([event({"content": "stats-ok"}, usage={"completion_tokens": 4})])
+    def delayed_response(_, __):
+        time.sleep(0.05)
+        return event({"content": "stats-ok"}, usage={"completion_tokens": 4})
+
+    server = Server([delayed_response])
     try:
         result = run_dialog(root, base_env(home, server.url), "hello\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
         assert_true("tok/s" in result.stdout, result.stdout)
         assert_true("first " in result.stdout, result.stdout)
+        lines = result.stdout.splitlines()
+        stats_index = next(index for index, line in enumerate(lines) if "tok/s" in line)
+        throughput = float(lines[stats_index].split(" tok/s")[0].rsplit(" · ", 1)[1])
+        assert_true(20 < throughput < 500, throughput)
+        assert_true(
+            lines[stats_index + 1] == "─" * min(len(lines[stats_index]), 79),
+            result.stdout,
+        )
+    finally:
+        server.close()
+
+
+def test_context_command(root, home):
+    server = Server([])
+    try:
+        result = run_dialog(root, base_env(home, server.url), "/context\n/ctx\n/q\n")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.count('"role": "system"') == 2, result.stdout)
+        assert_true(result.stdout.count('"content":') >= 2, result.stdout)
+        assert_true(result.stdout.count('"messages":') == 2, result.stdout)
+        assert_true(result.stdout.count('"tools":') == 2, result.stdout)
+        assert_true(result.stdout.count('"name": "read_file"') == 2, result.stdout)
+        assert_true(result.stdout.count('"model": "test"') == 2, result.stdout)
+        assert_true(not server.requests, server.requests)
+    finally:
+        server.close()
+
+
+def test_input_redraw_survives_terminal_resize_and_delete(root, home):
+    original = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    expected = original[:-10] + "XYZ"
+
+    def answer(_, body):
+        user = next(
+            message.get("content")
+            for message in reversed(body["messages"])
+            if message.get("role") == "user"
+        )
+        return event({"content": "resize-ok" if user == expected else "resize-bad"})
+
+    server = Server([answer])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (original.encode(), b"", 20),
+                b"\x7f" * 10 + b"XYZ\n",
+                b"/q\n",
+            ],
+            columns=80,
+        )
+        text = output.decode(errors="replace")
+        assert_true(code == 0, text)
+        assert_true("resize-ok" in text, text)
+        assert_true(len(server.requests) == 1, server.requests)
+    finally:
+        server.close()
+
+
+def test_run_rejects_python_and_sudo_before_execution(root, home):
+    def after_python(_, body):
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        assert_true(any("use run_python" in value for value in results), results)
+        return tool_call("run", {"command": "sudo true"})
+
+    def after_sudo(_, body):
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        assert_true(
+            any("privileged commands are unavailable" in value for value in results),
+            results,
+        )
+        return event({"content": "guarded"})
+
+    server = Server(
+        [
+            tool_call("run", {"command": "python -c 'print(1)'"}),
+            after_python,
+            after_sudo,
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "work")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "guarded", result.stdout)
     finally:
         server.close()
 
@@ -1110,6 +1353,230 @@ def test_headless_debug_session_end(root, home):
         server.close()
 
 
+def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
+    first = tool_call("run", {"command": "printf tool-json"})
+    first["usage"] = {
+        "prompt_tokens": 7,
+        "completion_tokens": 3,
+        "completion_tokens_details": {"reasoning_tokens": 1},
+        "cost": 0.01,
+    }
+    server = Server(
+        [
+            first,
+            event(
+                {"content": "final-json-answer"},
+                usage={"prompt_tokens": 5, "completion_tokens": 2, "cost": 0.02},
+            ),
+        ]
+    )
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "run a tool",
+            "--json",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["schema"] == "uagent.headless.v1", envelope)
+        assert_true(envelope["answer"] == "final-json-answer", envelope)
+        assert_true(envelope["error"] is None, envelope)
+        assert_true(envelope["exit_code"] == 0, envelope)
+        assert_true(envelope["usage"]["input"] == 12, envelope)
+        assert_true(envelope["usage"]["output"] == 4, envelope)
+        assert_true(envelope["usage"]["reasoning"] == 1, envelope)
+        assert_true(abs(envelope["usage"]["cost"] - 0.03) < 1e-9, envelope)
+        assert_true(envelope["usage"]["cost_reported"], envelope)
+        assert_true(envelope["routes"], envelope)
+        assert_true(len(envelope["trace"]) == 1, envelope)
+        call = envelope["trace"][0]
+        assert_true(call["name"] == "run", call)
+        assert_true(call["arguments"] == {"command": "printf tool-json"}, call)
+        assert_true("tool-json" in call["result"], call)
+    finally:
+        server.close()
+
+
+def test_headless_json_error_is_machine_readable(root, home):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    result = run(
+        root,
+        base_env(home, f"http://127.0.0.1:{port}/v1"),
+        "-p",
+        "reply",
+        "--json",
+    )
+    assert_true(result.returncode == 1, result.returncode)
+    envelope = json.loads(result.stdout)
+    assert_true(envelope["exit_code"] == 1, envelope)
+    assert_true(envelope["answer"] == "", envelope)
+    assert_true("connection error:" in envelope["error"], envelope)
+    assert_true(
+        set(envelope) == {"schema", "answer", "error", "trace", "usage", "routes", "exit_code"},
+        envelope,
+    )
+    assert_true(not result.stderr, result.stderr)
+
+
+def test_headless_json_early_error_has_stable_schema(root, home):
+    result = run(root, base_env(home, "http://127.0.0.1:1/v1"), "--json", "--bad")
+    assert_true(result.returncode == 2, result)
+    envelope = json.loads(result.stdout)
+    assert_true(
+        set(envelope) == {"schema", "answer", "error", "trace", "usage", "routes", "exit_code"},
+        envelope,
+    )
+    assert_true(envelope["routes"] == {}, envelope)
+
+
+def test_eval_dispatch_uses_uv_and_selected_binary(root, home):
+    fake_bin = root / "fake-bin"
+    fake_bin.mkdir(exist_ok=True)
+    fake_uv = fake_bin / "uv"
+    fake_uv.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n", encoding="utf-8")
+    fake_uv.chmod(0o755)
+    evaluator = root / "eval.py"
+    evaluator.write_text("# evaluator fixture\n", encoding="utf-8")
+    env = base_env(home, "http://127.0.0.1:1/v1")
+    env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+    env["UAGENT_EVAL_SCRIPT"] = str(evaluator)
+    result = run(root, env, "eval", "--list-scenarios")
+    assert_true(result.returncode == 0, result.stderr)
+    arguments = result.stdout.splitlines()
+    assert_true(arguments[:4] == ["run", "--no-project", str(evaluator), "--run"], arguments)
+    assert_true("--binary" in arguments and "--list-scenarios" in arguments, arguments)
+
+
+def test_headless_json_stream_emits_lifecycle_events(root, home):
+    server = Server(
+        [
+            tool_call("list_dir", {"path": "."}),
+            event(
+                {"content": "stream-answer"},
+                usage={"prompt_tokens": 4, "completion_tokens": 2, "cost": 0.01},
+            ),
+        ]
+    )
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--json-stream",
+            "-p",
+            "inspect",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        records = [json.loads(line) for line in result.stdout.splitlines()]
+        assert_true(all(item["schema"] == "uagent.event.v1" for item in records), records)
+        types = [item["type"] for item in records]
+        assert_true(types[0] == "turn.started", types)
+        assert_true("tool.call" in types and "tool.result" in types, types)
+        assert_true("usage" in types and types[-1] == "answer", types)
+        assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
+    finally:
+        server.close()
+
+
+def test_session_budget_stops_before_the_next_call(root, home):
+    expensive = tool_call("list_dir", {"path": "."})
+    expensive["usage"] = {
+        "prompt_tokens": 10,
+        "completion_tokens": 2,
+        "cost": 0.06,
+    }
+    server = Server([expensive, event({"content": "too-late"})])
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--budget",
+            "0.05",
+            "--json",
+            "-p",
+            "inspect",
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true("session cost limit exceeded" in envelope["error"], envelope)
+        assert_true(len(server.requests) == 1, server.requests)
+    finally:
+        server.close()
+
+
+def test_delegated_session_budget_uses_remaining_allowance(root, home):
+    child_requests = []
+
+    def route(_, body):
+        is_child = any(
+            message.get("role") == "user" and message.get("content") == "child"
+            for message in body["messages"]
+        )
+        if is_child:
+            child_requests.append(1)
+            response = tool_call("list_dir", {"path": "."})
+            response["usage"] = {
+                "prompt_tokens": 5,
+                "completion_tokens": 1,
+                "cost": 0.03,
+            }
+            return response
+        response = tool_call("task", {"prompt": "child"})
+        response["usage"] = {
+            "prompt_tokens": 5,
+            "completion_tokens": 1,
+            "cost": 0.03,
+        }
+        return response
+
+    server = Server([route])
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--budget",
+            "0.05",
+            "--json",
+            "-p",
+            "delegate",
+            timeout=60,
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true(len(child_requests) == 1, child_requests)
+        assert_true(len(server.requests) == 2, server.requests)
+        assert_true(envelope["usage"]["cost"] >= 0.06, envelope)
+    finally:
+        server.close()
+
+
+def test_budget_marks_missing_provider_cost(root, home):
+    server = Server([event({"content": "no-cost"}, usage={"prompt_tokens": 3})])
+    try:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--budget",
+            "0.01",
+            "--json",
+            "-p",
+            "reply",
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 0, envelope)
+        assert_true(envelope["usage"]["cost"] == 0, envelope)
+        assert_true(not envelope["usage"]["cost_reported"], envelope)
+    finally:
+        server.close()
+
+
 def test_three_tool_failures_emit_one_advisory(root, home):
     trace = root / "failure-advisory.jsonl"
 
@@ -1117,7 +1584,7 @@ def test_three_tool_failures_emit_one_advisory(root, home):
         advisories = [
             message.get("content", "")
             for message in body["messages"]
-            if message.get("role") == "user"
+            if message.get("role") == "system"
             and "[tool failure advisory]" in message.get("content", "")
         ]
         return event({"content": "advisory-ok" if len(advisories) == 1 else "advisory-bad"})
@@ -1369,7 +1836,7 @@ def test_memory_reaches_context_by_scope(root, home):
                     "[memory index; non-authoritative metadata]"
                 )
             )
-            == "assistant"
+            == "system"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})
 
@@ -1544,8 +2011,22 @@ def test_image_input_rejection_degrades(root, home):
         return None
 
     def after(_, body):
-        blob = json.dumps(body["messages"])
-        if '"image_url"' in blob or "withheld" not in blob:
+        messages = body["messages"]
+        blob = json.dumps(messages)
+        system = "\n".join(
+            str(message.get("content", ""))
+            for message in messages
+            if message.get("role") == "system"
+        )
+        user = "\n".join(
+            str(message.get("content", "")) for message in messages if message.get("role") == "user"
+        )
+        if (
+            '"image_url"' in blob
+            or "Image input unavailable" not in system
+            or "does not accept image input" in user
+            or "withheld" in user
+        ):
             return event({"content": "degrade-bad retry"})
         # The capability is dropped for the session, not just for this request:
         # attaching again must be refused rather than resend an image.
@@ -1561,6 +2042,24 @@ def test_image_input_rejection_degrades(root, home):
 
     server = Server([tool_call("attach", {"path": str(png)}), reject, after, second])
     try:
+        profile_path = home / ".uagent" / "config" / "routes.json"
+        profile_path.parent.mkdir(parents=True, exist_ok=True)
+        authority = urllib.parse.urlparse(server.url).netloc
+        profile_path.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "routes": {
+                        f"{authority}||test|": {
+                            "samples": 2,
+                            "certified_at_unix": int(time.time()),
+                            "image_support": True,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
         result = run(workspace, base_env(home, server.url), "--yolo", "-p", "look")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "degrade-ok", result.stdout + result.stderr)
@@ -1568,6 +2067,7 @@ def test_image_input_rejection_degrades(root, home):
         # sends to /dev/null; the retry itself is what this test pins down.
         assert_true(len(server.requests) == 4, len(server.requests))
     finally:
+        profile_path.unlink(missing_ok=True)
         server.close()
 
 
@@ -2091,6 +2591,103 @@ def test_model_route_switch(root, home):
         second.close()
 
 
+def test_handoff_compacts_then_switches_route(root, home):
+    first = Server(
+        [
+            event({"content": "exploration complete"}),
+            event({"content": "distilled handoff state"}),
+        ]
+    )
+
+    def continued(_, body):
+        text = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        valid = (
+            body.get("model") == "strong-model"
+            and "distilled handoff state" in text
+            and "exploration complete" not in text
+        )
+        return event({"content": "handoff-ok" if valid else "handoff-bad"})
+
+    second = Server([continued])
+    providers = {
+        "cheap": {
+            "base_url": first.url,
+            "api_key": "cheap-key",
+            "models": {"flash": "flash-model"},
+        },
+        "strong": {
+            "base_url": second.url,
+            "api_key": "strong-key",
+            "models": {"main": "strong-model"},
+        },
+    }
+    try:
+        env = base_env(home, first.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["UAGENT_MODEL"] = "cheap/flash"
+        result = run_dialog(
+            root,
+            env,
+            "explore\n/handoff strong/main\ncontinue\n/cost\n/q\n",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("handoff-ok" in result.stdout, result.stdout)
+        assert_true("strong/main" in result.stdout, result.stdout)
+        assert_true("total" in result.stdout, result.stdout)
+        assert_true(len(first.requests) == 2, first.requests)
+        assert_true(len(second.requests) == 1, second.requests)
+    finally:
+        first.close()
+        second.close()
+
+
+def test_handoff_shadow_keeps_route_and_context(root, home):
+    def after_shadow(_, body):
+        text = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        valid = body.get("model") == "flash-model" and "exploration complete" in text
+        return event({"content": "shadow-ok" if valid else "shadow-bad"})
+
+    first = Server(
+        [
+            event({"content": "exploration complete"}),
+            event({"content": "candidate summary"}),
+            after_shadow,
+        ]
+    )
+    second = Server([event({"content": "wrong-route"})])
+    providers = {
+        "cheap": {
+            "base_url": first.url,
+            "api_key": "cheap-key",
+            "models": {"flash": "flash-model"},
+        },
+        "strong": {
+            "base_url": second.url,
+            "api_key": "strong-key",
+            "models": {"main": "strong-model"},
+        },
+    }
+    try:
+        env = base_env(home, first.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["UAGENT_MODEL"] = "cheap/flash"
+        env["UAGENT_CHECKPOINT_MODE"] = "shadow"
+        result = run_dialog(
+            root,
+            env,
+            "explore\n/handoff strong/main\ncontinue\n/q\n",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("shadow-ok" in result.stdout, result.stdout)
+        assert_true("route and context unchanged" in result.stdout, result.stdout)
+        assert_true(not second.requests, second.requests)
+    finally:
+        first.close()
+        second.close()
+
+
 def test_dynamic_provider_catalog_and_model(root, home):
     active_catalog = {"data": [{"id": "active-live"}]}
     first = Server(
@@ -2176,7 +2773,8 @@ def test_local_model_uses_openrouter_web_search_route(root, home):
             {
                 "choices": [
                     {"message": {"content": "search evidence" if valid else "search misrouted"}}
-                ]
+                ],
+                "usage": {"prompt_tokens": 4, "completion_tokens": 2, "cost": 0.02},
             }
         ).encode()
         handler.send_response(200)
@@ -2218,14 +2816,116 @@ def test_local_model_uses_openrouter_web_search_route(root, home):
             root,
             env,
             "--yolo",
+            "--json",
             "-p",
             "research the current topic",
             timeout=15,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "fallback-search-ok", result.stdout)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "fallback-search-ok", envelope)
+        search_authority = urllib.parse.urlparse(search.url).netloc
+        assert_true(
+            any(
+                route.startswith(f"{search_authority}|web_search|") for route in envelope["routes"]
+            ),
+            envelope,
+        )
+        assert_true(abs(envelope["usage"]["cost"] - 0.02) < 1e-9, envelope)
         assert_true(len(local.requests) == 2, local.requests)
         assert_true(len(search.requests) == 1, search.requests)
+    finally:
+        local.close()
+        search.close()
+
+
+def test_local_model_uses_independent_responses_web_search(root, home):
+    def verify_tool_result(_, body):
+        tool_results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        valid = any(
+            "grounded answer" in result and "https://example.com/source" in result
+            for result in tool_results
+        )
+        return event({"content": "responses-search-ok" if valid else "responses-search-bad"})
+
+    local = Server(
+        [
+            tool_call("web_search", {"query": "current topic"}),
+            verify_tool_result,
+        ]
+    )
+    search = Server(
+        [
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "web_search_call",
+                        "action": {
+                            "sources": [
+                                {
+                                    "url": "https://example.com/source",
+                                    "title": "Source",
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "grounded answer",
+                                "annotations": [
+                                    {
+                                        "type": "url_citation",
+                                        "url": "https://example.com/source",
+                                        "title": "Source",
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                ],
+                "usage": {
+                    "input_tokens": 12,
+                    "output_tokens": 6,
+                    "output_tokens_details": {"reasoning_tokens": 1},
+                },
+            }
+        ]
+    )
+    try:
+        env = base_env(home, local.url)
+        env.update(
+            {
+                "UAGENT_WEB_SEARCH_BACKEND": "responses",
+                "UAGENT_WEB_SEARCH_URL": search.url,
+                "UAGENT_WEB_SEARCH_API_KEY": "search-key",
+                "UAGENT_WEB_SEARCH_MODEL": "search-model",
+            }
+        )
+        result = run(
+            root,
+            env,
+            "--yolo",
+            "-p",
+            "research the current topic",
+            timeout=15,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "responses-search-ok", result.stdout)
+        assert_true(len(local.requests) == 2, local.requests)
+        assert_true(len(search.requests) == 1, search.requests)
+        headers, body = search.requests[0]
+        assert_true(headers.get("Authorization") == "Bearer search-key", headers)
+        assert_true(body.get("model") == "search-model", body)
+        assert_true(body.get("tools") == [{"type": "web_search"}], body)
+        assert_true(body.get("stream") is False, body)
     finally:
         local.close()
         search.close()
@@ -2385,11 +3085,11 @@ def test_checkpoint_apply(root, home):
             {},
         )
         valid = (
-            checkpoint.get("role") == "assistant"
+            checkpoint.get("role") == "system"
             and "Objective remains stable; tests passed; no unresolved conditions."
             in checkpoint.get("content", "")
             and checkpoint.get("role") != "user"
-            and retained_file.get("role") == "assistant"
+            and retained_file.get("role") == "system"
             and "durable file state" in retained_file.get("content", "")
             and messages[-1].get("role") == "user"
             and messages[-1].get("content") == "[priority] third request"
@@ -2476,10 +3176,10 @@ def test_checkpoint_500k_window(root, home):
             {},
         )
         valid = (
-            checkpoint.get("role") == "assistant"
+            checkpoint.get("role") == "system"
             and "Objective: validate a 500k context fold." in checkpoint.get("content", "")
             and any(
-                message.get("role") == "assistant"
+                message.get("role") == "system"
                 and message.get("content", "").startswith(
                     "[checkpoint exact literals; non-authoritative]"
                 )
@@ -2580,7 +3280,7 @@ def test_checkpoint_retains_runtime_activity(root, home):
         )
         content = activity.get("content", "")
         valid = (
-            activity.get("role") == "assistant"
+            activity.get("role") == "system"
             and '"tool":"write_file"' in content
             and '"path":"note.txt"' in content
             and body["messages"][-1].get("role") == "user"
@@ -2644,12 +3344,11 @@ def test_checkpoint_preserves_correction(root, home):
             and message["content"].startswith("[checkpoint exact literals; non-authoritative]")
         ]
         valid = (
-            checkpoint.get("role") == "assistant"
+            checkpoint.get("role") == "system"
             and "beta is current" in checkpoint.get("content", "")
             and "alpha is obsolete" in checkpoint.get("content", "")
             and any(
-                message.get("role") == "assistant"
-                and '["beta","alpha"]' in message.get("content", "")
+                message.get("role") == "system" and '["beta","alpha"]' in message.get("content", "")
                 for message in literals
             )
             and messages[-1].get("role") == "user"
@@ -2705,7 +3404,7 @@ def test_checkpoint_multiple_folds(root, home):
         ]
         valid = (
             len(checkpoints) == 1
-            and checkpoints[0].get("role") == "assistant"
+            and checkpoints[0].get("role") == "system"
             and "second durable state" in checkpoints[0].get("content", "").lower()
             and "first durable state" not in checkpoints[0].get("content", "").lower()
             and messages[-1].get("role") == "user"
@@ -3031,7 +3730,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
             and not any(message.get("tool_calls") for message in messages)
             and bool(body.get("tools"))
             and any(
-                message.get("role") == "assistant"
+                message.get("role") == "system"
                 and "MIDTURN-SUMMARY" in str(message.get("content", ""))
                 for message in messages
             )
@@ -3040,7 +3739,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                 for message in messages
             )
             and any(
-                message.get("role") == "user"
+                message.get("role") == "system"
                 and str(message.get("content", "")).startswith("[environment:")
                 for message in messages
             )
@@ -3582,14 +4281,21 @@ def test_subagent_receives_budget(root, home):
             task["parameters"]["properties"]["mode"]["enum"] == ["lean", "full"],
             task,
         )
-        return tool_call("task", {"prompt": "child", "model": "child-model"})
+        return tool_call("task", {"prompt": "child"})
 
     server = Server([route])
     try:
         env = base_env(home, server.url)
         env["UAGENT_PROVIDERS"] = json.dumps(
-            {"codex-local": {"base_url": server.url, "api_key": "local-key"}}
+            {
+                "codex-local": {
+                    "base_url": server.url,
+                    "api_key": "local-key",
+                    "models": {"flash": "child-model"},
+                }
+            }
         )
+        env["UAGENT_TASK_MODEL"] = "codex-local/flash"
         env["UAGENT_SUBAGENT_MAX_STEPS"] = "1"
         result = run(root, env, "--yolo", "-p", "delegate", timeout=60)
         assert_true(result.returncode == 0, result.stderr)
@@ -3826,9 +4532,11 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 
         server = Server([offer_output, request_output, verify_output])
         try:
+            inspect_env = base_env(home, server.url)
+            inspect_env["UAGENT_CONTEXT"] = "16384"
             result = run(
                 workspace,
-                base_env(home, server.url),
+                inspect_env,
                 "--yolo",
                 "-p",
                 "inspect the server from this new session",

@@ -12,6 +12,7 @@ namespace uagent {
 
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools);
+void PrintModelContext(const json& request);
 
 }  // namespace uagent
 

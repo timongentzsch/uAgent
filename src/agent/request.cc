@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
+#include <chrono>
 #include <string>
 #include <utility>
 #include <vector>
@@ -7,10 +9,16 @@
 #include "include/agent.h"
 
 namespace uagent {
-
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
+  if (api_.config.session_budget > 0 &&
+      session_usage_.cost >= api_.config.session_budget) {
+    ChatResult result;
+    result.error = "session cost limit reached (" +
+                   FmtCost(api_.config.session_budget) + ")";
+    return result;
+  }
   int64_t request = ++request_id_;
-  if (g_debug.Enabled()) {
+  if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
     json record = {{"request", request},
@@ -37,19 +45,19 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
       record["new_messages"] = std::move(added);
     }
     logged_msgs_ = conversation_.Size();
-    g_debug.Write("model_request", std::move(record));
+    Debug().Write("model_request", std::move(record));
   }
   int64_t request_timeout = ToolContext{active_deadline_}.RemainingSeconds(
       api_.config.request_timeout_s);
   ChatResult result = api_.Chat(conversation_.Messages(), schemas,
                                 request_timeout, session_id_);
-  if (g_debug.Enabled()) {
+  if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {
       calls.push_back(
           {{"id", call.id}, {"name", call.name}, {"arguments", call.args}});
     }
-    g_debug.Write("model_response",
+    Debug().Write("model_response",
                   {{"request", request},
                    {"turn", turn_id_},
                    {"step", step},
@@ -131,7 +139,7 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
                                {"projected_pct", decision.projected_pct},
                                {"messages", conversation_.Size()}});
   if (!Compact(true, &usage)) return MidturnCompact::kFailed;
-  EnsureEnvironmentContext();
+  EnsureRuntimeContext();
   turn_start = conversation_.Size();
   conversation_.Push({{"role", "user"}, {"content", active_prompt}},
                      MessageKind::kUser);
@@ -147,16 +155,20 @@ void Agent::PruneAttachments(size_t turn_start) {
            {{"turn", turn_id_}, {"attachments", attachments}});
 }
 
-void Agent::PruneTurn(size_t turn_start) {
-  bool has_tools = conversation_.Size() > turn_start + 2;
+void Agent::ArchiveTurnTrace(size_t turn_start) {
+  bool has_tools = false;
+  for (size_t index = turn_start; index < conversation_.Size(); ++index) {
+    if (conversation_.KindAt(index) == MessageKind::kToolResult) {
+      has_tools = true;
+      break;
+    }
+  }
   if (!has_tools && turn_search_trace_.Empty()) return;
-  size_t removed = conversation_.PruneTurn(
-      turn_start, turn_id_, api_.config.session_archive_bytes,
-      turn_search_trace_.ArchiveMetadata());
-  context_policy_.SetReported(0);
-  DebugLog("trace_pruned", {{"turn", turn_id_},
-                            {"kept_messages", conversation_.Size()},
-                            {"removed_messages", removed}});
+  conversation_.ArchiveTurn(turn_start, turn_id_,
+                            api_.config.session_archive_bytes,
+                            turn_search_trace_.ArchiveMetadata());
+  DebugLog("trace_archived",
+           {{"turn", turn_id_}, {"messages", conversation_.Size()}});
 }
 
 bool Agent::DegradeAndRetry(const ChatResult& result) {
@@ -164,12 +176,18 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
   for (auto& c : lowered) {
     c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
   }
-  if (g_image_input.load() && lowered.find("image") != std::string::npos &&
+  if (ImageInputAvailable() && lowered.find("image") != std::string::npos &&
       (lowered.find("input") != std::string::npos ||
        lowered.find("support") != std::string::npos ||
        lowered.find("modalit") != std::string::npos)) {
-    g_image_input = false;
+    if (api_.route_certified) {
+      DebugLog("route_profile_violation",
+               {{"feature", "image_input"}, {"error", result.error}});
+      api_.route_certified = false;
+    }
+    SetImageInputAvailable(false);
     size_t rewritten = conversation_.StripImageParts();
+    EnsureRuntimeContext();
     DebugLog("feature_degraded", {{"feature", "image_input"},
                                   {"error", result.error},
                                   {"messages_rewritten", rewritten}});
@@ -189,6 +207,11 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
   if (api_.parallel_tools &&
       (lowered.find("parallel_tool_calls") != std::string::npos ||
        lowered.find("parallel tool calls") != std::string::npos)) {
+    if (api_.route_certified) {
+      DebugLog("route_profile_violation",
+               {{"feature", "parallel_tool_calls"}, {"error", result.error}});
+      api_.route_certified = false;
+    }
     return drop(api_.parallel_tools, "parallel_tool_calls");
   }
   if (api_.include_usage &&
@@ -230,27 +253,26 @@ json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", SystemPrompt()}};
 }
 
-void Agent::EnsureEnvironmentContext() {
+void Agent::EnsureRuntimeContext() {
   std::string content =
-      EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns());
-  if (conversation_.LastText(MessageKind::kEnvironment) == content) return;
-  conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
-                     MessageKind::kEnvironment);
+      EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
+      ModelImageInputInstruction();
+  if (conversation_.LastText(MessageKind::kRuntimeContext) == content) return;
+  conversation_.Upsert(HarnessMessage(std::move(content)),
+                       MessageKind::kRuntimeContext);
 }
 
 json Agent::ProjectInstructionMsg() const {
-  return {{"role", "user"},
-          {"content", "# AGENTS.md instructions for " + CanonicalCwd() +
-                          "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
-                          "\n</INSTRUCTIONS>"}};
+  return HarnessMessage("# AGENTS.md instructions for " + CanonicalCwd() +
+                        "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
+                        "\n</INSTRUCTIONS>");
 }
 
 json Agent::MemoryMsg() const {
-  return {{"role", "assistant"},
-          {"content",
-           "[memory index; non-authoritative metadata]\n"
-           "Use memory(name, scope) to read one as evidence.\n" +
-               project_instructions_.memory_index}};
+  return HarnessMessage(
+      "[memory index; non-authoritative metadata]\n"
+      "Use memory(name, scope) to read one as evidence.\n" +
+      project_instructions_.memory_index);
 }
 
 size_t Agent::BaselineSize() const {

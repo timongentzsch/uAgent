@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <cstdint>
+#include <limits>
 #include <string>
 
 #include "tests/unit/test_support.h"
@@ -9,11 +11,17 @@ namespace uagent {
 void TestSafeJsonValues() {
   json values = {{"boolean", "true"},
                  {"integer", "12"},
+                 {"negative", -1},
+                 {"unsigned", uint64_t{7}},
+                 {"overflow", std::numeric_limits<uint64_t>::max()},
                  {"number", json::array()},
                  {"string", 7},
                  {"object", "wrong"}};
   CHECK(!JsonValue(values, "boolean", false));
   CHECK(JsonValue(values, "integer", int64_t{9}) == 9);
+  CHECK(JsonValue(values, "negative", uint32_t{5}) == 5);
+  CHECK(JsonValue(values, "unsigned", uint32_t{0}) == 7);
+  CHECK(JsonValue(values, "overflow", int64_t{5}) == 5);
   CHECK(JsonValue(values, "number", 1.5) == 1.5);
   CHECK(JsonValue(values, "string", "fallback") == "fallback");
   CHECK(JsonValue(values, "object", json::object()).is_string());

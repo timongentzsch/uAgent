@@ -91,7 +91,7 @@ inline ToolResult AttachChromeScreenshot(ToolResult result) {
       extension != ".webp" && extension != ".gif") {
     return result;
   }
-  ToolResult attached = g_attachments.Add(path);
+  ToolResult attached = Attachments().Add(path);
   if (!attached.Ok()) {
     return ToolFailure(attached.error,
                        result.output + "\n" + std::move(attached.output));

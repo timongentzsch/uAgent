@@ -117,8 +117,7 @@ inline std::vector<std::string> ModelFacingToolResults(
 
 inline void LogToolResult(const CallTask& task, const ToolCall& call,
                           int64_t turn, int64_t step) {
-  if (!g_debug.Enabled()) return;
-  g_debug.Write(
+  DebugLog(
       "tool_result",
       {{"turn", turn},
        {"step", step},
@@ -141,27 +140,26 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
-  if (g_steering.Requested() || AbortRequested()) {
-    task.result = ToolCancelled(g_steering.Requested() ? "cancelled by steering"
-                                                       : "cancelled by user");
-    task.trace_status = g_steering.Requested() ? "steered" : "cancelled";
+  if (SteeringState().Requested() || AbortRequested()) {
+    task.result =
+        ToolCancelled(SteeringState().Requested() ? "cancelled by steering"
+                                                  : "cancelled by user");
+    task.trace_status = SteeringState().Requested() ? "steered" : "cancelled";
     LogToolResult(task, call, turn, step);
     return;
   }
-  if (g_debug.Enabled()) {
-    g_debug.Write("tool_start", {{"turn", turn},
-                                 {"step", step},
-                                 {"id", call.id},
-                                 {"name", call.name},
-                                 {"arguments", task.args}});
-  }
+  DebugLog("tool_start", {{"turn", turn},
+                          {"step", step},
+                          {"id", call.id},
+                          {"name", call.name},
+                          {"arguments", task.args}});
   int64_t timeout =
       task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
   ToolContext call_context = context.WithTimeout(timeout);
   task.result = task.tool->run(task.args, call_context);
   task.result.output =
       CapResult(EscapeToolTags(task.result.output), ResultCharLimit(task));
-  if (g_steering.Requested()) {
+  if (SteeringState().Requested()) {
     task.result.status = CompletionStatus::kCancelled;
     task.result.error = ToolErrorCode::kNone;
     task.trace_status = "steered";

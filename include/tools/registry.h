@@ -184,7 +184,7 @@ inline std::vector<Tool> BuiltinTools(
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"}},"required":["path"]})json"),
       [](const json& a, const ToolContext&) {
-        return g_attachments.Add(JsonValue(a, "path", ""));
+        return Attachments().Add(JsonValue(a, "path", ""));
       }));
   attach.parallel_safe = true;
   attach.max_calls_per_turn = 4;  // each one rides on the next request
@@ -192,8 +192,11 @@ inline std::vector<Tool> BuiltinTools(
   Tool& run = AddTool(
       tools,
       MakeTool("run",
-               "Run a command to completion in cwd (bash default; omit cd; no "
-               "stdin). Use detach only for persistent terminal_output.",
+               "Run a non-privileged project or shell command in cwd (bash "
+               "default; omit cd; no stdin or sudo). For Python projects use "
+               "their existing runner such as uv run or pytest; run_python is "
+               "only for one-off scratch computation. Use detach only for "
+               "persistent terminal_output.",
                schema(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
@@ -207,6 +210,9 @@ inline std::vector<Tool> BuiltinTools(
                      JsonValue(a, "shell", "bash"));
                }));
   run.mutating = true;
+  run.validate = [](const json& a) {
+    return RunCommandPolicyError(JsonValue(a, "command", ""));
+  };
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
   // Each call owns its process group and log, so independent commands
@@ -217,24 +223,33 @@ inline std::vector<Tool> BuiltinTools(
       tools,
       MakeTool(
           "run_python",
-          "Run isolated uv Python; list third-party packages. Environments "
-          "cache; pip/venv state does not. Save plots for show_image.",
-          schema(R"json({"type":"object","properties":{
-                    "code":{"type":"string"},
-                    "packages":{"type":"array","items":{"type":"string"},"maxItems":12,
-                      "description":"PEP 508 requirements; omit stdlib"}},
-                    "required":["code"]})json"),
-          [&supervisor](const json& a, const ToolContext& context) {
-            return ToolRunPython(supervisor, JsonValue(a, "code", ""),
-                                 JsonValue(a, "packages", json::array()),
-                                 context);
+          "Create or rerun a one-off Python scratch script used to accomplish "
+          "another task when shell scripting is insufficient. Never use this "
+          "for Python functionality the user asked to implement: edit normal "
+          "project files and use the project's test runner instead. Scratch "
+          "scripts live in .uagent/scratch; edit them with read_file/edit_file "
+          "and rerun with null code and packages. Dependencies use PEP 723 and "
+          "an isolated uv environment.",
+          schema(
+              R"json({"type":"object","additionalProperties":false,"properties":{
+                    "path":{"type":"string",
+                      "description":"Stable relative .py path under .uagent/scratch, e.g. plots/functions.py."},
+                    "code":{"type":["string","null"],
+                      "description":"Script body when creating/replacing; null reruns the existing file after read_file/edit_file changes. Do not include PEP 723 metadata."},
+                    "packages":{"type":["array","null"],"items":{"type":"string"},"maxItems":12,
+                      "description":"PEP 508 dependencies when code is provided ([] for stdlib); null when rerunning."}},
+                    "required":["path","code","packages"]})json"),
+          [&supervisor, workspace](const json& a, const ToolContext& context) {
+            return ToolRunPython(
+                supervisor, workspace, JsonValue(a, "path", ""),
+                JsonValue(a, "code", json(nullptr)),
+                JsonValue(a, "packages", json(nullptr)), context);
           }));
   python.mutating = true;
   python.summary = [](const json& a) {
-    std::string summary = JsonValue(a, "code", "");
-    size_t packages = JsonValue(a, "packages", json::array()).size();
-    return packages ? summary + "\n[packages: " + JsonDump(a["packages"]) + "]"
-                    : summary;
+    std::string path = JsonValue(a, "path", "");
+    return a.contains("code") && a["code"].is_string() ? path + " (create)"
+                                                       : path + " (rerun)";
   };
   python.timeout_s = 0;  // bounded by the turn; no model-driven polling
 

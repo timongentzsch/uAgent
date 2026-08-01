@@ -2,9 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_CORE_FS_H_
 #define UAGENT_INCLUDE_CORE_FS_H_
-// Agent directories and crash-safe file writing. The base directory is the
-// workspace's .uagent when it exists, else ~/.uagent; paths are built here
-// so no caller has to know which one is in play.
+// Agent directories and crash-safe file writing. Global state stays under
+// ~/.uagent; explicitly project-scoped files use the workspace's .uagent.
 
 #include <fcntl.h>
 #include <pwd.h>
@@ -70,25 +69,17 @@ inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
 
-// The workspace's ./.uagent when that directory already exists, else the global
-// one. Never created here: a project opts in by making the directory itself.
-// Recomputed per call rather than cached, so tests can move HOME and cwd.
-inline std::string UagentBase() {
-  std::error_code ec;
-  std::filesystem::path local = ProjectBase(std::filesystem::current_path(ec));
-  if (!ec && std::filesystem::is_directory(local, ec)) return local.string();
-  return GlobalBase();
-}
-
 inline std::string UagentConfigPath() {
   std::string home = UserHome();
   return home.empty() ? "" : home + "/.uagent/.config";
 }
 
-// Project settings live beside the workspace, and only when it opted in.
+// The path is stable even before the file exists: scratch state may also create
+// .uagent, but only this specific file opts a workspace into local settings.
 inline std::string ProjectConfigFilePath() {
-  std::string base = UagentBase();
-  return base == GlobalBase() ? "" : base + "/.config";
+  std::error_code ec;
+  std::filesystem::path cwd = std::filesystem::current_path(ec);
+  return ec ? "" : (ProjectBase(cwd) / ".config").string();
 }
 
 // Atomic shared writer for config, trust state, tools, and preferences. A temp
@@ -176,12 +167,6 @@ inline std::string MakePrivateDir(const std::string& base, const char* sub) {
 // grant itself — any of them.
 inline std::string UagentDir(const char* sub) {
   return MakePrivateDir(GlobalBase(), sub);
-}
-
-// ./.uagent/<sub> when the workspace opted in, else the global directory. Only
-// memories and the uv cache follow the workspace.
-inline std::string UagentScopedDir(const char* sub) {
-  return MakePrivateDir(UagentBase(), sub);
 }
 
 inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,

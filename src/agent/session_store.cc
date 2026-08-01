@@ -67,7 +67,8 @@ json StateJson(const SessionState& state) {
           {"pending_checkpoint", state.pending_checkpoint},
           {"side_effects", state.side_effects},
           {"context_tokens", state.context_tokens},
-          {"usage", UsageJson(state.usage)}};
+          {"usage", UsageJson(state.usage)},
+          {"route_usage", RouteUsageJson(state.route_usage)}};
 }
 
 }  // namespace
@@ -170,6 +171,8 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   record.state.context_tokens =
       std::max(int64_t{0}, state["context_tokens"].get<int64_t>());
   record.state.usage = UsageFromJson(state["usage"]);
+  record.state.route_usage =
+      RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
   return {{}, std::move(record)};
 }
 

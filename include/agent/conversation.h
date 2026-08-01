@@ -20,7 +20,7 @@ enum class MessageKind {
   kAssistant,
   kToolResult,
   kAttachment,
-  kEnvironment,
+  kRuntimeContext,
   kInternal,
 };
 
@@ -51,6 +51,7 @@ class Conversation {
                        const json* memories);
 
   void Push(json message, MessageKind kind);
+  void Upsert(json message, MessageKind kind);
   void PopBack();
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
@@ -63,7 +64,7 @@ class Conversation {
   std::vector<std::string> RecentToolResults(int64_t count) const;
 
   size_t PruneAttachments(size_t begin);
-  size_t PruneTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
+  void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
                    json metadata);
   size_t StripImageParts();
 

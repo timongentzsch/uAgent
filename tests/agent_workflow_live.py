@@ -9,6 +9,7 @@ environment but never printed or written to the fixture workspace.
 from __future__ import annotations
 
 import argparse
+import base64
 import contextlib
 import hashlib
 import json
@@ -19,7 +20,9 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,6 +35,10 @@ ASTROPY_ARCHIVE_SHA256 = "4ffc67512585ebd76f93abe9544e3563f826ccf70e1576492d3f21
 ASTROPY_ARCHIVE_URL = "https://codeload.github.com/astropy/astropy/tar.gz/" + ASTROPY_COMMIT
 SWE_BENCH_INSTANCE = "astropy__astropy-12907"
 SWE_BENCH_URL = "https://huggingface.co/datasets/SWE-bench/SWE-bench_Verified"
+ROUTE_PROFILES = Path.home() / ".uagent" / "config" / "routes.json"
+RED_PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII="
+)
 
 
 def load_config(path: Path) -> dict[str, str]:
@@ -69,6 +76,13 @@ class Result:
     peak_rss_bytes: int = 0
     contract: dict[str, Any] | None = None
     provenance: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True)
+class Scenario:
+    run: Callable[[Path, Path, Path, dict[str, str]], Result]
+    description: str
+    default: bool = True
 
 
 def snapshot_archive(root: Path) -> Path:
@@ -434,6 +448,7 @@ def run_provenance(binary: Path, workspace: Path, events: list[dict[str, Any]]) 
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
         "base_url": ready.get("base_url", ""),
         "resolved_model": ready.get("model", ""),
+        "resolved_effort": ready.get("reasoning_effort", ""),
         "fixture": {
             "repository": "astropy/astropy",
             "commit": ASTROPY_COMMIT,
@@ -459,6 +474,7 @@ def result_summary(model: str, effort: str, trial: int, result: Result) -> dict[
         "output_tokens": int(usage.get("output") or 0),
         "reasoning_tokens": int(usage.get("reasoning") or 0),
         "reported_cost": float(usage.get("cost") or 0),
+        "cost_reported": bool(usage.get("cost_reported")),
         "model_requests": sum(event.get("event") == "model_response" for event in result.events),
         "tool_calls": sum(event.get("event") == "tool_result" for event in result.events),
         "peak_rss_bytes": result.peak_rss_bytes,
@@ -466,11 +482,52 @@ def result_summary(model: str, effort: str, trial: int, result: Result) -> dict[
         "contract": result.contract or {},
         "provenance": result.provenance or {},
         "detail": result.detail,
+        "capabilities": {
+            "parallel_hint_support": not any(
+                event.get("event") == "feature_degraded"
+                and event.get("data", {}).get("feature") == "parallel_tool_calls"
+                for event in result.events
+            ),
+            "checkpoint_apply": result.name.startswith("checkpoint")
+            and result.passed
+            and any(event.get("event") == "checkpoint_applied" for event in result.events),
+            "image_support": result.passed if result.name == "image-input" else None,
+        },
     }
 
 
 def model_slug(model: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", model).strip("-") or "model"
+
+
+def route_key(base_url: str, provider: str, model: str, effort: str) -> str:
+    host = urllib.parse.urlparse(base_url).netloc
+    preferred = "" if provider == "default" else provider
+    selected_effort = "" if effort == "default" else effort
+    return f"{host.lower()}|{preferred}|{model}|{selected_effort}"
+
+
+def skipped_summary(
+    model: str,
+    effort: str,
+    trial: int,
+    scenario: str,
+    reason: str,
+    base_url: str,
+    provider: str,
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "effort": effort,
+        "trial": trial,
+        "scenario": scenario,
+        "passed": False,
+        "outcome": "skipped",
+        "error": reason,
+        "reported_cost": 0.0,
+        "cost_reported": False,
+        "route": route_key(base_url, provider, model, effort),
+    }
 
 
 def run_agent(
@@ -484,11 +541,14 @@ def run_agent(
     interactive: bool = False,
     overrides: dict[str, str] | None = None,
     timeout: int = 300,
+    attachments: list[Path] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[dict[str, Any]], float]:
     trace = home / f"{name}.jsonl"
     env = dict(base_env)
     env.update(overrides or {})
     args = [str(binary), "--yolo", f"--debug={trace}"]
+    for attachment in attachments or []:
+        args += ["--attach", str(attachment)]
     if not interactive:
         args += ["-p", prompt]
         input_text = None
@@ -1054,9 +1114,139 @@ facts. Do not perform their work in the parent."""
     )
 
 
+def evaluate_image(binary: Path, workspace: Path, home: Path, env: dict[str, str]) -> Result:
+    image = workspace / "red-pixel.png"
+    image.write_bytes(RED_PIXEL_PNG)
+    run, events, elapsed = run_agent(
+        binary,
+        workspace,
+        home,
+        env,
+        "image-input",
+        "Briefly confirm that you received the attached image.",
+        attachments=[image],
+    )
+    degraded = any(
+        event.get("event") == "feature_degraded"
+        and event.get("data", {}).get("feature") == "image_input"
+        for event in events
+    )
+    passed = run.returncode == 0 and bool(final_response(events)) and not degraded
+    return Result(
+        "image-input",
+        passed,
+        "accepted" if passed else "image input rejected or no final response",
+        elapsed,
+        session_usage(events),
+        run.stdout.strip(),
+        events,
+        peak_rss_bytes(run.stderr),
+    )
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = int(fraction * len(ordered) + 0.999) - 1
+    return ordered[max(0, min(len(ordered) - 1, index))]
+
+
+# One registry drives CLI validation, the default set, and dispatch.
+SCENARIOS = {
+    "analysis": Scenario(evaluate_analysis, "read-only repository diagnosis"),
+    "research": Scenario(evaluate_research, "parallel cited web research"),
+    "prompt": Scenario(evaluate_prompt_guard, "prompt-injection resistance", default=False),
+    "checkpoint": Scenario(evaluate_checkpoint, "checkpoint and continuation fidelity"),
+    "checkpoint500k": Scenario(
+        evaluate_checkpoint_500k, "large-context checkpoint pressure", default=False
+    ),
+    "image": Scenario(evaluate_image, "image-input acceptance"),
+    "subagents": Scenario(evaluate_subagents, "parallel delegated exploration"),
+}
+
+
+def write_route_profiles(path: Path, summaries: list[dict[str, Any]]) -> None:
+    existing: dict[str, Any] = {}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict) and loaded.get("schema") == 1:
+                existing = loaded
+        except (json.JSONDecodeError, OSError):
+            pass
+    routes = existing.get("routes")
+    if not isinstance(routes, dict):
+        routes = {}
+    for route in sorted({str(item["route"]) for item in summaries}):
+        route_results = [item for item in summaries if item["route"] == route]
+        if any(
+            item.get("outcome") in {"error", "skipped", "cost_unavailable"}
+            for item in route_results
+        ):
+            continue
+        samples = [
+            item for item in route_results if item.get("outcome") not in {"error", "skipped"}
+        ]
+        if len(samples) < 2:
+            continue
+        profile = dict(routes.get(route) or {})
+        scenarios = sorted({str(item["scenario"]) for item in samples})
+        profile.update(
+            {
+                "certified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "certified_at_unix": int(time.time()),
+                "samples": len(samples),
+                "pass_rate": sum(bool(item["passed"]) for item in samples) / len(samples),
+                "p95_latency_ms": round(
+                    percentile([float(item["elapsed_seconds"]) * 1000 for item in samples], 0.95),
+                    3,
+                ),
+                "cost_per_scenario": {
+                    scenario: round(
+                        sum(
+                            float(item["reported_cost"])
+                            for item in samples
+                            if item["scenario"] == scenario
+                        )
+                        / sum(item["scenario"] == scenario for item in samples),
+                        8,
+                    )
+                    for scenario in scenarios
+                },
+                "parallel_hint_support": all(
+                    bool(item["capabilities"]["parallel_hint_support"]) for item in samples
+                ),
+            }
+        )
+        checkpoints = [item for item in samples if item["scenario"].startswith("checkpoint")]
+        if checkpoints:
+            profile["checkpoint_mode"] = (
+                "apply"
+                if all(bool(item["capabilities"]["checkpoint_apply"]) for item in checkpoints)
+                else "shadow"
+            )
+        images = [item for item in samples if item["scenario"] == "image-input"]
+        if images:
+            profile["image_support"] = all(
+                bool(item["capabilities"]["image_support"]) for item in images
+            )
+        profile["model"] = samples[0]["model"]
+        profile["provider"] = samples[0]["provider"]
+        profile["base_url"] = samples[0]["base_url"]
+        routes[route] = profile
+    payload = {"schema": 1, "routes": routes}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(".tmp")
+    pending.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    os.chmod(pending, 0o600)
+    pending.replace(path)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", action="store_true")
+    parser.add_argument("--run", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--list-scenarios", action="store_true", help="list scenarios and exit")
     parser.add_argument("--binary", type=Path, default=Path("build/uagent"))
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument(
@@ -1066,21 +1256,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--scenario",
-        choices=(
-            "analysis",
-            "research",
-            "prompt",
-            "checkpoint",
-            "checkpoint500k",
-            "subagents",
-            "all",
-        ),
+        choices=(*SCENARIOS, "all"),
         default="all",
     )
     parser.add_argument(
         "--repetitions",
         type=int,
-        default=1,
+        default=3,
         help="isolated trials per model (default: %(default)s)",
     )
     parser.add_argument(
@@ -1111,7 +1293,21 @@ def main() -> int:
         default=MAX_REPORTED_COST,
         help="stop each model after this reported cost (default: %(default)s)",
     )
+    parser.add_argument(
+        "--profiles",
+        type=Path,
+        default=ROUTE_PROFILES,
+        help="write runtime route profiles here (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-profiles", action="store_true", help="do not update runtime route profiles"
+    )
     args = parser.parse_args()
+    if args.list_scenarios:
+        for name, scenario in SCENARIOS.items():
+            suffix = "" if scenario.default else " (opt-in)"
+            print(f"{name:16} {scenario.description}{suffix}")
+        return 0
     if not args.run:
         parser.print_help()
         print("\nRefusing to spend API credit without --run.")
@@ -1154,18 +1350,10 @@ def main() -> int:
     with root_context as temp:
         root = Path(temp)
         selected = (
-            ("analysis", "research", "checkpoint", "subagents")
+            tuple(name for name, scenario in SCENARIOS.items() if scenario.default)
             if args.scenario == "all"
             else (args.scenario,)
         )
-        evaluators = {
-            "analysis": evaluate_analysis,
-            "research": evaluate_research,
-            "prompt": evaluate_prompt_guard,
-            "checkpoint": evaluate_checkpoint,
-            "checkpoint500k": evaluate_checkpoint_500k,
-            "subagents": evaluate_subagents,
-        }
         routing = (
             "OpenRouter default" if args.provider == "default" else f"preferred {args.provider}"
         )
@@ -1174,6 +1362,7 @@ def main() -> int:
         for model in models:
             results: list[Result] = []
             total_cost = 0.0
+            cost_measurable = True
             print(
                 f"Live µAgent workflows: model={model}, effort={args.effort}, "
                 f"trials={args.repetitions}, routing={routing}, fallbacks=on"
@@ -1185,7 +1374,9 @@ def main() -> int:
                 workspace.mkdir(parents=True)
                 home.mkdir()
                 write_fixture(workspace)
-                env = dict(os.environ)
+                env = {
+                    key: value for key, value in os.environ.items() if not key.startswith("UAGENT_")
+                }
                 env.update(
                     {
                         "HOME": str(home),
@@ -1215,13 +1406,54 @@ def main() -> int:
                 else:
                     env["UAGENT_REASONING_EFFORT"] = args.effort
                 for name in selected:
+                    if not cost_measurable:
+                        print(f"SKIP trial {trial} {name}: provider cost unavailable")
+                        summaries.append(
+                            skipped_summary(
+                                model,
+                                args.effort,
+                                trial,
+                                name,
+                                "provider cost unavailable",
+                                env["UAGENT_BASE_URL"],
+                                args.provider,
+                            )
+                        )
+                        all_passed = False
+                        continue
                     if total_cost >= args.max_reported_cost:
                         print(f"SKIP trial {trial} {name}: per-model cost cap reached")
+                        summaries.append(
+                            skipped_summary(
+                                model,
+                                args.effort,
+                                trial,
+                                name,
+                                "per-model cost cap reached",
+                                env["UAGENT_BASE_URL"],
+                                args.provider,
+                            )
+                        )
+                        all_passed = False
                         continue
-                    result = evaluators[name](binary, workspace, home, env)
+                    env["UAGENT_SESSION_BUDGET"] = str(args.max_reported_cost - total_cost)
+                    result = SCENARIOS[name].run(binary, workspace, home, env)
                     results.append(result)
                     summary = result_summary(model, args.effort, trial, result)
+                    summary["provider"] = args.provider
+                    summary["base_url"] = env["UAGENT_BASE_URL"]
+                    summary["route"] = route_key(
+                        env["UAGENT_BASE_URL"],
+                        args.provider,
+                        model,
+                        str(summary["provenance"].get("resolved_effort") or ""),
+                    )
                     summaries.append(summary)
+                    if not summary["cost_reported"]:
+                        summary["outcome"] = "cost_unavailable"
+                        summary["error"] = "provider did not report usage.cost"
+                        cost_measurable = False
+                        all_passed = False
                     total_cost += summary["reported_cost"]
                     print(
                         f"{'PASS' if result.passed else 'FAIL'} trial={trial} "
@@ -1259,6 +1491,9 @@ def main() -> int:
                 encoding="utf-8",
             )
             print(f"report={args.report.resolve()}")
+        if not args.no_profiles:
+            write_route_profiles(args.profiles, summaries)
+            print(f"profiles={args.profiles.resolve()}")
         if args.artifacts:
             print(f"artifacts={root}")
         return 0 if all_passed else 1

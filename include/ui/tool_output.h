@@ -28,7 +28,7 @@ inline std::string ToolResultSummary(const ToolResult& result,
   size_t lines = TextLines(output);
   if (lines > 1) {
     summary += " … · " + std::to_string(lines) + " lines · " +
-               FmtTokens(static_cast<int64_t>(output.size())) + " chars";
+               FmtCount(static_cast<int64_t>(output.size())) + " chars";
   }
   if (truncated) summary += " · truncated";
   if (!result.Ok()) {

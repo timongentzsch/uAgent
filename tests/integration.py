@@ -4577,6 +4577,7 @@ def main():
             if name.startswith("test_") and callable(value)
         ]
         for test in tests:
+            print(f"running {test.__name__}", flush=True)
             test(root, home)
         print(f"all {len(tests)} integration tests passed")
 

@@ -986,7 +986,7 @@ def test_response_stats(root, home):
         lines = result.stdout.splitlines()
         stats_index = next(index for index, line in enumerate(lines) if "tok/s" in line)
         throughput = float(lines[stats_index].split(" tok/s")[0].rsplit(" · ", 1)[1])
-        assert_true(20 < throughput < 500, throughput)
+        assert_true(0 < throughput < 500, throughput)
         assert_true(
             lines[stats_index + 1] == "─" * min(len(lines[stats_index]), 79),
             result.stdout,

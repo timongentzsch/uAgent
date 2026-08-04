@@ -31,6 +31,7 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "OPENROUTER_EFFORT",
     "openrouter/auto",
     OpenrouterUrl,
+    true,
 }};
 
 }  // namespace
@@ -71,6 +72,7 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
   if (api_key.empty()) return false;
   api.base_url = provider.base_url;
   api.api_key = std::move(api_key);
+  api.openrouter_compatible = provider.openrouter_compatible;
   if (api.model.empty()) {
     api.model = EnvStr(provider.model_env, provider.default_model);
   }
@@ -86,7 +88,8 @@ std::string ModelPreferencePath() {
 
 bool PersistableSelection(const std::string& selection) {
   return !selection.empty() &&
-         selection.find_first_of(std::string("\r\n", 3)) == std::string::npos;
+         selection.find_first_of("\r\n") == std::string::npos &&
+         selection.find('\0') == std::string::npos;
 }
 
 ModelPreference LoadModelPreference() {
@@ -136,7 +139,10 @@ ProviderCatalog LoadProviderCatalog() {
     base_url = StripTrailingSlashes(std::move(base_url));
     std::string api_key = JsonValue(provider, "api_key", "sk-noop");
     int64_t context = JsonValue(provider, "context", int64_t{0});
-    catalog.providers.push_back({provider_name, base_url, api_key, context});
+    bool openrouter_compatible =
+        JsonValue(provider, "protocol", "openai") == "openrouter";
+    catalog.providers.push_back(
+        {provider_name, base_url, api_key, context, openrouter_compatible});
     if (!provider.contains("models") || !provider["models"].is_object()) {
       continue;
     }
@@ -146,6 +152,7 @@ ProviderCatalog LoadProviderCatalog() {
       route.name = provider_name + "/" + alias;
       route.base_url = base_url;
       route.api_key = api_key;
+      route.openrouter_compatible = openrouter_compatible;
       if (spec.is_string()) {
         route.model = spec.get<std::string>();
       } else if (spec.is_object()) {
@@ -177,8 +184,9 @@ void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
         FindNamedProvider(catalog.providers, provider.name)) {
       continue;
     }
-    catalog.providers.push_back(
-        {provider.name, provider.base_url, std::move(api_key), 0});
+    catalog.providers.push_back({provider.name, provider.base_url,
+                                 std::move(api_key), 0,
+                                 provider.openrouter_compatible});
   }
 }
 
@@ -200,7 +208,8 @@ std::optional<ModelRoute> ResolveModelRoute(
                     provider->api_key,
                     selection.substr(slash + 1),
                     "",
-                    provider->context};
+                    provider->context,
+                    provider->openrouter_compatible};
 }
 
 void ExportRoute(const Api& api) {
@@ -216,7 +225,7 @@ void ResetRouteCapabilities(Api& api) {
   api.parallel_tools = true;
   api.openrouter_web_search = api.config.web_search_backend != "off" &&
                               api.config.web_search_backend != "responses" &&
-                              OpenrouterCompatibleUrl(api.base_url);
+                              api.openrouter_compatible;
   api.image_input = true;
   api.route_certified = false;
 }
@@ -227,8 +236,7 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.model = route.model;
   if (!route.effort.empty()) api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
-  ResetRouteCapabilities(api);
-  ExportRoute(api);
+  api.openrouter_compatible = route.openrouter_compatible;
 }
 
 std::string RouteProfilesPath() {
@@ -240,27 +248,88 @@ std::string RouteProfileKey(const Api& api) {
                   api.reasoning_effort);
 }
 
-json RouteProfile(const Api& api) {
+namespace {
+
+json LoadRouteProfiles() {
   std::ifstream input(RouteProfilesPath());
   json profiles = json::parse(input, nullptr, false);
-  if (!profiles.is_object() || JsonValue(profiles, "schema", 0) != 1 ||
+  if (!profiles.is_object() || JsonValue(profiles, "schema", 0) != 3 ||
       !profiles.contains("routes") || !profiles["routes"].is_object()) {
     return json::object();
   }
-  const json& routes = profiles["routes"];
-  auto found = routes.find(RouteProfileKey(api));
-  if (found == routes.end() || !found->is_object()) return json::object();
+  return profiles;
+}
+
+std::string RouteFamilyKey(const Api& api) {
+  return RouteKey(api.base_url, api.config.openrouter_provider, api.model, "");
+}
+
+json CertifiedProfile(const json& profiles, const std::string& key) {
+  if (!profiles.contains("routes") || !profiles["routes"].is_object()) {
+    return json::object();
+  }
+  auto found = profiles["routes"].find(key);
+  if (found == profiles["routes"].end() || !found->is_object()) {
+    return json::object();
+  }
   constexpr int64_t kProfileLifetimeSeconds = 30 * 24 * 60 * 60;
   int64_t certified = JsonValue(*found, "certified_at_unix", int64_t{0});
   int64_t now = static_cast<int64_t>(std::time(nullptr));
-  if (JsonValue(*found, "samples", int64_t{0}) < 2 || certified <= 0 ||
-      certified > now || now - certified > kProfileLifetimeSeconds) {
+  int64_t samples = JsonValue(*found, "samples", int64_t{0});
+  if (!JsonValue(*found, "certified", false) || samples <= 0 ||
+      JsonValue(*found, "passing_samples", int64_t{0}) != samples ||
+      JsonValue(*found, "pass_rate", 0.0) < 1.0 ||
+      JsonValue(*found, "invalidated_at_unix", int64_t{0}) > 0 ||
+      certified <= 0 || certified > now ||
+      now - certified > kProfileLifetimeSeconds) {
     return json::object();
   }
   return *found;
 }
 
+bool ProfileMatchesConfig(const json& profile, const Api& api) {
+  return JsonValue(profile, "openrouter_compatible",
+                   OpenrouterUrl(api.base_url)) == api.openrouter_compatible &&
+         JsonValue(profile, "memory_enabled", true) ==
+             api.config.memory_enabled &&
+         JsonValue(profile, "memory_generate", true) ==
+             api.config.memory_generate;
+}
+
+}  // namespace
+
+json RouteProfile(const Api& api) {
+  json profiles = LoadRouteProfiles();
+  if (profiles.empty()) return json::object();
+  json profile = CertifiedProfile(profiles, RouteProfileKey(api));
+  if (!profile.empty() && !ProfileMatchesConfig(profile, api)) {
+    return json::object();
+  }
+  return profile;
+}
+
 json ApplyRouteProfile(Api& api) {
+  if (api.reasoning_effort.empty()) {
+    json profiles = LoadRouteProfiles();
+    if (profiles.contains("recommendations") &&
+        profiles["recommendations"].is_object()) {
+      auto recommendation =
+          profiles["recommendations"].find(RouteFamilyKey(api));
+      if (recommendation != profiles["recommendations"].end() &&
+          recommendation->is_object()) {
+        std::string effort = JsonValue(*recommendation, "effort", "");
+        std::string route = JsonValue(*recommendation, "route", "");
+        std::string expected = RouteKey(
+            api.base_url, api.config.openrouter_provider, api.model, effort);
+        json profile = CertifiedProfile(profiles, route);
+        if (!effort.empty() && ValidEffort(effort) && route == expected &&
+            !profile.empty() && ProfileMatchesConfig(profile, api)) {
+          api.reasoning_effort = std::move(effort);
+          ExportRoute(api);
+        }
+      }
+    }
+  }
   json profile = RouteProfile(api);
   if (profile.empty()) return profile;
   api.route_certified = profile.contains("checkpoint_mode") ||
@@ -283,12 +352,39 @@ json ApplyRouteProfile(Api& api) {
   return profile;
 }
 
+json ActivateRoute(Api& api, const std::string& checkpoint_mode) {
+  api.config.checkpoint_mode = checkpoint_mode;
+  ResetRouteCapabilities(api);
+  json profile = ApplyRouteProfile(api);
+  ExportRoute(api);
+  return profile;
+}
+
+bool InvalidateRouteProfile(const Api& api, const std::string& feature) {
+  json profiles = LoadRouteProfiles();
+  if (profiles.empty()) return false;
+  auto route = profiles["routes"].find(RouteProfileKey(api));
+  if (route == profiles["routes"].end() || !route->is_object()) return false;
+  (*route)["invalidated_at_unix"] = static_cast<int64_t>(std::time(nullptr));
+  (*route)["invalidated_feature"] = feature;
+  if (profiles.contains("recommendations") &&
+      profiles["recommendations"].is_object()) {
+    profiles["recommendations"].erase(RouteFamilyKey(api));
+  }
+  std::string error;
+  return AtomicWriteFile(RouteProfilesPath(), JsonDump(profiles, 2) + "\n",
+                         0600, /*preserve_mode=*/true, error);
+}
+
 ProviderSetup ConfigureProvider(Api& api) {
   api.base_url = StripTrailingSlashes(EnvStr("UAGENT_BASE_URL"));
   api.api_key = EnvStr("UAGENT_API_KEY", "sk-noop");
   api.model = EnvStr("UAGENT_MODEL");
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
   api.ctx_window = ContextWindow();
+  std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
+  api.openrouter_compatible =
+      compatible.empty() ? OpenrouterUrl(api.base_url) : compatible == "1";
 
   ProviderCatalog catalog = LoadProviderCatalog();
   AddAvailableProviderTemplates(catalog);
@@ -317,7 +413,6 @@ ProviderSetup ConfigureProvider(Api& api) {
   if (api.base_url.empty()) {
     for (const ProviderTemplate& provider : kProviderTemplates) {
       if (ApplyProviderTemplate(api, provider)) {
-        ExportRoute(api);  // children inherit the resolved route
         break;
       }
     }
@@ -332,8 +427,7 @@ ProviderSetup ConfigureProvider(Api& api) {
 }
 
 bool CanUseRawModel(const Api& api, std::string_view name) {
-  return OpenrouterUrl(api.base_url) &&
-         name.find('/') != std::string_view::npos;
+  return api.openrouter_compatible && name.find('/') != std::string_view::npos;
 }
 
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
@@ -349,8 +443,6 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     api.model = name;
     api.ctx_window = 0;
   }
-  ResetRouteCapabilities(api);
-  ExportRoute(api);
   return api.model;
 }
 
@@ -408,7 +500,9 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     if (!ContainsCaseInsensitive(route.name + " " + route.model, query)) {
       continue;
     }
-    std::string identity = route.base_url + "\n" + route.model;
+    std::string identity =
+        route.base_url + "\n" + route.model + "\n" +
+        (route.openrouter_compatible ? "openrouter" : "openai");
     if (!selections.insert(route.name).second) continue;
     route_identities.insert(std::move(identity));
     ModelInfo info{route.model, {}, {}, route.context};
@@ -419,17 +513,21 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     std::string name, base_url, api_key;
     int64_t context = 0;
     bool named = false;
+    bool openrouter_compatible = false;
   };
   std::vector<Catalog> catalogs;
+  catalogs.reserve(providers.size() + 1);
   for (const NamedProvider& provider : providers) {
     catalogs.push_back({provider.name, provider.base_url, provider.api_key,
-                        provider.context, true});
+                        provider.context, true,
+                        provider.openrouter_compatible});
   }
   bool active_is_named = std::any_of(
       catalogs.begin(), catalogs.end(),
       [&](const Catalog& source) { return source.base_url == api.base_url; });
   if (!active_is_named && !api.base_url.empty()) {
-    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window, false});
+    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window, false,
+                        api.openrouter_compatible});
   }
 
   using CatalogModels = std::optional<std::vector<ModelInfo>>;
@@ -447,6 +545,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         Api catalog_api(api.config);
         catalog_api.base_url = source.base_url;
         catalog_api.api_key = source.api_key;
+        catalog_api.openrouter_compatible = source.openrouter_compatible;
         responses[index] = QueryModels(catalog_api, /*abortable=*/true);
       }
     }));
@@ -463,15 +562,22 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     for (ModelInfo& info : *models) {
       std::string selection =
           source.named ? source.name + "/" + info.id : info.id;
-      std::string identity = source.base_url + "\n" + info.id;
+      std::string identity =
+          source.base_url + "\n" + info.id + "\n" +
+          (source.openrouter_compatible ? "openrouter" : "openai");
       if (!ContainsCaseInsensitive(selection, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {
         continue;
       }
       int64_t context = info.context > 0 ? info.context : source.context;
-      ModelRoute route{selection, source.base_url, source.api_key, info.id,
-                       "",        context};
+      ModelRoute route{selection,
+                       source.base_url,
+                       source.api_key,
+                       info.id,
+                       "",
+                       context,
+                       source.openrouter_compatible};
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});

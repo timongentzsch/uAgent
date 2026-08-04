@@ -6,7 +6,6 @@
 #include <clocale>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -34,10 +33,7 @@ void InitializeProcess() {
   signal(SIGTERM, SigintHandler);
   signal(SIGHUP, SigintHandler);
   signal(SIGPIPE, SIG_IGN);
-  struct sigaction resize_action{};
-  resize_action.sa_handler = SigwinchHandler;
-  sigemptyset(&resize_action.sa_mask);
-  sigaction(SIGWINCH, &resize_action, nullptr);
+  InstallSigwinchHandler();
   ConfigureLineEditor();
 }
 
@@ -56,10 +52,10 @@ void PrintStreamFailure(const std::string& error, int exit_code) {
 
 int Main(int argc, char** argv) {
   if (argc == 4 && std::string(argv[1]) == "--log-pump") {
-    char* end = nullptr;
-    int64_t bytes = strtol(argv[3], &end, 10);
-    return end && *end == '\0' && bytes >= 1024 ? ToolLogPump(argv[2], bytes)
-                                                : 2;
+    int64_t bytes = 0;
+    return ParseInt64(argv[3], bytes) && bytes >= 1024
+               ? ToolLogPump(argv[2], bytes)
+               : 2;
   }
   if (argc >= 2 && std::string(argv[1]) == "eval") {
     return RunEval(argc, argv);

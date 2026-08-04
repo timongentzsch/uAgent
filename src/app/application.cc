@@ -1,13 +1,20 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <poll.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -24,7 +31,11 @@
 #include "include/core/term.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/jobs.h"
+#include "include/tools/memory.h"
+#include "include/tools/memory_pipeline.h"
 #include "include/ui/display.h"
+#include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
 
 namespace uagent {
@@ -60,27 +71,8 @@ class Application {
   }
 
   void RunTurns(std::string input, json content = nullptr) {
-    bool resume = false;
-    for (;;) {
-      if (resume) {
-        agent_.Resume();
-      } else {
-        agent_.Turn(input, std::move(content));
-      }
-      if (!SteeringState().Take()) return;
-      bool cancelled = false;
-      std::string replacement = SteeringReplacement(cancelled);
-      if (cancelled) {
-        printf("%s· resuming%s\n", DIM(), RST());
-        resume = true;
-      } else {
-        printf("%s· applying steering%s\n", DIM(), RST());
-        agent_.NudgeMemoryAfterCorrection();
-        input = std::move(replacement);
-        resume = false;
-      }
-      content = nullptr;
-    }
+    agent_.Turn(input, std::move(content));
+    SteeringState().Take();
   }
 
   void LogSessionEnd(const char* reason) const {
@@ -91,13 +83,20 @@ class Application {
   }
 
   int FinishHeadless(std::string answer, std::string error, int exit_code) {
+    if (exit_code == 0 && !context_.options.memory_source.empty()) {
+      std::string marker_error;
+      if (!MarkMemorySessionProcessed(context_.options.memory_source,
+                                      marker_error)) {
+        DebugLog("memory_pipeline_marker_error", {{"error", marker_error}});
+      }
+    }
     runtime_.Shutdown();
     std::remove(UsageLedger().c_str());
     LogSessionEnd(exit_code == 0 ? "headless_complete" : "headless_error");
     if (context_.options.json_stream || context_.options.json) {
-      json envelope = HeadlessResult(answer, error, agent_.LatestToolTrace(),
-                                     agent_.SessionUsage(),
-                                     agent_.RouteUsageJson(), exit_code);
+      json envelope = HeadlessResult(
+          std::move(answer), std::move(error), agent_.LatestToolTrace(),
+          agent_.SessionUsage(), agent_.RouteUsageJson(), exit_code);
       if (context_.options.json_stream) {
         Events().Emit(exit_code == 0 ? "answer" : "error", std::move(envelope));
       } else {
@@ -243,12 +242,11 @@ class Application {
       case SlashCommandId::kHandoff:
         HandleHandoff(command.argument);
         break;
+      case SlashCommandId::kMemory:
+        HandleMemory();
+        break;
       case SlashCommandId::kAttach:
         HandleAttach(command.argument);
-        break;
-      case SlashCommandId::kDetach:
-        attachments_.clear();
-        printf("%s· attachments cleared%s\n", DIM(), RST());
         break;
       case SlashCommandId::kOnline:
         HandleOnline();
@@ -313,6 +311,22 @@ class Application {
     printf("%s\n", RST());
   }
 
+  void HandleMemory() const {
+    printf("%s· memory recall %s · contribute %s%s\n", DIM(),
+           api_.config.memory_enabled ? "on" : "off",
+           api_.config.memory_generate ? "on" : "off", RST());
+    if (!api_.config.memory_enabled) return;
+    std::vector<MemoryEntry> entries = ListMemories();
+    if (entries.empty()) {
+      printf("%s· no saved memories%s\n", DIM(), RST());
+      return;
+    }
+    for (const MemoryEntry& entry : entries) {
+      printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
+             TerminalSafe(Tilde(entry.path)).c_str(), RST());
+    }
+  }
+
   void HandleHandoff(const std::string& argument) {
     if (argument.empty()) {
       printf("%s· use /handoff PROVIDER/MODEL%s\n", RED(), RST());
@@ -356,24 +370,29 @@ class Application {
   }
 
   void SaveSelectedModel(const std::string& selected, bool named_route) {
-    api_.config.checkpoint_mode = runtime_.config.checkpoint_mode;
-    json route_profile = ApplyRouteProfile(api_);
+    ActivateCurrentRoute();
     std::string error;
     bool saved =
         SaveModelPreference({selected, api_.base_url, named_route}, error);
-    agent_.RouteChanged();
     DebugLog("route_changed", {{"route", selected},
                                {"model", api_.model},
                                {"base_url", api_.base_url},
                                {"effort", api_.reasoning_effort},
                                {"preference_saved", saved}});
-    printf("%s· model %s · effort %s%s\n", DIM(), selected.c_str(),
-           api_.reasoning_effort.empty() ? "default"
-                                         : api_.reasoning_effort.c_str(),
-           RST());
+    printf("%s· model %s%s\n", DIM(),
+           ModelLabel(selected, api_.reasoning_effort).c_str(), RST());
     if (!saved) {
       printf("%s· model changed but preference was not saved: %s%s\n", YEL(),
              TerminalSafe(error).c_str(), RST());
+    }
+  }
+
+  void ActivateCurrentRoute() {
+    json profile = ActivateRoute(api_, runtime_.config.checkpoint_mode);
+    agent_.RouteChanged();
+    if (!profile.empty()) {
+      DebugLog("route_profile_applied",
+               {{"model", api_.model}, {"profile", std::move(profile)}});
     }
   }
 
@@ -385,8 +404,7 @@ class Application {
              RST());
     } else if (argument == "default") {
       api_.reasoning_effort.clear();
-      setenv("UAGENT_REASONING_EFFORT", "", 1);
-      agent_.RouteChanged();
+      ActivateCurrentRoute();
       printf("%s· effort provider default%s\n", DIM(), RST());
     } else if (!ValidEffort(argument)) {
       printf(
@@ -395,25 +413,14 @@ class Application {
           RED(), RST());
     } else {
       api_.reasoning_effort = argument;
-      setenv("UAGENT_REASONING_EFFORT", argument.c_str(), 1);
-      agent_.RouteChanged();
+      ActivateCurrentRoute();
       printf("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
     }
   }
 
   void HandleCompact() {
-    for (;;) {
-      agent_.Compact();
-      if (!SteeringState().Take()) return;
-      bool cancelled = false;
-      std::string next = SteeringReplacement(cancelled);
-      if (cancelled) {
-        printf("%s· resuming%s\n", DIM(), RST());
-      } else {
-        RunTurns(std::move(next));
-        return;
-      }
-    }
+    agent_.Compact();
+    SteeringState().Take();
   }
 
   void HandleAttach(const std::string& argument) {
@@ -429,6 +436,11 @@ class Application {
       }
       return;
     }
+    if (argument == "clear") {
+      attachments_.clear();
+      printf("%s· attachments cleared%s\n", DIM(), RST());
+      return;
+    }
     Attachment attachment;
     std::string error;
     if (!InspectAttachment(argument, attachment, error) ||
@@ -442,7 +454,7 @@ class Application {
   }
 
   void HandleOnline() {
-    if (!OpenrouterUrl(api_.base_url)) {
+    if (!api_.openrouter_compatible) {
       printf("%s· /online is available only for OpenRouter%s\n", RED(), RST());
       return;
     }
@@ -453,7 +465,7 @@ class Application {
     } else {
       api_.model += ":online";
     }
-    setenv("UAGENT_MODEL", api_.model.c_str(), 1);
+    ActivateCurrentRoute();
     printf("%s· web search %s%s\n", DIM(),
            enabled ? "off"
                    : "ON — ~2K extra input tokens + search fees per request",
@@ -474,11 +486,233 @@ class Application {
     RunTurns(std::move(input), std::move(content));
   }
 
+  bool ProcessInput(std::string input) {
+    input = Trim(input);
+    if (input.empty()) return false;
+    if (input[0] == '/') DebugLog("command", {{"command", input}});
+    ParsedSlashCommand command = ParseSlashCommand(input);
+    if (command.spec) return HandleCommand(command);
+    if (input[0] == '/') {
+      printf("%s· unknown command %s; use /help%s\n", RED(),
+             TerminalSafe(input).c_str(), RST());
+      return false;
+    }
+    RunPrompt(std::move(input));
+    return false;
+  }
+
+  int RunPersistentInteractive() {
+    InteractiveOutput output;
+    if (!output.Start()) return -1;
+    RawComposer composer(output);
+    if (!composer.Start()) return -1;
+    InputBroker broker;
+    SetInteractiveReadHandler([&broker](const std::string& prompt, bool* eof,
+                                        bool keep_history,
+                                        const std::string& initial) {
+      return broker.Read(prompt, eof, keep_history, initial);
+    });
+    g_persistent_composer = true;
+
+    std::deque<std::string> queued;
+    std::thread worker;
+    std::atomic<bool> working{false};
+    std::atomic<bool> worker_quit{false};
+    bool interrupting = false;
+    bool exit_when_idle = false;
+    bool answering = false;
+    std::string saved_draft;
+    std::string pending_output;
+    auto started = std::chrono::steady_clock::now();
+
+    auto status = [&] {
+      if (!working) {
+        return StatusBar(api_, agent_, context_.options.yolo,
+                         attachments_.size(), runtime_.processes);
+      }
+      double elapsed = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now() - started)
+                           .count();
+      size_t background = runtime_.processes.PendingCount() +
+                          runtime_.processes.DetachedCount();
+      char seconds[32];
+      snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
+      std::string line = interrupting ? "interrupting" : "working";
+      line += " · " + std::string(seconds);
+      line += " · bg:" + std::to_string(background);
+      if (SteeringEnabled()) line += " · Esc interrupt";
+      if (!queued.empty()) {
+        line += " · queued:" + std::to_string(queued.size());
+      }
+      return line;
+    };
+
+    auto rendered_status = [&] {
+      std::string line = DisplayTrunc(
+          TerminalSafe(status()),
+          static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 1)));
+      return std::string(RST()) + DIM() + line + "\033[K" + RST() + "\n";
+    };
+
+    auto mount = [&](const std::string& prompt = InputPrompt(),
+                     const std::string& initial = std::string()) {
+      output.Write(rendered_status());
+      composer.Set(prompt, initial);
+    };
+
+    auto insert = [&](std::string text) {
+      if (text.empty()) return;
+      if (text.back() != '\n') text += '\n';
+      output.Write("\r\033[2K\033[1A\r\033[J");
+      output.Write(text);
+      output.Write(rendered_status());
+      composer.Render();
+    };
+
+    auto redraw = [&] {
+      output.Write("\r\033[2K\033[1A\r\033[J");
+      output.Write(rendered_status());
+      composer.Render();
+    };
+
+    auto flush_output = [&](bool all) {
+      pending_output += output.Read();
+      size_t split = all ? pending_output.size() : pending_output.rfind('\n');
+      if (split == std::string::npos || split == 0) return;
+      if (!all) ++split;
+      std::string ready = pending_output.substr(0, split);
+      pending_output.erase(0, split);
+      insert(std::move(ready));
+    };
+
+    auto start_work = [&](std::string input) {
+      working = true;
+      worker_quit = false;
+      interrupting = false;
+      started = std::chrono::steady_clock::now();
+      worker = std::thread([&, input = std::move(input)]() mutable {
+        worker_quit = ProcessInput(std::move(input));
+        working = false;
+        broker.Notify();
+      });
+    };
+
+    mount();
+    auto last_redraw = std::chrono::steady_clock::now();
+    while (!exit_when_idle || working) {
+      pollfd events[3] = {{STDIN_FILENO, POLLIN, 0},
+                          {output.fd(), POLLIN, 0},
+                          {broker.fd(), POLLIN, 0}};
+      int ready = poll(events, 3, 100);
+      if (ready < 0 && errno != EINTR) break;
+
+      if (events[1].revents & POLLIN) flush_output(false);
+      if (events[2].revents & POLLIN) {
+        broker.DrainWake();
+        std::string prompt;
+        std::string initial;
+        bool keep_history = false;
+        if (broker.Take(prompt, initial, keep_history)) {
+          (void)keep_history;
+          saved_draft = composer.buffer();
+          answering = true;
+          mount(prompt, initial);
+        }
+      }
+
+      if ((events[0].revents & POLLIN) || composer.HasPending()) {
+        InteractiveInputEvent event = composer.Read();
+        if (event.kind != InteractiveInputKind::kNone) {
+          if (answering) {
+            bool eof = event.kind == InteractiveInputKind::kEscape ||
+                       event.kind == InteractiveInputKind::kEof;
+            broker.Answer(std::move(event.text), eof);
+            answering = false;
+            mount(InputPrompt(), std::move(saved_draft));
+          } else if (event.kind == InteractiveInputKind::kEscape) {
+            saved_draft = std::move(event.text);
+            if (working && SteeringEnabled() && !interrupting) {
+              interrupting = true;
+              SteeringState().Request();
+            }
+            mount(InputPrompt(), std::move(saved_draft));
+          } else if (event.kind == InteractiveInputKind::kEof) {
+            exit_when_idle = true;
+            mount();
+          } else {
+            std::string input = Trim(event.text);
+            if (!input.empty()) {
+              if (working || worker.joinable()) {
+                queued.push_back(std::move(input));
+              } else {
+                start_work(std::move(input));
+              }
+            }
+            mount();
+          }
+        }
+      }
+
+      if (!working && worker.joinable()) {
+        worker.join();
+        flush_output(true);
+        SaveSession();
+        BgTakeCompleted(runtime_.processes, "memory");
+        agent_.DrainBackground();
+        if (worker_quit) exit_when_idle = true;
+        interrupting = false;
+        if (!exit_when_idle && !queued.empty()) {
+          std::string next = std::move(queued.front());
+          queued.pop_front();
+          start_work(std::move(next));
+        }
+        redraw();
+      }
+
+      auto now = std::chrono::steady_clock::now();
+      if (working && now - last_redraw >= std::chrono::milliseconds(200)) {
+        redraw();
+        last_redraw = now;
+      }
+    }
+
+    if (worker.joinable()) worker.join();
+    flush_output(true);
+    composer.Stop();
+    SetInteractiveReadHandler({});
+    broker.Shutdown();
+    g_persistent_composer = false;
+    output.Stop();
+    return 0;
+  }
+
   int RunInteractive() {
     ResumeAtStartup();
     persist_ = isatty(STDIN_FILENO);
+    if (persist_ && AgentDepth() == 0 && api_.config.memory_enabled &&
+        api_.config.memory_generate) {
+      std::string pipeline_error = StartMemoryPipeline(
+          runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
+          session_file_, context_.debug);
+      if (!pipeline_error.empty()) {
+        DebugLog("memory_pipeline_start_error", {{"error", pipeline_error}});
+      }
+    }
+    if (persist_) {
+      int persistent_status = RunPersistentInteractive();
+      if (persistent_status >= 0) {
+        SaveSession();
+        runtime_.Shutdown();
+        std::remove(UsageLedger().c_str());
+        LogSessionEnd(exit_reason_.c_str());
+        TerminalRestore();
+        return persistent_status;
+      }
+    }
     for (;;) {
       SaveSession();
+      // Maintenance jobs are intentionally invisible to the conversation.
+      BgTakeCompleted(runtime_.processes, "memory");
       agent_.DrainBackground();
       PrintStatusBar(StatusBar(api_, agent_, context_.options.yolo,
                                attachments_.size(), runtime_.processes));
@@ -489,21 +723,7 @@ class Application {
         printf("\n");
         break;
       }
-      std::string input = Trim(line);
-      if (input.empty()) continue;
-      if (input[0] == '/') DebugLog("command", {{"command", input}});
-
-      ParsedSlashCommand command = ParseSlashCommand(input);
-      if (command.spec) {
-        if (HandleCommand(command)) break;
-        continue;
-      }
-      if (input[0] == '/') {
-        printf("%s· unknown command %s; use /help%s\n", RED(),
-               TerminalSafe(input).c_str(), RST());
-        continue;
-      }
-      RunPrompt(std::move(input));
+      if (ProcessInput(std::move(line))) break;
     }
     SaveSession();
     runtime_.Shutdown();

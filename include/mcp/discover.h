@@ -15,6 +15,7 @@
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
+#include "include/core/time.h"
 #include "include/mcp/invoke.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"
@@ -195,6 +196,9 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                      definition["annotations"]["readOnlyHint"].is_boolean() &&
                      definition["annotations"]["readOnlyHint"].get<bool>();
     tool.mutating = !(trust && read_only);
+    tool.capabilities = Capability(ToolCapability::kExternal) |
+                        Capability(read_only ? ToolCapability::kInspect
+                                             : ToolCapability::kMutate);
     schema_bytes += tool_schema_bytes;
     replacement.push_back(std::move(tool));
   }
@@ -229,8 +233,7 @@ inline bool McpRefreshTools(
     McpServer& server = *owned;
     if (server.alive) McpDrainInbound(server);
     if (!server.alive || !server.tools_changed) continue;
-    auto deadline = std::chrono::steady_clock::now() +
-                    std::chrono::seconds(config.mcp_timeout_s);
+    auto deadline = DeadlineAfter(config.mcp_timeout_s);
     if (turn_deadline != std::chrono::steady_clock::time_point::max()) {
       deadline = std::min(deadline, turn_deadline);
     }

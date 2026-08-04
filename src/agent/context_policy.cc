@@ -25,6 +25,12 @@ int64_t EstimatedTokens(size_t message_bytes, size_t schema_bytes,
              : static_cast<int64_t>(tokens);
 }
 
+int64_t Percent(size_t value, size_t total) {
+  if (!total || value >= total) return 100;
+  long double ratio = static_cast<long double>(value) / total;
+  return static_cast<int64_t>(ratio * 100);
+}
+
 }  // namespace
 
 int64_t ContextPolicy::Used(size_t message_bytes, size_t schema_bytes,
@@ -51,10 +57,10 @@ ContextDecision ContextPolicy::Prepare(const ContextPolicyInput& input) {
   int64_t compact = std::clamp(input.compact_pct, int64_t{0}, int64_t{100});
   int64_t assess = std::clamp(input.checkpoint_pct, int64_t{0}, int64_t{100});
   int64_t urgent = std::clamp(input.urgent_pct, assess, int64_t{100});
-  int64_t reserve =
-      input.context_window > 0
-          ? std::min(input.max_output_tokens, input.context_window / 4)
-          : 0;
+  int64_t reserve = input.context_window > 0
+                        ? std::clamp(input.max_output_tokens, int64_t{0},
+                                     input.context_window / 4)
+                        : 0;
   int64_t pending = static_cast<int64_t>(
       std::min(input.pending_bytes / 4,
                static_cast<size_t>(std::numeric_limits<int64_t>::max())));
@@ -72,9 +78,7 @@ ContextDecision ContextPolicy::Prepare(const ContextPolicyInput& input) {
   } else if (input.request_bytes > 0) {
     auto bytes = CheckedAdd(input.message_bytes, input.pending_bytes);
     size_t request_bytes = static_cast<size_t>(input.request_bytes);
-    pct = !bytes || *bytes > request_bytes
-              ? 100
-              : static_cast<int64_t>(*bytes * 100 / request_bytes);
+    pct = bytes ? Percent(*bytes, request_bytes) : 100;
   }
   pct = std::max(int64_t{0}, pct);
   if (pct < urgent) ignored_urgent_hints_ = 0;

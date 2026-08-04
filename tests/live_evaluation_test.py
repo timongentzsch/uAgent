@@ -22,6 +22,20 @@ def event(event_name: str, **data: object) -> dict[str, object]:
 
 
 def main() -> int:
+    contract = json.loads(
+        (Path(__file__).parent / "fixtures" / "route_contract.json").read_text(encoding="utf-8")
+    )
+    for sample in contract["route_keys"]:
+        assert (
+            live.route_key(
+                sample["base_url"],
+                sample["provider"],
+                sample["model"],
+                sample["effort"],
+            )
+            == sample["expected"]
+        )
+
     assert {name for name, scenario in live.SCENARIOS.items() if scenario.default} == {
         "analysis",
         "research",
@@ -107,48 +121,81 @@ def main() -> int:
         assert changed["workspace_changes"] == ["same.txt"]
 
         profiles = root / "routes.json"
-        live.write_route_profiles(
-            profiles,
-            [
-                {
-                    "model": "vendor/flash",
-                    "route": "openrouter.ai||vendor/flash",
-                    "provider": "default",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "scenario": "checkpoint-apply",
-                    "passed": False,
-                    "elapsed_seconds": 2.0,
-                    "reported_cost": 0.02,
-                    "capabilities": {
+        passing_samples = []
+        for trial in (1, 2):
+            for scenario, elapsed, cost, capabilities in (
+                (
+                    "checkpoint-apply",
+                    2.0,
+                    0.02,
+                    {
                         "parallel_hint_support": True,
-                        "checkpoint_apply": False,
+                        "checkpoint_apply": True,
                         "image_support": None,
                     },
-                },
-                {
-                    "model": "vendor/flash",
-                    "route": "openrouter.ai||vendor/flash",
-                    "provider": "default",
-                    "base_url": "https://openrouter.ai/api/v1",
-                    "scenario": "image-input",
-                    "passed": True,
-                    "elapsed_seconds": 1.0,
-                    "reported_cost": 0.01,
-                    "capabilities": {
+                ),
+                (
+                    "image-input",
+                    1.0,
+                    0.01,
+                    {
                         "parallel_hint_support": True,
                         "checkpoint_apply": False,
                         "image_support": True,
                     },
-                },
-            ],
+                ),
+            ):
+                passing_samples.append(
+                    {
+                        "model": "vendor/flash",
+                        "effort": "low",
+                        "route": "openrouter.ai||vendor/flash|low",
+                        "provider": "default",
+                        "base_url": "https://openrouter.ai/api/v1",
+                        "scenario": scenario,
+                        "scenario_class": scenario,
+                        "trial": trial,
+                        "passed": True,
+                        "elapsed_seconds": elapsed,
+                        "reported_cost": cost,
+                        "capabilities": capabilities,
+                    }
+                )
+        live.write_route_profiles(
+            profiles,
+            passing_samples,
         )
         saved = json.loads(profiles.read_text(encoding="utf-8"))
-        profile = saved["routes"]["openrouter.ai||vendor/flash"]
-        assert profile["checkpoint_mode"] == "shadow"
+        assert saved["schema"] == 3
+        profile = saved["routes"]["openrouter.ai||vendor/flash|low"]
+        assert profile["certified"] is True
+        assert profile["checkpoint_mode"] == "apply"
         assert profile["parallel_hint_support"] is True
         assert profile["image_support"] is True
+        assert profile["openrouter_compatible"] is True
         assert profile["p95_latency_ms"] == 2000
+        assert profile["passing_samples"] == 4
+        assert len(profile["scenario_classes"]) == 2
+        assert profile["scenario_samples"] == {"checkpoint-apply": 2, "image-input": 2}
+        default_samples = [
+            {
+                **sample,
+                "effort": "default",
+                "route": "openrouter.ai||vendor/flash|",
+                "reported_cost": float(sample["reported_cost"]) * 2,
+            }
+            for sample in passing_samples
+        ]
+        live.write_route_profiles(profiles, default_samples)
+        saved = json.loads(profiles.read_text(encoding="utf-8"))
+        assert saved["recommendations"]["openrouter.ai||vendor/flash|"]["effort"] == "low"
         assert profiles.stat().st_mode & 0o777 == 0o600
+
+        failed_sample = {**passing_samples[0], "passed": False}
+        live.write_route_profiles(profiles, [failed_sample])
+        saved = json.loads(profiles.read_text(encoding="utf-8"))
+        assert "openrouter.ai||vendor/flash|low" not in saved["routes"]
+        assert saved["recommendations"]["openrouter.ai||vendor/flash|"]["effort"] == ""
 
         failed_profiles = root / "failed-routes.json"
         live.write_route_profiles(
@@ -171,7 +218,7 @@ def main() -> int:
                     },
                 }
             ]
-            * 2,
+            * 4,
         )
         failed = json.loads(failed_profiles.read_text(encoding="utf-8"))
         assert failed["routes"] == {}

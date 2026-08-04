@@ -2,6 +2,7 @@
 
 #include "include/api/openai_stream.h"
 
+#include <limits>
 #include <map>
 #include <string>
 #include <utility>
@@ -79,8 +80,8 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   if (value.is_discarded()) return delta;
   if (value.contains("error")) {
     const json& error = value["error"];
-    result.remote_error_type = JsonValue(error, "type", "");
-    result.remote_error_code = JsonValue(error, "code", "");
+    result.remote_error_type = RemoteErrorType(error);
+    result.remote_error_code = RemoteErrorCode(error);
     result.retryable = RetryableRemoteError(result.remote_error_type,
                                             result.remote_error_code);
     result.error = JsonErrorMessage(value, "stream failed");
@@ -141,7 +142,9 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   delta.activity = delta.activity || !event_delta["tool_calls"].empty();
   for (const json& tool_call : event_delta["tool_calls"]) {
     if (!tool_call.is_object()) continue;
-    ToolCall& target = tool_calls[JsonValue(tool_call, "index", int64_t{0})];
+    int64_t index = JsonValue(tool_call, "index", int64_t{0});
+    if (index < 0 || index > std::numeric_limits<int>::max()) continue;
+    ToolCall& target = tool_calls[static_cast<int>(index)];
     if (tool_call.contains("id") && tool_call["id"].is_string()) {
       target.id += tool_call["id"].get<std::string>();
     }

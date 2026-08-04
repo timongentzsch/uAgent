@@ -20,9 +20,12 @@ struct Options {
   bool debug = false;
   bool json = false;
   bool json_stream = false;
+  bool no_memory = false;
   bool resume_latest = false;
   bool resume_pick = false;
   std::string debug_path;
+  // Internal background entrypoint. Deliberately omitted from --help.
+  std::string memory_source;
   std::string prompt;
   double budget = -1;
   std::vector<std::string> attach_paths;

@@ -75,7 +75,10 @@ struct StreamCtx {
   void OutputReasoning(const std::string& r) {
     if (!render_output) return;
     BeginOutput();
-    if (!in_reasoning) md.Control(DIM());
+    if (!in_reasoning) {
+      std::string style = std::string(RST()) + DIM() + ITAL();
+      md.Control(style.c_str());
+    }
     in_reasoning = true;
     md.FeedPlain(r);
   }

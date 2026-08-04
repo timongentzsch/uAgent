@@ -13,9 +13,10 @@ inspect, compare, and improve.
 
 ## Quick start
 
-Requires CMake, a C++20 compiler, and libcurl. libedit enables richer input,
-Node.js enables Chrome DevTools MCP, and [uv](https://docs.astral.sh/uv/) enables
-Python scratch scripts and route evaluation.
+Requires CMake, a C++20 compiler, and libcurl. libedit enriches secondary
+selection prompts, Node.js enables Chrome DevTools MCP, and
+[uv](https://docs.astral.sh/uv/) enables Python scratch scripts and route
+evaluation.
 
 ```sh
 ./install.sh
@@ -29,14 +30,18 @@ OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 ```
 
 For any OpenAI-compatible endpoint, set `UAGENT_BASE_URL`, `UAGENT_API_KEY`,
-and `UAGENT_MODEL`. `UAGENT_PROVIDERS` defines named routes. Environment values
-override the private config file; project `.env` files are never loaded.
+and `UAGENT_MODEL`. `UAGENT_PROVIDERS` defines named routes; set a provider's
+`protocol` to `openrouter` only for an OpenRouter-compatible proxy. Environment
+values override the private config file; project `.env` files are never loaded.
+The bundled `$uagent-config` skill gives the agent the complete configuration
+reference for its release; ask it to explain, inspect, or update these settings.
 
 ```sh
 uagent
 uagent -p "inspect this repository"
 uagent -p "inspect this repository" --json
 uagent -p "inspect this repository" --json-stream --budget 2
+uagent -p "inspect this repository" --no-memory
 uagent --debug=/tmp/uagent.jsonl
 uagent --resume
 uagent --yolo
@@ -44,9 +49,13 @@ uagent --yolo
 
 ## Observe and compare
 
-Interactive status shows the route, context, tokens, cache, cost, and timing.
-`/context` prints the exact model request and tool schemas; `/trace` prints the
-latest tool/search exchange; `/cost` breaks spend down by route. `--debug`
+The persistent two-line composer keeps native scrollback visible. Idle status
+shows model, effort, endpoint, context, cache, cost, and active background
+count; working status shows elapsed time, queued input, background count, and
+the Escape hint.
+`/context` prints the current model-shaped context and registered tool schemas;
+`/trace` prints the latest tool/search exchange; `/cost` breaks spend down by
+route. `--debug`
 records reconstructable messages, responses, tools, timing, usage, and failures.
 The same evidence makes regressions attributable and guides prompt, tool,
 routing, and orchestration improvements instead of relying on anecdote.
@@ -63,13 +72,14 @@ prompt contract, and cost ceiling:
 uagent eval \
   --model deepseek/deepseek-v4-flash \
   --model anthropic/claude-sonnet-4.5 \
-  --scenario checkpoint --repetitions 3 \
+  --scenario all --repetitions 2 \
   --report /tmp/uagent-route-ab.json
 ```
 
 Reports include violations, tokens, reported cost, wall time, and peak RSS.
-Fresh multi-sample results update expiring route profiles, allowing runtime to
-disable unsupported checkpoint, parallel-call, or image behavior before work.
+Add `--certify` to turn repeated clean passes for that exact scenario suite
+into an expiring route profile. Effort comparisons require identical evidence;
+live contradictions invalidate profiles.
 See [testing](docs/TESTING.md) for scenarios and extension.
 
 ## Capabilities
@@ -80,16 +90,31 @@ See [testing](docs/TESTING.md) for scenarios and extension.
 | execution | `run`, detached terminals, uv-backed `run_python` |
 | evidence | attachments, terminal images, cited `web_search` |
 | extension | MCP, Chrome DevTools, skills, project/global memory |
-| orchestration | parallel tools, bounded `task`, checkpoint and handoff |
+| orchestration | parallel tools, bounded `task` routes, `wait_agent`, checkpoint and handoff |
 
 Mutating, shell, network, delegation, and MCP calls require approval unless
 `--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,
 processes, context, persistence, and reported spend are bounded.
+Model labels include reasoning effort; delegated task labels also include their
+provider. Working status reports the number of active background processes.
+`terminal_output` can inspect their bounded current logs without waiting or
+cancelling them; child-side buffering may delay visible output. Enter queues a
+follow-up while a turn is active. Escape interrupts only the foreground turn;
+delegated and detached work keeps running unless explicitly cancelled.
+
+Memory uses the same progressive-disclosure shape as project context: startup
+injects bounded names only and bodies are fetched on demand. On interactive
+startup, at most one eligible prior session that has been idle for six hours is
+filtered and consolidated by a bounded background child using the current
+route and only the memory tool. It may update one durable project/global lesson
+or do nothing; generated writes are secret-redacted. Disable recall and this
+background contribution together with `--no-memory`.
 
 At context pressure, µAgent can fold history into a bounded non-authoritative
 checkpoint. `/handoff PROVIDER/MODEL` uses that clean cache boundary to change
-routes. Sessions live under `~/.uagent/history`; project configuration requires
-interactive trust or `--trust-project-config`.
+routes. Old bulky tool outputs are compacted in batches after their full trace
+is archived. Sessions live under `~/.uagent/history`; project configuration
+requires interactive trust or `--trust-project-config`.
 
 ## Commands
 
@@ -97,15 +122,17 @@ interactive trust or `--trust-project-config`.
 | --- | --- |
 | `/models [QUERY]`, `/model MODEL` | Search or change route |
 | `/effort LEVEL\|default` | Set reasoning effort |
-| `/attach PATH`, `/detach` | Manage attachments |
-| `/context`, `/trace`, `/cost` | Inspect request, execution, and spend |
+| `/attach PATH\|clear` | Queue an attachment or clear the queue |
+| `/memory` | Show recall/contribution state and saved keys |
+| `/context`, `/trace`, `/cost` | Inspect request, execution, or spend |
 | `/compact`, `/handoff ROUTE` | Fold context or change route |
 | `/sessions`, `/reset` | Resume or reset state |
 | `/verbose`, `/online`, `/yolo` | Toggle runtime behavior |
 | `/help`, `/quit` | Help or exit |
 
-Escape interrupts an active response and opens steering; a second Escape
-resumes.
+The input bar remains editable while work runs. Enter queues the message for
+the next turn; Escape interrupts the foreground turn without cancelling
+background work.
 
 ## Development
 

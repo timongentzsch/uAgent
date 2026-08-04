@@ -13,8 +13,9 @@ over local exceptions, and preserve behavior before redesigning a boundary.
   file types before opening them.
 - Give asynchronous work one owner, a deadline, bounded output, cancellation,
   and a tested shutdown path. Do not call external code while holding a mutex.
-- Register new configuration limits once in `RuntimeConfig`; avoid unbounded
-  inputs, queues, and arithmetic.
+- Put session-static configuration in `RuntimeConfig`. Environment accessors
+  are reserved for deliberately dynamic route/delegation state. Avoid
+  unbounded inputs, queues, and arithmetic.
 - Never pass credentials to child processes implicitly or log secrets. Keep
   approved-shell exceptions in the centralized `ChildEnvironment` policy.
 - Keep persistence versioned and validate complete temporary state before

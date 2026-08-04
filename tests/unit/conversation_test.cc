@@ -63,12 +63,88 @@ void TestConversationAndContextPolicy() {
   CHECK(rejected.ArchivedBytes() == 0);
   CHECK(rejected.DroppedSegments() == 2);
 
+  Conversation traces;
+  traces.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+               {MessageKind::kSystem});
+  auto tool_turn = [&](int turn, const std::string& name, char fill) {
+    std::string id = "call-" + std::to_string(turn);
+    traces.Push({{"role", "user"}, {"content", "turn " + std::to_string(turn)}},
+                MessageKind::kUser);
+    traces.Push({{"role", "assistant"},
+                 {"content", ""},
+                 {"tool_calls",
+                  json::array({{{"id", id},
+                                {"type", "function"},
+                                {"function",
+                                 {{"name", name}, {"arguments", "{}"}}}}})}},
+                MessageKind::kAssistant);
+    traces.Push({{"role", "tool"},
+                 {"tool_call_id", id},
+                 {"content", std::string(2000, fill)}},
+                MessageKind::kToolResult);
+  };
+  tool_turn(1, "read_file", 'a');
+  tool_turn(2, "skill", 'b');
+  tool_turn(3, "read_file", 'c');
+  tool_turn(4, "read_file", 'd');
+  tool_turn(5, "read_file", 'e');
+  traces.ArchiveRange("test_trace", 1, traces.Size(), 5, 64 * 1024);
+  ToolTracePruneResult pruned =
+      traces.PruneOldToolResults(1500, 2500, {"skill"});
+  CHECK(pruned.results == 2);
+  CHECK(pruned.reclaimed_chars > 2500);
+  CHECK(traces.At(3)
+            .value("content", "")
+            .starts_with("[old tool output compacted:"));
+  CHECK(traces.At(6).value("content", "") == std::string(2000, 'b'));
+  CHECK(traces.At(9)
+            .value("content", "")
+            .starts_with("[old tool output compacted:"));
+  CHECK(traces.At(12).value("content", "") == std::string(2000, 'd'));
+  CHECK(traces.At(15).value("content", "") == std::string(2000, 'e'));
+  CHECK(traces.At(3).value("role", "") == "tool");
+  CHECK(traces.HasRecentToolResult("read_file", "{}", std::string(2000, 'e')));
+  CHECK(!traces.HasRecentToolResult("read_file", "{}", std::string(2000, 'a')));
+  CHECK(!traces.HasRecentToolResult("grep", "{}", std::string(2000, 'e')));
+  CHECK(JsonDump(traces.Archive()).find(std::string(2000, 'a')) !=
+        std::string::npos);
+  CHECK(traces.PruneOldToolResults(1500, 2500, {"skill"}).results == 0);
+
+  Conversation small_batch;
+  small_batch.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                    {MessageKind::kSystem});
+  auto small_turn = [&](int turn, char fill) {
+    small_batch.Push({{"role", "user"}, {"content", std::to_string(turn)}},
+                     MessageKind::kUser);
+    small_batch.Push({{"role", "tool"},
+                      {"tool_call_id", "missing"},
+                      {"content", std::string(1500, fill)}},
+                     MessageKind::kToolResult);
+  };
+  small_turn(1, 'x');
+  small_turn(2, 'y');
+  small_turn(3, 'z');
+  CHECK(small_batch.PruneOldToolResults(0, 2000, {}).results == 0);
+  CHECK(small_batch.At(2).value("content", "") == std::string(1500, 'x'));
+
   json kinds = MessageKindsJson(conversation.Kinds());
   std::vector<MessageKind> parsed;
   CHECK(ParseMessageKinds(kinds, conversation.Size(), parsed));
   CHECK(parsed == conversation.Kinds());
   kinds[0] = "unknown";
   CHECK(!ParseMessageKinds(kinds, conversation.Size(), parsed));
+
+  Conversation resumed;
+  resumed.Reset(
+      json::array({{{"role", "system"}, {"content", "old system"}},
+                   {{"role", "system"}, {"content", "old memory index"}},
+                   {{"role", "user"}, {"content", "continue"}}}),
+      {MessageKind::kSystem, MessageKind::kMemory, MessageKind::kUser});
+  resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}},
+                          nullptr, nullptr);
+  CHECK(resumed.Size() == 2);
+  CHECK(!resumed.HasKind(MessageKind::kMemory));
+  CHECK(resumed.At(1).value("content", "") == "continue");
 
   ContextPolicy policy;
   policy.SetReported(80);

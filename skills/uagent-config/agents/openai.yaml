@@ -1,0 +1,4 @@
+interface:
+  display_name: "Configure µAgent"
+  short_description: "Configure µAgent safely from its environment settings"
+  default_prompt: "Use $uagent-config to inspect or update my µAgent configuration."

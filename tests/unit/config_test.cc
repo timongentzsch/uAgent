@@ -4,6 +4,7 @@
 #include <limits>
 #include <string>
 
+#include "include/tools/memory.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -45,12 +46,12 @@ void TestProjectInstructionDiscovery() {
   fs::path child = repo / "child";
   fs::path empty = child / "empty";
   fs::create_directories(home / ".uagent");
-  fs::create_directories(home / ".uagent/memory");
+  fs::create_directories(home / ".uagent/memory/global");
   fs::create_directories(repo / ".git");
   fs::create_directories(empty);
   CHECK(ToolWriteFile((home / ".uagent/AGENTS.md").string(), "global")
             .output.starts_with("wrote "));
-  CHECK(ToolWriteFile((home / ".uagent/memory/lesson.md").string(),
+  CHECK(ToolWriteFile((home / ".uagent/memory/global/lesson.md").string(),
                       "remembered-evidence")
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((repo / "AGENTS.md").string(), "root-agent")
@@ -73,6 +74,10 @@ void TestProjectInstructionDiscovery() {
   setenv("HOME", home.c_str(), 1);
 
   ProjectInstructions loaded = LoadProjectInstructions(child, 32 * 1024);
+  MemoryIndex memories = LoadMemoryIndex(child, 32 * 1024 - loaded.text.size());
+  loaded.memory_index = memories.text;
+  loaded.memory_sources = memories.sources;
+  loaded.truncated |= memories.truncated;
   CHECK(loaded.sources.size() == 3);  // one file per directory
   CHECK(loaded.memory_sources.size() == 1);
   CHECK(!loaded.truncated);

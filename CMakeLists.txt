@@ -73,8 +73,17 @@ add_library(
   src/core/strings.cc
   src/media/attachments.cc
   src/providers.cc
+  src/tools/files.cc
+  src/tools/jobs.cc
+  src/tools/memory.cc
+  src/tools/memory_pipeline.cc
+  src/tools/policy.cc
+  src/tools/registry.cc
+  src/tools/shell.cc
+  src/tools/subagent.cc
   src/transport/sse.cc
-  src/ui/conversation.cc)
+  src/ui/conversation.cc
+  src/ui/markdown.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
 
 add_executable(uagent src/main.cc)
@@ -109,12 +118,17 @@ if(BUILD_TESTING)
     tests/unit/test_main.cc
     tests/unit/tools_test.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_core)
+  target_compile_definitions(
+    uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  add_test(NAME integration
-           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
-                   $<TARGET_FILE:uagent>)
-  set_tests_properties(integration PROPERTIES TIMEOUT 240)
+  foreach(group IN ITEMS runtime tools ui providers checkpoint mcp delegation)
+    add_test(NAME integration_${group}
+             COMMAND ${Python3_EXECUTABLE}
+                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
+                     $<TARGET_FILE:uagent> --group ${group})
+    set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
+  endforeach()
   add_test(NAME context_policy_sim
            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/context_policy_sim.py)
   add_test(NAME live_evaluation_helpers
@@ -138,6 +152,9 @@ endif()
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS tests/agent_workflow_live.py
         DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent RENAME eval.py)
+install(FILES tests/eval_profiles.py tests/eval_runtime.py
+              tests/memory_fixture.py
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
               docs/ARCHITECTURE.md docs/OPERATIONS.md docs/CHECKPOINTS.md
               docs/PERSISTENCE.md docs/TESTING.md

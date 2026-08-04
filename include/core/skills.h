@@ -44,8 +44,11 @@ inline void ParseSkillFrontMatter(std::istream& input, std::string& name,
     if (colon == std::string::npos) continue;
     std::string key = Trim(line.substr(0, colon));
     std::string value = Unquote(Trim(line.substr(colon + 1)));
-    if (key == "name") name = std::move(value);
-    if (key == "description") description = std::move(value);
+    if (key == "name") {
+      name = std::move(value);
+    } else if (key == "description") {
+      description = std::move(value);
+    }
   }
 }
 
@@ -75,7 +78,22 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
     }
   }
   path.push_back(fs::path(GlobalBase()) / "skills");
-  for (const char* vendor : kVendors) path.push_back(cwd / vendor / "skills");
+  // Vendor-neutral project skills apply from every ancestor. Walk from the
+  // filesystem root toward cwd so the nearest repository scope wins.
+  std::vector<fs::path> ancestors;
+  for (fs::path current = fs::absolute(cwd); !current.empty();) {
+    ancestors.push_back(current);
+    fs::path parent = current.parent_path();
+    if (parent == current) break;
+    current = std::move(parent);
+  }
+  for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+    path.push_back(*it / ".agents" / "skills");
+  }
+  // Tool-specific locations remain workspace-local compatibility roots.
+  for (const char* vendor : {".claude", ".codex"}) {
+    path.push_back(cwd / vendor / "skills");
+  }
   path.push_back(ProjectBase(cwd) / "skills");
   return path;
 }
@@ -94,9 +112,15 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
   auto scan = [&](const fs::path& base) {
     std::error_code ec;
     std::vector<fs::path> dirs;
-    for (fs::directory_iterator it(base, ec), end; it != end && !ec;
-         it.increment(ec)) {
-      if (it->is_directory(ec)) dirs.push_back(it->path());
+    fs::recursive_directory_iterator it(
+        base, fs::directory_options::skip_permission_denied, ec),
+        end;
+    for (; it != end && !ec; it.increment(ec)) {
+      if (it.depth() >= 6) it.disable_recursion_pending();
+      if (!it->is_regular_file(ec) || it->path().filename() != "SKILL.md") {
+        continue;
+      }
+      dirs.push_back(it->path().parent_path());
     }
     std::sort(dirs.begin(), dirs.end());
     for (const fs::path& dir : dirs) {
@@ -138,8 +162,8 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
   return found;
 }
 
-// The body without its front matter, bounded. The directory is prepended so
-// relative references inside the skill resolve for read_file and run.
+// The complete body without its front matter, bounded. Oversized skills fail
+// explicitly instead of silently giving the model a partial procedure.
 inline SkillReadResult ReadSkillBody(const Skill& skill) {
   std::ifstream input(skill.path, std::ios::binary);
   if (!input) return {false, "error: cannot read " + skill.path};
@@ -149,15 +173,17 @@ inline SkillReadResult ReadSkillBody(const Skill& skill) {
   std::string body(cap + 1, '\0');
   input.read(body.data(), static_cast<std::streamsize>(body.size()));
   size_t read = static_cast<size_t>(input.gcount());
-  bool truncated = read > cap;
-  body.resize(std::min(read, cap));
+  if (read > cap) {
+    return {false, "error: " + skill.path + " exceeds " + std::to_string(cap) +
+                       " bytes; raise UAGENT_SKILL_BYTES to load it fully"};
+  }
+  body.resize(read);
   body = Utf8Prefix(std::move(body), cap);
   if (Trim(body).empty()) {
     return {false, "error: " + skill.path + " has no body"};
   }
   std::string out =
       "[skill " + skill.name + " — files in " + skill.dir + "]\n" + Trim(body);
-  if (truncated) out += "\n[truncated; raise UAGENT_SKILL_BYTES]";
   return {true, std::move(out)};
 }
 

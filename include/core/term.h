@@ -19,6 +19,7 @@ namespace uagent {
 
 extern bool g_tty;
 extern volatile sig_atomic_t g_signal_tty;
+inline std::atomic<bool> g_persistent_composer{false};
 inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
@@ -58,18 +59,29 @@ inline void BracketedPaste(bool on) {
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true, std::string label = "working")
-      : label_(std::move(label)) {
+  explicit TerminalSpinner(bool enabled = true, std::string label = "working",
+                           std::chrono::steady_clock::time_point started =
+                               std::chrono::steady_clock::now())
+      : started_(started == std::chrono::steady_clock::time_point()
+                     ? std::chrono::steady_clock::now()
+                     : started),
+        label_(std::move(label)) {
     Start(enabled);
   }
 
   void Start(bool enabled = true) {
-    if (thread_.joinable() || !enabled || !g_tty) return;
+    if (thread_.joinable() || !enabled || !g_tty || g_persistent_composer) {
+      return;
+    }
     done_ = false;
     thread_ = std::thread([this] {
       std::unique_lock<std::mutex> lock(mutex_);
       while (!done_) {
-        printf("\r%s%c %s%s", DIM(), "|/-\\"[frame_], label_.c_str(), RST());
+        double elapsed = std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() - started_)
+                             .count();
+        printf("\r%s%c %s · %.1fs%s", DIM(), "|/-\\"[frame_], label_.c_str(),
+               elapsed, RST());
         fflush(stdout);
         frame_ = (frame_ + 1) & 3;
         wake_.wait_for(lock, std::chrono::milliseconds(100),
@@ -98,6 +110,7 @@ class TerminalSpinner {
   std::condition_variable wake_;
   bool done_ = false;
   int frame_ = 0;
+  std::chrono::steady_clock::time_point started_;
   std::string label_;
   std::thread thread_;
 };

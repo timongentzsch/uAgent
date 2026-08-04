@@ -6,10 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/core/checked.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/media.h"
@@ -48,6 +51,73 @@ void NormalizeRoles(json& messages, const std::vector<MessageKind>& kinds) {
   for (size_t index = 0; index < messages.size(); ++index) {
     NormalizeRole(messages[index], kinds[index]);
   }
+}
+
+constexpr size_t kMinimumPrunableResultChars = 1024;
+constexpr int64_t kProtectedUserTurns = 2;
+constexpr std::string_view kCompactedToolOutput = "[old tool output compacted:";
+
+std::string ToolCallName(const json& message, const std::string& id) {
+  if (!message.is_object() || JsonValue(message, "role", "") != "assistant" ||
+      !message.contains("tool_calls") || !message["tool_calls"].is_array()) {
+    return "";
+  }
+  for (const json& call : message["tool_calls"]) {
+    if (!call.is_object() || JsonValue(call, "id", "") != id ||
+        !call.contains("function") || !call["function"].is_object()) {
+      continue;
+    }
+    return JsonValue(call["function"], "name", "");
+  }
+  return "";
+}
+
+std::string ToolResultName(const json& messages,
+                           const std::vector<MessageKind>& kinds,
+                           size_t result_index) {
+  const json& message = messages[result_index];
+  std::string id = JsonValue(message, "tool_call_id", "");
+  if (!id.empty()) {
+    for (size_t index = result_index; index > 0; --index) {
+      std::string name = ToolCallName(messages[index - 1], id);
+      if (!name.empty()) return name;
+      if (kinds[index - 1] == MessageKind::kUser) break;
+    }
+  }
+
+  std::string content = JsonValue(message, "content", "");
+  constexpr std::string_view kPrefix = "[tool_result ";
+  if (!content.starts_with(kPrefix)) return "";
+  size_t end = content.find(']', kPrefix.size());
+  return end == std::string::npos
+             ? ""
+             : content.substr(kPrefix.size(), end - kPrefix.size());
+}
+
+std::string CompactedResult(const std::string& content) {
+  std::string preview = Utf8Trunc(FirstLine(content), 160);
+  return std::string(kCompactedToolOutput) + " " +
+         std::to_string(content.size()) +
+         " chars; full result retained in "
+         "session trace" +
+         (preview.empty() ? "]" : "; preview: " + preview + "]");
+}
+
+bool MatchingToolCall(const json& message, const std::string& id,
+                      const std::string& name, const std::string& arguments) {
+  if (JsonValue(message, "role", "") != "assistant" ||
+      !message.contains("tool_calls") || !message["tool_calls"].is_array()) {
+    return false;
+  }
+  for (const json& call : message["tool_calls"]) {
+    if (JsonValue(call, "id", "") != id || !call.contains("function") ||
+        !call["function"].is_object()) {
+      continue;
+    }
+    return JsonValue(call["function"], "name", "") == name &&
+           JsonValue(call["function"], "arguments", "") == arguments;
+  }
+  return false;
 }
 
 }  // namespace
@@ -259,6 +329,82 @@ std::vector<std::string> Conversation::RecentToolResults(int64_t count) const {
   }
   std::reverse(results.begin(), results.end());
   return results;
+}
+
+bool Conversation::HasRecentToolResult(const std::string& name,
+                                       const std::string& arguments,
+                                       const std::string& result) const {
+  int64_t user_turns = 0;
+  for (size_t index = messages_.size(); index > 0; --index) {
+    size_t current = index - 1;
+    if (kinds_[current] == MessageKind::kUser) {
+      if (++user_turns >= kProtectedUserTurns) break;
+      continue;
+    }
+    if (kinds_[current] != MessageKind::kToolResult) continue;
+    const json& message = messages_[current];
+    if (JsonValue(message, "content", "") != result) continue;
+    std::string id = JsonValue(message, "tool_call_id", "");
+    if (id.empty()) continue;
+    for (size_t call_index = current; call_index > 0; --call_index) {
+      const json& candidate = messages_[call_index - 1];
+      if (MatchingToolCall(candidate, id, name, arguments)) return true;
+      if (kinds_[call_index - 1] == MessageKind::kUser) break;
+    }
+  }
+  return false;
+}
+
+ToolTracePruneResult Conversation::PruneOldToolResults(
+    size_t protect_chars, size_t minimum_reclaim_chars,
+    const std::vector<std::string>& retained_tools) {
+  if (minimum_reclaim_chars == 0) return {};
+  const std::unordered_set<std::string> retained(retained_tools.begin(),
+                                                 retained_tools.end());
+  struct Candidate {
+    size_t index;
+    std::string replacement;
+  };
+  std::vector<Candidate> candidates;
+  size_t protected_chars = 0;
+  size_t reclaimable_chars = 0;
+  int64_t user_turns = 0;
+
+  for (size_t index = messages_.size(); index > 0; --index) {
+    size_t current = index - 1;
+    if (kinds_[current] == MessageKind::kUser) {
+      ++user_turns;
+      continue;
+    }
+    if (user_turns < kProtectedUserTurns ||
+        kinds_[current] != MessageKind::kToolResult) {
+      continue;
+    }
+    json& message = messages_[current];
+    if (!message.contains("content") || !message["content"].is_string()) {
+      continue;
+    }
+    const std::string& content =
+        message["content"].get_ref<const std::string&>();
+    if (content.size() < kMinimumPrunableResultChars ||
+        content.starts_with(kCompactedToolOutput) ||
+        retained.contains(ToolResultName(messages_, kinds_, current))) {
+      continue;
+    }
+    protected_chars = SaturatingAdd(protected_chars, content.size());
+    if (protected_chars <= protect_chars) continue;
+    std::string replacement = CompactedResult(content);
+    if (replacement.size() >= content.size()) continue;
+    size_t reclaimed = content.size() - replacement.size();
+    reclaimable_chars = SaturatingAdd(reclaimable_chars, reclaimed);
+    candidates.push_back({current, std::move(replacement)});
+  }
+
+  if (reclaimable_chars < minimum_reclaim_chars) return {};
+  for (Candidate& candidate : candidates) {
+    messages_[candidate.index]["content"] = std::move(candidate.replacement);
+  }
+  return {candidates.size(), reclaimable_chars};
 }
 
 size_t Conversation::PruneAttachments(size_t begin) {

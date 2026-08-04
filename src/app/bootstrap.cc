@@ -30,6 +30,8 @@
 #include "include/mcp/register.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/memory.h"
+#include "include/tools/memory_pipeline.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
@@ -43,19 +45,27 @@ BootstrapResult Failure(std::string error, int exit_code = 1) {
   return {nullptr, std::move(error), exit_code};
 }
 
-bool ResolveProjectTrust(const Options& options, json& trusted_snapshot,
-                         std::string& error, int& exit_code) {
-  bool trusted =
+void PrintWarning(const std::string& warning) {
+  if (!warning.empty()) {
+    fprintf(stderr, "%s%s%s\n", YEL(), TerminalSafe(warning).c_str(), RST());
+  }
+}
+
+bool ResolveProjectTrust(const Options& options, bool& trusted,
+                         json& trusted_snapshot, std::string& error,
+                         int& exit_code) {
+  trusted =
       options.trust_project || EnvStr("UAGENT_TRUST_PROJECT_CONFIG") == "1";
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
-  if (ProjectConfigPresent() && !trusted) {
+  bool mcp_present = ProjectMcpPresent();
+  bool agent_config_present = ProjectAgentConfigPresent();
+  if ((mcp_present || agent_config_present) && !trusted) {
     std::string surfaces =
-        ProjectMcpPresent()
-            ? (ProjectAgentConfigPresent() ? ".mcp.json and .uagent/.config"
-                                           : ".mcp.json")
-            : ".uagent/.config";
+        mcp_present ? (agent_config_present ? ".mcp.json and .uagent/.config"
+                                            : ".mcp.json")
+                    : ".uagent/.config";
     if (!isatty(STDIN_FILENO) || !options.prompt.empty()) {
-      if (ProjectMcpPresent()) {
+      if (mcp_present) {
         error =
             "project .mcp.json is untrusted; rerun with "
             "--trust-project-config after reviewing it";
@@ -77,7 +87,7 @@ bool ResolveProjectTrust(const Options& options, json& trusted_snapshot,
       }
     }
   }
-  if (ProjectMcpPresent() && trusted && trusted_snapshot.is_null()) {
+  if (mcp_present && trusted && trusted_snapshot.is_null()) {
     if (!ProjectMcpSnapshot(trusted_snapshot, error)) {
       error = "cannot load trusted project config: " + error;
       return false;
@@ -87,7 +97,7 @@ bool ResolveProjectTrust(const Options& options, json& trusted_snapshot,
 }
 
 void PrintProjectContext(const ProjectInstructions& instructions,
-                         int64_t byte_limit) {
+                         size_t byte_limit) {
   if (!instructions.sources.empty() || !instructions.memory_sources.empty()) {
     std::string cwd = CanonicalCwd() + "/";
     std::string list;
@@ -119,8 +129,7 @@ void PrintSkills(const std::vector<Skill>& skills) {
 }
 
 bool ProbeModel(Api& api) {
-  if (!api.model.empty() &&
-      (api.ctx_window > 0 || OpenrouterUrl(api.base_url))) {
+  if (!api.model.empty() && (api.ctx_window > 0 || api.openrouter_compatible)) {
     return true;
   }
   auto started = std::chrono::steady_clock::now();
@@ -162,15 +171,26 @@ bool ProbeModel(Api& api) {
   return !api.model.empty();
 }
 
-std::vector<Tool> BuildTools(AppContext& context, json trusted_snapshot,
+std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
                              std::vector<Skill> skills) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
-  std::vector<Tool> tools = BuiltinTools(
-      runtime.processes, CanonicalAccessPath(CanonicalCwd()), inline_images);
+  std::vector<Tool> tools =
+      BuiltinTools(runtime.processes, CanonicalAccessPath(CanonicalCwd()),
+                   inline_images, runtime.config.memory_generate);
+  if (!runtime.config.memory_enabled) {
+    std::erase_if(tools,
+                  [](const Tool& tool) { return tool.name == "memory"; });
+  }
+  if (!context.options.memory_source.empty()) {
+    std::erase_if(tools,
+                  [](const Tool& tool) { return tool.name != "memory"; });
+    ApplyToolPolicy(tools, context.tool_policy);
+    return tools;
+  }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   api.openrouter_web_search =
@@ -184,9 +204,11 @@ std::vector<Tool> BuildTools(AppContext& context, json trusted_snapshot,
     tools.push_back(SubagentTool(api, runtime.processes,
                                  context.provider.routes,
                                  context.provider.providers, context.debug));
+    tools.push_back(WaitAgentTool(runtime.processes));
   }
   if (!skills.empty()) tools.push_back(SkillTool(std::move(skills)));
   if (LeanToolset()) KeepLeanTools(tools);
+  ApplyToolPolicy(tools, context.tool_policy);
   return tools;
 }
 
@@ -198,10 +220,13 @@ void LogReady(const AppContext& context) {
                 {{"base_url", api.base_url},
                  {"model", api.model},
                  {"reasoning_effort", api.reasoning_effort},
+                 {"openrouter_compatible", api.openrouter_compatible},
                  {"configured_models", context.provider.routes.size()},
                  {"context_window", api.ctx_window},
                  {"tools", context.tools.size()},
                  {"toolset", LeanToolset() ? "lean" : "full"},
+                 {"memory", config.memory_enabled},
+                 {"memory_generate", config.memory_generate},
                  {"yolo", context.options.yolo},
                  {"auto_compact_pct", AutoCompactPct()},
                  {"checkpoint_mode", api.config.checkpoint_mode},
@@ -252,19 +277,29 @@ AppContext::AppContext(RuntimeConfig config, Options parsed_options)
 
 BootstrapResult Bootstrap(Options options, const char* executable) {
   SetExecutablePath(executable);
+  const bool memory_child = !options.memory_source.empty();
+  bool trusted = false;
   json trusted_snapshot = nullptr;
   std::string error;
   int exit_code = 1;
-  if (!ResolveProjectTrust(options, trusted_snapshot, error, exit_code)) {
+  if (!memory_child && !ResolveProjectTrust(options, trusted, trusted_snapshot,
+                                            error, exit_code)) {
     return Failure(std::move(error), exit_code);
   }
 
-  bool trusted = options.trust_project ||
-                 EnvStr("UAGENT_TRUST_PROJECT_CONFIG") == "1" ||
-                 !trusted_snapshot.is_null();
   LoadConfigFile(trusted);
+  if (memory_child &&
+      !BuildMemoryConsolidationPrompt(options.memory_source,
+                                      CanonicalAccessPath(CanonicalCwd()),
+                                      options.prompt, error)) {
+    return Failure(std::move(error), 2);
+  }
   if (options.budget > 0) {
     setenv("UAGENT_SESSION_BUDGET", std::to_string(options.budget).c_str(), 1);
+  }
+  if (options.no_memory) {
+    setenv("UAGENT_MEMORY", "0", 1);
+    setenv("UAGENT_MEMORY_GENERATE", "0", 1);
   }
   MaintainArtifacts();
   if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
@@ -276,8 +311,8 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   if (!config.web_search_effort.empty() &&
       !ValidEffort(config.web_search_effort)) {
-    fprintf(stderr, "%signoring invalid UAGENT_WEB_SEARCH_EFFORT=%s%s\n", YEL(),
-            TerminalSafe(config.web_search_effort).c_str(), RST());
+    PrintWarning("ignoring invalid UAGENT_WEB_SEARCH_EFFORT=" +
+                 config.web_search_effort);
     config.web_search_effort.clear();
   }
   auto context =
@@ -303,18 +338,31 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
 
   Api& api = context->runtime.api;
   api.render_stream = context->options.prompt.empty();
-  ProjectInstructions instructions = LoadProjectInstructions(
-      CanonicalAccessPath(CanonicalCwd()),
-      static_cast<size_t>(context->runtime.config.project_doc_bytes));
-  PrintProjectContext(instructions, context->runtime.config.project_doc_bytes);
-  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
+  size_t project_limit =
+      static_cast<size_t>(context->runtime.config.project_doc_bytes);
+  ProjectInstructions instructions;
+  if (!memory_child) {
+    instructions = LoadProjectInstructions(CanonicalAccessPath(CanonicalCwd()),
+                                           project_limit);
+  }
+  if (context->runtime.config.memory_enabled) {
+    size_t remaining = instructions.text.size() >= project_limit
+                           ? 0
+                           : project_limit - instructions.text.size();
+    MemoryIndex memories =
+        LoadMemoryIndex(CanonicalAccessPath(CanonicalCwd()), remaining);
+    instructions.memory_index = std::move(memories.text);
+    instructions.memory_sources = std::move(memories.sources);
+    instructions.truncated |= memories.truncated;
+  }
+  printf("%s%sµAgent%s\n", RST(), DIM(), RST());
+  PrintProjectContext(instructions, project_limit);
+  std::vector<Skill> skills =
+      memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
   PrintSkills(skills);
 
   context->provider = ConfigureProvider(api);
-  if (!context->provider.warning.empty()) {
-    fprintf(stderr, "%s%s%s\n", YEL(),
-            TerminalSafe(context->provider.warning).c_str(), RST());
-  }
+  PrintWarning(context->provider.warning);
 #if defined(HAVE_EDITLINE)
   ConfigureReadlineCompletion(context->provider.routes);
 #endif
@@ -331,16 +379,16 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     return Failure("UAGENT_MODEL is not set and " + api.base_url +
                    "/models returned nothing usable");
   }
-  json route_profile = ApplyRouteProfile(api);
+  json route_profile =
+      ActivateRoute(api, context->runtime.config.checkpoint_mode);
   if (!route_profile.empty()) {
     DebugLog("route_profile_applied",
              {{"model", api.model}, {"profile", route_profile}});
   }
-
-  printf("%sµAgent%s\n", BOLD(), RST());
   api.server_tools_authorized = context->options.yolo;
-  context->tools =
-      BuildTools(*context, std::move(trusted_snapshot), std::move(skills));
+  context->tool_policy = ToolPolicyFromEnvironment();
+  PrintWarning(context->tool_policy.error);
+  context->tools = BuildTools(*context, trusted_snapshot, skills);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,
@@ -364,10 +412,12 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
         return granted;
       },
       [app](std::chrono::steady_clock::time_point deadline) {
-        return McpRefreshTools(app->tools, app->runtime.mcp,
-                               app->runtime.config, deadline);
+        bool changed = McpRefreshTools(app->tools, app->runtime.mcp,
+                                       app->runtime.config, deadline);
+        if (changed) ApplyToolPolicy(app->tools, app->tool_policy);
+        return changed;
       },
-      std::move(instructions));
+      std::move(instructions), std::move(skills));
   LogReady(*context);
   return {std::move(context), {}, 0};
 }

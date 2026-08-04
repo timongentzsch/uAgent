@@ -18,6 +18,21 @@ namespace uagent {
 
 void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
                              const std::string& result) {
+  const Tool* tool = FindTool(tools_, call.name);
+  if (!text_mode && tool && tool->dedupe_output && result.size() >= 256 &&
+      conversation_.HasRecentToolResult(call.name, call.args, result)) {
+    constexpr char kDuplicate[] =
+        "[unchanged duplicate; prior read result remains in recent context]";
+    conversation_.Push(
+        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}},
+        MessageKind::kToolResult);
+    DebugLog("tool_result_deduplicated",
+             {{"turn", turn_id_},
+              {"name", call.name},
+              {"original_chars", result.size()},
+              {"model_chars", sizeof(kDuplicate) - 1}});
+    return;
+  }
   if (text_mode) {
     conversation_.Push(
         HarnessMessage("[tool_result " + call.name + "]\n" + result),
@@ -29,16 +44,12 @@ void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
   }
 }
 
-std::vector<std::string> Agent::RecentToolResults(int64_t count) const {
-  return conversation_.RecentToolResults(count);
-}
-
-bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
-                     int64_t& tool_count,
-                     std::unordered_map<std::string, int64_t>& tool_counts,
-                     int64_t step,
-                     std::chrono::steady_clock::time_point deadline,
-                     int64_t& consecutive_failed_tools) {
+bool Agent::RunCalls(
+    const std::vector<ToolCall>& calls, bool text_mode, int64_t& tool_count,
+    std::unordered_map<std::string, int64_t>& tool_counts,
+    std::unordered_map<std::string, std::string>& stable_arguments,
+    int64_t step, std::chrono::steady_clock::time_point deadline,
+    int64_t& consecutive_failed_tools) {
   if (calls.size() == 1 && calls[0].name == "checkpoint") {
     return RunCheckpointCall(calls[0], text_mode, tool_count, step);
   }
@@ -48,18 +59,18 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
   }
 
   std::vector<CallTask> tasks(calls.size());
+  auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
+                   const char* status) {
+    task.result = ToolFailure(code, std::move(message));
+    task.trace_status = status;
+  };
   for (size_t index = 0; index < calls.size(); ++index) {
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
     if (calls.size() > 1) {
       task.ordinal = "[" + std::to_string(index + 1) + "] ";
     }
-    DebugLog("tool_call", {{"turn", turn_id_},
-                           {"step", step},
-                           {"id", call.id},
-                           {"name", call.name},
-                           {"arguments", call.args},
-                           {"text_protocol", text_mode}});
+    LogToolCall(call, turn_id_, step, text_mode);
     task.args = json::parse(call.args, nullptr, false);
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
@@ -67,42 +78,40 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     std::string invalid;
     bool valid = false;
     if (arguments.is_discarded() || !arguments.is_object()) {
-      task.result =
-          ToolFailure(ToolErrorCode::kInvalidArguments,
-                      "error: malformed tool arguments (not valid JSON)");
-      task.trace_status = "malformed_arguments";
+      reject(task, ToolErrorCode::kInvalidArguments,
+             "error: malformed tool arguments (not valid JSON)",
+             "malformed_arguments");
     } else if (!tool) {
-      task.result = ToolFailure(ToolErrorCode::kNotFound,
-                                "error: unknown tool " + call.name);
-      task.trace_status = "unknown_tool";
+      reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
+             "unknown_tool");
     } else if (!(invalid = MissingRequired(*tool, arguments)).empty()) {
-      task.result =
-          ToolFailure(ToolErrorCode::kInvalidArguments,
-                      "error: missing required argument `" + invalid + "`");
-      task.trace_status = "missing_argument";
-    } else if (!(invalid = InvalidArgumentType(*tool, arguments)).empty()) {
-      task.result = ToolFailure(ToolErrorCode::kInvalidArguments,
-                                "error: invalid tool argument: " + invalid);
-      task.trace_status = "invalid_argument";
+      reject(task, ToolErrorCode::kInvalidArguments,
+             "error: missing required argument `" + invalid + "`",
+             "missing_argument");
+    } else if (!(invalid = InvalidToolArgument(*tool, arguments)).empty()) {
+      reject(task, ToolErrorCode::kInvalidArguments,
+             "error: invalid tool argument: " + invalid, "invalid_argument");
     } else if (tool->validate &&
                !(invalid = tool->validate(arguments)).empty()) {
-      task.result =
-          ToolFailure(ToolErrorCode::kInvalidArguments, std::move(invalid));
-      task.trace_status = "rejected";
+      reject(task, ToolErrorCode::kInvalidArguments, std::move(invalid),
+             "rejected");
+    } else if (!(invalid =
+                     StableArgumentError(*tool, arguments, stable_arguments))
+                    .empty()) {
+      reject(task, ToolErrorCode::kInvalidArguments, std::move(invalid),
+             "unstable_argument");
     } else if (call.name == "checkpoint") {
-      task.result = ToolFailure(
-          ToolErrorCode::kInvalidArguments,
-          "error: checkpoint must be the only call in its tool batch");
-      task.trace_status = "invalid_batch";
+      reject(task, ToolErrorCode::kInvalidArguments,
+             "error: checkpoint must be the only call in its tool batch",
+             "invalid_batch");
     } else if (tool->max_calls_per_turn >= 0 &&
                tool_counts[call.name] >= tool->max_calls_per_turn) {
-      task.result = ToolFailure(
-          ToolErrorCode::kLimitExceeded,
-          "error: " + call.name + " reached its per-turn call limit (" +
-              std::to_string(tool->max_calls_per_turn) +
-              "); answer from the results you have or delegate the "
-              "rest with task — do not reimplement it with run");
-      task.trace_status = "call_limit";
+      reject(task, ToolErrorCode::kLimitExceeded,
+             "error: " + call.name + " reached its per-turn call limit (" +
+                 std::to_string(tool->max_calls_per_turn) +
+                 "); answer from the results you have or delegate the "
+                 "rest with task — do not reimplement it with run",
+             "call_limit");
     } else {
       task.label = ToolSummary(*tool, arguments);
       valid = true;
@@ -117,11 +126,10 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
         ++tool_count;
         ++tool_counts[call.name];
       } else {
-        task.result = ToolFailure(
-            ToolErrorCode::kPermissionDenied,
-            "user denied this action; ask for guidance or try a different "
-            "approach");
-        task.trace_status = "denied";
+        reject(task, ToolErrorCode::kPermissionDenied,
+               "user denied this action; ask for guidance or try a different "
+               "approach",
+               "denied");
       }
     }
     if (!task.execute) LogToolResult(task, call, turn_id_, step);
@@ -164,8 +172,8 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
   std::string activity = runnable.size() == 1
                              ? calls[runnable.front()].name
                              : std::to_string(runnable.size()) + " tools";
-  TerminalSpinner spinner(!runnable.empty() && quiet,
-                          SpinnerLabel(std::move(activity)));
+  TerminalSpinner spinner(!runnable.empty() && quiet, SpinnerLabel(activity),
+                          api_.turn_started);
   ToolContext context{deadline};
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
@@ -189,6 +197,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
     std::atomic<size_t> next{begin};
     size_t workers_count = std::min(end - begin, static_cast<size_t>(limit));
     std::vector<std::future<void>> workers;
+    workers.reserve(workers_count);
     for (size_t index = 0; index < workers_count; ++index) {
       workers.push_back(std::async(std::launch::async, [&] {
         for (size_t work; !AbortRequested() && !context.Expired() &&
@@ -209,10 +218,7 @@ bool Agent::RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
       task.result = ToolTimedOut("error: turn deadline reached");
       task.trace_status = "timed_out";
     } else {
-      task.result =
-          ToolCancelled(SteeringState().Requested() ? "cancelled by steering"
-                                                    : "cancelled by user");
-      task.trace_status = SteeringState().Requested() ? "steered" : "cancelled";
+      CancelCall(task);
     }
     LogToolResult(task, calls[index], turn_id_, step);
   }

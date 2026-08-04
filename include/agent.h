@@ -15,6 +15,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -34,6 +35,7 @@
 #include "include/core/json.h"
 #include "include/core/project.h"
 #include "include/core/signals.h"
+#include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -61,7 +63,8 @@ class Agent {
   Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
         UsageAccumulator& side_usage, Approver approve,
         ToolRefresher refresh_tools = {},
-        ProjectInstructions project_instructions = {});
+        ProjectInstructions project_instructions = {},
+        std::vector<Skill> skills = {});
 
   void Reset();
 
@@ -69,12 +72,6 @@ class Agent {
   json RouteUsageJson() const { return uagent::RouteUsageJson(route_usage_); }
   const std::string& LastError() const { return last_error_; }
   const std::string& SessionId() const { return session_id_; }
-  size_t ArchivedSegments() const { return conversation_.ArchivedSegments(); }
-  int64_t ArchivedBytes() const { return conversation_.ArchivedBytes(); }
-  int64_t ArchiveDroppedSegments() const {
-    return conversation_.DroppedSegments();
-  }
-  size_t CheckpointCandidates() const { return checkpoint_candidates_.size(); }
   uint64_t Revision() const { return revision_; }
 
   // Show the most recent completed turn's archived tool traffic. Server search
@@ -134,29 +131,31 @@ class Agent {
 
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
-  void DrainBackground(TerminalSpinner* spinner = nullptr);
+  void DrainBackground();
 
   // Files the model attached ride in on a user message: Chat Completions tool
   // results are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
 
-  size_t JoinableBackground() const { return processes_.JoinableCount(); }
-
-  bool WaitForBackground(std::chrono::steady_clock::time_point deadline,
-                         Usage& usage);
-
-  bool JoinBackgroundOrReport(std::chrono::steady_clock::time_point deadline,
-                              Usage& usage, int64_t max_turn_seconds,
-                              std::string& outcome);
-
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Resume();
-
-  void NudgeMemoryAfterCorrection();
 
   void Turn(const std::string& user_input, json user_content = nullptr);
 
  private:
+  struct TurnState;
+
+  bool TurnDeadlineExceeded(TurnState& state,
+                            std::chrono::seconds reserve = {});
+  bool TurnCostExceeded(TurnState& state);
+  void RecordModelResponse(
+      ChatResult& response, TurnState& state,
+      std::unordered_map<std::string, int64_t>& tool_counts);
+  bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
+                             TurnState& state, int64_t max_tool_calls,
+                             std::string& last_call, int64_t& repeated_calls);
+  void FinishTurn(TurnState& state, int64_t step);
+
   void ArchiveRange(const char* reason, size_t begin, size_t end,
                     json metadata = json::object());
 
@@ -185,6 +184,7 @@ class Agent {
   // Keep completed tool messages in active context until normal compaction,
   // while also archiving them for the user-facing /trace command.
   void ArchiveTurnTrace(size_t turn_start);
+  void PruneOldToolResults();
 
   // A rejected capability -> drop it and retry. Ordered most-specific first:
   // the native-tools probe matches any "tool", so it must stay last or it would
@@ -217,7 +217,6 @@ class Agent {
 
   void AppendToolResult(const ToolCall& call, bool text_mode,
                         const std::string& result);
-  std::vector<std::string> RecentToolResults(int64_t count) const;
 
   void InvalidatePendingCheckpoint(const char* reason);
   void RecordSideEffect(const CallTask& task, const ToolCall& call);
@@ -233,10 +232,13 @@ class Agent {
   bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
                 int64_t& tool_count,
                 std::unordered_map<std::string, int64_t>& tool_counts,
+                std::unordered_map<std::string, std::string>& stable_arguments,
                 int64_t step, std::chrono::steady_clock::time_point deadline,
                 int64_t& consecutive_failed_tools);
 
   void RebuildToolSchemas();
+  std::vector<std::string> ExplicitSkillContext(
+      const std::string& user_input) const;
 
   Api& api_;
   std::vector<Tool>& tools_;
@@ -247,6 +249,7 @@ class Agent {
   Approver approve_;
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
+  std::vector<Skill> skills_;
   Conversation conversation_;
   ContextPolicy context_policy_;
   SearchTrace turn_search_trace_;

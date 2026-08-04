@@ -4,10 +4,8 @@
 
 #include <sys/stat.h>
 
-#include <algorithm>
 #include <array>
 #include <atomic>
-#include <cctype>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
@@ -55,9 +53,7 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     error = "cannot read " + path;
     return false;
   }
-  std::string ext = file.extension().string();
-  std::transform(ext.begin(), ext.end(), ext.begin(),
-                 [](unsigned char c) { return static_cast<char>(tolower(c)); });
+  std::string ext = AsciiLower(file.extension().string());
   static const std::pair<const char*, const char*> kTypes[] = {
       {".png", "image/png"},
       {".jpg", "image/jpeg"},
@@ -149,16 +145,7 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
   out.reserve(*reserved);
   unsigned char in[3];
   uintmax_t read_bytes = 0;
-  bool read_failed = false;
-  while (true) {
-    size_t n = fread(in, 1, 3, file);
-    if (!n) {
-      if (ferror(file)) {
-        error = "failed to read " + attachment.path;
-        read_failed = true;
-      }
-      break;
-    }
+  for (size_t n; (n = fread(in, 1, 3, file)) > 0;) {
     read_bytes += n;
     if (read_bytes > max_bytes) {
       error = "attachment grew beyond the byte limit while reading: " +
@@ -172,27 +159,22 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
                ? kBase64Alphabet[((in[1] & 15) << 2) | (n > 2 ? in[2] >> 6 : 0)]
                : '=';
     out += n > 2 ? kBase64Alphabet[in[2] & 63] : '=';
-    if (n < 3) {
-      if (ferror(file)) {
-        error = "failed to read " + attachment.path;
-        read_failed = true;
-      }
-      break;
-    }
+    if (n < 3) break;
   }
+  bool read_failed = ferror(file);
   fclose(file);
-  return read_failed ? "" : out;
+  if (!read_failed) return out;
+  error = "failed to read " + attachment.path;
+  return "";
 }
 
 bool Base64Decode(std::string_view input, std::string& output,
                   size_t max_bytes) {
-  static constexpr signed char kInvalid = -1;
   static const auto kTable = [] {
-    std::array<signed char, 256> values{};
-    values.fill(kInvalid);
+    std::array<int, 256> values{};
+    values.fill(-1);
     for (int i = 0; i < 64; ++i) {
-      values[static_cast<unsigned char>(kBase64Alphabet[i])] =
-          static_cast<signed char>(i);
+      values[static_cast<unsigned char>(kBase64Alphabet[i])] = i;
     }
     return values;
   }();
@@ -234,6 +216,8 @@ json AttachmentContent(const std::string& prompt,
                        std::string& error) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
+    error = ImageInputError(attachment);
+    if (!error.empty()) return nullptr;
     std::error_code ec;
     uintmax_t current = std::filesystem::file_size(attachment.path, ec);
     if (ec || !std::filesystem::is_regular_file(attachment.path, ec)) {

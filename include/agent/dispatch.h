@@ -135,16 +135,30 @@ inline void LogToolResult(const CallTask& task, const ToolCall& call,
         task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}});
 }
 
+inline void LogToolCall(const ToolCall& call, int64_t turn, int64_t step,
+                        bool text_protocol) {
+  DebugLog("tool_call", {{"turn", turn},
+                         {"step", step},
+                         {"id", call.id},
+                         {"name", call.name},
+                         {"arguments", call.args},
+                         {"text_protocol", text_protocol}});
+}
+
+inline void CancelCall(CallTask& task) {
+  bool steered = SteeringState().Requested();
+  task.result =
+      ToolCancelled(steered ? "cancelled by steering" : "cancelled by user");
+  task.trace_status = steered ? "steered" : "cancelled";
+}
+
 inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t step, const ToolContext& context,
                         int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
   if (SteeringState().Requested() || AbortRequested()) {
-    task.result =
-        ToolCancelled(SteeringState().Requested() ? "cancelled by steering"
-                                                  : "cancelled by user");
-    task.trace_status = SteeringState().Requested() ? "steered" : "cancelled";
+    CancelCall(task);
     LogToolResult(task, call, turn, step);
     return;
   }

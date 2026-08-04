@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <limits>
 #include <optional>
 #include <string>
 #include <thread>
@@ -16,6 +17,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
 
 namespace uagent {
 
@@ -41,6 +43,14 @@ class CurlHeaders {
   curl_slist* list_ = nullptr;
 };
 
+long CurlTimeout(int64_t seconds) {  // NOLINT(runtime/int): libcurl ABI
+  return static_cast<long>(          // NOLINT(runtime/int): libcurl ABI
+      std::clamp(
+          seconds, int64_t{0},
+          static_cast<int64_t>(
+              std::numeric_limits<long>::max())));  // NOLINT(runtime/int)
+}
+
 }  // namespace
 
 Api::Api(RuntimeConfig config)
@@ -52,7 +62,7 @@ Api::~Api() {
 
 void Api::PreserveAssistantReasoning(json& message,
                                      const ChatResult& result) const {
-  if (!OpenrouterCompatibleUrl(base_url)) return;
+  if (!openrouter_compatible) return;
   if (!result.reasoning_details.empty()) {
     message["reasoning_details"] = result.reasoning_details;
   } else if (!result.reasoning.empty()) {
@@ -67,9 +77,8 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   json body = {{"model", model}, {"messages", messages}, {"stream", true}};
   if (native_tools && !tool_schemas.empty()) {
     json request_tools = json::array();
-    bool server_search = OpenrouterCompatibleUrl(base_url) &&
-                         config.web_search_server && openrouter_web_search &&
-                         server_tools_authorized;
+    bool server_search = openrouter_compatible && config.web_search_server &&
+                         openrouter_web_search && server_tools_authorized;
     bool search_offered = false;
     for (const json& tool : tool_schemas) {
       bool compatibility_search =
@@ -101,7 +110,7 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   }
   // OpenRouter always includes usage in the final SSE event; its
   // stream_options.include_usage switch is deprecated and adds no value.
-  if (include_usage && !OpenrouterUrl(base_url)) {
+  if (include_usage && !openrouter_compatible) {
     body["stream_options"] = {{"include_usage", true}};
   }
   int64_t max_tokens = MaxOutputTokens();
@@ -110,13 +119,13 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
         max_tokens;
   }
   if (!reasoning_effort.empty()) {
-    if (OpenrouterUrl(base_url)) {
+    if (openrouter_compatible) {
       body["reasoning"] = {{"effort", reasoning_effort}};
     } else {
       body["reasoning_effort"] = reasoning_effort;
     }
   }
-  if (OpenrouterUrl(base_url)) {
+  if (openrouter_compatible) {
     if (!session_id.empty()) body["session_id"] = session_id;
     if (!config.openrouter_provider.empty()) {
       body["provider"] = {{"order", json::array({config.openrouter_provider})},
@@ -127,7 +136,8 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
 }
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
-                     int64_t timeout_s, const std::string& session_id) {
+                     int64_t timeout_s, const std::string& session_id,
+                     int64_t context_tokens) {
   ChatResult res;
   size_t estimated =
       JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
@@ -147,25 +157,39 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     return res;
   }
 
-  int64_t request_timeout =
-      timeout_s > 0 ? timeout_s : config.request_timeout_s;
+  // timeout_s is the caller's total budget (normally the remaining turn).
+  // UAGENT_REQUEST_TIMEOUT caps one transport attempt. Keeping those clocks
+  // separate leaves room for retry backoff after a timed-out attempt.
+  int64_t attempt_limit = config.request_timeout_s;
+  int64_t request_timeout = timeout_s;
+  if (request_timeout <= 0) {
+    constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
+    request_timeout = attempt_limit <= 0 ? 0
+                      : attempt_limit > kMax / kChatAttempts
+                          ? kMax
+                          : attempt_limit * kChatAttempts;
+  }
   auto started = std::chrono::steady_clock::now();
-  auto deadline = started + std::chrono::seconds(request_timeout);
+  auto deadline = request_timeout > 0
+                      ? DeadlineAfter(started, request_timeout)
+                      : std::chrono::steady_clock::time_point::max();
   for (int attempt = 1; attempt <= kChatAttempts; ++attempt) {
-    int64_t attempt_timeout = request_timeout;
+    int64_t attempt_timeout = attempt_limit;
     if (request_timeout > 0) {
-      auto remaining = std::chrono::duration_cast<std::chrono::seconds>(
-          deadline - std::chrono::steady_clock::now() +
-          std::chrono::milliseconds(999));
+      auto remaining = std::chrono::ceil<std::chrono::seconds>(
+          deadline - std::chrono::steady_clock::now());
       if (remaining.count() <= 0) {
         res.error = "request deadline exhausted before retry";
         res.duration_ms = ElapsedMs(started);
         return res;
       }
-      attempt_timeout = remaining.count();
+      attempt_timeout = attempt_limit > 0
+                            ? std::min(attempt_limit, remaining.count())
+                            : remaining.count();
     }
     auto attempt_started = std::chrono::steady_clock::now();
-    res = PerformChat(payload, web_available, attempt_timeout, session_id);
+    res = PerformChat(payload, web_available, attempt_timeout, session_id,
+                      context_tokens);
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
@@ -210,7 +234,8 @@ json Api::Get(const std::string& path, bool abortable) {
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
-                            int64_t timeout_s, const std::string& session_id) {
+                            int64_t timeout_s, const std::string& session_id,
+                            int64_t context_tokens) {
   ChatResult res;
   CURL* h = Prepare(base_url + "/chat/completions");
   if (!h) {
@@ -232,7 +257,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   bool headers_ok = headers.Add("Content-Type: application/json") &&
                     headers.Add("Authorization: Bearer " + api_key) &&
                     headers.Add("Accept: text/event-stream");
-  if (OpenrouterUrl(base_url) && !session_id.empty()) {
+  if (openrouter_compatible && !session_id.empty()) {
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }
   if (!headers_ok) {
@@ -251,11 +276,15 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       });
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &ctx);
   SetAbortable(h, &ctx);
-  if (timeout_s > 0) curl_easy_setopt(h, CURLOPT_TIMEOUT, timeout_s);
+  if (timeout_s > 0) {
+    curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
+  }
 
   SteeringGuard steering;
   std::string activity = web_available ? "working · web available" : "working";
-  TerminalSpinner spinner(render_stream, SpinnerLabel(std::move(activity)));
+  if (context_tokens > 0) activity += " · ctx " + FmtCount(context_tokens);
+  if (background_count) activity += " · bg:" + std::to_string(background_count);
+  TerminalSpinner spinner(render_stream, SpinnerLabel(activity), turn_started);
   ctx.spinner = &spinner;
 
   CURLcode rc = CURLE_OK;
@@ -274,6 +303,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   res.duration_ms = ElapsedMs(ctx.started);
   if (!ctx.timeout_reason.empty()) {
     res.error = ctx.timeout_reason;
+    res.retryable = true;
     return res;
   }
   if (rc == CURLE_ABORTED_BY_CALLBACK || cancelled) {
@@ -292,8 +322,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     json error_response = json::parse(ctx.error_body, nullptr, false);
     if (error_response.is_object() && error_response.contains("error")) {
       const json& error = error_response["error"];
-      res.remote_error_type = JsonValue(error, "type", "");
-      res.remote_error_code = JsonValue(error, "code", "");
+      res.remote_error_type = RemoteErrorType(error);
+      res.remote_error_code = RemoteErrorCode(error);
     }
     message = JsonErrorMessage(error_response, std::move(message));
     res.error = "HTTP " + std::to_string(res.http_status) + ": " + message;
@@ -307,7 +337,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 }
 
 bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
-  TerminalSpinner spinner(render_stream, SpinnerLabel("retrying"));
+  TerminalSpinner spinner(render_stream, SpinnerLabel("retrying"),
+                          turn_started);
   SteeringGuard steering;
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {
@@ -359,7 +390,7 @@ json Api::Fetch(const std::string& path, const std::string* payload,
       });
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
   if (abortable) SetAbortable(h);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, timeout_s);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
   curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING,
                    "");  // 531 KB -> 63 KB on /models
   CURLcode rc = curl_easy_perform(h);
@@ -376,15 +407,17 @@ void Api::SetAbortable(CURL* h, StreamCtx* ctx) {
         if (!ctx) return 0;
         auto now = std::chrono::steady_clock::now();
         if (ctx->res->first_event_ms < 0 && ctx->first_event_timeout_s > 0 &&
-            now - ctx->started >=
-                std::chrono::seconds(ctx->first_event_timeout_s)) {
+            std::chrono::duration_cast<std::chrono::seconds>(now - ctx->started)
+                    .count() >= ctx->first_event_timeout_s) {
           ctx->timeout_reason = "model produced no event within " +
                                 std::to_string(ctx->first_event_timeout_s) +
                                 "s";
           return 1;
         }
         if (ctx->idle_timeout_s > 0 &&
-            now - ctx->last_byte >= std::chrono::seconds(ctx->idle_timeout_s)) {
+            std::chrono::duration_cast<std::chrono::seconds>(now -
+                                                             ctx->last_byte)
+                    .count() >= ctx->idle_timeout_s) {
           ctx->timeout_reason = "model stream was idle for " +
                                 std::to_string(ctx->idle_timeout_s) + "s";
           return 1;

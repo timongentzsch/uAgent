@@ -4,17 +4,28 @@
 #include <atomic>
 #include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "include/api/retry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
 void TestRuntimeOwnershipHelpers() {
-  CHECK(RouteKey("http://localhost:8000/v1", "", "model", "low") ==
-        "localhost:8000||model|low");
+  std::ifstream contract(std::string(UAGENT_TEST_SOURCE_DIR) +
+                         "/tests/fixtures/route_contract.json");
+  json route_contract = json::parse(contract, nullptr, false);
+  CHECK(route_contract.is_object());
+  for (const json& sample : route_contract["route_keys"]) {
+    CHECK(RouteKey(JsonValue(sample, "base_url", ""),
+                   JsonValue(sample, "provider", ""),
+                   JsonValue(sample, "model", ""),
+                   JsonValue(sample, "effort", "")) ==
+          JsonValue(sample, "expected", ""));
+  }
   AppRuntime runtime(RuntimeConfig{});
   runtime.Shutdown();
   runtime.Shutdown();
@@ -75,8 +86,12 @@ void TestRuntimeOwnershipHelpers() {
   std::filesystem::remove(ledger);
 
   setenv("UAGENT_MAX_STEPS", "0", 1);
+  setenv("UAGENT_TEST_LONG", "999999999999999999999999999999", 1);
   setenv("UAGENT_SESSION_BUDGET", "2.5", 1);
+  setenv("UAGENT_MAX_TURN_COST", "nan", 1);
   setenv("UAGENT_TASK_MODEL", "fast/model", 1);
+  setenv("UAGENT_TOOL_TRACE_PROTECT_CHARS", "1234", 1);
+  setenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", "5678", 1);
   setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
   setenv("UAGENT_WEB_SEARCH_MODEL", "vendor/search", 1);
   setenv("UAGENT_WEB_SEARCH_BACKEND", "responses", 1);
@@ -88,13 +103,18 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_WEB_SEARCH_MAX_RESULTS", "99", 1);
   setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
   setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
+  setenv("UAGENT_MEMORY_GENERATE", "0", 1);
   const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
   std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
   unsetenv("UAGENT_CHECKPOINT_MODE");
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 1);
+  CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
+  CHECK(config.max_turn_cost == 1.0);
   CHECK(TaskModel() == "fast/model");
+  CHECK(ToolTraceProtectChars() == 1234);
+  CHECK(ToolTracePruneMinChars() == 5678);
   CHECK(config.session_archive_bytes == 0);
   CHECK(config.checkpoint_mode == "apply");
   CHECK(config.web_search_model == "vendor/search");
@@ -107,18 +127,27 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_max_results == 25);
   CHECK(config.web_search_max_uses == 1);
   CHECK(!config.web_search_server);
+  CHECK(!config.memory_generate);
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
   CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
+  CHECK(!diagnostics.value("memory_generate", true));
+  CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
+  CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
   if (checkpoint_mode) {
     setenv("UAGENT_CHECKPOINT_MODE", prior_checkpoint_mode.c_str(), 1);
   }
   unsetenv("UAGENT_MAX_STEPS");
+  unsetenv("UAGENT_TEST_LONG");
   unsetenv("UAGENT_SESSION_BUDGET");
+  unsetenv("UAGENT_MAX_TURN_COST");
   unsetenv("UAGENT_TASK_MODEL");
+  unsetenv("UAGENT_TOOL_TRACE_PROTECT_CHARS");
+  unsetenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS");
+  unsetenv("UAGENT_MEMORY_GENERATE");
   unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
   unsetenv("UAGENT_WEB_SEARCH_MODEL");
   unsetenv("UAGENT_WEB_SEARCH_BACKEND");
@@ -136,6 +165,7 @@ void TestRuntimeOwnershipHelpers() {
   routed.openrouter_fallbacks = true;
   Api api(routed);
   api.base_url = "https://openrouter.ai/api/v1";
+  api.openrouter_compatible = true;
   api.model = "test";
   json body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("session_id", "") == "stable-session");
@@ -147,6 +177,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
   api.base_url = "http://127.0.0.1:8080/v1";
+  api.openrouter_compatible = false;
   body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(!body.contains("session_id"));
   CHECK(!body.contains("provider"));
@@ -173,16 +204,24 @@ void TestRuntimeOwnershipHelpers() {
   api.parallel_tools = true;
   api.image_input = true;
   json saved_profile = {
-      {"schema", 1},
+      {"schema", 3},
       {"routes",
        {{RouteProfileKey(api),
-         {{"samples", 2},
+         {{"samples", 4},
+          {"passing_samples", 4},
+          {"pass_rate", 1.0},
+          {"certified", true},
+          {"scenario_classes", {"analysis", "checkpoint"}},
           {"certified_at_unix", static_cast<int64_t>(std::time(nullptr))},
           {"checkpoint_mode", "shadow"},
           {"parallel_hint_support", false},
-          {"image_support", false}}}}}};
+          {"image_support", false}}}}},
+      {"recommendations", json::object()}};
   CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
                         false, profile_error));
+  api.openrouter_compatible = true;
+  CHECK(ApplyRouteProfile(api).empty());
+  api.openrouter_compatible = false;
   json profile = ApplyRouteProfile(api);
   CHECK(!profile.empty());
   CHECK(api.config.checkpoint_mode == "shadow");
@@ -200,6 +239,51 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(api.config.checkpoint_mode == "apply");
   CHECK(api.parallel_tools);
   CHECK(api.image_input);
+
+  saved_profile["routes"][RouteProfileKey(api)]["certified_at_unix"] =
+      static_cast<int64_t>(std::time(nullptr));
+  saved_profile["routes"][RouteProfileKey(api)]["memory_enabled"] = false;
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  CHECK(ApplyRouteProfile(api).empty());
+  api.config.memory_enabled = false;
+  CHECK(!ApplyRouteProfile(api).empty());
+  api.config.memory_enabled = true;
+  saved_profile["routes"][RouteProfileKey(api)]["memory_enabled"] = true;
+  saved_profile["routes"][RouteProfileKey(api)]["memory_generate"] = false;
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  CHECK(ApplyRouteProfile(api).empty());
+  api.config.memory_generate = false;
+  CHECK(!ApplyRouteProfile(api).empty());
+  api.config.memory_generate = true;
+
+  api.reasoning_effort.clear();
+  std::string low_route = RouteKey(api.base_url, "", api.model, "low");
+  saved_profile = {
+      {"schema", 3},
+      {"routes",
+       {{low_route,
+         {{"samples", 4},
+          {"passing_samples", 4},
+          {"pass_rate", 1.0},
+          {"certified", true},
+          {"scenario_classes", {"analysis", "checkpoint"}},
+          {"certified_at_unix", static_cast<int64_t>(std::time(nullptr))},
+          {"parallel_hint_support", true}}}}},
+      {"recommendations",
+       {{RouteKey(api.base_url, "", api.model, ""),
+         {{"effort", "low"}, {"mean_cost", 0.01}, {"route", low_route}}}}}};
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  CHECK(!ApplyRouteProfile(api).empty());
+  CHECK(api.reasoning_effort == "low");
+  api.reasoning_effort.clear();
+  saved_profile["routes"][low_route]["certified_at_unix"] = 1;
+  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
+                        false, profile_error));
+  CHECK(ApplyRouteProfile(api).empty());
+  CHECK(api.reasoning_effort.empty());
   if (old_home) {
     setenv("HOME", saved_home.c_str(), 1);
   } else {
@@ -215,6 +299,7 @@ void TestRuntimeOwnershipHelpers() {
                     {"index", 0},
                     {"text", "reasoning state"}}});
   api.base_url = "https://openrouter.ai/api/v1";
+  api.openrouter_compatible = true;
   api.PreserveAssistantReasoning(assistant, reasoning_result);
   CHECK(!assistant.contains("reasoning"));
   CHECK(assistant["reasoning_details"] == reasoning_result.reasoning_details);
@@ -227,10 +312,30 @@ void TestRuntimeOwnershipHelpers() {
   api.PreserveAssistantReasoning(local_assistant, reasoning_result);
   CHECK(local_assistant.value("reasoning", "") == "reasoning state");
   api.base_url = "https://example.com/v1";
+  api.openrouter_compatible = false;
   json generic_assistant = {{"role", "assistant"}, {"content", ""}};
   api.PreserveAssistantReasoning(generic_assistant, reasoning_result);
   CHECK(!generic_assistant.contains("reasoning"));
   CHECK(!generic_assistant.contains("reasoning_details"));
+
+  ChatResult retryable;
+  retryable.retryable = true;
+  retryable.semantic_progress = true;
+  retryable.reasoning = "partial reasoning";
+  CHECK(SafeToRetry(retryable));
+  retryable.usage = {{"prompt_tokens", 1}};
+  CHECK(!SafeToRetry(retryable));
+  retryable.usage = nullptr;
+  retryable.annotations.push_back({{"url", "https://example.test"}});
+  CHECK(!SafeToRetry(retryable));
+  retryable.annotations.clear();
+  retryable.content = "visible answer";
+  CHECK(!SafeToRetry(retryable));
+  json routed_error = {
+      {"type", "api_error"},
+      {"metadata", {{"error_type", "timeout"}, {"provider_code", "slow"}}}};
+  CHECK(RemoteErrorType(routed_error) == "timeout");
+  CHECK(RemoteErrorCode(routed_error) == "slow");
 }
 
 void TestAgentConfigAllowlist() {
@@ -376,6 +481,7 @@ void TestProviderTemplates() {
       "UAGENT_TEST_PROVIDER_EFFORT",
       "default-model",
       +[](std::string url) { return url == "https://provider.test/v1"; },
+      false,
   };
   const char* inherited_effort = getenv("UAGENT_REASONING_EFFORT");
   std::string prior_effort = inherited_effort ? inherited_effort : "";
@@ -420,6 +526,7 @@ void TestNamedProviders() {
       {"codex-local",
        {{"base_url", "http://127.0.0.1:8787/api/v1/"},
         {"api_key", "local-key"},
+        {"protocol", "openrouter"},
         {"context", 16384}}},
       {"static",
        {{"base_url", "https://static.test/v1"},
@@ -435,21 +542,27 @@ void TestNamedProviders() {
   CHECK(codex && codex->base_url == "http://127.0.0.1:8787/api/v1");
   CHECK(codex && codex->api_key == "local-key");
   CHECK(codex && codex->context == 16384);
+  CHECK(codex && codex->openrouter_compatible);
 
   std::optional<ModelRoute> dynamic = ResolveModelRoute(
       catalog.models, catalog.providers, "codex-local/org/model");
   CHECK(dynamic.has_value());
   CHECK(dynamic && dynamic->model == "org/model");
   CHECK(dynamic && dynamic->context == 16384);
+  CHECK(dynamic && dynamic->openrouter_compatible);
   RuntimeConfig config;
   Api routed(config);
   routed.reasoning_effort = "medium";
   ApplyRoute(routed, *dynamic);
   CHECK(routed.reasoning_effort == "medium");
+  CHECK(routed.openrouter_compatible);
   ModelRoute fixed_effort = *dynamic;
   fixed_effort.effort = "low";
   ApplyRoute(routed, fixed_effort);
   CHECK(routed.reasoning_effort == "low");
+  json activated = ActivateRoute(routed, "apply");
+  CHECK(activated.empty());
+  CHECK(routed.openrouter_web_search);
   CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
   CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
   CHECK(!ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "deepseek"));
@@ -459,9 +572,18 @@ void TestNamedProviders() {
   CHECK(NormalizeModelQuery("gpt-5.6") == "gpt-5.6");
   Api openrouter_api(config);
   openrouter_api.base_url = "https://openrouter.ai/api/v1";
+  openrouter_api.openrouter_compatible = true;
+  openrouter_api.model = "parent-model";
+  CHECK(DefaultTaskModel(openrouter_api) == "deepseek/deepseek-v4-flash");
+  CHECK(DelegationRuntimeContext(openrouter_api) ==
+        "[delegation: parent=parent-model (default); "
+        "default=deepseek/deepseek-v4-flash (default)]");
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
+  CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
+  openrouter_api.openrouter_compatible = false;
   CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
+  CHECK(DefaultTaskModel(openrouter_api) == "parent-model");
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   CHECK(fixed.has_value());

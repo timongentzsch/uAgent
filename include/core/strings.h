@@ -21,6 +21,10 @@ std::string AsciiLower(std::string text);
 
 bool ContainsCaseInsensitive(std::string text, const std::string& query);
 
+bool ParseInt64(const char* text, int64_t& value);
+
+bool ParseFiniteDouble(const char* text, double& value);
+
 // drop one layer of matching surrounding quotes, if present
 std::string Unquote(std::string s);
 
@@ -74,7 +78,7 @@ int64_t TerminalColumns();
 std::string TerminalSummary(const std::string& text,
                             size_t reserved_columns = 0);
 
-std::string SpinnerLabel(std::string label);
+std::string SpinnerLabel(const std::string& label);
 
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size);
 
@@ -84,14 +88,14 @@ std::string UrlHost(std::string url);
 
 std::string UrlAuthority(std::string url);
 
+std::string ModelLabel(const std::string& model, const std::string& effort);
+
 std::string RouteKey(const std::string& base_url, const std::string& provider,
                      const std::string& model, const std::string& effort);
 
 bool OpenrouterUrl(std::string url);
 
 bool LoopbackUrl(std::string url);
-
-bool OpenrouterCompatibleUrl(std::string url);
 
 bool OpenaiUrl(std::string url);
 

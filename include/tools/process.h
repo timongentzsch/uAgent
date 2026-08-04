@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -78,6 +79,17 @@ class ProcessSupervisor {
       if (!job.detached) pids.push_back(job.pid);
     }
     return pids;
+  }
+  std::optional<BgJob> Find(pid_t pid) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found =
+        std::find_if(jobs_.begin(), jobs_.end(),
+                     [pid](const BgJob& job) { return job.pid == pid; });
+    return found == jobs_.end() ? std::nullopt : std::optional<BgJob>(*found);
+  }
+  std::vector<BgJob> Snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return jobs_;
   }
 
  private:

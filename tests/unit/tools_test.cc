@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -15,6 +16,16 @@ void TestToolExecutionPolicy() {
   tool.name = "probe";
   tool.parameters = {{"type", "object"}, {"properties", json::object()}};
   CHECK(!ToolParameters(tool)["properties"].contains("timeout"));
+  CHECK(ToolParameters(tool)["additionalProperties"] == false);
+  CHECK(InvalidToolArgument(tool, {{"invented", true}}) ==
+        "unknown argument `invented`");
+  tool.stable_argument = "path";
+  tool.parameters["properties"]["path"] = {{"type", "string"}};
+  std::unordered_map<std::string, std::string> stable_arguments;
+  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
+  CHECK(StableArgumentError(tool, {{"path", "one"}}, stable_arguments).empty());
+  CHECK(StableArgumentError(tool, {{"path", "two"}}, stable_arguments)
+            .find("reuse") != std::string::npos);
   tool.parameters["properties"]["timeout"] = {
       {"type", "string"}, {"description", "provider argument"}};
   CHECK(ToolParameters(tool)["properties"]["timeout"] ==
@@ -46,6 +57,33 @@ void TestToolExecutionPolicy() {
   json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "unbounded");
+
+  Tool inspect = unbounded;
+  inspect.name = "inspect";
+  inspect.capabilities = Capability(ToolCapability::kInspect);
+  Tool mutate = unbounded;
+  mutate.name = "mutate";
+  mutate.capabilities = Capability(ToolCapability::kMutate);
+  Tool exact_run = unbounded;
+  exact_run.name = "run";
+  exact_run.parameters = {{"type", "object"},
+                          {"properties", {{"command", {{"type", "string"}}}}},
+                          {"required", {"command"}}};
+  exact_run.capabilities = Capability(ToolCapability::kExecute) |
+                           Capability(ToolCapability::kMutate);
+  std::vector<Tool> restricted{inspect, mutate, exact_run};
+  ApplyToolPolicy(restricted, {.allowed = Capability(ToolCapability::kInspect),
+                               .tool_allowlist = {"inspect", "run"},
+                               .run_allowlist = {"python3 slow_analysis.py"}});
+  CHECK(FindTool(restricted, "inspect") != nullptr);
+  CHECK(FindTool(restricted, "mutate") == nullptr);
+  const Tool* allowed_run = FindTool(restricted, "run");
+  CHECK(allowed_run != nullptr);
+  CHECK(
+      allowed_run &&
+      allowed_run->validate({{"command", "python3 slow_analysis.py"}}).empty());
+  CHECK(allowed_run &&
+        !allowed_run->validate({{"command", "python3 other.py"}}).empty());
 
   Tool checkpoint_only = unbounded;
   checkpoint_only.name = "checkpoint_only";
@@ -164,6 +202,7 @@ void TestOpenRouterServerSearch() {
   RuntimeConfig config;
   Api api(config);
   api.base_url = "https://openrouter.ai/api/v1";
+  api.openrouter_compatible = true;
   api.model = "vendor/model";
   json schemas = json::array(
       {{{"type", "function"},
@@ -196,17 +235,20 @@ void TestOpenRouterServerSearch() {
   CHECK(body["tools"][0]["function"]["name"] == "web_search");
 
   api.base_url = "http://127.0.0.1:8080/v1";
+  api.openrouter_compatible = false;
   body = api.BuildChatBody(json::array(), schemas);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][0]["function"]["name"] == "web_search");
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
+  api.openrouter_compatible = true;
   api.openrouter_web_search = true;
   body = api.BuildChatBody(json::array(), schemas);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][1]["type"] == "openrouter:web_search");
 
   api.base_url = "https://openrouter.ai/api/v1";
+  api.openrouter_compatible = true;
   api.openrouter_web_search = true;
   body = api.BuildChatBody(json::array(), json::array());
   CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
@@ -504,6 +546,15 @@ void TestGrepTool() {
     CHECK(run->validate({{"command", "sudo tlmgr install tcolorbox"}})
               .find("privileged commands") != std::string::npos);
   }
+  auto evaluator_tools = BuiltinTools(supervisor, root, false);
+  ApplyToolPolicy(evaluator_tools,
+                  {.allowed = Capability(ToolCapability::kInspect),
+                   .tool_allowlist = {"grep", "read_file", "list_dir", "run"},
+                   .run_allowlist = {"python3 slow_analysis.py"}});
+  const Tool* evaluator_run = FindTool(evaluator_tools, "run");
+  CHECK(evaluator_run &&
+        evaluator_run->validate({{"command", "python3 slow_analysis.py"}})
+            .empty());
   const Tool* python = FindTool(lean_tools, "run_python");
   CHECK(python != nullptr);
   CHECK(python &&
@@ -517,17 +568,33 @@ void TestGrepTool() {
   const Tool* memory = FindTool(lean_tools, "memory");
   CHECK(memory != nullptr);
   if (memory) {
-    CHECK(!ToolMutates(*memory, {{"name", "lesson"}, {"scope", "project"}}));
+    CHECK(
+        !ToolMutates(*memory, {{"action", "get"}, {"key", "project/lesson"}}));
     CHECK(ToolMutates(
         *memory,
-        {{"name", "lesson"}, {"scope", "project"}, {"content", "fact"}}));
-    CHECK(ToolMutates(
-        *memory, {{"name", "lesson"}, {"scope", "project"}, {"forget", true}}));
+        {{"action", "set"}, {"key", "project/lesson"}, {"content", "fact"}}));
+    CHECK(ToolMutates(*memory,
+                      {{"action", "forget"}, {"key", "project/lesson"}}));
+    CHECK(memory->parameters["required"] == json::array({"action", "key"}));
   }
+  auto read_only_memory_tools = BuiltinTools(supervisor, root, false, false);
+  const Tool* read_only_memory = FindTool(read_only_memory_tools, "memory");
+  CHECK(read_only_memory != nullptr);
+  CHECK(read_only_memory &&
+        ToolDescription(*read_only_memory).find("disabled") !=
+            std::string::npos);
+  CHECK(read_only_memory &&
+        read_only_memory->parameters["properties"]["action"]["enum"] ==
+            json::array({"get", "forget"}));
+  CHECK(read_only_memory &&
+        !read_only_memory->parameters["properties"].contains("content"));
   CHECK(python && python->timeout_s == 0);
+  CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   CHECK(FindTool(lean_tools, "terminal_output") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
+    CHECK(registered["function"]["parameters"]["additionalProperties"] ==
+          false);
     CHECK(!registered["function"]["parameters"]["properties"].contains(
         "timeout"));
   }
@@ -573,6 +640,10 @@ void TestPythonTool() {
   fs::path script = root / ".uagent/scratch/math.py";
   CHECK(fs::is_regular_file(script));
   CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
+  result = ToolRunPython(supervisor, root, ".uagent/scratch/prefixed.py",
+                         "print('normalized')", json::array());
+  CHECK(result.output == "[script: .uagent/scratch/prefixed.py]\nnormalized\n");
+  CHECK(fs::is_regular_file(root / ".uagent/scratch/prefixed.py"));
   std::ifstream script_input(script);
   std::string script_source{std::istreambuf_iterator<char>(script_input),
                             std::istreambuf_iterator<char>()};

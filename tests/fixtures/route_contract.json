@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "route_keys": [
+    {
+      "base_url": "http://localhost:8000/v1",
+      "provider": "",
+      "model": "vendor/model",
+      "effort": "low",
+      "expected": "localhost:8000||vendor/model|low"
+    },
+    {
+      "base_url": "https://user:secret@Edge.Example:443/api/v1",
+      "provider": "preferred",
+      "model": "model:online",
+      "effort": "",
+      "expected": "edge.example:443|preferred|model:online|"
+    }
+  ]
+}

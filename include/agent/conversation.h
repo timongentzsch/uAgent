@@ -27,6 +27,11 @@ enum class MessageKind {
 const char* MessageKindName(MessageKind kind);
 bool ParseMessageKind(const std::string& name, MessageKind& kind);
 
+struct ToolTracePruneResult {
+  size_t results = 0;
+  size_t reclaimed_chars = 0;
+};
+
 class Conversation {
  public:
   const json& Messages() const { return messages_; }
@@ -62,6 +67,12 @@ class Conversation {
   int64_t UserTurns() const;
   size_t UserVisibleCount() const;
   std::vector<std::string> RecentToolResults(int64_t count) const;
+  bool HasRecentToolResult(const std::string& name,
+                           const std::string& arguments,
+                           const std::string& result) const;
+  ToolTracePruneResult PruneOldToolResults(
+      size_t protect_chars, size_t minimum_reclaim_chars,
+      const std::vector<std::string>& retained_tools);
 
   size_t PruneAttachments(size_t begin);
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,

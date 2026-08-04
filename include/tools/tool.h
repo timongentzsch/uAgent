@@ -18,6 +18,7 @@
 
 #include "include/core/json.h"
 #include "include/core/outcome.h"
+#include "include/core/time.h"
 
 namespace uagent {
 
@@ -117,9 +118,7 @@ struct ToolContext {
     ToolContext out = *this;
     out.timeout_s = std::max(int64_t{0}, seconds);
     if (seconds > 0) {
-      auto local =
-          std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
-      out.deadline = std::min(out.deadline, local);
+      out.deadline = std::min(out.deadline, DeadlineAfter(seconds));
     }
     return out;
   }
@@ -137,6 +136,24 @@ struct ToolContext {
   }
 };
 
+enum class ToolCapability : uint32_t {
+  kInspect = 1U << 0,
+  kExecute = 1U << 1,
+  kMutate = 1U << 2,
+  kDelegate = 1U << 3,
+  kExternal = 1U << 4,
+};
+
+inline constexpr uint32_t Capability(ToolCapability capability) {
+  return static_cast<uint32_t>(capability);
+}
+
+inline constexpr uint32_t kAllToolCapabilities =
+    Capability(ToolCapability::kInspect) |
+    Capability(ToolCapability::kExecute) | Capability(ToolCapability::kMutate) |
+    Capability(ToolCapability::kDelegate) |
+    Capability(ToolCapability::kExternal);
+
 struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
@@ -149,16 +166,20 @@ struct Tool {
   bool mutating = false;  // gated behind user approval
   Approval mutates;       // argument-dependent mutation (e.g. memory save)
   Run run;
-  Validate validate;                // args -> error before approval/execution
-  Summary summary;                  // args -> one-line display
-  bool parallel_safe = false;       // safe beside another tool call
+  Validate validate;           // args -> error before approval/execution
+  Summary summary;             // args -> one-line display
+  bool parallel_safe = false;  // safe beside another tool call
+  uint32_t capabilities = kAllToolCapabilities;  // required to expose
   Approval needs_approval;          // dynamic policy (e.g. external read)
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
+  std::string stable_argument;      // value must stay fixed during one turn
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget
   bool available_in_lean = true;    // omit implementation-only schemas in tasks
+  bool retain_output = false;       // keep durable procedure/state in context
+  bool dedupe_output = false;       // collapse verified recent duplicate output
   enum class Visibility {
     kAlways,
     kCheckpointHint,
@@ -171,6 +192,16 @@ struct ToolAvailability {
   bool checkpoint_hint = false;
   bool detached_terminal = false;
 };
+
+struct ToolPolicy {
+  uint32_t allowed = kAllToolCapabilities;
+  std::vector<std::string> tool_allowlist;
+  std::vector<std::string> run_allowlist;
+  std::string error;
+};
+
+ToolPolicy ToolPolicyFromEnvironment();
+void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy);
 
 inline Tool MakeTool(std::string name, std::string description, json parameters,
                      Tool::Run run) {
@@ -215,6 +246,9 @@ inline json ToolParameters(const Tool& tool) {
       !parameters["properties"].is_object()) {
     parameters["properties"] = json::object();
   }
+  if (!parameters.contains("additionalProperties")) {
+    parameters["additionalProperties"] = false;
+  }
   return parameters;
 }
 
@@ -250,8 +284,17 @@ inline std::string MissingRequired(const Tool& t, const json& args) {
   return "";
 }
 
-inline std::string InvalidArgumentType(const Tool& tool, const json& args) {
+inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
   json parameters = ToolParameters(tool);
+  if (parameters["additionalProperties"].is_boolean() &&
+      !parameters["additionalProperties"].get<bool>()) {
+    for (const auto& [name, value] : args.items()) {
+      (void)value;
+      if (!parameters["properties"].contains(name)) {
+        return "unknown argument `" + name + "`";
+      }
+    }
+  }
   for (const auto& [name, schema] : parameters["properties"].items()) {
     if (!args.contains(name) || !schema.is_object() ||
         !schema.contains("type") || !schema["type"].is_string()) {
@@ -274,6 +317,21 @@ inline std::string InvalidArgumentType(const Tool& tool, const json& args) {
     }
   }
   return "";
+}
+
+inline std::string StableArgumentError(
+    const Tool& tool, const json& args,
+    std::unordered_map<std::string, std::string>& values) {
+  if (tool.stable_argument.empty()) return "";
+  auto value = args.find(tool.stable_argument);
+  if (value == args.end() || !value->is_string()) return "";
+  std::string key = tool.name + "\n" + tool.stable_argument;
+  auto [found, inserted] = values.emplace(key, value->get<std::string>());
+  if (inserted || found->second == value->get_ref<const std::string&>()) {
+    return "";
+  }
+  return "error: `" + tool.stable_argument + "` must remain `" + found->second +
+         "` for this turn; reuse that artifact";
 }
 
 inline json ToolSchema(const Tool& tool) {

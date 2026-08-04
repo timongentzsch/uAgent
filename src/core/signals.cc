@@ -87,4 +87,11 @@ void SigintHandler(int signal_number) {
 
 void SigwinchHandler(int) { g_terminal_resized = 1; }
 
+void InstallSigwinchHandler() {
+  struct sigaction action{};
+  action.sa_handler = SigwinchHandler;
+  sigemptyset(&action.sa_mask);
+  sigaction(SIGWINCH, &action, nullptr);
+}
+
 }  // namespace uagent

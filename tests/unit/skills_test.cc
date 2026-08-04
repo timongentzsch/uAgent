@@ -138,14 +138,20 @@ void TestSkillDiscovery() {
   CHECK(catalogue.find("skill-63") != std::string::npos);
   CHECK(catalogue.find(':') == std::string::npos);
 
-  // The wire schema is fixed-size: exact names open directly, a sole query
-  // match opens in one call, and an ambiguous query returns the small catalog.
+  // Like Codex and OpenCode, the model sees bounded metadata up front while
+  // exact selection still defers the full body.
   skills = LoadSkills(workspace);
   Tool tool = SkillTool(skills);
   CHECK(tool.name == "skill");
   CHECK(!ToolParameters(tool).at("properties").contains("timeout"));
   CHECK(!tool.mutating);
   CHECK(!tool.parameters["properties"]["name"].contains("enum"));
+  CHECK(tool.description.find("lint: how this repo lints") !=
+        std::string::npos);
+  CHECK(tool.description.find("release: this repo's release steps") !=
+        std::string::npos);
+  CHECK(tool.description.size() <= 8000);
+  CHECK(tool.description.find("Run ruff.") == std::string::npos);
   CHECK(JsonDump(tool.parameters).find("Run ruff.") == std::string::npos);
   CHECK(tool.run({{"name", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
@@ -158,6 +164,14 @@ void TestSkillDiscovery() {
   CHECK(!missing_skill.Ok());
   CHECK(missing_skill.error == ToolErrorCode::kNotFound);
   CHECK(missing_skill.output.starts_with("error:"));
+  ToolResult misspelled = tool.run({{"name", "vendor_only"}}, {});
+  CHECK(!misspelled.Ok());
+  CHECK(misspelled.output.find("did you mean vendor-only?") !=
+        std::string::npos);
+
+  Tool crowded = SkillTool(catalogue_skills);
+  CHECK(crowded.description.size() <= 8000);
+  CHECK(crowded.description.find("skill-63") != std::string::npos);
 
   fs::current_path(original);
   if (had_home) {

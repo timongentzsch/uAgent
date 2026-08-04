@@ -618,8 +618,8 @@ class Application {
     std::string last_state = status_state();
     while (!exit_when_idle || working) {
       pollfd events[3] = {{STDIN_FILENO, POLLIN, 0},
-                          {output.fd(), POLLIN, 0},
-                          {broker.fd(), POLLIN, 0}};
+                          {output.Fd(), POLLIN, 0},
+                          {broker.Fd(), POLLIN, 0}};
       int ready = poll(events, 3, 100);
       if (ready < 0 && errno != EINTR) break;
 
@@ -631,7 +631,7 @@ class Application {
         bool keep_history = false;
         if (broker.Take(prompt, initial, keep_history)) {
           (void)keep_history;
-          saved_draft = composer.buffer();
+          saved_draft = composer.Buffer();
           answering = true;
           mount(prompt, initial);
         }
@@ -645,14 +645,14 @@ class Application {
                        event.kind == InteractiveInputKind::kEof;
             broker.Answer(std::move(event.text), eof);
             answering = false;
-            mount(InputPrompt(), std::move(saved_draft));
+            mount(InputPrompt(), saved_draft);
           } else if (event.kind == InteractiveInputKind::kEscape) {
             saved_draft = std::move(event.text);
             if (working && SteeringEnabled() && !interrupting) {
               interrupting = true;
               SteeringState().Request();
             }
-            mount(InputPrompt(), std::move(saved_draft));
+            mount(InputPrompt(), saved_draft);
           } else if (event.kind == InteractiveInputKind::kEof) {
             exit_when_idle = true;
             mount();

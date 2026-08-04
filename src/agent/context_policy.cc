@@ -27,7 +27,7 @@ int64_t EstimatedTokens(size_t message_bytes, size_t schema_bytes,
 
 int64_t Percent(size_t value, size_t total) {
   if (!total || value >= total) return 100;
-  long double ratio = static_cast<long double>(value) / total;
+  double ratio = static_cast<double>(value) / static_cast<double>(total);
   return static_cast<int64_t>(ratio * 100);
 }
 

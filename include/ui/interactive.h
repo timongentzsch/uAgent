@@ -64,7 +64,7 @@ class InteractiveOutput {
     }
   }
 
-  int fd() const { return read_; }
+  int Fd() const { return read_; }
 
   std::string Read() const {
     std::string out;
@@ -129,7 +129,7 @@ class RawComposer {
     Render();
   }
 
-  const std::string& buffer() const { return buffer_; }
+  const std::string& Buffer() const { return buffer_; }
   bool HasPending() const { return !pending_.empty(); }
 
   InteractiveInputEvent Read() {
@@ -327,7 +327,7 @@ class InputBroker {
     return shutdown_ ? std::string() : answer_;
   }
 
-  int fd() const { return wake_[0]; }
+  int Fd() const { return wake_[0]; }
 
   void DrainWake() const {
     char bytes[32];

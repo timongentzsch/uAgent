@@ -63,8 +63,9 @@ bool Claim(const std::string& source, std::string& error) {
   }
   int fd = open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
   if (fd < 0) {
-    if (errno != EEXIST)
+    if (errno != EEXIST) {
       error = "cannot claim memory source: " + std::string(strerror(errno));
+    }
     return false;
   }
   constexpr char kProcessing[] = "processing\n";

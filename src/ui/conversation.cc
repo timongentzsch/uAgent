@@ -48,9 +48,9 @@ void PrintConversationHistory(const Conversation& conversation,
       }
     } else if (kind == MessageKind::kUser && content.is_string()) {
       std::string safe = TerminalSafe(content.get<std::string>());
-      printf("%s> %s%s\n", BOLD(), safe.c_str(), RST());
+      printf("%s>%s %s\n", CYAN(), RST(), safe.c_str());
     } else if (kind == MessageKind::kAttachment) {
-      printf("%s> [attachment]%s\n", BOLD(), RST());
+      printf("%s>%s [attachment]\n", CYAN(), RST());
     } else if (content.is_string()) {
       printf("%s  ← %s%s\n", DIM(),
              TerminalSafe(FirstLine(content.get<std::string>())).c_str(),

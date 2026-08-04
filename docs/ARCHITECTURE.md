@@ -60,9 +60,11 @@ separate sanitized processes; results arrive at step boundaries, while
 process without joining, reaping, or changing its ownership.
 The application owns a small raw-mode composer while the foreground agent runs
 on one worker thread. Agent output is marshalled back above the two-line
-composer, preserving native scrollback. Enter appends to a FIFO follow-up
-queue; Escape raises only the foreground abort flag. One turn timestamp drives
-the working row, which also reports queued input and active background count.
+composer, preserving native scrollback. Enter appends guidance to the active
+turn's steering queue; Escape raises only the foreground abort flag. One turn
+timestamp drives the sole dynamic status row, which also reports queued
+steering and active background count. That row stays directly above the input
+and changes in place instead of entering scrollback.
 One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;
 tool-specific contracts such as visibility, call budgets, and stable arguments
@@ -90,12 +92,12 @@ window, stripped of system/runtime/reasoning/image content, secret-redacted,
 and sent to a bounded child with only the memory tool. That child consolidates
 at most one durable preference, workflow, constraint, or debugging insight
 into the existing scoped files, or does nothing. Its maintenance result never
-enters the active conversation, steering does not cancel it, and a resumed
-session becomes eligible again after it changes and goes idle. This keeps the
-important extraction/consolidation lifecycle without a second database or
-memory store. Recall and contribution are separate controls; `--no-memory`
-removes both for reproducible runs. Required behavior belongs in `AGENTS.md`,
-not memory.
+enters the active conversation, foreground steering does not cancel it, and a
+resumed session becomes eligible again after it changes and goes idle. This
+keeps the important extraction/consolidation lifecycle without a second
+database or memory store. Recall and contribution are separate controls;
+`--no-memory` removes both for reproducible runs. Required behavior belongs in
+`AGENTS.md`, not memory.
 Skills use progressive disclosure: a bounded catalogue of installed names and
 descriptions is advertised with the `skill` tool. Explicit `$skill-name`
 mentions are resolved before the first model call; otherwise the model selects

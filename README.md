@@ -51,8 +51,8 @@ uagent --yolo
 
 The persistent two-line composer keeps native scrollback visible. Idle status
 shows model, effort, endpoint, context, cache, cost, and active background
-count; working status shows elapsed time, queued input, background count, and
-the Escape hint.
+count; the single status row switches in place to show current harness
+activity, elapsed time, queued steering, background count, and the Escape hint.
 `/context` prints the current model-shaped context and registered tool schemas;
 `/trace` prints the latest tool/search exchange; `/cost` breaks spend down by
 route. `--debug`
@@ -98,8 +98,9 @@ processes, context, persistence, and reported spend are bounded.
 Model labels include reasoning effort; delegated task labels also include their
 provider. Working status reports the number of active background processes.
 `terminal_output` can inspect their bounded current logs without waiting or
-cancelling them; child-side buffering may delay visible output. Enter queues a
-follow-up while a turn is active. Escape interrupts only the foreground turn;
+cancelling them; child-side buffering may delay visible output. Enter queues
+guidance into the active turn at its next safe boundary. Escape interrupts only
+the foreground operation;
 delegated and detached work keeps running unless explicitly cancelled.
 
 Memory uses the same progressive-disclosure shape as project context: startup
@@ -130,9 +131,12 @@ requires interactive trust or `--trust-project-config`.
 | `/verbose`, `/online`, `/yolo` | Toggle runtime behavior |
 | `/help`, `/quit` | Help or exit |
 
-The input bar remains editable while work runs. Enter queues the message for
-the next turn; Escape interrupts the foreground turn without cancelling
-background work.
+The input bar remains editable while work runs. Enter adds guidance to the
+active turn's steering queue; it is applied after the current model response or
+tool boundary, not started as a separate next turn. Escape interrupts the
+foreground operation without cancelling background work. A single status row
+stays pinned immediately above the input and changes in place between the idle
+model/session summary and the current harness state.
 
 ## Development
 

@@ -184,10 +184,12 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: memory key must start with project/ or global/");
   }
-  if (action == "get" && !content) {
+  const bool has_content =
+      content.has_value() && (action == "set" || !Trim(*content).empty());
+  if (action == "get" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, false);
   }
-  if (action == "set" && content) {
+  if (action == "set" && has_content) {
     if (!allow_set) {
       return ToolFailure(ToolErrorCode::kPermissionDenied,
                          "error: memory contributions are disabled by "
@@ -195,7 +197,7 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
     }
     return AccessMemory(name, scope, RedactMemorySecrets(*content), false);
   }
-  if (action == "forget" && !content) {
+  if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true);
   }
   if (action != "get" && action != "set" && action != "forget") {

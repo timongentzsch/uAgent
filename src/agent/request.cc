@@ -62,9 +62,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
-  api_.background_count = processes_.PendingCount();
-  ChatResult result = api_.Chat(conversation_.Messages(), schemas, turn_budget,
-                                session_id_, ContextUsed());
+  ChatResult result =
+      api_.Chat(conversation_.Messages(), schemas, turn_budget, session_id_);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {

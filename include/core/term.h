@@ -5,15 +5,18 @@
 // Terminal colors and the blocking-call spinner. Every accessor returns an
 // empty string when stdout is not a TTY, so callers need no conditionals.
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace uagent {
 
@@ -27,6 +30,8 @@ inline constexpr char kTerminalModeReset[] = "\033[?2004l";
 inline const char* DIM() { return g_tty ? "\033[2m" : ""; }
 inline const char* RST() { return g_tty ? kTerminalRestore : ""; }
 inline const char* CYAN() { return g_tty ? "\033[36m" : ""; }
+inline const char* BLUE() { return g_tty ? "\033[38;5;68m" : ""; }
+inline const char* MUTED() { return g_tty ? "\033[90m" : ""; }
 inline const char* YEL() { return g_tty ? "\033[33m" : ""; }
 inline const char* RED() { return g_tty ? "\033[31m" : ""; }
 inline const char* BOLD() { return g_tty ? "\033[1m" : ""; }
@@ -55,6 +60,38 @@ inline void BracketedPaste(bool on) {
   fflush(stdout);
 }
 
+struct TerminalActivityState {
+  std::mutex mutex;
+  uint64_t next = 0;
+  std::vector<std::pair<uint64_t, std::string>> active;
+};
+
+inline TerminalActivityState& TerminalActivities() {
+  static TerminalActivityState state;
+  return state;
+}
+
+inline uint64_t BeginTerminalActivity(std::string label) {
+  TerminalActivityState& state = TerminalActivities();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  uint64_t id = ++state.next;
+  state.active.emplace_back(id, std::move(label));
+  return id;
+}
+
+inline void EndTerminalActivity(uint64_t id) {
+  TerminalActivityState& state = TerminalActivities();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  std::erase_if(state.active,
+                [id](const auto& entry) { return entry.first == id; });
+}
+
+inline std::string CurrentTerminalActivity() {
+  TerminalActivityState& state = TerminalActivities();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  return state.active.empty() ? std::string() : state.active.back().second;
+}
+
 // Animates while a call blocks with nothing to print. stop() is idempotent and
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
@@ -70,9 +107,10 @@ class TerminalSpinner {
   }
 
   void Start(bool enabled = true) {
-    if (thread_.joinable() || !enabled || !g_tty || g_persistent_composer) {
-      return;
-    }
+    if (active_ || !enabled || !g_tty) return;
+    active_ = true;
+    activity_id_ = BeginTerminalActivity(label_);
+    if (g_persistent_composer) return;
     done_ = false;
     thread_ = std::thread([this] {
       std::unique_lock<std::mutex> lock(mutex_);
@@ -95,21 +133,27 @@ class TerminalSpinner {
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
   void Stop() {
-    if (!thread_.joinable()) return;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      done_ = true;
+    if (!active_) return;
+    if (thread_.joinable()) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        done_ = true;
+      }
+      wake_.notify_one();
+      thread_.join();
+      TerminalClearToEnd();
     }
-    wake_.notify_one();
-    thread_.join();
-    TerminalClearToEnd();
+    EndTerminalActivity(activity_id_);
+    active_ = false;
   }
 
  private:
   std::mutex mutex_;
   std::condition_variable wake_;
   bool done_ = false;
+  bool active_ = false;
   int frame_ = 0;
+  uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_;
   std::string label_;
   std::thread thread_;

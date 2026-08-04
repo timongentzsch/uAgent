@@ -341,8 +341,8 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
 }
 
 std::string InputPrompt(const char* label) {
-  return std::string(BOLD()) +
-         (label && *label ? std::string(label) + "> " : "> ");
+  return std::string(CYAN()) +
+         (label && *label ? std::string(label) + "> " : "> ") + RST();
 }
 
 #if defined(HAVE_EDITLINE)

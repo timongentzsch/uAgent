@@ -410,6 +410,8 @@ void TestScopedBaseAndMemory() {
         loaded.memory_index.find("project/build-uses-ninja"));
   CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::nullopt)
             .output.find("The user prefers tabs.") != std::string::npos);
+  CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::string())
+            .output.find("The user prefers tabs.") != std::string::npos);
   CHECK(ToolMemoryAction("set", "project/explicit", std::string("durable fact"))
             .output.starts_with("wrote "));
   CHECK(ToolMemoryAction("set", "project/blocked", std::string("fact"), false)

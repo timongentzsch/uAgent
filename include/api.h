@@ -38,7 +38,6 @@ class Api {
   bool route_certified = false;
   bool openrouter_compatible = false;
   double session_cost = 0;
-  size_t background_count = 0;
   // Set once at the user-turn boundary. Every transient status row in that
   // turn uses the same anchor, matching Codex's TurnStarted/TurnCompleted
   // lifetime instead of restarting for each request or tool.
@@ -57,15 +56,13 @@ class Api {
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const;
   ChatResult Chat(const json& messages, const json& tool_schemas,
-                  int64_t timeout_s = 0, const std::string& session_id = "",
-                  int64_t context_tokens = 0);
+                  int64_t timeout_s = 0, const std::string& session_id = "");
   json Post(const std::string& path, const json& body, int64_t timeout_s = 120);
   json Get(const std::string& path, bool abortable = false);
 
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,
-                         int64_t timeout_s, const std::string& session_id,
-                         int64_t context_tokens);
+                         int64_t timeout_s, const std::string& session_id);
   bool WaitForRetry(std::chrono::milliseconds delay) const;
   json Fetch(const std::string& path, const std::string* payload,
              int64_t timeout_s, bool abortable);

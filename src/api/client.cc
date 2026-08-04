@@ -136,8 +136,7 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
 }
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
-                     int64_t timeout_s, const std::string& session_id,
-                     int64_t context_tokens) {
+                     int64_t timeout_s, const std::string& session_id) {
   ChatResult res;
   size_t estimated =
       JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
@@ -188,8 +187,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                             : remaining.count();
     }
     auto attempt_started = std::chrono::steady_clock::now();
-    res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      context_tokens);
+    res = PerformChat(payload, web_available, attempt_timeout, session_id);
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
@@ -234,8 +232,7 @@ json Api::Get(const std::string& path, bool abortable) {
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
-                            int64_t timeout_s, const std::string& session_id,
-                            int64_t context_tokens) {
+                            int64_t timeout_s, const std::string& session_id) {
   ChatResult res;
   CURL* h = Prepare(base_url + "/chat/completions");
   if (!h) {
@@ -282,8 +279,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 
   SteeringGuard steering;
   std::string activity = web_available ? "working · web available" : "working";
-  if (context_tokens > 0) activity += " · ctx " + FmtCount(context_tokens);
-  if (background_count) activity += " · bg:" + std::to_string(background_count);
   TerminalSpinner spinner(render_stream, SpinnerLabel(activity), turn_started);
   ctx.spinner = &spinner;
 

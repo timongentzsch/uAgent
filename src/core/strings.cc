@@ -134,6 +134,14 @@ size_t DisplayWidth(const std::string& s) {
   std::mbstate_t state{};
   size_t width = 0;
   for (size_t offset = 0; offset < s.size();) {
+    if (s[offset] == '\x1b' && offset + 1 < s.size() && s[offset + 1] == '[') {
+      offset += 2;
+      while (offset < s.size()) {
+        unsigned char value = static_cast<unsigned char>(s[offset++]);
+        if (value >= 0x40 && value <= 0x7e) break;
+      }
+      continue;
+    }
     wchar_t wide = 0;
     size_t consumed =
         std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
@@ -159,6 +167,14 @@ std::string DisplayTrunc(std::string s, size_t columns) {
   std::mbstate_t state{};
   size_t offset = 0, width = 0;
   while (offset < s.size()) {
+    if (s[offset] == '\x1b' && offset + 1 < s.size() && s[offset + 1] == '[') {
+      offset += 2;
+      while (offset < s.size()) {
+        unsigned char value = static_cast<unsigned char>(s[offset++]);
+        if (value >= 0x40 && value <= 0x7e) break;
+      }
+      continue;
+    }
     wchar_t wide = 0;
     size_t consumed =
         std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);

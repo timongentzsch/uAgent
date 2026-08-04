@@ -55,7 +55,8 @@ remains the completion primitive and returns when delegated work finishes;
 other tasks continue running.
 
 The interactive composer owns stdin for the whole session. Enter during work
-queues a follow-up; Escape interrupts only the foreground request/tool batch.
+queues guidance into the active turn at the next model/tool boundary; Escape
+interrupts only the foreground request/tool batch.
 Background commands, delegated tasks, detached terminals, and memory
 maintenance retain their existing supervisor ownership.
 

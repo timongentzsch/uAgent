@@ -26,13 +26,15 @@
 
 namespace uagent {
 
-// Incremental SSE parser; prints content (and dim reasoning) as it streams.
+// Incremental SSE parser; prints content and muted italic reasoning as it
+// streams.
 struct StreamCtx {
   CURL* handle = nullptr;
   ChatResult* res = nullptr;
   std::string error_body;  // body when HTTP status >= 400
   int64_t status = 0;
   bool in_reasoning = false;
+  bool content_started = false;
   std::map<int, ToolCall> calls;  // keyed by stream index
   TerminalSpinner* spinner = nullptr;
   std::chrono::steady_clock::time_point started;
@@ -69,6 +71,10 @@ struct StreamCtx {
       md.FeedPlain("\n");
       in_reasoning = false;
     }
+    if (!content_started) {
+      md.Control(RST());
+      content_started = true;
+    }
     md.Feed(c);
   }
 
@@ -76,7 +82,7 @@ struct StreamCtx {
     if (!render_output) return;
     BeginOutput();
     if (!in_reasoning) {
-      std::string style = std::string(RST()) + DIM() + ITAL();
+      std::string style = std::string(RST()) + MUTED() + ITAL();
       md.Control(style.c_str());
     }
     in_reasoning = true;

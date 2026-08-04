@@ -74,7 +74,8 @@ void TestToolExecutionPolicy() {
   std::vector<Tool> restricted{inspect, mutate, exact_run};
   ApplyToolPolicy(restricted, {.allowed = Capability(ToolCapability::kInspect),
                                .tool_allowlist = {"inspect", "run"},
-                               .run_allowlist = {"python3 slow_analysis.py"}});
+                               .run_allowlist = {"python3 slow_analysis.py"},
+                               .error = ""});
   CHECK(FindTool(restricted, "inspect") != nullptr);
   CHECK(FindTool(restricted, "mutate") == nullptr);
   const Tool* allowed_run = FindTool(restricted, "run");
@@ -550,7 +551,8 @@ void TestGrepTool() {
   ApplyToolPolicy(evaluator_tools,
                   {.allowed = Capability(ToolCapability::kInspect),
                    .tool_allowlist = {"grep", "read_file", "list_dir", "run"},
-                   .run_allowlist = {"python3 slow_analysis.py"}});
+                   .run_allowlist = {"python3 slow_analysis.py"},
+                   .error = ""});
   const Tool* evaluator_run = FindTool(evaluator_tools, "run");
   CHECK(evaluator_run &&
         evaluator_run->validate({{"command", "python3 slow_analysis.py"}})

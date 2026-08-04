@@ -52,7 +52,8 @@ uagent --yolo
 The persistent two-line composer keeps native scrollback visible. Idle status
 shows model, effort, endpoint, context, cache, cost, and active background
 count; the single status row switches in place to show current harness
-activity, elapsed time, queued steering, background count, and the Escape hint.
+activity, elapsed time, live context, queued steering, background count, and
+the Escape hint.
 `/context` prints the current model-shaped context and registered tool schemas;
 `/trace` prints the latest tool/search exchange; `/cost` breaks spend down by
 route. `--debug`
@@ -96,7 +97,8 @@ Mutating, shell, network, delegation, and MCP calls require approval unless
 `--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,
 processes, context, persistence, and reported spend are bounded.
 Model labels include reasoning effort; delegated task labels also include their
-provider. Working status reports the number of active background processes.
+provider. Working status reports live context and the number of active
+background processes.
 `terminal_output` can inspect their bounded current logs without waiting or
 cancelling them; child-side buffering may delay visible output. Enter queues
 guidance into the active turn at its next safe boundary. Escape interrupts only
@@ -134,7 +136,8 @@ requires interactive trust or `--trust-project-config`.
 The input bar remains editable while work runs. Enter adds guidance to the
 active turn's steering queue; it is applied after the current model response or
 tool boundary, not started as a separate next turn. Escape interrupts the
-foreground operation without cancelling background work. A single status row
+foreground operation and applies queued guidance immediately without cancelling
+background work. A single status row
 stays pinned immediately above the input and changes in place between the idle
 model/session summary and the current harness state.
 

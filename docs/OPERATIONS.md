@@ -56,7 +56,8 @@ other tasks continue running.
 
 The interactive composer owns stdin for the whole session. Enter during work
 queues guidance into the active turn at the next model/tool boundary; Escape
-interrupts only the foreground request/tool batch.
+interrupts only the foreground request/tool batch and applies queued guidance
+immediately.
 Background commands, delegated tasks, detached terminals, and memory
 maintenance retain their existing supervisor ownership.
 

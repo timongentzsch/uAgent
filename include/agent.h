@@ -115,6 +115,9 @@ class Agent {
   // Conservative size of the next request: never below either the last
   // server-reported exchange or the current serialized prompt estimate.
   int64_t ContextUsed() const;
+  int64_t ContextSnapshot() const {
+    return context_snapshot_.load(std::memory_order_relaxed);
+  }
 
   // summarize the conversation with the model, then restart the session
   // from that summary — frees the context without losing the thread
@@ -252,6 +255,7 @@ class Agent {
   std::vector<Skill> skills_;
   Conversation conversation_;
   ContextPolicy context_policy_;
+  mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;
   json checkpoint_candidates_ = json::array();
   json pending_checkpoint_ = nullptr;

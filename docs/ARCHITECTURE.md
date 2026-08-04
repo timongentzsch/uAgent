@@ -63,8 +63,8 @@ on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. Enter appends guidance to the active
 turn's steering queue; Escape raises only the foreground abort flag. One turn
 timestamp drives the sole dynamic status row, which also reports queued
-steering and active background count. That row stays directly above the input
-and changes in place instead of entering scrollback.
+steering, live context, and active background count. That row stays directly
+above the input and changes in place instead of entering scrollback.
 One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;
 tool-specific contracts such as visibility, call budgets, and stable arguments

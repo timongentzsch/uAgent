@@ -6,16 +6,18 @@ endpoint and every MCP server as trusted infrastructure.
 
 ## Trust boundaries
 
-- Settings come from process `UAGENT_*` variables, a trusted project
-  `.uagent/.config`, and `~/.uagent/.config`, in that order. Config and artifact
-  files are forced private. Project `.env` files are ignored.
+- Settings come from supported process `UAGENT_*` and `OPENROUTER_*` variables,
+  a trusted project `.uagent/.config`, and `~/.uagent/.config`, in that order.
+  Config and artifact files are forced private. Project `.env` files are
+  ignored.
 - User `~/.mcp.json` is trusted executable configuration. Project `.mcp.json`
   and `.uagent/.config` require interactive trust or
   `--trust-project-config`; semantic edits revoke stored trust.
-- Project instruction files, memories, and skills enter model context without
-  configuration trust because they grant no capability themselves. Treat an
-  untrusted checkout as prompt input and review requested actions before
-  approving them.
+- Project instruction files, memories, and selected skills enter model context
+  without configuration trust because they grant no capability themselves.
+  Explicit `$skill-name` mentions load that skill before the first model call;
+  automatic selection still uses the skill tool. Treat an untrusted checkout
+  as prompt input and review requested actions before approving them.
 - The default Chrome integration executes `chrome-devtools-mcp@latest` through
   `npx`, so its code can change without a µAgent update. Disable it with
   `UAGENT_CHROME_DEVTOOLS=0` when reproducible or offline execution matters.
@@ -30,6 +32,12 @@ endpoint and every MCP server as trusted infrastructure.
   credentials are deliberately re-added. Approved `run` commands can opt in
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
   MCP servers, delegated agents, or `run_python`.
+- Automatic memory consolidation runs only against an idle saved session. Its
+  child receives the configured model credential but exposes only the memory
+  tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript
+  fields are filtered and known credential forms are redacted before the model
+  request and again before any memory write. This is defense in depth, not a
+  guarantee that arbitrary secrets can always be recognized.
 - Model, MCP, and tool text is terminal-sanitized.
 
 Approval grants the current user's filesystem and network permissions. Use a

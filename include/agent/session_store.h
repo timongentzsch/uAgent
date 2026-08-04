@@ -60,8 +60,6 @@ struct SessionStoreStatus {
 struct SessionLoadResult {
   SessionStoreStatus status;
   std::optional<SessionRecord> record;
-
-  bool Ok() const { return status.Ok() && record.has_value(); }
 };
 
 class SessionStore {

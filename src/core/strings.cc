@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -49,6 +51,26 @@ std::string AsciiLower(std::string text) {
 bool ContainsCaseInsensitive(std::string text, const std::string& query) {
   return query.empty() || AsciiLower(std::move(text)).find(AsciiLower(query)) !=
                               std::string::npos;
+}
+
+bool ParseInt64(const char* text, int64_t& value) {
+  if (!text || !*text) return false;
+  char* end = nullptr;
+  errno = 0;
+  int64_t parsed = strtoll(text, &end, 10);
+  if (errno || !end || *end) return false;
+  value = static_cast<int64_t>(parsed);
+  return true;
+}
+
+bool ParseFiniteDouble(const char* text, double& value) {
+  if (!text || !*text) return false;
+  char* end = nullptr;
+  errno = 0;
+  double parsed = strtod(text, &end);
+  if (errno || !end || *end || !std::isfinite(parsed)) return false;
+  value = parsed;
+  return true;
 }
 
 std::string Unquote(std::string s) {
@@ -221,9 +243,9 @@ std::string TerminalSummary(const std::string& text, size_t reserved_columns) {
   return DisplayTrunc(std::move(summary), width);
 }
 
-std::string SpinnerLabel(std::string label) {
+std::string SpinnerLabel(const std::string& label) {
   size_t columns =
-      static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 2));
+      static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 12));
   return DisplayTrunc(TerminalSafe(label), columns);
 }
 
@@ -264,12 +286,6 @@ bool LoopbackUrl(std::string url) {
   return host == "127.0.0.1" || host == "localhost";
 }
 
-bool OpenrouterCompatibleUrl(std::string url) {
-  if (OpenrouterUrl(url)) return true;
-  url = StripTrailingSlashes(std::move(url));
-  return LoopbackUrl(url) && url.ends_with("/api/v1");
-}
-
 bool OpenaiUrl(std::string url) {
   return UrlHost(std::move(url)) == "api.openai.com";
 }
@@ -285,6 +301,10 @@ std::string UrlAuthority(std::string url) {
     url = url.substr(pos + 1);
   }
   return AsciiLower(std::move(url));
+}
+
+std::string ModelLabel(const std::string& model, const std::string& effort) {
+  return model + " (" + (effort.empty() ? "default" : effort) + ")";
 }
 
 std::string RouteKey(const std::string& base_url, const std::string& provider,
@@ -337,8 +357,10 @@ std::string FmtAgo(int64_t seconds) {
 
 int64_t TerminalColumns() {
   struct winsize size{};
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col > 0) {
-    return size.ws_col;
+  for (int fd : {STDOUT_FILENO, STDIN_FILENO}) {
+    if (ioctl(fd, TIOCGWINSZ, &size) == 0 && size.ws_col > 0) {
+      return size.ws_col;
+    }
   }
   return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
 }

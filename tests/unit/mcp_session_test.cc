@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/tools/memory.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -332,46 +333,72 @@ void TestScopedBaseAndMemory() {
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
-  CHECK(ToolMemory("prefers-tabs", "global", "The user prefers tabs.")
+  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
+                         std::string("The user prefers tabs."))
             .output.starts_with("wrote "));
-  CHECK(fs::is_regular_file(home / ".uagent/memory/prefers-tabs.md"));
+  CHECK(fs::is_regular_file(home / ".uagent/memory/global/prefers-tabs.md"));
 
-  // Saving a project memory is what opts the workspace in, which then also
-  // moves the config and uv locations.
-  CHECK(
-      ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
-          .output.starts_with("wrote "));
-  fs::path project_memory = workspace / ".uagent/memory/build-uses-ninja.md";
-  CHECK(fs::is_regular_file(project_memory));
-  CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
-        (fs::perms::owner_read | fs::perms::owner_write));
+  // Project memory is private user state; visiting a workspace never mutates
+  // the repository.
+  CHECK(ToolMemoryAction("set", "project/build-uses-ninja",
+                         std::string("This repo builds with ninja."))
+            .output.starts_with("wrote "));
+  std::vector<MemoryEntry> initial_memories = ListMemories();
+  auto project_entry =
+      std::find_if(initial_memories.begin(), initial_memories.end(),
+                   [](const MemoryEntry& memory) {
+                     return memory.key == "project/build-uses-ninja";
+                   });
+  CHECK(project_entry != initial_memories.end());
+  fs::path project_memory;
+  if (project_entry != initial_memories.end()) {
+    project_memory = project_entry->path;
+    CHECK(fs::is_regular_file(project_memory));
+    CHECK(project_memory.string().starts_with(
+        (home / ".uagent/memory/projects").string()));
+    CHECK((fs::status(project_memory.parent_path()).permissions() &
+           fs::perms::all) == fs::perms::owner_all);
+  }
+  CHECK(!fs::exists(workspace / ".uagent"));
+  if (!project_memory.empty()) {
+    CHECK((fs::status(project_memory).permissions() & fs::perms::all) ==
+          (fs::perms::owner_read | fs::perms::owner_write));
+  }
   CHECK(ProjectConfigFilePath() == (workspace / ".uagent/.config").string());
   CHECK(UagentDir("history") == (home / ".uagent/history").string());
 
-  // Names become safe file components, oversize content is refused, an existing
-  // name is replaced, and empty content forgets.
-  CHECK(ToolMemory("../escape", "project", "x").output.starts_with("wrote "));
-  CHECK(fs::is_regular_file(workspace / ".uagent/memory/___escape.md"));
-  CHECK(ToolMemory("", "global", "x").output.starts_with("error:"));
-  CHECK(ToolMemory("name", "elsewhere", "x").output.starts_with("error:"));
-  CHECK(ToolMemory("huge", "global", std::string(4096, 'x'))
+  // Keys are scoped and flat, oversize content is refused, an existing key is
+  // replaced, and forget is explicit.
+  CHECK(ToolMemoryAction("set", "project/../escape", std::string("x"))
             .output.starts_with("error:"));
-  CHECK(ToolMemory("build-uses-ninja", "project", "Now it builds with make.")
+  CHECK(ToolMemoryAction("set", "global/", std::string("x"))
+            .output.starts_with("error:"));
+  CHECK(ToolMemoryAction("set", "elsewhere/name", std::string("x"))
+            .output.starts_with("error:"));
+  CHECK(ToolMemoryAction("set", "global/huge", std::string(4096, 'x'))
+            .output.starts_with("error:"));
+  CHECK(ToolMemoryAction("set", "project/build-uses-ninja",
+                         std::string("Now it builds with make."))
             .output.starts_with("wrote "));
-  CHECK(ToolMemory("build-uses-ninja", "project", std::nullopt, true)
+  CHECK(ToolMemoryAction("forget", "project/build-uses-ninja", std::nullopt)
             .output.starts_with("forgot "));
   CHECK(!fs::exists(project_memory));
-  CHECK(ToolMemory("build-uses-ninja", "project", std::nullopt, true)
+  CHECK(ToolMemoryAction("forget", "project/build-uses-ninja", std::nullopt)
             .output.starts_with("error:"));
 
   // Both scopes reach the separate evidence rail, project after global, each
   // labeled; human workspace rules remain the only project instructions.
   CHECK(ToolWriteFile("AGENTS.md", "workspace rules")
             .output.starts_with("wrote "));
-  CHECK(
-      ToolMemory("build-uses-ninja", "project", "This repo builds with ninja.")
-          .output.starts_with("wrote "));
+  CHECK(ToolMemoryAction("set", "project/build-uses-ninja",
+                         std::string("This repo builds with ninja."))
+            .output.starts_with("wrote "));
   ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
+  MemoryIndex index =
+      LoadMemoryIndex(workspace, 32 * 1024 - loaded.text.size());
+  loaded.memory_index = index.text;
+  loaded.memory_sources = index.sources;
+  loaded.truncated |= index.truncated;
   CHECK(loaded.text.find("workspace rules") != std::string::npos);
   CHECK(loaded.text.find("## memory: prefers-tabs") == std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") != std::string::npos);
@@ -381,9 +408,48 @@ void TestScopedBaseAndMemory() {
         std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") <
         loaded.memory_index.find("project/build-uses-ninja"));
-  CHECK(ToolMemory("prefers-tabs", "global", std::nullopt, false)
+  CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::nullopt)
             .output.find("The user prefers tabs.") != std::string::npos);
+  CHECK(ToolMemoryAction("set", "project/explicit", std::string("durable fact"))
+            .output.starts_with("wrote "));
+  CHECK(ToolMemoryAction("set", "project/blocked", std::string("fact"), false)
+            .error == ToolErrorCode::kPermissionDenied);
+  std::vector<MemoryEntry> memories = ListMemories();
+  CHECK(std::any_of(memories.begin(), memories.end(), [](const MemoryEntry& m) {
+    return m.key == "global/prefers-tabs";
+  }));
+  CHECK(std::any_of(memories.begin(), memories.end(), [](const MemoryEntry& m) {
+    return m.key == "project/explicit";
+  }));
+  CHECK(ToolMemoryAction("forget", "project/explicit", std::nullopt)
+            .output.starts_with("forgot "));
+  CHECK(ToolMemoryAction("set", "project/missing", std::nullopt)
+            .output.starts_with("error:"));
+  CHECK(ToolMemoryAction("get", "invalid", std::nullopt)
+            .output.starts_with("error:"));
   CHECK(!loaded.truncated);
+
+  // Linked worktrees resolve through Git's common directory and therefore
+  // share one project memory scope.
+  fs::path main_repo = root / "main-repo";
+  fs::path linked_repo = root / "linked-repo";
+  fs::path linked_git_dir = main_repo / ".git/worktrees/linked-repo";
+  fs::create_directories(linked_git_dir);
+  fs::create_directories(linked_repo);
+  CHECK(ToolWriteFile((linked_git_dir / "commondir").string(), "../..\n")
+            .output.starts_with("wrote "));
+  CHECK(ToolWriteFile((linked_repo / ".git").string(),
+                      "gitdir: " + linked_git_dir.string() + "\n")
+            .output.starts_with("wrote "));
+  fs::current_path(main_repo);
+  CHECK(ToolMemoryAction("set", "project/shared-worktree", "shared fact")
+            .output.starts_with("wrote "));
+  fs::current_path(linked_repo);
+  CHECK(ToolMemoryAction("get", "project/shared-worktree", std::nullopt)
+            .output.find("shared fact") != std::string::npos);
+  CHECK(ToolMemoryAction("forget", "project/shared-worktree", std::nullopt)
+            .output.starts_with("forgot "));
+  fs::current_path(workspace);
 
   // A trusted project config wins key by key; the global file fills the rest.
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=project/model\n")

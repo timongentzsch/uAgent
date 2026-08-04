@@ -1,0 +1,365 @@
+// Copyright 2026 Timon Gentzsch
+
+#include "include/tools/registry.h"
+
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "include/core/json.h"
+#include "include/core/strings.h"
+#include "include/media.h"
+#include "include/tools/files.h"
+#include "include/tools/jobs.h"
+#include "include/tools/memory.h"
+#include "include/tools/path_policy.h"
+#include "include/tools/shell.h"
+
+namespace uagent {
+
+std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
+                               const std::filesystem::path& workspace,
+                               bool inline_images, bool memory_generate) {
+  auto schema = [](const char* s) { return json::parse(s); };
+  std::vector<Tool> tools;
+  auto path_tool = [&](Tool tool) -> Tool& {
+    tool.needs_approval = [workspace](const json& args) {
+      return PathApprovalRequired(JsonValue(args, "path", ""), workspace);
+    };
+    return AddTool(tools, std::move(tool));
+  };
+
+  Tool& read = path_tool(MakeTool(
+      "read_file",
+      "Read a known text file or useful line range. Results remain in context; "
+      "do not reread an unchanged range. Reread after edits or external "
+      "changes when exact current text matters. Use grep when the file or "
+      "symbol is unknown; batch independent known files.",
+      schema(R"json({"type":"object","properties":{
+                    "path":{"type":"string"},
+                    "offset":{"type":"integer","description":"first line (default 1)"},
+                    "limit":{"type":"integer","description":"line count (default 1000)"}},
+                    "required":["path"]})json"),
+      [](const json& a, const ToolContext&) {
+        return ToolReadFile(JsonValue(a, "path", ""),
+                            JsonValue(a, "offset", int64_t{1}),
+                            JsonValue(a, "limit", int64_t{0}));
+      }));
+  read.parallel_safe = true;
+  read.capabilities = Capability(ToolCapability::kInspect);
+  read.dedupe_output = true;
+  // Reads get a larger, contiguous window than logs and remote output. This
+  // avoids paying another model round merely to continue an ordinary source
+  // file while keeping every other tool on the global result cap.
+  read.result_chars = ReadFileResultChars();
+
+  Tool& write =
+      path_tool(MakeTool("write_file",
+                         "Create a file or replace its complete contents. Use "
+                         "edit_file for localized changes.",
+                         schema(R"json({"type":"object","properties":{
+                    "path":{"type":"string"},"content":{"type":"string"}},
+                    "required":["path","content"]})json"),
+                         [](const json& a, const ToolContext&) {
+                           return ToolWriteFile(JsonValue(a, "path", ""),
+                                                JsonValue(a, "content", ""));
+                         }));
+  write.mutating = true;
+  write.capabilities = Capability(ToolCapability::kMutate);
+  write.available_in_lean = false;
+  write.summary = [](const json& a) {
+    return JsonValue(a, "path", "") + " (" +
+           std::to_string(JsonValue(a, "content", std::string()).size()) +
+           " bytes)";
+  };
+
+  Tool& edit = path_tool(MakeTool(
+      "edit_file",
+      "Modify an existing text file by exact search/replace. Batch related "
+      "edits; all apply atomically in order.",
+      schema(R"json({"type":"object","properties":{
+                    "path":{"type":"string"},"old":{"type":"string"},
+                    "new":{"type":"string"},
+                    "replace_all":{"type":"boolean","description":"replace all matches"},
+                    "edits":{"type":"array","maxItems":63,
+                      "description":"additional edits in order",
+                      "items":{"type":"object","properties":{
+                        "old":{"type":"string"},"new":{"type":"string"},
+                        "replace_all":{"type":"boolean"}},
+                        "required":["old","new"],"additionalProperties":false}}},
+                    "required":["path","old","new"]})json"),
+      [](const json& a, const ToolContext&) {
+        std::vector<FileEdit> edits{{
+            JsonValue(a, "old", ""),
+            JsonValue(a, "new", ""),
+            JsonValue(a, "replace_all", false),
+        }};
+        auto additional = a.find("edits");
+        if (additional != a.end()) {
+          if (!additional->is_array()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: `edits` must be an array");
+          }
+          if (additional->size() + 1 > kMaxFileEdits) {
+            return ToolFailure(ToolErrorCode::kLimitExceeded,
+                               "error: `edit_file` is limited to " +
+                                   std::to_string(kMaxFileEdits) +
+                                   " edits per call");
+          }
+          for (const json& item : *additional) {
+            if (!item.is_object() || !item.contains("old") ||
+                !item["old"].is_string() || !item.contains("new") ||
+                !item["new"].is_string() ||
+                (item.contains("replace_all") &&
+                 !item["replace_all"].is_boolean())) {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: each `edits` entry requires "
+                                 "string `old`/`new` and optional boolean "
+                                 "`replace_all`");
+            }
+            edits.push_back({
+                JsonValue(item, "old", ""),
+                JsonValue(item, "new", ""),
+                JsonValue(item, "replace_all", false),
+            });
+          }
+        }
+        return ToolEditFile(JsonValue(a, "path", ""), edits);
+      }));
+  edit.mutating = true;
+  edit.capabilities = Capability(ToolCapability::kMutate);
+  edit.available_in_lean = false;
+  edit.summary = [](const json& a) {
+    size_t count = 1;
+    auto additional = a.find("edits");
+    if (additional != a.end() && additional->is_array()) {
+      count += additional->size();
+    }
+    return JsonValue(a, "path", "") + " (" + std::to_string(count) +
+           (count == 1 ? " edit)" : " edits)");
+  };
+
+  Tool& list = path_tool(MakeTool(
+      "list_dir",
+      "Inspect one directory. Use grep for recursive content search and "
+      "read_file for a known file.",
+      schema(R"json({"type":"object","properties":{
+                    "path":{"type":"string"},"offset":{"type":"integer"},
+                    "limit":{"type":"integer"}}})json"),
+      [workspace](const json& a, const ToolContext&) {
+        std::string path = JsonValue(a, "path", ".");
+        bool preview = !PathApprovalRequired(path, workspace);
+        return ToolListDir(path, JsonValue(a, "offset", int64_t{0}),
+                           JsonValue(a, "limit", int64_t{0}), preview);
+      }));
+  list.parallel_safe = true;
+  list.capabilities = Capability(ToolCapability::kInspect);
+
+  Tool& grep = path_tool(MakeTool(
+      "grep",
+      "Locate files, symbols, or text with a regex under an optional path and "
+      "glob. Use read_file after locating the relevant file.",
+      schema(R"json({"type":"object","properties":{
+                    "pattern":{"type":"string"},"path":{"type":"string"},
+                    "glob":{"type":"string"},
+                    "context":{"type":"integer","minimum":0,"maximum":10,
+                      "description":"surrounding lines"}},"required":["pattern"]})json"),
+      [&supervisor](const json& a, const ToolContext& context) {
+        return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
+                        JsonValue(a, "path", "."), JsonValue(a, "glob", ""),
+                        JsonValue(a, "context", int64_t{0}), context);
+      }));
+  grep.parallel_safe = true;  // read-only, like read_file and list_dir
+  grep.capabilities = Capability(ToolCapability::kInspect);
+  grep.summary = [](const json& a) {
+    return JsonValue(a, "pattern", "") + " in " + JsonValue(a, "path", ".");
+  };
+
+  if (inline_images) {
+    Tool& show_image = path_tool(
+        MakeTool("show_image",
+                 "Display a local image using the native terminal protocol.",
+                 schema(R"json({"type":"object","properties":{
+                              "path":{"type":"string"}},"required":["path"]})json"),
+                 [](const json& a, const ToolContext&) {
+                   return ToolShowImage(JsonValue(a, "path", ""));
+                 }));
+    show_image.capabilities = Capability(ToolCapability::kInspect);
+  }
+
+  // read_file only handles text. This puts the bytes themselves in front of
+  // the model, so it can read what it cannot parse.
+  Tool& attach = path_tool(MakeTool(
+      "attach",
+      "Add an image/document to model context when read_file cannot parse it.",
+      schema(R"json({"type":"object","properties":{
+                    "path":{"type":"string"}},"required":["path"]})json"),
+      [](const json& a, const ToolContext&) {
+        return Attachments().Add(JsonValue(a, "path", ""));
+      }));
+  attach.parallel_safe = true;
+  attach.capabilities = Capability(ToolCapability::kInspect);
+  attach.max_calls_per_turn = 4;  // each one rides on the next request
+
+  Tool& run = AddTool(
+      tools,
+      MakeTool("run",
+               "Execute a non-privileged build, test, or shell command in cwd "
+               "(bash default; omit cd; no stdin or sudo). Do not use it for "
+               "file search, reading, or editing when a dedicated tool exists. "
+               "Use a project's existing Python runner such as uv run or "
+               "pytest. Detach only for a persistent terminal that may outlive "
+               "the current session.",
+               schema(R"json({"type":"object","properties":{
+                    "command":{"type":"string"},
+                    "shell":{"type":"string","description":"default bash"},
+                    "detach":{"type":"boolean",
+                      "description":"persist terminal and log"}},
+                    "required":["command"]})json"),
+               [&supervisor](const json& a, const ToolContext& context) {
+                 return ToolRunApprovedShell(
+                     supervisor, JsonValue(a, "command", ""), context,
+                     JsonValue(a, "detach", false),
+                     JsonValue(a, "shell", "bash"));
+               }));
+  run.mutating = true;
+  run.capabilities = Capability(ToolCapability::kExecute) |
+                     Capability(ToolCapability::kMutate);
+  run.validate = [](const json& a) {
+    return RunCommandPolicyError(JsonValue(a, "command", ""));
+  };
+  run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
+  run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
+  // Each call owns its process group and log, so independent commands
+  // (network fetches especially) overlap instead of queueing.
+  run.parallel_safe = true;
+
+  Tool& python = AddTool(
+      tools,
+      MakeTool(
+          "run_python",
+          "Run a one-off Python scratch script when shell is insufficient. "
+          "Never use this for requested project implementation: edit project "
+          "files and use the project runner. Reuse one stable script per task: "
+          "edit it with read_file/edit_file and rerun with null code and "
+          "packages instead of creating variants. Scripts persist in "
+          ".uagent/scratch; dependencies use PEP 723 and isolated uv.",
+          schema(
+              R"json({"type":"object","additionalProperties":false,"properties":{
+                    "path":{"type":"string",
+                      "description":"One stable relative .py path under .uagent/scratch; reuse it during the task."},
+                    "code":{"type":["string","null"],
+                      "description":"Script body when creating/replacing; null reruns the existing file after read_file/edit_file changes. Do not include PEP 723 metadata."},
+                    "packages":{"type":["array","null"],"items":{"type":"string"},"maxItems":12,
+                      "description":"PEP 508 dependencies when code is provided ([] for stdlib); null when rerunning."}},
+                    "required":["path","code","packages"]})json"),
+          [&supervisor, workspace](const json& a, const ToolContext& context) {
+            return ToolRunPython(
+                supervisor, workspace, JsonValue(a, "path", ""),
+                JsonValue(a, "code", json(nullptr)),
+                JsonValue(a, "packages", json(nullptr)), context);
+          }));
+  python.mutating = true;
+  python.capabilities = Capability(ToolCapability::kExecute) |
+                        Capability(ToolCapability::kMutate);
+  python.summary = [](const json& a) {
+    std::string path = JsonValue(a, "path", "");
+    return a.contains("code") && a["code"].is_string() ? path + " (create)"
+                                                       : path + " (rerun)";
+  };
+  python.stable_argument = "path";
+  python.timeout_s = 0;  // bounded by the turn; no model-driven polling
+
+  Tool& terminal = AddTool(
+      tools,
+      MakeTool("terminal_output",
+               "List supervised background processes or read the latest "
+               "bounded output for one pid without waiting or cancelling it.",
+               schema(R"json({"type":"object","properties":{
+                    "pid":{"type":"integer","minimum":1}}})json"),
+               [&supervisor](const json& a, const ToolContext&) {
+                 return ToolTerminalOutput(supervisor,
+                                           JsonValue(a, "pid", int64_t{0}));
+               }));
+  terminal.parallel_safe = true;
+  terminal.capabilities = Capability(ToolCapability::kInspect);
+  terminal.result_chars = 6000;
+  terminal.visibility = Tool::Visibility::kDetachedTerminal;
+  terminal.summary = [](const json& a) {
+    int64_t pid = JsonValue(a, "pid", int64_t{0});
+    return pid ? "pid " + std::to_string(pid) : "list";
+  };
+
+  json memory_schema = schema(R"json({"type":"object","properties":{
+                    "action":{"type":"string","enum":["get","set","forget"]},
+                    "key":{"type":"string",
+                      "description":"exact index key or new project/<name> or global/<name> key"},
+                    "content":{"type":"string",
+                      "description":"durable lesson; required only for set"}},
+                    "required":["action","key"]})json");
+  if (!memory_generate) {
+    memory_schema["properties"]["action"]["enum"] = {"get", "forget"};
+    memory_schema["properties"].erase("content");
+  }
+  Tool& memory = AddTool(
+      tools,
+      MakeTool(
+          "memory",
+          memory_generate
+              ? "Get indexed memory only when relevant. Set only when the "
+                "user explicitly asks or background consolidation identifies "
+                "a stable cross-session preference, workflow, constraint, or "
+                "debugging insight. Never save task progress, guesses, "
+                "secrets, commands, or permissions; forget only on request."
+              : "Get indexed memory only when relevant. Contributions are "
+                "disabled; forget only on an explicit user request.",
+          std::move(memory_schema),
+          [memory_generate](const json& a, const ToolContext&) {
+            std::optional<std::string> content;
+            if (a.contains("content") && a["content"].is_string()) {
+              content = a["content"].get<std::string>();
+            }
+            return ToolMemoryAction(JsonValue(a, "action", ""),
+                                    JsonValue(a, "key", ""), content,
+                                    memory_generate);
+          }));
+  memory.mutates = [](const json& a) {
+    return JsonValue(a, "action", "") != "get";
+  };
+  memory.capabilities = Capability(ToolCapability::kInspect) |
+                        Capability(ToolCapability::kMutate);
+  memory.available_in_lean = false;
+  memory.retain_output = true;
+  memory.summary = [](const json& a) {
+    return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");
+  };
+
+  Tool& checkpoint = AddTool(
+      tools,
+      MakeTool("checkpoint",
+               "After a checkpoint hint, save durable facts and validation—not "
+               "commands, permissions, or plans.",
+               schema(R"json({"type":"object","properties":{
+                    "state":{"type":"string","description":"standalone durable state"},
+                    "verbatim":{"type":"array","items":{"type":"string","maxLength":256},
+                      "maxItems":8,"description":"exact literals"},
+                    "keep_paths":{"type":"array","items":{"type":"string"},
+                      "description":"relevant non-secret files"},
+                    "keep_last_n_results":{"type":"integer","minimum":0,"maximum":3,
+                      "description":"recent results (default 0)"}},"required":["state"]})json"),
+               [](const json&, const ToolContext&) {
+                 return ToolFailure(
+                     ToolErrorCode::kInternal,
+                     "error: checkpoint must be handled by the agent runtime");
+               }));
+  checkpoint.summary = [](const json& a) {
+    return FirstLine(JsonValue(a, "state", ""));
+  };
+  checkpoint.capabilities = Capability(ToolCapability::kMutate);
+  checkpoint.retain_output = true;
+  checkpoint.visibility = Tool::Visibility::kCheckpointHint;
+  return tools;
+}
+
+}  // namespace uagent

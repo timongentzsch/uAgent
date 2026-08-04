@@ -118,6 +118,8 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("cross-cutting or high-risk") !=
         std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("never imitate a tool call") !=
+        std::string::npos);
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
@@ -130,6 +132,9 @@ void TestRegistries() {
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
   command = ParseSlashCommand("/ctx");
   CHECK(command.spec && command.spec->id == SlashCommandId::kContext);
+  CHECK(!ParseSlashCommand("/recap").spec);
+  command = ParseSlashCommand("/memory");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kMemory);
   CHECK(!ParseSlashCommand("/unknown").spec);
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
@@ -198,9 +203,10 @@ void TestOptions() {
   char attachment[] = "image.png";
   char debug[] = "--debug=trace.jsonl";
   char json[] = "--json";
-  char* arguments[] = {executable,  yolo,       prompt_flag, prompt,
-                       attach_flag, attachment, debug,       json};
-  ParsedOptions parsed = ParseOptions(8, arguments);
+  char no_memory[] = "--no-memory";
+  char* arguments[] = {executable, yolo,  prompt_flag, prompt,   attach_flag,
+                       attachment, debug, json,        no_memory};
+  ParsedOptions parsed = ParseOptions(9, arguments);
   CHECK(parsed.Ok());
   CHECK(parsed.action == OptionsAction::kRun);
   CHECK(parsed.options.yolo);
@@ -209,6 +215,7 @@ void TestOptions() {
   CHECK(parsed.options.debug);
   CHECK(parsed.options.debug_path == "trace.jsonl");
   CHECK(parsed.options.json);
+  CHECK(parsed.options.no_memory);
 
   char json_stream[] = "--json-stream";
   char budget[] = "--budget";
@@ -219,6 +226,10 @@ void TestOptions() {
   CHECK(stream.Ok());
   CHECK(stream.options.json_stream);
   CHECK(stream.options.budget == 2.5);
+
+  char non_finite[] = "nan";
+  char* invalid_budget[] = {executable, budget, non_finite};
+  CHECK(!ParseOptions(3, invalid_budget).Ok());
 
   char help[] = "--help";
   char* help_arguments[] = {executable, help};

@@ -57,11 +57,11 @@ struct SearchTrace {
   }
 };
 
-inline void PrintToolCallSummary(const json& call,
-                                 const std::vector<Tool>& tools) {
+inline std::string PrintToolCallSummary(const json& call,
+                                        const std::vector<Tool>& tools) {
   if (!call.is_object() || !call.contains("function") ||
       !call["function"].is_object()) {
-    return;
+    return "";
   }
   const json& function = call["function"];
   std::string name = JsonValue(function, "name", "");
@@ -69,8 +69,10 @@ inline void PrintToolCallSummary(const json& call,
       json::parse(JsonValue(function, "arguments", "{}"), nullptr, false);
   const Tool* tool = FindTool(tools, name);
   std::string summary = tool ? ToolSummary(*tool, args) : JsonDump(args);
-  printf("%s→ %s(%s)%s\n", CYAN(), TerminalSafe(name).c_str(),
-         TerminalSafe(FirstLine(summary)).c_str(), RST());
+  std::string shown = TerminalSummary(summary, DisplayWidth(name) + 4);
+  printf("%s→ %s(%s)%s\n", CYAN(), TerminalSafe(name).c_str(), shown.c_str(),
+         RST());
+  return name;
 }
 
 inline void PrintToolResultText(const std::string& result) {

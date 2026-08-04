@@ -2,52 +2,54 @@
 
 #include "include/app/options.h"
 
-#include <cerrno>
-#include <cstdlib>
+#include <algorithm>
+#include <iterator>
 #include <string>
+#include <string_view>
+#include <utility>
+
+#include "include/core/strings.h"
 
 namespace uagent {
 
 ParsedOptions ParseOptions(int argc, char* const argv[]) {
+  static constexpr std::pair<std::string_view, bool Options::*> kFlags[] = {
+      {"--yolo", &Options::yolo},
+      {"--json", &Options::json},
+      {"--json-stream", &Options::json_stream},
+      {"--no-memory", &Options::no_memory},
+      {"--continue", &Options::resume_latest},
+      {"-c", &Options::resume_latest},
+      {"--resume", &Options::resume_pick},
+      {"--trust-project-config", &Options::trust_project},
+      {"--debug", &Options::debug},
+  };
   ParsedOptions parsed;
   for (int index = 1; index < argc; ++index) {
     std::string argument = argv[index];
-    if (argument == "--yolo") {
-      parsed.options.yolo = true;
-    } else if (argument == "--json") {
-      parsed.options.json = true;
-    } else if (argument == "--json-stream") {
-      parsed.options.json_stream = true;
-    } else if (argument == "--budget") {
-      if (++index >= argc) {
-        parsed.error = "--budget requires a value";
-        return parsed;
-      }
-      char* end = nullptr;
-      errno = 0;
-      parsed.options.budget = strtod(argv[index], &end);
-      if (errno || !end || *end != '\0' || parsed.options.budget <= 0) {
-        parsed.error = "--budget must be a positive dollar amount";
-        return parsed;
-      }
-    } else if (argument == "-p" || argument == "--attach") {
+    auto flag = std::find_if(
+        std::begin(kFlags), std::end(kFlags),
+        [&](const auto& value) { return value.first == argument; });
+    if (flag != std::end(kFlags)) {
+      parsed.options.*flag->second = true;
+    } else if (argument == "--budget" || argument == "-p" ||
+               argument == "--attach" || argument == "--memory-consolidate") {
       if (++index >= argc) {
         parsed.error = argument + " requires a value";
         return parsed;
       }
-      if (argument == "-p") {
+      if (argument == "--budget" &&
+          (!ParseFiniteDouble(argv[index], parsed.options.budget) ||
+           parsed.options.budget <= 0)) {
+        parsed.error = "--budget must be a positive dollar amount";
+        return parsed;
+      } else if (argument == "-p") {
         parsed.options.prompt = argv[index];
-      } else {
+      } else if (argument == "--attach") {
         parsed.options.attach_paths.push_back(argv[index]);
+      } else if (argument == "--memory-consolidate") {
+        parsed.options.memory_source = argv[index];
       }
-    } else if (argument == "--continue" || argument == "-c") {
-      parsed.options.resume_latest = true;
-    } else if (argument == "--resume") {
-      parsed.options.resume_pick = true;
-    } else if (argument == "--trust-project-config") {
-      parsed.options.trust_project = true;
-    } else if (argument == "--debug") {
-      parsed.options.debug = true;
     } else if (argument.starts_with("--debug=")) {
       parsed.options.debug = true;
       parsed.options.debug_path = argument.substr(8);
@@ -73,6 +75,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
 
 const char* UsageText() {
   return "usage: uagent [--yolo] [--json|--json-stream] [--budget USD] "
+         "[--no-memory] "
          "[--trust-project-config] "
          "[--debug[=PATH]] "
          "[-p PROMPT] [--attach PATH] [-c] [--resume]\n\n"
@@ -80,6 +83,7 @@ const char* UsageText() {
          "  --json      emit a stable JSON envelope in headless mode\n"
          "  --json-stream  emit versioned JSONL events in headless mode\n"
          "  --budget USD  cap total session spend between model calls\n"
+         "  --no-memory  disable memory recall and writes for this session\n"
          "  --attach PATH  send an image or document with the first message\n"
          "  -c          resume the most recent saved session\n"
          "  --resume    pick a saved session to resume at startup\n"

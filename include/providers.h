@@ -19,11 +19,13 @@ namespace uagent {
 struct ModelRoute {
   std::string name, base_url, api_key, model, effort;
   int64_t context = 0;
+  bool openrouter_compatible = false;
 };
 
 struct NamedProvider {
   std::string name, base_url, api_key;
   int64_t context = 0;
+  bool openrouter_compatible = false;
 };
 
 struct ProviderCatalog {
@@ -62,6 +64,7 @@ struct ProviderTemplate {
   const char* effort_env;
   const char* default_model;
   ProviderUrlMatcher matches_url;
+  bool openrouter_compatible;
 };
 
 struct ProviderSetup {
@@ -92,10 +95,12 @@ std::optional<ModelRoute> ResolveModelRoute(
 void ExportRoute(const Api& api);
 void ResetRouteCapabilities(Api& api);
 void ApplyRoute(Api& api, const ModelRoute& route);
+json ActivateRoute(Api& api, const std::string& checkpoint_mode);
 std::string RouteProfilesPath();
 std::string RouteProfileKey(const Api& api);
 json RouteProfile(const Api& api);
 json ApplyRouteProfile(Api& api);
+bool InvalidateRouteProfile(const Api& api, const std::string& feature);
 ProviderSetup ConfigureProvider(Api& api);
 bool CanUseRawModel(const Api& api, std::string_view name);
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,

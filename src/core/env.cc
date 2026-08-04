@@ -3,11 +3,12 @@
 #include "include/core/env.h"
 
 #include <algorithm>
-#include <cerrno>
 #include <cstdlib>
 #include <limits>
 #include <string>
 #include <vector>
+
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -18,20 +19,28 @@ std::string EnvStr(const char* name, const std::string& dflt) {
 
 int64_t EnvLong(const char* name, int64_t dflt) {
   const char* v = getenv(name);
-  if (!v || !*v) return dflt;
-  char* end = nullptr;
-  int64_t n = strtol(v, &end, 10);
-  return (end && *end == '\0') ? n : dflt;
+  int64_t value = 0;
+  return ParseInt64(v, value) ? value : dflt;
 }
 
 double EnvDouble(const char* name, double dflt) {
   const char* v = getenv(name);
-  if (!v || !*v) return dflt;
-  char* end = nullptr;
-  errno = 0;
-  double n = strtod(v, &end);
-  return !errno && end && *end == '\0' ? n : dflt;
+  double value = 0;
+  return ParseFiniteDouble(v, value) ? value : dflt;
 }
+
+namespace {
+
+constexpr int64_t kMaxMegabytes =
+    static_cast<int64_t>(std::numeric_limits<size_t>::max() / (1024 * 1024));
+constexpr int64_t kMaxMinusOne = std::numeric_limits<int64_t>::max() - 1;
+
+int64_t EnvBounded(const char* name, int64_t dflt, int64_t minimum,
+                   int64_t maximum = std::numeric_limits<int64_t>::max()) {
+  return std::clamp(EnvLong(name, dflt), minimum, maximum);
+}
+
+}  // namespace
 
 int64_t ToolResultCap() { return EnvLong("UAGENT_TOOL_RESULT_CHARS", 8000); }
 
@@ -40,6 +49,14 @@ int64_t ToolBatchResultCap() {
   if (per_result <= 0) return per_result;
   constexpr int64_t kMax = std::numeric_limits<int64_t>::max();
   return per_result > kMax / 2 ? kMax : per_result * 2;
+}
+
+int64_t ToolTraceProtectChars() {
+  return EnvBounded("UAGENT_TOOL_TRACE_PROTECT_CHARS", 64 * 1024, 0);
+}
+
+int64_t ToolTracePruneMinChars() {
+  return EnvBounded("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", 32 * 1024, 0);
 }
 
 int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 95); }
@@ -51,17 +68,13 @@ int64_t CheckpointUrgentPct() {
 }
 
 int64_t ToolConcurrency() {
-  return std::clamp(EnvLong("UAGENT_TOOL_CONCURRENCY", 4), int64_t{1},
-                    static_cast<int64_t>(kFgMax));
+  return EnvBounded("UAGENT_TOOL_CONCURRENCY", 4, 1, kFgMax);
 }
 
-int64_t AgentDepth() {
-  return std::max(int64_t{0}, EnvLong("UAGENT_DEPTH", 0));
-}
+int64_t AgentDepth() { return EnvBounded("UAGENT_DEPTH", 0, 0, kMaxMinusOne); }
 
 bool CanDelegate() {
-  return AgentDepth() <
-         std::max(int64_t{0}, EnvLong("UAGENT_SUBAGENT_DEPTH", 2));
+  return AgentDepth() < EnvBounded("UAGENT_SUBAGENT_DEPTH", 2, 0);
 }
 
 bool LeanToolset() { return EnvStr("UAGENT_TOOLSET") == "lean"; }
@@ -81,11 +94,11 @@ bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
 int64_t ReadFileLines() { return EnvLong("UAGENT_READ_FILE_LINES", 1000); }
 
 int64_t ReadFileMaxLines() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_READ_FILE_MAX_LINES", 10000));
+  return EnvBounded("UAGENT_READ_FILE_MAX_LINES", 10000, 1);
 }
 
 int64_t ReadFileBytes() {
-  return std::max(int64_t{1024}, EnvLong("UAGENT_READ_FILE_BYTES", 32 * 1024));
+  return EnvBounded("UAGENT_READ_FILE_BYTES", 32 * 1024, 1024);
 }
 
 int64_t ReadFileResultChars() {
@@ -95,56 +108,59 @@ int64_t ReadFileResultChars() {
   return bytes > kMax - kHeaderAllowance ? kMax : bytes + kHeaderAllowance;
 }
 
-bool ReadFileCountsTotal() {
-  return EnvLong("UAGENT_READ_FILE_COUNT_TOTAL", 0) != 0;
-}
-
 int64_t EditFileBytes() {
   return EnvLong("UAGENT_EDIT_FILE_BYTES", 10 * 1024 * 1024);
 }
 
-int64_t ListDirEntries() { return EnvLong("UAGENT_LIST_DIR_ENTRIES", 1000); }
+int64_t ListDirEntries() {
+  return EnvBounded("UAGENT_LIST_DIR_ENTRIES", 1000, 1);
+}
 
 int64_t ListDirScanEntries() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_LIST_DIR_SCAN_ENTRIES", 100000));
+  return EnvBounded("UAGENT_LIST_DIR_SCAN_ENTRIES", 100000, 1);
 }
 
-int64_t MemoryBytes() {
-  return std::max(int64_t{256}, EnvLong("UAGENT_MEMORY_BYTES", 2048));
+int64_t MemoryBytes() { return EnvBounded("UAGENT_MEMORY_BYTES", 2048, 256); }
+
+int64_t MaxMemories() { return EnvBounded("UAGENT_MEMORY_FILES", 32, 1); }
+
+int64_t MemoryIdleSeconds() {
+  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", 6 * 60 * 60, 0);
 }
 
-int64_t MaxMemories() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_MEMORY_FILES", 32));
+int64_t MemorySessionAgeDays() {
+  return EnvBounded("UAGENT_MEMORY_SESSION_DAYS", 10, 1, 365);
+}
+
+int64_t MemorySessionBytes() {
+  return EnvBounded("UAGENT_MEMORY_SESSION_BYTES", 64 * 1024, 4096,
+                    1024 * 1024);
 }
 
 int64_t SkillBodyBytes() {
-  return std::max(int64_t{1024}, EnvLong("UAGENT_SKILL_BYTES", 16 * 1024));
+  return EnvBounded("UAGENT_SKILL_BYTES", 512 * 1024, 1024, 1024 * 1024);
 }
 
 int64_t SkillDescriptionBytes() {
-  return std::max(int64_t{16}, EnvLong("UAGENT_SKILL_DESC_BYTES", 512));
+  return EnvBounded("UAGENT_SKILL_DESC_BYTES", 512, 16);
 }
 
-int64_t MaxSkills() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_SKILLS", 64));
-}
+int64_t MaxSkills() { return EnvBounded("UAGENT_SKILLS", 64, 1); }
 
 int64_t GrepResults() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_GREP_RESULTS", 200));
+  return EnvBounded("UAGENT_GREP_RESULTS", 200, 1, kMaxMinusOne);
 }
 
 int64_t GrepBytes() {
-  return std::max(int64_t{1024}, EnvLong("UAGENT_GREP_BYTES", ToolResultCap()));
+  return EnvBounded("UAGENT_GREP_BYTES", ToolResultCap(), 1024);
 }
 
 int64_t BashLogBytes() {
-  return std::max(int64_t{1024},
-                  EnvLong("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024));
+  return EnvBounded("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024, 1024);
 }
 
 int64_t MaxBackgroundJobs() {
-  return std::clamp(EnvLong("UAGENT_MAX_BACKGROUND_JOBS", 8), int64_t{1},
-                    static_cast<int64_t>(kBgMax));
+  return EnvBounded("UAGENT_MAX_BACKGROUND_JOBS", 8, 1, kBgMax);
 }
 
 int64_t CheckpointFileLines() {
@@ -152,26 +168,25 @@ int64_t CheckpointFileLines() {
 }
 
 int64_t McpConfigBytes() {
-  return std::max(int64_t{1024},
-                  EnvLong("UAGENT_MCP_CONFIG_BYTES", 1024 * 1024));
+  return EnvBounded("UAGENT_MCP_CONFIG_BYTES", 1024 * 1024, 1024);
 }
 
 int64_t McpDescriptionChars() { return EnvLong("UAGENT_MCP_DESC_CHARS", 400); }
 
 int64_t MaxPendingAttachments() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_PENDING_ATTACHMENTS", 8));
+  return EnvBounded("UAGENT_PENDING_ATTACHMENTS", 8, 1);
 }
 
 int64_t AttachmentLimitMb() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_ATTACHMENT_MB", 10));
+  return EnvBounded("UAGENT_ATTACHMENT_MB", 10, 1, kMaxMegabytes);
 }
 
 int64_t TerminalImageLimitMb() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_TERMINAL_IMAGE_MB", 10));
+  return EnvBounded("UAGENT_TERMINAL_IMAGE_MB", 10, 1, kMaxMegabytes);
 }
 
 int64_t ImageMaxColumns() {
-  return std::max(int64_t{1}, EnvLong("UAGENT_IMAGE_MAX_COLUMNS", 200));
+  return EnvBounded("UAGENT_IMAGE_MAX_COLUMNS", 200, 1);
 }
 
 int64_t ImageColumns(int64_t available) {
@@ -197,7 +212,7 @@ int64_t McpLogDays() { return EnvLong("UAGENT_MCP_LOG_DAYS", 7); }
 int64_t McpLogFiles() { return EnvLong("UAGENT_MCP_LOG_FILES", 100); }
 
 int64_t TerminalRecordDays() {
-  return std::max(int64_t{0}, EnvLong("UAGENT_TERMINAL_DAYS", 7));
+  return EnvBounded("UAGENT_TERMINAL_DAYS", 7, 0);
 }
 
 RuntimeConfig RuntimeConfig::FromEnvironment() {
@@ -255,6 +270,8 @@ json RuntimeConfig::DiagnosticJson() const {
       {"checkpoint_pct", CheckpointPct()},
       {"checkpoint_urgent_pct", CheckpointUrgentPct()},
       {"auto_compact_pct", AutoCompactPct()},
+      {"tool_trace_protect_chars", ToolTraceProtectChars()},
+      {"tool_trace_prune_min_chars", ToolTracePruneMinChars()},
   });
   return out;
 }

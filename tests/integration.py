@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import base64
+import errno
 import fcntl
 import json
 import os
 import pathlib
 import pty
+import re
 import select
 import shlex
 import signal
@@ -19,9 +21,71 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from memory_fixture import global_memory_dir, project_memory_dir
+
 # Enough of a PNG for the attachment inspector to accept it.
 SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 BINARY = pathlib.Path(sys.argv[1]).resolve()
+
+
+def integration_group(name):
+    """Keep integration domains isolated without duplicating shared fixtures."""
+    groups = (
+        ("mcp", ("mcp", "chrome_session")),
+        ("checkpoint", ("checkpoint", "midturn_compaction")),
+        ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
+        (
+            "providers",
+            (
+                "model_",
+                "provider_",
+                "handoff_",
+                "search_",
+                "openrouter_",
+                "streamed_search",
+                "local_model_",
+            ),
+        ),
+        (
+            "ui",
+            (
+                "command_help",
+                "multiline_",
+                "signal_exit",
+                "response_stats",
+                "context_command",
+                "memory_command",
+                "input_redraw",
+                "reconnect_",
+                "narrow_terminal",
+            ),
+        ),
+        (
+            "tools",
+            (
+                "attach_",
+                "tool_trace",
+                "python_",
+                "large_run_",
+                "invalid_tool_",
+                "terminal_image",
+                "run_rejects",
+                "grep_",
+                "directory_",
+                "parallel_source",
+                "external_read",
+                "skill_tool",
+                "parallel_run",
+                "parallel_tool",
+                "detached_terminal",
+            ),
+        ),
+    )
+    short_name = name.removeprefix("test_")
+    for group, markers in groups:
+        if any(marker in short_name for marker in markers):
+            return group
+    return "runtime"
 
 
 def event(delta=None, finish="stop", usage=None):
@@ -177,8 +241,8 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
         return marker is None
 
     def read_prompt(start=0):
-        read_until(b"\x1b[?2004h", start, following=b">")
-        time.sleep(0.1)  # libedit finishes terminal setup after drawing the prompt
+        read_until(b"\x1b[1m> ", start)
+        time.sleep(0.05)  # the composer finishes raw-mode setup after drawing
 
     read_prompt()
     if interrupt:
@@ -195,13 +259,23 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
                     item, marker = item
                     resized_columns = None
             start = len(output)
-            os.write(master, item)
+            try:
+                os.write(master, item)
+            except OSError as error:
+                if error.errno != errno.EIO:
+                    raise
+                read_until()
+                break
             if resized_columns:
                 fcntl.ioctl(
                     master,
                     termios.TIOCSWINSZ,
                     struct.pack("HHHH", 24, resized_columns, 0, 0),
                 )
+                # This PTY is not the child's controlling terminal, so mirror
+                # the SIGWINCH a real terminal sends to its foreground group.
+                process.send_signal(signal.SIGWINCH)
+                time.sleep(0.05)
             if index + 1 < len(payloads):
                 if marker is not None and not read_until(marker, start):
                     break
@@ -218,6 +292,18 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
 def assert_true(value, message):
     if not value:
         raise AssertionError(message)
+
+
+def function_tools(body):
+    return [tool["function"] for tool in body.get("tools", []) if tool.get("type") == "function"]
+
+
+def function_names(body):
+    return {tool["name"] for tool in function_tools(body)}
+
+
+def function_tool(body, name):
+    return next(tool for tool in function_tools(body) if tool["name"] == name)
 
 
 def large_json_command():
@@ -250,11 +336,7 @@ def json_sentinel_command(path):
 
 def test_plain_turn(root, home):
     def reply(_, body):
-        names = {
-            tool["function"]["name"]
-            for tool in body.get("tools", [])
-            if tool.get("type") == "function"
-        }
+        names = function_names(body)
         assert_true("terminal_output" not in names, names)
         return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
 
@@ -421,6 +503,74 @@ def test_connection_drop_retries_before_progress(root, home):
         server.close()
 
 
+def test_connection_timeout_retries_inside_turn_budget(root, home):
+    def stall(_, __):
+        time.sleep(2)
+
+    server = Server([stall, event({"content": "timeout-retry-ok"})])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_REQUEST_TIMEOUT"] = "1"
+        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "0"
+        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "0"
+        env["UAGENT_MAX_TURN_SECONDS"] = "6"
+        result = run(root, env, "-p", "reply", timeout=8)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "timeout-retry-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+    finally:
+        server.close()
+
+
+def test_reasoning_only_timeout_is_safe_to_retry(root, home):
+    def reason_then_stall(handler, _):
+        payload = json.dumps(
+            {"choices": [{"delta": {"reasoning": "partial"}, "finish_reason": None}]}
+        ).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.end_headers()
+        handler.wfile.write(b"data: " + payload + b"\n\n")
+        handler.wfile.flush()
+        time.sleep(2)
+
+    server = Server([reason_then_stall, event({"content": "reason-retry-ok"})])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_REQUEST_TIMEOUT"] = "1"
+        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "0"
+        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "0"
+        env["UAGENT_MAX_TURN_SECONDS"] = "6"
+        result = run(root, env, "-p", "reply", timeout=8)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "reason-retry-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+    finally:
+        server.close()
+
+
+def test_openrouter_typed_timeout_retries(root, home):
+    server = Server(
+        [
+            {
+                "error": {
+                    "code": 504,
+                    "message": "provider timed out",
+                    "metadata": {"error_type": "timeout"},
+                }
+            },
+            event({"content": "typed-timeout-retry-ok"}),
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "typed-timeout-retry-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+    finally:
+        server.close()
+
+
 def test_empty_response_does_not_enter_history(root, home):
     def verify(_, body):
         empty_assistant = any(
@@ -442,9 +592,10 @@ def test_empty_response_does_not_enter_history(root, home):
 def test_command_help(root, home):
     server = Server([event({"content": "unused"})])
     try:
-        result = run_dialog(root, base_env(home, server.url), "/models\n/wat\n/help\n/q\n")
+        result = run_dialog(root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
+        assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
         assert_true("commands\n" in result.stdout, result.stdout)
         assert_true("  /attach PATH" in result.stdout, result.stdout)
         assert_true("attach a file to the next turn" in result.stdout, result.stdout)
@@ -671,9 +822,11 @@ def test_tool_traces_persist_until_compaction(root, home):
         ]
     )
     try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "131072"
         result = run_dialog(
             root,
-            base_env(home, server.url),
+            env,
             "create it\nmodify it\ncheck history\n/q\n",
             "--yolo",
         )
@@ -790,6 +943,7 @@ def test_large_run_output_is_recoverable(root, home):
     try:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_RESULT_CHARS"] = "512"
+        env["UAGENT_CONTEXT"] = "131072"
         result = run(root, env, "--yolo", "-p", "inspect large output")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "artifact-ok", result.stdout)
@@ -818,6 +972,37 @@ def test_compact_tool_trace_is_default(root, home):
         assert_true("compact-visible" in result.stdout, result.stdout)
         assert_true("compact-hidden" not in result.stdout, result.stdout)
         assert_true("compact-trace-ok" in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_resumed_tool_trace_stays_compact(root, home):
+    command = "printf 'resume-visible\\n'\nprintf 'resume-hidden\\n'"
+    server = Server(
+        [
+            tool_call("run", {"command": command, "shell": "/bin/sh"}),
+            event({"content": "resume-trace-ready"}),
+        ]
+    )
+    try:
+        env = base_env(home, server.url)
+        code, first = run_pty(
+            root,
+            env,
+            [b"create trace\n", b"/q\n"],
+            args=("--yolo",),
+            timeout=20,
+        )
+        assert_true(code == 0, first)
+        assert_true(list((home / ".uagent" / "history").rglob("*.json")), first)
+
+        code, resumed = run_pty(root, env, b"/q\n", args=("-c",), timeout=20)
+        text = resumed.decode(errors="replace")
+        assert_true(code == 0, text)
+        assert_true("resume-visible" in text, text)
+        assert_true("resume-hidden" not in text, text)
+        assert_true("2 lines" in text, text)
+        assert_true("resume-trace-ready" in text, text)
     finally:
         server.close()
 
@@ -877,7 +1062,7 @@ def test_terminal_image_capability_contract(root, home):
         for program, term, instruction, has_tool, path in cases:
 
             def verify(_, body, instruction=instruction, has_tool=has_tool):
-                names = {tool["function"]["name"] for tool in body["tools"]}
+                names = function_names(body)
                 has_instruction = instruction in body["messages"][0]["content"]
                 has_image_tool = "show_image" in names
                 valid = has_instruction and has_image_tool == has_tool
@@ -947,12 +1132,12 @@ def test_multiline_bracketed_paste(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(paste, b"third line"), b"\n", b"\x04"],
+            [(paste, b"second"), b"\n", b"\x04"],
             columns=24,
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        assert_true(b"/4.1K (" in output, output)
+        assert_true(b"ctx " in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         assert_true(b"\x1b[48;5;" not in output, output)
         assert_true(b"\x1b[1m> " in output, output)
@@ -987,10 +1172,64 @@ def test_response_stats(root, home):
         stats_index = next(index for index, line in enumerate(lines) if "tok/s" in line)
         throughput = float(lines[stats_index].split(" tok/s")[0].rsplit(" · ", 1)[1])
         assert_true(0 < throughput < 500, throughput)
-        assert_true(
-            lines[stats_index + 1] == "─" * min(len(lines[stats_index]), 79),
-            result.stdout,
+        assert_true("ctx " in lines[stats_index + 1], result.stdout)
+    finally:
+        server.close()
+
+
+def test_response_stats_spinner_context(root, home):
+    def delayed_response(_, __):
+        time.sleep(0.25)
+        return event(
+            {"content": "spinner-ok"},
+            usage={
+                "completion_tokens": 4,
+                "completion_tokens_details": {"reasoning_tokens": 3},
+            },
         )
+
+    server = Server([delayed_response])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"hello\n", b"working \xc2\xb7"), b"/q\n"],
+        )
+        assert_true(code == 0, output)
+        regular_metadata = b"\x1b[0m\x1b[39m\x1b[49m\x1b[2m"
+        assert_true(regular_metadata + b"\xc2\xb5Agent" in output, output)
+        assert_true(regular_metadata + b"test (default)" in output, output)
+        assert_true(b"working \xc2\xb7 0.0s \xc2\xb7 bg:0" in output, output)
+        assert_true(b"\xc2\xb7 0 in" not in output, output)
+        assert_true(b"\x1b[3m(+3 reasoning)\x1b[23m" in output, output)
+        assert_true(
+            any(f" · 0.{tick}s".encode() in output for tick in range(1, 6)),
+            output,
+        )
+    finally:
+        server.close()
+
+
+def test_response_stats_spinner_elapsed_spans_entire_turn(root, home):
+    def delayed_tool(_, __):
+        time.sleep(0.3)
+        return tool_call("list_dir", {"path": "."})
+
+    def delayed_final(_, __):
+        time.sleep(0.3)
+        return event({"content": "turn-timer-ok"})
+
+    server = Server([delayed_tool, delayed_final])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"inspect\n", b"working \xc2\xb7"), b"/q\n"],
+            args=("--yolo",),
+        )
+        assert_true(code == 0, output)
+        frames = re.findall(rb"working[^\r\n]*? \xc2\xb7 ([0-9]+\.[0-9])s", output)
+        assert_true(frames and max(map(float, frames)) >= 0.5, output)
     finally:
         server.close()
 
@@ -1009,6 +1248,137 @@ def test_context_command(root, home):
         assert_true(not server.requests, server.requests)
     finally:
         server.close()
+
+
+def test_tool_trace_prunes_old_outputs_in_batches(root, home):
+    sources = []
+    for turn, fill in enumerate("xyzw", start=1):
+        source = root / f"large-source-{turn}.txt"
+        source.write_text(f"TRACE-ORIGINAL-{turn}-" + fill * 4000, encoding="utf-8")
+        sources.append(source)
+    observed = {"compacted": False}
+
+    def request_read(turn):
+        def respond(_, body):
+            if turn == 4:
+                tool_results = [
+                    str(message.get("content", ""))
+                    for message in body["messages"]
+                    if message.get("role") == "tool"
+                ]
+                observed["compacted"] = any(
+                    result.startswith("[old tool output compacted:") for result in tool_results
+                )
+            return tool_call("read_file", {"path": str(sources[turn - 1])})
+
+        return respond
+
+    responders = []
+    for turn in range(1, 5):
+        responders.extend([request_read(turn), event({"content": f"turn-{turn}-ok"})])
+    server = Server(responders)
+    try:
+        trace = root / "trace.jsonl"
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "65536"
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        env["UAGENT_TOOL_TRACE_PROTECT_CHARS"] = "0"
+        env["UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS"] = "1"
+        result = run_dialog(
+            root,
+            env,
+            "one\ntwo\nthree\nfour\n/q\n",
+            f"--debug={trace}",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(observed["compacted"], server.requests)
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        prune = [event for event in events if event["event"] == "tool_trace_pruned"]
+        assert_true(prune and prune[0]["data"]["results"] == 1, prune)
+        full_results = [
+            event
+            for event in events
+            if event["event"] == "tool_result" and "TRACE-ORIGINAL-" in event["data"]["result"]
+        ]
+        assert_true(len(full_results) == 4, len(full_results))
+    finally:
+        server.close()
+
+
+def test_tool_trace_deduplicates_recent_unchanged_read(root, home):
+    source = root / "same-source.txt"
+    source.write_text("SAME-READ-" + "r" * 3000, encoding="utf-8")
+
+    def verify(_, body):
+        results = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        duplicate = results[-1].startswith("[unchanged duplicate;")
+        return event({"content": "dedupe-ok" if duplicate else "dedupe-bad"})
+
+    server = Server(
+        [
+            tool_call("read_file", {"path": str(source)}),
+            event({"content": "first-ok"}),
+            tool_call("read_file", {"path": str(source)}),
+            verify,
+        ]
+    )
+    try:
+        trace = root / "dedupe.jsonl"
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "65536"
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        result = run_dialog(
+            root,
+            env,
+            "first\nsecond\n/q\n",
+            f"--debug={trace}",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("dedupe-ok" in result.stdout, result.stdout)
+        events = [json.loads(line) for line in trace.read_text().splitlines()]
+        deduped = [event for event in events if event["event"] == "tool_result_deduplicated"]
+        assert_true(len(deduped) == 1, deduped)
+        assert_true(deduped[0]["data"]["original_chars"] > 3000, deduped)
+    finally:
+        server.close()
+
+
+def test_memory_command_is_local_and_inspectable(root, home):
+    workspace = root / "memory-command-workspace"
+    workspace.mkdir()
+    global_dir = global_memory_dir(home)
+    project_dir = project_memory_dir(home, workspace)
+    global_dir.mkdir(parents=True)
+    project_dir.mkdir(parents=True)
+    (global_dir / "preferences.md").write_text("concise answers")
+    (project_dir / "build.md").write_text("use cmake presets")
+    old_global = home / ".uagent" / "memory" / "old-global.md"
+    old_project = workspace / ".uagent" / "memory" / "old-project.md"
+    old_project.parent.mkdir(parents=True)
+    old_global.write_text("must stay invisible")
+    old_project.write_text("must stay invisible")
+    server = Server([])
+    try:
+        result = run_dialog(workspace, base_env(home, server.url), "/memory\n/q\n")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("memory recall on · contribute on" in result.stdout, result.stdout)
+        assert_true("global/preferences" in result.stdout, result.stdout)
+        assert_true("project/build" in result.stdout, result.stdout)
+        assert_true("old-global" not in result.stdout, result.stdout)
+        assert_true("old-project" not in result.stdout, result.stdout)
+        assert_true(not server.requests, server.requests)
+    finally:
+        server.close()
+        (global_dir / "preferences.md").unlink(missing_ok=True)
+        (project_dir / "build.md").unlink(missing_ok=True)
+        old_global.unlink(missing_ok=True)
+        old_project.unlink(missing_ok=True)
 
 
 def test_input_redraw_survives_terminal_resize_and_delete(root, home):
@@ -1038,6 +1408,30 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         text = output.decode(errors="replace")
         assert_true(code == 0, text)
         assert_true("resize-ok" in text, text)
+        assert_true(len(server.requests) == 1, server.requests)
+    finally:
+        server.close()
+
+
+def test_reconnect_resize_burst_does_not_duplicate_prompt(root, home):
+    server = Server([event({"content": "reconnect-ok"})])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"abc", b"abc", 79),
+                (b"", b"", 78),
+                (b"", b"", 77),
+                (b"", b"", 76),
+                b"\n",
+                b"/q\n",
+            ],
+            columns=80,
+        )
+        assert_true(code == 0, output)
+        assert_true(output.count(b"> abc\r\n") == 1, output)
+        assert_true(output.count(b"> /q\r\n") == 1, output)
         assert_true(len(server.requests) == 1, server.requests)
     finally:
         server.close()
@@ -1091,10 +1485,9 @@ def test_narrow_terminal_context_and_table_fallback(root, home):
             columns=24,
         )
         assert_true(code == 0, output)
-        assert_true(os.path.realpath(root).encode() in output, output)
+        assert_true(b"ctx " in output, output)
         assert_true(b"Description:" in output, output)
         assert_true(b"deliberately wide" in output, output)
-        assert_true(("─" * 23).encode() in output, output)
         messages = server.requests[0][1]["messages"]
         environments = [
             str(message.get("content", ""))
@@ -1126,7 +1519,7 @@ def test_cacheable_prefix_stable_across_turns(root, home):
         server.close()
 
 
-def test_escape_steers_while_waiting_for_task(root, home):
+def test_queue_then_escape_while_waiting_for_task(root, home):
     workspace = root / "steer-task-workspace"
     workspace.mkdir()
 
@@ -1141,6 +1534,13 @@ def test_escape_steers_while_waiting_for_task(root, home):
             return event({"content": "child-finished"})
         if "stop now" in user_text:
             return event({"content": "steering-ok"})
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        if any("[started] task id" in result for result in results):
+            return tool_call("wait_agent", {"timeout_ms": 30000})
         return tool_call("task", {"prompt": "child"})
 
     server = Server([route])
@@ -1149,23 +1549,24 @@ def test_escape_steers_while_waiting_for_task(root, home):
             workspace,
             base_env(home, server.url),
             [
-                (b"delegate\n", b"waiting for delegated work"),
-                (b"\x1b", b"steer>"),
-                (b"stop now\n", b"\x1b[?2004h"),
+                (b"delegate\n", b"wait_agent("),
+                (b"stop now\n", b"queued:1"),
+                (b"\x1b", b"interrupting"),
                 b"/q\n",
             ],
             args=("--yolo",),
             timeout=12,
         )
         assert_true(code == 0, output)
-        assert_true(b"applying steering" in output, output)
+        assert_true(b"queued:1" in output, output)
+        assert_true(b"interrupting" in output, output)
         assert_true(b"steering-ok" in output, output)
         assert_true(b"child-finished" not in output, output)
     finally:
         server.close()
 
 
-def test_escape_steers_while_running_command(root, home):
+def test_queue_then_escape_while_running_command(root, home):
     workspace = root / "steer-run-workspace"
     workspace.mkdir()
 
@@ -1186,15 +1587,16 @@ def test_escape_steers_while_running_command(root, home):
             base_env(home, server.url),
             [
                 (b"run slowly\n", b"sleep 30"),
-                (b"\x1b", b"steer>"),
-                (b"stop now\n", b"\x1b[?2004h"),
+                (b"stop now\n", b"queued:1"),
+                (b"\x1b", b"interrupting"),
                 b"/q\n",
             ],
             args=("--yolo",),
             timeout=12,
         )
         assert_true(code == 0, output)
-        assert_true(b"applying steering" in output, output)
+        assert_true(b"queued:1" in output, output)
+        assert_true(b"interrupting" in output, output)
         assert_true(b"run-steering-ok" in output, output)
     finally:
         server.close()
@@ -1512,6 +1914,7 @@ def test_session_budget_stops_before_the_next_call(root, home):
 
 def test_delegated_session_budget_uses_remaining_allowance(root, home):
     child_requests = []
+    parent_requests = []
 
     def route(_, body):
         is_child = any(
@@ -1527,6 +1930,9 @@ def test_delegated_session_budget_uses_remaining_allowance(root, home):
                 "cost": 0.03,
             }
             return response
+        parent_requests.append(1)
+        if len(parent_requests) > 1:
+            return tool_call("wait_agent", {"timeout_ms": 30000})
         response = tool_call("task", {"prompt": "child"})
         response["usage"] = {
             "prompt_tokens": 5,
@@ -1551,7 +1957,7 @@ def test_delegated_session_budget_uses_remaining_allowance(root, home):
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 1, envelope)
         assert_true(len(child_requests) == 1, child_requests)
-        assert_true(len(server.requests) == 2, server.requests)
+        assert_true(len(server.requests) == 3, server.requests)
         assert_true(envelope["usage"]["cost"] >= 0.06, envelope)
     finally:
         server.close()
@@ -1616,6 +2022,43 @@ def test_three_tool_failures_emit_one_advisory(root, home):
         server.close()
 
 
+def test_tool_policy_scopes_schema_and_runtime(root, home):
+    marker = root / "tool-policy-marker"
+
+    def request_forbidden(_, body):
+        names = function_names(body)
+        if names != {"grep", "read_file", "list_dir", "run"}:
+            return event({"content": f"bad-schema:{sorted(names)}"})
+        return tool_call("run", {"command": f"touch {marker}"})
+
+    def verify_rejected(_, body):
+        results = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        rejected = any("not allowed by tool policy" in result for result in results)
+        return event({"content": "policy-ok" if rejected else "policy-bad"})
+
+    server = Server([request_forbidden, verify_rejected])
+    try:
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_TOOL_CAPABILITIES": "inspect",
+                "UAGENT_TOOL_ALLOWLIST": json.dumps(["grep", "read_file", "list_dir", "run"]),
+                "UAGENT_TOOL_RUN_ALLOWLIST": json.dumps(["python3 slow_analysis.py"]),
+                "PYTHONDONTWRITEBYTECODE": "1",
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "inspect only")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "policy-ok", result.stdout)
+        assert_true(not marker.exists(), marker)
+    finally:
+        server.close()
+
+
 def test_grep_tool_round_trip(root, home):
     workspace = root / "grep-workspace"
     workspace.mkdir()
@@ -1655,7 +2098,7 @@ def test_grep_tool_round_trip(root, home):
         result = run(workspace, env, "-p", "search")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "grep-ok", result.stdout)
-        names = {tool["function"]["name"] for tool in server.requests[0][1].get("tools", [])}
+        names = function_names(server.requests[0][1])
         assert_true("grep" in names, names)
         assert_true("show_image" not in names, names)
     finally:
@@ -1800,14 +2243,13 @@ def test_project_agent_config_trust(root, home):
 
 def test_memory_reaches_context_by_scope(root, home):
     workspace = root / "memory-workspace"
-    (workspace / ".uagent" / "memory").mkdir(parents=True)
-    (workspace / ".uagent" / "memory" / "build.md").write_text(
-        "project-memory-sentinel", encoding="utf-8"
-    )
-    (home / ".uagent" / "memory").mkdir(parents=True, exist_ok=True)
-    (home / ".uagent" / "memory" / "style.md").write_text(
-        "global-memory-sentinel", encoding="utf-8"
-    )
+    workspace.mkdir()
+    project_dir = project_memory_dir(home, workspace)
+    project_dir.mkdir(parents=True)
+    (project_dir / "build.md").write_text("project-memory-sentinel", encoding="utf-8")
+    global_dir = global_memory_dir(home)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "style.md").write_text("global-memory-sentinel", encoding="utf-8")
     other = root / "memory-other-workspace"
     other.mkdir()
 
@@ -1818,7 +2260,7 @@ def test_memory_reaches_context_by_scope(root, home):
                 str(message.get("content", ""))
                 for message in messages
                 if str(message.get("content", "")).startswith(
-                    "[memory index; non-authoritative metadata]"
+                    "[memory names only; non-authoritative metadata]"
                 )
             ),
             "",
@@ -1833,7 +2275,7 @@ def test_memory_reaches_context_by_scope(root, home):
                 message.get("role")
                 for message in messages
                 if str(message.get("content", "")).startswith(
-                    "[memory index; non-authoritative metadata]"
+                    "[memory names only; non-authoritative metadata]"
                 )
             )
             == "system"
@@ -1846,7 +2288,7 @@ def test_memory_reaches_context_by_scope(root, home):
             str(message.get("content", ""))
             for message in messages
             if str(message.get("content", "")).startswith(
-                "[memory index; non-authoritative metadata]"
+                "[memory names only; non-authoritative metadata]"
             )
         )
         valid = (
@@ -1868,7 +2310,43 @@ def test_memory_reaches_context_by_scope(root, home):
     finally:
         server.close()
         # HOME is shared by every test; a global memory would join them all.
-        (home / ".uagent" / "memory" / "style.md").unlink(missing_ok=True)
+        (global_dir / "style.md").unlink(missing_ok=True)
+
+
+def test_no_memory_hides_index_and_tool(root, home):
+    workspace = root / "no-memory-workspace"
+    workspace.mkdir()
+    project_dir = project_memory_dir(home, workspace)
+    project_dir.mkdir(parents=True)
+    (project_dir / "project.md").write_text("project-memory-sentinel", encoding="utf-8")
+    global_dir = global_memory_dir(home)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "global.md").write_text("global-memory-sentinel", encoding="utf-8")
+
+    def verify(_, body):
+        text = json.dumps(body)
+        names = function_names(body)
+        clean = (
+            "[memory names only;" not in text
+            and "memory-sentinel" not in text
+            and "memory" not in names
+        )
+        return event({"content": "no-memory-ok" if clean else "no-memory-bad"})
+
+    server = Server([verify])
+    try:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--no-memory",
+            "-p",
+            "inspect",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "no-memory-ok", result.stdout)
+    finally:
+        server.close()
+        (global_dir / "global.md").unlink(missing_ok=True)
 
 
 def test_skill_tool_offers_and_opens(root, home):
@@ -1887,8 +2365,8 @@ def test_skill_tool_offers_and_opens(root, home):
             "skill" in functions
             and set(properties) == {"name", "query"}
             and "enum" not in properties["name"]
-            # Progressive disclosure: neither catalogue nor body rides every request.
-            and "demo-description-sentinel" not in json.dumps(body)
+            # Progressive disclosure: metadata rides every request; the body does not.
+            and "demo-description-sentinel" in functions["skill"]["description"]
             and "demo-body-sentinel" not in json.dumps(body)
         )
         if not valid:
@@ -2048,14 +2526,19 @@ def test_image_input_rejection_degrades(root, home):
         profile_path.write_text(
             json.dumps(
                 {
-                    "schema": 1,
+                    "schema": 3,
                     "routes": {
                         f"{authority}||test|": {
-                            "samples": 2,
+                            "samples": 4,
+                            "passing_samples": 4,
+                            "pass_rate": 1.0,
+                            "certified": True,
+                            "scenario_classes": ["analysis", "image"],
                             "certified_at_unix": int(time.time()),
                             "image_support": True,
                         }
                     },
+                    "recommendations": {},
                 }
             ),
             encoding="utf-8",
@@ -2066,6 +2549,11 @@ def test_image_input_rejection_degrades(root, home):
         # The notice rides on stdout like the other degradations, which headless
         # sends to /dev/null; the retry itself is what this test pins down.
         assert_true(len(server.requests) == 4, len(server.requests))
+        invalidated = json.loads(profile_path.read_text(encoding="utf-8"))["routes"][
+            f"{authority}||test|"
+        ]
+        assert_true(invalidated.get("invalidated_feature") == "image_input", invalidated)
+        assert_true(int(invalidated.get("invalidated_at_unix", 0)) > 0, invalidated)
     finally:
         profile_path.unlink(missing_ok=True)
         server.close()
@@ -2166,7 +2654,7 @@ def test_mcp_tool_round_trip(root, home):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
-        names = [tool["function"]["name"] for tool in server.requests[0][1].get("tools", [])]
+        names = function_names(server.requests[0][1])
         assert_true("probe_echo" in names, names)
     finally:
         server.close()
@@ -2269,10 +2757,7 @@ def test_mcp_stdio_contract(root, home):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "contract-ok", result.stdout)
-        functions = {
-            tool["function"]["name"]: tool["function"]
-            for tool in server.requests[0][1].get("tools", [])
-        }
+        functions = {tool["name"]: tool for tool in function_tools(server.requests[0][1])}
         assert_true("contract_task_only" not in functions, functions.keys())
         schema = functions["contract_echo"]["parameters"]
         assert_true(schema["title"] == "Exact", schema)
@@ -2348,13 +2833,13 @@ def test_builtin_chrome_session_modes(root, home):
     npx.chmod(0o700)
 
     def switch(_, body):
-        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        names = function_names(body)
         assert_true("chrome-devtools_list_pages" not in names, names)
         assert_true("chrome_session" in names, names)
         return tool_call("chrome_session", {"mode": "user"})
 
     def use_slim(_, body):
-        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        names = function_names(body)
         assert_true("chrome-devtools_navigate" in names, names)
         assert_true("chrome-devtools_evaluate" in names, names)
         assert_true("chrome-devtools_screenshot" in names, names)
@@ -2386,7 +2871,7 @@ def test_builtin_chrome_session_modes(root, home):
         return tool_call("chrome_session", {"mode": "user", "toolset": "full"})
 
     def use_full(_, body):
-        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        names = function_names(body)
         assert_true("chrome-devtools_list_pages" in names, names)
         assert_true("chrome-devtools_click" in names, names)
         assert_true("chrome-devtools_evaluate" not in names, names)
@@ -2414,6 +2899,7 @@ def test_builtin_chrome_session_modes(root, home):
     try:
         env = base_env(home, server.url)
         env["UAGENT_CHROME_DEVTOOLS"] = "1"
+        env["UAGENT_CONTEXT"] = "131072"
         env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
         result = run(workspace, env, "--yolo", "-p", "use my browser")
         assert_true(result.returncode == 0, result.stderr)
@@ -2478,7 +2964,7 @@ def test_mcp_tool_list_changed(root, home):
     )
 
     def refreshed(_, body):
-        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        names = function_names(body)
         assert_true("changing_new" in names, names)
         assert_true("changing_old" not in names, names)
         return tool_call("changing_new", {})
@@ -2589,6 +3075,54 @@ def test_model_route_switch(root, home):
     finally:
         first.close()
         second.close()
+
+
+def test_route_commands_refresh_session_identity(root, home):
+    server = Server(
+        [
+            event({"content": "first-route"}),
+            event({"content": "online-route"}),
+            event({"content": "effort-route"}),
+        ]
+    )
+    providers = {
+        "proxy": {
+            "base_url": server.url,
+            "api_key": "proxy-key",
+            "protocol": "openrouter",
+            "models": {"main": "vendor/model"},
+        }
+    }
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["UAGENT_MODEL"] = "proxy/main"
+        result = run_dialog(
+            root,
+            env,
+            "first\n/online\nsecond\n/effort high\nthird\n/q\n",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("first-route" in result.stdout, result.stdout)
+        assert_true("online-route" in result.stdout, result.stdout)
+        assert_true("effort-route" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 3, server.requests)
+        bodies = [body for _, body in server.requests]
+        assert_true(
+            [body.get("model") for body in bodies]
+            == [
+                "vendor/model",
+                "vendor/model:online",
+                "vendor/model:online",
+            ],
+            bodies,
+        )
+        session_ids = [body.get("session_id") for body in bodies]
+        assert_true(all(session_ids), session_ids)
+        assert_true(len(set(session_ids)) == 3, session_ids)
+        assert_true(bodies[2].get("reasoning") == {"effort": "high"}, bodies[2])
+    finally:
+        server.close()
 
 
 def test_handoff_compacts_then_switches_route(root, home):
@@ -3007,7 +3541,8 @@ def test_live_model_catalog(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("vendor/alpha" in result.stdout, result.stdout)
         assert_true("vendor/beta" in result.stdout, result.stdout)
-        assert_true("effort low,high (default low)" in result.stdout, result.stdout)
+        assert_true("effort low" in result.stdout, result.stdout)
+        assert_true("supports low,high" in result.stdout, result.stdout)
         assert_true("· 1 model" in result.stdout, result.stdout)
         assert_true(server.get_requests == ["/v1/models", "/v1/models"], server.get_requests)
     finally:
@@ -3125,10 +3660,7 @@ def test_checkpoint_apply(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true("checkpoint-apply-ok" in result.stdout, result.stdout)
         assert_true(len(server.requests) == 3, len(server.requests))
-        names = [
-            {tool["function"]["name"] for tool in body.get("tools", [])}
-            for _, body in server.requests
-        ]
+        names = [function_names(body) for _, body in server.requests]
         assert_true("checkpoint" not in names[0], names)
         assert_true("checkpoint" in names[1], names)
         assert_true("checkpoint" not in names[2], names)
@@ -3584,7 +4116,7 @@ def test_first_event_timeout(root, home):
         except BrokenPipeError:
             pass
 
-    server = Server([stall])
+    server = Server([stall, stall, stall])
     try:
         env = base_env(home, server.url)
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
@@ -3593,7 +4125,8 @@ def test_first_event_timeout(root, home):
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
-        assert_true(elapsed < 1.8, elapsed)
+        assert_true(len(server.requests) == 3, server.requests)
+        assert_true(3.0 < elapsed < 6.5, elapsed)
     finally:
         server.close()
 
@@ -3928,14 +4461,68 @@ def test_subagent_auto_join_continues_turn(root, home):
         )
         if has_result:
             return event({"content": "late-task-ok"})
+        if any("[started] task id " in str(message.get("content", "")) for message in messages):
+            return tool_call("wait_agent", {"timeout_ms": 30000})
         return tool_call("task", {"prompt": "child"})
 
     server = Server([route])
     try:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=8)
+        env = base_env(home, server.url)
+        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "4"
+        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "4"
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "late-task-ok", result.stdout)
-        assert_true(len(server.requests) == 3, len(server.requests))
+        request_summary = [
+            [
+                (message.get("role"), str(message.get("content", ""))[:80])
+                for message in body.get("messages", [])
+            ]
+            for _, body in server.requests
+        ]
+        assert_true(len(server.requests) == 4, request_summary)
+    finally:
+        server.close()
+
+
+def test_no_memory_propagates_to_full_subagent(root, home):
+    workspace = root / "no-memory-subagent"
+    workspace.mkdir()
+    project_dir = project_memory_dir(home, workspace)
+    project_dir.mkdir(parents=True)
+    (project_dir / "hidden.md").write_text("subagent-memory-sentinel", encoding="utf-8")
+
+    def route(_, body):
+        messages = body["messages"]
+        is_child = any(
+            message.get("role") == "user" and message.get("content") == "child"
+            for message in messages
+        )
+        if is_child:
+            names = function_names(body)
+            text = json.dumps(messages)
+            clean = "memory" not in names and "[memory names only;" not in text
+            return event({"content": "child-clean" if clean else "child-contaminated"})
+        if any("[Background result:" in str(message.get("content", "")) for message in messages):
+            clean = "child-clean" in json.dumps(messages)
+            return event({"content": "no-memory-child-ok" if clean else "no-memory-child-bad"})
+        if any("[started] task id " in str(message.get("content", "")) for message in messages):
+            return tool_call("wait_agent", {"timeout_ms": 30000})
+        return tool_call("task", {"prompt": "child", "mode": "full"})
+
+    server = Server([route])
+    try:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--no-memory",
+            "--yolo",
+            "-p",
+            "delegate",
+            timeout=60,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "no-memory-child-ok", result.stdout)
     finally:
         server.close()
 
@@ -3970,6 +4557,8 @@ def test_parallel_subagents_auto_join(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in messages)
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
+        if "[started] task id " in combined:
+            return tool_call("wait_agent", {"timeout_ms": 30000})
         return event(
             {
                 "tool_calls": [
@@ -4009,14 +4598,12 @@ def test_parallel_subagents_auto_join(root, home):
             )
         ]
         lifecycle = {"get_task_output", "wait_tasks", "kill_task"}
-        assert_true(len(parent_requests) == 2, len(parent_requests))
+        assert_true(3 <= len(parent_requests) <= 4, len(parent_requests))
         for request in parent_requests:
-            names = {tool["function"]["name"] for tool in request.get("tools", [])}
+            names = function_names(request)
             assert_true("task" in names, names)
             assert_true(not names.intersection(lifecycle), names)
-            task_schema = next(
-                tool["function"] for tool in request["tools"] if tool["function"]["name"] == "task"
-            )
+            task_schema = function_tool(request, "task")
             assert_true(
                 {"prompt", "model"}.issubset(task_schema["parameters"]["properties"]),
                 task_schema,
@@ -4262,7 +4849,7 @@ def test_subagent_receives_budget(root, home):
         is_child = any(m.get("role") == "user" and m.get("content") == "child" for m in messages)
         if is_child:
             assert_true(body.get("model") == "child-model", body.get("model"))
-            names = {tool["function"]["name"] for tool in body.get("tools", [])}
+            names = function_names(body)
             assert_true("write_file" not in names, names)
             assert_true("edit_file" not in names, names)
             assert_true("memory" not in names, names)
@@ -4271,11 +4858,12 @@ def test_subagent_receives_budget(root, home):
             child_requests.append(1)
             # the child would loop forever if its step budget were not enforced
             return tool_call("list_dir", {"path": "."})
-        if any(m.get("tool_calls") for m in messages):
+        combined = "\n".join(str(m.get("content", "")) for m in messages)
+        if "[Background result:" in combined:
             return event({"content": "budget-ok"})
-        task = next(
-            tool["function"] for tool in body["tools"] if tool["function"]["name"] == "task"
-        )
+        if "[started] task id " in combined:
+            return tool_call("wait_agent", {"timeout_ms": 30000})
+        task = function_tool(body, "task")
         assert_true("provider" not in task["parameters"]["properties"], task)
         assert_true(
             task["parameters"]["properties"]["mode"]["enum"] == ["lean", "full"],
@@ -4309,7 +4897,8 @@ def test_subagent_uses_selected_model_route(root, home):
 
     def child_action(_, body):
         assert_true(body.get("model") == "child-model", body.get("model"))
-        names = {tool["function"]["name"] for tool in body.get("tools", [])}
+        assert_true("reasoning" in body and "stream_options" not in body, body)
+        names = function_names(body)
         assert_true({"write_file", "edit_file", "memory"} <= names, names)
         return tool_call(
             "write_file",
@@ -4326,10 +4915,16 @@ def test_subagent_uses_selected_model_route(root, home):
     child = Server([child_action, child_reply])
 
     def delegate(_, body):
-        task = next(
-            tool["function"] for tool in body["tools"] if tool["function"]["name"] == "task"
-        )
+        task = function_tool(body, "task")
         assert_true("provider" not in task["parameters"]["properties"], task)
+        description = task["parameters"]["properties"]["model"]["description"]
+        assert_true("codex-local/MODEL" in description, description)
+        runtime = "\n".join(
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+        )
+        assert_true("[delegation: parent=" in runtime, runtime)
         return tool_call(
             "task",
             {
@@ -4343,11 +4938,18 @@ def test_subagent_uses_selected_model_route(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
         return event({"content": "route-ok" if "child-route-ok" in combined else "route-bad"})
 
-    parent = Server([delegate, finish])
+    parent = Server([delegate, lambda *_: tool_call("wait_agent", {"timeout_ms": 30000}), finish])
     try:
         env = base_env(home, parent.url)
         env["UAGENT_PROVIDERS"] = json.dumps(
-            {"codex-local": {"base_url": child.url, "api_key": "local-key"}}
+            {
+                "codex-local": {
+                    "base_url": child.url,
+                    "api_key": "local-key",
+                    "protocol": "openrouter",
+                    "models": {"child-model": {"id": "child-model", "effort": "low"}},
+                }
+            }
         )
         result = run_dialog(
             root,
@@ -4367,12 +4969,94 @@ def test_subagent_uses_selected_model_route(root, home):
         child.close()
 
 
+def test_subagent_can_mix_model_routes(root, home):
+    seen = []
+
+    def child(label, expected_model):
+        def respond(_, body):
+            assert_true(body.get("model") == expected_model, body.get("model"))
+            seen.append(label)
+            return event({"content": f"{label}-ok"})
+
+        return Server([respond])
+
+    fast = child("fast", "fast-model")
+    strong = child("strong", "strong-model")
+
+    def delegate(_, body):
+        task = function_tool(body, "task")
+        description = task["parameters"]["properties"]["model"]["description"]
+        assert_true("fast/child" in description, description)
+        assert_true("strong/child" in description, description)
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "fast-task",
+                        "function": {
+                            "name": "task",
+                            "arguments": json.dumps(
+                                {"prompt": "fast child", "model": "fast/child"}
+                            ),
+                        },
+                    },
+                    {
+                        "index": 1,
+                        "id": "strong-task",
+                        "function": {
+                            "name": "task",
+                            "arguments": json.dumps(
+                                {"prompt": "strong child", "model": "strong/child"}
+                            ),
+                        },
+                    },
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    def finish(_, body):
+        content = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        valid = "fast-ok" in content and "strong-ok" in content
+        return event({"content": "mixed-routes-ok" if valid else "mixed-routes-bad"})
+
+    def wait(*_):
+        return tool_call("wait_agent", {"timeout_ms": 30000})
+
+    parent = Server([delegate, wait, wait, finish])
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {
+                "fast": {
+                    "base_url": fast.url,
+                    "api_key": "fast-key",
+                    "models": {"child": "fast-model"},
+                },
+                "strong": {
+                    "base_url": strong.url,
+                    "api_key": "strong-key",
+                    "models": {"child": "strong-model"},
+                },
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "delegate by capability", timeout=20)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "mixed-routes-ok", result.stdout)
+        assert_true(sorted(seen) == ["fast", "strong"], seen)
+    finally:
+        parent.close()
+        fast.close()
+        strong.close()
+
+
 def test_subagent_recursion_is_depth_bounded(root, home):
     """A subagent may delegate again, but only while under UAGENT_SUBAGENT_DEPTH —
     the cap is what keeps nested spawning from fanning out without limit."""
 
     def has_task(body):
-        return "task" in {tool["function"]["name"] for tool in body.get("tools", [])}
+        return "task" in function_names(body)
 
     for depth, cap, expected in (
         ("0", "2", True),
@@ -4478,7 +5162,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             pid = int(pid_file.read_text(encoding="utf-8"))
             assert_true(launched.returncode == 0, launched.stderr)
             assert_true("launched" in launched.stdout, launched.stdout)
-            assert_true("terminals:1" in launched.stdout, launched.stdout)
+            assert_true("bg:1" in launched.stdout, launched.stdout)
             os.kill(pid, 0)
         finally:
             launch_server.close()
@@ -4522,11 +5206,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             return event({"content": "terminal-ok" if readable else "terminal-bad"})
 
         def offer_output(_, body):
-            names = {
-                tool["function"]["name"]
-                for tool in body.get("tools", [])
-                if tool.get("type") == "function"
-            }
+            names = function_names(body)
             assert_true("terminal_output" in names, names)
             return tool_call("terminal_output", {})
 
@@ -4567,19 +5247,29 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 
 
 def main():
+    requested_group = "all"
+    if len(sys.argv) == 4 and sys.argv[2] == "--group":
+        requested_group = sys.argv[3]
+    elif len(sys.argv) != 2:
+        raise SystemExit("usage: integration.py BINARY [--group GROUP]")
     with tempfile.TemporaryDirectory(prefix="uagent-integration-") as temp:
         root = pathlib.Path(temp)
-        home = root / "home"
-        home.mkdir()
         tests = [
             value
             for name, value in globals().items()
-            if name.startswith("test_") and callable(value)
+            if name.startswith("test_")
+            and callable(value)
+            and (requested_group == "all" or integration_group(name) == requested_group)
         ]
+        if not tests:
+            raise SystemExit(f"unknown or empty integration group: {requested_group}")
         for test in tests:
             print(f"running {test.__name__}", flush=True)
-            test(root, home)
-        print(f"all {len(tests)} integration tests passed")
+            case_root = root / test.__name__
+            home = case_root / "home"
+            home.mkdir(parents=True)
+            test(case_root, home)
+        print(f"all {len(tests)} {requested_group} integration tests passed")
 
 
 if __name__ == "__main__":

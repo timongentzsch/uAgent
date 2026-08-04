@@ -131,6 +131,7 @@ inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {
                                      "--",
                                      path};
   std::vector<char*> args;
+  args.reserve(values.size() + 1);
   for (std::string& value : values) args.push_back(value.data());
   args.push_back(nullptr);
   fflush(stdout);
@@ -148,7 +149,10 @@ inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {
 }
 
 inline ToolResult ToolShowImage(const std::string& path, int64_t columns = 0) {
-  if (!g_tty || !isatty(STDOUT_FILENO)) {
+  // Persistent interactive mode captures stdout so it can insert output above
+  // the composer. g_tty was resolved before that redirection and remains the
+  // authoritative capability check.
+  if (!g_tty) {
     return ToolFailure(ToolErrorCode::kUnavailable,
                        "error: image display requires an interactive terminal");
   }

@@ -53,6 +53,12 @@ bool Steering::Take() {
   return value;
 }
 
+void Steering::Request() {
+  requested_ = true;
+  RequestAbort();
+  DebugLog("steering_interrupt");
+}
+
 void Steering::Restore() {
   if (terminal_raw_) {
     tcsetattr(STDIN_FILENO, TCSANOW, &saved_);
@@ -81,9 +87,7 @@ void Steering::Listen() {
         (void)discarded;
         break;
       }
-      requested_ = true;
-      RequestAbort();
-      DebugLog("steering_interrupt");
+      Request();
       return;
     }
   }

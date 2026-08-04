@@ -23,6 +23,8 @@ double EnvDouble(const char* name, double dflt);
 // Accessors shared by their consumers and the session_ready diagnostic.
 int64_t ToolResultCap();
 int64_t ToolBatchResultCap();
+int64_t ToolTraceProtectChars();
+int64_t ToolTracePruneMinChars();
 int64_t AutoCompactPct();
 int64_t CheckpointPct();
 int64_t CheckpointUrgentPct();
@@ -47,13 +49,14 @@ int64_t ReadFileLines();
 int64_t ReadFileMaxLines();
 int64_t ReadFileBytes();
 int64_t ReadFileResultChars();
-// Exact totals mean scanning the tail of the file; off by default.
-bool ReadFileCountsTotal();
 int64_t EditFileBytes();
 int64_t ListDirEntries();
 int64_t ListDirScanEntries();
 int64_t MemoryBytes();
 int64_t MaxMemories();
+int64_t MemoryIdleSeconds();
+int64_t MemorySessionAgeDays();
+int64_t MemorySessionBytes();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
 // bodies are sent only when a skill is opened.
@@ -126,6 +129,8 @@ struct RuntimeConfig {
   std::string web_search_context_size;
   bool openrouter_fallbacks = true;
   bool web_search_server = true;
+  bool memory_enabled = true;
+  bool memory_generate = true;
 
   struct LongOption {
     const char* env;
@@ -219,6 +224,9 @@ struct RuntimeConfig {
        &RuntimeConfig::openrouter_fallbacks, true},
       {"UAGENT_WEB_SEARCH_SERVER", "web_search_server",
        &RuntimeConfig::web_search_server, true},
+      {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true},
+      {"UAGENT_MEMORY_GENERATE", "memory_generate",
+       &RuntimeConfig::memory_generate, true},
   };
 
   static RuntimeConfig FromEnvironment();

@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_PROJECT_H_
 #define UAGENT_INCLUDE_CORE_PROJECT_H_
 // Startup instruction discovery: one AGENTS/CLAUDE file per directory from
-// the repository root down, then the memories the agent wrote itself.
+// the repository root down. Memory discovery lives with memory storage.
 
 #include <algorithm>
 #include <filesystem>
@@ -97,41 +97,12 @@ inline ProjectInstructions LoadProjectInstructions(
     }
   };
 
-  // Only memory names/scopes enter the prompt. Bodies stay deferred behind the
-  // memory tool and the shared budget always favors human instructions.
-  auto append_memories = [&](const fs::path& base, const char* scope) {
-    std::error_code list_error;
-    std::vector<fs::path> files;
-    for (fs::directory_iterator it(base / kMemoryDir, list_error), end;
-         it != end && !list_error; it.increment(list_error)) {
-      if (it->path().extension() == ".md") files.push_back(it->path());
-    }
-    std::sort(files.begin(), files.end());
-    for (const fs::path& file : files) {
-      std::string entry =
-          "- " + std::string(scope) + "/" + file.stem().string() + "\n";
-      std::optional<size_t> total = CheckedAdd(used, entry.size());
-      if (!total || *total > max_bytes) {
-        loaded.truncated = true;
-        break;
-      }
-      used = *total;
-      loaded.memory_index += entry;
-      loaded.memory_sources.push_back(file.string());
-    }
-  };
-
   std::error_code ec;
   fs::path global = fs::weakly_canonical(UagentDir(""), ec);
   if (ec) global = UagentDir("");
   append_dir(global);
   for (const fs::path& dir : dirs) {
     if (dir != global) append_dir(dir);
-  }
-  append_memories(GlobalBase(), "global");
-  fs::path scoped = ProjectBase(cwd);
-  if (fs::is_directory(scoped, ec) && scoped.string() != GlobalBase()) {
-    append_memories(scoped, "project");
   }
   return loaded;
 }

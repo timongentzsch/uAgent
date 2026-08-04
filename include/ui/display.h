@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <optional>
 #include <string>
 #include <utility>
@@ -51,13 +50,13 @@ inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
 #endif
 
 inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
-  std::string current = api.model;
+  std::string current = ModelLabel(api.model, api.reasoning_effort);
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
     bool active = candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
-      current = candidate.selection;
+      current = ModelLabel(candidate.selection, api.reasoning_effort);
       if (candidate.info.context > 0) {
         api.ctx_window = candidate.info.context;
         setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
@@ -68,18 +67,18 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
 #endif
     printf("%s[%zu]%s %s%c %s", CYAN(), i + 1, RST(), active ? BOLD() : DIM(),
            active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
+    std::string effort = active ? api.reasoning_effort : candidate.route.effort;
+    if (effort.empty()) effort = candidate.info.default_effort;
+    printf(" · effort %s", effort.empty() ? "default" : effort.c_str());
     if (candidate.info.context > 0) {
       printf(" · ctx %s", FmtCount(candidate.info.context).c_str());
     }
     if (!candidate.info.efforts.empty()) {
-      printf(" · effort ");
+      printf(" · supports ");
       for (size_t effort = 0; effort < candidate.info.efforts.size();
            ++effort) {
         printf("%s%s", effort ? "," : "",
                candidate.info.efforts[effort].c_str());
-      }
-      if (!candidate.info.default_effort.empty()) {
-        printf(" (default %s)", candidate.info.default_effort.c_str());
       }
     }
     printf("%s\n", RST());
@@ -101,9 +100,8 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
     printf("%s· keeping %s%s\n", DIM(), TerminalSafe(current).c_str(), RST());
     return std::nullopt;
   }
-  char* end = nullptr;
-  int64_t selected = strtoll(answer.c_str(), &end, 10);
-  if (!end || *end != '\0' || selected < 1 ||
+  int64_t selected = 0;
+  if (!ParseInt64(answer.c_str(), selected) || selected < 1 ||
       selected > static_cast<int64_t>(search.matches.size())) {
     printf("%s· not a listed number; keeping %s%s\n", YEL(),
            TerminalSafe(current).c_str(), RST());
@@ -112,27 +110,35 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
-// Compact session metadata for the prompt header.
+// Compact session metadata for the persistent composer. Keep the stable
+// identity first; transient work state gets its own line while a turn runs.
 inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
                              size_t attachments,
                              const ProcessSupervisor& processes) {
   const Usage& u = agent.SessionUsage();
   std::string host = UrlHost(api.base_url);
   int64_t used = agent.ContextUsed();
-  std::string s = Tilde(CanonicalCwd()) + " · " + api.model + " @ " + host +
-                  " · ctx " + ContextUsage(used, api.ctx_window);
-  if (!api.reasoning_effort.empty()) s += " · effort " + api.reasoning_effort;
+  std::string s = ModelLabel(api.model, api.reasoning_effort) + " @ " + host +
+                  " · ctx " + FmtCount(used);
   if (u.cache_read) s += " · cache " + FmtCount(u.cache_read) + " total";
   if (u.cost > 0) s += " · spent " + FmtCost(u.cost);
-  if (processes.PendingCount()) {
-    s += " · bg:";
-    for (pid_t pid : processes.PendingPids()) s += " " + std::to_string(pid);
-  }
-  size_t terminals = processes.DetachedCount();
-  if (terminals) s += " · terminals:" + std::to_string(terminals);
+  size_t background = processes.PendingCount() + processes.DetachedCount();
+  if (background) s += " · bg:" + std::to_string(background);
   if (agent.Verbose()) s += " · verbose";
   if (yolo) s += " · YOLO";
   if (attachments) s += " · " + std::to_string(attachments) + " attached";
+  int64_t width = std::max(int64_t{1}, TerminalColumns() - 1);
+  if (g_tty && DisplayWidth(s) > static_cast<size_t>(width)) {
+    // On a cramped terminal keep live state ahead of long path/route labels.
+    // PrintStatusBar performs the final UTF-8-safe clipping.
+    s = ModelLabel(api.model, api.reasoning_effort) + " · ctx " +
+        FmtCount(used);
+    if (u.cost > 0) s += " · " + FmtCost(u.cost);
+    if (yolo) s += " · YOLO";
+    if (attachments) s += " · " + std::to_string(attachments) + " attached";
+    if (background) s += " · bg:" + std::to_string(background);
+    if (agent.Verbose()) s += " · verbose";
+  }
   return s;
 }
 
@@ -142,7 +148,9 @@ inline void PrintStatusBar(const std::string& status) {
     printf("%s\n", safe.c_str());
     return;
   }
-  printf("%s%s\033[K%s\n", DIM(), safe.c_str(), RST());
+  safe = DisplayTrunc(std::move(safe), static_cast<size_t>(std::max(
+                                           int64_t{1}, TerminalColumns() - 1)));
+  printf("%s%s%s\033[K%s\n", RST(), DIM(), safe.c_str(), RST());
 }
 
 }  // namespace uagent

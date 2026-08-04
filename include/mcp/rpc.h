@@ -15,6 +15,7 @@
 
 #include "include/core/json.h"
 #include "include/core/signals.h"
+#include "include/core/time.h"
 #include "include/mcp/server.h"
 
 namespace uagent {
@@ -158,8 +159,7 @@ inline json McpAwait(McpServer& s, int64_t id, int64_t timeout_s,
   auto fail = [&](const std::string& msg) {
     return json{{"error", {{"message", msg}}}};
   };
-  auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(timeout_s);
+  auto deadline = DeadlineAfter(timeout_s);
   std::string line;
   while (McpReadLine(s, line, deadline, cancellable)) {
     json m = json::parse(line, nullptr, false);

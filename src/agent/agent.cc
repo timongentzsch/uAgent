@@ -2,12 +2,9 @@
 
 #include "include/agent.h"
 
-#include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <sstream>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -16,7 +13,8 @@ namespace uagent {
 Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
              UsageAccumulator& side_usage, Approver approve,
              ToolRefresher refresh_tools,
-             ProjectInstructions project_instructions)
+             ProjectInstructions project_instructions,
+             std::vector<Skill> skills)
     : api_(api),
       tools_(tools),
       processes_(processes),
@@ -24,7 +22,8 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
       schemas_(ToolSchemas(tools)),
       approve_(std::move(approve)),
       refresh_tools_(std::move(refresh_tools)),
-      project_instructions_(std::move(project_instructions)) {
+      project_instructions_(std::move(project_instructions)),
+      skills_(std::move(skills)) {
   schema_chars_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();
@@ -127,7 +126,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
 bool Agent::Load(const std::string& path, const std::string& expected_cwd,
                  std::string& error) {
   SessionLoadResult loaded = SessionStore::Load(path, expected_cwd);
-  if (!loaded.Ok()) {
+  if (!loaded.status.Ok() || !loaded.record) {
     error = std::move(loaded.status.message);
     return false;
   }
@@ -282,12 +281,12 @@ void Agent::MergeSessionUsage(const Usage& usage) {
   api_.session_cost = session_usage_.cost;
 }
 
-void Agent::DrainBackground(TerminalSpinner* spinner) {
+void Agent::DrainBackground() {
   bool changed = false;
-  for (auto& note : BgTakeCompleted(processes_)) {
-    if (spinner) spinner->Stop();
-    printf("%s· bg job finished %s%s\n", DIM(),
-           TerminalSafe(FirstLine(note)).c_str(), RST());
+  for (auto& note : BgTakeCompletedExcept(processes_, "memory")) {
+    size_t running = processes_.PendingCount() + processes_.DetachedCount();
+    printf("%s· bg job finished %s · %zu still running%s\n", DIM(),
+           TerminalSafe(FirstLine(note)).c_str(), running, RST());
     conversation_.Push(HarnessMessage(std::move(note)), MessageKind::kInternal);
     changed = true;
   }
@@ -313,64 +312,11 @@ bool Agent::DrainAttachments() {
   return true;
 }
 
-bool Agent::WaitForBackground(std::chrono::steady_clock::time_point deadline,
-                              Usage& usage) {
-  DebugLog("background_join_start", {{"pending", JoinableBackground()}});
-  SteeringGuard steering;
-  TerminalSpinner spinner(false, SpinnerLabel("waiting for background"));
-  while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
-    DrainBackground(&spinner);
-    MergeSideUsage(usage);
-    if (!JoinableBackground()) {
-      spinner.Stop();
-      DebugLog("background_join_end", {{"outcome", "complete"}});
-      return true;
-    }
-    spinner.Start();
-    auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
-        deadline - std::chrono::steady_clock::now());
-    auto slice = std::min(remaining, std::chrono::milliseconds(100));
-    std::this_thread::sleep_for(slice);
-  }
-  spinner.Stop();
-  DebugLog("background_join_end",
-           {{"outcome", AbortRequested() ? "interrupted" : "turn_timeout"},
-            {"pending", JoinableBackground()}});
-  return false;
-}
-
-bool Agent::JoinBackgroundOrReport(
-    std::chrono::steady_clock::time_point deadline, Usage& usage,
-    int64_t max_turn_seconds, std::string& outcome) {
-  if (WaitForBackground(deadline, usage)) return true;
-  BgCancelTasks(processes_);
-  if (AbortRequested()) {
-    ClearAbort();
-    last_error_ = outcome = "interrupted";
-  } else {
-    last_error_ =
-        "turn time limit reached (" + std::to_string(max_turn_seconds) + "s)";
-    outcome = "budget_exceeded";
-  }
-  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
-  return false;
-}
-
 void Agent::Resume() {
   Turn(
       "(Continue the interrupted task from where you left off. Do not repeat "
       "completed "
       "work.)");
-}
-
-void Agent::NudgeMemoryAfterCorrection() {
-  conversation_.Push(
-      HarnessMessage("[memory nudge] The next message is a user "
-                     "correction. If it contains a stable preference "
-                     "useful across future sessions and the memory tool "
-                     "is available, save one concise lesson; otherwise "
-                     "do not create a memory."),
-      MessageKind::kInternal);
 }
 
 void Agent::ArchiveRange(const char* reason, size_t begin, size_t end,

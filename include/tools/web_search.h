@@ -36,16 +36,10 @@ struct WebSearchRoute {
     return backend != WebSearchBackend::kNone && !base_url.empty() &&
            !api_key.empty() && !model.empty();
   }
-
-  bool NativeFor(const Api& api) const {
-    return backend == WebSearchBackend::kOpenRouter &&
-           OpenrouterCompatibleUrl(api.base_url) && base_url == api.base_url &&
-           api_key == api.api_key;
-  }
 };
 
 inline std::string SelectedWebSearchModel(const RuntimeConfig& config,
-                                          std::string fallback) {
+                                          const std::string& fallback) {
   return config.web_search_model.empty() ? fallback : config.web_search_model;
 }
 
@@ -55,7 +49,7 @@ inline WebSearchRoute ProviderSearchRoute(WebSearchBackend backend,
                                           std::string default_model) {
   if (!provider) return {};
   return {backend, provider->base_url, provider->api_key,
-          SelectedWebSearchModel(config, std::move(default_model))};
+          SelectedWebSearchModel(config, default_model)};
 }
 
 // Explicit search configuration wins. Otherwise use a compatible active
@@ -72,8 +66,7 @@ inline WebSearchRoute SelectWebSearchRoute(
   auto active = [&](WebSearchBackend backend, std::string model) {
     if (api.base_url.empty() || api.api_key.empty()) return WebSearchRoute{};
     return WebSearchRoute{backend, api.base_url, api.api_key,
-                          SelectedWebSearchModel(config, std::move(model)),
-                          true};
+                          SelectedWebSearchModel(config, model), true};
   };
   auto explicit_route = [&](WebSearchBackend backend) {
     if (config.web_search_url.empty() || config.web_search_api_key.empty()) {
@@ -84,7 +77,7 @@ inline WebSearchRoute SelectWebSearchRoute(
                             : openai_model;
     return WebSearchRoute{backend, StripTrailingSlashes(config.web_search_url),
                           config.web_search_api_key,
-                          SelectedWebSearchModel(config, std::move(model))};
+                          SelectedWebSearchModel(config, model)};
   };
   auto environment_openai = [&] {
     std::string key = EnvStr("OPENAI_API_KEY");
@@ -116,7 +109,7 @@ inline WebSearchRoute SelectWebSearchRoute(
         route.Valid()) {
       return route;
     }
-    if (OpenrouterCompatibleUrl(api.base_url)) {
+    if (api.openrouter_compatible) {
       return active(WebSearchBackend::kOpenRouter, openrouter_model);
     }
     return ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
@@ -124,12 +117,12 @@ inline WebSearchRoute SelectWebSearchRoute(
   }
 
   if (!config.web_search_url.empty() && !config.web_search_api_key.empty()) {
-    WebSearchBackend backend = OpenrouterCompatibleUrl(config.web_search_url)
+    WebSearchBackend backend = OpenrouterUrl(config.web_search_url)
                                    ? WebSearchBackend::kOpenRouter
                                    : WebSearchBackend::kResponses;
     return explicit_route(backend);
   }
-  if (OpenrouterUrl(api.base_url)) {
+  if (api.openrouter_compatible) {
     return active(WebSearchBackend::kOpenRouter, openrouter_model);
   }
   if (OpenaiUrl(api.base_url)) {
@@ -267,7 +260,7 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           active.base_url = api.base_url;
           active.api_key = api.api_key;
           if (api.config.web_search_model.empty()) active.model = api.model;
-          if (OpenrouterCompatibleUrl(active.base_url)) {
+          if (api.openrouter_compatible) {
             active.backend = WebSearchBackend::kOpenRouter;
           } else if (OpenaiUrl(active.base_url)) {
             active.backend = WebSearchBackend::kResponses;
@@ -369,6 +362,8 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         return ToolFailure(ToolErrorCode::kRemoteError,
                            "error: web search failed");
       });
+  t.capabilities = Capability(ToolCapability::kInspect) |
+                   Capability(ToolCapability::kExternal);
   t.mutating = true;
   t.summary = [](const json& a) {
     if (a.contains("queries") && a["queries"].is_array()) {

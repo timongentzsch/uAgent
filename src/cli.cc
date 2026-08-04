@@ -15,6 +15,7 @@
 #include <iostream>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(HAVE_EDITLINE)
@@ -27,8 +28,15 @@
 
 namespace uagent {
 
+namespace {
+InteractiveReadHandler& ReadHandler() {
+  static InteractiveReadHandler handler;
+  return handler;
+}
+}  // namespace
+
 constexpr SlashCommandSpec kSlashCommands[] = {
-    {SlashCommandId::kAttach, "/attach", "PATH",
+    {SlashCommandId::kAttach, "/attach", "PATH|clear",
      "attach a file to the next turn", CommandCompletion::kFilenames},
     {SlashCommandId::kCompact, "/compact", "", "summarize active context",
      CommandCompletion::kNone},
@@ -36,14 +44,14 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      CommandCompletion::kNone},
     {SlashCommandId::kCost, "/cost", "", "show spend by model route",
      CommandCompletion::kNone},
-    {SlashCommandId::kDetach, "/detach", "", "clear pending attachments",
-     CommandCompletion::kNone},
     {SlashCommandId::kEffort, "/effort", "LEVEL", "set reasoning effort",
      CommandCompletion::kEfforts},
     {SlashCommandId::kHelp, "/help", "", "show this help",
      CommandCompletion::kNone},
     {SlashCommandId::kHandoff, "/handoff", "PROVIDER/MODEL",
      "checkpoint and switch route", CommandCompletion::kModels},
+    {SlashCommandId::kMemory, "/memory", "", "show memory state and keys",
+     CommandCompletion::kNone},
     {SlashCommandId::kModel, "/model", "NAME", "switch model or route",
      CommandCompletion::kModels},
     {SlashCommandId::kModels, "/models", "[QUERY]",
@@ -108,14 +116,16 @@ void PrintCommandHelp() {
 #if defined(HAVE_EDITLINE)
 namespace {
 
+constexpr int kInputHistoryEntries = 200;
+constexpr size_t kInputHistoryEntryBytes = 16 * 1024;
+
 struct ReadlineState {
   std::queue<unsigned char> pending;  // bytes read ahead, replayed first
   std::string initial;
   size_t initial_pos = 0;
-  bool steering_prompt = false;
-  bool steering_cancelled = false;
-  bool choice_prompt = false;
-  bool choice_cancelled = false;
+  bool cancel_on_escape = false;
+  bool cancelled = false;
+  bool resize_handler_installed = false;
   std::vector<std::string> commands;
   std::vector<std::string> models;
   std::vector<std::string> efforts;
@@ -129,9 +139,15 @@ ReadlineState& Readline() {
   return state;
 }
 
+void RememberInput(const std::string& input) {
+  if (!Trim(input).empty() && input.size() <= kInputHistoryEntryBytes) {
+    add_history(input.c_str());
+  }
+}
+
 }  // namespace
 
-void RefreshReadlineSize(FILE* file, bool redisplay) {
+void RefreshReadlineSize(FILE* file) {
   int fd = file ? fileno(file) : STDIN_FILENO;
   struct winsize size{};
   if (ioctl(fd, TIOCGWINSZ, &size) != 0 || size.ws_row == 0 ||
@@ -141,11 +157,9 @@ void RefreshReadlineSize(FILE* file, bool redisplay) {
   int rows = size.ws_row;
   int columns = size.ws_col;
   if (rows == Readline().rows && columns == Readline().columns) return;
-  bool resized = Readline().rows > 0 && Readline().columns > 0;
   Readline().rows = rows;
   Readline().columns = columns;
   rl_set_screen_size(rows, columns);
-  if (resized && redisplay) rl_forced_update_display();
 }
 
 char* CompletionCandidate(const char* text, int state) {
@@ -184,6 +198,13 @@ char** UagentCompletion(const char* text, int start, int) {
 }
 
 int ReadlineGetc(FILE* file) {
+  // libedit replaces SIGWINCH with a handler that resizes heap-backed state
+  // inside signal context. Reclaim the signal once its read loop has started;
+  // our handler only sets a flag and the resize stays in ordinary code below.
+  if (!Readline().resize_handler_installed) {
+    InstallSigwinchHandler();
+    Readline().resize_handler_installed = true;
+  }
   if (Readline().initial_pos < Readline().initial.size()) {
     return static_cast<unsigned char>(
         Readline().initial[Readline().initial_pos++]);
@@ -198,7 +219,11 @@ int ReadlineGetc(FILE* file) {
   for (;;) {
     if (g_terminal_resized) {
       g_terminal_resized = 0;
-      RefreshReadlineSize(file, /*redisplay=*/true);
+      // A forced libedit redisplay prints another prompt without first
+      // clearing the old one. Mobile SSH clients emit resize bursts while
+      // reconnecting, producing "> > >". Updating the dimensions is enough;
+      // libedit redraws on the next input event.
+      RefreshReadlineSize(file);
     }
     ssize_t size = read(fd, &ch, 1);
     if (size < 0 && errno == EINTR) continue;
@@ -212,12 +237,8 @@ int EscGetc(FILE* file) {
     int fd = file ? fileno(file) : 0;
     pollfd event{fd, POLLIN, 0};
     if (poll(&event, 1, 50) == 0) {
-      if (Readline().steering_prompt) {
-        Readline().steering_cancelled = true;
-        return '\n';
-      }
-      if (Readline().choice_prompt) {
-        Readline().choice_cancelled = true;
+      if (Readline().cancel_on_escape) {
+        Readline().cancelled = true;
         return '\n';
       }
       Readline().pending.push(0x0b);
@@ -311,7 +332,12 @@ std::string RlHideEscapes(const std::string& prompt) {
 void ConfigureLineEditor() {
 #if defined(HAVE_EDITLINE)
   rl_getc_function = EscGetc;
+  stifle_history(kInputHistoryEntries);
 #endif
+}
+
+void SetInteractiveReadHandler(InteractiveReadHandler handler) {
+  ReadHandler() = std::move(handler);
 }
 
 std::string InputPrompt(const char* label) {
@@ -319,31 +345,56 @@ std::string InputPrompt(const char* label) {
          (label && *label ? std::string(label) + "> " : "> ");
 }
 
+#if defined(HAVE_EDITLINE)
+namespace {
+
+std::string ReadEditableLine(const std::string& prompt, bool* eof,
+                             bool keep_history, const std::string& initial,
+                             bool cancel_on_escape, bool* cancelled) {
+  Readline().cancel_on_escape = cancel_on_escape;
+  Readline().cancelled = false;
+  std::string hidden_prompt = RlHideEscapes(prompt);
+  RefreshReadlineSize(stdin);
+  Readline().initial = initial;
+  Readline().initial_pos = 0;
+  Readline().resize_handler_installed = false;
+  BracketedPaste(true);
+  char* line = readline(hidden_prompt.c_str());
+  BracketedPaste(false);
+  Readline().initial.clear();
+  Readline().initial_pos = 0;
+  fputs(RST(), stdout);
+  TerminalClearToEnd();
+  if (!line) {
+    Readline().cancel_on_escape = false;
+    if (cancelled) *cancelled = Readline().cancelled;
+    Readline().cancelled = false;
+    *eof = true;
+    return "";
+  }
+  std::string input = line;
+  free(line);
+  Readline().cancel_on_escape = false;
+  if (cancelled) *cancelled = Readline().cancelled;
+  Readline().cancelled = false;
+  if (keep_history) RememberInput(input);
+  return input;
+}
+
+}  // namespace
+#endif
+
 std::string ReadInputLine(const std::string& prompt, bool* eof,
                           bool keep_history, const std::string& initial) {
   (void)keep_history;  // used only when libedit is compiled in
   *eof = false;
+  if (ReadHandler()) {
+    return ReadHandler()(prompt, eof, keep_history, initial);
+  }
 #if defined(HAVE_EDITLINE)
   if (g_tty) {
-    Readline().initial = initial;
-    Readline().initial_pos = 0;
-    std::string hidden_prompt = RlHideEscapes(prompt);
-    RefreshReadlineSize(stdin, /*redisplay=*/false);
-    BracketedPaste(true);
-    char* line = readline(hidden_prompt.c_str());
-    BracketedPaste(false);
-    Readline().initial.clear();
-    Readline().initial_pos = 0;
-    fputs(RST(), stdout);
-    TerminalClearToEnd();
-    if (!line) {
-      *eof = true;
-      return "";
-    }
-    std::string input = line;
-    free(line);
-    if (keep_history && !Trim(input).empty()) add_history(input.c_str());
-    return input;
+    return ReadEditableLine(prompt, eof, keep_history, initial,
+                            /*cancel_on_escape=*/false, nullptr);
   }
 #endif
   fputs(prompt.c_str(), stdout);
@@ -361,38 +412,23 @@ std::string ReadInputLine(const std::string& prompt, bool* eof,
 
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
                            bool& eof) {
+  if (ReadHandler()) {
+    std::string input = Trim(ReadInputLine(prompt, &eof, false));
+    cancelled = eof;
+    return cancelled ? "" : input;
+  }
 #if defined(HAVE_EDITLINE)
-  Readline().choice_prompt = true;
-  Readline().choice_cancelled = false;
+  if (g_tty) {
+    std::string input =
+        Trim(ReadEditableLine(prompt, &eof, /*keep_history=*/false, "",
+                              /*cancel_on_escape=*/true, &cancelled));
+    return cancelled ? "" : input;
+  }
+#else
+  (void)cancelled;
 #endif
   std::string input = Trim(ReadInputLine(prompt, &eof, false));
-#if defined(HAVE_EDITLINE)
-  cancelled = Readline().choice_cancelled;
-  Readline().choice_prompt = Readline().choice_cancelled = false;
-#else
   cancelled = input.find('\x1b') != std::string::npos;
-#endif
-  return cancelled ? "" : input;
-}
-
-std::string SteeringReplacement(bool& cancelled) {
-  std::string input;
-  do {
-    bool eof = false;
-#if defined(HAVE_EDITLINE)
-    Readline().steering_prompt = true;
-    Readline().steering_cancelled = false;
-#endif
-    input = Trim(ReadInputLine(InputPrompt("steer"), &eof, false));
-#if defined(HAVE_EDITLINE)
-    cancelled = Readline().steering_cancelled;
-    Readline().steering_prompt = Readline().steering_cancelled = false;
-    if (!cancelled && !input.empty()) add_history(input.c_str());
-#else
-    cancelled = input.find('\x1b') != std::string::npos;
-#endif
-    if (eof) cancelled = true;
-  } while (!cancelled && input.empty());
   return cancelled ? "" : input;
 }
 

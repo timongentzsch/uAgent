@@ -2,13 +2,15 @@
 
 #ifndef UAGENT_INCLUDE_CORE_STEERING_H_
 #define UAGENT_INCLUDE_CORE_STEERING_H_
-// Immediate steering. Escape interrupts a response and opens a prompt; the
-// typed message joins the next turn, a second Escape resumes.
+// Foreground interruption. In the persistent composer, Enter queues and a
+// bare Escape is the only input that requests an abort.
 
 #include <termios.h>
 
 #include <atomic>
 #include <thread>
+
+#include "include/core/term.h"
 
 namespace uagent {
 
@@ -23,6 +25,8 @@ class Steering {
   void Stop();
 
   bool Requested() const { return requested_; }
+
+  void Request();
 
   bool Take();
 
@@ -41,7 +45,7 @@ Steering& SteeringState();
 class SteeringGuard {
  public:
   explicit SteeringGuard(bool enabled = true)
-      : active_(enabled && SteeringState().Start()) {}
+      : active_(enabled && !g_persistent_composer && SteeringState().Start()) {}
   ~SteeringGuard() { Stop(); }
   void Stop() {
     if (!active_) return;

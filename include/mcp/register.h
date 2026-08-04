@@ -13,6 +13,7 @@
 
 #include "include/core/env.h"
 #include "include/core/json.h"
+#include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/rpc.h"
@@ -184,6 +185,9 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
                                     toolset + ")");
                }));
   tool.mutating = true;
+  tool.capabilities = Capability(ToolCapability::kExecute) |
+                      Capability(ToolCapability::kMutate) |
+                      Capability(ToolCapability::kExternal);
   tool.provider = "builtin:chrome";
   tool.summary = [](const json& args) {
     return JsonValue(args, "mode", "") + "/" +
@@ -251,8 +255,7 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     ++spawned;
   }
 
-  auto startup_deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(timeout);
+  auto startup_deadline = DeadlineAfter(timeout);
   for (auto& b : boots) {
     McpServer& s = *b.s;
     int64_t remaining = std::chrono::duration_cast<std::chrono::seconds>(

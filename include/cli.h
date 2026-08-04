@@ -5,6 +5,8 @@
 // Terminal input and slash-command metadata. State and implementation live in
 // cli.cc so libedit build flags cannot change header-owned process state.
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -15,10 +17,10 @@ enum class SlashCommandId {
   kAttach,
   kCompact,
   kContext,
-  kDetach,
   kEffort,
   kHelp,
   kHandoff,
+  kMemory,
   kModel,
   kModels,
   kCost,
@@ -49,6 +51,17 @@ ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
 void ConfigureLineEditor();
 
+enum class InteractiveInputKind { kNone, kLine, kEscape, kEof };
+
+struct InteractiveInputEvent {
+  InteractiveInputKind kind = InteractiveInputKind::kNone;
+  std::string text;
+};
+
+using InteractiveReadHandler = std::function<std::string(
+    const std::string&, bool*, bool, const std::string&)>;
+void SetInteractiveReadHandler(InteractiveReadHandler handler);
+
 #if defined(HAVE_EDITLINE)
 void RegisterCompletion(CommandCompletion source, const std::string& value);
 void ConfigureCompletion(const std::vector<std::string>& models,
@@ -61,7 +74,6 @@ std::string ReadInputLine(const std::string& prompt, bool* eof,
                           const std::string& initial = "");
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
                            bool& eof);
-std::string SteeringReplacement(bool& cancelled);
 
 }  // namespace uagent
 

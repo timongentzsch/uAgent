@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include "include/api/types.h"
@@ -21,15 +22,38 @@ inline bool RetryableHttpStatus(int64_t status) {
 inline bool RetryableRemoteError(std::string_view type, std::string_view code) {
   return type == "server_error" || type == "service_unavailable_error" ||
          type == "rate_limit_error" || type == "timeout_error" ||
-         code == "server_error" || code == "server_is_overloaded" ||
-         code == "model_at_capacity" || code == "rate_limit_exceeded" ||
-         code == "request_timeout";
+         type == "timeout" || type == "provider_unavailable" ||
+         type == "provider_overloaded" || code == "server_error" ||
+         code == "server_is_overloaded" || code == "model_at_capacity" ||
+         code == "rate_limit_exceeded" || code == "request_timeout";
+}
+
+// OpenAI-style endpoints put the type/code directly on `error`. OpenRouter's
+// stable cross-provider type lives in `error.metadata.error_type`.
+inline std::string RemoteErrorType(const json& error) {
+  if (error.contains("metadata") && error["metadata"].is_object()) {
+    std::string type = JsonValue(error["metadata"], "error_type", "");
+    if (!type.empty()) return type;
+  }
+  return JsonValue(error, "type", "");
+}
+
+inline std::string RemoteErrorCode(const json& error) {
+  std::string code = JsonValue(error, "code", "");
+  if (!code.empty()) return code;
+  if (error.contains("metadata") && error["metadata"].is_object()) {
+    return JsonValue(error["metadata"], "provider_code", "");
+  }
+  return "";
 }
 
 inline bool SafeToRetry(const ChatResult& result) {
-  return result.retryable && !result.semantic_progress && !result.interrupted &&
-         result.content.empty() && result.reasoning.empty() &&
-         result.tool_calls.empty();
+  // Reasoning-only progress has no external side effect and is discarded with
+  // a failed response. Never replay visible answer text or a completed call.
+  return result.retryable && !result.interrupted && result.content.empty() &&
+         result.tool_calls.empty() && result.annotations.empty() &&
+         result.usage.is_null() &&
+         (!result.semantic_progress || !result.reasoning.empty());
 }
 
 inline std::chrono::milliseconds RetryDelay(int failed_attempt,

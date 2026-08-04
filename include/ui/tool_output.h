@@ -92,6 +92,15 @@ inline void PrintToolResult(const CallTask& task, const ToolCall& call,
   printf("%s%s: %s%s\n", style, prefix.c_str(), output.c_str(), RST());
 }
 
+inline void PrintStoredToolResult(const std::string& name,
+                                  const std::string& output) {
+  std::string prefix = "  ← " + TerminalSafe(name.empty() ? "tool" : name);
+  std::string summary =
+      ToolResultSummary(ToolResult{}, output, /*truncated=*/false);
+  printf("%s%s: %s%s\n", DIM(), prefix.c_str(),
+         TerminalSummary(summary, prefix.size() + 2).c_str(), RST());
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_

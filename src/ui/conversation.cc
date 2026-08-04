@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdio>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "include/agent/trace.h"
@@ -13,21 +15,25 @@
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/tools/tool.h"
+#include "include/ui/tool_output.h"
 
 namespace uagent {
 
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools) {
   static const json kEmpty;
+  std::unordered_map<std::string, std::string> tool_names;
   for (size_t index = 0; index < conversation.Size(); ++index) {
     const json& message = conversation.At(index);
     MessageKind kind = conversation.KindAt(index);
-    const std::string role = JsonValue(message, "role", "");
     const json& content =
         message.contains("content") ? message["content"] : kEmpty;
     if (kind == MessageKind::kSystem) continue;
     if (kind == MessageKind::kToolResult && content.is_string()) {
-      PrintToolResultText(content.get<std::string>());
+      std::string id = JsonValue(message, "tool_call_id", "");
+      auto name = tool_names.find(id);
+      PrintStoredToolResult(name == tool_names.end() ? "" : name->second,
+                            content.get<std::string>());
     } else if (kind == MessageKind::kAssistant) {
       if (content.is_string() && !content.get<std::string>().empty()) {
         MdPrint(content.get<std::string>());
@@ -35,7 +41,9 @@ void PrintConversationHistory(const Conversation& conversation,
       }
       if (message.contains("tool_calls")) {
         for (const json& call : message["tool_calls"]) {
-          PrintToolCallSummary(call, tools);
+          std::string name = PrintToolCallSummary(call, tools);
+          std::string id = JsonValue(call, "id", "");
+          if (!id.empty() && !name.empty()) tool_names[id] = std::move(name);
         }
       }
     } else if (kind == MessageKind::kUser && content.is_string()) {

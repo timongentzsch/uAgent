@@ -200,19 +200,14 @@ void Agent::ApplyCheckpoint(const std::string& state,
 
 bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
                               int64_t& tool_count, int64_t step) {
-  DebugLog("tool_call", {{"turn", turn_id_},
-                         {"step", step},
-                         {"id", call.id},
-                         {"name", call.name},
-                         {"arguments", call.args},
-                         {"text_protocol", text_mode}});
+  LogToolCall(call, turn_id_, step, text_mode);
   CallTask task;
   task.tool = FindTool(tools_, call.name);
   task.args = json::parse(call.args, nullptr, false);
   task.label =
       task.args.is_object() ? FirstLine(JsonValue(task.args, "state", "")) : "";
-  std::string safe_label = TerminalSafe(task.label);
-  printf("%s→ checkpoint(%s)%s\n", CYAN(), safe_label.c_str(), RST());
+  printf("%s→ checkpoint(%s)%s\n", CYAN(), TerminalSafe(task.label).c_str(),
+         RST());
   auto started = std::chrono::steady_clock::now();
   std::string error;
   ToolErrorCode error_code = ToolErrorCode::kInvalidArguments;
@@ -224,7 +219,7 @@ bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
     error_code = ToolErrorCode::kNotFound;
   } else if (!(error = MissingRequired(*task.tool, task.args)).empty()) {
     error = "missing required argument `" + error + "`";
-  } else if (!(error = InvalidArgumentType(*task.tool, task.args)).empty()) {
+  } else if (!(error = InvalidToolArgument(*task.tool, task.args)).empty()) {
     error = "invalid tool argument: " + error;
   } else if (api_.config.checkpoint_mode == "off") {
     error = "checkpointing is disabled";
@@ -326,20 +321,19 @@ bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
                                     {"verbatim", verbatim.size()},
                                     {"paths", paths.size()},
                                     {"keep_last_n_results", keep_results}});
+  last_checkpoint_turn_ = turn_id_;
+  checkpoint_hint_active_ = false;
   if (api_.config.checkpoint_mode == "shadow") {
-    last_checkpoint_turn_ = turn_id_;
-    checkpoint_hint_active_ = false;
     task.result = ToolSuccess(
         "checkpoint candidate recorded (shadow mode); active history "
         "unchanged");
     task.trace_status = "shadow";
-    AppendToolResult(call, text_mode, task.result.output);
-    printf("%s  ← %s%s\n", DIM(), task.result.output.c_str(), RST());
   } else {
     json saved_paths = json::array();
     for (const auto& path : paths) saved_paths.push_back(path.string());
     json saved_results = json::array();
-    for (const std::string& result : RecentToolResults(keep_results)) {
+    for (const std::string& result :
+         conversation_.RecentToolResults(keep_results)) {
       saved_results.push_back(result);
     }
     pending_checkpoint_ = {{"turn", turn_id_},
@@ -347,20 +341,18 @@ bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
                            {"state", state},
                            {"paths", std::move(saved_paths)},
                            {"results", std::move(saved_results)},
-                           {"verbatim", verbatim}};
-    last_checkpoint_turn_ = turn_id_;
-    checkpoint_hint_active_ = false;
+                           {"verbatim", std::move(verbatim)}};
     task.result = ToolSuccess(
         "checkpoint prepared; active history remains until the next user turn");
     task.trace_status = "prepared";
     checkpoint_turn_complete_ = true;
-    AppendToolResult(call, text_mode, task.result.output);
     DebugLog("checkpoint_prepared", {{"turn", turn_id_},
                                      {"state_chars", state.size()},
                                      {"paths", paths.size()},
                                      {"keep_last_n_results", keep_results}});
-    printf("%s  ← %s%s\n", DIM(), task.result.output.c_str(), RST());
   }
+  AppendToolResult(call, text_mode, task.result.output);
+  printf("%s  ← %s%s\n", DIM(), task.result.output.c_str(), RST());
   task.duration_ms = ElapsedMs(started);
   LogToolResult(task, call, turn_id_, step);
   return false;

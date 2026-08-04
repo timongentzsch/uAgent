@@ -37,6 +37,7 @@ struct AppContext {
   AppRuntime runtime;
   Options options;
   ProviderSetup provider;
+  ToolPolicy tool_policy;
   std::vector<Tool> tools;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;

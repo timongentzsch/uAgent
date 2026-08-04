@@ -159,8 +159,11 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
 }
 
 int64_t Agent::ContextUsed() const {
-  return context_policy_.Used(JsonEstimatedBytes(conversation_.Messages()),
-                              schema_chars_, api_.native_tools);
+  int64_t used =
+      context_policy_.Used(JsonEstimatedBytes(conversation_.Messages()),
+                           schema_chars_, api_.native_tools);
+  context_snapshot_.store(used, std::memory_order_relaxed);
+  return used;
 }
 
 bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {

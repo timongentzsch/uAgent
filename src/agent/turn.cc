@@ -100,6 +100,7 @@ void Agent::RecordModelResponse(
     context_policy_.SetReported(
         JsonValue(response.usage, "prompt_tokens", int64_t{0}) +
         JsonValue(response.usage, "completion_tokens", int64_t{0}));
+    ContextUsed();
   }
 }
 

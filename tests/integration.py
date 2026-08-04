@@ -1199,7 +1199,8 @@ def test_response_stats_spinner_context(root, home):
         regular_metadata = b"\x1b[0m\x1b[39m\x1b[49m\x1b[2m"
         assert_true(regular_metadata + b"\xc2\xb5Agent" in output, output)
         assert_true(regular_metadata + b"test (default)" in output, output)
-        assert_true(b"working \xc2\xb7 0.0s \xc2\xb7 bg:0" in output, output)
+        assert_true(b"working \xc2\xb7 0.0s \xc2\xb7 ctx " in output, output)
+        assert_true(b" \xc2\xb7 bg:0" in output, output)
         assert_true(b"\xc2\xb7 0 in" not in output, output)
         assert_true(b"\x1b[3m(+3 reasoning)\x1b[23m" in output, output)
         assert_true(

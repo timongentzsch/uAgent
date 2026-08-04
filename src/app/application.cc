@@ -545,6 +545,7 @@ class Application {
       line += interrupting ? "interrupting"
                            : (activity.empty() ? "working" : activity);
       line += " · " + std::string(seconds);
+      line += " · ctx " + FmtCount(agent_.ContextSnapshot());
       line += " · bg:" + std::to_string(background);
       if (SteeringEnabled()) line += " · Esc interrupt";
       size_t queued = SteeringState().QueuedCount();
@@ -601,6 +602,7 @@ class Application {
     };
 
     auto start_work = [&](std::string input) {
+      agent_.ContextUsed();
       working = true;
       worker_quit = false;
       interrupting = false;

@@ -10,7 +10,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <deque>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -514,15 +513,16 @@ class Application {
     });
     g_persistent_composer = true;
 
-    std::deque<std::string> queued;
     std::thread worker;
     std::atomic<bool> working{false};
     std::atomic<bool> worker_quit{false};
     bool interrupting = false;
     bool exit_when_idle = false;
     bool answering = false;
+    std::optional<std::string> next_input;
     std::string saved_draft;
     std::string pending_output;
+    size_t spinner_frame = 0;
     auto started = std::chrono::steady_clock::now();
 
     auto status = [&] {
@@ -537,12 +537,19 @@ class Application {
                           runtime_.processes.DetachedCount();
       char seconds[32];
       snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
-      std::string line = interrupting ? "interrupting" : "working";
+      std::string activity = CurrentTerminalActivity();
+      static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
+                                                "⠴", "⠦", "⠧", "⠇", "⠏"};
+      std::string line = kFrames[spinner_frame % 10];
+      line += " ";
+      line += interrupting ? "interrupting"
+                           : (activity.empty() ? "working" : activity);
       line += " · " + std::string(seconds);
       line += " · bg:" + std::to_string(background);
       if (SteeringEnabled()) line += " · Esc interrupt";
-      if (!queued.empty()) {
-        line += " · queued:" + std::to_string(queued.size());
+      size_t queued = SteeringState().QueuedCount();
+      if (queued > 0) {
+        line += " · steer:" + std::to_string(queued);
       }
       return line;
     };
@@ -552,6 +559,14 @@ class Application {
           TerminalSafe(status()),
           static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 1)));
       return std::string(RST()) + DIM() + line + "\033[K" + RST() + "\n";
+    };
+
+    auto status_state = [&] {
+      return std::string(interrupting ? "interrupting|" : "working|") +
+             CurrentTerminalActivity() + "|" +
+             std::to_string(SteeringState().QueuedCount()) + "|" +
+             std::to_string(runtime_.processes.PendingCount()) + "|" +
+             std::to_string(runtime_.processes.DetachedCount());
     };
 
     auto mount = [&](const std::string& prompt = InputPrompt(),
@@ -589,6 +604,7 @@ class Application {
       working = true;
       worker_quit = false;
       interrupting = false;
+      spinner_frame = 0;
       started = std::chrono::steady_clock::now();
       worker = std::thread([&, input = std::move(input)]() mutable {
         worker_quit = ProcessInput(std::move(input));
@@ -599,6 +615,7 @@ class Application {
 
     mount();
     auto last_redraw = std::chrono::steady_clock::now();
+    std::string last_state = status_state();
     while (!exit_when_idle || working) {
       pollfd events[3] = {{STDIN_FILENO, POLLIN, 0},
                           {output.fd(), POLLIN, 0},
@@ -642,8 +659,12 @@ class Application {
           } else {
             std::string input = Trim(event.text);
             if (!input.empty()) {
-              if (working || worker.joinable()) {
-                queued.push_back(std::move(input));
+              if ((input == "/q" || input == "/quit") && working) {
+                exit_when_idle = true;
+              } else if (working) {
+                SteeringState().Queue(std::move(input));
+              } else if (worker.joinable()) {
+                next_input = std::move(input);
               } else {
                 start_work(std::move(input));
               }
@@ -661,18 +682,24 @@ class Application {
         agent_.DrainBackground();
         if (worker_quit) exit_when_idle = true;
         interrupting = false;
-        if (!exit_when_idle && !queued.empty()) {
-          std::string next = std::move(queued.front());
-          queued.pop_front();
-          start_work(std::move(next));
+        if (!exit_when_idle && next_input) {
+          start_work(std::move(*next_input));
+          next_input.reset();
         }
         redraw();
       }
 
-      auto now = std::chrono::steady_clock::now();
-      if (working && now - last_redraw >= std::chrono::milliseconds(200)) {
-        redraw();
-        last_redraw = now;
+      if (working) {
+        auto now = std::chrono::steady_clock::now();
+        std::string current_state = status_state();
+        bool state_changed = current_state != last_state;
+        if (state_changed ||
+            now - last_redraw >= std::chrono::milliseconds(100)) {
+          ++spinner_frame;
+          redraw();
+          last_redraw = now;
+          last_state = std::move(current_state);
+        }
       }
     }
 

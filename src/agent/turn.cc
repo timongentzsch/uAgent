@@ -193,7 +193,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   std::string checkpoint_hint = PrepareContext(SaturatingAdd(
       attachment ? JsonEstimatedBytes(user_content) : user_input.size(),
       skill_bytes));
-  if (SteeringState().Requested()) {
+  if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
     DebugLog("turn_end", {{"turn", turn_id_},
                           {"outcome", "steered_during_compaction"},
                           {"steps", 0}});
@@ -238,8 +238,39 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   bool detached_records_available = !DetachedRecords().empty();
   bool midturn_compaction_enabled = true;
 
+  auto apply_queued_steering = [&] {
+    std::vector<std::string> queued = SteeringState().TakeQueued();
+    if (queued.empty()) return false;
+    SteeringState().Take();
+    for (std::string& input : queued) {
+      for (std::string& skill : ExplicitSkillContext(input)) {
+        conversation_.Push(
+            HarnessMessage("[explicit skill instructions; user selected]\n" +
+                           std::move(skill)),
+            MessageKind::kInternal);
+      }
+      conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
+                         MessageKind::kUser);
+    }
+    last_call.clear();
+    repeated_calls = 0;
+    consecutive_failed_tools = 0;
+    stable_arguments.clear();
+    failure_advisory_sent = false;
+    empty_response_recovered = false;
+    DebugLog("steering_applied",
+             {{"turn", turn_id_}, {"messages", queued.size()}});
+    return true;
+  };
+
   int64_t step = 0;
   for (; step < state.max_steps; ++step) {
+    apply_queued_steering();
+    if (SteeringState().Requested()) {
+      state.outcome = "interrupted";
+      last_error_ = state.outcome;
+      break;
+    }
     if (TurnDeadlineExceeded(state)) break;
     if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
     if (TurnDeadlineExceeded(state)) break;
@@ -261,11 +292,6 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       --step;
       continue;
     }
-    if (SteeringState().Requested()) {
-      state.outcome = "steered";
-      last_error_ = state.outcome;
-      break;
-    }
     ChatResult r = Chat("turn", step, available_schemas);
     if (failure_advisory_message) {
       conversation_.Erase(*failure_advisory_message,
@@ -279,13 +305,14 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     if (r.interrupted) {
       state.line_open = false;
-      state.outcome = SteeringState().Requested() ? "steered" : "interrupted";
+      state.outcome = "interrupted";
       last_error_ = state.outcome;
-      printf("\n%s· %s%s\n", YEL(), state.outcome.c_str(), RST());
+      printf("\n%s· interrupted%s\n", YEL(), RST());
       conversation_.Push(
           HarnessMessage("(response interrupted; partial output was "
                          "discarded)"),
           MessageKind::kInternal);
+      if (apply_queued_steering()) continue;
       break;
     }
     if (!r.error.empty()) {
@@ -354,6 +381,12 @@ void Agent::Turn(const std::string& user_input, json user_content) {
         MdPrint(r.content);
         printf("\n");
       }
+      if (apply_queued_steering()) continue;
+      if (SteeringState().Requested()) {
+        state.outcome = "interrupted";
+        last_error_ = state.outcome;
+        break;
+      }
       state.complete = true;
       state.outcome = "complete";
       break;  // plain prose -> turn is done
@@ -378,14 +411,17 @@ void Agent::Turn(const std::string& user_input, json user_content) {
                 {"step", step},
                 {"consecutive_failures", consecutive_failed_tools}});
     }
+    bool foreground_interrupted = SteeringState().Requested() || cancelled;
+    bool steering_applied = apply_queued_steering();
     if (cancelled) BgCancelTasks(processes_);
     if (checkpoint_turn_complete_) {
       state.complete = true;
       state.outcome = "checkpoint_prepared";
       break;
     }
-    if (SteeringState().Requested() || cancelled) {
-      state.outcome = cancelled ? "interrupted" : "steered";
+    if (foreground_interrupted) {
+      if (steering_applied) continue;
+      state.outcome = "interrupted";
       if (cancelled) printf("%s· interrupted%s\n", YEL(), RST());
       break;
     }
@@ -465,7 +501,7 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   stats << " · " << std::fixed << std::setprecision(1) << secs << 's';
   std::string stats_line = stats.str();
   std::ostringstream footer;
-  footer << (state.line_open ? "\n" : "") << RST() << DIM() << stats_line
+  footer << (state.line_open ? "\n" : "") << RST() << BLUE() << stats_line
          << RST() << '\n';
   std::cout << footer.str();
   DebugLog("turn_end",

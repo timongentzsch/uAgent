@@ -43,12 +43,12 @@ class CurlHeaders {
   curl_slist* list_ = nullptr;
 };
 
-long CurlTimeout(int64_t seconds) {  // NOLINT(runtime/int): libcurl ABI
-  return static_cast<long>(          // NOLINT(runtime/int): libcurl ABI
+// libcurl's CURLOPT_TIMEOUT ABI requires long rather than a fixed-width type.
+long CurlTimeout(int64_t seconds) {  // NOLINT: libcurl ABI
+  return static_cast<long>(          // NOLINT: libcurl ABI
       std::clamp(
           seconds, int64_t{0},
-          static_cast<int64_t>(
-              std::numeric_limits<long>::max())));  // NOLINT(runtime/int)
+          static_cast<int64_t>(std::numeric_limits<long>::max())));  // NOLINT
 }
 
 }  // namespace

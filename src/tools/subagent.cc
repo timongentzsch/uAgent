@@ -261,7 +261,7 @@ Tool WaitAgentTool(ProcessSupervisor& processes) {
             std::string result;
             for (std::string& note : completed) {
               if (!result.empty()) result += "\n\n";
-              result += std::move(note);
+              result += note;
             }
             return ToolSuccess(std::move(result));
           }

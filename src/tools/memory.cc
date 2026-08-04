@@ -211,18 +211,18 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
 }
 
 std::string RedactMemorySecrets(std::string text) {
-  static const std::regex assignment(
+  static const std::regex kAssignment(
       R"((api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret|)"
       R"(authorization)([ \t]*[:=][ \t]*[\"']?)([^\"'\s,;}]+))",
       std::regex_constants::icase);
-  static const std::regex bearer(R"((Bearer[ \t]+)[A-Za-z0-9._~+/=-]{12,})",
-                                 std::regex_constants::icase);
-  static const std::regex known_token(
+  static const std::regex kBearer(R"((Bearer[ \t]+)[A-Za-z0-9._~+/=-]{12,})",
+                                  std::regex_constants::icase);
+  static const std::regex kKnownToken(
       R"((sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|)"
       R"(github_pat_[A-Za-z0-9_]{16,}))");
-  text = std::regex_replace(text, assignment, "$1$2[REDACTED]");
-  text = std::regex_replace(text, bearer, "$1[REDACTED]");
-  text = std::regex_replace(text, known_token, "[REDACTED]");
+  text = std::regex_replace(text, kAssignment, "$1$2[REDACTED]");
+  text = std::regex_replace(text, kBearer, "$1[REDACTED]");
+  text = std::regex_replace(text, kKnownToken, "[REDACTED]");
 
   constexpr std::string_view kBegin = "-----BEGIN PRIVATE KEY-----";
   constexpr std::string_view kEnd = "-----END PRIVATE KEY-----";

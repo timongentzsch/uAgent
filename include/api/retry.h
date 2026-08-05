@@ -28,6 +28,17 @@ inline bool RetryableRemoteError(std::string_view type, std::string_view code) {
          code == "rate_limit_exceeded" || code == "request_timeout";
 }
 
+inline bool RetryableRemoteMessage(std::string_view message) {
+  auto has = [&](std::string_view code) {
+    return message.find("'" + std::string(code) + "'") !=
+               std::string_view::npos ||
+           message.find("\"" + std::string(code) + "\"") !=
+               std::string_view::npos;
+  };
+  return has("server_is_overloaded") || has("model_at_capacity") ||
+         has("rate_limit_exceeded") || has("request_timeout");
+}
+
 // OpenAI-style endpoints put the type/code directly on `error`. OpenRouter's
 // stable cross-provider type lives in `error.metadata.error_type`.
 inline std::string RemoteErrorType(const json& error) {

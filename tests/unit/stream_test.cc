@@ -244,22 +244,19 @@ void TestBackgroundValidation() {
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);
   const Tool* edit = FindTool(tools, "edit_file");
-  CHECK(edit && edit->parameters["properties"].contains("replace_all"));
   CHECK(edit && edit->parameters["properties"].contains("edits"));
+  CHECK(edit && !edit->parameters["properties"].contains("old"));
   if (edit) {
-    CHECK(ToolSummary(*edit, {{"path", "x"}, {"old", "a"}, {"new", "b"}}) ==
+    CHECK(ToolSummary(*edit, {{"path", "x"},
+                              {"edits",
+                               json::array({{{"old", "a"}, {"new", "b"}}})}}) ==
           "x (1 edit)");
     CHECK(ToolSummary(*edit, {{"path", "x"},
-                              {"old", "a"},
-                              {"new", "b"},
                               {"edits",
-                               json::array({{{"old", "c"}, {"new", "d"}}})}}) ==
+                               json::array({{{"old", "a"}, {"new", "b"}},
+                                            {{"old", "c"}, {"new", "d"}}})}}) ==
           "x (2 edits)");
-    CHECK(edit->run({{"path", "x"},
-                     {"old", "a"},
-                     {"new", "b"},
-                     {"edits", json::array({"bad"})}},
-                    {})
+    CHECK(edit->run({{"path", "x"}, {"edits", json::array({"bad"})}}, {})
               .output.find("each `edits` entry") != std::string::npos);
   }
   // read-only and independent-process tools must be able to overlap, and the

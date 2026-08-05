@@ -319,11 +319,13 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       const json& error = error_response["error"];
       res.remote_error_type = RemoteErrorType(error);
       res.remote_error_code = RemoteErrorCode(error);
+      res.retryable =
+          RetryableRemoteMessage(JsonValue(error, "message", std::string()));
     }
     message = JsonErrorMessage(error_response, std::move(message));
     res.error = "HTTP " + std::to_string(res.http_status) + ": " + message;
     res.retryable =
-        RetryableHttpStatus(res.http_status) ||
+        res.retryable || RetryableHttpStatus(res.http_status) ||
         RetryableRemoteError(res.remote_error_type, res.remote_error_code);
     return res;
   }

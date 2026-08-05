@@ -146,7 +146,7 @@ int64_t SkillBodyBytes() {
 }
 
 int64_t SkillDescriptionBytes() {
-  return EnvBounded("UAGENT_SKILL_DESC_BYTES", 512, 16);
+  return EnvBounded("UAGENT_SKILL_DESC_BYTES", 1024, 16);
 }
 
 int64_t MaxSkills() { return EnvBounded("UAGENT_SKILLS", 64, 1); }

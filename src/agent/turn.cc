@@ -28,8 +28,8 @@ struct Agent::TurnState {
   bool complete = false;
   bool line_open = false;
   double ttt_ms = -1;
-  double model_response_ms = 0;
-  int64_t model_output_tokens = 0;
+  double model_generation_ms = 0;
+  int64_t model_generated_tokens = 0;
   std::string outcome = "step_limit";
 };
 
@@ -73,11 +73,14 @@ void Agent::RecordModelResponse(
         YEL(), RST());
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }
-  // SSE can arrive in one buffered burst. Whole-request wall time is a more
-  // useful throughput denominator than first-to-last-event transport time.
-  if (response.duration_ms > 0) {
-    state.model_response_ms += response.duration_ms;
-    state.model_output_tokens += response_usage.output;
+  // Hidden reasoning predates the first visible stream event.
+  double generation_ms = response_usage.reasoning > 0
+                             ? response.duration_ms
+                             : response.duration_ms - response.first_event_ms;
+  if (response.first_event_ms >= 0 && generation_ms > 0 &&
+      response_usage.GeneratedTokens() > 0) {
+    state.model_generation_ms += generation_ms;
+    state.model_generated_tokens += response_usage.GeneratedTokens();
   }
   state.usage.Merge(response_usage);
   MergeSessionUsage(response_usage);
@@ -466,8 +469,8 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
                                               state.started)
                     .count();
   double tokens_per_second =
-      state.model_response_ms > 0
-          ? state.model_output_tokens * 1000.0 / state.model_response_ms
+      state.model_generation_ms > 0
+          ? state.model_generated_tokens * 1000.0 / state.model_generation_ms
           : 0;
   std::ostringstream stats;
   stats << FmtCount(state.usage.input) << " in";
@@ -513,6 +516,8 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
             {"duration_ms", secs * 1000},
             {"ttt_ms", state.ttt_ms},
             {"tokens_per_second", tokens_per_second},
+            {"generation_ms", state.model_generation_ms},
+            {"generated_tokens", state.model_generated_tokens},
             {"usage", UsageJson(state.usage)},
             {"session_usage", UsageJson(session_usage_)},
             {"messages", conversation_.Size()},

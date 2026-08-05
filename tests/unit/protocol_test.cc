@@ -80,6 +80,9 @@ void TestToolResults() {
   CHECK(RetryableRemoteError("service_unavailable_error",
                              "server_is_overloaded"));
   CHECK(RetryableRemoteError("", "model_at_capacity"));
+  CHECK(RetryableRemoteMessage(
+      "Codex response failed: {'code': 'server_is_overloaded'}"));
+  CHECK(!RetryableRemoteMessage("invalid request_timeout_seconds value"));
   CHECK(!RetryableRemoteError("invalid_request_error", "invalid_value"));
   ChatResult retryable;
   retryable.retryable = true;

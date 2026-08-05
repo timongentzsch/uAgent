@@ -79,51 +79,45 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       "Modify an existing text file by exact search/replace. Batch related "
       "edits; all apply atomically in order.",
       schema(R"json({"type":"object","properties":{
-                    "path":{"type":"string"},"old":{"type":"string"},
-                    "new":{"type":"string"},
-                    "replace_all":{"type":"boolean","description":"replace all matches"},
-                    "edits":{"type":"array","maxItems":63,
-                      "description":"additional edits in order",
+                    "path":{"type":"string"},
+                    "edits":{"type":"array","minItems":1,"maxItems":64,
+                      "description":"one or more exact replacements in order",
                       "items":{"type":"object","properties":{
                         "old":{"type":"string"},"new":{"type":"string"},
                         "replace_all":{"type":"boolean"}},
                         "required":["old","new"],"additionalProperties":false}}},
-                    "required":["path","old","new"]})json"),
+                    "required":["path","edits"]})json"),
       [](const json& a, const ToolContext&) {
-        std::vector<FileEdit> edits{{
-            JsonValue(a, "old", ""),
-            JsonValue(a, "new", ""),
-            JsonValue(a, "replace_all", false),
-        }};
+        std::vector<FileEdit> edits;
         auto additional = a.find("edits");
-        if (additional != a.end()) {
-          if (!additional->is_array()) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "error: `edits` must be an array");
+        if (additional == a.end() || !additional->is_array()) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: `edits` must be an array");
+        }
+        for (const json& item : *additional) {
+          if (!item.is_object() || !item.contains("old") ||
+              !item["old"].is_string() || !item.contains("new") ||
+              !item["new"].is_string() ||
+              (item.contains("replace_all") &&
+               !item["replace_all"].is_boolean())) {
+            return ToolFailure(
+                ToolErrorCode::kInvalidArguments,
+                "error: each `edits` entry requires string "
+                "`old`/`new` and optional boolean `replace_all`");
           }
-          if (additional->size() + 1 > kMaxFileEdits) {
-            return ToolFailure(ToolErrorCode::kLimitExceeded,
-                               "error: `edit_file` is limited to " +
-                                   std::to_string(kMaxFileEdits) +
-                                   " edits per call");
-          }
-          for (const json& item : *additional) {
-            if (!item.is_object() || !item.contains("old") ||
-                !item["old"].is_string() || !item.contains("new") ||
-                !item["new"].is_string() ||
-                (item.contains("replace_all") &&
-                 !item["replace_all"].is_boolean())) {
-              return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                 "error: each `edits` entry requires "
-                                 "string `old`/`new` and optional boolean "
-                                 "`replace_all`");
-            }
-            edits.push_back({
-                JsonValue(item, "old", ""),
-                JsonValue(item, "new", ""),
-                JsonValue(item, "replace_all", false),
-            });
-          }
+          edits.push_back({JsonValue(item, "old", ""),
+                           JsonValue(item, "new", ""),
+                           JsonValue(item, "replace_all", false)});
+        }
+        if (edits.empty()) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: `edits` must contain at least one edit");
+        }
+        if (edits.size() > kMaxFileEdits) {
+          return ToolFailure(ToolErrorCode::kLimitExceeded,
+                             "error: `edit_file` is limited to " +
+                                 std::to_string(kMaxFileEdits) +
+                                 " edits per call");
         }
         return ToolEditFile(JsonValue(a, "path", ""), edits);
       }));
@@ -131,10 +125,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
   edit.summary = [](const json& a) {
-    size_t count = 1;
+    size_t count = 0;
     auto additional = a.find("edits");
     if (additional != a.end() && additional->is_array()) {
-      count += additional->size();
+      count = additional->size();
     }
     return JsonValue(a, "path", "") + " (" + std::to_string(count) +
            (count == 1 ? " edit)" : " edits)");
@@ -292,14 +286,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   };
 
   json memory_schema = schema(R"json({"type":"object","properties":{
-                    "action":{"type":"string","enum":["get","set","forget"]},
+                    "action":{"type":"string","enum":["get","set","forget","list","search"]},
                     "key":{"type":"string",
-                      "description":"exact index key or new project/<name> or global/<name> key"},
+                      "description":"exact project/<name> or global/<name> key; search text for search; omit for list"},
                     "content":{"type":"string",
                       "description":"durable lesson; required only for set"}},
-                    "required":["action","key"]})json");
+                    "required":["action"]})json");
   if (!memory_generate) {
-    memory_schema["properties"]["action"]["enum"] = {"get", "forget"};
+    memory_schema["properties"]["action"]["enum"] = {"get", "forget", "list",
+                                                     "search"};
     memory_schema["properties"].erase("content");
   }
   Tool& memory = AddTool(
@@ -307,12 +302,14 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       MakeTool(
           "memory",
           memory_generate
-              ? "Get indexed memory only when relevant. Set only when the "
+              ? "List or search memory when the startup index is insufficient; "
+                "get a body only when relevant. Set only when the "
                 "user explicitly asks or background consolidation identifies "
                 "a stable cross-session preference, workflow, constraint, or "
                 "debugging insight. Never save task progress, guesses, "
                 "secrets, commands, or permissions; forget only on request."
-              : "Get indexed memory only when relevant. Contributions are "
+              : "List or search memory when the startup index is insufficient; "
+                "get a body only when relevant. Contributions are "
                 "disabled; forget only on an explicit user request.",
           std::move(memory_schema),
           [memory_generate](const json& a, const ToolContext&) {
@@ -325,7 +322,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                     memory_generate);
           }));
   memory.mutates = [](const json& a) {
-    return JsonValue(a, "action", "") != "get";
+    std::string action = JsonValue(a, "action", "");
+    return action == "set" || action == "forget";
   };
   memory.capabilities = Capability(ToolCapability::kInspect) |
                         Capability(ToolCapability::kMutate);

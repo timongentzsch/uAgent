@@ -273,6 +273,7 @@ void TestOpenRouterServerSearch() {
   CHECK(responses_usage.cache_read == 3);
   CHECK(responses_usage.output == 5);
   CHECK(responses_usage.reasoning == 2);
+  CHECK(responses_usage.GeneratedTokens() == 7);
 
   RuntimeConfig responses_config;
   responses_config.web_search_backend = "responses";
@@ -572,12 +573,14 @@ void TestGrepTool() {
   if (memory) {
     CHECK(
         !ToolMutates(*memory, {{"action", "get"}, {"key", "project/lesson"}}));
+    CHECK(!ToolMutates(*memory, {{"action", "list"}}));
+    CHECK(!ToolMutates(*memory, {{"action", "search"}, {"key", "lesson"}}));
     CHECK(ToolMutates(
         *memory,
         {{"action", "set"}, {"key", "project/lesson"}, {"content", "fact"}}));
     CHECK(ToolMutates(*memory,
                       {{"action", "forget"}, {"key", "project/lesson"}}));
-    CHECK(memory->parameters["required"] == json::array({"action", "key"}));
+    CHECK(memory->parameters["required"] == json::array({"action"}));
   }
   auto read_only_memory_tools = BuiltinTools(supervisor, root, false, false);
   const Tool* read_only_memory = FindTool(read_only_memory_tools, "memory");
@@ -587,7 +590,7 @@ void TestGrepTool() {
             std::string::npos);
   CHECK(read_only_memory &&
         read_only_memory->parameters["properties"]["action"]["enum"] ==
-            json::array({"get", "forget"}));
+            json::array({"get", "forget", "list", "search"}));
   CHECK(read_only_memory &&
         !read_only_memory->parameters["properties"].contains("content"));
   CHECK(python && python->timeout_s == 0);

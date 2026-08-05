@@ -579,22 +579,18 @@ class Application {
     auto insert = [&](std::string text) {
       if (text.empty()) return;
       if (text.back() != '\n') text += '\n';
-      size_t h = composer.Height();
-      // Clear the composer block (Height() rows) plus the status line above it,
-      // then write the transcript, redraw the status bar, and repaint the
-      // composer. Height()==1 reduces to the original single-line sequence.
-      output.Write("\r\033[2K\033[" + std::to_string(h) + "A\r\033[J");
+      // Move from the caret to the composer block top, then one more row to
+      // the status line, and clear from there to the end of the screen (which
+      // removes the whole status + composer block).
+      output.Write("\033[" + std::to_string(composer.CaretRow() + 1) + "A\r\033[J");
       output.Write(text);
       output.Write(rendered_status());
-      if (h > 1) output.Write("\033[" + std::to_string(h - 1) + "B");
       composer.Render();
     };
 
     auto redraw = [&] {
-      size_t h = composer.Height();
-      output.Write("\r\033[2K\033[" + std::to_string(h) + "A\r\033[J");
+      output.Write("\033[" + std::to_string(composer.CaretRow() + 1) + "A\r\033[J");
       output.Write(rendered_status());
-      if (h > 1) output.Write("\033[" + std::to_string(h - 1) + "B");
       composer.Render();
     };
 

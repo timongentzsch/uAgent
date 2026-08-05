@@ -297,19 +297,28 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
     if (!memory.key.starts_with("global/")) continue;
     std::ifstream input(memory.path, std::ios::binary);
     if (!input) continue;
-    std::string body(static_cast<size_t>(max_bytes - used) + 1, '\0');
-    input.read(body.data(),
-               static_cast<std::streamsize>(body.size()));
+    // Reserve the block header/footer overhead so the admission test below
+    // never fails solely because the body consumed the whole budget.
+    size_t overhead = 1 /* '#' */ + memory.key.size() + 3 /* "\n\n" */ +
+                      +4 /* leading '\n' after '#' + trailing */;
+    if (used >= max_bytes || overhead >= max_bytes - used) {
+      index.truncated = true;
+      break;
+    }
+    size_t body_cap = max_bytes - used - overhead;
+    std::string body(body_cap + 1, '\0');
+    input.read(body.data(), static_cast<std::streamsize>(body.size()));
     size_t read = static_cast<size_t>(input.gcount());
-    body.resize(std::min(read, max_bytes - used));
-    body = Utf8Prefix(std::move(body), max_bytes - used);
+    body.resize(std::min(read, body_cap));
+    body = Utf8Prefix(std::move(body), body_cap);
     body = RedactMemorySecrets(std::move(body));
     if (Trim(body).empty()) continue;
     std::string block = "# " + memory.key + "\n" + body + "\n\n";
     std::optional<size_t> total = CheckedAdd(used, block.size());
     if (!total || *total > max_bytes) {
+      // Skip oversized entries rather than starving the rest of the list.
       index.truncated = true;
-      break;
+      continue;
     }
     used = *total;
     index.text += block;

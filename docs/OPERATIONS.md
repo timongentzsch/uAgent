@@ -8,7 +8,7 @@ or multi-tenant service.
 | Concern | Default |
 | --- | ---: |
 | request / complete turn | 300 / 900 s |
-| model rounds / tool calls | 40 / 100 |
+| model rounds / tool calls | 100 / 100 |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
 | reported turn cost | $1 |
 | request / response | 64 / 32 MiB |

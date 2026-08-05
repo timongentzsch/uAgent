@@ -217,6 +217,47 @@ std::string StripTrailingSlashes(std::string s) {
   return s;
 }
 
+std::vector<std::string> WrapLines(const std::string& s, size_t columns) {
+  std::vector<std::string> rows;
+  if (s.empty() || columns == 0) {
+    rows.push_back(s);
+    return rows;
+  }
+  std::mbstate_t state{};
+  std::string current;
+  size_t current_width = 0;
+  auto push_row = [&] {
+    rows.push_back(current);
+    current.clear();
+    current_width = 0;
+  };
+  for (size_t offset = 0; offset < s.size();) {
+    size_t consumed = 1;
+    wchar_t wide = 0;
+    size_t mbr = mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
+    int glyph_width = 1;
+    if (mbr == static_cast<size_t>(-1) || mbr == static_cast<size_t>(-2)) {
+      state = {};
+      wide = L'?';
+    } else {
+      if (mbr == 0) mbr = 1;
+      consumed = mbr;
+      glyph_width = std::max(0, ::wcwidth(wide));
+    }
+    // A single wide glyph wider than the row must not infinite-loop, so put it
+    // on a row of its own even if it overflows columns.
+    if (current_width + static_cast<size_t>(glyph_width) > columns &&
+        !current.empty()) {
+      push_row();
+    }
+    current.append(s, offset, consumed);
+    current_width += static_cast<size_t>(glyph_width);
+    offset += consumed;
+  }
+  if (!current.empty() || rows.empty()) rows.push_back(current);
+  return rows;
+}
+
 std::string FirstLine(const std::string& s) {
   return s.substr(0, s.find('\n'));
 }

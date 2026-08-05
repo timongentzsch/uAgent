@@ -10,6 +10,7 @@
 #include <regex>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #include "include/core/checked.h"
@@ -299,8 +300,7 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
     if (!input) continue;
     // Reserve the block header/footer overhead so the admission test below
     // never fails solely because the body consumed the whole budget.
-    size_t overhead = 1 /* '#' */ + memory.key.size() + 3 /* "\n\n" */ +
-                      +4 /* leading '\n' after '#' + trailing */;
+    size_t overhead = 5 + memory.key.size();  // "# " + key + "\n" + "\n\n"
     if (used >= max_bytes || overhead >= max_bytes - used) {
       index.truncated = true;
       break;
@@ -309,6 +309,7 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
     std::string body(body_cap + 1, '\0');
     input.read(body.data(), static_cast<std::streamsize>(body.size()));
     size_t read = static_cast<size_t>(input.gcount());
+    if (read > body_cap) index.truncated = true;
     body.resize(std::min(read, body_cap));
     body = Utf8Prefix(std::move(body), body_cap);
     body = RedactMemorySecrets(std::move(body));

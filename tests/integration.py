@@ -2270,7 +2270,8 @@ def test_memory_reaches_context_by_scope(root, home):
         valid = (
             bool(memories)
             and "global/style" in memories
-            and "global-memory-sentinel" not in memories
+            and "[always-on behavioral memory; non-authoritative evidence]" in memories
+            and "global-memory-sentinel" in memories
             and "project/build" in memories
             and "project-memory-sentinel" not in memories
             and next(
@@ -2296,7 +2297,7 @@ def test_memory_reaches_context_by_scope(root, home):
         valid = (
             "global/style" in memories
             and "project/build" not in memories
-            and "global-memory-sentinel" not in memories
+            and "global-memory-sentinel" in memories
         )
         return event({"content": "isolated-ok" if valid else "isolated-bad"})
 

@@ -570,28 +570,33 @@ class Application {
              std::to_string(runtime_.processes.DetachedCount());
     };
 
+    auto unmount = [&] {
+      if (!composer.Drawn()) return;
+      output.Write("\r\033[" + std::to_string(composer.CaretRow() + 1) +
+                   "A\033[J");
+      composer.Detach();
+    };
+
     auto mount = [&](const std::string& prompt = InputPrompt(),
                      const std::string& initial = std::string()) {
+      unmount();
       output.Write(rendered_status());
-      composer.Set(prompt, initial);
+      composer.Mount(prompt, initial);
     };
 
     auto insert = [&](std::string text) {
       if (text.empty()) return;
       if (text.back() != '\n') text += '\n';
-      // Move from the caret to the composer block top, then one more row to
-      // the status line, and clear from there to the end of the screen (which
-      // removes the whole status + composer block).
-      output.Write("\033[" + std::to_string(composer.CaretRow() + 1) + "A\r\033[J");
+      unmount();
       output.Write(text);
       output.Write(rendered_status());
-      composer.Render();
+      composer.Remount();
     };
 
     auto redraw = [&] {
-      output.Write("\033[" + std::to_string(composer.CaretRow() + 1) + "A\r\033[J");
+      unmount();
       output.Write(rendered_status());
-      composer.Render();
+      composer.Remount();
     };
 
     auto flush_output = [&](bool all) {
@@ -660,8 +665,8 @@ class Application {
             if (working && SteeringEnabled() && !interrupting) {
               interrupting = true;
               SteeringState().Request();
+              redraw();
             }
-            mount(InputPrompt(), saved_draft);
           } else if (event.kind == InteractiveInputKind::kEof) {
             exit_when_idle = true;
             mount();

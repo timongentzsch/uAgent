@@ -361,9 +361,13 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
       MemoryIndex always =
           LoadAlwaysOnMemory(CanonicalAccessPath(CanonicalCwd()), always_bytes);
       instructions.memory_always = std::move(always.text);
-      instructions.memory_sources.insert(instructions.memory_sources.end(),
-                                         always.sources.begin(),
-                                         always.sources.end());
+      for (const std::string& source : always.sources) {
+        if (std::find(instructions.memory_sources.begin(),
+                      instructions.memory_sources.end(),
+                      source) == instructions.memory_sources.end()) {
+          instructions.memory_sources.push_back(source);
+        }
+      }
       instructions.truncated |= always.truncated;
     }
   }
@@ -410,14 +414,12 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
         if (!app->options.yolo) {
           // Print the full command/payload before asking, so long commands are
           // never truncated in the approval prompt.
-          std::string payload =
-              TerminalSafe(ToolSummary(tool, arguments));
-          fprintf(stdout, "%sallow %s%s\n%s\n%s\n",
-                  YEL(), TerminalSafe(tool.name).c_str(), RST(),
-                  payload.c_str(), RST());
-          std::string question =
-              std::string(YEL()) + "allow " + TerminalSafe(tool.name) + "? [Y/n] " +
-              RST();
+          std::string payload = TerminalSafe(ToolSummary(tool, arguments));
+          fprintf(stdout, "%sallow %s%s\n%s\n%s\n", YEL(),
+                  TerminalSafe(tool.name).c_str(), RST(), payload.c_str(),
+                  RST());
+          std::string question = std::string(YEL()) + "allow " +
+                                 TerminalSafe(tool.name) + "? [Y/n] " + RST();
           bool eof = false;
           std::string answer =
               Trim(ReadInputLine(question, &eof, /*keep_history=*/false));

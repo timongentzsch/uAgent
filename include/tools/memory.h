@@ -31,6 +31,9 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
 std::vector<MemoryEntry> ListMemories();
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd);
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes);
+// Behavioral always-on slice: full content of global-scope memories, capped.
+MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
+                               size_t max_bytes);
 // Deterministic last line of defense for both explicit and generated writes.
 std::string RedactMemorySecrets(std::string text);
 

@@ -103,6 +103,18 @@ class RawComposer {
   explicit RawComposer(const InteractiveOutput& output) : output_(output) {}
   ~RawComposer() { Stop(); }
 
+  // Number of terminal rows the current buffer occupies when displayed (1 when
+  // empty/onone-line, >1 when the input wraps past the prompt row).
+  size_t Height() const {
+    std::string shown = TerminalSafe(buffer_);
+    size_t full = DisplayWidth(shown);
+    if (full == 0) return 1;
+    size_t available = static_cast<size_t>(std::max(
+        int64_t{1},
+        TerminalColumns() - static_cast<int64_t>(DisplayWidth(prompt_)) - 1));
+    return 1 + (full - 1) / available;
+  }
+
   bool Start() {
     if (active_ || tcgetattr(STDIN_FILENO, &saved_) != 0) return false;
     termios raw = saved_;
@@ -225,15 +237,35 @@ class RawComposer {
     size_t available = static_cast<size_t>(std::max(
         int64_t{1},
         TerminalColumns() - static_cast<int64_t>(DisplayWidth(prompt_)) - 1));
-    if (DisplayWidth(safe) > available) {
-      safe = DisplayTrunc(std::move(safe), available);
+
+    // Long input wraps across visual rows instead of truncating with ….
+    size_t full_width = DisplayWidth(safe);
+    size_t rows = full_width == 0 ? 1 : 1 + (full_width - 1) / available;
+
+    // Erase the previously rendered input block (starting at the row above the
+    // current cursor line and going up), then write each wrapped row. The
+    // prompt prefix shares the first row with the text.
+    output_.Write("\r\033[2K");
+    for (size_t row = 0; row < rows; ++row) {
+      if (row > 0) output_.Write("\033[1A\033[2K");
+      size_t start = row * available;
+      size_t take = std::min(available, full_width - start);
+      if (row == 0) {
+        output_.Write(prompt_);
+        output_.Write("\r\033[" + std::to_string(DisplayWidth(prompt_)) + "C");
+      }
+      output_.Write(safe.substr(start, take));
     }
-    std::string line = "\r\033[2K" + prompt_ + safe;
-    if (DisplayWidth(shown) <= available) {
-      size_t right = DisplayWidth(shown) - DisplayWidth(before);
-      if (right) line += "\033[" + std::to_string(right) + "D";
-    }
-    output_.Write(line);
+    // The cursor is now at the end of the last row. Walk it up and left to the
+    // correct scrollback position without clearing the freshly written block.
+    size_t before_width = DisplayWidth(before);
+    size_t cursor_row = rows > 1 ? before_width / available : 0;
+    size_t row_text = std::min(available, full_width - cursor_row * available);
+    size_t cursor_col = rows > 1 ? before_width % available : before_width;
+    size_t lines_up = rows - 1 - cursor_row;
+    if (lines_up) output_.Write("\033[" + std::to_string(lines_up) + "A");
+    size_t left = row_text - std::min(cursor_col, row_text);
+    if (left) output_.Write("\033[" + std::to_string(left) + "D");
   }
 
  private:

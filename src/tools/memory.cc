@@ -284,4 +284,38 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
   return index;
 }
 
+// Behavioral "always-on" slice: the full content of global-scope memories is
+// injected into the startup context in addition to the index, capped by
+// UAGENT_MEMORY_ALWAYS_BYTES. Global scope is the applies-everywhere bucket, so
+// these are exactly the standing preferences/corrections the agent should not
+// have to remember to go look up.
+MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
+                               size_t max_bytes) {
+  MemoryIndex index;
+  size_t used = 0;
+  for (const MemoryEntry& memory : ListMemories(cwd)) {
+    if (!memory.key.starts_with("global/")) continue;
+    std::ifstream input(memory.path, std::ios::binary);
+    if (!input) continue;
+    std::string body(static_cast<size_t>(max_bytes - used) + 1, '\0');
+    input.read(body.data(),
+               static_cast<std::streamsize>(body.size()));
+    size_t read = static_cast<size_t>(input.gcount());
+    body.resize(std::min(read, max_bytes - used));
+    body = Utf8Prefix(std::move(body), max_bytes - used);
+    body = RedactMemorySecrets(std::move(body));
+    if (Trim(body).empty()) continue;
+    std::string block = "# " + memory.key + "\n" + body + "\n\n";
+    std::optional<size_t> total = CheckedAdd(used, block.size());
+    if (!total || *total > max_bytes) {
+      index.truncated = true;
+      break;
+    }
+    used = *total;
+    index.text += block;
+    index.sources.push_back(memory.path);
+  }
+  return index;
+}
+
 }  // namespace uagent

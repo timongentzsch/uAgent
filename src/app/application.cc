@@ -579,14 +579,19 @@ class Application {
     auto insert = [&](std::string text) {
       if (text.empty()) return;
       if (text.back() != '\n') text += '\n';
-      output.Write("\r\033[2K\033[1A\r\033[J");
+      // Move to the top of the composer block (column 0), then clear the
+      // block. Height() accounts for wrapped input; for a single row only the
+      // status line above needs clearing (Render() below redraws the composer).
+      output.Write("\r\033[" + std::to_string(composer.Height()) + "A");
+      output.Write(composer.Height() == 1 ? "\033[2K" : "\033[J");
       output.Write(text);
       output.Write(rendered_status());
       composer.Render();
     };
 
     auto redraw = [&] {
-      output.Write("\r\033[2K\033[1A\r\033[J");
+      output.Write("\r\033[" + std::to_string(composer.Height()) + "A");
+      output.Write(composer.Height() == 1 ? "\033[2K" : "\033[J");
       output.Write(rendered_status());
       composer.Render();
     };
@@ -691,7 +696,7 @@ class Application {
         redraw();
       }
 
-      if (working) {
+      if (working && !answering) {
         auto now = std::chrono::steady_clock::now();
         std::string current_state = status_state();
         bool state_changed = current_state != last_state;

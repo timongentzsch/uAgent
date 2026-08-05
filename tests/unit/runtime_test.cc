@@ -168,6 +168,7 @@ void TestRuntimeOwnershipHelpers() {
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 100);
   CHECK(defaults.max_turn_seconds == 3600);
+  CHECK(defaults.first_event_timeout_s == 300);
   CHECK(defaults.stream_idle_timeout_s == 300);
   CHECK(defaults.request_timeout_s == 600);
 

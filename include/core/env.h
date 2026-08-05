@@ -105,7 +105,7 @@ int64_t TerminalRecordDays();
 // Core request, MCP, and persistence settings, parsed once after
 // ~/.uagent/.config is loaded.
 struct RuntimeConfig {
-  int64_t first_event_timeout_s = 120;
+  int64_t first_event_timeout_s = 300;
   int64_t stream_idle_timeout_s = 300;
   int64_t request_timeout_s = 600;
   int64_t request_bytes = 64 * 1024 * 1024;

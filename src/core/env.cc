@@ -239,6 +239,9 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
       c.checkpoint_mode != "apply") {
     c.checkpoint_mode = "apply";
   }
+  if (!ValidOpenRouterVariant(c.openrouter_variant)) {
+    c.openrouter_variant.clear();
+  }
   if (c.web_search_backend != "auto" && c.web_search_backend != "responses" &&
       c.web_search_backend != "openrouter" && c.web_search_backend != "off") {
     c.web_search_backend = "auto";

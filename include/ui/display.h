@@ -41,11 +41,14 @@ inline std::string ContextUsage(int64_t used, int64_t window) {
 
 #if defined(HAVE_EDITLINE)
 inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
-  std::vector<std::string> models, efforts{"default"};
+  std::vector<std::string> models, efforts{"default"}, variants{"default"};
   for (const ModelRoute& route : routes) models.push_back(route.name);
   efforts.insert(efforts.end(), std::begin(kReasoningEfforts),
                  std::end(kReasoningEfforts));
-  ConfigureCompletion(models, efforts);
+  for (std::string_view variant : kOpenRouterVariants) {
+    variants.emplace_back(variant);
+  }
+  ConfigureCompletion(models, efforts, variants);
 }
 #endif
 
@@ -118,8 +121,8 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   const Usage& u = agent.SessionUsage();
   std::string host = UrlHost(api.base_url);
   int64_t used = agent.ContextUsed();
-  std::string s = ModelLabel(api.model, api.reasoning_effort) + " @ " + host +
-                  " · ctx " + FmtCount(used);
+  std::string s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " @ " +
+                  host + " · ctx " + FmtCount(used);
   if (u.cache_read) s += " · cache " + FmtCount(u.cache_read) + " total";
   if (u.cost > 0) s += " · spent " + FmtCost(u.cost);
   size_t background = processes.PendingCount() + processes.DetachedCount();
@@ -131,7 +134,7 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   if (g_tty && DisplayWidth(s) > static_cast<size_t>(width)) {
     // On a cramped terminal keep live state ahead of long path/route labels.
     // PrintStatusBar performs the final UTF-8-safe clipping.
-    s = ModelLabel(api.model, api.reasoning_effort) + " · ctx " +
+    s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " · ctx " +
         FmtCount(used);
     if (u.cost > 0) s += " · " + FmtCost(u.cost);
     if (yolo) s += " · YOLO";

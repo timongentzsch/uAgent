@@ -26,6 +26,7 @@ Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 | `OPENROUTER_EFFORT` | empty | OpenRouter effort when the UAGENT effort is absent |
 | `UAGENT_OPENROUTER_PROVIDER` | empty | OpenRouter provider-routing preference |
 | `UAGENT_OPENROUTER_FALLBACKS` | `1` | allow OpenRouter provider fallbacks |
+| `UAGENT_OPENROUTER_VARIANT` | empty | routing mode: `nitro`, `floor`, or `exacto` |
 | `UAGENT_APPROVAL` | prompt | set `yolo` for non-interactive tool approval |
 | `UAGENT_SESSION_BUDGET` | `0` | reported-cost session limit in USD; `0` disables |
 | `UAGENT_MAX_TURN_COST` | `1` | reported-cost limit per turn in USD |
@@ -47,10 +48,10 @@ UAGENT_MODEL=local/fast
 | Variable | Default | Purpose |
 | --- | ---: | --- |
 | `UAGENT_FIRST_EVENT_TIMEOUT` | 120 | seconds to first streamed event |
-| `UAGENT_STREAM_IDLE_TIMEOUT` | 90 | seconds between streamed events |
-| `UAGENT_REQUEST_TIMEOUT` | 300 | complete request seconds |
-| `UAGENT_MAX_TURN_SECONDS` | 900 | complete turn seconds |
-| `UAGENT_MAX_STEPS` | 40 | model rounds per turn |
+| `UAGENT_STREAM_IDLE_TIMEOUT` | 300 | seconds between streamed events |
+| `UAGENT_REQUEST_TIMEOUT` | 600 | complete request seconds |
+| `UAGENT_MAX_TURN_SECONDS` | 3600 | complete turn seconds |
+| `UAGENT_MAX_STEPS` | 100 | model rounds per turn |
 | `UAGENT_MAX_TOOL_CALLS` | 100 | tool calls per turn |
 | `UAGENT_REQUEST_BYTES` | 67108864 | maximum serialized request |
 | `UAGENT_RESPONSE_BYTES` | 33554432 | maximum response |

@@ -66,6 +66,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      CommandCompletion::kNone},
     {SlashCommandId::kTrace, "/trace", "", "show latest tool and search trace",
      CommandCompletion::kNone},
+    {SlashCommandId::kVariant, "/variant", "MODE",
+     "set OpenRouter provider routing", CommandCompletion::kVariants},
     {SlashCommandId::kVerbose, "/verbose", "", "toggle full tool traces",
      CommandCompletion::kNone},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval",
@@ -129,6 +131,7 @@ struct ReadlineState {
   std::vector<std::string> commands;
   std::vector<std::string> models;
   std::vector<std::string> efforts;
+  std::vector<std::string> variants;
   const std::vector<std::string>* candidates = nullptr;
   int rows = 0;
   int columns = 0;
@@ -183,6 +186,8 @@ char** UagentCompletion(const char* text, int start, int) {
       Readline().candidates = &Readline().models;
     } else if (command->completion == CommandCompletion::kEfforts) {
       Readline().candidates = &Readline().efforts;
+    } else if (command->completion == CommandCompletion::kVariants) {
+      Readline().candidates = &Readline().variants;
     } else if (command->completion == CommandCompletion::kFilenames) {
       rl_attempted_completion_over = 0;
       return nullptr;
@@ -279,6 +284,7 @@ void RegisterCompletion(CommandCompletion source, const std::string& value) {
   std::vector<std::string>* values = nullptr;
   if (source == CommandCompletion::kModels) values = &Readline().models;
   if (source == CommandCompletion::kEfforts) values = &Readline().efforts;
+  if (source == CommandCompletion::kVariants) values = &Readline().variants;
   if (!values || value.empty() ||
       std::find(values->begin(), values->end(), value) != values->end()) {
     return;
@@ -287,21 +293,27 @@ void RegisterCompletion(CommandCompletion source, const std::string& value) {
 }
 
 void ConfigureCompletion(const std::vector<std::string>& models,
-                         const std::vector<std::string>& efforts) {
+                         const std::vector<std::string>& efforts,
+                         const std::vector<std::string>& variants) {
   Readline().commands.clear();
   Readline().models = models;
   Readline().efforts = efforts;
+  Readline().variants = variants;
   for (const SlashCommandSpec& command : kSlashCommands) {
     if (*command.description) Readline().commands.push_back(command.name);
   }
   std::sort(Readline().models.begin(), Readline().models.end());
   std::sort(Readline().efforts.begin(), Readline().efforts.end());
+  std::sort(Readline().variants.begin(), Readline().variants.end());
   Readline().models.erase(
       std::unique(Readline().models.begin(), Readline().models.end()),
       Readline().models.end());
   Readline().efforts.erase(
       std::unique(Readline().efforts.begin(), Readline().efforts.end()),
       Readline().efforts.end());
+  Readline().variants.erase(
+      std::unique(Readline().variants.begin(), Readline().variants.end()),
+      Readline().variants.end());
   rl_attempted_completion_function = UagentCompletion;
 }
 

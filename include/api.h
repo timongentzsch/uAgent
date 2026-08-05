@@ -52,6 +52,7 @@ class Api {
 
   void PreserveAssistantReasoning(json& message,
                                   const ChatResult& result) const;
+  std::string RequestModel() const;
   json BuildChatBody(const json& messages, const json& tool_schemas,
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const;

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "include/core/json.h"
 #include "include/core/signals.h"
@@ -41,6 +42,17 @@ int64_t SubagentMaxToolCalls();
 std::string TaskModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
+
+inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
+                                                           "exacto"};
+
+inline bool ValidOpenRouterVariant(std::string_view variant) {
+  if (variant.empty()) return true;
+  for (std::string_view candidate : kOpenRouterVariants) {
+    if (variant == candidate) return true;
+  }
+  return false;
+}
 
 // Bounded tunables. Every UAGENT_* limit the agent honours is declared here
 // with its default and its clamp, so the set can be read — and compared with
@@ -94,8 +106,8 @@ int64_t TerminalRecordDays();
 // ~/.uagent/.config is loaded.
 struct RuntimeConfig {
   int64_t first_event_timeout_s = 120;
-  int64_t stream_idle_timeout_s = 90;
-  int64_t request_timeout_s = 300;
+  int64_t stream_idle_timeout_s = 300;
+  int64_t request_timeout_s = 600;
   int64_t request_bytes = 64 * 1024 * 1024;
   int64_t response_bytes = 32 * 1024 * 1024;
   int64_t max_steps = 100;
@@ -121,6 +133,7 @@ struct RuntimeConfig {
   int64_t session_archive_bytes = 16 * 1024 * 1024;
   std::string checkpoint_mode = "apply";
   std::string openrouter_provider;
+  std::string openrouter_variant;
   std::string web_search_backend = "auto";
   std::string web_search_url;
   std::string web_search_api_key;
@@ -207,6 +220,8 @@ struct RuntimeConfig {
        &RuntimeConfig::checkpoint_mode, "apply"},
       {"UAGENT_OPENROUTER_PROVIDER", "openrouter_provider",
        &RuntimeConfig::openrouter_provider, ""},
+      {"UAGENT_OPENROUTER_VARIANT", "openrouter_variant",
+       &RuntimeConfig::openrouter_variant, ""},
       {"UAGENT_WEB_SEARCH_BACKEND", "web_search_backend",
        &RuntimeConfig::web_search_backend, "auto"},
       {"UAGENT_WEB_SEARCH_URL", "web_search_url",

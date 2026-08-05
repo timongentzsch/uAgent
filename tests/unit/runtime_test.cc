@@ -104,6 +104,7 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
   setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
   setenv("UAGENT_MEMORY_GENERATE", "0", 1);
+  setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
   const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
   std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
   unsetenv("UAGENT_CHECKPOINT_MODE");
@@ -128,11 +129,13 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_max_uses == 1);
   CHECK(!config.web_search_server);
   CHECK(!config.memory_generate);
+  CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
   CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
+  CHECK(diagnostics.value("openrouter_variant", "") == "floor");
   CHECK(!diagnostics.value("memory_generate", true));
   CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
@@ -159,9 +162,14 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_WEB_SEARCH_MAX_RESULTS");
   unsetenv("UAGENT_WEB_SEARCH_MAX_USES");
   unsetenv("UAGENT_WEB_SEARCH_SERVER");
+  setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
+  CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
+  unsetenv("UAGENT_OPENROUTER_VARIANT");
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 100);
   CHECK(defaults.max_turn_seconds == 3600);
+  CHECK(defaults.stream_idle_timeout_s == 300);
+  CHECK(defaults.request_timeout_s == 600);
 
   RuntimeConfig routed;
   routed.openrouter_provider = "streamlake";
@@ -175,6 +183,17 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body["provider"]["order"][0] == "streamlake");
   CHECK(body["provider"].value("allow_fallbacks", false));
   CHECK(!body.contains("stream_options"));
+  api.config.openrouter_variant = "nitro";
+  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  CHECK(body.value("model", "") == "test:nitro");
+  api.model = "test:exacto";
+  api.config.openrouter_variant = "floor";
+  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  CHECK(body.value("model", "") == "test:floor");
+  api.model = "test:free";
+  api.config.openrouter_variant = "exacto";
+  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  CHECK(body.value("model", "") == "test:free:exacto");
   api.reasoning_effort = "low";
   body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
@@ -182,6 +201,7 @@ void TestRuntimeOwnershipHelpers() {
   api.base_url = "http://127.0.0.1:8080/v1";
   api.openrouter_compatible = false;
   body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  CHECK(body.value("model", "") == "test:free");
   CHECK(!body.contains("session_id"));
   CHECK(!body.contains("provider"));
 

@@ -137,6 +137,10 @@ int64_t MemorySessionBytes() {
                     1024 * 1024);
 }
 
+int64_t MemoryAlwaysBytes() {
+  return EnvBounded("UAGENT_MEMORY_ALWAYS_BYTES", 2048, 0, 64 * 1024);
+}
+
 int64_t SkillBodyBytes() {
   return EnvBounded("UAGENT_SKILL_BYTES", 512 * 1024, 1024, 1024 * 1024);
 }

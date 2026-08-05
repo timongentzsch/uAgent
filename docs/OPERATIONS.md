@@ -18,6 +18,7 @@ or multi-tenant service.
 | recent tool trace / prune batch | 64 / 32 KiB |
 | background jobs / safe workers | 8 / 4 |
 | memory file / files / session input | 2 KiB / 32 per scope / 64 KiB |
+| memory always-on slice | 2 KiB |
 | memory idle / eligible age | 6 hours / 10 days |
 | attachment / terminal image | 10 / 10 MiB |
 | checkpoint hint / urgent / emergency | 65 / 85 / 95% |
@@ -38,6 +39,9 @@ session on interactive startup. Tune its eligibility with
 `UAGENT_MEMORY_IDLE_SECONDS` and `UAGENT_MEMORY_SESSION_DAYS`, and its filtered
 input cap with `UAGENT_MEMORY_SESSION_BYTES`. Completed maintenance output is
 discarded instead of being injected into the next model request.
+
+The always-on slice inlines behavioral (global-scope) memory into the startup
+context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
 
 Child processes are credential-sanitized. Approved shell commands alone may
 receive explicitly named variables through `UAGENT_SHELL_ENV_ALLOW`. Project

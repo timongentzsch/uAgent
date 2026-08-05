@@ -37,6 +37,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
          {"project_instruction_chars", project_instructions_.text.size()},
          {"memory_sources", project_instructions_.memory_sources},
          {"memory_index_chars", project_instructions_.memory_index.size()},
+         {"memory_always_chars", project_instructions_.memory_always.size()},
          {"project_instructions_truncated", project_instructions_.truncated}});
   }
   Reset();

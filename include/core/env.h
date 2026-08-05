@@ -57,6 +57,7 @@ int64_t MaxMemories();
 int64_t MemoryIdleSeconds();
 int64_t MemorySessionAgeDays();
 int64_t MemorySessionBytes();
+int64_t MemoryAlwaysBytes();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
 // bodies are sent only when a skill is opened.
@@ -97,7 +98,7 @@ struct RuntimeConfig {
   int64_t request_timeout_s = 300;
   int64_t request_bytes = 64 * 1024 * 1024;
   int64_t response_bytes = 32 * 1024 * 1024;
-  int64_t max_steps = 40;
+  int64_t max_steps = 100;
   int64_t max_tool_calls = 100;
   int64_t max_turn_seconds = 900;
   double max_turn_cost = 1.0;

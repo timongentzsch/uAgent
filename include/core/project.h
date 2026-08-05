@@ -22,6 +22,7 @@ namespace uagent {
 struct ProjectInstructions {
   std::string text;
   std::string memory_index;
+  std::string memory_always;
   std::vector<std::string> sources;
   std::vector<std::string> memory_sources;
   bool truncated = false;

@@ -203,6 +203,9 @@ class Application {
       case SlashCommandId::kTrace:
         agent_.PrintTrace();
         break;
+      case SlashCommandId::kVariant:
+        HandleVariant(command.argument);
+        break;
       case SlashCommandId::kVerbose:
         agent_.SetVerbose(!agent_.Verbose());
         printf("%s· verbose %s%s\n", DIM(),
@@ -415,6 +418,41 @@ class Application {
       ActivateCurrentRoute();
       printf("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
     }
+  }
+
+  void HandleVariant(const std::string& argument) {
+    if (!api_.openrouter_compatible) {
+      printf("%s· /variant is available only for OpenRouter%s\n", RED(), RST());
+      return;
+    }
+    std::string variant = argument;
+    if (variant.starts_with(':')) variant.erase(0, 1);
+    if (variant.empty()) {
+      std::string label = api_.config.openrouter_variant.empty()
+                              ? "default"
+                              : ":" + api_.config.openrouter_variant;
+      printf("%s· variant %s · choose default, nitro, floor, or exacto%s\n",
+             DIM(), label.c_str(), RST());
+      return;
+    }
+    if (variant == "default") variant.clear();
+    if (!ValidOpenRouterVariant(variant)) {
+      printf("%s· variant must be default, nitro, floor, or exacto%s\n", RED(),
+             RST());
+      return;
+    }
+    api_.config.openrouter_variant = variant;
+    runtime_.config.openrouter_variant = variant;
+    setenv("UAGENT_OPENROUTER_VARIANT", variant.c_str(), 1);
+    ActivateCurrentRoute();
+    const char* detail = "provider default";
+    if (variant == "nitro") detail = "highest throughput";
+    if (variant == "floor") detail = "lowest price";
+    if (variant == "exacto") detail = "quality-first tool reliability";
+    DebugLog("variant_changed",
+             {{"variant", variant}, {"model", api_.RequestModel()}});
+    std::string label = variant.empty() ? "default" : ":" + variant;
+    printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
   }
 
   void HandleCompact() {

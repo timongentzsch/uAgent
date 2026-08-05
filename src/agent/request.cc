@@ -27,7 +27,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
                    {"turn", turn_id_},
                    {"step", step},
                    {"purpose", purpose},
-                   {"model", api_.model},
+                   {"model", api_.RequestModel()},
                    {"session_id", session_id_},
                    {"total_messages", conversation_.Size()},
                    {"tool_schemas", schemas.size()},

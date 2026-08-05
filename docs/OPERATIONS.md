@@ -7,7 +7,8 @@ or multi-tenant service.
 
 | Concern | Default |
 | --- | ---: |
-| request / complete turn | 300 / 3600 s |
+| first event / stream idle | 120 / 300 s |
+| request / complete turn | 600 / 3600 s |
 | model rounds / tool calls | 100 / 100 |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
 | reported turn cost | $1 |

@@ -3227,6 +3227,64 @@ def test_route_commands_refresh_session_identity(root, home):
         server.close()
 
 
+def test_openrouter_variant_is_scoped_to_openrouter(root, home):
+    router = Server(
+        [
+            event({"content": "nitro-ok"}),
+            event({"content": "floor-ok"}),
+            event({"content": "exacto-ok"}),
+            event({"content": "default-ok"}),
+        ]
+    )
+    generic = Server([event({"content": "generic-ok"})])
+    providers = {
+        "router": {
+            "base_url": router.url,
+            "api_key": "router-key",
+            "protocol": "openrouter",
+            "models": {"main": "vendor/model"},
+        },
+        "generic": {
+            "base_url": generic.url,
+            "api_key": "generic-key",
+            "models": {"main": "other/model"},
+        },
+    }
+    try:
+        env = base_env(home, router.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["UAGENT_MODEL"] = "router/main"
+        result = run_dialog(
+            root,
+            env,
+            "/variant\n/variant :nitro\none\n/variant floor\ntwo\n"
+            "/variant exacto\nthree\n/variant default\nfour\n"
+            "/model generic/main\n/variant nitro\nfive\n/q\n",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("choose default, nitro, floor, or exacto" in result.stdout, result.stdout)
+        assert_true("/variant is available only for OpenRouter" in result.stdout, result.stdout)
+        for reply in ("nitro-ok", "floor-ok", "exacto-ok", "default-ok", "generic-ok"):
+            assert_true(reply in result.stdout, result.stdout)
+        router_bodies = [body for _, body in router.requests]
+        assert_true(
+            [body.get("model") for body in router_bodies]
+            == [
+                "vendor/model:nitro",
+                "vendor/model:floor",
+                "vendor/model:exacto",
+                "vendor/model",
+            ],
+            router_bodies,
+        )
+        assert_true(generic.requests[0][1].get("model") == "other/model", generic.requests)
+        session_ids = [body.get("session_id") for body in router_bodies]
+        assert_true(all(session_ids) and len(set(session_ids)) == 4, session_ids)
+    finally:
+        router.close()
+        generic.close()
+
+
 def test_handoff_compacts_then_switches_route(root, home):
     first = Server(
         [

@@ -40,7 +40,7 @@ struct StreamCtx {
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
   int64_t first_event_timeout_s = 120;
-  int64_t idle_timeout_s = 90;
+  int64_t idle_timeout_s = 300;
   size_t response_cap = 32 * 1024 * 1024;
   size_t received = 0;
   std::string timeout_reason;

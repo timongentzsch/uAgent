@@ -216,6 +216,7 @@ void ExportRoute(const Api& api) {
   setenv("UAGENT_BASE_URL", api.base_url.c_str(), 1);
   setenv("UAGENT_MODEL", api.model.c_str(), 1);
   setenv("UAGENT_REASONING_EFFORT", api.reasoning_effort.c_str(), 1);
+  setenv("UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant.c_str(), 1);
   setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
 }
 
@@ -244,8 +245,8 @@ std::string RouteProfilesPath() {
 }
 
 std::string RouteProfileKey(const Api& api) {
-  return RouteKey(api.base_url, api.config.openrouter_provider, api.model,
-                  api.reasoning_effort);
+  return RouteKey(api.base_url, api.config.openrouter_provider,
+                  api.RequestModel(), api.reasoning_effort);
 }
 
 namespace {
@@ -261,7 +262,8 @@ json LoadRouteProfiles() {
 }
 
 std::string RouteFamilyKey(const Api& api) {
-  return RouteKey(api.base_url, api.config.openrouter_provider, api.model, "");
+  return RouteKey(api.base_url, api.config.openrouter_provider,
+                  api.RequestModel(), "");
 }
 
 json CertifiedProfile(const json& profiles, const std::string& key) {
@@ -319,8 +321,9 @@ json ApplyRouteProfile(Api& api) {
           recommendation->is_object()) {
         std::string effort = JsonValue(*recommendation, "effort", "");
         std::string route = JsonValue(*recommendation, "route", "");
-        std::string expected = RouteKey(
-            api.base_url, api.config.openrouter_provider, api.model, effort);
+        std::string expected =
+            RouteKey(api.base_url, api.config.openrouter_provider,
+                     api.RequestModel(), effort);
         json profile = CertifiedProfile(profiles, route);
         if (!effort.empty() && ValidEffort(effort) && route == expected &&
             !profile.empty() && ProfileMatchesConfig(profile, api)) {

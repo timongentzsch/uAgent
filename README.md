@@ -132,6 +132,7 @@ requires interactive trust or `--trust-project-config`.
 | --- | --- |
 | `/models [QUERY]`, `/model MODEL` | Search or change route |
 | `/effort LEVEL\|default` | Set reasoning effort |
+| `/variant MODE\|default` | Set OpenRouter routing (`nitro`, `floor`, or `exacto`) |
 | `/attach PATH\|clear` | Queue an attachment or clear the queue |
 | `/memory` | Show recall/contribution state and saved keys |
 | `/context`, `/trace`, `/cost` | Inspect request, execution, or spend |

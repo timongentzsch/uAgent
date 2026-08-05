@@ -12,7 +12,13 @@
 
 namespace uagent {
 
-enum class CommandCompletion { kNone, kFilenames, kModels, kEfforts };
+enum class CommandCompletion {
+  kNone,
+  kFilenames,
+  kModels,
+  kEfforts,
+  kVariants
+};
 enum class SlashCommandId {
   kAttach,
   kCompact,
@@ -29,6 +35,7 @@ enum class SlashCommandId {
   kReset,
   kSessions,
   kTrace,
+  kVariant,
   kVerbose,
   kYolo,
 };
@@ -65,7 +72,8 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler);
 #if defined(HAVE_EDITLINE)
 void RegisterCompletion(CommandCompletion source, const std::string& value);
 void ConfigureCompletion(const std::vector<std::string>& models,
-                         const std::vector<std::string>& efforts);
+                         const std::vector<std::string>& efforts,
+                         const std::vector<std::string>& variants);
 #endif
 
 std::string InputPrompt(const char* label = "");

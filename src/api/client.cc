@@ -70,11 +70,29 @@ void Api::PreserveAssistantReasoning(json& message,
   }
 }
 
+std::string Api::RequestModel() const {
+  if (!openrouter_compatible || config.openrouter_variant.empty()) return model;
+  std::string base = model;
+  bool stripped = true;
+  while (stripped) {
+    stripped = false;
+    for (std::string_view variant : kOpenRouterVariants) {
+      std::string suffix = ":" + std::string(variant);
+      if (!base.ends_with(suffix)) continue;
+      base.resize(base.size() - suffix.size());
+      stripped = true;
+      break;
+    }
+  }
+  return base + ":" + config.openrouter_variant;
+}
+
 json Api::BuildChatBody(const json& messages, const json& tool_schemas,
                         const std::string& session_id,
                         bool* web_available) const {
   if (web_available) *web_available = false;
-  json body = {{"model", model}, {"messages", messages}, {"stream", true}};
+  json body = {
+      {"model", RequestModel()}, {"messages", messages}, {"stream", true}};
   if (native_tools && !tool_schemas.empty()) {
     json request_tools = json::array();
     bool server_search = openrouter_compatible && config.web_search_server &&

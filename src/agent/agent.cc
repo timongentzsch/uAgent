@@ -79,8 +79,8 @@ void Agent::RouteChanged() {
 }
 
 std::string Agent::ActiveRoute() const {
-  return RouteKey(api_.base_url, api_.config.openrouter_provider, api_.model,
-                  api_.reasoning_effort);
+  return RouteKey(api_.base_url, api_.config.openrouter_provider,
+                  api_.RequestModel(), api_.reasoning_effort);
 }
 
 void Agent::AddRouteUsage(const Usage& usage) {
@@ -104,8 +104,8 @@ void Agent::PrintContext() const {
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   SessionRecord record;
-  record.metadata = {CanonicalCwd(), api_.model, session_id_, UserTurns(),
-                     FirstUserText()};
+  record.metadata = {CanonicalCwd(), api_.RequestModel(), session_id_,
+                     UserTurns(), FirstUserText()};
   record.state = {conversation_.Messages(),
                   conversation_.Kinds(),
                   conversation_.Archive(),

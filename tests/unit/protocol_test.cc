@@ -131,6 +131,9 @@ void TestRegistries() {
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
+  command = ParseSlashCommand("/variant nitro");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kVariant);
+  CHECK(command.argument == "nitro");
   command = ParseSlashCommand("/trace");
   CHECK(command.spec && command.spec->id == SlashCommandId::kTrace);
   command = ParseSlashCommand("/verbose");

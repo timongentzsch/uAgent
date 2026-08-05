@@ -218,8 +218,9 @@ void LogReady(const AppContext& context) {
   const RuntimeConfig& config = context.runtime.config;
   Debug().Write("session_ready",
                 {{"base_url", api.base_url},
-                 {"model", api.model},
+                 {"model", api.RequestModel()},
                  {"reasoning_effort", api.reasoning_effort},
+                 {"openrouter_variant", config.openrouter_variant},
                  {"openrouter_compatible", api.openrouter_compatible},
                  {"configured_models", context.provider.routes.size()},
                  {"context_window", api.ctx_window},

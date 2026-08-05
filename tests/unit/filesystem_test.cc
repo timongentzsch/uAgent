@@ -267,6 +267,16 @@ void TestTerminalSafety() {
   g_tty = prior;
   CHECK(DisplayWidth("ASCII") == 5);
   CHECK(DisplayWidth("界") >= 1);
+  CHECK(WrapLines("abcdef", 3) == std::vector<std::string>({"abc", "def"}));
+  std::string wide = "a界b";
+  std::vector<std::string> wrapped_wide = WrapLines(wide, 2);
+  std::string joined_wide;
+  for (const std::string& row : wrapped_wide) {
+    joined_wide += row;
+    CHECK(DisplayWidth(row) <= 2);
+  }
+  CHECK(joined_wide == wide);
+  CHECK(WrapLines("", 3) == std::vector<std::string>({""}));
   CHECK(SafeFileComponent("../../escape") == "______escape");
   CHECK(FirstLine(std::string(200, 'x')).size() == 200);
   CHECK(FirstLine("first\nsecond") == "first");

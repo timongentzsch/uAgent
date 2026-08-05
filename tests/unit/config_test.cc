@@ -78,9 +78,17 @@ void TestProjectInstructionDiscovery() {
   loaded.memory_index = memories.text;
   loaded.memory_sources = memories.sources;
   loaded.truncated |= memories.truncated;
+  MemoryIndex always = LoadAlwaysOnMemory(child, 64);
   CHECK(loaded.sources.size() == 3);  // one file per directory
   CHECK(loaded.memory_sources.size() == 1);
   CHECK(!loaded.truncated);
+  CHECK(always.sources.size() == 1);
+  CHECK(!always.truncated);
+  CHECK(always.text.find("# global/lesson") != std::string::npos);
+  CHECK(always.text.find("remembered-evidence") != std::string::npos);
+  MemoryIndex capped_memory = LoadAlwaysOnMemory(child, 24);
+  CHECK(capped_memory.truncated);
+  CHECK(capped_memory.text.size() <= 24);
   CHECK(loaded.text.find("ignored-agent") == std::string::npos);
   // CLAUDE.md is a fallback, so it must not load beside an AGENTS file
   CHECK(loaded.text.find("root-claude") == std::string::npos);

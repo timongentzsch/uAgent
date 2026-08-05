@@ -9,6 +9,7 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <condition_variable>
 #include <cstdio>
@@ -17,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/cli.h"
 #include "include/core/strings.h"
@@ -103,58 +105,10 @@ class RawComposer {
   explicit RawComposer(const InteractiveOutput& output) : output_(output) {}
   ~RawComposer() { Stop(); }
 
-  // Height (in terminal rows) of the current buffer's wrapped layout. Row 0 is
-  // the topmost row, immediately below the status line.
-  size_t Height() const { return ComputeLayout().rows.size(); }
-
-  // Terminal row (within the block) on which the caret sits, 0 = top. Used by
-  // the application to relocate to the block top before streaming output.
-  size_t CaretRow() const { return ComputeLayout().caret_row; }
-
-  // Display columns available on the text row after the prompt prefix.
-  size_t available_columns() const {
-    return static_cast<size_t>(std::max(
-        int64_t{1},
-        TerminalColumns() - static_cast<int64_t>(DisplayWidth(prompt_)) - 1));
-  }
-
-  // Wrapped rows plus the caret's (row, column) within them. Both the row
-  // count (Height) and the caret placement derive from this single layout so
-  // they can never disagree with the text actually drawn.
-  struct Layout {
-    std::vector<std::string> rows;
-    size_t caret_row = 0;
-    size_t caret_col = 0;
-  };
-
-  Layout ComputeLayout() const {
-    std::string shown = buffer_;
-    ReplaceAll(shown, "\n", "↵");
-    std::string safe = TerminalSafe(shown);
-    size_t avail = available_columns();
-    std::vector<std::string> rows = WrapLines(safe, avail);
-    if (rows.empty()) rows = {""};
-
-    std::string before = buffer_.substr(0, cursor_);
-    ReplaceAll(before, "\n", "↵");
-    size_t before_width = DisplayWidth(TerminalSafe(before));
-    size_t row = 0;
-    size_t col = 0;
-    while (row < rows.size()) {
-      size_t row_width = DisplayWidth(rows[row]);
-      if (before_width <= row_width) {
-        col = before_width;
-        break;
-      }
-      before_width -= row_width;
-      ++row;
-    }
-    if (row >= rows.size()) {
-      row = rows.size() - 1;
-      col = DisplayWidth(rows.back());
-    }
-    return {std::move(rows), row, col};
-  }
+  // These describe the block actually on screen, not a newly computed layout.
+  // That distinction matters after a resize and while an edit changes wrapping.
+  bool Drawn() const { return drawn_rows_ > 0; }
+  size_t CaretRow() const { return caret_row_; }
 
   bool Start() {
     if (active_ || tcgetattr(STDIN_FILENO, &saved_) != 0) return false;
@@ -175,11 +129,28 @@ class RawComposer {
     active_ = false;
   }
 
-  void Set(std::string prompt, std::string initial = {}) {
+  // The application calls Mount only after leaving the cursor at the cleared
+  // composer block top, directly below its status row.
+  void Mount(std::string prompt, std::string initial = {}) {
     prompt_ = std::move(prompt);
     buffer_ = std::move(initial);
     cursor_ = buffer_.size();
-    Render();
+    Detach();
+    RenderFromTop();
+  }
+
+  // Repaint the current buffer after the application cleared and rebuilt the
+  // status row, again leaving the cursor at the composer block top.
+  void Remount() {
+    Detach();
+    RenderFromTop();
+  }
+
+  // Forget the old footprint after the application erased the whole mounted
+  // status/composer region.
+  void Detach() {
+    drawn_rows_ = 0;
+    caret_row_ = 0;
   }
 
   // Clear the current input line and repaint an empty prompt.
@@ -248,7 +219,10 @@ class RawComposer {
           if (history_.size() > 200) history_.pop_front();
         }
         history_index_ = history_.size();
-        output_.Write("\r\033[2K" + prompt_ + TerminalSafe(line) + "\n");
+        MoveToTop();
+        EraseDrawnRows();
+        output_.Write("\r" + prompt_ + TerminalSafe(line) + "\n");
+        Detach();
         return {InteractiveInputKind::kLine, std::move(line)};
       }
       if (ch == 0x04) {
@@ -276,49 +250,102 @@ class RawComposer {
     return {};
   }
 
-  void Render() const {
-    // Invariant: the cursor is at composer block row 0 (column 0) when this is
-    // called. The application and Read() both relocate to block row 0 before
-    // calling Render (see the end of Read()). Erase the previously drawn block,
-    // redraw the new layout top-to-bottom, then place the caret. drawn_rows_
-    // tracks the previous footprint so both grow and shrink are handled.
-    Layout layout = ComputeLayout();
-    size_t count = layout.rows.size();
+ private:
+  struct Layout {
+    std::vector<std::string> rows;
+    size_t caret_row = 0;
+    size_t caret_col = 0;
+  };
 
-    // Erase the previously drawn block: clear row 0 and every row below that
-    // was drawn last time, then return to row 0.
-    for (size_t i = 0; i < drawn_rows_; ++i) {
-      if (i > 0) output_.Write("\033[1B");
-      output_.Write("\033[2K");
+  size_t AvailableColumns() const {
+    return static_cast<size_t>(std::max(
+        int64_t{1},
+        TerminalColumns() - static_cast<int64_t>(DisplayWidth(prompt_)) - 1));
+  }
+
+  static std::string DisplayText(std::string text) {
+    ReplaceAll(text, "\n", "↵");
+    ReplaceAll(text, "\t", "⇥");
+    return TerminalSafe(text);
+  }
+
+  Layout ComputeLayout() const {
+    std::string safe = DisplayText(buffer_);
+    std::vector<std::string> rows = WrapLines(safe, AvailableColumns());
+    if (rows.empty()) rows = {""};
+
+    size_t before_width = DisplayWidth(DisplayText(buffer_.substr(0, cursor_)));
+    size_t row = 0;
+    while (row + 1 < rows.size()) {
+      size_t row_width = DisplayWidth(rows[row]);
+      if (before_width <= row_width) break;
+      before_width -= row_width;
+      ++row;
+    }
+    size_t caret_col = std::min(before_width, DisplayWidth(rows[row]));
+    return {std::move(rows), row, caret_col};
+  }
+
+  void MoveToTop() {
+    output_.Write("\r");
+    if (caret_row_ > 0) {
+      output_.Write("\033[" + std::to_string(caret_row_) + "A");
+    }
+  }
+
+  void EraseDrawnRows() {
+    for (size_t row = 0; row < drawn_rows_; ++row) {
+      output_.Write("\r\033[2K");
+      if (row + 1 < drawn_rows_) output_.Write("\033[1B");
     }
     if (drawn_rows_ > 1) {
       output_.Write("\033[" + std::to_string(drawn_rows_ - 1) + "A");
     }
+    output_.Write("\r");
+  }
+
+  void Render() {
+    MoveToTop();
+    RenderFromTop();
+  }
+
+  void RenderFromTop() {
+    Layout layout = ComputeLayout();
+    size_t count = layout.rows.size();
+    size_t previous_rows = drawn_rows_;
+    EraseDrawnRows();
 
     // Draw the new block top-to-bottom. Growing taller emits real newlines so
     // extra rows are created rather than overwriting the status line above.
     for (size_t i = 0; i < count; ++i) {
       if (i > 0) {
-        if (i >= drawn_rows_) {
-          output_.Write("\n");
+        if (i >= previous_rows) {
+          output_.Write("\n\r");
         } else {
-          output_.Write("\033[1B");
+          output_.Write("\033[1B\r");
         }
       }
       output_.Write("\033[2K");
       if (i == 0) output_.Write(prompt_);
       output_.Write(layout.rows[i]);
     }
-    // Cursor is at (count-1, end-of-row). Place the caret at its (row, col).
-    size_t rows_down = count - 1 - layout.caret_row;
-    if (rows_down) output_.Write("\033[" + std::to_string(rows_down) + "A");
-    size_t left = DisplayWidth(layout.rows[layout.caret_row]) - layout.caret_col;
-    if (left) output_.Write("\033[" + std::to_string(left) + "D");
+
+    // Place the caret from column zero so prompt width and continuation rows
+    // are handled explicitly rather than inferred from the old cursor column.
+    output_.Write("\r");
+    size_t rows_up = count - 1 - layout.caret_row;
+    if (rows_up > 0) {
+      output_.Write("\033[" + std::to_string(rows_up) + "A");
+    }
+    size_t caret_column = layout.caret_col;
+    if (layout.caret_row == 0) caret_column += DisplayWidth(prompt_);
+    if (caret_column > 0) {
+      output_.Write("\033[" + std::to_string(caret_column) + "C");
+    }
 
     drawn_rows_ = count;
+    caret_row_ = layout.caret_row;
   }
-
- private:
   static size_t PreviousUtf8(const std::string& text, size_t at) {
     if (at == 0) return 0;
     --at;
@@ -371,8 +398,8 @@ class RawComposer {
   termios saved_{};
   bool active_ = false;
   bool paste_ = false;
-  mutable size_t drawn_rows_ = 0;
-  size_t last_caret_row_ = 0;
+  size_t drawn_rows_ = 0;
+  size_t caret_row_ = 0;
   std::string prompt_ = InputPrompt();
   std::string buffer_;
   size_t cursor_ = 0;

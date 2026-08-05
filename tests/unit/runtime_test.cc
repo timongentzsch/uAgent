@@ -159,6 +159,9 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_WEB_SEARCH_MAX_RESULTS");
   unsetenv("UAGENT_WEB_SEARCH_MAX_USES");
   unsetenv("UAGENT_WEB_SEARCH_SERVER");
+  RuntimeConfig defaults;
+  CHECK(defaults.max_steps == 100);
+  CHECK(defaults.max_turn_seconds == 3600);
 
   RuntimeConfig routed;
   routed.openrouter_provider = "streamlake";

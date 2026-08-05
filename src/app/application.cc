@@ -579,20 +579,22 @@ class Application {
     auto insert = [&](std::string text) {
       if (text.empty()) return;
       if (text.back() != '\n') text += '\n';
-      // Move to the top of the composer block (column 0), then clear the
-      // block. Height() accounts for wrapped input; for a single row only the
-      // status line above needs clearing (Render() below redraws the composer).
-      output.Write("\r\033[" + std::to_string(composer.Height()) + "A");
-      output.Write(composer.Height() == 1 ? "\033[2K" : "\033[J");
+      size_t h = composer.Height();
+      // Clear the composer block (Height() rows) plus the status line above it,
+      // then write the transcript, redraw the status bar, and repaint the
+      // composer. Height()==1 reduces to the original single-line sequence.
+      output.Write("\r\033[2K\033[" + std::to_string(h) + "A\r\033[J");
       output.Write(text);
       output.Write(rendered_status());
+      if (h > 1) output.Write("\033[" + std::to_string(h - 1) + "B");
       composer.Render();
     };
 
     auto redraw = [&] {
-      output.Write("\r\033[" + std::to_string(composer.Height()) + "A");
-      output.Write(composer.Height() == 1 ? "\033[2K" : "\033[J");
+      size_t h = composer.Height();
+      output.Write("\r\033[2K\033[" + std::to_string(h) + "A\r\033[J");
       output.Write(rendered_status());
+      if (h > 1) output.Write("\033[" + std::to_string(h - 1) + "B");
       composer.Render();
     };
 
@@ -654,7 +656,11 @@ class Application {
             answering = false;
             mount(InputPrompt(), saved_draft);
           } else if (event.kind == InteractiveInputKind::kEscape) {
-            saved_draft = std::move(event.text);
+            // A bare Escape clears the current input line (and any stashed
+            // draft). Still honour a steering/interrupt request if the agent is
+            // working, so Esc doubles as the interrupt key.
+            saved_draft.clear();
+            composer.Clear();
             if (working && SteeringEnabled() && !interrupting) {
               interrupting = true;
               SteeringState().Request();

@@ -359,7 +359,7 @@ void Agent::RefreshBaseline() {
   json memories = MemoryMsg();
   conversation_.RefreshBaseline(
       SysMsg(), project_instructions_.text.empty() ? nullptr : &project,
-      HasMemoryContent(project_instructions_) ? nullptr : &memories);
+      HasMemoryContent(project_instructions_) ? &memories : nullptr);
 }
 
 json Agent::CheckpointSysMsg() const {

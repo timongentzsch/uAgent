@@ -54,6 +54,11 @@ size_t DisplayWidth(const std::string& s);
 
 std::string DisplayTrunc(std::string s, size_t columns);
 
+// Wrap ANSI-free display text into rows each bounded by `columns` display
+// columns, never splitting a UTF-8 codepoint. Used for line-wrapping terminal
+// input/output where DisplayTrunc (ellipsis truncation) is not wanted.
+std::vector<std::string> WrapLines(const std::string& s, size_t columns);
+
 size_t JsonEstimatedBytes(const json& value);
 
 std::string StripTrailingSlashes(std::string s);

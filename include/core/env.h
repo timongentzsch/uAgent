@@ -100,7 +100,7 @@ struct RuntimeConfig {
   int64_t response_bytes = 32 * 1024 * 1024;
   int64_t max_steps = 100;
   int64_t max_tool_calls = 100;
-  int64_t max_turn_seconds = 900;
+  int64_t max_turn_seconds = 3600;
   double max_turn_cost = 1.0;
   double session_budget = 0;
   int64_t tool_timeout_s = 30;

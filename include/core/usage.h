@@ -24,6 +24,8 @@ struct Usage {
   int64_t cache_write = 0;
   int64_t web_searches = 0;
 
+  int64_t GeneratedTokens() const { return output + reasoning; }
+
   void Merge(const Usage& other) {
     input += other.input;
     output += other.output;

@@ -174,13 +174,21 @@ void TestFileTools() {
   if (edit_tool) {
     CHECK(edit_tool
               ->run({{"path", registered.string()},
-                     {"old", "a"},
-                     {"new", "b"},
-                     {"replace_all", true},
-                     {"edits", json::array({{{"old", "c"}, {"new", "d"}}})}},
+                     {"edits",
+                      json::array(
+                          {{{"old", "a"}, {"new", "b"}, {"replace_all", true}},
+                           {{"old", "c"}, {"new", "d"}}})}},
                     {})
               .output.starts_with("edited "));
     CHECK(contents(registered) == "b b d\n");
+    CHECK(InvalidToolArgument(
+              *edit_tool,
+              {{"path", registered.string()},
+               {"old", "b b d\n"},
+               {"new", "b b d\nonce\n"},
+               {"edits",
+                json::array({{{"old", "b b d\n"}, {"new", "b b d\nonce\n"}}})}})
+              .find("unknown argument") != std::string::npos);
     ToolResult invalid = edit_tool->run({{"path", registered.string()},
                                          {"old", "b"},
                                          {"new", "c"},

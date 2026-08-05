@@ -66,6 +66,12 @@ routing, and orchestration improvements instead of relying on anecdote.
 versioned lifecycle JSONL. Usage distinguishes reported zero cost from
 unavailable provider cost.
 
+Response `tok/s` counts all provider-reported generated tokens, including
+hidden reasoning. Plain-text streams use time after the first token; reasoning
+responses use the full request because hidden reasoning is generated before the
+first visible summary or answer event. `first` is client-observed time to that
+first semantic stream event.
+
 `uagent eval` gives every model a fresh workspace, home, session, fixture,
 prompt contract, and cost ceiling:
 
@@ -106,7 +112,8 @@ the foreground operation;
 delegated and detached work keeps running unless explicitly cancelled.
 
 Memory uses the same progressive-disclosure shape as project context: startup
-injects bounded names only and bodies are fetched on demand. On interactive
+injects bounded names only; the model can list/search when that index is
+insufficient and fetches bodies on demand. On interactive
 startup, at most one eligible prior session that has been idle for six hours is
 filtered and consolidated by a bounded background child using the current
 route and only the memory tool. It may update one durable project/global lesson

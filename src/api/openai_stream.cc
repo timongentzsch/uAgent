@@ -82,8 +82,10 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     const json& error = value["error"];
     result.remote_error_type = RemoteErrorType(error);
     result.remote_error_code = RemoteErrorCode(error);
-    result.retryable = RetryableRemoteError(result.remote_error_type,
-                                            result.remote_error_code);
+    result.retryable =
+        RetryableRemoteError(result.remote_error_type,
+                             result.remote_error_code) ||
+        RetryableRemoteMessage(JsonValue(error, "message", std::string()));
     result.error = JsonErrorMessage(value, "stream failed");
     return delta;
   }

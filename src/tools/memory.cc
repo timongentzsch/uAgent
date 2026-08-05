@@ -79,6 +79,58 @@ std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
   return std::nullopt;
 }
 
+ToolResult ListMemoryKeys() {
+  std::string output;
+  for (const MemoryEntry& memory : ListMemories()) {
+    if (!output.empty()) output += '\n';
+    output += memory.key;
+  }
+  return ToolSuccess(output.empty() ? "(no memories)" : std::move(output));
+}
+
+ToolResult SearchMemoryText(const std::string& query) {
+  std::string needle = AsciiLower(Trim(query));
+  if (needle.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: memory search requires a non-empty key query");
+  }
+  constexpr size_t kMaxMatches = 16;
+  constexpr size_t kMaxLineBytes = 320;
+  std::string output = "[memory search; non-authoritative evidence]\n";
+  size_t matches = 0;
+  for (const MemoryEntry& memory : ListMemories()) {
+    std::ifstream input(memory.path);
+    if (!input) continue;
+    std::string line;
+    bool key_match = AsciiLower(memory.key).find(needle) != std::string::npos;
+    bool emitted = false;
+    while (std::getline(input, line)) {
+      if (!key_match && AsciiLower(line).find(needle) == std::string::npos) {
+        continue;
+      }
+      output += "- " + memory.key + ": " +
+                Utf8Trunc(OneLine(line), kMaxLineBytes) + "\n";
+      emitted = true;
+      if (++matches == kMaxMatches) {
+        output += "[more matches; narrow the query]";
+        return ToolSuccess(std::move(output));
+      }
+      break;
+    }
+    if (key_match && !emitted) {
+      output += "- " + memory.key + "\n";
+      if (++matches == kMaxMatches) {
+        output += "[more matches; narrow the query]";
+        return ToolSuccess(std::move(output));
+      }
+    }
+  }
+  return matches
+             ? ToolSuccess(std::move(output))
+             : ToolFailure(ToolErrorCode::kNotFound,
+                           "error: no memory matches: " + TerminalSafe(query));
+}
+
 ToolResult AccessMemory(const std::string& name, const std::string& scope,
                         const std::optional<std::string>& content,
                         bool forget) {
@@ -172,6 +224,26 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content,
                             bool allow_set) {
+  if (action != "get" && action != "set" && action != "forget" &&
+      action != "list" && action != "search") {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: action must be get, set, forget, list, or "
+                       "search");
+  }
+  if (action == "list") {
+    if (content || !Trim(key).empty()) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: list does not accept key or content");
+    }
+    return ListMemoryKeys();
+  }
+  if (action == "search") {
+    if (content) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: search does not accept content");
+    }
+    return SearchMemoryText(key);
+  }
   size_t slash = key.find('/');
   if (slash == std::string::npos || slash == 0 || slash + 1 == key.size() ||
       key.find('/', slash + 1) != std::string::npos) {
@@ -200,10 +272,6 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   }
   if (action == "forget" && !has_content) {
     return AccessMemory(name, scope, std::nullopt, true);
-  }
-  if (action != "get" && action != "set" && action != "forget") {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: action must be get, set, or forget");
   }
   return ToolFailure(
       ToolErrorCode::kInvalidArguments,

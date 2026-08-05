@@ -438,9 +438,11 @@ def test_transient_stream_errors_retry_before_progress(root, home):
         [
             {
                 "error": {
-                    "message": "temporary server failure",
-                    "type": "server_error",
-                    "code": "server_error",
+                    "message": (
+                        "Codex response failed: {'type': 'service_unavailable_error', "
+                        "'code': 'server_is_overloaded', 'message': 'overloaded'}"
+                    ),
+                    "type": "proxy_error",
                 }
             },
             {
@@ -856,8 +858,7 @@ def test_python_scratch_script_can_be_edited_and_rerun(root, home):
                 "edit_file",
                 {
                     "path": str(script),
-                    "old": "value = 2 * 3",
-                    "new": "value = 2 * 5",
+                    "edits": [{"old": "value = 2 * 3", "new": "value = 2 * 5"}],
                 },
             )
             if valid
@@ -1158,9 +1159,30 @@ def test_signal_exit_restores_terminal(root, home):
 
 
 def test_response_stats(root, home):
-    def delayed_response(_, __):
-        time.sleep(0.05)
-        return event({"content": "stats-ok"}, usage={"completion_tokens": 4})
+    def delayed_response(handler, __):
+        time.sleep(0.1)
+        first = ("data: " + json.dumps(event({"content": "stats-ok"})) + "\n\n").encode()
+        final = (
+            "data: "
+            + json.dumps(
+                event(
+                    {},
+                    usage={
+                        "completion_tokens": 10,
+                        "completion_tokens_details": {"reasoning_tokens": 6},
+                    },
+                )
+            )
+            + "\n\ndata: [DONE]\n\n"
+        ).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.end_headers()
+        handler.wfile.write(first)
+        handler.wfile.flush()
+        time.sleep(0.1)
+        handler.wfile.write(final)
+        handler.wfile.flush()
 
     server = Server([delayed_response])
     try:
@@ -1171,7 +1193,8 @@ def test_response_stats(root, home):
         lines = result.stdout.splitlines()
         stats_index = next(index for index, line in enumerate(lines) if "tok/s" in line)
         throughput = float(lines[stats_index].split(" tok/s")[0].rsplit(" · ", 1)[1])
-        assert_true(0 < throughput < 500, throughput)
+        assert_true(35 < throughput < 75, throughput)
+        assert_true("(+6 reasoning)" in lines[stats_index], result.stdout)
         assert_true("ctx " in lines[stats_index + 1], result.stdout)
     finally:
         server.close()
@@ -2344,6 +2367,50 @@ def test_memory_get_accepts_empty_optional_content(root, home):
         result_run = run(workspace, env, "-p", "recall memory")
         assert_true(result_run.returncode == 0, result_run.stderr)
         assert_true(result_run.stdout.strip() == "memory-get-ok", result_run.stdout)
+    finally:
+        server.close()
+
+
+def test_memory_list_and_search_are_progressive(root, home):
+    workspace = root / "memory-search-workspace"
+    workspace.mkdir()
+    memory_dir = project_memory_dir(home, workspace)
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "release-window.md").write_text(
+        "Deploy only on Friday after CI passes.", encoding="utf-8"
+    )
+
+    def search(_, body):
+        schema = function_tool(body, "memory")["parameters"]
+        valid = schema["required"] == ["action"] and {
+            "list",
+            "search",
+        } <= set(schema["properties"]["action"]["enum"])
+        return (
+            tool_call("memory", {"action": "search", "key": "Friday"})
+            if valid
+            else event({"content": "memory-search-schema-bad"})
+        )
+
+    def finish(_, body):
+        result = next(
+            message["content"] for message in body["messages"] if message.get("role") == "tool"
+        )
+        return event(
+            {
+                "content": "memory-search-ok"
+                if "project/release-window" in result and "Friday" in result
+                else "memory-search-bad"
+            }
+        )
+
+    server = Server([search, finish])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "32768"
+        result = run(workspace, env, "-p", "search memory")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "memory-search-ok", result.stdout)
     finally:
         server.close()
 
@@ -5064,6 +5131,7 @@ def test_subagent_can_mix_model_routes(root, home):
     parent = Server([delegate, wait, wait, finish])
     try:
         env = base_env(home, parent.url)
+        env["UAGENT_CONTEXT"] = "32768"
         env["UAGENT_PROVIDERS"] = json.dumps(
             {
                 "fast": {

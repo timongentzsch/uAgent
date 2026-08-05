@@ -1186,14 +1186,24 @@ def test_response_stats(root, home):
 
     server = Server([delayed_response])
     try:
-        result = run_dialog(root, base_env(home, server.url), "hello\n/q\n")
+        trace = root / "response-stats.jsonl"
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "hello\n/q\n",
+            f"--debug={trace}",
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("tok/s" in result.stdout, result.stdout)
         assert_true("first " in result.stdout, result.stdout)
         lines = result.stdout.splitlines()
         stats_index = next(index for index, line in enumerate(lines) if "tok/s" in line)
         throughput = float(lines[stats_index].split(" tok/s")[0].rsplit(" · ", 1)[1])
-        assert_true(35 < throughput < 75, throughput)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        turn_end = next(record["data"] for record in records if record["event"] == "turn_end")
+        expected = turn_end["generated_tokens"] * 1000 / turn_end["generation_ms"]
+        assert_true(turn_end["generated_tokens"] == 10, turn_end)
+        assert_true(abs(throughput - expected) < 0.06, (throughput, turn_end))
         assert_true("(+6 reasoning)" in lines[stats_index], result.stdout)
         assert_true("ctx " in lines[stats_index + 1], result.stdout)
     finally:

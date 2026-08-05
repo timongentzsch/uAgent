@@ -47,7 +47,7 @@ UAGENT_MODEL=local/fast
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `UAGENT_FIRST_EVENT_TIMEOUT` | 120 | seconds to first streamed event |
+| `UAGENT_FIRST_EVENT_TIMEOUT` | 300 | seconds to first streamed event |
 | `UAGENT_STREAM_IDLE_TIMEOUT` | 300 | seconds between streamed events |
 | `UAGENT_REQUEST_TIMEOUT` | 600 | complete request seconds |
 | `UAGENT_MAX_TURN_SECONDS` | 3600 | complete turn seconds |

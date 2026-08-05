@@ -228,8 +228,12 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                            {"remote_error_type", res.remote_error_type},
                            {"remote_error_code", res.remote_error_code}});
     if (render_stream) {
-      printf("%s· transient provider failure — retry %d/%d in %.1fs%s\n", DIM(),
-             attempt, kChatAttempts - 1, delay.count() / 1000.0, RST());
+      std::string reason = res.error.starts_with("model ")
+                               ? res.error
+                               : "transient provider failure";
+      printf("%s· %s — retry %d/%d in %.1fs%s\n", DIM(),
+             TerminalSafe(reason).c_str(), attempt, kChatAttempts - 1,
+             delay.count() / 1000.0, RST());
     }
     if (!WaitForRetry(delay)) {
       res.error.clear();

@@ -276,6 +276,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 
 std::string Agent::SystemPrompt() const {
   std::string prompt = kSystemPrompt;
+  prompt += CapabilityPrompt(tools_);
   prompt += TerminalImageInstruction();
   if (!api_.native_tools) prompt += TextProtocolPrompt(tools_);
   return prompt;

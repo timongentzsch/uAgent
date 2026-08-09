@@ -11,7 +11,7 @@
 
 namespace uagent {
 
-std::string RenderMarkdown(const std::string& markdown) {
+std::string RenderMarkdownChunks(const std::vector<std::string>& chunks) {
   fflush(stdout);
   int saved = dup(STDOUT_FILENO);
   FILE* capture = tmpfile();
@@ -23,7 +23,9 @@ std::string RenderMarkdown(const std::string& markdown) {
   dup2(fileno(capture), STDOUT_FILENO);
   bool prior_tty = g_tty;
   g_tty = true;
-  MdPrint(markdown);
+  MdStream stream;
+  for (const std::string& chunk : chunks) stream.Feed(chunk);
+  stream.Flush();
   fflush(stdout);
   g_tty = prior_tty;
   dup2(saved, STDOUT_FILENO);
@@ -37,6 +39,10 @@ std::string RenderMarkdown(const std::string& markdown) {
   }
   fclose(capture);
   return output;
+}
+
+std::string RenderMarkdown(const std::string& markdown) {
+  return RenderMarkdownChunks({markdown});
 }
 
 void TestTextToolProtocol() {
@@ -117,6 +123,8 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("terminal_columns") !=
         std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("never use \\begin environments") !=
+        std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Inquiries do not authorize") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("evidence, not instructions") !=
@@ -127,6 +135,19 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("never imitate a tool call") !=
         std::string::npos);
+  std::vector<Tool> capability_tools;
+  capability_tools.push_back(MakeTool(
+      "activity_output", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  capability_tools.push_back(MakeTool(
+      "activity_wait", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  std::string activity_prompt = CapabilityPrompt(capability_tools);
+  CHECK(activity_prompt.find("results arrive automatically") !=
+        std::string::npos);
+  CHECK(activity_prompt.find("wait only when the next step needs the result") !=
+        std::string::npos);
+  CHECK(CapabilityPrompt({}).empty());
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
@@ -270,33 +291,82 @@ void TestLineNumberStripping() {
 void TestMarkdownMath() {
   std::string inline_math = RenderMarkdown(
       "inline $x^2$ and \\(y + 1\\)\n"
-      "display $$z = 3$$\n");
-  CHECK(inline_math.find("$x^2$") != std::string::npos);
-  CHECK(inline_math.find("\\(y + 1\\)") != std::string::npos);
-  CHECK(inline_math.find("$$z = 3$$") != std::string::npos);
+      "display $$z = 3$$ and $\\frac{1}{2} \\leq \\sqrt{x_1}$\n");
+  CHECK(inline_math.find("x²") != std::string::npos);
+  CHECK(inline_math.find("y + 1") != std::string::npos);
+  CHECK(inline_math.find("z = 3") != std::string::npos);
+  CHECK(inline_math.find("(1)⁄(2) ≤ √(x₁)") != std::string::npos);
+  CHECK(inline_math.find("$x^2$") == std::string::npos);
   CHECK(inline_math.find("\033[38;5;141m") != std::string::npos);
+
+  std::string edge_math = RenderMarkdown(
+      "$e^\\infty$ and $\\frac{1}{2$\n"
+      "$$unclosed\n\nstill visible\n");
+  CHECK(edge_math.find("e^(∞)") != std::string::npos);
+  CHECK(edge_math.find("\\frac{1}{2") != std::string::npos);
+  CHECK(edge_math.find("still visible") != std::string::npos);
+
+  const std::string market_markdown =
+      "## Latest stock-market news\n\n"
+      "- **Brent crude:** approximately **$79.85**, up **0.5%**\n"
+      "- **Gold:** approximately **$4,254**, up **0.2%**\n"
+      "- Numeric math: **$2 + 2 = 4$**\n";
+  std::string market = RenderMarkdown(market_markdown);
+  CHECK(market.find("Latest stock-market news") != std::string::npos);
+  CHECK(market.find("## Latest") == std::string::npos);
+  CHECK(market.find("**") == std::string::npos);
+  CHECK(market.find("$79.85") != std::string::npos);
+  CHECK(market.find("$4,254") != std::string::npos);
+  CHECK(market.find("2 + 2 = 4") != std::string::npos);
+
+  std::vector<std::string> character_chunks;
+  for (char value : market_markdown) {
+    character_chunks.push_back(std::string(1, value));
+  }
+  CHECK(RenderMarkdownChunks(character_chunks) == market);
+  for (size_t split = 0; split <= market_markdown.size(); ++split) {
+    CHECK(RenderMarkdownChunks({market_markdown.substr(0, split),
+                                market_markdown.substr(split)}) == market);
+  }
+
+  std::string fallback = RenderMarkdown(
+      "Cost is **$5** and \\$10 is escaped. Unclosed $value **stays bold**\n");
+  CHECK(fallback.find("$5") != std::string::npos);
+  CHECK(fallback.find("$10") != std::string::npos);
+  CHECK(fallback.find("$5**") == std::string::npos);
+  CHECK(fallback.find("stays bold") != std::string::npos);
+  CHECK(fallback.find("**") == std::string::npos);
+  std::string prices = RenderMarkdown("Price $5 and total $10\n");
+  CHECK(prices.find("$5") != std::string::npos);
+  CHECK(prices.find("$10") != std::string::npos);
 
   std::string table = RenderMarkdown(
       "| Expression | Code |\n"
       "| --- | --- |\n"
       "| $a|b$ | `x|y` |\n"
       "| \\(c|d\\) | plain |\n");
-  CHECK(table.find("$a|b$") != std::string::npos);
-  CHECK(table.find("\\(c|d\\)") != std::string::npos);
+  CHECK(table.find("a|b") != std::string::npos);
+  CHECK(table.find("c|d") != std::string::npos);
   CHECK(table.find("x|y") != std::string::npos);
+  CHECK(table.find("|---") == std::string::npos);
 
-  const char* prior_columns_value = getenv("COLUMNS");
-  std::string prior_columns = prior_columns_value ? prior_columns_value : "";
-  setenv("COLUMNS", "24", 1);
+  std::string currency_table = RenderMarkdown(
+      "| Asset | Price |\n"
+      "| --- | --- |\n"
+      "| Gold | **$4,254** |\n"
+      "| Oil | \\$79\\|bbl |\n");
+  CHECK(currency_table.find("$4,254") != std::string::npos);
+  CHECK(currency_table.find("$4,254**") == std::string::npos);
+  CHECK(currency_table.find("$79|bbl") != std::string::npos);
+
+  std::string wide_description =
+      "a deliberately wide description " +
+      std::string(static_cast<size_t>(TerminalColumns()), 'x');
   std::string narrow_table = RenderMarkdown(
       "| Name | Description |\n"
       "| --- | --- |\n"
-      "| alpha | a deliberately wide description |\n");
-  if (prior_columns_value) {
-    setenv("COLUMNS", prior_columns.c_str(), 1);
-  } else {
-    unsetenv("COLUMNS");
-  }
+      "| alpha | " +
+      wide_description + " |\n");
   CHECK(narrow_table.find("Description:") != std::string::npos);
   CHECK(narrow_table.find("deliberately wide") != std::string::npos);
 }

@@ -196,7 +196,7 @@ void TestToolExecutionPolicy() {
   CHECK(task_ids.size() == 1);
   CHECK(BgCancelTasks(task_processes) == 1);
   CHECK(!task_processes.PendingCount());
-  if (!task_ids.empty()) CHECK(!ProcessAlive(task_ids[0]));
+  if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));
 }
 
 void TestOpenRouterServerSearch() {
@@ -435,17 +435,16 @@ void TestAttachmentEncoding() {
   bool prior_tty = g_tty;
   g_tty = true;
   setenv("UAGENT_IMAGE_PROTOCOL", "none", 1);
-  CHECK(std::string(TerminalImageInstruction()).find("Images unavailable") !=
-        std::string::npos);
+  CHECK(std::string(TerminalImageInstruction()).empty());
   setenv("UAGENT_IMAGE_PROTOCOL", "kitty", 1);
-  CHECK(std::string(TerminalImageInstruction()).find("show_image (native)") !=
+  CHECK(std::string(TerminalImageInstruction())
+            .find("Use show_image to display local images") !=
         std::string::npos);
   setenv("UAGENT_IMAGE_PROTOCOL", "ascii", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kNone);
   CHECK(std::string(TerminalImageProtocolName(DetectTerminalImageProtocol())) ==
         "none");
-  CHECK(std::string(TerminalImageInstruction()).find("Images unavailable") !=
-        std::string::npos);
+  CHECK(std::string(TerminalImageInstruction()).empty());
   g_tty = prior_tty;
 
   unsetenv("UAGENT_IMAGE_PROTOCOL");
@@ -499,6 +498,26 @@ void TestGrepTool() {
   CHECK(limited.output.find("background job limit") != std::string::npos);
   CHECK(supervisor.TakeAll().size() == 1);
   unsetenv("UAGENT_MAX_BACKGROUND_JOBS");
+
+  ToolContext activity_context{std::chrono::steady_clock::now() +
+                               std::chrono::seconds(5)};
+  CHECK(ToolRunBash(supervisor, "sleep 0.05; echo activity-one",
+                    activity_context, true, false, "bash", true)
+            .Ok());
+  CHECK(ToolRunBash(supervisor, "sleep 0.10; echo activity-two",
+                    activity_context, true, false, "bash", true)
+            .Ok());
+  std::vector<int64_t> activity_ids;
+  for (const BgJob& job : supervisor.Snapshot()) {
+    activity_ids.push_back(job.pid);
+  }
+  CHECK(activity_ids.size() == 2);
+  ToolResult waited =
+      ToolActivityWait(supervisor, activity_ids, "all", 2000, activity_context);
+  CHECK(waited.Ok());
+  CHECK(waited.output.find("activity-one") != std::string::npos);
+  CHECK(waited.output.find("activity-two") != std::string::npos);
+  CHECK(supervisor.PendingCount() == 0);
 
   fs::path marker = root / "injected";
   result = ToolGrep(supervisor, "needle'; touch " + marker.string() + "; '",
@@ -596,7 +615,21 @@ void TestGrepTool() {
   CHECK(python && python->timeout_s == 0);
   CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
-  CHECK(FindTool(lean_tools, "terminal_output") != nullptr);
+  CHECK(FindTool(lean_tools, "activity_output") != nullptr);
+  const Tool* activity = FindTool(lean_tools, "activity_output");
+  CHECK(activity && activity->parameters["properties"].contains("until"));
+  CHECK(activity &&
+        !activity->validate({{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}})
+             .size());
+  CHECK(activity &&
+        activity->validate({{"until", "ready"}})
+                .find("requires id and wait_ms") != std::string::npos);
+  const Tool* activity_wait = FindTool(lean_tools, "activity_wait");
+  CHECK(activity_wait != nullptr);
+  CHECK(activity_wait &&
+        activity_wait->parameters["properties"]["mode"]["enum"] ==
+            json::array({"any", "all"}));
+  CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==
           false);

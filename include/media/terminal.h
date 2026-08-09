@@ -55,11 +55,10 @@ inline const char* TerminalImageProtocolName(TerminalImageProtocol protocol) {
 }
 
 inline const char* TerminalImageInstruction() {
-  if (!g_tty) return " Images unavailable.";
-  if (DetectTerminalImageProtocol() == TerminalImageProtocol::kNone) {
-    return " Images unavailable.";
+  if (!g_tty || DetectTerminalImageProtocol() == TerminalImageProtocol::kNone) {
+    return "";
   }
-  return " Images: show_image (native).";
+  return " Use show_image to display local images in the terminal.";
 }
 
 template <class Emit>

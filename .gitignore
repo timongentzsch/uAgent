@@ -13,6 +13,7 @@ __pycache__/
 build/
 build-*/
 cmake-build-*/
+reports/
 CMakeCache.txt
 CMakeFiles/
 CTestTestfile.cmake

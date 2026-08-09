@@ -25,6 +25,8 @@ struct Skill {
   std::string description;  // front-matter summary used during discovery
   std::string dir;          // absolute, so SKILL.md can reference siblings
   std::string path;         // the SKILL.md itself
+  std::vector<std::string> required_tools;
+  std::string argument_hint;
 };
 
 struct SkillReadResult {
@@ -33,9 +35,12 @@ struct SkillReadResult {
 };
 
 // `key: value` pairs between the opening and closing `---`. Enough YAML for
-// the two keys a skill declares; anything else in the block is ignored.
-inline void ParseSkillFrontMatter(std::istream& input, std::string& name,
-                                  std::string& description) {
+// scalar metadata and a comma-separated tool dependency list; other keys are
+// ignored.
+inline void ParseSkillFrontMatter(
+    std::istream& input, std::string& name, std::string& description,
+    std::vector<std::string>* required_tools = nullptr,
+    std::string* argument_hint = nullptr) {
   std::string line;
   if (!std::getline(input, line) || Trim(line) != "---") return;
   while (std::getline(input, line)) {
@@ -48,6 +53,13 @@ inline void ParseSkillFrontMatter(std::istream& input, std::string& name,
       name = std::move(value);
     } else if (key == "description") {
       description = std::move(value);
+    } else if (key == "requires-tools" && required_tools) {
+      for (std::string tool : SplitPathList(value, ',')) {
+        tool = Trim(tool);
+        if (!tool.empty()) required_tools->push_back(std::move(tool));
+      }
+    } else if (key == "argument-hint" && argument_hint) {
+      *argument_hint = std::move(value);
     }
   }
 }
@@ -128,14 +140,23 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       std::ifstream input(file);
       if (!input) continue;
       std::string name, description;
-      ParseSkillFrontMatter(input, name, description);
+      std::vector<std::string> required_tools;
+      std::string argument_hint;
+      ParseSkillFrontMatter(input, name, description, &required_tools,
+                            &argument_hint);
       // The directory name wins: it is what the model names, and it cannot
       // collide with another skill or carry a path separator.
       name = SafeFileComponent(dir.filename().string());
       if (SkillExcluded(name) || Trim(description).empty()) continue;
       description = Utf8Trunc(std::move(description),
                               static_cast<size_t>(SkillDescriptionBytes()));
-      Skill skill{name, description, dir.string(), file.string()};
+      argument_hint = Utf8Trunc(OneLine(std::move(argument_hint)), 128);
+      Skill skill{name,
+                  description,
+                  dir.string(),
+                  file.string(),
+                  std::move(required_tools),
+                  std::move(argument_hint)};
       auto same = std::find_if(found.begin(), found.end(), [&](const Skill& s) {
         return s.name == skill.name;
       });
@@ -164,7 +185,8 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
 
 // The complete body without its front matter, bounded. Oversized skills fail
 // explicitly instead of silently giving the model a partial procedure.
-inline SkillReadResult ReadSkillBody(const Skill& skill) {
+inline SkillReadResult ReadSkillBody(const Skill& skill,
+                                     std::string arguments = {}) {
   std::ifstream input(skill.path, std::ios::binary);
   if (!input) return {false, "error: cannot read " + skill.path};
   std::string name, description;
@@ -182,8 +204,20 @@ inline SkillReadResult ReadSkillBody(const Skill& skill) {
   if (Trim(body).empty()) {
     return {false, "error: " + skill.path + " has no body"};
   }
-  std::string out =
-      "[skill " + skill.name + " — files in " + skill.dir + "]\n" + Trim(body);
+  ReplaceAll(body, "${SKILL_DIR}", skill.dir);
+  ReplaceAll(body, "$ARGUMENTS", arguments);
+  std::string out = "[skill " + skill.name + " — files in " + skill.dir + "]\n";
+  if (!arguments.empty()) out += "[arguments: " + arguments + "]\n";
+  std::string normalized = std::filesystem::path(skill.path).generic_string();
+  if (normalized.find("/.codex/skills/") != std::string::npos ||
+      normalized.find("/.claude/skills/") != std::string::npos) {
+    out +=
+        "[cross-agent compatibility: use only tools currently registered in "
+        "µAgent. Treat named vendor tools, MCP servers, packages, and runtime "
+        "features as unavailable until verified; adapt the procedure to the "
+        "closest registered tool.]\n";
+  }
+  out += Trim(body);
   return {true, std::move(out)};
 }
 

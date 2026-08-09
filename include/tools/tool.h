@@ -80,28 +80,38 @@ struct ToolResult {
   // Optional model-facing override for this call. Most tools inherit their
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
+  std::string display;  // optional terminal-only receipt
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };
 
 inline ToolResult ToolSuccess(std::string output, int64_t result_chars = -1) {
-  return {CompletionStatus::kSuccess, std::move(output), ToolErrorCode::kNone,
-          std::nullopt, result_chars};
+  ToolResult result;
+  result.output = std::move(output);
+  result.result_chars = result_chars;
+  return result;
 }
 
 inline ToolResult ToolFailure(ToolErrorCode error, std::string output) {
-  return {CompletionStatus::kFailed, std::move(output), error, std::nullopt,
-          -1};
+  ToolResult result;
+  result.status = CompletionStatus::kFailed;
+  result.output = std::move(output);
+  result.error = error;
+  return result;
 }
 
 inline ToolResult ToolCancelled(std::string output) {
-  return {CompletionStatus::kCancelled, std::move(output), ToolErrorCode::kNone,
-          std::nullopt, -1};
+  ToolResult result;
+  result.status = CompletionStatus::kCancelled;
+  result.output = std::move(output);
+  return result;
 }
 
 inline ToolResult ToolTimedOut(std::string output) {
-  return {CompletionStatus::kTimedOut, std::move(output), ToolErrorCode::kNone,
-          std::nullopt, -1};
+  ToolResult result;
+  result.status = CompletionStatus::kTimedOut;
+  result.output = std::move(output);
+  return result;
 }
 
 struct ToolContext {

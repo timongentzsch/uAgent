@@ -25,8 +25,18 @@ inline bool SkillMatches(const Skill& skill, std::string_view query) {
          AsciiLower(skill.description).find(needle) != std::string::npos;
 }
 
-inline ToolResult OpenSkill(const Skill& skill) {
-  SkillReadResult result = ReadSkillBody(skill);
+inline void KeepSupportedSkills(std::vector<Skill>& skills,
+                                const std::vector<Tool>& tools) {
+  std::erase_if(skills, [&](const Skill& skill) {
+    return std::any_of(skill.required_tools.begin(), skill.required_tools.end(),
+                       [&](const std::string& name) {
+                         return FindTool(tools, name) == nullptr;
+                       });
+  });
+}
+
+inline ToolResult OpenSkill(const Skill& skill, std::string arguments = {}) {
+  SkillReadResult result = ReadSkillBody(skill, std::move(arguments));
   return result.ok
              ? ToolSuccess(std::move(result.output))
              : ToolFailure(ToolErrorCode::kInternal, std::move(result.output));
@@ -80,6 +90,9 @@ inline std::string SkillToolDescription(const std::vector<Skill>& skills) {
           Utf8Prefix(OneLine(skill.description), description_bytes);
       if (!description.empty()) line += ": " + description;
     }
+    if (!skill.argument_hint.empty()) {
+      line += " [args: " + OneLine(skill.argument_hint, 64) + "]";
+    }
     line += '\n';
     size_t suffix = index + 1 < skills.size() ? kMore.size() : 0;
     if (out.size() + line.size() + suffix > kMaxChars) {
@@ -112,16 +125,21 @@ inline Tool SkillTool(std::vector<Skill> skills) {
         {"query",
          {{"type", "string"},
           {"description",
-           "optional installed-catalogue filter; {} lists all names"}}}}},
+           "optional installed-catalogue filter; {} lists all names"}}},
+        {"arguments",
+         {{"type", "string"},
+          {"maxLength", 4096},
+          {"description", "optional skill arguments replacing $ARGUMENTS"}}}}},
       {"additionalProperties", false}};
   Tool t = MakeTool(
       "skill", std::move(description), std::move(parameters),
       [skills = std::move(skills)](const json& a,
                                    const ToolContext&) -> ToolResult {
         std::string want = JsonValue(a, "name", "");
+        std::string arguments = JsonValue(a, "arguments", "");
         if (!want.empty()) {
           for (const Skill& skill : skills) {
-            if (skill.name == want) return OpenSkill(skill);
+            if (skill.name == want) return OpenSkill(skill, arguments);
           }
           std::string suggestion = SkillNameSuggestion(skills, want);
           std::string error =
@@ -141,7 +159,7 @@ inline Tool SkillTool(std::vector<Skill> skills) {
           match = &skill;
           ++matches;
         }
-        if (matches == 1) return OpenSkill(*match);
+        if (matches == 1) return OpenSkill(*match, arguments);
         std::string catalogue = SkillCatalogue(skills, query);
         if (catalogue.empty()) {
           return ToolFailure(

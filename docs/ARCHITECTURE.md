@@ -54,10 +54,19 @@ user input
 
 Time, rounds, calls, output, processes, memory, context, and reported cost are
 bounded. Persistent commands require `run(detach=true)`. Delegated work runs in
-separate sanitized processes; results arrive at step boundaries, while
-`wait_agent` pauses only when the model needs another result.
-`terminal_output` snapshots the bounded log of any supervised background
-process without joining, reaping, or changing its ownership.
+separate sanitized processes. One `ProcessSupervisor` owns commands, tasks,
+and detached services under activity IDs. `activity_output` snapshots a bounded
+log without changing ownership. A task runs in the foreground when its result is
+required for the next step, or in the background when useful parent work can
+continue. Background results are delivered automatically on exit;
+`activity_wait` is an optional join for blocked work, and `activity_stop`
+terminates the complete process group. An optional output wait watches for new
+bytes, exit, or a readiness marker instead of repeated polling. Results arrive
+at model-step boundaries. The persistent interactive loop and headless runner
+both drain completions and resume through an internal harness turn that does not
+count as user input. They reuse the existing event poll and process supervisor,
+without a watcher thread or parallel registry. Detached ownership follows the
+process group after its wrapper exits.
 The application owns a small raw-mode composer while the foreground agent runs
 on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. Enter appends guidance to the active
@@ -103,7 +112,9 @@ descriptions is advertised with the `skill` tool. Explicit `$skill-name`
 mentions are resolved before the first model call; otherwise the model selects
 through the tool. Discovery includes user roots plus ancestor `.agents/skills`
 and nested skills to depth six. A selected `SKILL.md` is loaded completely or
-rejected as oversized—partial procedures are never injected.
+rejected as oversized—partial procedures are never injected. Tool requirements
+filter unusable skills before advertisement; invocation arguments expand only
+when the selected body is loaded.
 See [CHECKPOINTS.md](CHECKPOINTS.md).
 
 ## Observability and evaluation

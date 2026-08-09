@@ -134,19 +134,23 @@ class Agent {
 
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
-  void DrainBackground();
+  bool DrainBackground();
 
   // Files the model attached ride in on a user message: Chat Completions tool
   // results are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
 
-  // one user turn: stream, run tools, repeat until prose; prints as it goes
-  void Resume();
+  // Start a harness-origin turn after background results were delivered. This
+  // is not user intent and must not advance user-turn bookkeeping.
+  void ContinueAfterActivity();
 
+  // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr);
 
  private:
   struct TurnState;
+
+  void RunTurn(const std::string& input, json content, bool harness_origin);
 
   bool TurnDeadlineExceeded(TurnState& state,
                             std::chrono::seconds reserve = {});

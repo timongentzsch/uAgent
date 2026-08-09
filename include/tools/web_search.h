@@ -30,7 +30,6 @@ struct WebSearchRoute {
   std::string base_url;
   std::string api_key;
   std::string model;
-  bool follows_active = false;
 
   bool Valid() const {
     return backend != WebSearchBackend::kNone && !base_url.empty() &&
@@ -66,7 +65,7 @@ inline WebSearchRoute SelectWebSearchRoute(
   auto active = [&](WebSearchBackend backend, std::string model) {
     if (api.base_url.empty() || api.api_key.empty()) return WebSearchRoute{};
     return WebSearchRoute{backend, api.base_url, api.api_key,
-                          SelectedWebSearchModel(config, model), true};
+                          SelectedWebSearchModel(config, model)};
   };
   auto explicit_route = [&](WebSearchBackend backend) {
     if (config.web_search_url.empty() || config.web_search_api_key.empty()) {
@@ -84,9 +83,7 @@ inline WebSearchRoute SelectWebSearchRoute(
     if (key.empty()) return WebSearchRoute{};
     return WebSearchRoute{WebSearchBackend::kResponses,
                           "https://api.openai.com/v1", std::move(key),
-                          config.web_search_model.empty()
-                              ? openai_model
-                              : config.web_search_model};
+                          SelectedWebSearchModel(config, openai_model)};
   };
 
   if (config.web_search_backend == "responses") {
@@ -244,7 +241,7 @@ inline json WebSearchRequest(const WebSearchRoute& route,
 }
 
 inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
-                          WebSearchRoute route) {
+                          std::vector<NamedProvider> providers) {
   Tool t = MakeTool(
       "web_search",
       "Search the web with cited sources; batch up to four queries. "
@@ -253,21 +250,9 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           "query":{"type":"string","description":"single query"},
           "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
             "description":"1-4 queries"}}})json"),
-      [&api, &usage, route = std::move(route)](
+      [&api, &usage, providers = std::move(providers)](
           const json& a, const ToolContext& context) -> ToolResult {
-        WebSearchRoute active = route;
-        if (active.follows_active) {
-          active.base_url = api.base_url;
-          active.api_key = api.api_key;
-          if (api.config.web_search_model.empty()) active.model = api.model;
-          if (api.openrouter_compatible) {
-            active.backend = WebSearchBackend::kOpenRouter;
-          } else if (OpenaiUrl(active.base_url)) {
-            active.backend = WebSearchBackend::kResponses;
-          } else {
-            active.backend = WebSearchBackend::kNone;
-          }
-        }
+        WebSearchRoute active = SelectWebSearchRoute(api, providers);
         if (!active.Valid()) {
           return ToolFailure(ToolErrorCode::kUnavailable,
                              "error: web_search is not configured");

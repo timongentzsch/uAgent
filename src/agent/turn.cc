@@ -119,8 +119,19 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
     return false;
   }
+  auto blocking_wait = [](const ToolCall& call) {
+    if (call.name == "activity_wait") return true;
+    if (call.name != "activity_output") return false;
+    json arguments = json::parse(call.args, nullptr, false);
+    return JsonValue(arguments, "wait_ms", int64_t{0}) > 0;
+  };
   bool repeated = false;
   for (const ToolCall& call : calls) {
+    if (blocking_wait(call)) {
+      last_call.clear();
+      repeated_calls = 0;
+      continue;
+    }
     std::string signature = call.name + "\n" + call.args;
     repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
     last_call = std::move(signature);
@@ -166,13 +177,20 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 }
 
 void Agent::Turn(const std::string& user_input, json user_content) {
+  RunTurn(user_input, std::move(user_content), /*harness_origin=*/false);
+}
+
+void Agent::RunTurn(const std::string& user_input, json user_content,
+                    bool harness_origin) {
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
   checkpoint_turn_complete_ = false;
   ++turn_id_;
   ++revision_;
-  ++total_user_turns_;
-  if (session_title_.empty()) session_title_ = FirstLine(user_input);
+  if (!harness_origin) {
+    ++total_user_turns_;
+    if (session_title_.empty()) session_title_ = FirstLine(user_input);
+  }
   std::string local_time = LocalStamp();
   ApplyPendingCheckpoint();
   if (!conversation_.Empty()) {
@@ -180,6 +198,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   }
   DebugLog("turn_start",
            {{"turn", turn_id_},
+            {"origin", harness_origin ? "harness" : "user"},
             {"local_time", local_time},
             {"input", user_input},
             {"attachments", user_content.is_array() && !user_content.empty()
@@ -189,7 +208,9 @@ void Agent::Turn(const std::string& user_input, json user_content) {
             {"context_tokens", ContextUsed()}});
   bool attachment = !user_content.is_null();
   checkpoint_hint_active_ = false;
-  std::vector<std::string> explicit_skills = ExplicitSkillContext(user_input);
+  std::vector<std::string> explicit_skills =
+      harness_origin ? std::vector<std::string>{}
+                     : ExplicitSkillContext(user_input);
   size_t skill_bytes = 0;
   for (const std::string& skill : explicit_skills) {
     skill_bytes = SaturatingAdd(skill_bytes, skill.size());
@@ -205,18 +226,21 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     return;
   }
   EnsureRuntimeContext();
-  TurnState state;
-  state.start = conversation_.Size();  // user message and prune_* start
-  for (std::string& skill : explicit_skills) {
+  auto push_skill = [&](std::string skill) {
     conversation_.Push(
         HarnessMessage("[explicit skill instructions; user selected]\n" +
                        std::move(skill)),
         MessageKind::kInternal);
-  }
+  };
+  TurnState state;
+  state.start = conversation_.Size();  // user message and prune_* start
+  for (std::string& skill : explicit_skills) push_skill(std::move(skill));
   conversation_.Push(
       {{"role", "user"},
        {"content", attachment ? std::move(user_content) : json(user_input)}},
-      attachment ? MessageKind::kAttachment : MessageKind::kUser);
+      harness_origin
+          ? MessageKind::kInternal
+          : (attachment ? MessageKind::kAttachment : MessageKind::kUser));
   if (!checkpoint_hint.empty()) {
     conversation_.Push(HarnessMessage(std::move(checkpoint_hint)),
                        MessageKind::kInternal);
@@ -248,10 +272,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     SteeringState().Take();
     for (std::string& input : queued) {
       for (std::string& skill : ExplicitSkillContext(input)) {
-        conversation_.Push(
-            HarnessMessage("[explicit skill instructions; user selected]\n" +
-                           std::move(skill)),
-            MessageKind::kInternal);
+        push_skill(std::move(skill));
       }
       conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
                          MessageKind::kUser);

@@ -157,13 +157,18 @@ inline json ToolTraceMessages(const json& messages, const json& kinds) {
   return trace;
 }
 
-inline json LatestToolTraceJson(const json& archive) {
+inline const json* LatestTraceSegment(const json& archive) {
   auto segment =
       std::find_if(archive.rbegin(), archive.rend(), [](const json& item) {
         std::string reason = JsonValue(item, "reason", "");
         return reason == "tool_trace" || reason == "trace_pruned";
       });
-  if (segment == archive.rend()) return json::array();
+  return segment == archive.rend() ? nullptr : &*segment;
+}
+
+inline json LatestToolTraceJson(const json& archive) {
+  const json* segment = LatestTraceSegment(archive);
+  if (!segment) return json::array();
   json trace =
       ToolTraceMessages(JsonValue(*segment, "messages", json::array()),
                         JsonValue(*segment, "message_kinds", json::array()));
@@ -180,12 +185,8 @@ inline json LatestToolTraceJson(const json& archive) {
 
 inline void PrintLatestTrace(const json& archive,
                              const std::vector<Tool>& tools) {
-  auto trace =
-      std::find_if(archive.rbegin(), archive.rend(), [](const json& segment) {
-        std::string reason = JsonValue(segment, "reason", "");
-        return reason == "tool_trace" || reason == "trace_pruned";
-      });
-  if (trace == archive.rend()) {
+  const json* trace = LatestTraceSegment(archive);
+  if (!trace) {
     printf("%s· no completed tool trace%s\n", DIM(), RST());
     return;
   }

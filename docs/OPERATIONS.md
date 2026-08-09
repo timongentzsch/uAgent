@@ -53,11 +53,22 @@ Dollar limits are enforced between calls and require provider-reported
 may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
-`terminal_output(pid)` reads the current bounded log for a supervised
-background command, delegated task, or detached terminal without waiting or
-cancelling it. Output is limited to bytes the child has flushed. `wait_agent`
-remains the completion primitive and returns when delegated work finishes;
-other tasks continue running.
+Commands, delegated tasks, and detached terminals share activity IDs.
+`activity_output(id)` reads a bounded log without cancelling ownership;
+`wait_ms` optionally blocks for output/exit and `until` requires fixed
+readiness text. Use `task(background=false)` when the next step requires the
+child result; background tasks notify the agent automatically on exit.
+`activity_wait(ids, mode)` is available when no useful work remains and a join
+is intentional. `activity_stop(id)` sends TERM, then KILL if needed, to the
+complete process group and removes its record and rotating logs. Output is
+limited to bytes the child has flushed. Persistent TUI and headless runs resume
+after background completion without a second process watcher.
+
+For configured MCP servers, `mcp_status` reports ready/inactive/error state,
+PID, discovered tool count, and the last lifecycle error; `mcp_restart`
+restarts and handshakes a named server. These generic tools are omitted when
+the built-in Chrome server is the only MCP configuration: `chrome_session`
+already switches its mode/toolset and performs a page-level health probe.
 
 The interactive composer owns stdin for the whole session. Enter during work
 queues guidance into the active turn at the next model/tool boundary; Escape
@@ -92,6 +103,8 @@ pin both the Action ref and release version.
 
 - Headless failures use nonzero exit status and a complete JSON envelope.
 - MCP logs live under `~/.uagent/mcp`; debug traces are opt-in and sensitive.
+- `chrome_session` succeeds only after a page-level health probe; a handshake
+  without a selectable page is reported as unavailable.
 - Corrupt sessions are reported and left untouched.
 - Route-profile mismatches self-heal and should trigger recertification.
 - Managed processes are reaped on catchable exits; `SIGKILL` cannot guarantee

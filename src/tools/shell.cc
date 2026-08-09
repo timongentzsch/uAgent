@@ -63,9 +63,9 @@ ShellCommandResult RunShellCommand(
   // Foreground commands may be stopped at the cap. Detached servers instead
   // stream through this binary's tiny rotating log pump and keep running.
   std::string bounded_cmd =
-      detach ? "(" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
-                   " --log-pump " + ShellQuote(log) + " " +
-                   std::to_string(log_bytes)
+      detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
+                   ShellQuote(ExecutablePath()) + " --log-pump " +
+                   ShellQuote(log) + " " + std::to_string(log_bytes)
              : "ulimit -f " + std::to_string((log_bytes - 1) / 1024 + 1) +
                    "; " + cmd;
   posix_spawn_file_actions_t actions;
@@ -191,20 +191,20 @@ ShellCommandResult RunShellCommand(
                             std::to_string(max_jobs) + ")")};
   }
   if (detach) {
-    return {ToolSuccess(
-        "[detached] pid " + std::to_string(pid) + ", log: " + log +
-        " — read with terminal_output(pid=" + std::to_string(pid) + ")")};
+    return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
+                        log + " — activity id " + std::to_string(pid) +
+                        "; verify readiness with activity output")};
   }
   BgTrackSignal(pid, true);
   if (is_task) {
     return {ToolSuccess("[started] task id " + std::to_string(pid) +
-                        "; result will be delivered automatically; use "
-                        "terminal_output to inspect it or wait_agent when a "
-                        "result is needed")};
+                        "; result will be delivered automatically; inspect "
+                        "activity output for progress/readiness, or wait only "
+                        "when the next step is blocked")};
   }
   return {ToolSuccess("[running] pid " + std::to_string(pid) +
                       "; result will be delivered automatically; use "
-                      "terminal_output to inspect it")};
+                      "activity output to inspect it")};
 }
 
 ToolResult ToolRunBash(ProcessSupervisor& supervisor, const std::string& cmd,

@@ -34,6 +34,7 @@ inline const char* BLUE() { return g_tty ? "\033[38;5;68m" : ""; }
 inline const char* MUTED() { return g_tty ? "\033[90m" : ""; }
 inline const char* YEL() { return g_tty ? "\033[33m" : ""; }
 inline const char* RED() { return g_tty ? "\033[31m" : ""; }
+inline const char* GREEN() { return g_tty ? "\033[32m" : ""; }
 inline const char* BOLD() { return g_tty ? "\033[1m" : ""; }
 inline const char* BoldOff() { return g_tty ? "\033[22m" : ""; }
 inline const char* ITAL() { return g_tty ? "\033[3m" : ""; }

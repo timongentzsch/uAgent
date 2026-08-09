@@ -265,24 +265,91 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   python.stable_argument = "path";
   python.timeout_s = 0;  // bounded by the turn; no model-driven polling
 
-  Tool& terminal = AddTool(
+  Tool& activity_output = AddTool(
+      tools, MakeTool("activity_output",
+                      "List activities or read one bounded log. Set wait_ms "
+                      "for new output; add until for a readiness marker.",
+                      schema(R"json({"type":"object","properties":{
+                    "id":{"type":"integer","minimum":1},
+                    "wait_ms":{"type":"integer","minimum":1000,"maximum":300000},
+                    "until":{"type":"string","maxLength":256}}})json"),
+                      [&supervisor](const json& a, const ToolContext& context) {
+                        return ToolActivityOutput(
+                            supervisor, JsonValue(a, "id", int64_t{0}),
+                            JsonValue(a, "wait_ms", int64_t{0}),
+                            JsonValue(a, "until", ""), context);
+                      }));
+  activity_output.parallel_safe = true;
+  activity_output.capabilities = Capability(ToolCapability::kInspect);
+  activity_output.result_chars = 6000;
+  activity_output.visibility = Tool::Visibility::kDetachedTerminal;
+  activity_output.validate = [](const json& a) {
+    if (a.contains("until") && (!a.contains("id") || !a.contains("wait_ms"))) {
+      return std::string("error: until requires id and wait_ms");
+    }
+    return std::string();
+  };
+  activity_output.summary = [](const json& a) {
+    int64_t id = JsonValue(a, "id", int64_t{0});
+    int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
+    std::string summary = id ? "activity " + std::to_string(id) : "list";
+    if (wait_ms > 0) summary += " · wait " + std::to_string(wait_ms) + "ms";
+    std::string until = JsonValue(a, "until", "");
+    if (!until.empty()) summary += " · until " + FirstLine(until);
+    return summary;
+  };
+
+  Tool& activity_wait = AddTool(
       tools,
-      MakeTool("terminal_output",
-               "List supervised background processes or read the latest "
-               "bounded output for one pid without waiting or cancelling it.",
+      MakeTool("activity_wait",
+               "Block for any/all selected command or task activities only "
+               "when their result is required for the next step. Background "
+               "results otherwise arrive automatically. Omit ids for all "
+               "current non-detached activities.",
                schema(R"json({"type":"object","properties":{
-                    "pid":{"type":"integer","minimum":1}}})json"),
-               [&supervisor](const json& a, const ToolContext&) {
-                 return ToolTerminalOutput(supervisor,
-                                           JsonValue(a, "pid", int64_t{0}));
+                    "ids":{"type":"array","maxItems":20,
+                      "items":{"type":"integer","minimum":1}},
+                    "mode":{"type":"string","enum":["any","all"]},
+                    "wait_ms":{"type":"integer","minimum":1000,"maximum":300000}}})json"),
+               [&supervisor](const json& a, const ToolContext& context) {
+                 std::vector<int64_t> ids;
+                 if (a.contains("ids")) {
+                   ids = a["ids"].get<std::vector<int64_t>>();
+                 }
+                 return ToolActivityWait(
+                     supervisor, ids, JsonValue(a, "mode", "any"),
+                     JsonValue(a, "wait_ms", int64_t{30000}), context);
                }));
-  terminal.parallel_safe = true;
-  terminal.capabilities = Capability(ToolCapability::kInspect);
-  terminal.result_chars = 6000;
-  terminal.visibility = Tool::Visibility::kDetachedTerminal;
-  terminal.summary = [](const json& a) {
-    int64_t pid = JsonValue(a, "pid", int64_t{0});
-    return pid ? "pid " + std::to_string(pid) : "list";
+  activity_wait.parallel_safe = true;
+  activity_wait.capabilities = Capability(ToolCapability::kInspect);
+  activity_wait.result_chars = 6000;
+  activity_wait.timeout_s = 0;
+  activity_wait.visibility = Tool::Visibility::kDetachedTerminal;
+  activity_wait.summary = [](const json& a) {
+    size_t count = a.contains("ids") ? a["ids"].size() : 0;
+    return JsonValue(a, "mode", "any") + " · " +
+           (count ? std::to_string(count) : std::string("all current")) +
+           " · " + std::to_string(JsonValue(a, "wait_ms", int64_t{30000})) +
+           "ms";
+  };
+
+  Tool& activity_stop = AddTool(
+      tools,
+      MakeTool("activity_stop",
+               "Stop an activity's complete process group and clean its log.",
+               schema(R"json({"type":"object","properties":{
+                    "id":{"type":"integer","minimum":1}},
+                    "required":["id"]})json"),
+               [&supervisor](const json& a, const ToolContext&) {
+                 return ToolActivityStop(supervisor,
+                                         JsonValue(a, "id", int64_t{0}));
+               }));
+  activity_stop.mutating = true;
+  activity_stop.capabilities = Capability(ToolCapability::kExecute) |
+                               Capability(ToolCapability::kMutate);
+  activity_stop.visibility = Tool::Visibility::kDetachedTerminal;
+  activity_stop.summary = [](const json& a) {
+    return "activity " + std::to_string(JsonValue(a, "id", int64_t{0}));
   };
 
   json memory_schema = schema(R"json({"type":"object","properties":{

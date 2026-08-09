@@ -28,6 +28,99 @@ namespace uagent {
 
 namespace {
 
+constexpr size_t kMaxDiffDisplayLines = 80;
+constexpr size_t kMaxDiffDisplayLineBytes = 1000;
+
+std::vector<std::string> DiffLines(const std::string& text) {
+  std::vector<std::string> lines;
+  for (size_t begin = 0; begin < text.size();) {
+    size_t end = text.find('\n', begin);
+    std::string line = text.substr(begin, end - begin);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    lines.push_back(std::move(line));
+    if (end == std::string::npos) break;
+    begin = end + 1;
+  }
+  return lines;
+}
+
+struct EditDisplay {
+  std::string body;
+  int64_t added = 0;
+  int64_t removed = 0;
+  size_t lines = 0;
+  bool truncated = false;
+};
+
+void AppendDisplayLine(EditDisplay& display, char marker,
+                       const std::string& text) {
+  if (display.lines >= kMaxDiffDisplayLines) {
+    display.truncated = true;
+    return;
+  }
+  std::string shown = Utf8Prefix(text, kMaxDiffDisplayLineBytes);
+  if (shown.size() < text.size()) shown += "…";
+  display.body += marker;
+  display.body += shown;
+  display.body += '\n';
+  ++display.lines;
+}
+
+void AppendEditDisplay(EditDisplay& display, const std::string& data,
+                       size_t match, const std::string& old_text,
+                       const std::string& new_text, int64_t applied) {
+  size_t line_start = match == 0 ? 0 : data.rfind('\n', match - 1);
+  line_start = line_start == std::string::npos ? 0 : line_start + 1;
+  size_t block_start = line_start;
+  if (line_start > 1) {
+    size_t previous = data.rfind('\n', line_start - 2);
+    block_start = previous == std::string::npos ? 0 : previous + 1;
+  } else if (line_start == 1) {
+    block_start = 0;
+  }
+  size_t affected_end = data.find('\n', match + old_text.size());
+  size_t block_end = affected_end == std::string::npos
+                         ? data.size()
+                         : data.find('\n', affected_end + 1);
+  if (block_end == std::string::npos) block_end = data.size();
+
+  std::string before = data.substr(block_start, block_end - block_start);
+  std::string after = before;
+  after.replace(match - block_start, old_text.size(), new_text);
+  std::vector<std::string> old_lines = DiffLines(before);
+  std::vector<std::string> new_lines = DiffLines(after);
+  size_t prefix = 0;
+  while (prefix < old_lines.size() && prefix < new_lines.size() &&
+         old_lines[prefix] == new_lines[prefix]) {
+    ++prefix;
+  }
+  size_t suffix = 0;
+  while (suffix < old_lines.size() - prefix &&
+         suffix < new_lines.size() - prefix &&
+         old_lines[old_lines.size() - suffix - 1] ==
+             new_lines[new_lines.size() - suffix - 1]) {
+    ++suffix;
+  }
+  size_t old_end = old_lines.size() - suffix;
+  size_t new_end = new_lines.size() - suffix;
+  display.removed += static_cast<int64_t>(old_end - prefix) * applied;
+  display.added += static_cast<int64_t>(new_end - prefix) * applied;
+
+  int64_t line = 1 + static_cast<int64_t>(
+                         std::count(data.begin(), data.begin() + match, '\n'));
+  std::string location = "line " + std::to_string(line);
+  if (applied > 1) location += " · " + std::to_string(applied) + " matches";
+  AppendDisplayLine(display, '@', location);
+  if (prefix > 0) AppendDisplayLine(display, ' ', old_lines[prefix - 1]);
+  for (size_t i = prefix; i < old_end; ++i) {
+    AppendDisplayLine(display, '-', old_lines[i]);
+  }
+  for (size_t i = prefix; i < new_end; ++i) {
+    AppendDisplayLine(display, '+', new_lines[i]);
+  }
+  if (suffix > 0) AppendDisplayLine(display, ' ', old_lines[old_end]);
+}
+
 ToolResult FileOpenFailure(const std::string& path) {
   std::error_code error(errno, std::generic_category());
   return ToolFailure(
@@ -290,6 +383,7 @@ ToolResult ToolEditFile(const std::string& path,
 
   const size_t original_size = data.size();
   int64_t replacements = 0;
+  EditDisplay display;
   for (size_t i = 0; i < edits.size(); ++i) {
     const FileEdit& edit = edits[i];
     if (edit.old_text.empty()) {
@@ -348,6 +442,7 @@ ToolResult ToolEditFile(const std::string& path,
                          "error: edit " + std::to_string(i + 1) +
                              " would exceed the edit byte limit");
     }
+    AppendEditDisplay(display, data, match, old_eff, new_eff, applied);
     if (edit.replace_all) {
       ReplaceAllOccurrences(data, old_eff, new_eff, next_size);
     } else {
@@ -358,13 +453,18 @@ ToolResult ToolEditFile(const std::string& path,
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
-  return ToolSuccess(
+  ToolResult result = ToolSuccess(
       "edited " + path + " (" + std::to_string(replacements) +
       (replacements == 1 ? " replacement across " : " replacements across ") +
       std::to_string(edits.size()) +
       (edits.size() == 1 ? " edit; " : " edits; ") +
       std::to_string(original_size) + " -> " + std::to_string(data.size()) +
       " bytes)");
+  result.display = "Edited " + DisplayPath(path) + " (+" +
+                   std::to_string(display.added) + " -" +
+                   std::to_string(display.removed) + ")\n" + display.body;
+  if (display.truncated) result.display += " … diff truncated\n";
+  return result;
 }
 
 ToolResult ToolEditFile(const std::string& path, const std::string& old_s,

@@ -15,13 +15,6 @@
 namespace uagent {
 namespace {
 
-std::string CheckpointDisplayPath(const std::filesystem::path& path) {
-  std::error_code error;
-  std::string display =
-      std::filesystem::relative(path, CanonicalCwd(), error).string();
-  return error || display.empty() ? path.string() : display;
-}
-
 const char* CheckpointPathError(const std::filesystem::path& path) {
   if (!PathWithin(path, CanonicalAccessPath(CanonicalCwd()))) {
     return "checkpoint paths must stay inside the workspace";
@@ -50,8 +43,7 @@ void Agent::RecordSideEffect(const CallTask& task, const ToolCall& call) {
   json entry = {
       {"turn", turn_id_}, {"tool", call.name}, {"status", task.trace_status}};
   if (task.args.contains("path") && task.args["path"].is_string()) {
-    auto path = CanonicalAccessPath(task.args["path"].get<std::string>());
-    entry["path"] = CheckpointDisplayPath(path);
+    entry["path"] = DisplayPath(task.args["path"].get<std::string>());
   }
   side_effects_.push_back(std::move(entry));
   while (!side_effects_.empty() && JsonDump(side_effects_).size() > 4096) {
@@ -164,7 +156,7 @@ void Agent::ApplyCheckpoint(const std::string& state,
     }
     push_evidence(
         {{"role", "assistant"},
-         {"content", "[checkpoint file " + CheckpointDisplayPath(path) +
+         {"content", "[checkpoint file " + DisplayPath(path.string()) +
                          "; non-authoritative]\n" + content}});
     used += static_cast<int64_t>(content.size());
     ++reread;

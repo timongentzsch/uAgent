@@ -33,21 +33,25 @@ void TestSkillDiscovery() {
   CHECK(LoadSkills(workspace).empty());
 
   write_skill(home / ".uagent/skills/release",
-              "---\nname: release\ndescription: how to cut a release\n---\n\n"
-              "Run the checks, then tag.\n");
+              "---\nname: release\ndescription: how to cut a release\n"
+              "requires-tools: run, grep\nargument-hint: <version>\n---\n\n"
+              "Run $ARGUMENTS checks from ${SKILL_DIR}, then tag.\n");
   // No front matter, so nothing to advertise: skipped rather than guessed at.
   write_skill(home / ".uagent/skills/broken", "no front matter here\n");
   std::vector<Skill> skills = LoadSkills(workspace);
   CHECK(skills.size() == 1);
   CHECK(skills[0].name == "release");
   CHECK(skills[0].description == "how to cut a release");
+  CHECK(skills[0].required_tools == std::vector<std::string>({"run", "grep"}));
+  CHECK(skills[0].argument_hint == "<version>");
   CHECK(skills[0].dir == (home / ".uagent/skills/release").string());
 
   // The body arrives without its front matter and names its own directory, so
   // relative references inside it resolve.
   SkillReadResult body = ReadSkillBody(skills[0]);
   CHECK(body.ok);
-  CHECK(body.output.find("Run the checks, then tag.") != std::string::npos);
+  CHECK(body.output.find("Run  checks from " + skills[0].dir) !=
+        std::string::npos);
   CHECK(body.output.find("description:") == std::string::npos);
   CHECK(body.output.find(skills[0].dir) != std::string::npos);
 
@@ -79,7 +83,8 @@ void TestSkillDiscovery() {
   // Skills installed for another agent are already on the machine and use the
   // same format, so they are found too; ours wins a name collision.
   write_skill(home / ".claude/skills/vendor-only",
-              "---\ndescription: from claude code\n---\n\nVendor body.\n");
+              "---\ndescription: from claude code\n"
+              "requires-tools: vendor-tool\n---\n\nVendor body.\n");
   write_skill(home / ".codex/skills/release",
               "---\ndescription: codex's release steps\n---\n\nCodex body.\n");
   skills = LoadSkills(workspace);
@@ -97,7 +102,28 @@ void TestSkillDiscovery() {
   skills = LoadSkills(workspace);
   CHECK(skills.size() == 1);
   CHECK(skills[0].name == "vendor-only");
+  SkillReadResult vendor_body = ReadSkillBody(skills[0]);
+  CHECK(vendor_body.ok);
+  CHECK(vendor_body.output.find("cross-agent compatibility") !=
+        std::string::npos);
+  CHECK(vendor_body.output.find("currently registered in µAgent") !=
+        std::string::npos);
   unsetenv("UAGENT_SKILL_PATH");
+
+  skills = LoadSkills(workspace);
+  std::vector<Tool> available_tools = {
+      MakeTool("run", "", json::object(),
+               [](const json&, const ToolContext&) { return ToolSuccess(""); }),
+      MakeTool(
+          "vendor-tool", "", json::object(),
+          [](const json&, const ToolContext&) { return ToolSuccess(""); })};
+  KeepSupportedSkills(skills, available_tools);
+  CHECK(skills.size() == 3);
+  available_tools.pop_back();
+  KeepSupportedSkills(skills, available_tools);
+  CHECK(std::none_of(skills.begin(), skills.end(), [](const Skill& skill) {
+    return skill.name == "vendor-only";
+  }));
 
   // Individual skills can be hidden without replacing every discovery root.
   setenv("UAGENT_SKILL_EXCLUDE", "vendor-only, missing", 1);
@@ -131,7 +157,7 @@ void TestSkillDiscovery() {
   std::vector<Skill> catalogue_skills;
   for (int i = 0; i < 64; ++i) {
     catalogue_skills.push_back(
-        {"skill-" + std::to_string(i), std::string(512, 'x'), "", ""});
+        {"skill-" + std::to_string(i), std::string(512, 'x'), "", "", {}, ""});
   }
   std::string catalogue = SkillCatalogue(catalogue_skills, "");
   CHECK(catalogue.size() < 8000);
@@ -155,6 +181,9 @@ void TestSkillDiscovery() {
   CHECK(JsonDump(tool.parameters).find("Run ruff.") == std::string::npos);
   CHECK(tool.run({{"name", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
+  ToolResult arguments =
+      tool.run({{"name", "release"}, {"arguments", "v1.2.3"}}, {});
+  CHECK(arguments.output.find("v1.2.3") != std::string::npos);
   CHECK(tool.run({{"query", "lint"}}, {}).output.find("Run ruff.") !=
         std::string::npos);
   CHECK(tool.run(json::object(), {}).output.find("release") !=

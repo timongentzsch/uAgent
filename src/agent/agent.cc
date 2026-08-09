@@ -285,10 +285,10 @@ void Agent::MergeSessionUsage(const Usage& usage) {
   api_.session_cost = session_usage_.cost;
 }
 
-void Agent::DrainBackground() {
+bool Agent::DrainBackground() {
   bool changed = false;
   for (auto& note : BgTakeCompletedExcept(processes_, "memory")) {
-    size_t running = processes_.PendingCount() + processes_.DetachedCount();
+    size_t running = processes_.VisibleCount();
     printf("%s· bg job finished %s · %zu still running%s\n", DIM(),
            TerminalSafe(FirstLine(note)).c_str(), running, RST());
     conversation_.Push(HarnessMessage(std::move(note)), MessageKind::kInternal);
@@ -296,6 +296,7 @@ void Agent::DrainBackground() {
   }
   if (DrainAttachments()) changed = true;
   if (changed) ++revision_;
+  return changed;
 }
 
 bool Agent::DrainAttachments() {
@@ -316,11 +317,11 @@ bool Agent::DrainAttachments() {
   return true;
 }
 
-void Agent::Resume() {
-  Turn(
-      "(Continue the interrupted task from where you left off. Do not repeat "
-      "completed "
-      "work.)");
+void Agent::ContinueAfterActivity() {
+  RunTurn(
+      "[harness continuation: background activity completed] Continue "
+      "from the delivered result. Do not repeat completed work.",
+      nullptr, /*harness_origin=*/true);
 }
 
 void Agent::ArchiveRange(const char* reason, size_t begin, size_t end,

@@ -8,27 +8,25 @@ cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 cmake --build "$build" --parallel "$build_jobs"
 cmake --install "$build" --prefix "$prefix"
 
-# External skills win by name. Refresh our own bundled copy on each install so
-# its reference stays matched to the binary release.
+# Refresh µAgent's bundled skills on every install. The runtime loads this
+# directory after user-level vendor directories, so release-matched procedures
+# override incompatible copies while workspace skills can still override them.
 skills=${UAGENT_SKILLS_DIR:-"$HOME/.uagent/skills"}
+mkdir -p "$skills"
+staging=$(mktemp -d "${skills}/.install.XXXXXX")
+trap 'rm -rf "$staging"' EXIT HUP INT TERM
 for skill in "$root"/skills/*/; do
   [ -f "$skill/SKILL.md" ] || continue
   name=$(basename "$skill")
-  found=""
-  for dir in "$HOME/.agents/skills" "$HOME/.claude/skills" "$HOME/.codex/skills"; do
-    [ -e "$dir/$name" ] && found="$dir/$name" && break
-  done
-  if [ -n "$found" ]; then
-    echo "-- Skill already present, leaving it: $found"
+  cp -R "$skill" "$staging/$name"
+  if [ -d "$skills/$name" ]; then
+    rm -rf "$skills/$name"
+    echo "-- Refreshing bundled skill: $skills/$name"
   else
-    mkdir -p "$skills"
-    if [ -d "$skills/$name" ]; then
-      cp -R "$skill/." "$skills/$name/"
-      echo "-- Refreshing bundled skill: $skills/$name"
-    else
-      cp -R "$skill" "$skills/$name"
-      echo "-- Installing skill: $skills/$name"
-    fi
+    echo "-- Installing bundled skill: $skills/$name"
   fi
+  mv "$staging/$name" "$skills/$name"
 done
+rm -rf "$staging"
+trap - EXIT HUP INT TERM
 chmod 700 "$HOME/.uagent" "$skills" 2>/dev/null || true

@@ -70,6 +70,22 @@ void TestMcpContractHelpers() {
   CHECK(error.find("args") != std::string::npos);
 
   RuntimeConfig config;
+  McpRuntime diagnostic_runtime;
+  auto diagnostic_server = std::make_unique<McpServer>();
+  diagnostic_server->name = "diagnostic";
+  diagnostic_server->config = json{{"command", "unused"}};
+  diagnostic_server->last_error = "handshake failed";
+  diagnostic_runtime.Add(std::move(diagnostic_server));
+  std::vector<Tool> diagnostic_tools;
+  McpAddControlTools(diagnostic_tools, diagnostic_runtime, config);
+  const Tool* mcp_status = FindTool(diagnostic_tools, "mcp_status");
+  CHECK(mcp_status != nullptr);
+  ToolResult diagnostic = mcp_status->run(json::object(), {});
+  CHECK(diagnostic.Ok());
+  CHECK(diagnostic.output.find("diagnostic · error") != std::string::npos);
+  CHECK(diagnostic.output.find("handshake failed") != std::string::npos);
+  CHECK(FindTool(diagnostic_tools, "mcp_restart") != nullptr);
+
   McpServer server;
   server.name = "probe";
   server.config = json{{"command", "unused"}};
@@ -152,6 +168,11 @@ void TestMcpContractHelpers() {
   CHECK(!remote_error.Ok());
   CHECK(remote_error.error == ToolErrorCode::kRemoteError);
   CHECK(remote_error.output == "error: remote rejected call");
+  ToolResult empty_remote_error = McpResultText(
+      server, {{"result", {{"content", json::array()}, {"isError", true}}}});
+  CHECK(!empty_remote_error.Ok());
+  CHECK(empty_remote_error.output ==
+        "error: mcp(probe) returned isError without diagnostic text");
   if (inherited_home) {
     setenv("HOME", prior_home.c_str(), 1);
   } else {

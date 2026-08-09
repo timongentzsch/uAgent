@@ -71,6 +71,7 @@ def integration_group(name):
                 "terminal_image",
                 "run_rejects",
                 "grep_",
+                "edit_",
                 "directory_",
                 "parallel_source",
                 "external_read",
@@ -337,7 +338,7 @@ def json_sentinel_command(path):
 def test_plain_turn(root, home):
     def reply(_, body):
         names = function_names(body)
-        assert_true("terminal_output" not in names, names)
+        assert_true("activity_output" not in names, names)
         return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
 
     server = Server([reply])
@@ -970,9 +971,44 @@ def test_compact_tool_trace_is_default(root, home):
             timeout=20,
         )
         assert_true(result.returncode == 0, result.stderr)
+        assert_true(command in result.stdout, result.stdout)
         assert_true("compact-visible" in result.stdout, result.stdout)
-        assert_true("compact-hidden" not in result.stdout, result.stdout)
+        assert_true("← run: compact-visible" in result.stdout, result.stdout)
+        assert_true("← run: compact-hidden" not in result.stdout, result.stdout)
         assert_true("compact-trace-ok" in result.stdout, result.stdout)
+    finally:
+        server.close()
+
+
+def test_edit_view_shows_compact_colored_diff(root, home):
+    target = root / "edit-view.txt"
+    target.write_text("before\nkeep\n", encoding="utf-8")
+    server = Server(
+        [
+            tool_call(
+                "edit_file",
+                {
+                    "path": str(target),
+                    "edits": [{"old": "before", "new": "after"}],
+                },
+            ),
+            event({"content": "edit-view-ok"}),
+        ]
+    )
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [b"edit it\n", b"/q\n"],
+            args=("--yolo",),
+            timeout=20,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"\xe2\x80\xa2" in output and b"Edited " in output, output)
+        assert_true(b"-before" in output and b"+after" in output, output)
+        assert_true(b"\x1b[31m" in output and b"\x1b[32m" in output, output)
+        assert_true(b"edit-view-ok" in output, output)
+        assert_true(target.read_text(encoding="utf-8") == "after\nkeep\n", output)
     finally:
         server.close()
 
@@ -1050,23 +1086,18 @@ def test_terminal_image_capability_contract(root, home):
             return env
 
         cases = (
-            ("Apple_Terminal", "xterm-256color", "Images unavailable", False, empty_path),
-            ("ghostty", "xterm-ghostty", "show_image (native)", True, empty_path),
-            (
-                "Apple_Terminal",
-                "xterm-256color",
-                "Images unavailable",
-                False,
-                chafa_path,
-            ),
+            ("Apple_Terminal", "xterm-256color", False, empty_path),
+            ("ghostty", "xterm-ghostty", True, empty_path),
+            ("Apple_Terminal", "xterm-256color", False, chafa_path),
         )
-        for program, term, instruction, has_tool, path in cases:
+        instruction = "Use show_image to display local images"
+        for program, term, has_tool, path in cases:
 
-            def verify(_, body, instruction=instruction, has_tool=has_tool):
+            def verify(_, body, has_tool=has_tool):
                 names = function_names(body)
                 has_instruction = instruction in body["messages"][0]["content"]
                 has_image_tool = "show_image" in names
-                valid = has_instruction and has_image_tool == has_tool
+                valid = has_instruction == has_tool and has_image_tool == has_tool
                 return event(
                     {
                         "content": (
@@ -1230,7 +1261,7 @@ def test_response_stats_spinner_context(root, home):
         )
         assert_true(code == 0, output)
         regular_metadata = b"\x1b[0m\x1b[39m\x1b[49m\x1b[2m"
-        assert_true(regular_metadata + b"\xc2\xb5Agent" in output, output)
+        assert_true(b"\x1b[1m\xc2\xb5Agent" in output, output)
         assert_true(regular_metadata + b"test (default)" in output, output)
         assert_true(b"working \xc2\xb7 0.0s \xc2\xb7 ctx " in output, output)
         assert_true(b" \xc2\xb7 bg:0" in output, output)
@@ -1575,7 +1606,7 @@ def test_queue_then_escape_while_waiting_for_task(root, home):
             if message.get("role") == "tool"
         ]
         if any("[started] task id" in result for result in results):
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         return tool_call("task", {"prompt": "child"})
 
     server = Server([route])
@@ -1584,7 +1615,7 @@ def test_queue_then_escape_while_waiting_for_task(root, home):
             workspace,
             base_env(home, server.url),
             [
-                (b"delegate\n", b"wait_agent("),
+                (b"delegate\n", b"activity_wait("),
                 (b"stop now\n", b"steer:1"),
                 (b"\x1b", b"test (default) @ 127.0.0.1"),
                 b"/q\n",
@@ -1597,6 +1628,43 @@ def test_queue_then_escape_while_waiting_for_task(root, home):
         assert_true(b"interrupting" in output, output)
         assert_true(b"steering-ok" in output, output)
         assert_true(b"child-finished" not in output, output)
+    finally:
+        server.close()
+
+
+def test_idle_agent_resumes_on_activity_completion(root, home):
+    workspace = root / "activity-resume-workspace"
+    workspace.mkdir()
+
+    def route(_, body):
+        messages = body["messages"]
+        if any(
+            message.get("role") == "user" and message.get("content") == "child"
+            for message in messages
+        ):
+            time.sleep(0.5)
+            return event({"content": "child-finished"})
+        combined = "\n".join(str(message.get("content", "")) for message in messages)
+        if "[Background result: task id " in combined:
+            return event({"content": "idle-resume-ok"})
+        if "[started] task id " in combined:
+            # End the parent turn while its child is still running. The TUI
+            # activity event must initiate the next model call without input.
+            return event({"content": "child-running"})
+        return tool_call("task", {"prompt": "child"})
+
+    server = Server([route])
+    try:
+        code, output = run_pty(
+            workspace,
+            base_env(home, server.url),
+            [(b"delegate\n", b"idle-resume-ok"), b"/q\n"],
+            args=("--yolo",),
+            timeout=8,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"child-running" in output, output)
+        assert_true(b"idle-resume-ok" in output, output)
     finally:
         server.close()
 
@@ -1967,7 +2035,7 @@ def test_delegated_session_budget_uses_remaining_allowance(root, home):
             return response
         parent_requests.append(1)
         if len(parent_requests) > 1:
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         response = tool_call("task", {"prompt": "child"})
         response["usage"] = {
             "prompt_tokens": 5,
@@ -1978,9 +2046,11 @@ def test_delegated_session_budget_uses_remaining_allowance(root, home):
 
     server = Server([route])
     try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
         result = run(
             root,
-            base_env(home, server.url),
+            env,
             "--yolo",
             "--budget",
             "0.05",
@@ -2469,16 +2539,25 @@ def test_skill_tool_offers_and_opens(root, home):
         "---\nname: demo\ndescription: demo-description-sentinel\n---\n\ndemo-body-sentinel\n",
         encoding="utf-8",
     )
+    unsupported = workspace / ".uagent" / "skills" / "unsupported"
+    unsupported.mkdir()
+    (unsupported / "SKILL.md").write_text(
+        "---\ndescription: unsupported-sentinel\n"
+        "requires-tools: missing-tool\n---\n\nunsupported-body\n",
+        encoding="utf-8",
+    )
 
     def offer(_, body):
         functions = {t["function"]["name"]: t["function"] for t in body.get("tools", [])}
         properties = functions.get("skill", {}).get("parameters", {}).get("properties", {})
         valid = (
             "skill" in functions
-            and set(properties) == {"name", "query"}
+            and set(properties) == {"name", "query", "arguments"}
             and "enum" not in properties["name"]
+            and properties["arguments"].get("maxLength") == 4096
             # Progressive disclosure: metadata rides every request; the body does not.
             and "demo-description-sentinel" in functions["skill"]["description"]
+            and "unsupported-sentinel" not in functions["skill"]["description"]
             and "demo-body-sentinel" not in json.dumps(body)
         )
         if not valid:
@@ -2498,7 +2577,9 @@ def test_skill_tool_offers_and_opens(root, home):
             columns=24,
         )
         assert_true(code == 0, output)
-        assert_true(b"skill-ok" in output and b"skills: 1 available" in output, output)
+        assert_true(b"skill-ok" in output and b"Skills" in output, output)
+        assert_true(b"1 available" in output, output)
+        assert_true(b"\x1b[1m\xc2\xb5Agent" in output, output)
         assert_true(b"demo" in output, output)
         assert_true(
             output.find(b"demo-body-sentinel") > output.find(b"skill-ok"),
@@ -2703,6 +2784,33 @@ def test_invalid_mcp_config_not_executed(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
         assert_true(not marker.exists(), "invalid MCP server config executed")
+    finally:
+        server.close()
+
+
+def test_failed_mcp_server_remains_diagnosable(root, home):
+    (home / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"broken": {"command": "/missing/uagent-mcp-server"}}}),
+        encoding="utf-8",
+    )
+
+    def route(_, body):
+        results = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        if results:
+            healthy = "broken · error" in results[-1] and "server exited" in results[-1]
+            return event({"content": "mcp-diagnostic-ok" if healthy else "mcp-diagnostic-bad"})
+        assert_true("mcp_status" in function_names(body), function_names(body))
+        return tool_call("mcp_status", {"server": "broken"})
+
+    server = Server([route])
+    try:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "diagnose mcp")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "mcp-diagnostic-ok", result.stdout)
     finally:
         server.close()
 
@@ -2913,6 +3021,9 @@ def test_builtin_chrome_session_modes(root, home):
         "            result = {'tools': ["
         "{'name': 'list_pages', 'description': 'list pages', "
         "'inputSchema': {'type': 'object', 'additionalProperties': False}}, "
+        "{'name': 'evaluate_script', 'description': 'evaluate script', "
+        "'inputSchema': {'type': 'object', 'properties': "
+        "{'function': {'type': 'string'}}, 'required': ['function']}}, "
         "{'name': 'click', 'description': 'click', 'inputSchema': {'type': 'object', "
         "'properties': {'uid': {'type': 'string'}, "
         "'includeSnapshot': {'type': 'boolean'}}, 'required': ['uid']}}]}\n"
@@ -2959,7 +3070,9 @@ def test_builtin_chrome_session_modes(root, home):
         result = next(
             message["content"] for message in body["messages"] if message.get("role") == "tool"
         )
-        assert_true(result == "User Chrome session selected (slim)", result)
+        assert_true(
+            result == "User Chrome session selected (slim; page health check passed)", result
+        )
         return tool_call("chrome-devtools_navigate", {"url": "https://fixture"})
 
     def take_screenshot(_, body):
@@ -2992,7 +3105,9 @@ def test_builtin_chrome_session_modes(root, home):
             for message in reversed(body["messages"])
             if message.get("role") == "tool"
         )
-        assert_true(result == "User Chrome session selected (full)", result)
+        assert_true(
+            result == "User Chrome session selected (full; page health check passed)", result
+        )
         return tool_call("chrome-devtools_click", {"uid": "7"})
 
     def final(_, body):
@@ -3024,6 +3139,7 @@ def test_builtin_chrome_session_modes(root, home):
         )
         assert_true("--slim" in calls[0], calls)
         assert_true("--slim" not in calls[1], calls)
+
     finally:
         server.close()
 
@@ -3537,6 +3653,71 @@ def test_local_model_uses_openrouter_web_search_route(root, home):
         )
         assert_true(abs(envelope["usage"]["cost"] - 0.02) < 1e-9, envelope)
         assert_true(len(local.requests) == 2, local.requests)
+        assert_true(len(search.requests) == 1, search.requests)
+    finally:
+        local.close()
+        search.close()
+
+
+def test_local_model_switch_keeps_openrouter_web_search(root, home):
+    def verify_search(handler, body):
+        valid = (
+            body.get("model") == "vendor/search:online"
+            and handler.headers.get("Authorization") == "Bearer search-key"
+        )
+        data = json.dumps(
+            {"choices": [{"message": {"content": "switched-search" if valid else "misrouted"}}]}
+        ).encode()
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    def verify_tool_result(_, body):
+        results = [
+            message.get("content", "")
+            for message in body["messages"]
+            if message.get("role") == "tool"
+        ]
+        return event(
+            {
+                "content": (
+                    "switch-search-ok"
+                    if any("switched-search" in result for result in results)
+                    else "switch-search-bad"
+                )
+            }
+        )
+
+    local = Server(
+        [
+            tool_call("web_search", {"query": "current topic"}),
+            verify_tool_result,
+        ]
+    )
+    search = Server([verify_search])
+    providers = {
+        "codex-local": {"base_url": local.url, "api_key": "local-key"},
+        "openrouter": {"base_url": search.url, "api_key": "search-key"},
+    }
+    try:
+        env = base_env(home, search.url)
+        env["UAGENT_MODEL"] = "initial/model"
+        env["UAGENT_API_KEY"] = "search-key"
+        env["UAGENT_OPENROUTER_COMPATIBLE"] = "1"
+        env["UAGENT_PROVIDERS"] = json.dumps(providers)
+        env["OPENROUTER_MODEL"] = "vendor/search"
+        result = run_dialog(
+            root,
+            env,
+            "/model codex-local/local-model\nresearch the current topic\n/q\n",
+            "--yolo",
+            timeout=15,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("switch-search-ok" in result.stdout, result.stdout)
+        assert_true("switch-search-bad" not in result.stdout, result.stdout)
         assert_true(len(search.requests) == 1, search.requests)
     finally:
         local.close()
@@ -4358,9 +4539,11 @@ def test_repeated_tool_guard_keeps_history_valid(root, home):
 
     server = Server([repeated, repeated, repeated, repeated, after_abort])
     try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
         result = run_dialog(
             root,
-            base_env(home, server.url),
+            env,
             "probe\ncontinue\n/q\n",
             "--yolo",
         )
@@ -4634,12 +4817,13 @@ def test_subagent_auto_join_continues_turn(root, home):
         if has_result:
             return event({"content": "late-task-ok"})
         if any("[started] task id " in str(message.get("content", "")) for message in messages):
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         return tool_call("task", {"prompt": "child"})
 
     server = Server([route])
     try:
         env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "4"
         env["UAGENT_STREAM_IDLE_TIMEOUT"] = "4"
         result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
@@ -4653,6 +4837,96 @@ def test_subagent_auto_join_continues_turn(root, home):
             for _, body in server.requests
         ]
         assert_true(len(server.requests) == 4, request_summary)
+    finally:
+        server.close()
+
+
+def test_subagent_foreground_returns_result_without_wait_round(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        if any(
+            message.get("role") == "user" and message.get("content") == "child"
+            for message in messages
+        ):
+            time.sleep(0.3)
+            return event({"content": "foreground-child-result"})
+        tool_results = [
+            str(message.get("content", "")) for message in messages if message.get("role") == "tool"
+        ]
+        if any("foreground-child-result" in result for result in tool_results):
+            direct = all("[started] task id " not in result for result in tool_results)
+            return event({"content": "foreground-task-ok" if direct else "foreground-task-bad"})
+        task = function_tool(body, "task")
+        background = task["parameters"]["properties"]["background"]
+        assert_true(background["type"] == "boolean", background)
+        assert_true("final result directly" in background["description"], background)
+        return tool_call("task", {"prompt": "child", "background": False})
+
+    server = Server([route])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "foreground-task-ok", result.stdout)
+        parent_requests = [
+            body
+            for _, body in server.requests
+            if any(
+                message.get("role") == "user" and message.get("content") == "delegate"
+                for message in body["messages"]
+            )
+        ]
+        assert_true(len(parent_requests) == 2, len(parent_requests))
+    finally:
+        server.close()
+
+
+def test_subagent_headless_resumes_on_background_completion(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        if any(
+            message.get("role") == "user" and message.get("content") == "child"
+            for message in messages
+        ):
+            time.sleep(0.5)
+            return event({"content": "background-child-result"})
+        combined = "\n".join(str(message.get("content", "")) for message in messages)
+        if "[Background result: task id " in combined:
+            harness_wake = any(
+                message.get("role") == "system"
+                and str(message.get("content", "")).startswith("[harness continuation:")
+                for message in messages
+            )
+            return event({"content": "headless-wake-ok" if harness_wake else "headless-wake-bad"})
+        if "[started] task id " in combined:
+            # Yield without waiting. Headless orchestration must keep the child
+            # alive and initiate a harness-origin continuation on completion.
+            return event({"content": "child-still-running"})
+        return tool_call("task", {"prompt": "child"})
+
+    server = Server([route])
+    trace = root / "headless-background-wake.jsonl"
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
+        result = run(
+            root,
+            env,
+            "--yolo",
+            f"--debug={trace}",
+            "-p",
+            "delegate",
+            timeout=8,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "headless-wake-ok", result.stdout)
+        origins = [
+            event["data"]["origin"]
+            for event in map(json.loads, trace.read_text().splitlines())
+            if event["event"] == "turn_start"
+        ]
+        assert_true(origins == ["user", "harness"], origins)
     finally:
         server.close()
 
@@ -4679,7 +4953,7 @@ def test_no_memory_propagates_to_full_subagent(root, home):
             clean = "child-clean" in json.dumps(messages)
             return event({"content": "no-memory-child-ok" if clean else "no-memory-child-bad"})
         if any("[started] task id " in str(message.get("content", "")) for message in messages):
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         return tool_call("task", {"prompt": "child", "mode": "full"})
 
     server = Server([route])
@@ -4730,7 +5004,7 @@ def test_parallel_subagents_auto_join(root, home):
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
         if "[started] task id " in combined:
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         return event(
             {
                 "tool_calls": [
@@ -4750,9 +5024,11 @@ def test_parallel_subagents_auto_join(root, home):
 
     server = Server([route])
     try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
         result = run(
             root,
-            base_env(home, server.url),
+            env,
             "--yolo",
             "-p",
             "delegate twice",
@@ -4793,6 +5069,11 @@ def test_subagent_deadline_reaps_child(root, home):
         ):
             time.sleep(3)
             return event({"content": "too-late"})
+        if any(
+            "[Background result: task id " in str(message.get("content", ""))
+            for message in messages
+        ):
+            return event({"content": "deadline-cleanup-ok"})
         return tool_call("task", {"prompt": "slow-child"})
 
     server = Server([route])
@@ -5034,7 +5315,7 @@ def test_subagent_receives_budget(root, home):
         if "[Background result:" in combined:
             return event({"content": "budget-ok"})
         if "[started] task id " in combined:
-            return tool_call("wait_agent", {"timeout_ms": 30000})
+            return tool_call("activity_wait", {"wait_ms": 30000})
         task = function_tool(body, "task")
         assert_true("provider" not in task["parameters"]["properties"], task)
         assert_true(
@@ -5110,9 +5391,10 @@ def test_subagent_uses_selected_model_route(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
         return event({"content": "route-ok" if "child-route-ok" in combined else "route-bad"})
 
-    parent = Server([delegate, lambda *_: tool_call("wait_agent", {"timeout_ms": 30000}), finish])
+    parent = Server([delegate, lambda *_: tool_call("activity_wait", {"wait_ms": 30000}), finish])
     try:
         env = base_env(home, parent.url)
+        env["UAGENT_CONTEXT"] = "32768"
         env["UAGENT_PROVIDERS"] = json.dumps(
             {
                 "codex-local": {
@@ -5194,7 +5476,7 @@ def test_subagent_can_mix_model_routes(root, home):
         return event({"content": "mixed-routes-ok" if valid else "mixed-routes-bad"})
 
     def wait(*_):
-        return tool_call("wait_agent", {"timeout_ms": 30000})
+        return tool_call("activity_wait", {"wait_ms": 30000})
 
     parent = Server([delegate, wait, wait, finish])
     try:
@@ -5360,11 +5642,11 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 if message.get("role") == "tool"
             ]
             listing = next(
-                (text for text in tool_results if text.startswith("[running] pid ")),
+                (text for text in tool_results if text.startswith("[running] activity ")),
                 "",
             )
-            assert_true(f"pid {pid} " in listing, listing)
-            return tool_call("terminal_output", {"pid": pid})
+            assert_true(f"activity {pid} " in listing, listing)
+            return tool_call("activity_output", {"id": pid})
 
         def verify_output(_, body):
             tool_results = [
@@ -5373,15 +5655,15 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 if message.get("role") == "tool"
             ]
             readable = any(
-                text.startswith("[running · pid ") and "server-ready" in text
+                text.startswith("[running · activity ") and "server-ready" in text
                 for text in tool_results
             )
             return event({"content": "terminal-ok" if readable else "terminal-bad"})
 
         def offer_output(_, body):
             names = function_names(body)
-            assert_true("terminal_output" in names, names)
-            return tool_call("terminal_output", {})
+            assert_true("activity_output" in names, names)
+            return tool_call("activity_output", {})
 
         server = Server([offer_output, request_output, verify_output])
         try:
@@ -5411,10 +5693,283 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             assert_true(pathlib.Path(str(log) + ".1").exists(), log)
         finally:
             server.close()
+
+        def verify_stop(_, body):
+            result = next(
+                message.get("content", "")
+                for message in reversed(body["messages"])
+                if message.get("role") == "tool"
+            )
+            return event(
+                {"content": "terminal-stop-ok" if "stopped process group" in result else result}
+            )
+
+        stop_server = Server([tool_call("activity_stop", {"id": pid}), verify_stop])
+        try:
+            stop_env = base_env(home, stop_server.url)
+            stop_env["UAGENT_CONTEXT"] = "16384"
+            stopped = run(
+                workspace,
+                stop_env,
+                "--yolo",
+                "-p",
+                "stop the detached server",
+                timeout=8,
+            )
+            assert_true(stopped.returncode == 0, stopped.stderr)
+            assert_true(stopped.stdout.strip() == "terminal-stop-ok", stopped.stdout)
+            assert_true(not record.exists(), record)
+            assert_true(not log.exists(), log)
+            assert_true(not pathlib.Path(str(log) + ".1").exists(), log)
+            try:
+                os.killpg(pid, 0)
+            except ProcessLookupError:
+                pass
+            else:
+                raise AssertionError(f"detached process group {pid} survived activity_stop")
+            pid = None
+        finally:
+            stop_server.close()
     finally:
         if pid is not None:
             try:
                 os.killpg(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
+def test_detached_terminal_preserves_exit_and_waits(root, home):
+    state = {"pid": None, "notes": []}
+
+    def wait_for_failure(_, body):
+        result = next(
+            (
+                message.get("content", "")
+                for message in reversed(body["messages"])
+                if message.get("role") == "tool" and "[detached] pid " in message.get("content", "")
+            ),
+            "",
+        )
+        match = re.search(r"\[detached\] pid (\d+)", result)
+        assert_true(match is not None, result)
+        state["pid"] = int(match.group(1))
+        return tool_call("activity_output", {"id": state["pid"], "wait_ms": 2000})
+
+    def completion_note(body):
+        state["notes"] = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+        ]
+        return any(
+            "[Detached result:" in note and "[exit code 7]" in note for note in state["notes"]
+        )
+
+    def verify_or_wait(_, body):
+        if completion_note(body):
+            return event({"content": "detached-exit-ok"})
+        return tool_call("activity_output", {"id": state["pid"], "wait_ms": 2000})
+
+    def fail_if_missing(_, body):
+        completion_note(body)
+        return event({"content": "detached-exit-bad"})
+
+    server = Server(
+        [
+            tool_call(
+                "run",
+                {"command": "printf 'detached-failure\\n'; exit 7", "detach": True},
+            ),
+            wait_for_failure,
+            verify_or_wait,
+            verify_or_wait,
+            verify_or_wait,
+            fail_if_missing,
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "run failure", timeout=12)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(
+            result.stdout.strip() == "detached-exit-ok",
+            (result.stdout, result.stderr, state["notes"]),
+        )
+    finally:
+        server.close()
+        if state["pid"] is not None:
+            try:
+                os.killpg(state["pid"], signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
+def test_detached_terminal_blocking_wait_can_repeat(root, home):
+    state = {"pid": None}
+
+    def request_wait(_, body):
+        if state["pid"] is None:
+            result = next(
+                message.get("content", "")
+                for message in reversed(body["messages"])
+                if message.get("role") == "tool" and "[detached] pid " in message.get("content", "")
+            )
+            state["pid"] = int(re.search(r"\[detached\] pid (\d+)", result).group(1))
+        return tool_call("activity_output", {"id": state["pid"], "wait_ms": 1000})
+
+    server = Server(
+        [
+            tool_call("run", {"command": "sleep 20", "detach": True}),
+            request_wait,
+            request_wait,
+            request_wait,
+            request_wait,
+            event({"content": "blocking-wait-ok"}),
+        ]
+    )
+    try:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "wait", timeout=10)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "blocking-wait-ok", result.stdout)
+        assert_true("repeated the same tool call" not in result.stderr, result.stderr)
+    finally:
+        server.close()
+        if state["pid"] is not None:
+            try:
+                os.killpg(state["pid"], signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
+def test_detached_terminal_waits_for_readiness_marker(root, home):
+    state = {"pid": None}
+
+    def wait_for_ready(_, body):
+        result = next(
+            message.get("content", "")
+            for message in reversed(body["messages"])
+            if message.get("role") == "tool" and "[detached] pid " in message.get("content", "")
+        )
+        state["pid"] = int(re.search(r"\[detached\] pid (\d+)", result).group(1))
+        return tool_call(
+            "activity_output",
+            {"id": state["pid"], "wait_ms": 3000, "until": "server-ready"},
+        )
+
+    def verify_ready(_, body):
+        result = next(
+            message.get("content", "")
+            for message in reversed(body["messages"])
+            if message.get("role") == "tool"
+        )
+        ready = "server-ready" in result and "wait timed out" not in result
+        return event({"content": "readiness-ok" if ready else "readiness-bad"})
+
+    server = Server(
+        [
+            tool_call(
+                "run",
+                {
+                    "command": "printf 'booting\\n'; sleep 0.4; printf 'server-ready\\n'; sleep 20",
+                    "detach": True,
+                },
+            ),
+            wait_for_ready,
+            verify_ready,
+        ]
+    )
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
+        result = run(root, env, "--yolo", "-p", "start server", timeout=10)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "readiness-ok", result.stdout)
+    finally:
+        server.close()
+        if state["pid"] is not None:
+            try:
+                os.killpg(state["pid"], signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+
+def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
+    state = {"pid": None, "child": None}
+    child_file = root / "detached-child-pid"
+
+    def kill_wrapper(_, body):
+        result = next(
+            message.get("content", "")
+            for message in reversed(body["messages"])
+            if message.get("role") == "tool" and "[detached] pid " in message.get("content", "")
+        )
+        state["pid"] = int(re.search(r"\[detached\] pid (\d+)", result).group(1))
+        for _ in range(40):
+            if child_file.exists():
+                break
+            time.sleep(0.05)
+        assert_true(child_file.exists(), "detached child did not start")
+        state["child"] = int(child_file.read_text(encoding="utf-8"))
+        return tool_call("run", {"command": f"kill -KILL {state['pid']}"})
+
+    def inspect_group(_, body):
+        return tool_call("activity_output", {"id": state["pid"]})
+
+    def stop_group(_, body):
+        result = next(
+            message.get("content", "")
+            for message in reversed(body["messages"])
+            if message.get("role") == "tool"
+        )
+        os.kill(state["child"], 0)
+        tracked = result.startswith(f"[detached · activity {state['pid']} ")
+        return (
+            tool_call("activity_stop", {"id": state["pid"]})
+            if tracked
+            else event({"content": "group-tracking-bad"})
+        )
+
+    def verify_group_stopped(_, body):
+        result = next(
+            message.get("content", "")
+            for message in reversed(body["messages"])
+            if message.get("role") == "tool"
+        )
+        try:
+            os.killpg(state["pid"], 0)
+        except ProcessLookupError:
+            gone = True
+        else:
+            gone = False
+        cleaned = not (home / ".uagent" / "terminals" / f"{state['pid']}.json").exists()
+        ok = "stopped process group" in result and gone and cleaned
+        return event({"content": "group-tracking-ok" if ok else "group-tracking-bad"})
+
+    server = Server(
+        [
+            tool_call(
+                "run",
+                {
+                    "command": f"sleep 20 & child=$!; printf '%s\\n' \"$child\" > {shlex.quote(str(child_file))}; wait",
+                    "detach": True,
+                },
+            ),
+            kill_wrapper,
+            inspect_group,
+            stop_group,
+            verify_group_stopped,
+        ]
+    )
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_CONTEXT"] = "16384"
+        result = run(root, env, "--yolo", "-p", "manage server", timeout=10)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "group-tracking-ok", result.stdout)
+    finally:
+        server.close()
+        if state["pid"] is not None:
+            try:
+                os.killpg(state["pid"], signal.SIGKILL)
             except ProcessLookupError:
                 pass
 

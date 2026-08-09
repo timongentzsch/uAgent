@@ -343,6 +343,17 @@ inline std::filesystem::path CanonicalAccessPath(const std::string& path) {
   return ec ? std::filesystem::absolute(p, ec) : canonical;
 }
 
+inline std::string DisplayPath(const std::string& path) {
+  std::error_code error;
+  std::filesystem::path relative = std::filesystem::relative(
+      CanonicalAccessPath(path), CanonicalCwd(), error);
+  if (error || relative.empty() ||
+      (relative.begin() != relative.end() && *relative.begin() == "..")) {
+    return path;
+  }
+  return relative.string();
+}
+
 inline bool PathWithin(const std::filesystem::path& path,
                        const std::filesystem::path& root) {
   auto p = path.lexically_normal();

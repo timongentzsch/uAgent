@@ -11,11 +11,11 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <cwchar>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -130,32 +130,47 @@ std::string Utf8Trunc(std::string s, size_t cap) {
   return Utf8Prefix(std::move(s), cap) + "…";
 }
 
+namespace {
+
+struct Glyph {
+  size_t bytes = 1;
+  size_t width = 1;
+};
+
+// Decode one terminal glyph. CSI escape sequences consume bytes at zero
+// width; invalid or incomplete UTF-8 degrades to one column per byte.
+Glyph NextGlyph(const std::string& s, size_t offset, std::mbstate_t& state,
+                bool skip_ansi) {
+  if (skip_ansi && s[offset] == '\x1b' && offset + 1 < s.size() &&
+      s[offset + 1] == '[') {
+    size_t end = offset + 2;
+    while (end < s.size()) {
+      unsigned char value = static_cast<unsigned char>(s[end++]);
+      if (value >= 0x40 && value <= 0x7e) break;
+    }
+    return {end - offset, 0};
+  }
+  wchar_t wide = 0;
+  size_t consumed =
+      std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
+  if (consumed == static_cast<size_t>(-1) ||
+      consumed == static_cast<size_t>(-2)) {
+    state = {};
+    return {1, 1};
+  }
+  return {consumed ? consumed : 1,
+          static_cast<size_t>(std::max(0, ::wcwidth(wide)))};
+}
+
+}  // namespace
+
 size_t DisplayWidth(const std::string& s) {
   std::mbstate_t state{};
   size_t width = 0;
   for (size_t offset = 0; offset < s.size();) {
-    if (s[offset] == '\x1b' && offset + 1 < s.size() && s[offset + 1] == '[') {
-      offset += 2;
-      while (offset < s.size()) {
-        unsigned char value = static_cast<unsigned char>(s[offset++]);
-        if (value >= 0x40 && value <= 0x7e) break;
-      }
-      continue;
-    }
-    wchar_t wide = 0;
-    size_t consumed =
-        std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
-    if (consumed == static_cast<size_t>(-1) ||
-        consumed == static_cast<size_t>(-2)) {
-      state = {};
-      ++offset;
-      ++width;
-      continue;
-    }
-    if (consumed == 0) consumed = 1;
-    int columns = ::wcwidth(wide);
-    if (columns > 0) width += static_cast<size_t>(columns);
-    offset += consumed;
+    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/true);
+    width += glyph.width;
+    offset += glyph.bytes;
   }
   return width;
 }
@@ -167,29 +182,10 @@ std::string DisplayTrunc(std::string s, size_t columns) {
   std::mbstate_t state{};
   size_t offset = 0, width = 0;
   while (offset < s.size()) {
-    if (s[offset] == '\x1b' && offset + 1 < s.size() && s[offset + 1] == '[') {
-      offset += 2;
-      while (offset < s.size()) {
-        unsigned char value = static_cast<unsigned char>(s[offset++]);
-        if (value >= 0x40 && value <= 0x7e) break;
-      }
-      continue;
-    }
-    wchar_t wide = 0;
-    size_t consumed =
-        std::mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
-    int glyph_width = 1;
-    if (consumed == static_cast<size_t>(-1) ||
-        consumed == static_cast<size_t>(-2)) {
-      state = {};
-      consumed = 1;
-    } else {
-      if (consumed == 0) consumed = 1;
-      glyph_width = std::max(0, ::wcwidth(wide));
-    }
-    if (width + static_cast<size_t>(glyph_width) > limit) break;
-    width += static_cast<size_t>(glyph_width);
-    offset += consumed;
+    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/true);
+    if (width + glyph.width > limit) break;
+    width += glyph.width;
+    offset += glyph.bytes;
   }
   return s.substr(0, offset) + "…";
 }
@@ -226,33 +222,18 @@ std::vector<std::string> WrapLines(const std::string& s, size_t columns) {
   std::mbstate_t state{};
   std::string current;
   size_t current_width = 0;
-  auto push_row = [&] {
-    rows.push_back(current);
-    current.clear();
-    current_width = 0;
-  };
   for (size_t offset = 0; offset < s.size();) {
-    size_t consumed = 1;
-    wchar_t wide = 0;
-    size_t mbr = mbrtowc(&wide, s.data() + offset, s.size() - offset, &state);
-    int glyph_width = 1;
-    if (mbr == static_cast<size_t>(-1) || mbr == static_cast<size_t>(-2)) {
-      state = {};
-      wide = L'?';
-    } else {
-      if (mbr == 0) mbr = 1;
-      consumed = mbr;
-      glyph_width = std::max(0, ::wcwidth(wide));
-    }
+    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/false);
     // A single wide glyph wider than the row must not infinite-loop, so put it
     // on a row of its own even if it overflows columns.
-    if (current_width + static_cast<size_t>(glyph_width) > columns &&
-        !current.empty()) {
-      push_row();
+    if (current_width + glyph.width > columns && !current.empty()) {
+      rows.push_back(current);
+      current.clear();
+      current_width = 0;
     }
-    current.append(s, offset, consumed);
-    current_width += static_cast<size_t>(glyph_width);
-    offset += consumed;
+    current.append(s, offset, glyph.bytes);
+    current_width += glyph.width;
+    offset += glyph.bytes;
   }
   if (!current.empty() || rows.empty()) rows.push_back(current);
   return rows;
@@ -315,27 +296,18 @@ uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
 }
 
 std::string UrlHost(std::string url) {
-  if (auto p = url.find("://"); p != std::string::npos) {
-    url = url.substr(p + 3);
+  std::string host = UrlAuthority(std::move(url));
+  if (auto p = host.find(':'); p != std::string::npos) {
+    host.resize(p);
   }
-  if (auto p = url.find('/'); p != std::string::npos) {
-    url.resize(p);
-  }
-  if (auto p = url.rfind('@'); p != std::string::npos) {
-    url = url.substr(p + 1);
-  }
-  if (auto p = url.find(':'); p != std::string::npos) {
-    url.resize(p);
-  }
-  return AsciiLower(std::move(url));
+  return host;
 }
 
 bool OpenrouterUrl(std::string url) {
   url = UrlHost(std::move(url));
-  constexpr const char* kSuffix = ".openrouter.ai";
-  return url == "openrouter.ai" || (url.size() > strlen(kSuffix) &&
-                                    url.compare(url.size() - strlen(kSuffix),
-                                                strlen(kSuffix), kSuffix) == 0);
+  constexpr std::string_view kSuffix = ".openrouter.ai";
+  return url == "openrouter.ai" ||
+         (url.size() > kSuffix.size() && url.ends_with(kSuffix));
 }
 
 bool LoopbackUrl(std::string url) {

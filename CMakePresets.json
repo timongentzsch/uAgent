@@ -33,8 +33,8 @@
       "name": "sanitize",
       "inherits": "debug",
       "cacheVariables": {
-        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
-        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+        "UAGENT_ENABLE_ASAN": "ON",
+        "UAGENT_ENABLE_UBSAN": "ON"
       }
     },
     {

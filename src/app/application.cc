@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -120,6 +121,17 @@ class Application {
       }
     }
     RunTurns(context_.options.prompt, std::move(content));
+    // A background task may finish after the model has yielded prose. Headless
+    // mode has no idle REPL to deliver that event later, so keep the process
+    // alive and resume from each completion instead of silently killing pending
+    // work during runtime shutdown.
+    while (runtime_.processes.JoinableCount() > 0 && !AbortRequested()) {
+      if (agent_.DrainBackground()) {
+        agent_.ContinueAfterActivity();
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    }
     context_.output.Restore();
 
     std::string ledger = EnvStr("UAGENT_USAGE_FILE");
@@ -495,12 +507,13 @@ class Application {
       printf("%s· /online is available only for OpenRouter%s\n", RED(), RST());
       return;
     }
-    bool enabled = api_.model.size() > 7 &&
-                   api_.model.compare(api_.model.size() - 7, 7, ":online") == 0;
+    constexpr std::string_view kOnline = ":online";
+    bool enabled =
+        api_.model.size() > kOnline.size() && api_.model.ends_with(kOnline);
     if (enabled) {
-      api_.model.erase(api_.model.size() - 7);
+      api_.model.erase(api_.model.size() - kOnline.size());
     } else {
-      api_.model += ":online";
+      api_.model += kOnline;
     }
     ActivateCurrentRoute();
     printf("%s· web search %s%s\n", DIM(),
@@ -571,8 +584,7 @@ class Application {
       double elapsed = std::chrono::duration<double>(
                            std::chrono::steady_clock::now() - started)
                            .count();
-      size_t background = runtime_.processes.PendingCount() +
-                          runtime_.processes.DetachedCount();
+      size_t background = runtime_.processes.VisibleCount();
       char seconds[32];
       snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
       std::string activity = CurrentTerminalActivity();
@@ -604,8 +616,7 @@ class Application {
       return std::string(interrupting ? "interrupting|" : "working|") +
              CurrentTerminalActivity() + "|" +
              std::to_string(SteeringState().QueuedCount()) + "|" +
-             std::to_string(runtime_.processes.PendingCount()) + "|" +
-             std::to_string(runtime_.processes.DetachedCount());
+             std::to_string(runtime_.processes.VisibleCount());
     };
 
     auto unmount = [&] {
@@ -647,7 +658,7 @@ class Application {
       insert(std::move(ready));
     };
 
-    auto start_work = [&](std::string input) {
+    auto start_work = [&](std::optional<std::string> input) {
       agent_.ContextUsed();
       working = true;
       worker_quit = false;
@@ -655,7 +666,11 @@ class Application {
       spinner_frame = 0;
       started = std::chrono::steady_clock::now();
       worker = std::thread([&, input = std::move(input)]() mutable {
-        worker_quit = ProcessInput(std::move(input));
+        if (input) {
+          worker_quit = ProcessInput(std::move(*input));
+        } else {
+          agent_.ContinueAfterActivity();
+        }
         working = false;
         broker.Notify();
       });
@@ -731,14 +746,28 @@ class Application {
         flush_output(true);
         SaveSession();
         BgTakeCompleted(runtime_.processes, "memory");
-        agent_.DrainBackground();
+        bool activity_ready = agent_.DrainBackground();
         if (worker_quit) exit_when_idle = true;
         interrupting = false;
         if (!exit_when_idle && next_input) {
           start_work(std::move(*next_input));
           next_input.reset();
+        } else if (!exit_when_idle && activity_ready) {
+          start_work(std::nullopt);
         }
         redraw();
+      }
+
+      // A task or command can finish after the parent has returned prose. Fold
+      // its result into the conversation and resume the idle agent directly;
+      // the existing 100 ms UI poll is the event source, so no watcher thread
+      // or second process owner is needed.
+      if (!working && !worker.joinable() && !answering && !exit_when_idle) {
+        BgTakeCompleted(runtime_.processes, "memory");
+        if (agent_.DrainBackground()) {
+          start_work(std::nullopt);
+          redraw();
+        }
       }
 
       if (working && !answering) {
@@ -765,6 +794,15 @@ class Application {
     return 0;
   }
 
+  int FinishInteractive(int status) {
+    SaveSession();
+    runtime_.Shutdown();
+    std::remove(UsageLedger().c_str());
+    LogSessionEnd(exit_reason_.c_str());
+    TerminalRestore();
+    return status;
+  }
+
   int RunInteractive() {
     ResumeAtStartup();
     persist_ = isatty(STDIN_FILENO);
@@ -779,14 +817,7 @@ class Application {
     }
     if (persist_) {
       int persistent_status = RunPersistentInteractive();
-      if (persistent_status >= 0) {
-        SaveSession();
-        runtime_.Shutdown();
-        std::remove(UsageLedger().c_str());
-        LogSessionEnd(exit_reason_.c_str());
-        TerminalRestore();
-        return persistent_status;
-      }
+      if (persistent_status >= 0) return FinishInteractive(persistent_status);
     }
     for (;;) {
       SaveSession();
@@ -804,12 +835,7 @@ class Application {
       }
       if (ProcessInput(std::move(line))) break;
     }
-    SaveSession();
-    runtime_.Shutdown();
-    std::remove(UsageLedger().c_str());
-    LogSessionEnd(exit_reason_.c_str());
-    TerminalRestore();
-    return 0;
+    return FinishInteractive(0);
   }
 
   AppContext& context_;

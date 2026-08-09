@@ -97,7 +97,7 @@ See [testing](docs/TESTING.md) for scenarios and extension.
 | execution | `run`, detached terminals, uv-backed `run_python` |
 | evidence | attachments, terminal images, cited `web_search` |
 | extension | MCP, Chrome DevTools, skills, project/global memory |
-| orchestration | parallel tools, bounded `task` routes, `wait_agent`, checkpoint and handoff |
+| orchestration | parallel tools, bounded `task` routes, activity wait/stop, checkpoint and handoff |
 
 Mutating, shell, network, delegation, and MCP calls require approval unless
 `--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,
@@ -105,10 +105,16 @@ processes, context, persistence, and reported spend are bounded.
 Model labels include reasoning effort; delegated task labels also include their
 provider. Working status reports live context and the number of active
 background processes.
-`terminal_output` can inspect their bounded current logs without waiting or
-cancelling them; child-side buffering may delay visible output. Enter queues
-guidance into the active turn at its next safe boundary. Escape interrupts only
-the foreground operation;
+Commands, tasks, and services share stable activity IDs. `activity_output`
+inspects bounded logs; `wait_ms` blocks for new output or exit, and `until`
+waits for a fixed readiness marker. `task(background=false)` returns a required
+child result in the current model step; background tasks return immediately and
+deliver their result automatically on exit. `activity_wait` remains available
+when no useful parent work can continue. `activity_stop` stops the complete
+owned process group and cleans its detached record and logs. Interactive and
+headless runs both continue when required background work finishes. Child-side
+buffering may delay visible output. Enter queues guidance into the active turn
+at its next safe boundary. Escape interrupts only the foreground operation;
 delegated and detached work keeps running unless explicitly cancelled.
 
 Memory uses the same progressive-disclosure shape as project context: startup

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <sstream>
 #include <string>
 
 #include "include/agent/dispatch.h"
@@ -47,21 +48,41 @@ inline std::string ToolOutputForDisplay(const CallTask& task,
 inline void PrintToolCall(const CallTask& task, const ToolCall& call,
                           bool verbose) {
   std::string prefix = "→ " + task.ordinal + TerminalSafe(call.name);
+  bool full_label = verbose || call.name == "run";
   if (task.label.empty()) {
     printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
-  } else if (verbose && task.label.find('\n') != std::string::npos) {
+  } else if (full_label && task.label.find('\n') != std::string::npos) {
     printf("%s%s%s\n%s\n", CYAN(), prefix.c_str(), RST(),
            TerminalSafe(task.label).c_str());
   } else {
-    std::string summary = verbose
+    std::string summary = full_label
                               ? TerminalSafe(task.label)
                               : TerminalSummary(task.label, prefix.size() + 3);
     printf("%s%s(%s)%s\n", CYAN(), prefix.c_str(), summary.c_str(), RST());
   }
 }
 
+inline void PrintToolDisplay(const std::string& display) {
+  std::istringstream input(display);
+  std::string line;
+  if (!std::getline(input, line)) return;
+  printf("%s•%s %s%s%s\n", DIM(), RST(), BOLD(), TerminalSafe(line).c_str(),
+         RST());
+  while (std::getline(input, line)) {
+    const char* style = DIM();
+    if (!line.empty() && line[0] == '+') style = GREEN();
+    if (!line.empty() && line[0] == '-') style = RED();
+    if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
+    printf("%s    %s%s\n", style, TerminalSafe(line).c_str(), RST());
+  }
+}
+
 inline void PrintToolResult(const CallTask& task, const ToolCall& call,
                             const std::string& model_output, bool verbose) {
+  if (g_tty && task.result.Ok() && !task.result.display.empty()) {
+    PrintToolDisplay(task.result.display);
+    return;
+  }
   const char* style = DIM();
   if (task.result.status == CompletionStatus::kFailed ||
       task.result.status == CompletionStatus::kTimedOut) {

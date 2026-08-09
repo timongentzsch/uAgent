@@ -31,12 +31,20 @@ void RemoveLog(const std::string& path);
 ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes);
 CollectedLog CollectCompletedLog(const std::string& path, int64_t cap);
 int ToolLogPump(const std::string& path, int64_t max_bytes);
-bool ProcessAlive(pid_t pid);
+bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);
 std::vector<json> DetachedRecords();
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                               const std::string& command);
-ToolResult ToolTerminalOutput(const ProcessSupervisor& supervisor, int64_t pid);
+ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id);
+ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
+                              int64_t wait_ms, std::string_view until,
+                              const ToolContext& context);
+ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
+                            const std::vector<int64_t>& ids,
+                            std::string_view mode, int64_t wait_ms,
+                            const ToolContext& context);
+ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t id);
 std::string BgResultHeader(const BgJob& job);
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind = {});

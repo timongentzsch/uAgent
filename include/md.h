@@ -26,6 +26,7 @@ class MdStream {
   bool bold = false, ital = false, code = false;
   int math = 0;
   bool dollar = false, math_dollar = false, slash = false;
+  std::string math_text;
   int star = 0;
   bool linestart = true;
   std::string pre;
@@ -37,7 +38,7 @@ class MdStream {
   std::string row;
   std::vector<std::string> table;
   std::string cur_raw, prev_raw;
-  size_t vis_line = 0, prev_vis = 0;
+  size_t vis_line = 0, prev_rows = 1;
   size_t pending_output = 0;
   bool output_started = false;
   std::chrono::steady_clock::time_point last_flush =
@@ -53,6 +54,8 @@ class MdStream {
   void FenceClassify(char value);
   void InlineChar(char value);
   void MathChar(char value);
+  void FinishMath();
+  void ReplayMath();
   void EndLine();
   void RetroTable();
   void FlushTable();

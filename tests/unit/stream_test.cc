@@ -238,8 +238,12 @@ void TestBackgroundValidation() {
   add_job({999997, "", "", false, ""});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
+  CHECK(supervisor.VisibleCount() == 2);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
   CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
+  add_job({999995, "", "", false, "memory"});
+  CHECK(supervisor.PendingCount() == 2);
+  CHECK(supervisor.VisibleCount() == 2);
   CHECK(!supervisor.TakeAll().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);
@@ -262,7 +266,7 @@ void TestBackgroundValidation() {
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
   for (const char* name :
-       {"read_file", "list_dir", "grep", "run", "terminal_output"}) {
+       {"read_file", "list_dir", "grep", "run", "activity_output"}) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parallel_safe);
     if (tool) {

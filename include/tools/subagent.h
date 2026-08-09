@@ -21,7 +21,6 @@ std::string DelegationRuntimeContext(const Api& api);
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,
                   const std::vector<NamedProvider>& providers, bool debug);
-Tool WaitAgentTool(ProcessSupervisor& processes);
 
 }  // namespace uagent
 

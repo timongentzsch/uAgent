@@ -45,6 +45,8 @@ struct McpServer {
   size_t response_cap = 16 * 1024 * 1024;
   json config;
   bool tools_changed = false;
+  size_t tool_count = 0;
+  std::string last_error;
 
   ~McpServer() { Shutdown(); }
   // stdin EOF is the polite stop signal for stdio servers; escalate to

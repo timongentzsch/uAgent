@@ -111,9 +111,13 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp) {
     if (!text.empty()) text += '\n';
     text += "[mcp structuredContent]\n" + JsonDump(r["structuredContent"]);
   }
-  if (text.empty()) text = "(empty result)";
   bool is_error = r.contains("isError") && r["isError"].is_boolean() &&
                   r["isError"].get<bool>();
+  if (text.empty()) {
+    text = is_error ? "error: mcp(" + s.name +
+                          ") returned isError without diagnostic text"
+                    : "(empty result)";
+  }
   if (is_error && !text.starts_with("error")) text = "error: " + text;
   if (is_error) {
     return ToolFailure(ToolErrorCode::kRemoteError, std::move(text));

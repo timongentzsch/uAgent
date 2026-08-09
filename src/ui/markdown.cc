@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -20,7 +21,18 @@ namespace {
 constexpr size_t kFlushBytes = 256;
 constexpr auto kFlushInterval = std::chrono::milliseconds(16);
 
-size_t Ulen(const std::string& text) { return DisplayWidth(text); }
+const char* MathOpen(int math) {
+  switch (math) {
+    case 1:
+      return "$";
+    case 2:
+      return "$$";
+    case 3:
+      return "\\(";
+    default:
+      return "\\[";
+  }
+}
 
 bool Escaped(const std::string& text, size_t position) {
   size_t slashes = 0;
@@ -28,6 +40,30 @@ bool Escaped(const std::string& text, size_t position) {
     ++slashes;
   }
   return slashes % 2;
+}
+
+bool MarkdownEscapable(char value) {
+  constexpr std::string_view kEscapable = R"(\`*_${}[]()#+-.!|>$)";
+  return kEscapable.find(value) != std::string_view::npos;
+}
+
+bool PlausibleInlineMath(std::string_view text) {
+  if (text.empty() || text.find("**") != std::string_view::npos ||
+      text.find('`') != std::string_view::npos) {
+    return false;
+  }
+  if (!isdigit(static_cast<unsigned char>(text.front()))) return true;
+  size_t token = 0;
+  while (token < text.size() &&
+         (isdigit(static_cast<unsigned char>(text[token])) ||
+          text[token] == '.' || text[token] == ',')) {
+    ++token;
+  }
+  if (token == text.size() ||
+      !isspace(static_cast<unsigned char>(text[token]))) {
+    return true;
+  }
+  return text.find_first_of("=+-*/^_\\<>", token) != std::string_view::npos;
 }
 
 size_t MathSpan(const std::string& text, size_t position) {
@@ -52,9 +88,164 @@ size_t MathSpan(const std::string& text, size_t position) {
   }
   for (size_t end = begin; (end = text.find(close, end)) != std::string::npos;
        ++end) {
-    if (!Escaped(text, end)) return end + close.size();
+    if (Escaped(text, end)) continue;
+    if (close == "$" && !PlausibleInlineMath(std::string_view(text).substr(
+                            begin, end - begin))) {
+      return std::string::npos;
+    }
+    return end + close.size();
   }
   return std::string::npos;
+}
+
+bool TakeGroup(const std::string& text, size_t& position, std::string& group) {
+  if (position >= text.size() || text[position] != '{') return false;
+  size_t original = position;
+  size_t begin = ++position;
+  int depth = 1;
+  while (position < text.size() && depth > 0) {
+    if (text[position] == '{') ++depth;
+    if (text[position] == '}') --depth;
+    ++position;
+  }
+  if (depth != 0) {
+    position = original;
+    return false;
+  }
+  group = text.substr(begin, position - begin - 1);
+  return true;
+}
+
+std::string PrettyMath(const std::string& text);
+
+std::string MathCommand(std::string_view command) {
+  static constexpr std::pair<std::string_view, std::string_view> kCommands[] = {
+      {"alpha", "α"},  {"beta", "β"},       {"gamma", "γ"},
+      {"delta", "δ"},  {"epsilon", "ε"},    {"theta", "θ"},
+      {"lambda", "λ"}, {"mu", "μ"},         {"pi", "π"},
+      {"rho", "ρ"},    {"sigma", "σ"},      {"phi", "φ"},
+      {"omega", "ω"},  {"Delta", "Δ"},      {"Gamma", "Γ"},
+      {"Lambda", "Λ"}, {"Pi", "Π"},         {"Sigma", "Σ"},
+      {"Phi", "Φ"},    {"Omega", "Ω"},      {"times", "×"},
+      {"cdot", "·"},   {"pm", "±"},         {"le", "≤"},
+      {"leq", "≤"},    {"ge", "≥"},         {"geq", "≥"},
+      {"ne", "≠"},     {"neq", "≠"},        {"approx", "≈"},
+      {"infty", "∞"},  {"sum", "∑"},        {"prod", "∏"},
+      {"int", "∫"},    {"partial", "∂"},    {"nabla", "∇"},
+      {"to", "→"},     {"rightarrow", "→"}, {"leftarrow", "←"},
+      {"in", "∈"},     {"notin", "∉"},      {"forall", "∀"},
+      {"exists", "∃"}, {"cup", "∪"},        {"cap", "∩"},
+  };
+  for (const auto& [name, value] : kCommands) {
+    if (name == command) return std::string(value);
+  }
+  return {};
+}
+
+std::string ScriptText(const std::string& text, bool superscript) {
+  static constexpr std::string_view kPlain = "0123456789+-=()ni";
+  static constexpr std::string_view kSuper[] = {"⁰", "¹", "²", "³", "⁴", "⁵",
+                                                "⁶", "⁷", "⁸", "⁹", "⁺", "⁻",
+                                                "⁼", "⁽", "⁾", "ⁿ", "ⁱ"};
+  static constexpr std::string_view kSub[] = {"₀", "₁", "₂", "₃", "₄", "₅",
+                                              "₆", "₇", "₈", "₉", "₊", "₋",
+                                              "₌", "₍", "₎", "ₙ", "ᵢ"};
+  std::string out;
+  for (char value : text) {
+    size_t index = kPlain.find(value);
+    if (index == std::string_view::npos) {
+      return std::string(superscript ? "^(" : "_(") + PrettyMath(text) + ")";
+    }
+    out += superscript ? kSuper[index] : kSub[index];
+  }
+  return out;
+}
+
+std::string PrettyMath(const std::string& text) {
+  std::string out;
+  bool spaced = false;
+  for (size_t i = 0; i < text.size();) {
+    unsigned char value = static_cast<unsigned char>(text[i]);
+    if (isspace(value) || text[i] == '~') {
+      if (!out.empty() && !spaced) out += ' ';
+      spaced = true;
+      ++i;
+      continue;
+    }
+    spaced = false;
+    if (text[i] == '\\') {
+      size_t begin = ++i;
+      while (i < text.size() && isalpha(static_cast<unsigned char>(text[i]))) {
+        ++i;
+      }
+      std::string command = text.substr(begin, i - begin);
+      if (command == "frac") {
+        size_t groups_begin = i;
+        std::string numerator, denominator;
+        if (TakeGroup(text, i, numerator) && TakeGroup(text, i, denominator)) {
+          out += "(" + PrettyMath(numerator) + ")⁄(" + PrettyMath(denominator) +
+                 ")";
+          continue;
+        }
+        i = groups_begin;
+      } else if (command == "sqrt") {
+        std::string radicand;
+        if (TakeGroup(text, i, radicand)) {
+          out += "√(" + PrettyMath(radicand) + ")";
+          continue;
+        }
+      } else if (command == "text" || command == "mathrm" ||
+                 command == "operatorname") {
+        std::string group;
+        if (TakeGroup(text, i, group)) {
+          out += group;
+          continue;
+        }
+      } else if (command == "left" || command == "right") {
+        continue;
+      } else if (command == "quad" || command == "qquad") {
+        if (!out.empty() && out.back() != ' ') out += ' ';
+        continue;
+      }
+      std::string rendered = MathCommand(command);
+      if (!rendered.empty()) {
+        out += rendered;
+      } else if (command.empty() && i < text.size()) {
+        out += text[i++];
+      } else {
+        out += '\\' + command;
+      }
+      continue;
+    }
+    if (text[i] == '^' || text[i] == '_') {
+      bool superscript = text[i++] == '^';
+      std::string script;
+      if (!TakeGroup(text, i, script) && i < text.size()) {
+        size_t begin = i++;
+        if (text[begin] == '\\') {
+          while (i < text.size() &&
+                 isalpha(static_cast<unsigned char>(text[i]))) {
+            ++i;
+          }
+        }
+        script = text.substr(begin, i - begin);
+      }
+      out += ScriptText(script, superscript);
+      continue;
+    }
+    out += text[i];
+    ++i;
+  }
+  while (!out.empty() && out.back() == ' ') out.pop_back();
+  return out;
+}
+
+std::string MathBody(const std::string& span) {
+  if (span.starts_with("$$")) return span.substr(2, span.size() - 4);
+  if (span.starts_with("\\(") || span.starts_with("\\[")) {
+    return span.substr(2, span.size() - 4);
+  }
+  return span.substr(1, span.size() - 2);
 }
 
 std::string RenderCell(const std::string& text, size_t& visible_columns) {
@@ -71,11 +262,18 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
     size_t math_end = code ? std::string::npos : MathSpan(text, index);
     if (math_end != std::string::npos) {
       std::string span = text.substr(index, math_end - index);
+      std::string rendered = PrettyMath(MathBody(span));
       output += MATH();
-      output += span;
+      output += rendered;
       output += FgDfl();
-      visible += span;
+      visible += rendered;
       index = math_end - 1;
+      continue;
+    }
+    if (!code && value == '\\' && index + 1 < text.size() &&
+        MarkdownEscapable(text[index + 1])) {
+      output += text[++index];
+      visible += text[index];
       continue;
     }
     if (value == '*' && !code) {
@@ -157,13 +355,10 @@ void MdStream::Flush() {  // stream end: resolve everything still held
     FlushOutput(0, false, true);
     return;
   }
-  if (star) {
-    Pv(star == 2 ? "**" : "*");
-    star = 0;
-  }
+  while (math) ReplayMath();
+  if (star) Pv(star == 2 ? "**" : "*");
   if (dollar) Pc('$');
   if (slash) Pc('\\');
-  if (math_dollar) Pc('$');
   if (intable || tablemode) {
     if (!row.empty()) table.push_back(row);
     row.clear();
@@ -176,6 +371,8 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   }
   bold = ital = code = heading = fence = fencehead = false;
   math = 0;
+  math_text.clear();
+  star = 0;
   dollar = math_dollar = slash = false;
   linestart = true;
   FlushOutput(0, false, true);
@@ -195,7 +392,7 @@ void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
 
 void MdStream::Pv(const std::string& s) {
   fputs(s.c_str(), stdout);
-  vis_line += Ulen(s);
+  vis_line += DisplayWidth(s);
 }
 
 void MdStream::Pc(char c) {
@@ -258,7 +455,7 @@ void MdStream::Step(char c) {
       fencehead = false;
       linestart = true;
       prev_raw.clear();
-      prev_vis = 0;
+      prev_rows = 1;
     } else {
       putchar(c);
     }
@@ -277,7 +474,7 @@ void MdStream::Step(char c) {
     if (c == '\n') {
       linestart = true;
       prev_raw.clear();
-      prev_vis = 0;
+      prev_rows = 1;
     }
     return;
   }
@@ -448,13 +645,13 @@ void MdStream::InlineChar(char c) {
     if (c == '$') {
       math = 2;
       fputs(MATH(), stdout);
-      Pv("$$");
+      math_text.clear();
       return;
     }
     if (c != '\n' && c != ' ' && c != '\t') {
       math = 1;
       fputs(MATH(), stdout);
-      Pc('$');
+      math_text.clear();
       MathChar(c);
       return;
     }
@@ -465,7 +662,10 @@ void MdStream::InlineChar(char c) {
     if (!code && (c == '(' || c == '[')) {
       math = c == '(' ? 3 : 4;
       fputs(MATH(), stdout);
-      Pc('\\');
+      math_text.clear();
+      return;
+    }
+    if (!code && MarkdownEscapable(c)) {
       Pc(c);
       return;
     }
@@ -527,12 +727,11 @@ void MdStream::InlineChar(char c) {
 void MdStream::MathChar(char c) {
   if (slash) {
     slash = false;
-    Pc('\\');
-    Pc(c);
-    linestart = false;
     if ((math == 3 && c == ')') || (math == 4 && c == ']')) {
-      math = 0;
-      fputs(FgDfl(), stdout);
+      FinishMath();
+    } else {
+      math_text += '\\';
+      math_text += c;
     }
     return;
   }
@@ -541,23 +740,22 @@ void MdStream::MathChar(char c) {
     return;
   }
   if (math == 1 && c == '$') {
-    Pc(c);
-    linestart = false;
-    math = 0;
-    fputs(FgDfl(), stdout);
+    if (!PlausibleInlineMath(math_text)) {
+      math_text += '$';
+      ReplayMath();
+      return;
+    }
+    FinishMath();
     return;
   }
   if (math == 2) {
     if (math_dollar) {
       math_dollar = false;
       if (c == '$') {
-        Pv("$$");
-        linestart = false;
-        math = 0;
-        fputs(FgDfl(), stdout);
+        FinishMath();
         return;
       }
-      Pc('$');
+      math_text += '$';
     }
     if (c == '$') {
       math_dollar = true;
@@ -565,24 +763,42 @@ void MdStream::MathChar(char c) {
     }
   }
   if (c != '\n') {
-    Pc(c);
-    linestart = false;
+    math_text += c;
     return;
   }
-  if (math == 1 || math == 3) {
-    math = 0;
-    fputs(FgDfl(), stdout);
-    EndLine();
+  // Inline math never spans lines; display math gives up at a blank line.
+  // Either way the held text was not math after all — replay it verbatim.
+  bool inline_span = math == 1 || math == 3;
+  if (!inline_span && (math_text.empty() || math_text.back() != '\n')) {
+    math_text += '\n';
     return;
   }
-  fputs(RST(), stdout);
-  putchar('\n');
-  fputs(MATH(), stdout);
-  bold = ital = code = heading = false;
-  cur_raw.clear();
-  prev_raw.clear();
-  vis_line = prev_vis = 0;
-  linestart = true;
+  do {
+    ReplayMath();
+  } while (math);
+  EndLine();
+}
+
+void MdStream::FinishMath() {
+  Pv(PrettyMath(math_text));
+  math_text.clear();
+  math = 0;
+  dollar = math_dollar = slash = false;
+  linestart = false;
+  fputs(FgDfl(), stdout);
+}
+
+void MdStream::ReplayMath() {
+  int kind = math;
+  if (slash) math_text += '\\';
+  if (math_dollar) math_text += '$';
+  std::string text = std::move(math_text);
+  math_text.clear();
+  math = 0;
+  dollar = math_dollar = slash = false;
+  fputs(FgDfl(), stdout);
+  Pv(MathOpen(kind));
+  for (char value : text) InlineChar(value);
 }
 
 void MdStream::EndLine() {  // inline styles never span lines
@@ -592,18 +808,15 @@ void MdStream::EndLine() {  // inline styles never span lines
   }
   putchar('\n');
   prev_raw = cur_raw;
-  prev_vis = vis_line;
+  size_t columns = static_cast<size_t>(std::max(int64_t{1}, TerminalColumns()));
+  prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;
   cur_raw.clear();
   vis_line = 0;
   linestart = true;
 }
 
 void MdStream::RetroTable() {
-  int w = static_cast<int>(TerminalColumns());
-  int rows = prev_vis
-                 ? static_cast<int>((prev_vis - 1) / static_cast<size_t>(w)) + 1
-                 : 1;
-  for (int i = 0; i < rows; i++) {
+  for (size_t i = 0; i < prev_rows; ++i) {
     fputs("\033[A\033[2K", stdout);  // up + clear
   }
   table.push_back(prev_raw);
@@ -612,7 +825,7 @@ void MdStream::RetroTable() {
   cur_raw.clear();
   vis_line = 0;
   prev_raw.clear();
-  prev_vis = 0;
+  prev_rows = 1;
   tablemode = true;  // body rows follow until a line without '|'
 }
 
@@ -658,11 +871,11 @@ void MdStream::FlushTable() {
       if (vis > w[c]) w[c] = vis;
     }
   }
-  size_t table_width = 1 + w.size() * 3;
+  size_t header = 0;
+  while (header < rows.size() && sep[header]) ++header;
+  size_t table_width = w.empty() ? 0 : (w.size() - 1) * 2;
   for (size_t width : w) table_width += width;
   if (table_width > static_cast<size_t>(TerminalColumns())) {
-    size_t header = 0;
-    while (header < rows.size() && sep[header]) ++header;
     bool after_separator = false;
     for (size_t r = 0; r < rows.size(); ++r) {
       if (sep[r]) {
@@ -681,31 +894,25 @@ void MdStream::FlushTable() {
     }
     table.clear();
     prev_raw.clear();
-    prev_vis = 0;
+    prev_rows = 1;
     return;
   }
   for (size_t r = 0; r < rows.size(); r++) {
-    if (sep[r]) {
-      std::string ln = "|";
-      for (size_t c = 0; c < w.size(); c++) {
-        ln += std::string(w[c] + 2, '-') + "|";
-      }
-      printf("%s%s%s\n", DIM(), ln.c_str(), RST());
-      continue;
-    }
+    if (sep[r]) continue;
     std::string ln;
     for (size_t c = 0; c < w.size(); c++) {
       auto cell = c < rows[r].size()
                       ? rows[r][c]
                       : std::make_pair(std::string(), static_cast<size_t>(0));
-      ln += std::string(DIM()) + "|" + RST() + " " + cell.first +
-            std::string(w[c] - cell.second + 1, ' ');
+      if (c > 0) ln += "  ";
+      size_t padding = c + 1 < w.size() ? w[c] - cell.second : 0;
+      ln += cell.first + std::string(padding, ' ');
     }
-    printf("%s%s|%s\n", ln.c_str(), DIM(), RST());
+    printf("%s%s%s\n", r == header ? BOLD() : "", ln.c_str(), RST());
   }
   table.clear();
   prev_raw.clear();
-  prev_vis = 0;  // a table can't be a header row
+  prev_rows = 1;
 }
 
 void MdPrint(const std::string& text) {

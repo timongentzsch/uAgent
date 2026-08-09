@@ -79,8 +79,13 @@ void TestFileTools() {
       ToolReadFile(ordinary_source.string(), 1, 0).output;
   CHECK(ordinary_read.find("line 300\n") != std::string::npos);
   CHECK(ordinary_read.find("more available") == std::string::npos);
-  CHECK(ToolEditFile(file.string(), "two", "three")
-            .output.starts_with("edited "));
+  ToolResult first_edit = ToolEditFile(file.string(), "two", "three");
+  CHECK(first_edit.output.starts_with("edited "));
+  CHECK(first_edit.display.find("Edited " + file.string() + " (+1 -1)") !=
+        std::string::npos);
+  CHECK(first_edit.display.find("@line 2") != std::string::npos);
+  CHECK(first_edit.display.find("-two") != std::string::npos);
+  CHECK(first_edit.display.find("+three") != std::string::npos);
   ToolResult missing_edit =
       ToolEditFile(file.string(), "missing", "replacement");
   CHECK(!missing_edit.Ok());
@@ -148,6 +153,10 @@ void TestFileTools() {
                                       {"missing", "never written", false}})
             .output.find("edit 2 `old` not found") != std::string::npos);
   CHECK(contents(batch) == "same same\n");
+  ToolResult repeated =
+      ToolEditFile(batch.string(), "same", "changed", /*replace_all=*/true);
+  CHECK(repeated.display.find("(+2 -2)") != std::string::npos);
+  CHECK(repeated.display.find("2 matches") != std::string::npos);
 
   fs::path registered = root / "registered.txt";
   CHECK(ToolWriteFile(registered.string(), "a a c\n")

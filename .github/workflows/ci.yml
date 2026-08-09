@@ -92,8 +92,8 @@ jobs:
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Debug
           -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
-          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          -DUAGENT_ENABLE_ASAN=ON
+          -DUAGENT_ENABLE_UBSAN=ON
       - name: Build
         run: cmake --build build --parallel
       - name: Test

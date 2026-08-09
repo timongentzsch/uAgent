@@ -5,9 +5,11 @@
 // Server lifecycle and registration: start, initialize, restart, the
 // Chrome session tool, and the one entry point the REPL calls.
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -16,6 +18,7 @@
 #include "include/core/time.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
+#include "include/mcp/invoke.h"
 #include "include/mcp/rpc.h"
 #include "include/mcp/server.h"
 #include "include/tools/tool.h"
@@ -54,6 +57,7 @@ inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
   if (!McpSpawn(server, conf["command"].get<std::string>(), args, env,
                 cwd.string(), static_cast<size_t>(config.mcp_log_bytes))) {
     error = "failed to start";
+    server.last_error = error;
     return false;
   }
   initialize_id = server.next_id++;
@@ -62,6 +66,7 @@ inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
                 {"capabilities", json::object()},
                 {"clientInfo", {{"name", "uagent"}, {"version", kVersion}}}})) {
     error = "failed to initialize";
+    server.last_error = error;
     server.Shutdown();
     return false;
   }
@@ -78,20 +83,24 @@ inline bool McpFinishInitialize(McpServer& server, int64_t initialize_id,
         init["error"]["message"].is_string()) {
       error = init["error"]["message"].get<std::string>();
     }
+    server.last_error = error;
     return false;
   }
   const json& result = init["result"];
   std::string protocol = JsonValue(result, "protocolVersion", "");
   if (protocol != "2025-11-25" && protocol != "2025-06-18") {
     error = "unsupported protocol version `" + protocol + "`";
+    server.last_error = error;
     return false;
   }
   if (!result.contains("capabilities") || !result["capabilities"].is_object() ||
       !result["capabilities"].contains("tools")) {
     error = "server did not negotiate tools capability";
+    server.last_error = error;
     return false;
   }
   McpSend(server, -1, "notifications/initialized", json::object());
+  server.last_error.clear();
   return true;
 }
 
@@ -106,11 +115,15 @@ inline bool McpRestart(McpServer& server, const json& next_config,
   if (McpStartConfigured(server, config, initialize_id, error) &&
       McpFinishInitialize(server, initialize_id, timeout, error)) {
     server.tools_changed = true;
+    server.last_error.clear();
     return true;
   }
 
   server.Shutdown();
-  if (!was_alive) return false;
+  if (!was_alive) {
+    server.last_error = error;
+    return false;
+  }
   server.config = std::move(previous);
   std::string restore_error;
   if (McpStartConfigured(server, config, initialize_id, restore_error) &&
@@ -119,7 +132,111 @@ inline bool McpRestart(McpServer& server, const json& next_config,
   }
   server.Shutdown();
   error += "; previous session could not be restored: " + restore_error;
+  server.last_error = error;
   return false;
+}
+
+inline McpServer* McpFindServer(McpRuntime& runtime, std::string_view name) {
+  for (const auto& server : runtime.Servers()) {
+    if (server->name == name) return server.get();
+  }
+  return nullptr;
+}
+
+inline void McpAddControlTools(std::vector<Tool>& tools, McpRuntime& runtime,
+                               const RuntimeConfig& config) {
+  Tool& status = AddTool(
+      tools,
+      MakeTool(
+          "mcp_status",
+          "Show lifecycle state, process id, discovered tool count, and last "
+          "error for all configured MCP servers or one named server.",
+          {{"type", "object"},
+           {"properties", {{"server", {{"type", "string"}}}}},
+           {"additionalProperties", false}},
+          [&runtime](const json& args, const ToolContext&) -> ToolResult {
+            std::string wanted = JsonValue(args, "server", "");
+            std::string output;
+            for (const auto& owned : runtime.Servers()) {
+              const McpServer& server = *owned;
+              if (!wanted.empty() && server.name != wanted) continue;
+              std::string state =
+                  !server.last_error.empty()
+                      ? "error"
+                      : (server.alive
+                             ? "ready"
+                             : (McpConfigLazy(server.config) ? "inactive"
+                                                             : "stopped"));
+              if (!output.empty()) output += '\n';
+              output += server.name + " · " + state + " · pid " +
+                        std::to_string(server.pid) + " · tools " +
+                        std::to_string(server.tool_count);
+              std::string mode = JsonValue(server.config, "__uagent_mode", "");
+              if (!mode.empty()) {
+                output += " · " + mode + "/" +
+                          JsonValue(server.config, "__uagent_toolset", "slim");
+              }
+              if (!server.last_error.empty()) {
+                output += " · " + FirstLine(server.last_error);
+              }
+            }
+            if (output.empty()) {
+              return wanted.empty()
+                         ? ToolSuccess("(no MCP servers configured)")
+                         : ToolFailure(ToolErrorCode::kNotFound,
+                                       "error: no configured MCP server: " +
+                                           TerminalSafe(wanted));
+            }
+            return ToolSuccess(std::move(output));
+          }));
+  status.parallel_safe = true;
+  status.capabilities = Capability(ToolCapability::kInspect) |
+                        Capability(ToolCapability::kExternal);
+  status.provider = "builtin:mcp";
+  status.summary = [](const json& args) {
+    return JsonValue(args, "server", "all");
+  };
+
+  Tool& restart = AddTool(
+      tools,
+      MakeTool(
+          "mcp_restart",
+          "Restart and handshake one configured MCP server. Its tools refresh "
+          "at the next model step; use chrome_session for Chrome mode changes "
+          "and page health.",
+          {{"type", "object"},
+           {"properties", {{"server", {{"type", "string"}}}}},
+           {"required", json::array({"server"})},
+           {"additionalProperties", false}},
+          [&runtime, &config](const json& args,
+                              const ToolContext& context) -> ToolResult {
+            std::string name = JsonValue(args, "server", "");
+            McpServer* server = McpFindServer(runtime, name);
+            if (!server) {
+              return ToolFailure(
+                  ToolErrorCode::kNotFound,
+                  "error: no configured MCP server: " + TerminalSafe(name));
+            }
+            std::string error;
+            if (!McpRestart(*server, server->config, config,
+                            context.RemainingSeconds(config.mcp_timeout_s),
+                            error)) {
+              return ToolFailure(ToolErrorCode::kUnavailable,
+                                 "error: could not restart MCP server " +
+                                     TerminalSafe(name) + ": " + error);
+            }
+            return ToolSuccess("MCP server " + name +
+                               " restarted; handshake passed and tools will "
+                               "refresh next step");
+          }));
+  restart.mutating = true;
+  restart.capabilities = Capability(ToolCapability::kExecute) |
+                         Capability(ToolCapability::kMutate) |
+                         Capability(ToolCapability::kExternal);
+  restart.provider = "builtin:mcp";
+  restart.summary = [](const json& args) {
+    return JsonValue(args, "server", "");
+  };
 }
 
 inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
@@ -136,54 +253,90 @@ inline void McpAddChromeSessionTool(std::vector<Tool>& tools,
 
   Tool& tool = AddTool(
       tools,
-      MakeTool("chrome_session",
-               "Start/switch Chrome MCP. slim (default) provides navigate, "
-               "evaluate, screenshot; full adds granular UI, network, console "
-               "and performance tools.",
-               {{"type", "object"},
-                {"properties",
-                 {{"mode",
-                   {{"type", "string"},
-                    {"enum", json::array({"isolated", "user"})}}},
-                  {"toolset",
-                   {{"type", "string"},
-                    {"enum", json::array({"slim", "full"})},
-                    {"description", "default slim"}}}}},
-                {"required", json::array({"mode"})},
-                {"additionalProperties", false}},
-               [chrome, &config](const json& args,
-                                 const ToolContext& context) -> ToolResult {
-                 std::string mode = JsonValue(args, "mode", "");
-                 std::string toolset = JsonValue(args, "toolset", "slim");
-                 if (mode != "isolated" && mode != "user") {
-                   return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                      "error: mode must be isolated or user");
-                 }
-                 if (toolset != "slim" && toolset != "full") {
-                   return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                      "error: toolset must be slim or full");
-                 }
-                 if (chrome->alive &&
-                     JsonValue(chrome->config, "__uagent_mode", "isolated") ==
-                         mode &&
-                     JsonValue(chrome->config, "__uagent_toolset", "slim") ==
-                         toolset) {
-                   return ToolSuccess("Chrome DevTools is already using " +
-                                      mode + "/" + toolset);
-                 }
-                 json next = ChromeMcpConfig(mode, toolset);
-                 std::string error;
-                 if (!McpRestart(*chrome, next, config,
-                                 context.RemainingSeconds(config.mcp_timeout_s),
-                                 error)) {
-                   return ToolFailure(
-                       ToolErrorCode::kUnavailable,
-                       "error: could not switch Chrome DevTools: " + error);
-                 }
-                 return ToolSuccess((mode == "user" ? "User" : "Isolated") +
-                                    std::string(" Chrome session selected (") +
-                                    toolset + ")");
-               }));
+      MakeTool(
+          "chrome_session",
+          "Start/switch Chrome MCP. slim (default) provides navigate, "
+          "evaluate, screenshot; full adds granular UI, network, console "
+          "and performance tools.",
+          {{"type", "object"},
+           {"properties",
+            {{"mode",
+              {{"type", "string"},
+               {"enum", json::array({"isolated", "user"})}}},
+             {"toolset",
+              {{"type", "string"},
+               {"enum", json::array({"slim", "full"})},
+               {"description", "default slim"}}}}},
+           {"required", json::array({"mode"})},
+           {"additionalProperties", false}},
+          [chrome, &config](const json& args,
+                            const ToolContext& context) -> ToolResult {
+            std::string mode = JsonValue(args, "mode", "");
+            std::string toolset = JsonValue(args, "toolset", "slim");
+            if (mode != "isolated" && mode != "user") {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: mode must be isolated or user");
+            }
+            if (toolset != "slim" && toolset != "full") {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "error: toolset must be slim or full");
+            }
+            bool already_selected =
+                chrome->alive &&
+                JsonValue(chrome->config, "__uagent_mode", "isolated") ==
+                    mode &&
+                JsonValue(chrome->config, "__uagent_toolset", "slim") ==
+                    toolset;
+            if (!already_selected) {
+              json next = ChromeMcpConfig(mode, toolset);
+              std::string error;
+              if (!McpRestart(*chrome, next, config,
+                              context.RemainingSeconds(config.mcp_timeout_s),
+                              error)) {
+                return ToolFailure(
+                    ToolErrorCode::kUnavailable,
+                    "error: could not switch Chrome DevTools: " + error);
+              }
+            }
+            bool slim = toolset == "slim";
+            const char* probe = slim ? "evaluate" : "evaluate_script";
+            json probe_args =
+                slim ? json{{"script", "document.location.href"}}
+                     : json{{"function", "() => document.location.href"}};
+            ToolResult health = McpInvokeRemote(*chrome, probe, probe_args,
+                                                config.mcp_timeout_s, context,
+                                                /*include_snapshot=*/false);
+            if (health.status == CompletionStatus::kCancelled) {
+              return health;
+            }
+            if (!health.Ok() || health.output == "(empty result)") {
+              std::string reason = std::move(health.output);
+              if (reason.starts_with("error: ")) reason.erase(0, 7);
+              std::string hint =
+                  mode == "user"
+                      ? " Open a normal page in the shared Chrome window "
+                        "and retry."
+                      : " Retry the isolated session.";
+              if (slim) {
+                hint +=
+                    " Use toolset=full if the slim bridge still "
+                    "cannot expose the upstream page error.";
+              }
+              chrome->last_error = "page health failed: " + reason;
+              return ToolFailure(
+                  ToolErrorCode::kUnavailable,
+                  "error: Chrome DevTools " + mode + "/" + toolset +
+                      " session has no usable page: " + reason + "." + hint);
+            }
+            chrome->last_error.clear();
+            if (already_selected) {
+              return ToolSuccess("Chrome DevTools is already using " + mode +
+                                 "/" + toolset + " (page health check passed)");
+            }
+            return ToolSuccess((mode == "user" ? "User" : "Isolated") +
+                               std::string(" Chrome session selected (") +
+                               toolset + "; page health check passed)");
+          }));
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kExecute) |
                       Capability(ToolCapability::kMutate) |
@@ -204,6 +357,13 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
   json cfg = McpLoadConfig(trusted_project,
                            static_cast<size_t>(config.mcp_config_bytes));
   if (cfg.empty()) return;
+  bool custom_server =
+      std::any_of(cfg.begin(), cfg.end(), [](const json& server) {
+        return JsonValue(server, "__uagent_builtin", "").empty();
+      });
+  // Chrome already has a narrower mode/readiness control. Avoid paying for
+  // generic MCP lifecycle schemas when it is the only configured server.
+  if (custom_server) McpAddControlTools(tools, runtime, config);
   int64_t timeout = config.mcp_timeout_s;
 
   struct Boot {
@@ -247,6 +407,9 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     std::string start_error;
     if (!McpStartConfigured(*srv, config, id, start_error)) {
       McpError(name, start_error);
+      srv->last_error = start_error;
+      runtime.Add(std::move(srv));
+      ++spawned;
       continue;
     }
     // Queue the handshake now (the pipe buffers it); reap replies below.

@@ -131,6 +131,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   json properties = {
       {"prompt",
        {{"type", "string"}, {"description", "complete standalone brief"}}},
+      {"background",
+       {{"type", "boolean"},
+        {"description",
+         "default true; false blocks and returns the final result directly"}}},
       {"mode",
        {{"type", "string"},
         {"enum", json::array({"lean", "full"})},
@@ -143,7 +147,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "Delegate an isolated subtask only when its compact result avoids "
       "multiple parent rounds. The child has no conversation; include every "
       "required path, constraint, and success condition. Independent tasks "
-      "may select different model routes and should be issued together.",
+      "may select different model routes and should be issued together. Keep "
+      "background=true when useful parent work can continue; set it false "
+      "when the next step requires the result immediately.",
       {{"type", "object"},
        {"properties", std::move(properties)},
        {"required", json::array({"prompt"})}},
@@ -212,12 +218,14 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           environment.emplace_back("UAGENT_SESSION_BUDGET",
                                    std::to_string(remaining_budget));
         }
+        bool background = JsonValue(arguments, "background", true);
         std::string command = ShellQuote(self) + " --yolo" +
                               (debug ? " --debug" : "") + " -p " +
                               ShellQuote(JsonValue(arguments, "prompt", ""));
         return ToolRunBash(processes, command, context,
-                           /*allow_background=*/true, /*detach=*/false, "bash",
-                           /*immediate_background=*/true, "task", environment);
+                           /*allow_background=*/background, /*detach=*/false,
+                           "bash", /*immediate_background=*/background, "task",
+                           environment);
       });
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
@@ -229,60 +237,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         TaskTargetLabel(api, routes, providers,
                         NormalizeModelId(JsonValue(arguments, "model", "")));
     if (mode == "full") label += " · full";
+    if (!JsonValue(arguments, "background", true)) label += " · foreground";
     return "[" + label + "] " + prompt;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.
-}
-
-Tool WaitAgentTool(ProcessSupervisor& processes) {
-  Tool tool = MakeTool(
-      "wait_agent",
-      "Wait for delegated work only when another result is needed. Returns "
-      "as soon as any task finishes; other tasks keep running.",
-      {{"type", "object"},
-       {"properties",
-        {{"timeout_ms",
-          {{"type", "integer"},
-           {"minimum", 1000},
-           {"maximum", 300000},
-           {"description", "default 30000; wait for one result"}}}}}},
-      [&processes](const json& arguments, const ToolContext& context) {
-        int64_t timeout_ms = JsonValue(arguments, "timeout_ms", int64_t{30000});
-        if (timeout_ms < 1000 || timeout_ms > 300000) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: timeout_ms must be 1000..300000");
-        }
-        auto deadline = std::min(context.deadline,
-                                 std::chrono::steady_clock::now() +
-                                     std::chrono::milliseconds(timeout_ms));
-        while (!AbortRequested()) {
-          std::vector<std::string> completed =
-              BgTakeCompleted(processes, "task");
-          if (!completed.empty()) {
-            std::string result;
-            for (std::string& note : completed) {
-              if (!result.empty()) result += "\n\n";
-              result += note;
-            }
-            return ToolSuccess(std::move(result));
-          }
-          if (!processes.JoinableCount()) {
-            return ToolSuccess("(no delegated tasks running)");
-          }
-          if (std::chrono::steady_clock::now() >= deadline) {
-            return ToolSuccess("[wait timed out; " +
-                               std::to_string(processes.JoinableCount()) +
-                               " task(s) still running]");
-          }
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        return ToolCancelled("wait interrupted; delegated tasks still running");
-      });
-  tool.summary = [](const json& arguments) {
-    return std::to_string(JsonValue(arguments, "timeout_ms", int64_t{30000})) +
-           "ms";
-  };
-  return tool;
 }
 
 }  // namespace uagent

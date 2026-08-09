@@ -207,6 +207,8 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                 [&](const Tool& tool) { return tool.provider == provider; });
   tools.insert(tools.end(), std::make_move_iterator(replacement.begin()),
                std::make_move_iterator(replacement.end()));
+  s.tool_count = replacement.size();
+  s.last_error.clear();
   McpNote(s.name, std::to_string(replacement.size()) + " of " +
                       std::to_string(listed.size()) + " tools (~" +
                       FmtCount(static_cast<int64_t>(schema_bytes / 4)) +
@@ -218,8 +220,10 @@ inline bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                                const RuntimeConfig& config,
                                std::chrono::steady_clock::time_point deadline) {
   json listed;
-  return McpFetchToolDefinitions(server, config, deadline, listed) &&
-         McpReplaceServerTools(tools, server, config, listed);
+  bool loaded = McpFetchToolDefinitions(server, config, deadline, listed) &&
+                McpReplaceServerTools(tools, server, config, listed);
+  if (!loaded) server.last_error = "tool discovery failed";
+  return loaded;
 }
 
 // Apply notifications only between tool batches, when the agent holds no Tool

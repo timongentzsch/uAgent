@@ -57,19 +57,24 @@ constexpr size_t kMinimumPrunableResultChars = 1024;
 constexpr int64_t kProtectedUserTurns = 2;
 constexpr std::string_view kCompactedToolOutput = "[old tool output compacted:";
 
-std::string ToolCallName(const json& message, const std::string& id) {
+const json* FindToolCallFunction(const json& message, const std::string& id) {
   if (!message.is_object() || JsonValue(message, "role", "") != "assistant" ||
       !message.contains("tool_calls") || !message["tool_calls"].is_array()) {
-    return "";
+    return nullptr;
   }
   for (const json& call : message["tool_calls"]) {
-    if (!call.is_object() || JsonValue(call, "id", "") != id ||
-        !call.contains("function") || !call["function"].is_object()) {
+    if (JsonValue(call, "id", "") != id || !call.contains("function") ||
+        !call["function"].is_object()) {
       continue;
     }
-    return JsonValue(call["function"], "name", "");
+    return &call["function"];
   }
-  return "";
+  return nullptr;
+}
+
+std::string ToolCallName(const json& message, const std::string& id) {
+  const json* function = FindToolCallFunction(message, id);
+  return function ? JsonValue(*function, "name", "") : "";
 }
 
 std::string ToolResultName(const json& messages,
@@ -105,19 +110,9 @@ std::string CompactedResult(const std::string& content) {
 
 bool MatchingToolCall(const json& message, const std::string& id,
                       const std::string& name, const std::string& arguments) {
-  if (JsonValue(message, "role", "") != "assistant" ||
-      !message.contains("tool_calls") || !message["tool_calls"].is_array()) {
-    return false;
-  }
-  for (const json& call : message["tool_calls"]) {
-    if (JsonValue(call, "id", "") != id || !call.contains("function") ||
-        !call["function"].is_object()) {
-      continue;
-    }
-    return JsonValue(call["function"], "name", "") == name &&
-           JsonValue(call["function"], "arguments", "") == arguments;
-  }
-  return false;
+  const json* function = FindToolCallFunction(message, id);
+  return function && JsonValue(*function, "name", "") == name &&
+         JsonValue(*function, "arguments", "") == arguments;
 }
 
 }  // namespace

@@ -125,7 +125,7 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
                   host + " · ctx " + FmtCount(used);
   if (u.cache_read) s += " · cache " + FmtCount(u.cache_read) + " total";
   if (u.cost > 0) s += " · spent " + FmtCost(u.cost);
-  size_t background = processes.PendingCount() + processes.DetachedCount();
+  size_t background = processes.VisibleCount();
   if (background) s += " · bg:" + std::to_string(background);
   if (agent.Verbose()) s += " · verbose";
   if (yolo) s += " · YOLO";

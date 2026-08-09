@@ -19,15 +19,16 @@ namespace uagent {
 // The shell runner writes stdout+stderr to a bounded log. Longer commands keep
 // running in a supervised process group until the harness joins them.
 //
-// Completed jobs are auto-detected at step boundaries: the agent loop checks
-// the ProcessSupervisor before each model call and injects results — no
-// background thread needed, no LLM output wasted.
+// Completed jobs are detected at model-step and interactive-loop boundaries.
+// The latter can resume an idle agent with the completion event; no watcher
+// thread or parallel process registry is needed.
 
 struct BgJob {
   pid_t pid;
   std::string log, cmd;
   bool detached = false;
   std::string kind;
+  std::optional<int> leader_status = std::nullopt;
 };
 
 class ProcessSupervisor {
@@ -68,6 +69,9 @@ class ProcessSupervisor {
   size_t DetachedCount() const {
     return CountIf([](const BgJob& j) { return j.detached; });
   }
+  size_t VisibleCount() const {
+    return CountIf([](const BgJob& job) { return job.kind != "memory"; });
+  }
   size_t JoinableCount() const {
     return CountIf(
         [](const BgJob& job) { return !job.detached && job.kind == "task"; });
@@ -86,6 +90,16 @@ class ProcessSupervisor {
         std::find_if(jobs_.begin(), jobs_.end(),
                      [pid](const BgJob& job) { return job.pid == pid; });
     return found == jobs_.end() ? std::nullopt : std::optional<BgJob>(*found);
+  }
+  std::optional<BgJob> Take(pid_t pid) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto found =
+        std::find_if(jobs_.begin(), jobs_.end(),
+                     [pid](const BgJob& job) { return job.pid == pid; });
+    if (found == jobs_.end()) return std::nullopt;
+    BgJob job = std::move(*found);
+    jobs_.erase(found);
+    return job;
   }
   std::vector<BgJob> Snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);

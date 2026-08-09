@@ -13,6 +13,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -96,20 +97,44 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   return true;
 }
 
+void PrintStartupRow(std::string_view label, std::string summary,
+                     std::vector<std::string> details) {
+  constexpr size_t kLabelWidth = 7;
+  std::string padded_label(label);
+  padded_label.append(kLabelWidth - padded_label.size(), ' ');
+  std::string first_prefix = "  " + padded_label + " │ ";
+  std::string next_prefix = "  " + std::string(kLabelWidth, ' ') + " │ ";
+  size_t prefix_width = DisplayWidth(first_prefix);
+  size_t columns = static_cast<size_t>(std::max(int64_t{1}, TerminalColumns()));
+  size_t value_width = columns > prefix_width ? columns - prefix_width : 1;
+  details.insert(details.begin(), std::move(summary));
+  bool first = true;
+  for (const std::string& detail : details) {
+    for (const std::string& line :
+         WrapLines(TerminalSafe(detail), value_width)) {
+      printf("%s%s%s%s\n", DIM(),
+             first ? first_prefix.c_str() : next_prefix.c_str(), line.c_str(),
+             RST());
+      first = false;
+    }
+  }
+}
+
 void PrintProjectContext(const ProjectInstructions& instructions,
                          size_t byte_limit) {
   if (!instructions.sources.empty() || !instructions.memory_sources.empty()) {
     std::string cwd = CanonicalCwd() + "/";
-    std::string list;
     std::vector<std::string> sources = instructions.sources;
     sources.insert(sources.end(), instructions.memory_sources.begin(),
                    instructions.memory_sources.end());
+    std::vector<std::string> display;
+    display.reserve(sources.size());
     for (const std::string& source : sources) {
-      if (!list.empty()) list += ", ";
-      list +=
-          source.starts_with(cwd) ? source.substr(cwd.size()) : Tilde(source);
+      display.push_back(source.starts_with(cwd) ? source.substr(cwd.size())
+                                                : Tilde(source));
     }
-    printf("%s· context: %s%s\n", DIM(), TerminalSafe(list).c_str(), RST());
+    PrintStartupRow("Context", std::to_string(sources.size()) + " sources",
+                    std::move(display));
   }
   if (instructions.truncated) {
     std::cerr << YEL() << "project instructions truncated at " << byte_limit
@@ -124,8 +149,8 @@ void PrintSkills(const std::vector<Skill>& skills) {
     if (!list.empty()) list += ", ";
     list += skill.name;
   }
-  std::string summary = std::to_string(skills.size()) + " available — " + list;
-  printf("%s· skills: %s%s\n", DIM(), TerminalSafe(summary).c_str(), RST());
+  PrintStartupRow("Skills", std::to_string(skills.size()) + " available",
+                  {std::move(list)});
 }
 
 bool ProbeModel(Api& api) {
@@ -197,18 +222,25 @@ std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
       search_route.backend == WebSearchBackend::kOpenRouter;
   if (search_route.Valid()) {
     tools.push_back(
-        WebSearchTool(api, runtime.side_usage, std::move(search_route)));
+        WebSearchTool(api, runtime.side_usage, context.provider.providers));
   }
   McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
   if (CanDelegate()) {
     tools.push_back(SubagentTool(api, runtime.processes,
                                  context.provider.routes,
                                  context.provider.providers, context.debug));
-    tools.push_back(WaitAgentTool(runtime.processes));
   }
-  if (!skills.empty()) tools.push_back(SkillTool(std::move(skills)));
   if (LeanToolset()) KeepLeanTools(tools);
   ApplyToolPolicy(tools, context.tool_policy);
+  KeepSupportedSkills(skills, tools);
+  if (!skills.empty()) {
+    std::vector<Tool> skill_tool{SkillTool(skills)};
+    ApplyToolPolicy(skill_tool, context.tool_policy);
+    if (!skill_tool.empty()) {
+      PrintSkills(skills);
+      tools.push_back(std::move(skill_tool.front()));
+    }
+  }
   return tools;
 }
 
@@ -372,11 +404,10 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
       instructions.truncated |= always.truncated;
     }
   }
-  printf("%s%sµAgent%s\n", RST(), DIM(), RST());
+  printf("%s%sµAgent%s\n", RST(), BOLD(), RST());
   PrintProjectContext(instructions, project_limit);
   std::vector<Skill> skills =
       memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
-  PrintSkills(skills);
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);

@@ -224,10 +224,13 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         std::string command = ShellQuote(self) + " --yolo" +
                               (debug ? " --debug" : "") + " -p " +
                               ShellQuote(JsonValue(arguments, "prompt", ""));
-        return ToolRunBash(processes, command, context,
-                           /*allow_background=*/background, /*detach=*/false,
-                           "bash", /*immediate_background=*/background, "task",
-                           environment);
+        return RunShellCommand(processes, context,
+                               {.command = std::move(command),
+                                .background = background,
+                                .immediate = background,
+                                .job_kind = "task",
+                                .environment = std::move(environment)})
+            .result;
       });
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);

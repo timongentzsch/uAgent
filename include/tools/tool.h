@@ -282,19 +282,6 @@ inline const Tool* FindTool(const std::vector<Tool>& tools,
   return nullptr;
 }
 
-// first schema-required argument missing from args, or "" if all present —
-// so a call like write_file without `content` errors instead of truncating
-inline std::string MissingRequired(const Tool& t, const json& args) {
-  if (t.parameters.contains("required")) {
-    for (auto& r : t.parameters["required"]) {
-      if (!r.is_string()) continue;
-      const std::string& name = r.get_ref<const std::string&>();
-      if (!args.contains(name)) return name;
-    }
-  }
-  return "";
-}
-
 inline bool JsonSchemaTypeMatches(const json& value, std::string_view type) {
   return (type == "string" && value.is_string()) ||
          (type == "integer" && value.is_number_integer()) ||
@@ -335,39 +322,94 @@ inline std::optional<size_t> JsonSchemaSize(const json& schema,
 
 inline std::string InvalidSchemaValue(const json& schema, const json& value,
                                       const std::string& path,
-                                      bool root = false) {
-  if (!schema.is_object()) return "";
-  if (schema.contains("type")) {
-    const json& types = schema["type"];
-    bool valid = false;
-    if (types.is_string()) {
-      valid = JsonSchemaTypeMatches(value, types.get_ref<const std::string&>());
-    } else if (types.is_array()) {
-      for (const json& type : types) {
-        if (type.is_string() &&
-            JsonSchemaTypeMatches(value, type.get_ref<const std::string&>())) {
-          valid = true;
-          break;
-        }
-      }
-    }
-    if (!valid) {
-      return "`" + path + "` must be " + JsonSchemaTypeLabel(types);
+                                      bool root = false);
+
+inline std::string InvalidArrayValue(const json& schema, const json& value,
+                                     const std::string& path) {
+  if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minItems");
+      minimum && value.size() < *minimum) {
+    return "`" + path + "` has too few items";
+  }
+  if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxItems");
+      maximum && value.size() > *maximum) {
+    return "`" + path + "` has too many items";
+  }
+  auto items = schema.find("items");
+  if (items == schema.end() || !items->is_object()) return "";
+  for (size_t index = 0; index < value.size(); ++index) {
+    std::string invalid = InvalidSchemaValue(
+        *items, value[index], path + "[" + std::to_string(index) + "]");
+    if (!invalid.empty()) return invalid;
+  }
+  return "";
+}
+
+inline std::string InvalidObjectValue(const json& schema, const json& value,
+                                      const std::string& path, bool root) {
+  auto required = schema.find("required");
+  if (required != schema.end() && required->is_array()) {
+    for (const json& item : *required) {
+      if (!item.is_string()) continue;
+      const std::string& name = item.get_ref<const std::string&>();
+      if (value.contains(name)) continue;
+      std::string child = root || path.empty() ? name : path + "." + name;
+      return "`" + child + "` is required";
     }
   }
-  if (schema.contains("enum") && schema["enum"].is_array() &&
-      std::find(schema["enum"].begin(), schema["enum"].end(), value) ==
-          schema["enum"].end()) {
+
+  auto found = schema.find("properties");
+  const json properties =
+      found != schema.end() && found->is_object() ? *found : json::object();
+  if (!JsonValue(schema, "additionalProperties", true)) {
+    for (const auto& [name, child] : value.items()) {
+      (void)child;
+      if (properties.contains(name)) continue;
+      return "unknown argument `" + (root ? name : path + "." + name) + "`";
+    }
+  }
+  for (const auto& [name, child_schema] : properties.items()) {
+    if (!value.contains(name)) continue;
+    std::string child = root || path.empty() ? name : path + "." + name;
+    std::string invalid = InvalidSchemaValue(child_schema, value[name], child);
+    if (!invalid.empty()) return invalid;
+  }
+  return "";
+}
+
+inline bool JsonSchemaTypesMatch(const json& value, const json& types) {
+  if (types.is_string()) {
+    return JsonSchemaTypeMatches(value, types.get_ref<const std::string&>());
+  }
+  if (!types.is_array()) return false;
+  return std::any_of(types.begin(), types.end(), [&](const json& type) {
+    return type.is_string() &&
+           JsonSchemaTypeMatches(value, type.get_ref<const std::string&>());
+  });
+}
+
+inline std::string InvalidSchemaValue(const json& schema, const json& value,
+                                      const std::string& path, bool root) {
+  if (!schema.is_object()) return "";
+  auto types = schema.find("type");
+  if (types != schema.end() && !JsonSchemaTypesMatch(value, *types)) {
+    return "`" + path + "` must be " + JsonSchemaTypeLabel(*types);
+  }
+  auto allowed = schema.find("enum");
+  if (allowed != schema.end() && allowed->is_array() &&
+      std::find(allowed->begin(), allowed->end(), value) == allowed->end()) {
     return "`" + path + "` is not an allowed value";
   }
+
   if (value.is_number()) {
     const double number = value.get<double>();
-    if (schema.contains("minimum") && schema["minimum"].is_number() &&
-        number < schema["minimum"].get<double>()) {
+    auto minimum = schema.find("minimum");
+    if (minimum != schema.end() && minimum->is_number() &&
+        number < minimum->get<double>()) {
       return "`" + path + "` is below its minimum";
     }
-    if (schema.contains("maximum") && schema["maximum"].is_number() &&
-        number > schema["maximum"].get<double>()) {
+    auto maximum = schema.find("maximum");
+    if (maximum != schema.end() && maximum->is_number() &&
+        number > maximum->get<double>()) {
       return "`" + path + "` is above its maximum";
     }
   }
@@ -382,58 +424,8 @@ inline std::string InvalidSchemaValue(const json& schema, const json& value,
       return "`" + path + "` exceeds its maximum length";
     }
   }
-  if (value.is_array()) {
-    if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minItems");
-        minimum && value.size() < *minimum) {
-      return "`" + path + "` has too few items";
-    }
-    if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxItems");
-        maximum && value.size() > *maximum) {
-      return "`" + path + "` has too many items";
-    }
-    if (schema.contains("items") && schema["items"].is_object()) {
-      for (size_t index = 0; index < value.size(); ++index) {
-        std::string invalid =
-            InvalidSchemaValue(schema["items"], value[index],
-                               path + "[" + std::to_string(index) + "]");
-        if (!invalid.empty()) return invalid;
-      }
-    }
-  }
-  if (value.is_object()) {
-    if (schema.contains("required") && schema["required"].is_array()) {
-      for (const json& required : schema["required"]) {
-        if (!required.is_string()) continue;
-        const std::string& name = required.get_ref<const std::string&>();
-        if (!value.contains(name)) {
-          std::string child = root || path.empty() ? name : path + "." + name;
-          return "`" + child + "` is required";
-        }
-      }
-    }
-    const json properties =
-        schema.contains("properties") && schema["properties"].is_object()
-            ? schema["properties"]
-            : json::object();
-    if (schema.contains("additionalProperties") &&
-        schema["additionalProperties"].is_boolean() &&
-        !schema["additionalProperties"].get<bool>()) {
-      for (const auto& [name, child] : value.items()) {
-        (void)child;
-        if (!properties.contains(name)) {
-          if (root) return "unknown argument `" + name + "`";
-          return "unknown argument `" + path + "." + name + "`";
-        }
-      }
-    }
-    for (const auto& [name, child_schema] : properties.items()) {
-      if (!value.contains(name)) continue;
-      std::string child = root || path.empty() ? name : path + "." + name;
-      std::string invalid =
-          InvalidSchemaValue(child_schema, value[name], child);
-      if (!invalid.empty()) return invalid;
-    }
-  }
+  if (value.is_array()) return InvalidArrayValue(schema, value, path);
+  if (value.is_object()) return InvalidObjectValue(schema, value, path, root);
   return "";
 }
 

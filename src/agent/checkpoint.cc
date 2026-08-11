@@ -209,8 +209,6 @@ bool Agent::RunCheckpointCall(const ToolCall& call, bool text_mode,
   } else if (!task.tool) {
     error = "checkpoint tool is unavailable";
     error_code = ToolErrorCode::kNotFound;
-  } else if (!(error = MissingRequired(*task.tool, task.args)).empty()) {
-    error = "missing required argument `" + error + "`";
   } else if (!(error = InvalidToolArgument(*task.tool, task.args)).empty()) {
     error = "invalid tool argument: " + error;
   } else if (api_.config.checkpoint_mode == "off") {

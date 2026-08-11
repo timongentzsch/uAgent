@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_UI_INPUT_DECODER_H_
 #define UAGENT_INCLUDE_UI_INPUT_DECODER_H_
-// Shared bounded terminal byte decoder for libedit and the persistent composer.
+// Bounded terminal byte decoder for the persistent composer.
 
 #include <chrono>
 #include <cstddef>

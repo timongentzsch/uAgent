@@ -286,12 +286,10 @@ class Application {
         argument == "all" ? "" : " for " + TerminalSafe(argument);
     printf("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
            RST());
-    SteeringGuard steering;
     TerminalSpinner spinner(true, SpinnerLabel("searching model catalogs"));
     ModelSearch search = SearchModels(api_, context_.provider.routes,
                                       context_.provider.providers, argument);
     spinner.Stop();
-    steering.Stop();
     if (AbortRequested()) {
       ClearAbort();
       printf("%s· model search cancelled%s\n", YEL(), RST());

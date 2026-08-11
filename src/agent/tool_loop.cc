@@ -96,10 +96,6 @@ bool Agent::RunCalls(
     } else if (!tool) {
       reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
              "unknown_tool");
-    } else if (!(invalid = MissingRequired(*tool, arguments)).empty()) {
-      reject(task, ToolErrorCode::kInvalidArguments,
-             "error: missing required argument `" + invalid + "`",
-             "missing_argument");
     } else if (!(invalid = InvalidToolArgument(*tool, arguments)).empty()) {
       reject(task, ToolErrorCode::kInvalidArguments,
              "error: invalid tool argument: " + invalid, "invalid_argument");
@@ -173,7 +169,6 @@ bool Agent::RunCalls(
                                  {"concurrency_limit", limit}});
   }
 
-  SteeringGuard steering(!runnable.empty());
   bool quiet = std::none_of(
       runnable.begin(), runnable.end(),
       [&](size_t index) { return calls[index].name == "show_image"; });
@@ -228,7 +223,6 @@ bool Agent::RunCalls(
     LogToolResult(task, calls[index], turn_id_, step);
   }
   spinner.Stop();
-  steering.Stop();
 
   bool cancelled = AbortRequested() && !SteeringState().Requested();
   if (!SteeringState().Requested()) ClearAbort();

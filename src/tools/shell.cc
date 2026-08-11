@@ -27,12 +27,12 @@
 
 namespace uagent {
 
-ShellCommandResult RunShellCommand(
-    ProcessSupervisor& supervisor, const std::string& cmd,
-    const ToolContext& context, bool allow_background, bool detach,
-    const std::string& shell, bool immediate_background, std::string job_kind,
-    const EnvironmentOverrides& environment,
-    ChildEnvironmentPolicy environment_policy) {
+ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
+                                   const ToolContext& context,
+                                   ShellCommand spec) {
+  const std::string& cmd = spec.command;
+  const std::string& shell = spec.shell;
+  const bool detach = spec.detach;
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -44,7 +44,7 @@ ShellCommandResult RunShellCommand(
                         "error: background job limit reached (" +
                             std::to_string(max_jobs) + ")")};
   }
-  int64_t window = (detach || immediate_background)
+  int64_t window = (detach || spec.immediate)
                        ? 0
                        : context.RemainingSeconds(int64_t{1} << 30);
   const char* log_kind = detach ? "terminals" : "bg";
@@ -99,7 +99,7 @@ ShellCommandResult RunShellCommand(
                                             group_flag | POSIX_SPAWN_SETSIGDEF |
                                             POSIX_SPAWN_SETSIGMASK));
   pid_t pid = -1;
-  ChildEnvironment child_environment(environment, environment_policy);
+  ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   auto spawn_shell = [&](const std::string& executable) {
     char* const argv[] = {const_cast<char*>(executable.c_str()),
                           const_cast<char*>("-c"), bounded_cmd.data(), nullptr};
@@ -170,7 +170,7 @@ ShellCommandResult RunShellCommand(
     result.artifact = std::move(collected.artifact);
     return {std::move(result), status};
   }
-  if (!allow_background) {
+  if (!spec.background) {
     KillProcess(pid, &status);
     if (detach) unlink(DetachedRecordPath(pid).c_str());
     CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
@@ -181,8 +181,8 @@ ShellCommandResult RunShellCommand(
     result.artifact = std::move(collected.artifact);
     return {std::move(result), status};
   }
-  bool is_task = job_kind == "task";
-  BgJob job{pid, log, cmd, detach, std::move(job_kind)};
+  bool is_task = spec.job_kind == "task";
+  BgJob job{pid, log, cmd, detach, std::move(spec.job_kind)};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     KillProcess(pid, &status);
     RemoveLog(log);
@@ -207,26 +207,18 @@ ShellCommandResult RunShellCommand(
                       "activity output to inspect it")};
 }
 
-ToolResult ToolRunBash(ProcessSupervisor& supervisor, const std::string& cmd,
-                       const ToolContext& context, bool allow_background,
-                       bool detach, const std::string& shell,
-                       bool immediate_background, std::string job_kind,
-                       const EnvironmentOverrides& environment,
-                       ChildEnvironmentPolicy environment_policy) {
-  return RunShellCommand(supervisor, cmd, context, allow_background, detach,
-                         shell, immediate_background, std::move(job_kind),
-                         environment, environment_policy)
-      .result;
-}
-
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const std::string& command,
                                 const ToolContext& context, bool detach,
                                 const std::string& shell) {
-  return ToolRunBash(supervisor, command, context, /*allow_background=*/detach,
-                     detach, shell,
-                     /*immediate_background=*/false, "", {},
-                     ChildEnvironmentPolicy::kApprovedShell);
+  return RunShellCommand(
+             supervisor, context,
+             {.command = command,
+              .shell = shell,
+              .background = detach,
+              .detach = detach,
+              .environment_policy = ChildEnvironmentPolicy::kApprovedShell})
+      .result;
 }
 
 bool StartsWithShellWord(const std::string& command, const std::string& word) {
@@ -326,11 +318,6 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
 
   bool create = code.is_string();
   bool replaced = false;
-  if (!create && !code.is_null()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: code must be a string when creating or null "
-                       "when rerunning");
-  }
   if (create != packages.is_array() || (!create && !packages.is_null())) {
     return ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -352,30 +339,19 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
               requested.generic_string());
     }
     std::string body = code.get<std::string>();
-    if (body.empty() || body.size() > 128 * 1024 ||
-        body.find('\0') != std::string::npos) {
-      return ToolFailure(
-          ToolErrorCode::kLimitExceeded,
-          "error: Python code is empty, exceeds 128 KiB, or contains NUL");
+    if (body.find('\0') != std::string::npos) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: Python code contains NUL");
     }
     if (body.find("# /// script") != std::string::npos) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: code must contain only the script body; "
                          "packages generate the PEP 723 header");
     }
-    if (packages.size() > 12) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: packages is limited to 12 entries");
-    }
     std::string source = "# /// script\n# dependencies = [\n";
     for (const json& value : packages) {
-      if (!value.is_string()) {
-        return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: package entries must be strings");
-      }
       std::string package = value.get<std::string>();
-      if (package.empty() || package.size() > 256 ||
-          package.find_first_of("\r\n") != std::string::npos ||
+      if (package.find_first_of("\r\n") != std::string::npos ||
           package.find('\0') != std::string::npos) {
         return ToolFailure(ToolErrorCode::kInvalidArguments,
                            "error: invalid package entry");
@@ -422,9 +398,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
                ShellQuote(script.string())
          : "MPLBACKEND=Agg python3 " + ShellQuote(script.string());
   ShellCommandResult result =
-      RunShellCommand(supervisor, command, context, /*allow_background=*/false,
-                      /*detach=*/false, "bash",
-                      /*immediate_background=*/false, "");
+      RunShellCommand(supervisor, context, {.command = std::move(command)});
   if (result.result.error == ToolErrorCode::kProcessFailed) {
     std::string hint =
         result.result.output.find("No module named") != std::string::npos
@@ -451,14 +425,6 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,
                     int64_t context_lines, const ToolContext& context,
                     bool files_only) {
-  if (pattern.empty()) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: search pattern must not be empty");
-  }
-  if (context_lines < 0 || context_lines > 10) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: grep context must be between 0 and 10 lines");
-  }
   if (files_only && context_lines > 0) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: grep context is only available in content mode");
@@ -504,8 +470,8 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   command = "set -o pipefail; " + command + " 2>&1 | head -n " +
             std::to_string(max_results + 1) + " | head -c " +
             std::to_string(bytes);
-  ShellCommandResult execution = RunShellCommand(
-      supervisor, command, context, false, false, "bash", false, "");
+  ShellCommandResult execution =
+      RunShellCommand(supervisor, context, {.command = std::move(command)});
   ToolResult outcome = std::move(execution.result);
   std::string output = std::move(outcome.output);
   int wait_status = execution.wait_status.value_or(-1);

@@ -21,23 +21,21 @@ struct ShellCommandResult {
   std::optional<int> wait_status = std::nullopt;
 };
 
-ShellCommandResult RunShellCommand(
-    ProcessSupervisor& supervisor, const std::string& cmd,
-    const ToolContext& context, bool allow_background, bool detach,
-    const std::string& shell, bool immediate_background, std::string job_kind,
-    const EnvironmentOverrides& environment = {},
-    ChildEnvironmentPolicy environment_policy =
-        ChildEnvironmentPolicy::kSanitized);
+struct ShellCommand {
+  std::string command;
+  std::string shell = "bash";
+  bool background = false;
+  bool detach = false;
+  bool immediate = false;
+  std::string job_kind;
+  EnvironmentOverrides environment;
+  ChildEnvironmentPolicy environment_policy =
+      ChildEnvironmentPolicy::kSanitized;
+};
 
-ToolResult ToolRunBash(ProcessSupervisor& supervisor, const std::string& cmd,
-                       const ToolContext& context = {},
-                       bool allow_background = true, bool detach = false,
-                       const std::string& shell = "bash",
-                       bool immediate_background = false,
-                       std::string job_kind = "",
-                       const EnvironmentOverrides& environment = {},
-                       ChildEnvironmentPolicy environment_policy =
-                           ChildEnvironmentPolicy::kSanitized);
+ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
+                                   const ToolContext& context,
+                                   ShellCommand command);
 
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const std::string& command,

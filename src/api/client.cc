@@ -14,7 +14,6 @@
 #include "include/core/debug.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
-#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
@@ -302,7 +301,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
   }
 
-  SteeringGuard steering;
   std::string activity = web_available ? "working · web available" : "working";
   TerminalSpinner spinner(ctx.render_output, SpinnerLabel(activity),
                           turn_started);
@@ -311,7 +309,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   CURLcode rc = CURLE_OK;
   bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
   if (cancelled) ClearAbort();
-  steering.Stop();
   ctx.BeginOutput();
   ctx.Finish();
   if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
@@ -363,7 +360,6 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay,
                        bool render_output) const {
   TerminalSpinner spinner(render_stream && render_output,
                           SpinnerLabel("retrying"), turn_started);
-  SteeringGuard steering;
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {
     while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {

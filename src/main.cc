@@ -34,7 +34,6 @@ void InitializeProcess() {
   signal(SIGHUP, SigintHandler);
   signal(SIGPIPE, SIG_IGN);
   InstallSigwinchHandler();
-  ConfigureLineEditor();
 }
 
 void PrintHeadlessFailure(const std::string& error, int exit_code) {

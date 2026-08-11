@@ -13,8 +13,8 @@ inspect, compare, and improve.
 
 ## Quick start
 
-Requires CMake, a C++20 compiler, and libcurl. libedit enriches secondary
-selection prompts, Node.js enables Chrome DevTools MCP, and
+Requires CMake, a C++20 compiler, and libcurl. Node.js enables Chrome DevTools
+MCP, and
 [uv](https://docs.astral.sh/uv/) enables Python scratch scripts and route
 evaluation.
 

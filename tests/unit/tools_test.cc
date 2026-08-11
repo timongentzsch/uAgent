@@ -216,8 +216,12 @@ void TestToolExecutionPolicy() {
   CHECK(BgResultHeader(task_header) == "[Background result: task id 7]");
   CHECK(BgResultHeader(task_header).find("delegated prompt") ==
         std::string::npos);
-  ToolResult launched = ToolRunBash(task_processes, "sleep 10", base, true,
-                                    false, "bash", true, "task");
+  ToolResult launched = RunShellCommand(task_processes, base,
+                                        {.command = "sleep 10",
+                                         .background = true,
+                                         .immediate = true,
+                                         .job_kind = "task"})
+                            .result;
   CHECK(launched.output.starts_with("[started] task id "));
   CHECK(task_processes.JoinableCount() == 1);
   std::vector<pid_t> task_ids = task_processes.PendingPids();
@@ -525,8 +529,6 @@ void TestGrepTool() {
       ToolGrep(supervisor, "needle two", source.string(), "", 1);
   CHECK(contextual.output.find("needle one") != std::string::npos);
   CHECK(contextual.output.find("needle three") != std::string::npos);
-  CHECK(ToolGrep(supervisor, "needle", root.string(), "", 11).error ==
-        ToolErrorCode::kInvalidArguments);
   CHECK(ToolGrep(supervisor, "absent", root.string(), "").output ==
         "(no matches)");
   CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
@@ -541,12 +543,16 @@ void TestGrepTool() {
 
   ToolContext activity_context{std::chrono::steady_clock::now() +
                                std::chrono::seconds(5)};
-  CHECK(ToolRunBash(supervisor, "sleep 0.05; echo activity-one",
-                    activity_context, true, false, "bash", true)
-            .Ok());
-  CHECK(ToolRunBash(supervisor, "sleep 0.10; echo activity-two",
-                    activity_context, true, false, "bash", true)
-            .Ok());
+  CHECK(RunShellCommand(supervisor, activity_context,
+                        {.command = "sleep 0.05; echo activity-one",
+                         .background = true,
+                         .immediate = true})
+            .result.Ok());
+  CHECK(RunShellCommand(supervisor, activity_context,
+                        {.command = "sleep 0.10; echo activity-two",
+                         .background = true,
+                         .immediate = true})
+            .result.Ok());
   std::vector<int64_t> activity_ids;
   for (const BgJob& job : supervisor.Snapshot()) {
     activity_ids.push_back(job.pid);
@@ -672,12 +678,6 @@ void TestGrepTool() {
   CHECK(activity_wait &&
         InvalidToolArgument(*activity_wait, {{"ids", {1, "bad"}}}) ==
             "`ids[1]` must be integer");
-  if (activity_wait) {
-    ToolResult malformed = activity_wait->run(
-        {{"ids", {1, "bad"}}}, ToolContext{std::chrono::steady_clock::now() +
-                                           std::chrono::seconds(1)});
-    CHECK(malformed.error == ToolErrorCode::kInvalidArguments);
-  }
   CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==

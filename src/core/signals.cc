@@ -15,7 +15,6 @@
 namespace uagent {
 
 volatile sig_atomic_t g_streaming = 0;
-volatile sig_atomic_t g_steering_active = 0;
 volatile sig_atomic_t g_terminal_resized = 0;
 volatile sig_atomic_t g_signal_abort = 0;
 std::atomic<bool> g_thread_abort{false};
@@ -52,7 +51,7 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
 }
 
 void SigintHandler(int signal_number) {
-  if (signal_number == SIGINT && (g_streaming || g_steering_active)) {
+  if (signal_number == SIGINT && g_streaming) {
     g_signal_abort = 1;
     return;
   }

@@ -72,23 +72,6 @@ responses use the full request because hidden reasoning is generated before the
 first visible summary or answer event. `first` is client-observed time to that
 first semantic stream event.
 
-`uagent eval` gives every model a fresh workspace, home, session, fixture,
-prompt contract, and cost ceiling:
-
-```sh
-uagent eval \
-  --model deepseek/deepseek-v4-flash \
-  --model anthropic/claude-sonnet-4.5 \
-  --scenario all --repetitions 2 \
-  --report /tmp/uagent-route-ab.json
-```
-
-Reports include violations, tokens, reported cost, wall time, and peak RSS.
-Add `--certify` to turn repeated clean passes for that exact scenario suite
-into an expiring route profile. Effort comparisons require identical evidence;
-live contradictions invalidate profiles.
-See [testing](docs/TESTING.md) for scenarios and extension.
-
 ## Capabilities
 
 | Area | Built-ins |
@@ -97,7 +80,7 @@ See [testing](docs/TESTING.md) for scenarios and extension.
 | execution | `run`, detached terminals, uv-backed `run_python` |
 | evidence | attachments, terminal images, cited `web_search` |
 | extension | MCP, Chrome DevTools, skills, project/global memory |
-| orchestration | parallel tools, bounded `task` routes, activity wait/stop, checkpoint and handoff |
+| orchestration | parallel tools, bounded `task` routes, activity wait/stop, automatic compaction |
 
 Mutating, shell, network, delegation, and MCP calls require approval unless
 `--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,
@@ -117,20 +100,16 @@ buffering may delay visible output. Enter queues guidance into the active turn
 at its next safe boundary. Escape interrupts only the foreground operation;
 delegated and detached work keeps running unless explicitly cancelled.
 
-Memory uses the same progressive-disclosure shape as project context: startup
-injects bounded names only; the model can list/search when that index is
-insufficient and fetches bodies on demand. On interactive
-startup, at most one eligible prior session that has been idle for six hours is
-filtered and consolidated by a bounded background child using the current
-route and only the memory tool. It may update one durable project/global lesson
-or do nothing; generated writes are secret-redacted. Disable recall and this
-background contribution together with `--no-memory`.
+Memory uses progressive disclosure: startup injects bounded names, and the
+model can list, search, or fetch bodies on demand. Writes happen only when the
+user explicitly asks. Disable recall and writes with `--no-memory`.
 
-At context pressure, µAgent can fold history into a bounded non-authoritative
-checkpoint. `/handoff PROVIDER/MODEL` uses that clean cache boundary to change
-routes. Old bulky tool outputs are compacted in batches after their full trace
-is archived. Sessions live under `~/.uagent/history`; project configuration
-requires interactive trust or `--trust-project-config`.
+At 85% projected context pressure, including pending input and tool schemas,
+µAgent atomically replaces history with a bounded non-authoritative summary. The same
+path powers `/compact`; a failed summary leaves history unchanged. Old bulky
+tool outputs are compacted in batches after their full trace is archived.
+Sessions live under `~/.uagent/history`; project configuration requires
+interactive trust or `--trust-project-config`.
 
 ## Commands
 
@@ -140,10 +119,10 @@ requires interactive trust or `--trust-project-config`.
 | `/effort LEVEL\|default` | Set reasoning effort |
 | `/variant MODE\|default` | Set OpenRouter routing (`nitro`, `floor`, or `exacto`) |
 | `/attach PATH\|clear` | Queue an attachment or clear the queue |
-| `/memory` | Show recall/contribution state and saved keys |
+| `/memory` | Show memory state and saved keys |
 | `/context`, `/trace`, `/cost` | Inspect request, execution, or spend |
 | `/ps` | Show active background work |
-| `/compact`, `/handoff ROUTE` | Fold context or change route |
+| `/compact` | Fold active context |
 | `/sessions`, `/reset` | Resume or reset state |
 | `/verbose`, `/online`, `/yolo` | Toggle runtime behavior |
 | `/help`, `/quit` | Help or exit |

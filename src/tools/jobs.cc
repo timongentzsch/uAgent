@@ -336,20 +336,19 @@ static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
 }
 
 ToolResult ToolActivityList(const ProcessSupervisor& supervisor) {
-  return FormatActivityList(supervisor.VisibleSnapshot(), {},
+  return FormatActivityList(supervisor.Snapshot(), {},
                             "(no active background work)");
 }
 
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
                               int64_t pid) {
-  std::vector<BgJob> supervised = supervisor.VisibleSnapshot();
+  std::vector<BgJob> supervised = supervisor.Snapshot();
   if (pid <= 0) {
     return FormatActivityList(supervised, DetachedRecords(),
                               "(no supervised activities)");
   }
 
-  if (std::optional<BgJob> job = supervisor.Find(static_cast<pid_t>(pid));
-      job && ProcessSupervisor::IsVisible(*job)) {
+  if (std::optional<BgJob> job = supervisor.Find(static_cast<pid_t>(pid))) {
     return ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
                        std::to_string(pid) + " · log " + job->log + "]\n" +
                        ReadLogTail(job->log, ToolResultCap()));
@@ -481,7 +480,7 @@ std::string BgResultHeader(const BgJob& job) {
 namespace {
 
 std::vector<std::string> TakeCompleted(
-    ProcessSupervisor& supervisor, std::string_view kind, bool exclude,
+    ProcessSupervisor& supervisor, std::string_view kind,
     const std::vector<pid_t>* ids = nullptr) {
   std::vector<BgJob> jobs = supervisor.TakeAll();
   std::vector<std::string> notes;
@@ -490,7 +489,7 @@ std::vector<std::string> TakeCompleted(
       supervisor.Restore(std::move(job));
       continue;
     }
-    if (!kind.empty() && ((job.kind != kind) != exclude)) {
+    if (!kind.empty() && job.kind != kind) {
       supervisor.Restore(std::move(job));
       continue;
     }
@@ -530,12 +529,7 @@ std::vector<std::string> TakeCompleted(
 
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind) {
-  return TakeCompleted(supervisor, kind, false, nullptr);
-}
-
-std::vector<std::string> BgTakeCompletedExcept(ProcessSupervisor& supervisor,
-                                               std::string_view kind) {
-  return TakeCompleted(supervisor, kind, true, nullptr);
+  return TakeCompleted(supervisor, kind);
 }
 
 ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
@@ -544,7 +538,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             const ToolContext& context) {
   std::vector<pid_t> ids;
   if (requested.empty()) {
-    for (const BgJob& job : supervisor.VisibleSnapshot()) {
+    for (const BgJob& job : supervisor.Snapshot()) {
       if (!job.detached) ids.push_back(job.pid);
     }
   } else {
@@ -567,11 +561,10 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                                      std::chrono::milliseconds(wait_ms));
   std::string output;
   for (;;) {
-    std::vector<std::string> completed =
-        TakeCompleted(supervisor, {}, false, &ids);
+    std::vector<std::string> completed = TakeCompleted(supervisor, {}, &ids);
     for (std::string& note : completed) {
       if (!output.empty()) output += "\n\n";
-      output += std::move(note);
+      output += note;
     }
     size_t running = static_cast<size_t>(std::count_if(
         ids.begin(), ids.end(), [&](pid_t id) { return supervisor.Find(id); }));

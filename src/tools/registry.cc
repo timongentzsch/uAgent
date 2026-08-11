@@ -20,7 +20,7 @@ namespace uagent {
 
 std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                const std::filesystem::path& workspace,
-                               bool inline_images, bool memory_generate) {
+                               bool inline_images) {
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
   auto path_tool = [&](Tool tool) -> Tool& {
@@ -297,8 +297,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                  std::vector<int64_t> ids;
                  if (a.contains("ids")) {
                    ids.reserve(a["ids"].size());
-                   for (const json& id : a["ids"])
+                   for (const json& id : a["ids"]) {
                      ids.push_back(id.get<int64_t>());
+                   }
                  }
                  return ToolActivityWait(
                      supervisor, ids, JsonValue(a, "mode", "any"),
@@ -343,34 +344,21 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "content":{"type":"string",
                       "description":"durable lesson; required only for set"}},
                     "required":["action"]})json");
-  if (!memory_generate) {
-    memory_schema["properties"]["action"]["enum"] = {"get", "forget", "list",
-                                                     "search"};
-    memory_schema["properties"].erase("content");
-  }
   Tool& memory = AddTool(
       tools,
       MakeTool(
           "memory",
-          memory_generate
-              ? "List or search memory when the startup index is insufficient; "
-                "get a body only when relevant. Set only when the "
-                "user explicitly asks or background consolidation identifies "
-                "a stable cross-session preference, workflow, constraint, or "
-                "debugging insight. Never save task progress, guesses, "
-                "secrets, commands, or permissions; forget only on request."
-              : "List or search memory when the startup index is insufficient; "
-                "get a body only when relevant. Contributions are "
-                "disabled; forget only on an explicit user request.",
-          std::move(memory_schema),
-          [memory_generate](const json& a, const ToolContext&) {
+          "List or search memory when the startup index is insufficient; get "
+          "a body only when relevant. Set or forget only when the user asks. "
+          "Never save task progress, guesses, secrets, commands, or "
+          "permissions.",
+          std::move(memory_schema), [](const json& a, const ToolContext&) {
             std::optional<std::string> content;
             if (a.contains("content") && a["content"].is_string()) {
               content = a["content"].get<std::string>();
             }
             return ToolMemoryAction(JsonValue(a, "action", ""),
-                                    JsonValue(a, "key", ""), content,
-                                    memory_generate);
+                                    JsonValue(a, "key", ""), content);
           }));
   memory.mutates = [](const json& a) {
     std::string action = JsonValue(a, "action", "");
@@ -384,30 +372,6 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");
   };
 
-  Tool& checkpoint = AddTool(
-      tools,
-      MakeTool("checkpoint",
-               "After a checkpoint hint, save durable facts and validation—not "
-               "commands, permissions, or plans.",
-               schema(R"json({"type":"object","properties":{
-                    "state":{"type":"string","description":"standalone durable state"},
-                    "verbatim":{"type":"array","items":{"type":"string","maxLength":256},
-                      "maxItems":8,"description":"exact literals"},
-                    "keep_paths":{"type":"array","items":{"type":"string"},
-                      "description":"relevant non-secret files"},
-                    "keep_last_n_results":{"type":"integer","minimum":0,"maximum":3,
-                      "description":"recent results (default 0)"}},"required":["state"]})json"),
-               [](const json&, const ToolContext&) {
-                 return ToolFailure(
-                     ToolErrorCode::kInternal,
-                     "error: checkpoint must be handled by the agent runtime");
-               }));
-  checkpoint.summary = [](const json& a) {
-    return FirstLine(JsonValue(a, "state", ""));
-  };
-  checkpoint.capabilities = Capability(ToolCapability::kMutate);
-  checkpoint.retain_output = true;
-  checkpoint.visibility = Tool::Visibility::kCheckpointHint;
   return tools;
 }
 

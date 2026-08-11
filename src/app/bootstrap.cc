@@ -32,7 +32,6 @@
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools/memory.h"
-#include "include/tools/memory_pipeline.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
@@ -203,18 +202,11 @@ std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
-  std::vector<Tool> tools =
-      BuiltinTools(runtime.processes, CanonicalAccessPath(CanonicalCwd()),
-                   inline_images, runtime.config.memory_generate);
+  std::vector<Tool> tools = BuiltinTools(
+      runtime.processes, CanonicalAccessPath(CanonicalCwd()), inline_images);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools,
                   [](const Tool& tool) { return tool.name == "memory"; });
-  }
-  if (!context.options.memory_source.empty()) {
-    std::erase_if(tools,
-                  [](const Tool& tool) { return tool.name != "memory"; });
-    ApplyToolPolicy(tools, context.tool_policy);
-    return tools;
   }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
@@ -259,12 +251,8 @@ void LogReady(const AppContext& context) {
                  {"tools", context.tools.size()},
                  {"toolset", LeanToolset() ? "lean" : "full"},
                  {"memory", config.memory_enabled},
-                 {"memory_generate", config.memory_generate},
                  {"yolo", context.options.yolo},
                  {"auto_compact_pct", AutoCompactPct()},
-                 {"checkpoint_mode", api.config.checkpoint_mode},
-                 {"checkpoint_pct", CheckpointPct()},
-                 {"checkpoint_urgent_pct", CheckpointUrgentPct()},
                  {"openrouter_provider", config.openrouter_provider},
                  {"openrouter_fallbacks", config.openrouter_fallbacks},
                  {"tool_concurrency", ToolConcurrency()},
@@ -310,29 +298,21 @@ AppContext::AppContext(RuntimeConfig config, Options parsed_options)
 
 BootstrapResult Bootstrap(Options options, const char* executable) {
   SetExecutablePath(executable);
-  const bool memory_child = !options.memory_source.empty();
   bool trusted = false;
   json trusted_snapshot = nullptr;
   std::string error;
   int exit_code = 1;
-  if (!memory_child && !ResolveProjectTrust(options, trusted, trusted_snapshot,
-                                            error, exit_code)) {
+  if (!ResolveProjectTrust(options, trusted, trusted_snapshot, error,
+                           exit_code)) {
     return Failure(std::move(error), exit_code);
   }
 
   LoadConfigFile(trusted);
-  if (memory_child &&
-      !BuildMemoryConsolidationPrompt(options.memory_source,
-                                      CanonicalAccessPath(CanonicalCwd()),
-                                      options.prompt, error)) {
-    return Failure(std::move(error), 2);
-  }
   if (options.budget > 0) {
     setenv("UAGENT_SESSION_BUDGET", std::to_string(options.budget).c_str(), 1);
   }
   if (options.no_memory) {
     setenv("UAGENT_MEMORY", "0", 1);
-    setenv("UAGENT_MEMORY_GENERATE", "0", 1);
   }
   MaintainArtifacts();
   if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
@@ -373,11 +353,8 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   api.render_stream = context->options.prompt.empty();
   size_t project_limit =
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
-  ProjectInstructions instructions;
-  if (!memory_child) {
-    instructions = LoadProjectInstructions(CanonicalAccessPath(CanonicalCwd()),
-                                           project_limit);
-  }
+  ProjectInstructions instructions = LoadProjectInstructions(
+      CanonicalAccessPath(CanonicalCwd()), project_limit);
   if (context->runtime.config.memory_enabled) {
     size_t remaining = instructions.text.size() >= project_limit
                            ? 0
@@ -406,8 +383,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   }
   printf("%s%sµAgent%s\n", RST(), BOLD(), RST());
   PrintProjectContext(instructions, project_limit);
-  std::vector<Skill> skills =
-      memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
+  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
@@ -424,12 +400,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     return Failure("UAGENT_MODEL is not set and " + api.base_url +
                    "/models returned nothing usable");
   }
-  json route_profile =
-      ActivateRoute(api, context->runtime.config.checkpoint_mode);
-  if (!route_profile.empty()) {
-    DebugLog("route_profile_applied",
-             {{"model", api.model}, {"profile", route_profile}});
-  }
+  ActivateRoute(api);
   api.server_tools_authorized = context->options.yolo;
   context->tool_policy = ToolPolicyFromEnvironment();
   PrintWarning(context->tool_policy.error);

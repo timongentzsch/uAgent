@@ -35,7 +35,6 @@
 #include "include/providers.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
-#include "include/tools/memory_pipeline.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
@@ -85,13 +84,6 @@ class Application {
   }
 
   int FinishHeadless(std::string answer, std::string error, int exit_code) {
-    if (exit_code == 0 && !context_.options.memory_source.empty()) {
-      std::string marker_error;
-      if (!MarkMemorySessionProcessed(context_.options.memory_source,
-                                      marker_error)) {
-        DebugLog("memory_pipeline_marker_error", {{"error", marker_error}});
-      }
-    }
     runtime_.Shutdown();
     std::remove(UsageLedger().c_str());
     LogSessionEnd(exit_code == 0 ? "headless_complete" : "headless_error");
@@ -255,9 +247,6 @@ class Application {
       case SlashCommandId::kCost:
         HandleCost();
         break;
-      case SlashCommandId::kHandoff:
-        HandleHandoff(command.argument);
-        break;
       case SlashCommandId::kMemory:
         HandleMemory();
         break;
@@ -329,9 +318,8 @@ class Application {
   }
 
   void HandleMemory() const {
-    printf("%s· memory recall %s · contribute %s%s\n", DIM(),
-           api_.config.memory_enabled ? "on" : "off",
-           api_.config.memory_generate ? "on" : "off", RST());
+    printf("%s· memory %s%s\n", DIM(),
+           api_.config.memory_enabled ? "on" : "off", RST());
     if (!api_.config.memory_enabled) return;
     std::vector<MemoryEntry> entries = ListMemories();
     if (entries.empty()) {
@@ -342,30 +330,6 @@ class Application {
       printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
              TerminalSafe(Tilde(entry.path)).c_str(), RST());
     }
-  }
-
-  void HandleHandoff(const std::string& argument) {
-    if (argument.empty()) {
-      printf("%s· use /handoff PROVIDER/MODEL%s\n", RED(), RST());
-      return;
-    }
-    if (api_.config.checkpoint_mode == "off") {
-      printf("%s· handoff disabled by UAGENT_CHECKPOINT_MODE=off%s\n", RED(),
-             RST());
-      return;
-    }
-    bool named = ResolveModelRoute(context_.provider.routes,
-                                   context_.provider.providers, argument)
-                     .has_value();
-    if (!named && !CanUseRawModel(api_, argument)) {
-      printf("%s· unknown model route %s; use /models%s\n", RED(),
-             TerminalSafe(argument).c_str(), RST());
-      return;
-    }
-    bool apply = api_.config.checkpoint_mode == "apply";
-    if (!agent_.Compact(false, nullptr, apply) || !apply) return;
-    HandleModel(argument);
-    DebugLog("handoff", {{"route", argument}, {"mode", "apply"}});
   }
 
   void HandleModel(const std::string& argument) {
@@ -405,12 +369,8 @@ class Application {
   }
 
   void ActivateCurrentRoute() {
-    json profile = ActivateRoute(api_, runtime_.config.checkpoint_mode);
+    ActivateRoute(api_);
     agent_.RouteChanged();
-    if (!profile.empty()) {
-      DebugLog("route_profile_applied",
-               {{"model", api_.model}, {"profile", std::move(profile)}});
-    }
   }
 
   void HandleEffort(const std::string& argument) {
@@ -597,7 +557,7 @@ class Application {
       double elapsed = std::chrono::duration<double>(
                            std::chrono::steady_clock::now() - started)
                            .count();
-      size_t background = runtime_.processes.VisibleCount();
+      size_t background = runtime_.processes.Count();
       char seconds[32];
       snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
       std::string activity = CurrentTerminalActivity();
@@ -629,7 +589,7 @@ class Application {
       return std::string(interrupting ? "interrupting|" : "working|") +
              CurrentTerminalActivity() + "|" +
              std::to_string(SteeringState().QueuedCount()) + "|" +
-             std::to_string(runtime_.processes.VisibleCount());
+             std::to_string(runtime_.processes.Count());
     };
 
     auto unmount = [&] {
@@ -781,7 +741,6 @@ class Application {
         worker.join();
         flush_output(true);
         SaveSession();
-        BgTakeCompleted(runtime_.processes, "memory");
         bool activity_ready = agent_.DrainBackground();
         if (worker_quit) exit_when_idle = true;
         interrupting = false;
@@ -799,7 +758,6 @@ class Application {
       // the existing 100 ms UI poll is the event source, so no watcher thread
       // or second process owner is needed.
       if (!working && !worker.joinable() && !answering && !exit_when_idle) {
-        BgTakeCompleted(runtime_.processes, "memory");
         if (agent_.DrainBackground()) {
           start_work(std::nullopt);
           refresh_status();
@@ -842,23 +800,12 @@ class Application {
   int RunInteractive() {
     ResumeAtStartup();
     persist_ = isatty(STDIN_FILENO);
-    if (persist_ && AgentDepth() == 0 && api_.config.memory_enabled &&
-        api_.config.memory_generate) {
-      std::string pipeline_error = StartMemoryPipeline(
-          runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
-          session_file_, context_.debug);
-      if (!pipeline_error.empty()) {
-        DebugLog("memory_pipeline_start_error", {{"error", pipeline_error}});
-      }
-    }
     if (persist_) {
       int persistent_status = RunPersistentInteractive();
       if (persistent_status >= 0) return FinishInteractive(persistent_status);
     }
     for (;;) {
       SaveSession();
-      // Maintenance jobs are intentionally invisible to the conversation.
-      BgTakeCompleted(runtime_.processes, "memory");
       agent_.DrainBackground();
       PrintStatusBar(StatusBar(api_, agent_, context_.options.yolo,
                                attachments_.size(), runtime_.processes));

@@ -37,9 +37,6 @@ struct SessionState {
   std::vector<MessageKind> message_kinds;
   json archive = json::array();
   int64_t archive_dropped_segments = 0;
-  json checkpoint_candidates = json::array();
-  json pending_checkpoint = nullptr;
-  json side_effects = json::array();
   int64_t context_tokens = 0;
   Usage usage;
   RouteUsage route_usage;

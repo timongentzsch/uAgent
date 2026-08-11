@@ -59,13 +59,7 @@ int64_t ToolTracePruneMinChars() {
   return EnvBounded("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", 32 * 1024, 0);
 }
 
-int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 95); }
-
-int64_t CheckpointPct() { return EnvLong("UAGENT_CHECKPOINT_PCT", 65); }
-
-int64_t CheckpointUrgentPct() {
-  return EnvLong("UAGENT_CHECKPOINT_URGENT_PCT", 85);
-}
+int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 85); }
 
 int64_t ToolConcurrency() {
   return EnvBounded("UAGENT_TOOL_CONCURRENCY", 4, 1, kFgMax);
@@ -124,19 +118,6 @@ int64_t MemoryBytes() { return EnvBounded("UAGENT_MEMORY_BYTES", 2048, 256); }
 
 int64_t MaxMemories() { return EnvBounded("UAGENT_MEMORY_FILES", 32, 1); }
 
-int64_t MemoryIdleSeconds() {
-  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", 6 * 60 * 60, 0);
-}
-
-int64_t MemorySessionAgeDays() {
-  return EnvBounded("UAGENT_MEMORY_SESSION_DAYS", 10, 1, 365);
-}
-
-int64_t MemorySessionBytes() {
-  return EnvBounded("UAGENT_MEMORY_SESSION_BYTES", 64 * 1024, 4096,
-                    1024 * 1024);
-}
-
 int64_t MemoryAlwaysBytes() {
   return EnvBounded("UAGENT_MEMORY_ALWAYS_BYTES", 2048, 0, 64 * 1024);
 }
@@ -165,10 +146,6 @@ int64_t BashLogBytes() {
 
 int64_t MaxBackgroundJobs() {
   return EnvBounded("UAGENT_MAX_BACKGROUND_JOBS", 8, 1, kBgMax);
-}
-
-int64_t CheckpointFileLines() {
-  return EnvLong("UAGENT_CHECKPOINT_FILE_LINES", 120);
 }
 
 int64_t McpConfigBytes() {
@@ -235,10 +212,6 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
   }
   c.max_turn_cost = EnvDouble("UAGENT_MAX_TURN_COST", 1.0);
   c.session_budget = std::max(0.0, EnvDouble("UAGENT_SESSION_BUDGET", 0));
-  if (c.checkpoint_mode != "off" && c.checkpoint_mode != "shadow" &&
-      c.checkpoint_mode != "apply") {
-    c.checkpoint_mode = "apply";
-  }
   if (!ValidOpenRouterVariant(c.openrouter_variant)) {
     c.openrouter_variant.clear();
   }
@@ -274,8 +247,6 @@ json RuntimeConfig::DiagnosticJson() const {
   out.update({
       {"max_turn_cost", max_turn_cost},
       {"session_budget", session_budget},
-      {"checkpoint_pct", CheckpointPct()},
-      {"checkpoint_urgent_pct", CheckpointUrgentPct()},
       {"auto_compact_pct", AutoCompactPct()},
       {"tool_trace_protect_chars", ToolTraceProtectChars()},
       {"tool_trace_prune_min_chars", ToolTracePruneMinChars()},

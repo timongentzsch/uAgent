@@ -6,7 +6,6 @@
 // and the system prompt.
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,7 +13,6 @@
 #include "include/agent/tool_protocol.h"
 #include "include/api/types.h"
 #include "include/core/env.h"
-#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/tools/tool.h"
@@ -168,7 +166,9 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "and reconsider when its result arrives.";
   }
   if (FindTool(tools, "chrome_session")) {
-    prompt += " Require chrome_session health before browser work.";
+    prompt +=
+        " Start Chrome with chrome_session when browser tools are unavailable; "
+        "call it again only to switch session or toolset.";
   }
   return prompt;
 }
@@ -221,16 +221,6 @@ inline std::string TextProtocolPrompt(const std::vector<Tool>& tools) {
     s += t.name + "(" + args + ")\n";
   }
   return s;
-}
-
-inline bool SecretCheckpointPath(const std::filesystem::path& path) {
-  std::string name = path.filename().string();
-  if (name == ".env" || name.starts_with(".env.")) return true;
-  for (const std::string& config :
-       {UagentConfigPath(), ProjectConfigFilePath()}) {
-    if (!config.empty() && CanonicalAccessPath(config) == path) return true;
-  }
-  return false;
 }
 
 }  // namespace uagent

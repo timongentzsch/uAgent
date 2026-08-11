@@ -135,22 +135,6 @@ void TestMcpContractHelpers() {
   std::filesystem::remove_all(root_fixture, root_cleanup_error);
 
   RuntimeConfig config;
-  McpRuntime diagnostic_runtime;
-  auto diagnostic_server = std::make_unique<McpServer>();
-  diagnostic_server->name = "diagnostic";
-  diagnostic_server->config = json{{"command", "unused"}};
-  diagnostic_server->last_error = "handshake failed";
-  diagnostic_runtime.Add(std::move(diagnostic_server));
-  std::vector<Tool> diagnostic_tools;
-  McpAddControlTools(diagnostic_tools, diagnostic_runtime, config);
-  const Tool* mcp_status = FindTool(diagnostic_tools, "mcp_status");
-  CHECK(mcp_status != nullptr);
-  ToolResult diagnostic = mcp_status->run(json::object(), {});
-  CHECK(diagnostic.Ok());
-  CHECK(diagnostic.output.find("diagnostic · error") != std::string::npos);
-  CHECK(diagnostic.output.find("handshake failed") != std::string::npos);
-  CHECK(FindTool(diagnostic_tools, "mcp_restart") != nullptr);
-
   McpServer server;
   server.name = "probe";
   server.config = json{{"command", "unused"}};
@@ -294,9 +278,6 @@ void TestWorkspaceScopedSession() {
     CHECK(payload["messages"][0].value("content", "").find("[environment:") ==
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
-    CHECK(payload["checkpoint_candidates"].is_array());
-    CHECK(payload["pending_checkpoint"].is_null());
-    CHECK(payload["side_effects"].is_array());
     CHECK(payload.value("context_tokens", int64_t{-1}) == agent.ContextUsed());
     payload["context_tokens"] = 12345;
     CHECK(ToolWritePrivateFile(session.string(),
@@ -475,8 +456,6 @@ void TestScopedBaseAndMemory() {
             .output.find("The user prefers tabs.") != std::string::npos);
   CHECK(ToolMemoryAction("set", "project/explicit", std::string("durable fact"))
             .output.starts_with("wrote "));
-  CHECK(ToolMemoryAction("set", "project/blocked", std::string("fact"), false)
-            .error == ToolErrorCode::kPermissionDenied);
   std::vector<MemoryEntry> memories = ListMemories();
   CHECK(std::any_of(memories.begin(), memories.end(), [](const MemoryEntry& m) {
     return m.key == "global/prefers-tabs";

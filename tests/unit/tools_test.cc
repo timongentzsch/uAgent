@@ -114,23 +114,15 @@ void TestToolExecutionPolicy() {
   CHECK(allowed_run &&
         !allowed_run->validate({{"command", "python3 other.py"}}).empty());
 
-  Tool checkpoint_only = unbounded;
-  checkpoint_only.name = "checkpoint_only";
-  checkpoint_only.visibility = Tool::Visibility::kCheckpointHint;
   Tool terminal_only = unbounded;
   terminal_only.name = "terminal_only";
   terminal_only.visibility = Tool::Visibility::kDetachedTerminal;
-  policies = {unbounded, checkpoint_only, terminal_only};
+  policies = {unbounded, terminal_only};
   schemas = ToolSchemas(policies);
   available = AvailableToolSchemas(policies, schemas, {});
   CHECK(available.size() == 1);
   available =
-      AvailableToolSchemas(policies, schemas, {}, {.checkpoint_hint = true});
-  CHECK(available.size() == 2);
-  CHECK(available[1]["function"]["name"] == "checkpoint_only");
-  available = AvailableToolSchemas(
-      policies, schemas, {},
-      {.checkpoint_hint = false, .detached_terminal = true});
+      AvailableToolSchemas(policies, schemas, {}, {.detached_terminal = true});
   CHECK(available.size() == 2);
   CHECK(available[1]["function"]["name"] == "terminal_only");
 
@@ -262,16 +254,17 @@ void TestOpenRouterServerSearch() {
   CHECK(body["tools"].size() == 1);
   CHECK(body["tools"][0]["function"]["name"] == "read_file");
 
+  auto check_native_search = [&] {
+    body = api.BuildChatBody(json::array(), schemas);
+    CHECK(body["tools"].size() == 2);
+    CHECK(body["tools"][0]["function"]["name"] == "web_search");
+  };
   api.openrouter_web_search = false;
-  body = api.BuildChatBody(json::array(), schemas);
-  CHECK(body["tools"].size() == 2);
-  CHECK(body["tools"][0]["function"]["name"] == "web_search");
+  check_native_search();
 
   api.base_url = "http://127.0.0.1:8080/v1";
   api.openrouter_compatible = false;
-  body = api.BuildChatBody(json::array(), schemas);
-  CHECK(body["tools"].size() == 2);
-  CHECK(body["tools"][0]["function"]["name"] == "web_search");
+  check_native_search();
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
   api.openrouter_compatible = true;
@@ -647,17 +640,6 @@ void TestGrepTool() {
                       {{"action", "forget"}, {"key", "project/lesson"}}));
     CHECK(memory->parameters["required"] == json::array({"action"}));
   }
-  auto read_only_memory_tools = BuiltinTools(supervisor, root, false, false);
-  const Tool* read_only_memory = FindTool(read_only_memory_tools, "memory");
-  CHECK(read_only_memory != nullptr);
-  CHECK(read_only_memory &&
-        ToolDescription(*read_only_memory).find("disabled") !=
-            std::string::npos);
-  CHECK(read_only_memory &&
-        read_only_memory->parameters["properties"]["action"]["enum"] ==
-            json::array({"get", "forget", "list", "search"}));
-  CHECK(read_only_memory &&
-        !read_only_memory->parameters["properties"].contains("content"));
   CHECK(python && python->timeout_s == 0);
   CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);

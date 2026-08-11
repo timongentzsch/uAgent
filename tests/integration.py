@@ -18,7 +18,6 @@ import tempfile
 import termios
 import threading
 import time
-import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from memory_fixture import global_memory_dir, project_memory_dir
@@ -32,14 +31,12 @@ def integration_group(name):
     """Keep integration domains isolated without duplicating shared fixtures."""
     groups = (
         ("mcp", ("mcp", "chrome_session")),
-        ("checkpoint", ("checkpoint", "midturn_compaction")),
         ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
         (
             "providers",
             (
                 "model_",
                 "provider_",
-                "handoff_",
                 "search_",
                 "openrouter_",
                 "streamed_search",
@@ -210,24 +207,14 @@ def base_env(home, url):
     return env
 
 
-def write_route_profile(home, url, **features):
-    path = home / ".uagent" / "config" / "routes.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    key = f"{urllib.parse.urlparse(url).netloc}||test|"
-    profile = {
-        "samples": 4,
-        "passing_samples": 4,
-        "pass_rate": 1.0,
-        "certified": True,
-        "scenario_classes": ["analysis"],
-        "certified_at_unix": int(time.time()),
-    }
-    profile.update(features)
-    path.write_text(
-        json.dumps({"schema": 3, "routes": {key: profile}, "recommendations": {}}),
-        encoding="utf-8",
-    )
-    return path, key
+def provider_env(home, url, providers, model=None):
+    env = base_env(home, url)
+    env["UAGENT_PROVIDERS"] = json.dumps(providers)
+    if model is None:
+        env.pop("UAGENT_MODEL")
+    else:
+        env["UAGENT_MODEL"] = model
+    return env
 
 
 def run(cwd, env, *args, timeout=10):
@@ -362,6 +349,12 @@ def assert_true(value, message):
         raise AssertionError(message)
 
 
+def has_message(messages, role, content):
+    return any(
+        message.get("role") == role and message.get("content") == content for message in messages
+    )
+
+
 def timeout_retry_env(home, url):
     env = base_env(home, url)
     env.update(
@@ -402,26 +395,6 @@ def read_file_calls(paths):
     )
 
 
-def handoff_env(home, first_url, second_url):
-    env = base_env(home, first_url)
-    env["UAGENT_PROVIDERS"] = json.dumps(
-        {
-            "cheap": {
-                "base_url": first_url,
-                "api_key": "cheap-key",
-                "models": {"flash": "flash-model"},
-            },
-            "strong": {
-                "base_url": second_url,
-                "api_key": "strong-key",
-                "models": {"main": "strong-model"},
-            },
-        }
-    )
-    env["UAGENT_MODEL"] = "cheap/flash"
-    return env
-
-
 def run_queued_interrupt(workspace, home, url, initial):
     code, output = run_pty(
         workspace,
@@ -459,17 +432,6 @@ def signal_process_group(pid, signal_number=signal.SIGTERM):
         os.killpg(pid, signal_number)
     except ProcessLookupError:
         pass
-
-
-def message_with_prefix(messages, prefix):
-    return next(
-        (
-            message
-            for message in messages
-            if isinstance(message.get("content"), str) and message["content"].startswith(prefix)
-        ),
-        {},
-    )
 
 
 def function_tools(body):
@@ -512,15 +474,6 @@ def json_sentinel_command(path):
     return f"{shlex.quote(sys.executable)} -c {shlex.quote(query)} {shlex.quote(str(path))}"
 
 
-def checkpoint_env(home, url, mode):
-    env = base_env(home, url)
-    env["UAGENT_CHECKPOINT_MODE"] = mode
-    env["UAGENT_CHECKPOINT_PCT"] = "1"
-    env["UAGENT_CHECKPOINT_URGENT_PCT"] = "2"
-    env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-    return env
-
-
 def midturn_compaction_env(home, url):
     env = base_env(home, url)
     env.update(
@@ -528,7 +481,6 @@ def midturn_compaction_env(home, url):
             "UAGENT_CONTEXT": "8000",
             "UAGENT_MAX_TOKENS": "512",
             "UAGENT_AUTO_COMPACT_PCT": "40",
-            "UAGENT_CHECKPOINT_MODE": "off",
             "UAGENT_TOOL_RESULT_CHARS": "8000",
         }
     )
@@ -1665,33 +1617,6 @@ def test_invalid_mcp_config_not_executed(root, home):
         server.close()
 
 
-def test_failed_mcp_server_remains_diagnosable(root, home):
-    (home / ".mcp.json").write_text(
-        json.dumps({"mcpServers": {"broken": {"command": "/missing/uagent-mcp-server"}}}),
-        encoding="utf-8",
-    )
-
-    def route(_, body):
-        results = [
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "tool"
-        ]
-        if results:
-            healthy = "broken · error" in results[-1] and "server exited" in results[-1]
-            return event({"content": "mcp-diagnostic-ok" if healthy else "mcp-diagnostic-bad"})
-        assert_true("mcp_status" in function_names(body), function_names(body))
-        return tool_call("mcp_status", {"server": "broken"})
-
-    server = Server([route])
-    try:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "diagnose mcp")
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "mcp-diagnostic-ok", result.stdout)
-    finally:
-        server.close()
-
-
 def test_mcp_tool_round_trip(root, home):
     workspace = root / "mcp-round-trip"
     workspace.mkdir()
@@ -1929,9 +1854,7 @@ def test_model_route_switch(root, home):
     providers = two_route_providers(first.url, second.url)
     providers["second"]["models"]["fast"]["context"] = 8192
     try:
-        env = base_env(home, first.url)
-        env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        env["UAGENT_MODEL"] = "first/main"
+        env = provider_env(home, first.url, providers, "first/main")
         result = run_dialog(
             root,
             env,
@@ -1973,9 +1896,7 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home):
         },
     }
     try:
-        env = base_env(home, router.url)
-        env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        env["UAGENT_MODEL"] = "router/main"
+        env = provider_env(home, router.url, providers, "router/main")
         result = run_dialog(
             root,
             env,
@@ -2007,43 +1928,6 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home):
         generic.close()
 
 
-def test_handoff_compacts_then_switches_route(root, home):
-    first = Server(
-        [
-            event({"content": "exploration complete"}),
-            event({"content": "distilled handoff state"}),
-        ]
-    )
-
-    def continued(_, body):
-        text = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        valid = (
-            body.get("model") == "strong-model"
-            and "distilled handoff state" in text
-            and "exploration complete" not in text
-        )
-        return event({"content": "handoff-ok" if valid else "handoff-bad"})
-
-    second = Server([continued])
-    try:
-        env = handoff_env(home, first.url, second.url)
-        result = run_dialog(
-            root,
-            env,
-            "explore\n/handoff strong/main\ncontinue\n/cost\n/q\n",
-            timeout=20,
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("handoff-ok" in result.stdout, result.stdout)
-        assert_true("strong/main" in result.stdout, result.stdout)
-        assert_true("total" in result.stdout, result.stdout)
-        assert_true(len(first.requests) == 2, first.requests)
-        assert_true(len(second.requests) == 1, second.requests)
-    finally:
-        first.close()
-        second.close()
-
-
 def test_dynamic_provider_catalog_and_model(root, home):
     active_catalog = {"data": [{"id": "active-live"}]}
     first = Server(
@@ -2068,9 +1952,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         }
     }
     try:
-        env = base_env(home, first.url)
-        env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        env["UAGENT_MODEL"] = "active-live"
+        env = provider_env(home, first.url, providers, "active-live")
         catalog_result = run_dialog(
             root,
             env,
@@ -2104,9 +1986,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
         assert_true(len(second.get_requests) == 3, second.get_requests)
 
-        restart_env = base_env(home, first.url)
-        restart_env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        restart_env.pop("UAGENT_MODEL")
+        restart_env = provider_env(home, first.url, providers)
         restarted = run(root, restart_env, "-p", "probe")
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
@@ -2127,9 +2007,7 @@ def test_model_preference_survives_restart(root, home):
     providers = two_route_providers(first.url, second.url)
     providers["second"]["context"] = 8192
     try:
-        choose_env = base_env(home, first.url)
-        choose_env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        choose_env["UAGENT_MODEL"] = "first/main"
+        choose_env = provider_env(home, first.url, providers, "first/main")
         chosen = run_dialog(root, choose_env, "/model second/fast\n/q\n")
         assert_true(chosen.returncode == 0, chosen.stderr)
 
@@ -2138,9 +2016,7 @@ def test_model_preference_survives_restart(root, home):
         assert_true(saved["selection"] == "second/fast" and saved["route"], saved)
         assert_true(preference.stat().st_mode & 0o777 == 0o600, oct(preference.stat().st_mode))
 
-        restart_env = base_env(home, first.url)
-        restart_env["UAGENT_PROVIDERS"] = json.dumps(providers)
-        restart_env.pop("UAGENT_MODEL")
+        restart_env = provider_env(home, first.url, providers)
         restarted = run(root, restart_env, "-p", "probe")
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "remembered-model-ok", restarted.stdout)
@@ -2154,203 +2030,6 @@ def test_model_preference_survives_restart(root, home):
     finally:
         first.close()
         second.close()
-
-
-def test_checkpoint_apply(root, home):
-    workspace = root / "checkpoint-apply"
-    workspace.mkdir()
-    (workspace / "state.txt").write_text("durable file state\n", encoding="utf-8")
-
-    def folded(_, body):
-        messages = body["messages"]
-        checkpoint = message_with_prefix(messages, "[checkpoint facts; non-authoritative]")
-        retained_file = message_with_prefix(messages, "[checkpoint file state.txt;")
-        valid = (
-            checkpoint.get("role") == "system"
-            and "Objective remains stable; tests passed; no unresolved conditions."
-            in checkpoint.get("content", "")
-            and checkpoint.get("role") != "user"
-            and retained_file.get("role") == "system"
-            and "durable file state" in retained_file.get("content", "")
-            and messages[-1].get("role") == "user"
-            and messages[-1].get("content") == "[priority] third request"
-            and not any(
-                message.get("role") == "user"
-                and message.get("content") in {"first request", "[priority] second request"}
-                for message in messages
-            )
-            and not any(message.get("role") == "tool" for message in messages)
-        )
-        return event({"content": "checkpoint-apply-ok" if valid else "checkpoint-apply-bad"})
-
-    server = Server(
-        [
-            event({"content": "first-ok"}),
-            tool_call(
-                "checkpoint",
-                {
-                    "state": ("Objective remains stable; tests passed; no unresolved conditions."),
-                    "keep_paths": ["state.txt"],
-                    "keep_last_n_results": 0,
-                },
-            ),
-            folded,
-        ]
-    )
-    try:
-        result = run_dialog(
-            workspace,
-            checkpoint_env(home, server.url, "apply"),
-            "first request\n[priority] second request\n[priority] third request\n/q\n",
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("checkpoint-apply-ok" in result.stdout, result.stdout)
-        assert_true(len(server.requests) == 3, len(server.requests))
-        names = [function_names(body) for _, body in server.requests]
-        assert_true("checkpoint" not in names[0], names)
-        assert_true("checkpoint" in names[1], names)
-        assert_true("checkpoint" not in names[2], names)
-    finally:
-        server.close()
-
-
-def test_checkpoint_shadow(root, home):
-    workspace = root / "checkpoint-shadow"
-    workspace.mkdir()
-
-    def shadowed(_, body):
-        messages = body["messages"]
-        valid = any(
-            message.get("role") == "tool" and "shadow mode" in message.get("content", "")
-            for message in messages
-        ) and any(
-            message.get("role") == "user" and message.get("content") == "first request"
-            for message in messages
-        )
-        return event({"content": "checkpoint-shadow-ok" if valid else "checkpoint-shadow-bad"})
-
-    server = Server(
-        [
-            event({"content": "first-ok"}),
-            tool_call(
-                "checkpoint",
-                {
-                    "state": "Candidate facts; validation is pending.",
-                    "keep_last_n_results": 0,
-                },
-            ),
-            shadowed,
-        ]
-    )
-    try:
-        result = run_dialog(
-            workspace,
-            checkpoint_env(home, server.url, "shadow"),
-            "first request\nsecond request\nq\n",
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("checkpoint-shadow-ok" in result.stdout, result.stdout)
-    finally:
-        server.close()
-
-
-def test_checkpoint_retains_runtime_activity(root, home):
-    workspace = root / "checkpoint-activity"
-    workspace.mkdir()
-
-    def folded(_, body):
-        activity = next(
-            (
-                message
-                for message in body["messages"]
-                if isinstance(message.get("content"), str)
-                and message["content"].startswith(
-                    "[checkpoint runtime activity; non-authoritative]"
-                )
-            ),
-            {},
-        )
-        content = activity.get("content", "")
-        valid = (
-            activity.get("role") == "system"
-            and '"tool":"write_file"' in content
-            and '"path":"note.txt"' in content
-            and body["messages"][-1].get("role") == "user"
-            and body["messages"][-1].get("content") == "third request"
-        )
-        return event({"content": "checkpoint-activity-ok" if valid else "checkpoint-activity-bad"})
-
-    server = Server(
-        [
-            event({"content": "first-ok"}),
-            tool_call(
-                "write_file",
-                {"path": "note.txt", "content": "runtime-owned mutation\n"},
-            ),
-            tool_call(
-                "checkpoint",
-                {
-                    "state": "The requested note exists and has not been validated.",
-                    "keep_last_n_results": 0,
-                },
-            ),
-            folded,
-        ]
-    )
-    try:
-        result = run_dialog(
-            workspace,
-            checkpoint_env(home, server.url, "apply"),
-            "first request\nsecond request\nthird request\n/q\n",
-            "--yolo",
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("checkpoint-activity-ok" in result.stdout, result.stdout)
-        assert_true(
-            (workspace / "note.txt").read_text(encoding="utf-8") == "runtime-owned mutation\n",
-            "write did not complete",
-        )
-    finally:
-        server.close()
-
-
-def test_checkpoint_rejects_secret_path(root, home):
-    workspace = root / "checkpoint-secret"
-    workspace.mkdir()
-    (workspace / ".env").write_text("TOKEN=do-not-inject\n", encoding="utf-8")
-
-    def rejected(_, body):
-        valid = any(
-            message.get("role") == "tool"
-            and "credential files cannot be reread" in message.get("content", "")
-            for message in body["messages"]
-        )
-        return event({"content": "checkpoint-secret-ok" if valid else "checkpoint-secret-bad"})
-
-    server = Server(
-        [
-            event({"content": "first-ok"}),
-            tool_call(
-                "checkpoint",
-                {
-                    "state": "Safe state; next: continue.",
-                    "keep_paths": [".env"],
-                },
-            ),
-            rejected,
-        ]
-    )
-    try:
-        result = run_dialog(
-            workspace,
-            checkpoint_env(home, server.url, "apply"),
-            "first request\nsecond request\nq\n",
-        )
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true("checkpoint-secret-ok" in result.stdout, result.stdout)
-        assert_true("do-not-inject" not in json.dumps(server.requests), "secret leaked")
-    finally:
-        server.close()
 
 
 def test_first_event_timeout(root, home):
@@ -2503,10 +2182,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
 def test_subagent_auto_join_continues_turn(root, home):
     def route(_, body):
         messages = body["messages"]
-        if any(
-            message.get("role") == "user" and message.get("content") == "child"
-            for message in messages
-        ):
+        if has_message(messages, "user", "child"):
             time.sleep(2)
             return event({"content": "child-result"})
         has_result = any(
@@ -2542,10 +2218,7 @@ def test_subagent_auto_join_continues_turn(root, home):
 def test_subagent_foreground_returns_result_without_wait_round(root, home):
     def route(_, body):
         messages = body["messages"]
-        if any(
-            message.get("role") == "user" and message.get("content") == "child"
-            for message in messages
-        ):
+        if has_message(messages, "user", "child"):
             time.sleep(0.3)
             return event({"content": "foreground-child-result"})
         tool_results = [

@@ -2,6 +2,7 @@
 
 #include "include/agent.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <string>
@@ -48,18 +49,14 @@ void Agent::Reset() {
                              {"prior_usage", UsageJson(session_usage_)}});
   conversation_.Reset(BaselineMessages(), BaselineKinds());
   turn_search_trace_.Reset();
-  checkpoint_candidates_ = json::array();
-  pending_checkpoint_ = nullptr;
-  side_effects_ = json::array();
   session_usage_ = Usage{};
   api_.session_cost = 0;
   route_usage_.clear();
-  context_policy_.Reset();
+  reported_context_tokens_ = 0;
   logged_msgs_ = 0;
   total_user_turns_ = 0;
   session_title_.clear();
   session_id_ = MakeSessionId();
-  last_checkpoint_turn_ = 0;
   SetImageInputAvailable(api_.image_input);
   ++revision_;
 }
@@ -72,7 +69,7 @@ json Agent::LatestToolTrace() const {
 }
 
 void Agent::RouteChanged() {
-  context_policy_.SetReported(0);
+  reported_context_tokens_ = 0;
   session_id_ = MakeSessionId();
   SetImageInputAvailable(api_.image_input);
   ++revision_;
@@ -110,9 +107,6 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                   conversation_.Kinds(),
                   conversation_.Archive(),
                   conversation_.DroppedSegments(),
-                  checkpoint_candidates_,
-                  pending_checkpoint_,
-                  side_effects_,
                   ContextUsed(),
                   session_usage_,
                   route_usage_};
@@ -140,9 +134,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     return false;
   }
   RefreshBaseline();
-  checkpoint_candidates_ = std::move(record.state.checkpoint_candidates);
-  pending_checkpoint_ = std::move(record.state.pending_checkpoint);
-  side_effects_ = std::move(record.state.side_effects);
   session_usage_ = record.state.usage;
   api_.session_cost = session_usage_.cost;
   route_usage_ = std::move(record.state.route_usage);
@@ -150,24 +141,22 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
-  context_policy_.Reset();
-  context_policy_.SetReported(record.state.context_tokens);
+  reported_context_tokens_ = record.state.context_tokens;
   logged_msgs_ = 0;
-  last_checkpoint_turn_ = 0;
   turn_search_trace_.Reset();
   ++revision_;
   return true;
 }
 
 int64_t Agent::ContextUsed() const {
-  int64_t used =
-      context_policy_.Used(JsonEstimatedBytes(conversation_.Messages()),
-                           schema_chars_, api_.native_tools);
+  size_t bytes = JsonEstimatedBytes(conversation_.Messages());
+  if (api_.native_tools) bytes = SaturatingAdd(bytes, schema_chars_);
+  int64_t used = std::max(reported_context_tokens_, EstimatedTokens(bytes));
   context_snapshot_.store(used, std::memory_order_relaxed);
   return used;
 }
 
-bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
+bool Agent::Compact(bool automatic, Usage* turn_usage) {
   if (MessageCount() < 2) {
     DebugLog("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
     printf("%s· nothing to compact%s\n", DIM(), RST());
@@ -214,16 +203,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
     }
     return false;
   }
-  if (!apply) {
-    DebugLog("compact_end", {{"automatic", automatic},
-                             {"outcome", "shadow"},
-                             {"summary_chars", r.content.size()}});
-    printf(
-        "%s· handoff checkpoint recorded (shadow mode); route and "
-        "context unchanged%s\n",
-        DIM(), RST());
-    return true;
-  }
   PruneAttachments(BaselineSize());
   ArchiveAll(automatic ? "auto_compact" : "manual_compact");
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
@@ -234,8 +213,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
         "context:\n" +
             r.content}},
       MessageKind::kInternal);
-  context_policy_.SetReported(0);
-  context_policy_.ResetUrgency();
+  reported_context_tokens_ = 0;
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},
@@ -291,8 +269,8 @@ void Agent::MergeSessionUsage(const Usage& usage) {
 
 bool Agent::DrainBackground() {
   bool changed = false;
-  for (auto& note : BgTakeCompletedExcept(processes_, "memory")) {
-    size_t running = processes_.VisibleCount();
+  for (auto& note : BgTakeCompleted(processes_)) {
+    size_t running = processes_.Count();
     printf("%s· bg job finished %s · %zu still running%s\n", DIM(),
            TerminalSafe(FirstLine(note)).c_str(), running, RST());
     conversation_.Push(HarnessMessage(std::move(note)), MessageKind::kInternal);
@@ -321,7 +299,7 @@ bool Agent::DrainAttachments() {
     conversation_.Push(HarnessMessage("[attachment failed] " + error),
                        MessageKind::kInternal);
   }
-  context_policy_.SetReported(0);
+  reported_context_tokens_ = 0;
   DebugLog("attachments_added",
            {{"turn", turn_id_}, {"count", pending.size()}, {"error", error}});
   return true;

@@ -33,7 +33,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
     if (flag != std::end(kFlags)) {
       parsed.options.*flag->second = true;
     } else if (argument == "--budget" || argument == "-p" ||
-               argument == "--attach" || argument == "--memory-consolidate") {
+               argument == "--attach") {
       if (++index >= argc) {
         parsed.error = argument + " requires a value";
         return parsed;
@@ -47,8 +47,6 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         parsed.options.prompt = argv[index];
       } else if (argument == "--attach") {
         parsed.options.attach_paths.push_back(argv[index]);
-      } else if (argument == "--memory-consolidate") {
-        parsed.options.memory_source = argv[index];
       }
     } else if (argument.starts_with("--debug=")) {
       parsed.options.debug = true;

@@ -46,7 +46,7 @@ int RunTests() {
   TestSafeJsonValues();
   TestProjectInstructionDiscovery();
   TestMcpContractHelpers();
-  TestConversationAndContextPolicy();
+  TestConversation();
   TestWorkspaceScopedSession();
   TestProjectTrustTracksSemanticConfig();
   TestScopedBaseAndMemory();

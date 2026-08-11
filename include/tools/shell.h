@@ -27,8 +27,8 @@ struct ShellCommand {
   bool background = false;
   bool detach = false;
   bool immediate = false;
-  std::string job_kind;
-  EnvironmentOverrides environment;
+  std::string job_kind = {};
+  EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;
 };

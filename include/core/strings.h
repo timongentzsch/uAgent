@@ -61,6 +61,7 @@ std::string DisplayTrunc(std::string s, size_t columns);
 std::vector<std::string> WrapLines(const std::string& s, size_t columns);
 
 size_t JsonEstimatedBytes(const json& value);
+int64_t EstimatedTokens(size_t bytes);
 
 std::string StripTrailingSlashes(std::string s);
 

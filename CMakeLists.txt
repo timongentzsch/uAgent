@@ -106,14 +106,6 @@ if(ipo_ok)
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
-find_library(EDITLINE_LIB NAMES edit)
-find_path(EDITLINE_INC editline/readline.h)
-if(EDITLINE_LIB AND EDITLINE_INC)
-  target_compile_definitions(uagent_options INTERFACE HAVE_EDITLINE=1)
-  target_include_directories(uagent_options INTERFACE ${EDITLINE_INC})
-  target_link_libraries(uagent_options INTERFACE ${EDITLINE_LIB})
-endif()
-
 include(CTest)
 if(BUILD_TESTING)
   add_executable(

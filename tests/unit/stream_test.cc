@@ -265,8 +265,6 @@ void TestBackgroundValidation() {
                                json::array({{{"old", "a"}, {"new", "b"}},
                                             {{"old", "c"}, {"new", "d"}}})}}) ==
           "x (2 edits)");
-    CHECK(edit->run({{"path", "x"}, {"edits", json::array({"bad"})}}, {})
-              .output.find("each `edits` entry") != std::string::npos);
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them

@@ -15,7 +15,6 @@
 namespace uagent {
 
 extern volatile sig_atomic_t g_streaming;
-extern volatile sig_atomic_t g_steering_active;
 extern volatile sig_atomic_t g_terminal_resized;
 // argv[0], so the agent can re-invoke itself for a subagent. A bare name is
 // resolved by the child's shell via PATH; a relative one still works because

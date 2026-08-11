@@ -234,9 +234,13 @@ std::string StartMemoryPipeline(ProcessSupervisor& processes, const Api& api,
   std::string command = ShellQuote(ExecutablePath()) + " --yolo" +
                         (debug ? " --debug" : "") + " --memory-consolidate " +
                         ShellQuote(*source);
-  ToolResult result = ToolRunBash(
-      processes, command, {}, /*allow_background=*/true, /*detach=*/false,
-      "bash", /*immediate_background=*/true, "memory", environment);
+  ToolResult result = RunShellCommand(processes, {},
+                                      {.command = std::move(command),
+                                       .background = true,
+                                       .immediate = true,
+                                       .job_kind = "memory",
+                                       .environment = std::move(environment)})
+                          .result;
   if (!result.Ok()) {
     ReleaseClaim(*source);
     return result.output;

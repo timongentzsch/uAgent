@@ -411,9 +411,6 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
-#if defined(HAVE_EDITLINE)
-  ConfigureReadlineCompletion(context->provider.routes);
-#endif
   if (api.base_url.empty()) {
     DebugLog("startup_error", {{"error", "UAGENT_BASE_URL is not set"}});
     return Failure(

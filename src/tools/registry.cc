@@ -3,7 +3,6 @@
 #include "include/tools/registry.h"
 
 #include <cstdint>
-#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -90,35 +89,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "required":["path","edits"]})json"),
       [](const json& a, const ToolContext&) {
         std::vector<FileEdit> edits;
-        auto additional = a.find("edits");
-        if (additional == a.end() || !additional->is_array()) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: `edits` must be an array");
-        }
-        for (const json& item : *additional) {
-          if (!item.is_object() || !item.contains("old") ||
-              !item["old"].is_string() || !item.contains("new") ||
-              !item["new"].is_string() ||
-              (item.contains("replace_all") &&
-               !item["replace_all"].is_boolean())) {
-            return ToolFailure(
-                ToolErrorCode::kInvalidArguments,
-                "error: each `edits` entry requires string "
-                "`old`/`new` and optional boolean `replace_all`");
-          }
+        for (const json& item : a["edits"]) {
           edits.push_back({JsonValue(item, "old", ""),
                            JsonValue(item, "new", ""),
                            JsonValue(item, "replace_all", false)});
-        }
-        if (edits.empty()) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: `edits` must contain at least one edit");
-        }
-        if (edits.size() > kMaxFileEdits) {
-          return ToolFailure(ToolErrorCode::kLimitExceeded,
-                             "error: `edit_file` is limited to " +
-                                 std::to_string(kMaxFileEdits) +
-                                 " edits per call");
         }
         return ToolEditFile(JsonValue(a, "path", ""), edits);
       }));
@@ -156,7 +130,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       "Locate file paths or matching content with a regex under an optional "
       "path and glob. Use mode=files to match paths and read_file afterward.",
       schema(R"json({"type":"object","properties":{
-                    "pattern":{"type":"string"},"path":{"type":"string"},
+                    "pattern":{"type":"string","minLength":1},"path":{"type":"string"},
                     "glob":{"type":"string"},
                     "mode":{"type":"string","enum":["content","files"]},
                     "context":{"type":"integer","minimum":0,"maximum":10,
@@ -248,11 +222,11 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
           ".uagent/scratch; dependencies use PEP 723 and isolated uv.",
           schema(
               R"json({"type":"object","additionalProperties":false,"properties":{
-                    "path":{"type":"string",
+                    "path":{"type":"string","minLength":1,
                       "description":"One stable relative .py path under .uagent/scratch; reuse it during the task."},
-                    "code":{"type":["string","null"],
+                    "code":{"type":["string","null"],"minLength":1,"maxLength":131072,
                       "description":"Script body when creating/replacing; null reruns the existing file after read_file/edit_file changes. Do not include PEP 723 metadata."},
-                    "packages":{"type":["array","null"],"items":{"type":"string"},"maxItems":12,
+                    "packages":{"type":["array","null"],"items":{"type":"string","minLength":1,"maxLength":256},"maxItems":12,
                       "description":"PEP 508 dependencies when code is provided ([] for stdlib); null when rerunning."}},
                     "required":["path","code","packages"]})json"),
           [&supervisor, workspace](const json& a, const ToolContext& context) {
@@ -322,22 +296,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                [&supervisor](const json& a, const ToolContext& context) {
                  std::vector<int64_t> ids;
                  if (a.contains("ids")) {
-                   if (!a["ids"].is_array()) {
-                     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                        "error: ids must be an array");
-                   }
                    ids.reserve(a["ids"].size());
-                   for (const json& id : a["ids"]) {
-                     if (!id.is_number_integer() ||
-                         (id.is_number_unsigned() &&
-                          id.get<uint64_t>() >
-                              static_cast<uint64_t>(
-                                  std::numeric_limits<int64_t>::max()))) {
-                       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                                          "error: every id must be an integer");
-                     }
+                   for (const json& id : a["ids"])
                      ids.push_back(id.get<int64_t>());
-                   }
                  }
                  return ToolActivityWait(
                      supervisor, ids, JsonValue(a, "mode", "any"),

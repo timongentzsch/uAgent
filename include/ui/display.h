@@ -3,7 +3,7 @@
 #ifndef UAGENT_INCLUDE_UI_DISPLAY_H_
 #define UAGENT_INCLUDE_UI_DISPLAY_H_
 // Terminal rendering for the REPL: path abbreviation, the model and
-// route listings, completion setup, and the status line.
+// route listings and the status line.
 
 #include <algorithm>
 #include <cstdint>
@@ -39,19 +39,6 @@ inline std::string ContextUsage(int64_t used, int64_t window) {
   return context + "/" + FmtCount(window) + " (" + std::to_string(pct) + "%)";
 }
 
-#if defined(HAVE_EDITLINE)
-inline void ConfigureReadlineCompletion(const std::vector<ModelRoute>& routes) {
-  std::vector<std::string> models, efforts{"default"}, variants{"default"};
-  for (const ModelRoute& route : routes) models.push_back(route.name);
-  efforts.insert(efforts.end(), std::begin(kReasoningEfforts),
-                 std::end(kReasoningEfforts));
-  for (std::string_view variant : kOpenRouterVariants) {
-    variants.emplace_back(variant);
-  }
-  ConfigureCompletion(models, efforts, variants);
-}
-#endif
-
 inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   std::string current = ModelLabel(api.model, api.reasoning_effort);
   for (size_t i = 0; i < search.matches.size(); ++i) {
@@ -65,9 +52,6 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
         setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
       }
     }
-#if defined(HAVE_EDITLINE)
-    RegisterCompletion(CommandCompletion::kModels, candidate.selection);
-#endif
     printf("%s[%zu]%s %s%c %s", CYAN(), i + 1, RST(), active ? BOLD() : DIM(),
            active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
     std::string effort = active ? api.reasoning_effort : candidate.route.effort;

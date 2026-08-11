@@ -198,13 +198,6 @@ void TestFileTools() {
                {"edits",
                 json::array({{{"old", "b b d\n"}, {"new", "b b d\nonce\n"}}})}})
               .find("unknown argument") != std::string::npos);
-    ToolResult invalid = edit_tool->run({{"path", registered.string()},
-                                         {"old", "b"},
-                                         {"new", "c"},
-                                         {"edits", "not-an-array"}},
-                                        {});
-    CHECK(!invalid.Ok());
-    CHECK(invalid.error == ToolErrorCode::kInvalidArguments);
   }
 
   fs::path private_file = root / "private";

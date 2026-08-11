@@ -70,8 +70,8 @@ process group after its wrapper exits.
 The application owns a small raw-mode composer while the foreground agent runs
 on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. A stateful decoder retains fragmented
-CSI and bracketed-paste sequences across reads for both the composer and
-libedit; shared history and paste bounds keep the two input paths aligned.
+CSI and bracketed-paste sequences across reads; the composer owns history and
+paste bounds.
 Terminal focus and Meta key sequences preserve the draft; only a genuinely
 bare Escape becomes an interrupt. Enter appends guidance to the active turn's steering
 queue; Escape raises only the foreground abort flag. One turn

@@ -2,23 +2,14 @@
 
 #ifndef UAGENT_INCLUDE_CLI_H_
 #define UAGENT_INCLUDE_CLI_H_
-// Terminal input and slash-command metadata. State and implementation live in
-// cli.cc so libedit build flags cannot change header-owned process state.
+// Terminal input and slash-command metadata.
 
 #include <cstdint>
 #include <functional>
 #include <string>
-#include <vector>
 
 namespace uagent {
 
-enum class CommandCompletion {
-  kNone,
-  kFilenames,
-  kModels,
-  kEfforts,
-  kVariants
-};
 enum class SlashCommandId {
   kAttach,
   kCompact,
@@ -46,7 +37,6 @@ struct SlashCommandSpec {
   const char* name;
   const char* argument;
   const char* description;
-  CommandCompletion completion;
 };
 
 struct ParsedSlashCommand {
@@ -57,7 +47,6 @@ struct ParsedSlashCommand {
 const SlashCommandSpec* SlashCommand(const std::string& name);
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
-void ConfigureLineEditor();
 
 enum class InteractiveInputKind { kNone, kLine, kEscape, kEof };
 
@@ -69,13 +58,6 @@ struct InteractiveInputEvent {
 using InteractiveReadHandler = std::function<std::string(
     const std::string&, bool*, bool, const std::string&)>;
 void SetInteractiveReadHandler(InteractiveReadHandler handler);
-
-#if defined(HAVE_EDITLINE)
-void RegisterCompletion(CommandCompletion source, const std::string& value);
-void ConfigureCompletion(const std::vector<std::string>& models,
-                         const std::vector<std::string>& efforts,
-                         const std::vector<std::string>& variants);
-#endif
 
 std::string InputPrompt(const char* label = "");
 std::string ReadInputLine(const std::string& prompt, bool* eof,

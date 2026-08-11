@@ -28,6 +28,7 @@ int RunTests() {
   TestCapsAndEscaping();
   TestFileTools();
   TestTerminalSafety();
+  TestTerminalInputDecoder();
   TestSseChunkPartitions();
   TestSseFraming();
   TestBackgroundValidation();

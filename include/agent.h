@@ -150,7 +150,21 @@ class Agent {
  private:
   struct TurnState;
 
+  enum class ImageFallbackCause { kKnownUnsupported, kRejected };
+  struct ImageFallbackResult {
+    bool applied = false;
+    bool warning = false;
+    size_t rewritten = 0;
+    std::string error;
+    std::string status;
+  };
+
   void RunTurn(const std::string& input, json content, bool harness_origin);
+
+  std::string AnalyzeImageContent(const json& content, std::string& error);
+  ImageFallbackResult ApplyImageAnalysisFallback(json& messages,
+                                                 ImageFallbackCause cause);
+  static void ReportImageFallback(const ImageFallbackResult& result);
 
   bool TurnDeadlineExceeded(TurnState& state,
                             std::chrono::seconds reserve = {});
@@ -168,8 +182,12 @@ class Agent {
 
   void ArchiveAll(const char* reason);
 
-  ChatResult Chat(const char* purpose, int64_t step, const json& schemas);
+  ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
+                  bool render_output = true);
 
+  ContextPolicyInput BuildContextPolicyInput(size_t pending_bytes,
+                                             size_t schema_bytes,
+                                             bool checkpoint_enabled) const;
   std::string PrepareContext(size_t pending_chars);
 
   enum class MidturnCompact {

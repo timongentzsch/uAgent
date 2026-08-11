@@ -141,6 +141,8 @@ struct RuntimeConfig {
   std::string web_search_model;
   std::string web_search_engine = "auto";
   std::string web_search_context_size;
+  std::string image_model;
+  std::string mcp_roots;
   bool openrouter_fallbacks = true;
   bool web_search_server = true;
   bool memory_enabled = true;
@@ -234,6 +236,8 @@ struct RuntimeConfig {
        &RuntimeConfig::web_search_engine, "auto"},
       {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
        &RuntimeConfig::web_search_context_size, ""},
+      {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, ""},
+      {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, ""},
   };
   inline static constexpr BoolOption kBoolOptions[] = {
       {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",

@@ -94,16 +94,23 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
 }
 
 std::string ImageInputError(const Attachment& attachment) {
-  if (!attachment.image || ImageInputAvailable()) return "";
-  return "this model rejected image input; the file is on disk at " +
-         attachment.path + " and show_image can put it on the user's terminal";
+  if (!attachment.image || ImageInputAvailable() ||
+      !EnvStr("UAGENT_IMAGE_MODEL").empty()) {
+    return "";
+  }
+  return "this model rejected image input for " + attachment.path +
+         "; configure UAGENT_IMAGE_MODEL to analyze attached images with a "
+         "vision-capable model";
 }
 
 const char* ModelImageInputInstruction() {
-  return ImageInputAvailable()
-             ? ""
-             : " Image input unavailable; image attachments are provided "
-               "only as file paths.";
+  if (ImageInputAvailable()) return "";
+  return EnvStr("UAGENT_IMAGE_MODEL").empty()
+             ? " Image input unavailable; image attachments are provided "
+               "only as file paths."
+             : " Direct image input unavailable; attached images are "
+               "analyzed by the configured vision model and delivered as "
+               "textual evidence.";
 }
 
 std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,

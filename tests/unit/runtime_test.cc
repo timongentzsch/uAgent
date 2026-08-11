@@ -104,6 +104,7 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
   setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
   setenv("UAGENT_MEMORY_GENERATE", "0", 1);
+  setenv("UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two", 1);
   setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
   const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
   std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
@@ -129,6 +130,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_max_uses == 1);
   CHECK(!config.web_search_server);
   CHECK(!config.memory_generate);
+  CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
@@ -137,6 +139,7 @@ void TestRuntimeOwnershipHelpers() {
         config.web_search_backend);
   CHECK(diagnostics.value("openrouter_variant", "") == "floor");
   CHECK(!diagnostics.value("memory_generate", true));
+  CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
@@ -151,6 +154,7 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_TOOL_TRACE_PROTECT_CHARS");
   unsetenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS");
   unsetenv("UAGENT_MEMORY_GENERATE");
+  unsetenv("UAGENT_MCP_ROOTS");
   unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
   unsetenv("UAGENT_WEB_SEARCH_MODEL");
   unsetenv("UAGENT_WEB_SEARCH_BACKEND");

@@ -2,6 +2,7 @@
 
 #include "include/api/stream.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <utility>
@@ -244,6 +245,10 @@ void TestBackgroundValidation() {
   add_job({999995, "", "", false, "memory"});
   CHECK(supervisor.PendingCount() == 2);
   CHECK(supervisor.VisibleCount() == 2);
+  std::vector<BgJob> visible = supervisor.VisibleSnapshot();
+  CHECK(visible.size() == supervisor.VisibleCount());
+  CHECK(std::none_of(visible.begin(), visible.end(),
+                     [](const BgJob& job) { return job.kind == "memory"; }));
   CHECK(!supervisor.TakeAll().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);

@@ -148,6 +148,7 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
     }
     const bool include_snapshot =
         McpDefaultsPostActionSnapshot(s, input_schema);
+    json invocation_schema = input_schema;
 
     std::string tool_name = McpToolName(s.name, remote_name);
     if (tool_name.empty() || occupied.contains(tool_name)) {
@@ -169,10 +170,11 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
     int64_t call_timeout = config.mcp_timeout_s;
     Tool tool = MakeTool(
         std::move(tool_name), McpCapDesc(description), std::move(input_schema),
-        [server, remote_name, call_timeout, include_snapshot](
+        [server, remote_name, call_timeout, include_snapshot,
+         input_schema = std::move(invocation_schema)](
             const json& arguments, const ToolContext& context) -> ToolResult {
           return McpInvokeTool(*server, remote_name, arguments, call_timeout,
-                               context, include_snapshot);
+                               context, include_snapshot, input_schema);
         });
     if (definition.contains("outputSchema") &&
         definition["outputSchema"].is_object()) {

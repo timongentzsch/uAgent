@@ -102,6 +102,14 @@ class Scenario:
     default: bool = True
 
 
+def checkpoint_files(workspace: Path) -> tuple[Path, ...]:
+    return (
+        workspace / "dataset" / "SWE_BENCH_ISSUE.md",
+        workspace / "astropy" / "modeling" / "separable.py",
+        workspace / "astropy" / "modeling" / "tests" / "test_separable.py",
+    )
+
+
 def snapshot_archive(root: Path) -> Path:
     archive = root.parent / f"astropy-{ASTROPY_COMMIT}.tar.gz"
     if not archive.exists():
@@ -675,11 +683,7 @@ def evaluate_memory(binary: Path, workspace: Path, home: Path, env: dict[str, st
 
 
 def evaluate_checkpoint(binary: Path, workspace: Path, home: Path, env: dict[str, str]) -> Result:
-    protected = (
-        workspace / "dataset" / "SWE_BENCH_ISSUE.md",
-        workspace / "astropy" / "modeling" / "separable.py",
-        workspace / "astropy" / "modeling" / "tests" / "test_separable.py",
-    )
+    protected = checkpoint_files(workspace)
     before = {path: path.read_bytes() for path in protected}
     before_files = {path.relative_to(workspace) for path in workspace.rglob("*") if path.is_file()}
     turns = (
@@ -764,11 +768,7 @@ def evaluate_checkpoint(binary: Path, workspace: Path, home: Path, env: dict[str
 def evaluate_checkpoint_500k(
     binary: Path, workspace: Path, home: Path, env: dict[str, str]
 ) -> Result:
-    protected = (
-        workspace / "dataset" / "SWE_BENCH_ISSUE.md",
-        workspace / "astropy" / "modeling" / "separable.py",
-        workspace / "astropy" / "modeling" / "tests" / "test_separable.py",
-    )
+    protected = checkpoint_files(workspace)
     before = {path: path.read_bytes() for path in protected}
     facts = (
         f"SWE-bench instance is {SWE_BENCH_INSTANCE}",

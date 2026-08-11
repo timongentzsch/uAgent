@@ -149,7 +149,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "required path, constraint, and success condition. Independent tasks "
       "may select different model routes and should be issued together. Keep "
       "background=true when useful parent work can continue; set it false "
-      "when the next step requires the result immediately.",
+      "when the next step requires the result immediately. Web-research "
+      "briefs must state focused questions and require source URLs in the "
+      "final answer.",
       {{"type", "object"},
        {"properties", std::move(properties)},
        {"required", json::array({"prompt"})}},

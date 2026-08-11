@@ -325,6 +325,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
   }
 
   bool create = code.is_string();
+  bool replaced = false;
   if (!create && !code.is_null()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: code must be a string when creating or null "
@@ -338,6 +339,18 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
   }
 
   if (create) {
+    bool exists = fs::exists(script, ec);
+    if (ec) {
+      return ToolFailure(
+          ToolErrorCode::kInternal,
+          "error: cannot inspect Python scratch script: " + ec.message());
+    }
+    if (exists && !fs::is_regular_file(script, ec)) {
+      return ToolFailure(
+          ToolErrorCode::kInvalidArguments,
+          "error: Python scratch path exists but is not a regular file: " +
+              requested.generic_string());
+    }
     std::string body = code.get<std::string>();
     if (body.empty() || body.size() > 128 * 1024 ||
         body.find('\0') != std::string::npos) {
@@ -371,6 +384,18 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
     }
     source += "# ]\n# ///\n\n" + body;
     if (source.back() != '\n') source += '\n';
+    if (exists) {
+      std::ifstream prior_input(script);
+      std::string prior{std::istreambuf_iterator<char>(prior_input),
+                        std::istreambuf_iterator<char>()};
+      if (prior == source) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: code is identical to .uagent/scratch/" +
+                               requested.generic_string() +
+                               "; rerun with code=null and packages=null");
+      }
+      replaced = true;
+    }
     if (!AtomicWriteFile(script.string(), source, 0644,
                          /*preserve_mode=*/true, write_error)) {
       return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
@@ -409,15 +434,23 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
     result.result.output =
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
+  std::string lifecycle =
+      create ? (replaced ? " · overwrote" : " · wrote") : "";
+  lifecycle +=
+      result.result.Ok()
+          ? " · executed"
+          : " · execution " +
+                std::string(CompletionStatusName(result.result.status));
   result.result.output = "[script: .uagent/scratch/" +
-                         requested.generic_string() + "]\n" +
+                         requested.generic_string() + lifecycle + "]\n" +
                          result.result.output;
   return std::move(result.result);
 }
 
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,
-                    int64_t context_lines, const ToolContext& context) {
+                    int64_t context_lines, const ToolContext& context,
+                    bool files_only) {
   if (pattern.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: search pattern must not be empty");
@@ -425,6 +458,10 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   if (context_lines < 0 || context_lines > 10) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: grep context must be between 0 and 10 lines");
+  }
+  if (files_only && context_lines > 0) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: grep context is only available in content mode");
   }
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
@@ -439,19 +476,32 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   int64_t bytes = GrepBytes();
   if (ToolResultCap() > 0) bytes = std::min(bytes, ToolResultCap());
   bool ripgrep = ExecutableOnPath("rg");
-  std::string command = ripgrep ? "rg --line-number --column --no-heading "
-                                  "--color=never"
-                                : "grep -r -E -n -H -I --exclude-dir=.git";
-  if (context_lines > 0) {
-    command += ripgrep ? " --context " : " -C ";
-    command += std::to_string(context_lines);
+  std::string command;
+  if (files_only) {
+    if (ripgrep) {
+      command = "rg --files --color=never";
+      if (!glob.empty()) command += " --glob " + ShellQuote(glob);
+      command += " -- " + ShellQuote(target) +
+                 " | rg --line-number --color=never -- " + ShellQuote(pattern);
+    } else {
+      command = "find " + ShellQuote(target) + " -type f";
+      if (!glob.empty()) command += " -name " + ShellQuote(glob);
+      command += " -print | grep -E -n -- " + ShellQuote(pattern);
+    }
+  } else {
+    command = ripgrep ? "rg --line-number --column --no-heading --color=never"
+                      : "grep -r -E -n -H -I --exclude-dir=.git";
+    if (context_lines > 0) {
+      command += ripgrep ? " --context " : " -C ";
+      command += std::to_string(context_lines);
+    }
+    if (!glob.empty()) {
+      command += ripgrep ? " --glob " : " --include=";
+      command += ShellQuote(glob);
+    }
+    command += " -- " + ShellQuote(pattern) + " " + ShellQuote(target);
   }
-  if (!glob.empty()) {
-    command += ripgrep ? " --glob " : " --include=";
-    command += ShellQuote(glob);
-  }
-  command = "set -o pipefail; " + command + " -- " + ShellQuote(pattern) + " " +
-            ShellQuote(target) + " 2>&1 | head -n " +
+  command = "set -o pipefail; " + command + " 2>&1 | head -n " +
             std::to_string(max_results + 1) + " | head -c " +
             std::to_string(bytes);
   ShellCommandResult execution = RunShellCommand(
@@ -492,7 +542,8 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   bool more_results = cut != std::string::npos && cut < output.size();
   if (more_results) output.resize(cut);
   std::string header =
-      "[" + std::string(ripgrep ? "ripgrep" : "grep") + " · " +
+      "[" + std::string(ripgrep ? "ripgrep" : "grep") +
+      (files_only ? " files · " : " · ") +
       std::to_string(std::min(lines, max_results)) +
       (more_results ? "+ result lines; more available" : " result lines") +
       "]\n";

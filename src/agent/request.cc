@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,7 +12,8 @@
 #include "include/tools/subagent.h"
 
 namespace uagent {
-ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
+ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
+                       bool render_output) {
   if (api_.config.session_budget > 0 &&
       session_usage_.cost >= api_.config.session_budget) {
     ChatResult result;
@@ -62,8 +64,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
-  ChatResult result =
-      api_.Chat(conversation_.Messages(), schemas, turn_budget, session_id_);
+  ChatResult result = api_.Chat(conversation_.Messages(), schemas, turn_budget,
+                                session_id_, render_output);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {
@@ -91,21 +93,152 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas) {
   return result;
 }
 
+std::string Agent::AnalyzeImageContent(const json& content,
+                                       std::string& error) {
+  error.clear();
+  if (api_.config.image_model.empty()) {
+    error = "UAGENT_IMAGE_MODEL is not configured";
+    return "";
+  }
+  Api vision(api_.config);
+  vision.base_url = api_.base_url;
+  vision.api_key = api_.api_key;
+  vision.model = api_.config.image_model;
+  if (api_.openrouter_compatible && vision.model.starts_with("openrouter/")) {
+    vision.model.erase(0, std::string("openrouter/").size());
+  }
+  vision.ctx_window = api_.ctx_window;
+  vision.openrouter_compatible = api_.openrouter_compatible;
+  vision.native_tools = false;
+  vision.parallel_tools = false;
+  vision.openrouter_web_search = false;
+  vision.server_tools_authorized = false;
+  vision.image_input = true;
+  vision.render_stream = false;
+
+  json messages = json::array(
+      {{{"role", "system"},
+        {"content",
+         "Analyze the attached image for a parent coding agent. Report "
+         "concrete visual evidence relevant to the user's request, including "
+         "layout, visible defects, text, and uncertainty. Return concise "
+         "prose only; do not call or imitate tools."}},
+       {{"role", "user"}, {"content", content}}});
+  ChatResult result = vision.Chat(messages, json::array(),
+                                  api_.config.request_timeout_s, "", false);
+  Usage usage;
+  usage.Add(result.usage);
+  side_usage_.Add(RouteKey(vision.base_url, "image_analysis",
+                           vision.RequestModel(), vision.reasoning_effort),
+                  usage);
+  if (result.interrupted) {
+    error = "image analysis was interrupted";
+  } else if (!result.error.empty()) {
+    error = result.error;
+  } else if (result.content.empty() || !result.tool_calls.empty() ||
+             !ParseTextToolCalls(result.content).empty() ||
+             ContainsForeignToolCallMarkup(result.content)) {
+    error = "image analysis model returned an invalid response";
+  }
+  return error.empty() ? Trim(result.content) : "";
+}
+
+Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
+    json& messages, ImageFallbackCause cause) {
+  ImageFallbackResult fallback;
+  bool rejected = cause == ImageFallbackCause::kRejected;
+  if (!messages.is_array() || (!rejected && ImageInputAvailable()) ||
+      (!rejected && api_.config.image_model.empty())) {
+    return fallback;
+  }
+
+  json analysis_content = json::array();
+  size_t target = messages.size();
+  for (size_t index = 0; index < messages.size(); ++index) {
+    json& message = messages[index];
+    if (!message.contains("content") || !message["content"].is_array()) {
+      continue;
+    }
+    bool has_image = false;
+    for (const json& part : message["content"]) {
+      has_image = has_image || JsonValue(part, "type", "") == "image_url";
+    }
+    if (!has_image) continue;
+    target = index;
+    for (const json& part : message["content"]) {
+      analysis_content.push_back(part);
+    }
+  }
+  if (target == messages.size()) return fallback;
+
+  std::string analysis;
+  if (!api_.config.image_model.empty()) {
+    analysis = AnalyzeImageContent(analysis_content, fallback.error);
+  }
+  if (rejected) SetImageInputAvailable(false);
+  fallback.rewritten = StripImageContentParts(messages);
+  fallback.applied = fallback.rewritten > 0;
+  if (!fallback.applied) return fallback;
+
+  std::string note;
+  if (!analysis.empty()) {
+    note = "[vision model analysis; textual evidence]\n" + analysis;
+  } else if (!fallback.error.empty()) {
+    note = "[vision model analysis failed: " + fallback.error + "]";
+  }
+  if (!note.empty()) {
+    json& content = messages[target]["content"];
+    if (!content.empty() && JsonValue(content[0], "type", "") == "text" &&
+        content[0].contains("text") && content[0]["text"].is_string()) {
+      content[0]["text"] =
+          content[0]["text"].get<std::string>() + "\n\n" + note;
+    } else {
+      content.insert(content.begin(), {{"type", "text"}, {"text", note}});
+    }
+  }
+
+  std::string model = TerminalSafe(api_.config.image_model);
+  if (rejected) fallback.status = "model rejected image input — ";
+  if (!analysis.empty()) {
+    fallback.status += "analyzed with " + model;
+  } else if (!fallback.error.empty()) {
+    fallback.warning = true;
+    fallback.status +=
+        "analysis with " + model + " failed: " + TerminalSafe(fallback.error);
+    if (rejected) fallback.status += "; attachments continue as file paths";
+  } else {
+    fallback.status += "attachments continue as file paths";
+  }
+  return fallback;
+}
+
+void Agent::ReportImageFallback(const ImageFallbackResult& result) {
+  if (!result.applied || result.status.empty()) return;
+  printf("%s· %s%s\n", result.warning ? YEL() : DIM(), result.status.c_str(),
+         RST());
+}
+
+ContextPolicyInput Agent::BuildContextPolicyInput(
+    size_t pending_bytes, size_t schema_bytes, bool checkpoint_enabled) const {
+  return {.message_bytes = JsonEstimatedBytes(conversation_.Messages()),
+          .pending_bytes = pending_bytes,
+          .message_count = conversation_.Size(),
+          .schema_bytes = schema_bytes,
+          .native_tools = api_.native_tools,
+          .context_window = api_.ctx_window,
+          .request_bytes = api_.config.request_bytes,
+          .max_output_tokens = MaxOutputTokens(),
+          .compact_pct = AutoCompactPct(),
+          .checkpoint_pct = CheckpointPct(),
+          .urgent_pct = CheckpointUrgentPct(),
+          .checkpoint_enabled =
+              checkpoint_enabled && api_.config.checkpoint_mode != "off",
+          .turn = turn_id_};
+}
+
 std::string Agent::PrepareContext(size_t pending_chars) {
-  ContextDecision decision = context_policy_.Prepare(
-      {.message_bytes = JsonEstimatedBytes(conversation_.Messages()),
-       .pending_bytes = pending_chars,
-       .message_count = conversation_.Size(),
-       .schema_bytes = schema_chars_,
-       .native_tools = api_.native_tools,
-       .context_window = api_.ctx_window,
-       .request_bytes = api_.config.request_bytes,
-       .max_output_tokens = MaxOutputTokens(),
-       .compact_pct = AutoCompactPct(),
-       .checkpoint_pct = CheckpointPct(),
-       .urgent_pct = CheckpointUrgentPct(),
-       .checkpoint_enabled = api_.config.checkpoint_mode != "off",
-       .turn = turn_id_});
+  ContextDecision decision = context_policy_.Prepare(BuildContextPolicyInput(
+      pending_chars, schema_chars_, /*checkpoint_enabled=*/true));
   if (decision.action == ContextAction::kCompact) {
     if (decision.forced) {
       DebugLog("checkpoint_forced",
@@ -134,17 +267,9 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
   if (conversation_.HasKind(MessageKind::kAttachment)) {
     return MidturnCompact::kNotNeeded;
   }
-  ContextDecision decision = context_policy_.Prepare(
-      {.message_bytes = JsonEstimatedBytes(conversation_.Messages()),
-       .message_count = conversation_.Size(),
-       .schema_bytes = JsonEstimatedBytes(available_schemas),
-       .native_tools = api_.native_tools,
-       .context_window = api_.ctx_window,
-       .request_bytes = api_.config.request_bytes,
-       .max_output_tokens = MaxOutputTokens(),
-       .compact_pct = AutoCompactPct(),
-       .checkpoint_enabled = false,
-       .turn = turn_id_});
+  ContextDecision decision = context_policy_.Prepare(BuildContextPolicyInput(
+      /*pending_bytes=*/0, JsonEstimatedBytes(available_schemas),
+      /*checkpoint_enabled=*/false));
   if (decision.action != ContextAction::kCompact) {
     return MidturnCompact::kNotNeeded;
   }
@@ -215,17 +340,14 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
                                            {"persisted", invalidated}});
       api_.route_certified = false;
     }
-    SetImageInputAvailable(false);
-    size_t rewritten = conversation_.StripImageParts();
+    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
+        conversation_.Messages(), ImageFallbackCause::kRejected);
     EnsureRuntimeContext();
     DebugLog("feature_degraded", {{"feature", "image_input"},
                                   {"error", result.error},
-                                  {"messages_rewritten", rewritten}});
-    printf(
-        "%s· model rejected image input — attachments continue as file "
-        "paths%s\n",
-        DIM(), RST());
-    return rewritten > 0;
+                                  {"messages_rewritten", fallback.rewritten}});
+    ReportImageFallback(fallback);
+    return fallback.applied;
   }
   if (result.http_status != 400) return false;
   auto drop = [&](bool& flag, const char* feature) {

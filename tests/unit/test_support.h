@@ -3,8 +3,10 @@
 #ifndef UAGENT_TESTS_UNIT_TEST_SUPPORT_H_
 #define UAGENT_TESTS_UNIT_TEST_SUPPORT_H_
 
+#include <chrono>
 #include <clocale>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -44,6 +46,51 @@
 
 namespace uagent {
 
+class TestWorkspace {
+ public:
+  explicit TestWorkspace(const std::string& name)
+      : root(
+            std::filesystem::temp_directory_path() /
+            ("uagent-" + name + "-test-" +
+             std::to_string(
+                 std::chrono::steady_clock::now().time_since_epoch().count()))),
+        workspace(root / "workspace"),
+        home(root / "home"),
+        original_(std::filesystem::current_path()) {
+    const char* value = std::getenv("HOME");
+    had_home_ = value != nullptr;
+    if (value) prior_home_ = value;
+    std::filesystem::create_directories(workspace);
+    std::filesystem::create_directories(home);
+    setenv("HOME", home.c_str(), 1);
+    std::filesystem::current_path(workspace);
+    workspace = std::filesystem::current_path();
+  }
+
+  ~TestWorkspace() {
+    std::error_code ignored;
+    std::filesystem::current_path(original_, ignored);
+    if (had_home_) {
+      setenv("HOME", prior_home_.c_str(), 1);
+    } else {
+      unsetenv("HOME");
+    }
+    std::filesystem::remove_all(root, ignored);
+  }
+
+  TestWorkspace(const TestWorkspace&) = delete;
+  TestWorkspace& operator=(const TestWorkspace&) = delete;
+
+  std::filesystem::path root;
+  std::filesystem::path workspace;
+  std::filesystem::path home;
+
+ private:
+  std::filesystem::path original_;
+  std::string prior_home_;
+  bool had_home_ = false;
+};
+
 extern int failures;
 void Check(bool condition, const char* expression, int line);
 
@@ -56,6 +103,7 @@ void TestMarkdownMath();
 void TestCapsAndEscaping();
 void TestFileTools();
 void TestTerminalSafety();
+void TestTerminalInputDecoder();
 void TestSseChunkPartitions();
 void TestSseFraming();
 void TestBackgroundValidation();

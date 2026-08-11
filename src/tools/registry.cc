@@ -3,6 +3,7 @@
 #include "include/tools/registry.h"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -152,22 +153,26 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
 
   Tool& grep = path_tool(MakeTool(
       "grep",
-      "Locate files, symbols, or text with a regex under an optional path and "
-      "glob. Use read_file after locating the relevant file.",
+      "Locate file paths or matching content with a regex under an optional "
+      "path and glob. Use mode=files to match paths and read_file afterward.",
       schema(R"json({"type":"object","properties":{
                     "pattern":{"type":"string"},"path":{"type":"string"},
                     "glob":{"type":"string"},
+                    "mode":{"type":"string","enum":["content","files"]},
                     "context":{"type":"integer","minimum":0,"maximum":10,
-                      "description":"surrounding lines"}},"required":["pattern"]})json"),
+                      "description":"surrounding content lines"}},"required":["pattern"]})json"),
       [&supervisor](const json& a, const ToolContext& context) {
         return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
                         JsonValue(a, "path", "."), JsonValue(a, "glob", ""),
-                        JsonValue(a, "context", int64_t{0}), context);
+                        JsonValue(a, "context", int64_t{0}), context,
+                        JsonValue(a, "mode", "content") == "files");
       }));
   grep.parallel_safe = true;  // read-only, like read_file and list_dir
   grep.capabilities = Capability(ToolCapability::kInspect);
   grep.summary = [](const json& a) {
-    return JsonValue(a, "pattern", "") + " in " + JsonValue(a, "path", ".");
+    std::string mode = JsonValue(a, "mode", "content");
+    return (mode == "files" ? "files /" : "/") + JsonValue(a, "pattern", "") +
+           "/ in " + JsonValue(a, "path", ".");
   };
 
   if (inline_images) {
@@ -235,9 +240,11 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
           "run_python",
           "Run a one-off Python scratch script when shell is insufficient. "
           "Never use this for requested project implementation: edit project "
-          "files and use the project runner. Reuse one stable script per task: "
-          "edit it with read_file/edit_file and rerun with null code and "
-          "packages instead of creating variants. Scripts persist in "
+          "files and use the project runner. Code writes or replaces one "
+          "stable scratch script and executes it; code=null executes the "
+          "existing file unchanged after edit_file changes or when only "
+          "imported files changed. Never resend unchanged code. Scripts "
+          "persist in "
           ".uagent/scratch; dependencies use PEP 723 and isolated uv.",
           schema(
               R"json({"type":"object","additionalProperties":false,"properties":{
@@ -259,8 +266,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                         Capability(ToolCapability::kMutate);
   python.summary = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
-    return a.contains("code") && a["code"].is_string() ? path + " (create)"
-                                                       : path + " (rerun)";
+    return a.contains("code") && a["code"].is_string()
+               ? "write/replace " + path + " → execute"
+               : "execute " + path;
   };
   python.stable_argument = "path";
   python.timeout_s = 0;  // bounded by the turn; no model-driven polling
@@ -270,7 +278,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                       "List activities or read one bounded log. Set wait_ms "
                       "for new output; add until for a readiness marker.",
                       schema(R"json({"type":"object","properties":{
-                    "id":{"type":"integer","minimum":1},
+                    "id":{"type":"integer","minimum":1,"maximum":2147483647},
                     "wait_ms":{"type":"integer","minimum":1000,"maximum":300000},
                     "until":{"type":"string","maxLength":256}}})json"),
                       [&supervisor](const json& a, const ToolContext& context) {
@@ -308,13 +316,28 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                "current non-detached activities.",
                schema(R"json({"type":"object","properties":{
                     "ids":{"type":"array","maxItems":20,
-                      "items":{"type":"integer","minimum":1}},
+                      "items":{"type":"integer","minimum":1,"maximum":2147483647}},
                     "mode":{"type":"string","enum":["any","all"]},
                     "wait_ms":{"type":"integer","minimum":1000,"maximum":300000}}})json"),
                [&supervisor](const json& a, const ToolContext& context) {
                  std::vector<int64_t> ids;
                  if (a.contains("ids")) {
-                   ids = a["ids"].get<std::vector<int64_t>>();
+                   if (!a["ids"].is_array()) {
+                     return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                        "error: ids must be an array");
+                   }
+                   ids.reserve(a["ids"].size());
+                   for (const json& id : a["ids"]) {
+                     if (!id.is_number_integer() ||
+                         (id.is_number_unsigned() &&
+                          id.get<uint64_t>() >
+                              static_cast<uint64_t>(
+                                  std::numeric_limits<int64_t>::max()))) {
+                       return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                          "error: every id must be an integer");
+                     }
+                     ids.push_back(id.get<int64_t>());
+                   }
                  }
                  return ToolActivityWait(
                      supervisor, ids, JsonValue(a, "mode", "any"),
@@ -338,7 +361,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       MakeTool("activity_stop",
                "Stop an activity's complete process group and clean its log.",
                schema(R"json({"type":"object","properties":{
-                    "id":{"type":"integer","minimum":1}},
+                    "id":{"type":"integer","minimum":1,"maximum":2147483647}},
                     "required":["id"]})json"),
                [&supervisor](const json& a, const ToolContext&) {
                  return ToolActivityStop(supervisor,

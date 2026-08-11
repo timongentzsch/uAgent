@@ -56,7 +56,7 @@ activity, elapsed time, live context, queued steering, background count, and
 the Escape hint.
 `/context` prints the current model-shaped context and registered tool schemas;
 `/trace` prints the latest tool/search exchange; `/cost` breaks spend down by
-route. `--debug`
+route; `/ps` lists the active work behind `bg:N`. `--debug`
 records reconstructable messages, responses, tools, timing, usage, and failures.
 The same evidence makes regressions attributable and guides prompt, tool,
 routing, and orchestration improvements instead of relying on anecdote.
@@ -142,6 +142,7 @@ requires interactive trust or `--trust-project-config`.
 | `/attach PATH\|clear` | Queue an attachment or clear the queue |
 | `/memory` | Show recall/contribution state and saved keys |
 | `/context`, `/trace`, `/cost` | Inspect request, execution, or spend |
+| `/ps` | Show active background work |
 | `/compact`, `/handoff ROUTE` | Fold context or change route |
 | `/sessions`, `/reset` | Resume or reset state |
 | `/verbose`, `/online`, `/yolo` | Toggle runtime behavior |
@@ -151,7 +152,9 @@ The input bar remains editable while work runs. Enter adds guidance to the
 active turn's steering queue; it is applied after the current model response or
 tool boundary, not started as a separate next turn. Escape interrupts the
 foreground operation and applies queued guidance immediately without cancelling
-background work. A single status row
+background work. Multiline paste is inserted atomically, and switching terminal
+focus preserves the current draft. Option/Alt word movement remains an editor
+action rather than being mistaken for bare Escape. A single status row
 stays pinned immediately above the input and changes in place between the idle
 model/session summary and the current harness state.
 

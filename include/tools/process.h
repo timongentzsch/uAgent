@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -69,9 +70,8 @@ class ProcessSupervisor {
   size_t DetachedCount() const {
     return CountIf([](const BgJob& j) { return j.detached; });
   }
-  size_t VisibleCount() const {
-    return CountIf([](const BgJob& job) { return job.kind != "memory"; });
-  }
+  static bool IsVisible(const BgJob& job) { return job.kind != "memory"; }
+  size_t VisibleCount() const { return CountIf(IsVisible); }
   size_t JoinableCount() const {
     return CountIf(
         [](const BgJob& job) { return !job.detached && job.kind == "task"; });
@@ -104,6 +104,13 @@ class ProcessSupervisor {
   std::vector<BgJob> Snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return jobs_;
+  }
+  std::vector<BgJob> VisibleSnapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<BgJob> jobs;
+    std::copy_if(jobs_.begin(), jobs_.end(), std::back_inserter(jobs),
+                 IsVisible);
+    return jobs;
   }
 
  private:

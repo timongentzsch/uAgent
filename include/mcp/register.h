@@ -28,6 +28,10 @@ namespace uagent {
 inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
                                int64_t& initialize_id, std::string& error) {
   const json& conf = server.config;
+  if (!McpResolveRoots(conf, config.mcp_roots, server.roots, error)) {
+    server.last_error = error;
+    return false;
+  }
   std::vector<std::string> args;
   if (conf.contains("args")) {
     for (const json& value : conf["args"]) {
@@ -63,7 +67,7 @@ inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
   initialize_id = server.next_id++;
   if (!McpSend(server, initialize_id, "initialize",
                {{"protocolVersion", "2025-11-25"},
-                {"capabilities", json::object()},
+                {"capabilities", {{"roots", {{"listChanged", false}}}}},
                 {"clientInfo", {{"name", "uagent"}, {"version", kVersion}}}})) {
     error = "failed to initialize";
     server.last_error = error;

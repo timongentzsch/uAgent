@@ -8,7 +8,7 @@ model output, tool results, paths, and usage.
 | sessions | `~/.uagent/history/<workspace>/*.json` |
 | debug traces | `~/.uagent/sessions/*.jsonl` |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
-| MCP logs | `~/.uagent/mcp/*` |
+| MCP logs and captured images | `~/.uagent/mcp/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
 | memories | `~/.uagent/memory/{global,projects/<repository>}/*.md` |
 | memory extraction state | `~/.uagent/history/<workspace>/*.json.memory` |

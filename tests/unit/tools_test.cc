@@ -19,6 +19,34 @@ void TestToolExecutionPolicy() {
   CHECK(ToolParameters(tool)["additionalProperties"] == false);
   CHECK(InvalidToolArgument(tool, {{"invented", true}}) ==
         "unknown argument `invented`");
+  tool.parameters["properties"]["ids"] = {
+      {"type", "array"},
+      {"maxItems", 2},
+      {"items", {{"type", "integer"}, {"minimum", 1}}}};
+  CHECK(InvalidToolArgument(tool, {{"ids", {1, "bad"}}}) ==
+        "`ids[1]` must be integer");
+  CHECK(InvalidToolArgument(tool, {{"ids", {0}}}) ==
+        "`ids[0]` is below its minimum");
+  CHECK(InvalidToolArgument(tool, {{"ids", {1, 2, 3}}}) ==
+        "`ids` has too many items");
+  tool.parameters["properties"]["mode"] = {{"type", "string"},
+                                           {"enum", {"any", "all"}}};
+  CHECK(!InvalidToolArgument(tool, {{"mode", "some"}}).empty());
+  tool.parameters["properties"]["label"] = {{"type", {"string", "null"}},
+                                            {"maxLength", 3}};
+  CHECK(InvalidToolArgument(tool, {{"label", nullptr}}).empty());
+  CHECK(InvalidToolArgument(tool, {{"label", "long"}}) ==
+        "`label` exceeds its maximum length");
+  tool.parameters["properties"]["nested"] = {
+      {"type", "object"},
+      {"properties", {{"value", {{"type", "boolean"}}}}},
+      {"required", {"value"}},
+      {"additionalProperties", false}};
+  CHECK(InvalidToolArgument(tool, {{"nested", json::object()}}) ==
+        "`nested.value` is required");
+  CHECK(InvalidToolArgument(tool,
+                            {{"nested", {{"value", true}, {"extra", true}}}}) ==
+        "unknown argument `nested.extra`");
   tool.stable_argument = "path";
   tool.parameters["properties"]["path"] = {{"type", "string"}};
   std::unordered_map<std::string, std::string> stable_arguments;
@@ -395,6 +423,11 @@ void TestAttachmentEncoding() {
   SetImageInputAvailable(false);
   CHECK(ImageInputError(image_attachment).find(image_path.string()) !=
         std::string::npos);
+  setenv("UAGENT_IMAGE_MODEL", "vision-test", 1);
+  CHECK(ImageInputError(image_attachment).empty());
+  CHECK(std::string(ModelImageInputInstruction()).find("vision model") !=
+        std::string::npos);
+  unsetenv("UAGENT_IMAGE_MODEL");
   CHECK(ImageInputError(attachment).empty());
   SetImageInputAvailable(true);
 
@@ -481,6 +514,13 @@ void TestGrepTool() {
   CHECK(result.output.find("one.cpp") != std::string::npos);
   CHECK(result.output.find("two.txt") == std::string::npos);
   CHECK(result.output.find("more available") != std::string::npos);
+  ToolResult filenames =
+      ToolGrep(supervisor, "one\\.cpp$", root.string(), "", 0, {}, true);
+  CHECK(filenames.Ok());
+  CHECK(filenames.output.find("one.cpp") != std::string::npos);
+  CHECK(filenames.output.find("needle one") == std::string::npos);
+  CHECK(ToolGrep(supervisor, "one", root.string(), "", 1, {}, true).error ==
+        ToolErrorCode::kInvalidArguments);
   ToolResult contextual =
       ToolGrep(supervisor, "needle two", source.string(), "", 1);
   CHECK(contextual.output.find("needle one") != std::string::npos);
@@ -629,6 +669,15 @@ void TestGrepTool() {
   CHECK(activity_wait &&
         activity_wait->parameters["properties"]["mode"]["enum"] ==
             json::array({"any", "all"}));
+  CHECK(activity_wait &&
+        InvalidToolArgument(*activity_wait, {{"ids", {1, "bad"}}}) ==
+            "`ids[1]` must be integer");
+  if (activity_wait) {
+    ToolResult malformed = activity_wait->run(
+        {{"ids", {1, "bad"}}}, ToolContext{std::chrono::steady_clock::now() +
+                                           std::chrono::seconds(1)});
+    CHECK(malformed.error == ToolErrorCode::kInvalidArguments);
+  }
   CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==
@@ -674,13 +723,16 @@ void TestPythonTool() {
 
   ToolResult result = ToolRunPython(supervisor, root, "math.py", "print(6 * 7)",
                                     json::array({"numpy>=2"}));
-  CHECK(result.output == "[script: .uagent/scratch/math.py]\n42\n");
+  CHECK(result.output ==
+        "[script: .uagent/scratch/math.py · wrote · executed]\n42\n");
   fs::path script = root / ".uagent/scratch/math.py";
   CHECK(fs::is_regular_file(script));
   CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
   result = ToolRunPython(supervisor, root, ".uagent/scratch/prefixed.py",
                          "print('normalized')", json::array());
-  CHECK(result.output == "[script: .uagent/scratch/prefixed.py]\nnormalized\n");
+  CHECK(result.output ==
+        "[script: .uagent/scratch/prefixed.py · wrote · executed]\n"
+        "normalized\n");
   CHECK(fs::is_regular_file(root / ".uagent/scratch/prefixed.py"));
   std::ifstream script_input(script);
   std::string script_source{std::istreambuf_iterator<char>(script_input),
@@ -688,20 +740,33 @@ void TestPythonTool() {
   CHECK(script_source.find("# /// script") == 0);
   CHECK(script_source.find("\"numpy>=2\"") != std::string::npos);
 
-  CHECK(ToolEditFile(script.string(), {{"6 * 7", "7 * 7", false}}).Ok());
+  result = ToolRunPython(supervisor, root, "math.py", "print(6 * 7)",
+                         json::array({"numpy>=2"}));
+  CHECK(result.error == ToolErrorCode::kInvalidArguments);
+  CHECK(result.output.find("code is identical") != std::string::npos);
+  CHECK(result.output.find("code=null") != std::string::npos);
+
+  result = ToolRunPython(supervisor, root, "math.py", "print(7 * 7)",
+                         json::array({"numpy>=2"}));
+  CHECK(result.output ==
+        "[script: .uagent/scratch/math.py · overwrote · executed]\n49\n");
+
+  CHECK(ToolEditFile(script.string(), {{"7 * 7", "8 * 8", false}}).Ok());
   result = ToolRunPython(supervisor, root, "math.py", nullptr, nullptr);
-  CHECK(result.output == "[script: .uagent/scratch/math.py]\n49\n");
+  CHECK(result.output == "[script: .uagent/scratch/math.py · executed]\n64\n");
 
   fs::path marker = root / "injected";
   result = ToolRunPython(supervisor, root, "safe.py", "print('safe')",
                          json::array({"x; touch " + marker.string()}));
-  CHECK(result.output == "[script: .uagent/scratch/safe.py]\nsafe\n");
+  CHECK(result.output ==
+        "[script: .uagent/scratch/safe.py · wrote · executed]\nsafe\n");
   CHECK(!fs::exists(marker));
 
   result = ToolRunPython(supervisor, root, "slow.py",
                          "import time; time.sleep(.2); print('slow-ok')",
                          json::array());
-  CHECK(result.output == "[script: .uagent/scratch/slow.py]\nslow-ok\n");
+  CHECK(result.output ==
+        "[script: .uagent/scratch/slow.py · wrote · executed]\nslow-ok\n");
   CHECK(supervisor.PendingCount() == 0);
 
   result =

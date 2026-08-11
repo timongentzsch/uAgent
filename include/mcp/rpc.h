@@ -101,6 +101,20 @@ inline bool McpSend(McpServer& s, int64_t id, const std::string& method,
   return McpWrite(s, JsonDump(m) + "\n");
 }
 
+inline json McpClientRequestReply(const McpServer& server,
+                                  const json& request) {
+  json reply = {{"jsonrpc", "2.0"}, {"id", request["id"]}};
+  std::string method = JsonValue(request, "method", "");
+  if (method == "ping") {
+    reply["result"] = json::object();
+  } else if (method == "roots/list") {
+    reply["result"] = {{"roots", server.roots.entries}};
+  } else {
+    reply["error"] = {{"code", -32601}, {"message", "method not found"}};
+  }
+  return reply;
+}
+
 inline bool McpHandleMessage(McpServer& s, const json& message) {
   if (!message.is_object() || !message.contains("method")) return false;
   if (message["method"].is_string() &&
@@ -108,12 +122,7 @@ inline bool McpHandleMessage(McpServer& s, const json& message) {
     s.tools_changed = true;
   }
   if (message.contains("id")) {
-    json reply = {{"jsonrpc", "2.0"}, {"id", message["id"]}};
-    if (message["method"].is_string() && message["method"] == "ping") {
-      reply["result"] = json::object();
-    } else {
-      reply["error"] = {{"code", -32601}, {"message", "method not found"}};
-    }
+    json reply = McpClientRequestReply(s, message);
     McpWrite(s, JsonDump(reply) + "\n");
   }
   return true;
@@ -148,6 +157,12 @@ inline void McpDrainInbound(McpServer& s) {
     // At this boundary no client request is outstanding. Non-request
     // messages are stale responses and can be discarded safely.
     if (!message.is_discarded()) McpHandleMessage(s, message);
+  }
+}
+
+inline void McpDrainInbound(McpRuntime& runtime) {
+  for (const auto& server : runtime.Servers()) {
+    if (server->alive) McpDrainInbound(*server);
   }
 }
 

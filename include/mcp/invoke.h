@@ -6,6 +6,7 @@
 // keeps navigation and screenshot observation inside the same model step.
 
 #include <filesystem>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -20,9 +21,25 @@
 
 namespace uagent {
 
-inline json McpCallArguments(const json& arguments,
+inline json McpCallArguments(const json& arguments, const json& input_schema,
                              bool include_snapshot_by_default) {
   json normalized = arguments;
+  if (normalized.is_object() && input_schema.is_object()) {
+    std::set<std::string> required;
+    for (const json& name :
+         JsonValue(input_schema, "required", json::array())) {
+      if (name.is_string()) required.insert(name.get<std::string>());
+    }
+    for (auto item = normalized.begin(); item != normalized.end();) {
+      if (item.value().is_string() &&
+          item.value().get_ref<const std::string&>().empty() &&
+          !required.contains(item.key())) {
+        item = normalized.erase(item);
+      } else {
+        ++item;
+      }
+    }
+  }
   if (include_snapshot_by_default && normalized.is_object() &&
       !normalized.contains("includeSnapshot")) {
     normalized["includeSnapshot"] = true;
@@ -34,7 +51,8 @@ inline ToolResult McpInvokeRemote(McpServer& server,
                                   const std::string& remote_name,
                                   const json& arguments, int64_t timeout,
                                   const ToolContext& context,
-                                  bool include_snapshot) {
+                                  bool include_snapshot,
+                                  const json& input_schema = json::object()) {
   if (!server.alive) {
     return ToolFailure(ToolErrorCode::kUnavailable,
                        "error: mcp server " + server.name +
@@ -46,7 +64,8 @@ inline ToolResult McpInvokeRemote(McpServer& server,
         response = McpRpc(
             server, "tools/call",
             {{"name", remote_name},
-             {"arguments", McpCallArguments(arguments, include_snapshot)}},
+             {"arguments",
+              McpCallArguments(arguments, input_schema, include_snapshot)}},
             context.RemainingSeconds(timeout), true);
       })) {
     return ToolCancelled("error: call cancelled by user");
@@ -59,6 +78,18 @@ inline bool ChromeSlimTool(const McpServer& server,
   return JsonValue(server.config, "__uagent_builtin", "") == kChromeMcpName &&
          JsonValue(server.config, "__uagent_toolset", "slim") == "slim" &&
          (remote_name == "navigate" || remote_name == "screenshot");
+}
+
+inline bool ChromeTemporaryArtifact(const std::string& path) {
+  std::error_code error;
+  std::filesystem::path temp = std::filesystem::temp_directory_path(error);
+  if (error) return false;
+  temp = std::filesystem::weakly_canonical(temp, error);
+  if (error) return false;
+  std::filesystem::path target = CanonicalAccessPath(path);
+  std::filesystem::path parent = target.parent_path();
+  return parent.parent_path() == temp &&
+         parent.filename().string().starts_with("chrome-devtools-mcp-");
 }
 
 inline constexpr const char* kChromePageStateScript = R"js((() => {
@@ -82,7 +113,8 @@ inline constexpr const char* kChromePageStateScript = R"js((() => {
   };
 })())js";
 
-inline ToolResult AttachChromeScreenshot(ToolResult result) {
+inline ToolResult AttachChromeScreenshot(const McpServer& server,
+                                         ToolResult result) {
   if (result.output.find('\n') != std::string::npos) return result;
   std::string path = Trim(result.output);
   std::string extension =
@@ -90,6 +122,14 @@ inline ToolResult AttachChromeScreenshot(ToolResult result) {
   if (extension != ".png" && extension != ".jpg" && extension != ".jpeg" &&
       extension != ".webp" && extension != ".gif") {
     return result;
+  }
+  // Slim Chrome screenshots are intentionally written to a fresh
+  // chrome-devtools-mcp-* directory directly under the OS temp directory.
+  if (!server.roots.Contains(path) && !ChromeTemporaryArtifact(path)) {
+    return ToolFailure(
+        ToolErrorCode::kPermissionDenied,
+        result.output +
+            "\nerror: refusing MCP artifact outside advertised roots");
   }
   ToolResult attached = Attachments().Add(path);
   if (!attached.Ok()) {
@@ -104,9 +144,10 @@ inline ToolResult McpInvokeTool(McpServer& server,
                                 const std::string& remote_name,
                                 const json& arguments, int64_t timeout,
                                 const ToolContext& context,
-                                bool include_snapshot) {
+                                bool include_snapshot,
+                                const json& input_schema) {
   ToolResult result = McpInvokeRemote(server, remote_name, arguments, timeout,
-                                      context, include_snapshot);
+                                      context, include_snapshot, input_schema);
   if (!result.Ok() || !ChromeSlimTool(server, remote_name)) return result;
 
   if (remote_name == "navigate") {
@@ -124,7 +165,7 @@ inline ToolResult McpInvokeTool(McpServer& server,
     return result;
   }
 
-  return AttachChromeScreenshot(std::move(result));
+  return AttachChromeScreenshot(server, std::move(result));
 }
 
 }  // namespace uagent

@@ -7,10 +7,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -38,6 +40,7 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       !require_type("args", json::value_t::array, "an array") ||
       !require_type("env", json::value_t::object, "an object") ||
       !require_type("tools", json::value_t::array, "an array") ||
+      !require_type("roots", json::value_t::array, "an array") ||
       !require_type("trust", json::value_t::boolean, "a boolean") ||
       !require_type("disabled", json::value_t::boolean, "a boolean")) {
     return false;
@@ -70,12 +73,21 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       }
     }
   }
+  if (conf.contains("roots")) {
+    for (const json& value : conf["roots"]) {
+      if (!value.is_string() || value.get<std::string>().empty()) {
+        error = "every `roots` entry must be a nonempty string";
+        return false;
+      }
+    }
+  }
   static const std::set<std::string> kNown = {"type",
                                               "command",
                                               "args",
                                               "env",
                                               "cwd",
                                               "tools",
+                                              "roots",
                                               "trust",
                                               "disabled",
                                               "__uagent_config_dir",
@@ -88,6 +100,70 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
     if (!kNown.contains(field)) {
       McpNote(name, "unknown config field `" + field + "` ignored");
     }
+  }
+  return true;
+}
+
+inline std::string McpFileUri(const std::filesystem::path& path) {
+  constexpr char kHex[] = "0123456789ABCDEF";
+  std::string uri = "file://";
+  for (unsigned char byte : path.string()) {
+    bool safe = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
+                (byte >= '0' && byte <= '9') || byte == '-' || byte == '_' ||
+                byte == '.' || byte == '~' || byte == '/';
+    if (safe) {
+      uri += static_cast<char>(byte);
+    } else {
+      uri += '%';
+      uri += kHex[byte >> 4];
+      uri += kHex[byte & 0x0f];
+    }
+  }
+  return uri;
+}
+
+inline bool McpResolveRoots(const json& conf, const std::string& configured,
+                            McpRootSet& roots, std::string& error) {
+  std::vector<std::string> requested;
+  std::filesystem::path base = CanonicalCwd();
+  if (conf.contains("roots")) {
+    for (const json& value : conf["roots"]) {
+      requested.push_back(value.get<std::string>());
+    }
+    std::string config_dir = JsonValue(conf, "__uagent_config_dir", "");
+    if (!config_dir.empty()) base = config_dir;
+  } else if (!configured.empty()) {
+    requested = SplitPathList(configured);
+  } else {
+    requested.push_back(base.string());
+  }
+
+  roots = {};
+  std::set<std::string> seen;
+  for (std::string value : requested) {
+    if (value.empty()) continue;
+    std::filesystem::path path = ExpandProcessEnv(value);
+    if (path.empty()) {
+      error = "invalid MCP root `" + value + "` (expanded to empty)";
+      return false;
+    }
+    if (path.is_relative()) path = base / path;
+    std::error_code ec;
+    path = std::filesystem::weakly_canonical(path, ec);
+    if (ec || !std::filesystem::exists(path, ec)) {
+      error = "invalid MCP root `" + value + "`";
+      return false;
+    }
+    std::string canonical = path.string();
+    if (!seen.insert(canonical).second) continue;
+    std::string name = path.filename().string();
+    roots.paths.push_back(path);
+    roots.entries.push_back(
+        {{"uri", McpFileUri(path)}, {"name", name.empty() ? canonical : name}});
+  }
+  if (roots.paths.empty()) {
+    error = "MCP roots resolved to an empty set";
+    return false;
   }
   return true;
 }

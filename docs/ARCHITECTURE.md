@@ -69,8 +69,12 @@ without a watcher thread or parallel registry. Detached ownership follows the
 process group after its wrapper exits.
 The application owns a small raw-mode composer while the foreground agent runs
 on one worker thread. Agent output is marshalled back above the two-line
-composer, preserving native scrollback. Enter appends guidance to the active
-turn's steering queue; Escape raises only the foreground abort flag. One turn
+composer, preserving native scrollback. A stateful decoder retains fragmented
+CSI and bracketed-paste sequences across reads for both the composer and
+libedit; shared history and paste bounds keep the two input paths aligned.
+Terminal focus and Meta key sequences preserve the draft; only a genuinely
+bare Escape becomes an interrupt. Enter appends guidance to the active turn's steering
+queue; Escape raises only the foreground abort flag. One turn
 timestamp drives the sole dynamic status row, which also reports queued
 steering, live context, and active background count. That row stays directly
 above the input and changes in place instead of entering scrollback.
@@ -78,6 +82,10 @@ One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;
 tool-specific contracts such as visibility, call budgets, and stable arguments
 constrain misuse without guessing task difficulty.
+The MCP JSON-RPC boundary also handles server-initiated requests. Every session
+advertises a canonical root set and answers `roots/list`; roots are
+resolved once from workspace/global/per-server policy and survive lazy starts
+and restarts with the server configuration.
 
 ## Context and cache
 

@@ -177,6 +177,14 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 }
 
 void Agent::Turn(const std::string& user_input, json user_content) {
+  if (!user_content.is_null()) {
+    json messages =
+        json::array({{{"role", "user"}, {"content", user_content}}});
+    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
+        messages, ImageFallbackCause::kKnownUnsupported);
+    if (fallback.applied) user_content = std::move(messages[0]["content"]);
+    ReportImageFallback(fallback);
+  }
   RunTurn(user_input, std::move(user_content), /*harness_origin=*/false);
 }
 

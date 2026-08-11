@@ -25,6 +25,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/input_decoder.h"
 
 namespace uagent {
 
@@ -57,6 +58,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kModels, "/models", "[QUERY]",
      "search and select across providers", CommandCompletion::kNone},
     {SlashCommandId::kOnline, "/online", "", "toggle OpenRouter web search",
+     CommandCompletion::kNone},
+    {SlashCommandId::kProcesses, "/ps", "", "show active background work",
      CommandCompletion::kNone},
     {SlashCommandId::kQuit, "/quit", "", "exit µAgent",
      CommandCompletion::kNone},
@@ -118,11 +121,9 @@ void PrintCommandHelp() {
 #if defined(HAVE_EDITLINE)
 namespace {
 
-constexpr int kInputHistoryEntries = 200;
-constexpr size_t kInputHistoryEntryBytes = 16 * 1024;
-
 struct ReadlineState {
-  std::queue<unsigned char> pending;  // bytes read ahead, replayed first
+  TerminalInputDecoder decoder;
+  std::queue<unsigned char> decoded;
   std::string initial;
   size_t initial_pos = 0;
   bool cancel_on_escape = false;
@@ -143,9 +144,16 @@ ReadlineState& Readline() {
 }
 
 void RememberInput(const std::string& input) {
-  if (!Trim(input).empty() && input.size() <= kInputHistoryEntryBytes) {
-    add_history(input.c_str());
+  if (ShouldRememberInput(input)) add_history(input.c_str());
+}
+
+int ReadlineEscape() {
+  if (Readline().cancel_on_escape) {
+    Readline().cancelled = true;
+    return '\n';
   }
+  Readline().decoded.push(0x0b);
+  return 0x01;
 }
 
 }  // namespace
@@ -214,11 +222,6 @@ int ReadlineGetc(FILE* file) {
     return static_cast<unsigned char>(
         Readline().initial[Readline().initial_pos++]);
   }
-  if (!Readline().pending.empty()) {
-    int ch = Readline().pending.front();
-    Readline().pending.pop();
-    return ch;
-  }
   int fd = file ? fileno(file) : 0;
   unsigned char ch;
   for (;;) {
@@ -237,47 +240,62 @@ int ReadlineGetc(FILE* file) {
 }
 
 int EscGetc(FILE* file) {
-  int ch = ReadlineGetc(file);
-  if (ch == 0x1b) {
-    int fd = file ? fileno(file) : 0;
-    pollfd event{fd, POLLIN, 0};
-    if (poll(&event, 1, 50) == 0) {
-      if (Readline().cancel_on_escape) {
-        Readline().cancelled = true;
-        return '\n';
-      }
-      Readline().pending.push(0x0b);
-      return 0x01;
-    }
-    static const std::string kPasteStart = "[200~";
-    std::string sequence;
-    for (char expected : kPasteStart) {
-      int next = ReadlineGetc(file);
-      if (next == EOF) break;
-      sequence += static_cast<char>(next);
-      if (next != expected) break;
-    }
-    if (sequence == kPasteStart) {
-      static const std::string kPasteEnd = "\x1b[201~";
-      std::string paste;
-      for (int next; (next = ReadlineGetc(file)) != EOF;) {
-        paste += static_cast<char>(next);
-        if (paste.size() >= kPasteEnd.size() &&
-            paste.compare(paste.size() - kPasteEnd.size(), kPasteEnd.size(),
-                          kPasteEnd) == 0) {
-          paste.resize(paste.size() - kPasteEnd.size());
-          break;
-        }
-      }
-      ReplaceAll(paste, "\r\n", "\n");
-      ReplaceAll(paste, "\r", "\n");
-      std::erase(paste, '\0');
-      rl_insert_text(paste.c_str());
-      return 0x12;  // Ctrl-R / ed-redisplay; Enter still submits separately.
-    }
-    for (unsigned char byte : sequence) Readline().pending.push(byte);
+  if (!Readline().decoded.empty()) {
+    int byte = Readline().decoded.front();
+    Readline().decoded.pop();
+    return byte;
   }
-  return ch;
+  int byte = ReadlineGetc(file);
+  if (byte == EOF) return EOF;
+  unsigned char input = static_cast<unsigned char>(byte);
+  Readline().decoder.Feed(&input, 1);
+  for (;;) {
+    if (std::optional<TerminalInputToken> token = Readline().decoder.Next()) {
+      if (token->kind == TerminalInputTokenKind::kText) {
+        return static_cast<unsigned char>(token->text[0]);
+      }
+      if (token->kind == TerminalInputTokenKind::kSequence) {
+        for (unsigned char value : token->text) Readline().decoded.push(value);
+        int value = Readline().decoded.front();
+        Readline().decoded.pop();
+        return value;
+      }
+      if (token->kind == TerminalInputTokenKind::kPaste) {
+        if (token->overflow) {
+          fputc('\a', stderr);
+        } else {
+          rl_insert_text(token->text.c_str());
+        }
+        return 0x12;  // Ctrl-R / ed-redisplay; Enter submits separately.
+      }
+      return ReadlineEscape();
+    }
+
+    int fd = file ? fileno(file) : STDIN_FILENO;
+    pollfd event{fd, POLLIN, 0};
+    int ready;
+    do {
+      ready = poll(&event, 1, static_cast<int>(kInputEscapeDelay.count()));
+    } while (ready < 0 && errno == EINTR);
+    if (ready <= 0) {
+      std::optional<TerminalInputToken> token = Readline().decoder.Next(true);
+      if (!token) continue;
+      if (token->kind == TerminalInputTokenKind::kEscape) {
+        return ReadlineEscape();
+      }
+      for (unsigned char value : token->text) Readline().decoded.push(value);
+      if (!Readline().decoded.empty()) {
+        int value = Readline().decoded.front();
+        Readline().decoded.pop();
+        return value;
+      }
+      continue;
+    }
+    byte = ReadlineGetc(file);
+    if (byte == EOF) return EOF;
+    input = static_cast<unsigned char>(byte);
+    Readline().decoder.Feed(&input, 1);
+  }
 }
 
 void RegisterCompletion(CommandCompletion source, const std::string& value) {
@@ -370,6 +388,8 @@ std::string ReadEditableLine(const std::string& prompt, bool* eof,
   Readline().initial = initial;
   Readline().initial_pos = 0;
   Readline().resize_handler_installed = false;
+  Readline().decoder.Reset();
+  Readline().decoded = {};
   BracketedPaste(true);
   char* line = readline(hidden_prompt.c_str());
   BracketedPaste(false);

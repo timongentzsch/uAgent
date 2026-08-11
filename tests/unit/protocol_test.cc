@@ -54,6 +54,14 @@ void TestTextToolProtocol() {
   CHECK(calls[0].name == "read_file");
   CHECK(ParseTextToolCalls("example [uagent_tool_call]{}[/uagent_tool_call]")
             .empty());
+  CHECK(ContainsForeignToolCallMarkup(
+      "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
+  CHECK(ContainsForeignToolCallMarkup(
+      "<|tool_calls_section_begin|><|tool_call|>run"));
+  CHECK(ContainsForeignToolCallMarkup(
+      "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>run"));
+  CHECK(!ContainsForeignToolCallMarkup(
+      "The tool calls completed and the requested file is ready."));
 }
 
 void TestToolResults() {
@@ -135,6 +143,8 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("never imitate a tool call") !=
         std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("empty placeholders") !=
+        std::string::npos);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity_output", "", json::object(),
@@ -147,6 +157,18 @@ void TestRegistries() {
         std::string::npos);
   CHECK(activity_prompt.find("wait only when the next step needs the result") !=
         std::string::npos);
+  CHECK(activity_prompt.find("reuse a viable instance") != std::string::npos);
+  capability_tools.push_back(MakeTool(
+      "task", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  CHECK(CapabilityPrompt(capability_tools).find("background research") ==
+        std::string::npos);
+  capability_tools.push_back(MakeTool(
+      "web_search", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  std::string research_prompt = CapabilityPrompt(capability_tools);
+  CHECK(research_prompt.find("background research") != std::string::npos);
+  CHECK(research_prompt.find("source-cited findings") != std::string::npos);
   CHECK(CapabilityPrompt({}).empty());
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
@@ -166,6 +188,8 @@ void TestRegistries() {
   CHECK(!ParseSlashCommand("/recap").spec);
   command = ParseSlashCommand("/memory");
   CHECK(command.spec && command.spec->id == SlashCommandId::kMemory);
+  command = ParseSlashCommand("/ps");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kProcesses);
   CHECK(!ParseSlashCommand("/unknown").spec);
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));

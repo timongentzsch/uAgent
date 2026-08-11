@@ -87,19 +87,15 @@ inline WebSearchRoute SelectWebSearchRoute(
   };
 
   if (config.web_search_backend == "responses") {
-    if (WebSearchRoute route = explicit_route(WebSearchBackend::kResponses);
-        route.Valid()) {
-      return route;
-    }
-    if (OpenaiUrl(api.base_url)) {
+    WebSearchRoute route = explicit_route(WebSearchBackend::kResponses);
+    if (!route.Valid() && OpenaiUrl(api.base_url)) {
       return active(WebSearchBackend::kResponses, openai_model);
     }
-    if (WebSearchRoute route = ProviderSearchRoute(
-            WebSearchBackend::kResponses, openai, config, openai_model);
-        route.Valid()) {
-      return route;
+    if (!route.Valid()) {
+      route = ProviderSearchRoute(WebSearchBackend::kResponses, openai, config,
+                                  openai_model);
     }
-    return environment_openai();
+    return route.Valid() ? route : environment_openai();
   }
   if (config.web_search_backend == "openrouter") {
     if (WebSearchRoute route = explicit_route(WebSearchBackend::kOpenRouter);
@@ -125,17 +121,13 @@ inline WebSearchRoute SelectWebSearchRoute(
   if (OpenaiUrl(api.base_url)) {
     return active(WebSearchBackend::kResponses, openai_model);
   }
-  if (WebSearchRoute route = ProviderSearchRoute(WebSearchBackend::kResponses,
-                                                 openai, config, openai_model);
-      route.Valid()) {
-    return route;
+  WebSearchRoute route = ProviderSearchRoute(WebSearchBackend::kResponses,
+                                             openai, config, openai_model);
+  if (!route.Valid()) {
+    route = ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
+                                config, openrouter_model);
   }
-  if (WebSearchRoute route = ProviderSearchRoute(
-          WebSearchBackend::kOpenRouter, openrouter, config, openrouter_model);
-      route.Valid()) {
-    return route;
-  }
-  return environment_openai();
+  return route.Valid() ? route : environment_openai();
 }
 
 struct WebSearchResult {

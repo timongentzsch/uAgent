@@ -17,6 +17,16 @@
 #include "include/core/fs.h"
 
 namespace uagent {
+namespace {
+
+void WriteJsonLine(FILE* file, const json& record) {
+  std::string line = JsonDump(record);
+  fwrite(line.data(), 1, line.size(), file);
+  fputc('\n', file);
+  fflush(file);
+}
+
+}  // namespace
 
 double ElapsedMs(std::chrono::steady_clock::time_point start) {
   return std::chrono::duration<double, std::milli>(
@@ -107,10 +117,7 @@ void DebugSink::Write(const std::string& event, json data) noexcept {
                  {"elapsed_ms", ElapsedMs(started_)},
                  {"event", event},
                  {"data", std::move(data)}};
-  std::string line = JsonDump(record);
-  fwrite(line.data(), 1, line.size(), file_);
-  fputc('\n', file_);
-  fflush(file_);
+  WriteJsonLine(file_, record);
 }
 
 DebugSink& Debug() {
@@ -138,10 +145,7 @@ void JsonEventStream::Emit(const std::string& type, json data) noexcept {
                  {"time", UtcStamp()},
                  {"type", type},
                  {"data", std::move(data)}};
-  std::string line = JsonDump(record);
-  fwrite(line.data(), 1, line.size(), file_);
-  fputc('\n', file_);
-  fflush(file_);
+  WriteJsonLine(file_, record);
 }
 
 JsonEventStream& Events() {

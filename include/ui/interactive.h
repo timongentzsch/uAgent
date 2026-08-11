@@ -10,10 +10,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <condition_variable>
 #include <cstdio>
-#include <cstring>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -23,6 +23,7 @@
 #include "include/cli.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/input_decoder.h"
 
 namespace uagent {
 
@@ -109,11 +110,14 @@ class RawComposer {
   // That distinction matters after a resize and while an edit changes wrapping.
   bool Drawn() const { return drawn_rows_ > 0; }
   size_t CaretRow() const { return caret_row_; }
+  size_t CaretColumn() const { return caret_column_; }
 
   bool Start() {
     if (active_ || tcgetattr(STDIN_FILENO, &saved_) != 0) return false;
     termios raw = saved_;
     raw.c_lflag &= ~static_cast<tcflag_t>(ICANON | ECHO);
+    raw.c_iflag &=
+        ~static_cast<tcflag_t>(ICRNL | INLCR | IGNCR | IXON | ISTRIP);
     raw.c_cc[VMIN] = 0;
     raw.c_cc[VTIME] = 0;
     if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) return false;
@@ -131,10 +135,15 @@ class RawComposer {
 
   // The application calls Mount only after leaving the cursor at the cleared
   // composer block top, directly below its status row.
-  void Mount(std::string prompt, std::string initial = {}) {
+  void Mount(std::string prompt, std::string initial = {},
+             bool keep_history = true) {
     prompt_ = std::move(prompt);
-    buffer_ = std::move(initial);
+    buffer_ = Utf8Prefix(std::move(initial), kInputBufferBytes);
     cursor_ = buffer_.size();
+    keep_history_ = keep_history;
+    history_index_ = history_.size();
+    history_draft_.clear();
+    input_limit_bell_ = false;
     Detach();
     RenderFromTop();
   }
@@ -151,74 +160,59 @@ class RawComposer {
   void Detach() {
     drawn_rows_ = 0;
     caret_row_ = 0;
+    caret_column_ = 0;
   }
 
   // Clear the current input line and repaint an empty prompt.
   void Clear() {
     buffer_.clear();
     cursor_ = 0;
+    history_index_ = history_.size();
+    history_draft_.clear();
+    input_limit_bell_ = false;
     Render();
   }
 
   const std::string& Buffer() const { return buffer_; }
-  bool HasPending() const { return !pending_.empty(); }
+  bool HasPending() const { return decoder_.HasReady(); }
 
   InteractiveInputEvent Read() {
     unsigned char bytes[4096];
     for (;;) {
       ssize_t count = read(STDIN_FILENO, bytes, sizeof bytes);
       if (count > 0) {
-        pending_.insert(pending_.end(), bytes, bytes + count);
+        decoder_.Feed(bytes, static_cast<size_t>(count));
         continue;
       }
       if (count < 0 && errno == EINTR) continue;
       break;
     }
-    while (!pending_.empty()) {
-      unsigned char ch = pending_.front();
-      pending_.pop_front();
-      if (paste_) {
-        if (ch == 0x1b && Consume("[201~")) {
-          paste_ = false;
-        } else if (ch == '\r') {
-          Insert("\n");
-        } else if (ch != '\0') {
-          Insert(std::string(1, static_cast<char>(ch)));
+    while (std::optional<TerminalInputToken> token = decoder_.Next()) {
+      if (token->kind == TerminalInputTokenKind::kEscape) {
+        return {InteractiveInputKind::kEscape, buffer_};
+      }
+      if (token->kind == TerminalInputTokenKind::kSequence) {
+        ApplySequence(token->text);
+        continue;
+      }
+      if (token->kind == TerminalInputTokenKind::kPaste) {
+        if (token->overflow || !Insert(token->text)) {
+          output_.Write("\a");
         }
         continue;
       }
-      if (ch == 0x1b) {
-        if (Consume("[200~")) {
-          paste_ = true;
-          continue;
-        }
-        if (Consume("[A")) {
-          History(-1);
-          continue;
-        }
-        if (Consume("[B")) {
-          History(1);
-          continue;
-        }
-        if (Consume("[C")) {
-          cursor_ = NextUtf8(buffer_, cursor_);
-          continue;
-        }
-        if (Consume("[D")) {
-          cursor_ = PreviousUtf8(buffer_, cursor_);
-          continue;
-        }
-        return {InteractiveInputKind::kEscape, buffer_};
-      }
+      unsigned char ch = static_cast<unsigned char>(token->text[0]);
       if (ch == '\r' || ch == '\n') {
         std::string line = std::move(buffer_);
         buffer_.clear();
         cursor_ = 0;
-        if (!Trim(line).empty()) {
+        if (keep_history_ && ShouldRememberInput(line)) {
           history_.push_back(line);
-          if (history_.size() > 200) history_.pop_front();
+          if (history_.size() > kInputHistoryEntries) history_.pop_front();
         }
         history_index_ = history_.size();
+        history_draft_.clear();
+        input_limit_bell_ = false;
         MoveToTop();
         EraseDrawnRows();
         output_.Write("\r" + prompt_ + TerminalSafe(line) + "\n");
@@ -243,7 +237,11 @@ class RawComposer {
         buffer_.erase(0, cursor_);
         cursor_ = 0;
       } else if (ch >= 0x20 || ch == '\t') {
-        Insert(std::string(1, static_cast<char>(ch)));
+        if (!Insert(std::string(1, static_cast<char>(ch))) &&
+            !input_limit_bell_) {
+          output_.Write("\a");
+          input_limit_bell_ = true;
+        }
       }
     }
     Render();
@@ -345,6 +343,7 @@ class RawComposer {
 
     drawn_rows_ = count;
     caret_row_ = layout.caret_row;
+    caret_column_ = caret_column;
   }
   static size_t PreviousUtf8(const std::string& text, size_t at) {
     if (at == 0) return 0;
@@ -365,47 +364,121 @@ class RawComposer {
     return at;
   }
 
-  void Insert(const std::string& text) {
+  bool Insert(const std::string& text) {
+    if (text.size() >
+        kInputBufferBytes - std::min(buffer_.size(), kInputBufferBytes)) {
+      return false;
+    }
     buffer_.insert(cursor_, text);
     cursor_ += text.size();
+    input_limit_bell_ = false;
+    return true;
   }
 
   void Backspace() {
     size_t previous = PreviousUtf8(buffer_, cursor_);
     buffer_.erase(previous, cursor_ - previous);
     cursor_ = previous;
+    input_limit_bell_ = false;
   }
 
-  bool Consume(const char* suffix) {
-    size_t size = strlen(suffix);
-    if (pending_.size() < size) return false;
-    for (size_t i = 0; i < size; ++i) {
-      if (pending_[i] != static_cast<unsigned char>(suffix[i])) return false;
+  static bool WordSpace(unsigned char ch) { return std::isspace(ch) != 0; }
+
+  void PreviousWord() {
+    while (cursor_ > 0) {
+      size_t previous = PreviousUtf8(buffer_, cursor_);
+      if (!WordSpace(static_cast<unsigned char>(buffer_[previous]))) break;
+      cursor_ = previous;
     }
-    for (size_t i = 0; i < size; ++i) pending_.pop_front();
-    return true;
+    while (cursor_ > 0) {
+      size_t previous = PreviousUtf8(buffer_, cursor_);
+      if (WordSpace(static_cast<unsigned char>(buffer_[previous]))) break;
+      cursor_ = previous;
+    }
+  }
+
+  void NextWord() {
+    while (cursor_ < buffer_.size() &&
+           !WordSpace(static_cast<unsigned char>(buffer_[cursor_]))) {
+      cursor_ = NextUtf8(buffer_, cursor_);
+    }
+    while (cursor_ < buffer_.size() &&
+           WordSpace(static_cast<unsigned char>(buffer_[cursor_]))) {
+      cursor_ = NextUtf8(buffer_, cursor_);
+    }
+  }
+
+  void DeletePreviousWord() {
+    size_t end = cursor_;
+    PreviousWord();
+    buffer_.erase(cursor_, end - cursor_);
+    input_limit_bell_ = false;
+  }
+
+  void ApplySequence(const std::string& sequence) {
+    if (sequence == "\x1b[A" || sequence == "\x1bOA") History(-1);
+    if (sequence == "\x1b[B" || sequence == "\x1bOB") History(1);
+    if (sequence == "\x1b[C" || sequence == "\x1bOC") {
+      cursor_ = NextUtf8(buffer_, cursor_);
+    }
+    if (sequence == "\x1b[D" || sequence == "\x1bOD") {
+      cursor_ = PreviousUtf8(buffer_, cursor_);
+    }
+    if (sequence == "\x1b[H" || sequence == "\x1b[1~" || sequence == "\x1bOH") {
+      cursor_ = 0;
+    }
+    if (sequence == "\x1b[F" || sequence == "\x1b[4~" || sequence == "\x1bOF") {
+      cursor_ = buffer_.size();
+    }
+    if (sequence == "\x1b[3~" && cursor_ < buffer_.size()) {
+      size_t next = NextUtf8(buffer_, cursor_);
+      buffer_.erase(cursor_, next - cursor_);
+    }
+    if (sequence ==
+            "\x1b"
+            "b" ||
+        sequence == "\x1b[1;3D" || sequence == "\x1b[1;5D") {
+      PreviousWord();
+    }
+    if (sequence ==
+            "\x1b"
+            "f" ||
+        sequence == "\x1b[1;3C" || sequence == "\x1b[1;5C") {
+      NextWord();
+    }
+    if (sequence == "\x1b\x7f" || sequence == "\x1b\x08") {
+      DeletePreviousWord();
+    }
   }
 
   void History(int direction) {
     if (history_.empty()) return;
+    if (direction > 0 && history_index_ == history_.size()) return;
+    if (direction < 0 && history_index_ == history_.size()) {
+      history_draft_ = buffer_;
+    }
     if (direction < 0 && history_index_ > 0) --history_index_;
     if (direction > 0 && history_index_ < history_.size()) ++history_index_;
-    buffer_ = history_index_ < history_.size() ? history_[history_index_] : "";
+    buffer_ = history_index_ < history_.size() ? history_[history_index_]
+                                               : history_draft_;
     cursor_ = buffer_.size();
   }
 
   const InteractiveOutput& output_;
   termios saved_{};
   bool active_ = false;
-  bool paste_ = false;
   size_t drawn_rows_ = 0;
   size_t caret_row_ = 0;
+  size_t caret_column_ = 0;
   std::string prompt_ = InputPrompt();
   std::string buffer_;
   size_t cursor_ = 0;
-  std::deque<unsigned char> pending_;
+  TerminalInputDecoder decoder_;
   std::deque<std::string> history_;
   size_t history_index_ = 0;
+  std::string history_draft_;
+  bool keep_history_ = true;
+  bool input_limit_bell_ = false;
 };
 
 class InputBroker {

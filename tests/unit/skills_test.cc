@@ -9,20 +9,9 @@ namespace uagent {
 
 void TestSkillDiscovery() {
   namespace fs = std::filesystem;
-  fs::path original = fs::current_path();
-  fs::path root =
-      fs::temp_directory_path() /
-      ("uagent-skill-test-" + std::to_string(static_cast<int64_t>(getpid())));
-  fs::path workspace = root / "workspace";
-  fs::path home = root / "home";
-  fs::create_directories(workspace);
-  fs::create_directories(home);
-  const char* prior_home_value = getenv("HOME");
-  std::string prior_home = prior_home_value ? prior_home_value : "";
-  bool had_home = prior_home_value != nullptr;
-  setenv("HOME", home.c_str(), 1);
-  fs::current_path(workspace);
-  workspace = fs::current_path();
+  TestWorkspace test("skill");
+  const fs::path& workspace = test.workspace;
+  const fs::path& home = test.home;
 
   auto write_skill = [](const fs::path& dir, const std::string& text) {
     std::filesystem::create_directories(dir);
@@ -201,15 +190,6 @@ void TestSkillDiscovery() {
   Tool crowded = SkillTool(catalogue_skills);
   CHECK(crowded.description.size() <= 8000);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
-
-  fs::current_path(original);
-  if (had_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  std::error_code ec;
-  fs::remove_all(root, ec);
 }
 
 }  // namespace uagent

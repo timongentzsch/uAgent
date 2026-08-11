@@ -22,6 +22,7 @@ or multi-tenant service.
 | memory always-on slice | 2 KiB |
 | memory idle / eligible age | 6 hours / 10 days |
 | attachment / terminal image | 10 / 10 MiB |
+| input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
 | checkpoint hint / urgent / emergency | 65 / 85 / 95% |
 | removed-trace archive | 16 MiB |
 
@@ -44,6 +45,13 @@ discarded instead of being injected into the next model request.
 The always-on slice inlines behavioral (global-scope) memory into the startup
 context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
 
+Set `UAGENT_IMAGE_MODEL` to a vision-capable model on the active provider when
+the primary route is text-only. When direct image input is known to be
+unavailable or the primary route first rejects it, µAgent sends the attachment
+once to that model, removes the image bytes from the parent context, and
+delivers the resulting textual visual evidence. Without this setting, rejected
+images remain available only by their local paths.
+
 Child processes are credential-sanitized. Approved shell commands alone may
 receive explicitly named variables through `UAGENT_SHELL_ENV_ALLOW`. Project
 `.uagent/.config` and `.mcp.json` require trust.
@@ -54,6 +62,7 @@ may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
 Commands, delegated tasks, and detached terminals share activity IDs.
+`/ps` lists the current session's active work behind the status bar's `bg:N`.
 `activity_output(id)` reads a bounded log without cancelling ownership;
 `wait_ms` optionally blocks for output/exit and `until` requires fixed
 readiness text. Use `task(background=false)` when the next step requires the
@@ -69,11 +78,20 @@ PID, discovered tool count, and the last lifecycle error; `mcp_restart`
 restarts and handshakes a named server. These generic tools are omitted when
 the built-in Chrome server is the only MCP configuration: `chrome_session`
 already switches its mode/toolset and performs a page-level health probe.
+µAgent advertises MCP roots and answers `roots/list`; the current workspace is
+the default root. Set colon-separated `UAGENT_MCP_ROOTS`, or a server's
+`roots` string array in `.mcp.json`, to authorize a different bounded set.
+Per-server paths are relative to that configuration file and override the
+global default. `--yolo` controls tool approval, not an MCP server's root
+boundary. Roots are cooperative protocol scope, not an OS sandbox; MCP servers
+still run with the user's process permissions.
 
 The interactive composer owns stdin for the whole session. Enter during work
 queues guidance into the active turn at the next model/tool boundary; Escape
 interrupts only the foreground request/tool batch and applies queued guidance
-immediately.
+immediately. Terminal focus changes do not clear drafts or interrupt work;
+multiline bracketed paste is normalized and inserted as one edit before Enter
+submits it.
 Background commands, delegated tasks, detached terminals, and memory
 maintenance retain their existing supervisor ownership.
 

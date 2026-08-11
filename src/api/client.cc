@@ -154,7 +154,8 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
 }
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
-                     int64_t timeout_s, const std::string& session_id) {
+                     int64_t timeout_s, const std::string& session_id,
+                     bool render_output) {
   ChatResult res;
   size_t estimated =
       JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
@@ -205,7 +206,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                             : remaining.count();
     }
     auto attempt_started = std::chrono::steady_clock::now();
-    res = PerformChat(payload, web_available, attempt_timeout, session_id);
+    res = PerformChat(payload, web_available, attempt_timeout, session_id,
+                      render_output);
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
@@ -227,7 +229,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                            {"http_status", res.http_status},
                            {"remote_error_type", res.remote_error_type},
                            {"remote_error_code", res.remote_error_code}});
-    if (render_stream) {
+    if (render_stream && render_output) {
       std::string reason = res.error.starts_with("model ")
                                ? res.error
                                : "transient provider failure";
@@ -235,7 +237,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
              TerminalSafe(reason).c_str(), attempt, kChatAttempts - 1,
              delay.count() / 1000.0, RST());
     }
-    if (!WaitForRetry(delay)) {
+    if (!WaitForRetry(delay, render_output)) {
       res.error.clear();
       res.interrupted = true;
       return res;
@@ -254,7 +256,8 @@ json Api::Get(const std::string& path, bool abortable) {
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
-                            int64_t timeout_s, const std::string& session_id) {
+                            int64_t timeout_s, const std::string& session_id,
+                            bool render_output) {
   ChatResult res;
   CURL* h = Prepare(base_url + "/chat/completions");
   if (!h) {
@@ -268,7 +271,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.last_byte = ctx.started;
   ctx.first_event_timeout_s = config.first_event_timeout_s;
   ctx.idle_timeout_s = config.stream_idle_timeout_s;
-  ctx.render_output = render_stream;
+  ctx.render_output = render_stream && render_output;
   int64_t response_cap = config.response_bytes;
   ctx.response_cap = response_cap > 0 ? static_cast<size_t>(response_cap) : 0;
   ctx.sse = SseParser(ctx.response_cap);
@@ -301,7 +304,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 
   SteeringGuard steering;
   std::string activity = web_available ? "working · web available" : "working";
-  TerminalSpinner spinner(render_stream, SpinnerLabel(activity), turn_started);
+  TerminalSpinner spinner(ctx.render_output, SpinnerLabel(activity),
+                          turn_started);
   ctx.spinner = &spinner;
 
   CURLcode rc = CURLE_OK;
@@ -355,9 +359,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   return res;
 }
 
-bool Api::WaitForRetry(std::chrono::milliseconds delay) const {
-  TerminalSpinner spinner(render_stream, SpinnerLabel("retrying"),
-                          turn_started);
+bool Api::WaitForRetry(std::chrono::milliseconds delay,
+                       bool render_output) const {
+  TerminalSpinner spinner(render_stream && render_output,
+                          SpinnerLabel("retrying"), turn_started);
   SteeringGuard steering;
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {

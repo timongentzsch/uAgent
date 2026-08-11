@@ -36,6 +36,7 @@ std::string DetachedRecordPath(pid_t pid);
 std::vector<json> DetachedRecords();
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                               const std::string& command);
+ToolResult ToolActivityList(const ProcessSupervisor& supervisor);
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id);
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
                               int64_t wait_ms, std::string_view until,

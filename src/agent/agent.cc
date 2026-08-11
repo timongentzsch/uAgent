@@ -182,9 +182,10 @@ bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
   conversation_.Push(
       HarnessMessage("Summarize for a fresh context: goal, decisions, "
                      "current state, relevant paths, and next steps. Be "
-                     "concise."),
+                     "concise. Return only prose. Do not call or imitate "
+                     "tools, emit tool markup, or continue the task."),
       MessageKind::kInternal);
-  ChatResult r = Chat("compact", -1, json::array());
+  ChatResult r = Chat("compact", -1, json::array(), false);
   conversation_.PopBack();  // never archive the summarization instruction
   Usage compact_usage;
   compact_usage.Add(r.usage);
@@ -193,6 +194,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
   if (turn_usage) turn_usage->Merge(compact_usage);
   bool invalid_summary = r.content.empty() || !r.tool_calls.empty() ||
                          !ParseTextToolCalls(r.content).empty() ||
+                         ContainsForeignToolCallMarkup(r.content) ||
                          source_bytes <= baseline_bytes ||
                          r.content.size() >= source_bytes - baseline_bytes;
   if (r.interrupted || !r.error.empty() || invalid_summary) {
@@ -207,6 +209,8 @@ bool Agent::Compact(bool automatic, Usage* turn_usage, bool apply) {
         {{"automatic", automatic}, {"outcome", outcome}, {"error", r.error}});
     if (!r.error.empty()) {
       printf("%s%s%s\n", RED(), TerminalSafe(r.error).c_str(), RST());
+    } else {
+      printf("%s· compaction rejected; context unchanged%s\n", DIM(), RST());
     }
     return false;
   }
@@ -305,6 +309,12 @@ bool Agent::DrainAttachments() {
   std::string error;
   json content = AttachmentContent("[attached on request]", pending, error);
   if (error.empty()) {
+    json messages = json::array({{{"role", "user"}, {"content", content}}});
+    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
+        messages, ImageFallbackCause::kKnownUnsupported);
+    if (fallback.applied) content = std::move(messages[0]["content"]);
+    if (!fallback.error.empty()) error = fallback.error;
+    ReportImageFallback(fallback);
     conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                        MessageKind::kAttachment);
   } else {

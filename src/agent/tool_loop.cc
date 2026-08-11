@@ -15,6 +15,18 @@
 #include "include/ui/tool_output.h"
 
 namespace uagent {
+namespace {
+
+size_t ParallelRunEnd(const std::vector<size_t>& runnable,
+                      const std::vector<CallTask>& tasks, size_t begin) {
+  size_t end = begin;
+  while (end < runnable.size() && tasks[runnable[end]].tool->parallel_safe) {
+    ++end;
+  }
+  return end;
+}
+
+}  // namespace
 
 void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
                              const std::string& result) {
@@ -144,14 +156,10 @@ bool Agent::RunCalls(
     bool parallel = false;
     if (limit > 1) {
       for (size_t begin = 0; begin < runnable.size();) {
-        if (!tasks[runnable[begin]].tool->parallel_safe) {
+        size_t end = ParallelRunEnd(runnable, tasks, begin);
+        if (end == begin) {
           ++begin;
           continue;
-        }
-        size_t end = begin;
-        while (end < runnable.size() &&
-               tasks[runnable[end]].tool->parallel_safe) {
-          ++end;
         }
         parallel = parallel || end - begin > 1;
         begin = end;
@@ -184,10 +192,7 @@ bool Agent::RunCalls(
       ++begin;
       continue;
     }
-    size_t end = begin;
-    while (end < runnable.size() && tasks[runnable[end]].tool->parallel_safe) {
-      ++end;
-    }
+    size_t end = ParallelRunEnd(runnable, tasks, begin);
     if (end - begin == 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
                   api_.config.tool_timeout_s);

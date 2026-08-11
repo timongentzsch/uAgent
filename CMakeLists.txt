@@ -93,6 +93,7 @@ add_library(
   src/tools/subagent.cc
   src/transport/sse.cc
   src/ui/conversation.cc
+  src/ui/input_decoder.cc
   src/ui/markdown.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
 
@@ -120,6 +121,7 @@ if(BUILD_TESTING)
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
     tests/unit/filesystem_test.cc
+    tests/unit/input_decoder_test.cc
     tests/unit/mcp_session_test.cc
     tests/unit/protocol_test.cc
     tests/unit/runtime_test.cc

@@ -13,9 +13,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -34,6 +36,18 @@ extern char** environ;
 
 namespace uagent {
 
+struct McpRootSet {
+  json entries = json::array();
+  std::vector<std::filesystem::path> paths;
+
+  bool Contains(const std::string& path) const {
+    std::filesystem::path target = CanonicalAccessPath(path);
+    return std::any_of(paths.begin(), paths.end(), [&](const auto& root) {
+      return PathWithin(target, root);
+    });
+  }
+};
+
 struct McpServer {
   std::string name;
   pid_t pid = -1;
@@ -44,6 +58,7 @@ struct McpServer {
   int64_t next_id = 1;
   size_t response_cap = 16 * 1024 * 1024;
   json config;
+  McpRootSet roots;
   bool tools_changed = false;
   size_t tool_count = 0;
   std::string last_error;

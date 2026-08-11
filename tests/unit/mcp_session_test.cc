@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -16,11 +17,22 @@ void TestMcpContractHelpers() {
   CHECK(McpSupportsPostActionSnapshot(action_schema));
   CHECK(!McpSupportsPostActionSnapshot(
       {{"type", "object"}, {"properties", json::object()}}));
-  CHECK(McpCallArguments({{"uid", "7"}}, true)["includeSnapshot"] == true);
+  CHECK(McpCallArguments({{"uid", "7"}}, action_schema,
+                         true)["includeSnapshot"] == true);
   CHECK(McpCallArguments(
-            {{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}}, true) ==
+            {{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}},
+            action_schema, true) ==
         json({{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}}));
-  CHECK(McpCallArguments({{"timeout", 9}}, false) == json({{"timeout", 9}}));
+  CHECK(McpCallArguments({{"timeout", 9}}, action_schema, false) ==
+        json({{"timeout", 9}}));
+  json optional_path_schema = {{"type", "object"},
+                               {"properties",
+                                {{"filePath", {{"type", "string"}}},
+                                 {"requiredPath", {{"type", "string"}}}}},
+                               {"required", json::array({"requiredPath"})}};
+  CHECK(McpCallArguments({{"filePath", ""}, {"requiredPath", ""}},
+                         optional_path_schema,
+                         false) == json({{"requiredPath", ""}}));
   McpServer custom;
   custom.config = json{{"command", "custom"}};
   CHECK(!McpDefaultsPostActionSnapshot(custom, action_schema));
@@ -68,6 +80,59 @@ void TestMcpContractHelpers() {
   CHECK(!McpValidateServerConfig(
       "test", json{{"command", "server"}, {"args", json::array({1})}}, error));
   CHECK(error.find("args") != std::string::npos);
+  error.clear();
+  CHECK(!McpValidateServerConfig(
+      "test", json{{"command", "server"}, {"roots", json::array({""})}},
+      error));
+  CHECK(error.find("roots") != std::string::npos);
+
+  std::filesystem::path root_fixture =
+      std::filesystem::temp_directory_path() /
+      ("uagent-mcp-root-" + std::to_string(static_cast<int64_t>(getpid())));
+  std::filesystem::path configured_root = root_fixture / "root with space";
+  std::filesystem::create_directories(configured_root);
+  McpRootSet roots;
+  error.clear();
+  CHECK(McpResolveRoots({{"command", "server"},
+                         {"roots", json::array({"root with space"})},
+                         {"__uagent_config_dir", root_fixture.string()}},
+                        "", roots, error));
+  CHECK(roots.entries.size() == 1);
+  CHECK(roots.entries[0]["uri"].get<std::string>().find(
+            "root%20with%20space") != std::string::npos);
+  CHECK(roots.Contains((configured_root / "image.png").string()));
+  CHECK(!roots.Contains((root_fixture / "outside.png").string()));
+  McpRootSet global_roots;
+  CHECK(McpResolveRoots({{"command", "server"}}, configured_root.string(),
+                        global_roots, error));
+  CHECK(global_roots.paths ==
+        std::vector<std::filesystem::path>({configured_root}));
+  CHECK(ChromeTemporaryArtifact((std::filesystem::temp_directory_path() /
+                                 "chrome-devtools-mcp-test" / "screenshot.png")
+                                    .string()));
+  CHECK(!ChromeTemporaryArtifact(
+      (std::filesystem::temp_directory_path() / "screenshot.png").string()));
+  unsetenv("UAGENT_MCP_MISSING_ROOT");
+  McpRootSet invalid_roots;
+  CHECK(!McpResolveRoots({{"command", "server"},
+                          {"roots", json::array({"$UAGENT_MCP_MISSING_ROOT"})},
+                          {"__uagent_config_dir", root_fixture.string()}},
+                         "", invalid_roots, error));
+  CHECK(error.find("expanded to empty") != std::string::npos);
+  CHECK(McpFileUri(std::filesystem::path("/tmp/\xc3\xa9")) ==
+        "file:///tmp/%C3%A9");
+  McpServer rooted;
+  rooted.roots = roots;
+  json root_reply = McpClientRequestReply(
+      rooted, {{"jsonrpc", "2.0"}, {"id", 7}, {"method", "roots/list"}});
+  CHECK(root_reply["id"] == 7);
+  CHECK(root_reply["result"]["roots"] == roots.entries);
+  CHECK(McpClientRequestReply(
+            rooted, {{"jsonrpc", "2.0"},
+                     {"id", 8},
+                     {"method", "unknown"}})["error"]["code"] == -32601);
+  std::error_code root_cleanup_error;
+  std::filesystem::remove_all(root_fixture, root_cleanup_error);
 
   RuntimeConfig config;
   McpRuntime diagnostic_runtime;
@@ -117,6 +182,7 @@ void TestMcpContractHelpers() {
       ("uagent-mcp-image-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(image_home);
   setenv("HOME", image_home.c_str(), 1);
+  server.roots.paths = {image_home};
   json response = {
       {"result",
        {{"content", json::array({{{"type", "text"}, {"text", "plain"}},
@@ -144,11 +210,16 @@ void TestMcpContractHelpers() {
   CHECK(rendered.find("structuredContent") != std::string::npos);
   ToolResult missing_screenshot =
       ToolSuccess((image_home / "missing.png").string());
-  missing_screenshot = AttachChromeScreenshot(std::move(missing_screenshot));
+  missing_screenshot =
+      AttachChromeScreenshot(server, std::move(missing_screenshot));
   CHECK(!missing_screenshot.Ok());
   CHECK(missing_screenshot.output.find("cannot read") != std::string::npos);
+  ToolResult outside_screenshot = AttachChromeScreenshot(
+      server, ToolSuccess((image_home.parent_path() / "outside.png").string()));
+  CHECK(!outside_screenshot.Ok());
+  CHECK(outside_screenshot.error == ToolErrorCode::kPermissionDenied);
   ToolResult screenshot_text =
-      AttachChromeScreenshot(ToolSuccess("screenshot complete"));
+      AttachChromeScreenshot(server, ToolSuccess("screenshot complete"));
   CHECK(screenshot_text.Ok());
   CHECK(screenshot_text.output == "screenshot complete");
   ToolResult error_text = McpResultText(
@@ -272,19 +343,7 @@ void TestWorkspaceScopedSession() {
 
 void TestProjectTrustTracksSemanticConfig() {
   namespace fs = std::filesystem;
-  fs::path original = fs::current_path();
-  fs::path root =
-      fs::temp_directory_path() /
-      ("uagent-trust-test-" + std::to_string(static_cast<int64_t>(getpid())));
-  fs::path workspace = root / "workspace";
-  fs::path home = root / "home";
-  fs::create_directories(workspace);
-  fs::create_directories(home);
-  const char* prior_home_value = getenv("HOME");
-  std::string prior_home = prior_home_value ? prior_home_value : "";
-  bool had_home = prior_home_value != nullptr;
-  setenv("HOME", home.c_str(), 1);
-  fs::current_path(workspace);
+  TestWorkspace test("trust");
 
   CHECK(ToolWriteFile(".mcp.json", R"({"mcpServers":{"x":{"command":"one"}}})")
             .output.starts_with("wrote "));
@@ -320,33 +379,14 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=other/model\n")
             .output.starts_with("wrote "));
   CHECK(!ProjectConfigTrusted());
-
-  fs::current_path(original);
-  if (had_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  std::error_code ec;
-  fs::remove_all(root, ec);
 }
 
 void TestScopedBaseAndMemory() {
   namespace fs = std::filesystem;
-  fs::path original = fs::current_path();
-  fs::path root =
-      fs::temp_directory_path() /
-      ("uagent-memory-test-" + std::to_string(static_cast<int64_t>(getpid())));
-  fs::path workspace = root / "workspace";
-  fs::path home = root / "home";
-  fs::create_directories(workspace);
-  fs::create_directories(home);
-  const char* prior_home_value = getenv("HOME");
-  std::string prior_home = prior_home_value ? prior_home_value : "";
-  bool had_home = prior_home_value != nullptr;
-  setenv("HOME", home.c_str(), 1);
-  fs::current_path(workspace);
-  workspace = fs::current_path();  // macOS resolves /var to /private/var
+  TestWorkspace test("memory");
+  const fs::path& root = test.root;
+  const fs::path& workspace = test.workspace;
+  const fs::path& home = test.home;
 
   // Without ./.uagent everything is global; the workspace never gets one by
   // being visited.
@@ -498,14 +538,6 @@ void TestScopedBaseAndMemory() {
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
   if (prior_config) setenv("UAGENT_CONFIG_FILE", prior_config_value.c_str(), 1);
-  fs::current_path(original);
-  if (had_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  std::error_code ec;
-  fs::remove_all(root, ec);
 }
 
 }  // namespace uagent

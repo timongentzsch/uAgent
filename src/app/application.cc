@@ -26,9 +26,11 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/mcp/rpc.h"
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools/jobs.h"
@@ -264,6 +266,9 @@ class Application {
         break;
       case SlashCommandId::kOnline:
         HandleOnline();
+        break;
+      case SlashCommandId::kProcesses:
+        HandleProcesses();
         break;
     }
     return false;
@@ -522,6 +527,16 @@ class Application {
            RST());
   }
 
+  void HandleProcesses() const {
+    ToolResult activities = ToolActivityList(runtime_.processes);
+    if (activities.output.starts_with('(')) {
+      printf("%s· %s%s\n", DIM(), activities.output.c_str(), RST());
+      return;
+    }
+    printf("%sbackground work%s\n%s%s%s", BOLD(), RST(), DIM(),
+           TerminalSafe(activities.output).c_str(), RST());
+  }
+
   void RunPrompt(std::string input) {
     json content;
     if (!attachments_.empty()) {
@@ -596,7 +611,7 @@ class Application {
                            : (activity.empty() ? "working" : activity);
       line += " · " + std::string(seconds);
       line += " · ctx " + FmtCount(agent_.ContextSnapshot());
-      line += " · bg:" + std::to_string(background);
+      if (background > 0) line += " · bg:" + std::to_string(background);
       if (SteeringEnabled()) line += " · Esc interrupt";
       size_t queued = SteeringState().QueuedCount();
       if (queued > 0) {
@@ -609,7 +624,7 @@ class Application {
       std::string line = DisplayTrunc(
           TerminalSafe(status()),
           static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 1)));
-      return std::string(RST()) + DIM() + line + "\033[K" + RST() + "\n";
+      return std::string(RST()) + DIM() + line + "\033[K" + RST();
     };
 
     auto status_state = [&] {
@@ -627,10 +642,11 @@ class Application {
     };
 
     auto mount = [&](const std::string& prompt = InputPrompt(),
-                     const std::string& initial = std::string()) {
+                     const std::string& initial = std::string(),
+                     bool keep_history = true) {
       unmount();
-      output.Write(rendered_status());
-      composer.Mount(prompt, initial);
+      output.Write(rendered_status() + "\n");
+      composer.Mount(prompt, initial, keep_history);
     };
 
     auto insert = [&](std::string text) {
@@ -638,14 +654,27 @@ class Application {
       if (text.back() != '\n') text += '\n';
       unmount();
       output.Write(text);
-      output.Write(rendered_status());
+      output.Write(rendered_status() + "\n");
       composer.Remount();
     };
 
     auto redraw = [&] {
       unmount();
-      output.Write(rendered_status());
+      output.Write(rendered_status() + "\n");
       composer.Remount();
+    };
+
+    auto refresh_status = [&] {
+      if (!composer.Drawn()) return;
+      // The status is always the one row immediately above the mounted
+      // composer; update it without repainting the editor's footprint.
+      size_t rows_up = composer.CaretRow() + 1;
+      output.Write("\r\033[" + std::to_string(rows_up) + "A");
+      output.Write(rendered_status());
+      output.Write("\033[" + std::to_string(rows_up) + "B\r");
+      if (composer.CaretColumn() > 0) {
+        output.Write("\033[" + std::to_string(composer.CaretColumn()) + "C");
+      }
     };
 
     auto flush_output = [&](bool all) {
@@ -685,6 +714,16 @@ class Application {
                           {broker.Fd(), POLLIN, 0}};
       int ready = poll(events, 3, 100);
       if (ready < 0 && errno != EINTR) break;
+      if (g_terminal_resized) {
+        g_terminal_resized = 0;
+        redraw();
+        last_redraw = std::chrono::steady_clock::now();
+        last_state = status_state();
+      }
+
+      // Keep cooperative MCP requests responsive while the composer is idle.
+      // The worker owns MCP transports during a turn, so the two never race.
+      if (!working) McpDrainInbound(runtime_.mcp);
 
       if (events[1].revents & POLLIN) flush_output(false);
       if (events[2].revents & POLLIN) {
@@ -693,10 +732,9 @@ class Application {
         std::string initial;
         bool keep_history = false;
         if (broker.Take(prompt, initial, keep_history)) {
-          (void)keep_history;
           saved_draft = composer.Buffer();
           answering = true;
-          mount(prompt, initial);
+          mount(prompt, initial, keep_history);
         }
       }
 
@@ -718,7 +756,7 @@ class Application {
             if (working && SteeringEnabled() && !interrupting) {
               interrupting = true;
               SteeringState().Request();
-              redraw();
+              refresh_status();
             }
           } else if (event.kind == InteractiveInputKind::kEof) {
             exit_when_idle = true;
@@ -755,7 +793,7 @@ class Application {
         } else if (!exit_when_idle && activity_ready) {
           start_work(std::nullopt);
         }
-        redraw();
+        refresh_status();
       }
 
       // A task or command can finish after the parent has returned prose. Fold
@@ -766,7 +804,7 @@ class Application {
         BgTakeCompleted(runtime_.processes, "memory");
         if (agent_.DrainBackground()) {
           start_work(std::nullopt);
-          redraw();
+          refresh_status();
         }
       }
 
@@ -775,9 +813,9 @@ class Application {
         std::string current_state = status_state();
         bool state_changed = current_state != last_state;
         if (state_changed ||
-            now - last_redraw >= std::chrono::milliseconds(100)) {
+            now - last_redraw >= std::chrono::milliseconds(200)) {
           ++spinner_frame;
-          redraw();
+          refresh_status();
           last_redraw = now;
           last_state = std::move(current_state);
         }

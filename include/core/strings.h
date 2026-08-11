@@ -43,9 +43,10 @@ size_t Utf8BoundaryBefore(const std::string& s, size_t offset);
 
 size_t Utf8BoundaryAfter(const std::string& s, size_t offset);
 
-// cap a string at a UTF-8 boundary (never splits a codepoint), appending "…"
+// Cap a string at a UTF-8 boundary without splitting a codepoint.
 std::string Utf8Prefix(std::string s, size_t cap);
 
+// The same bound with an ellipsis when truncation is required.
 std::string Utf8Trunc(std::string s, size_t cap);
 
 // Terminal column width for valid UTF-8 in the active locale. Invalid or

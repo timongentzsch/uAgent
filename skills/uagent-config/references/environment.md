@@ -105,6 +105,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MEMORY` | `1` | enable memory recall |
 | `UAGENT_MEMORY_GENERATE` | `1` | permit new memory contributions |
 | `UAGENT_MEMORY_BYTES` | 2048 | one memory file |
+| `UAGENT_MEMORY_ALWAYS_BYTES` | 2048 | global-memory content inlined into startup context; `0` disables |
 | `UAGENT_MEMORY_FILES` | 32 | memories per scope |
 | `UAGENT_MEMORY_IDLE_SECONDS` | 21600 | session age before consolidation |
 | `UAGENT_MEMORY_SESSION_DAYS` | 10 | oldest eligible session age |
@@ -135,12 +136,14 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MCP_RESPONSE_BYTES` | 16777216 | response bound |
 | `UAGENT_MCP_SCHEMA_BYTES` | 262144 | schema bound |
 | `UAGENT_MCP_LOG_BYTES` | 16777216 | log bound |
+| `UAGENT_MCP_ROOTS` | current workspace | colon-separated roots advertised to MCP servers |
 | `UAGENT_MCP_DESC_CHARS` | 400 | tool-description bound |
 | `UAGENT_CHROME_DEVTOOLS` | `1` | enable bundled Chrome DevTools MCP |
 | `UAGENT_CHROME_MODE` | `isolated` | `isolated` or user-browser attach mode |
 | `UAGENT_CHROME_BROWSER_URL` | empty | explicit Chrome debugger URL |
 | `UAGENT_ATTACHMENT_MB` | 10 | input attachment MiB |
 | `UAGENT_PENDING_ATTACHMENTS` | 8 | queued attachment count |
+| `UAGENT_IMAGE_MODEL` | empty | vision-capable fallback model for routes that reject image input |
 | `UAGENT_IMAGE_DETAIL` | `auto` | provider input-image detail |
 | `UAGENT_IMAGE_PROTOCOL` | detected | terminal image protocol override |
 | `UAGENT_TERMINAL_IMAGE_MB` | 10 | rendered image MiB |
@@ -154,11 +157,44 @@ UAGENT_MODEL=local/fast
 | `UAGENT_HISTORY_DAYS` / `UAGENT_HISTORY_FILES` | 30 / 200 | session retention |
 | `UAGENT_DEBUG_DAYS` / `UAGENT_DEBUG_FILES` | 14 / 50 | debug-trace retention |
 | `UAGENT_BG_DAYS` / `UAGENT_BG_FILES` | 7 / 200 | completed process-log retention |
-| `UAGENT_MCP_LOG_DAYS` / `UAGENT_MCP_LOG_FILES` | 7 / 100 | MCP-log retention |
+| `UAGENT_MCP_LOG_DAYS` / `UAGENT_MCP_LOG_FILES` | 7 / 100 | MCP log and captured-image retention |
 | `UAGENT_TERMINAL_DAYS` | 7 | detached-terminal record retention; `0` removes completed records |
 | `UAGENT_CONFIG_FILE` | empty | replace normal config-file lookup |
 | `UAGENT_TRUST_PROJECT_CONFIG` | `0` | trust the current project config without prompting |
 | `UAGENT_EVAL_SCRIPT` | bundled path | evaluation runner override |
+
+## MCP server configuration
+
+Define user servers in `~/.mcp.json`. A project may define the same structure
+in `./.mcp.json` after project configuration is trusted. Project entries win
+name collisions, followed by user entries and then bundled servers.
+
+```json
+{
+  "mcpServers": {
+    "example": {
+      "command": "example-mcp",
+      "args": ["--stdio"],
+      "env": {"EXAMPLE_TOKEN": "$EXAMPLE_TOKEN"},
+      "roots": ["."],
+      "tools": ["search"],
+      "trust": false
+    }
+  }
+}
+```
+
+| Field | Default | Purpose |
+| --- | --- | --- |
+| `command` | required | executable to start |
+| `type` | `stdio` | transport; only `stdio` is supported |
+| `args` | `[]` | command arguments |
+| `env` | `{}` | child environment additions with process-variable expansion |
+| `cwd` | inherited | server working directory; relative to the config file |
+| `tools` | all | remote-tool name allowlist |
+| `roots` | `UAGENT_MCP_ROOTS` or workspace | advertised filesystem roots; relative entries use the config directory |
+| `trust` | `false` | allow read-only-annotated tools to run without mutation approval |
+| `disabled` | `false` | keep the entry without starting it |
 
 ## Installation, build, and Action-only variables
 

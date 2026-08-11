@@ -258,6 +258,26 @@ std::vector<json> DetachedRecords() {
   return records;
 }
 
+namespace {
+
+std::optional<json> FindDetachedRecord(int64_t pid) {
+  std::vector<json> records = DetachedRecords();
+  auto found =
+      std::find_if(records.begin(), records.end(), [pid](const json& record) {
+        return JsonValue(record, "pid", int64_t{0}) == pid;
+      });
+  return found == records.end() ? std::nullopt
+                                : std::optional<json>(std::move(*found));
+}
+
+ToolResult ActivityNotFound(int64_t pid) {
+  return ToolFailure(ToolErrorCode::kNotFound,
+                     "error: activity " + std::to_string(pid) +
+                         " is not supervised by uagent");
+}
+
+}  // namespace
+
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                               const std::string& cmd) {
   std::error_code ec;
@@ -282,61 +302,62 @@ std::string SupervisedJobLabel(const BgJob& job) {
   return job.detached ? "detached" : "background";
 }
 
+static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
+                                     const std::vector<json>& records,
+                                     std::string_view empty) {
+  if (supervised.empty() && records.empty()) {
+    return ToolSuccess(std::string(empty));
+  }
+  std::string output;
+  for (const BgJob& job : supervised) {
+    output += "[" + SupervisedJobLabel(job) + "] activity " +
+              std::to_string(job.pid) + " · " + FirstLine(job.cmd) + " · " +
+              job.log + "\n";
+  }
+  for (const json& record : records) {
+    pid_t record_pid = JsonValue(record, "pid", 0);
+    if (std::any_of(
+            supervised.begin(), supervised.end(),
+            [record_pid](const BgJob& job) { return job.pid == record_pid; })) {
+      continue;
+    }
+    output += JsonValue(record, "_alive", false) ? "[running] " : "[exited] ";
+    output += "activity " + std::to_string(record_pid) + " · " +
+              JsonValue(record, "cwd", "") + " · " +
+              FirstLine(JsonValue(record, "command", "")) + " · " +
+              JsonValue(record, "log", "") + "\n";
+  }
+  int64_t cap = ToolResultCap();
+  if (cap > 0 && output.size() > static_cast<size_t>(cap)) {
+    output = Utf8Trunc(std::move(output), static_cast<size_t>(cap));
+    output += "\n[activity list truncated]\n";
+  }
+  return ToolSuccess(std::move(output));
+}
+
+ToolResult ToolActivityList(const ProcessSupervisor& supervisor) {
+  return FormatActivityList(supervisor.VisibleSnapshot(), {},
+                            "(no active background work)");
+}
+
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
                               int64_t pid) {
-  std::vector<BgJob> supervised = supervisor.Snapshot();
-  std::erase_if(supervised,
-                [](const BgJob& job) { return job.kind == "memory"; });
-  std::vector<json> records = DetachedRecords();
+  std::vector<BgJob> supervised = supervisor.VisibleSnapshot();
   if (pid <= 0) {
-    if (supervised.empty() && records.empty()) {
-      return ToolSuccess("(no supervised activities)");
-    }
-    std::string out;
-    for (const BgJob& job : supervised) {
-      out += "[" + SupervisedJobLabel(job) + "] activity " +
-             std::to_string(job.pid) + " · " + FirstLine(job.cmd) + " · " +
-             job.log + "\n";
-    }
-    for (const json& record : records) {
-      pid_t record_pid = JsonValue(record, "pid", 0);
-      if (std::any_of(supervised.begin(), supervised.end(),
-                      [record_pid](const BgJob& job) {
-                        return job.pid == record_pid;
-                      })) {
-        continue;
-      }
-      out += (JsonValue(record, "_alive", false) ? "[running] " : "[exited] ");
-      out += "activity " + std::to_string(record_pid) + " · " +
-             JsonValue(record, "cwd", "") + " · " +
-             FirstLine(JsonValue(record, "command", "")) + " · " +
-             JsonValue(record, "log", "") + "\n";
-    }
-    int64_t cap = ToolResultCap();
-    if (cap > 0 && out.size() > static_cast<size_t>(cap)) {
-      out = Utf8Trunc(std::move(out), static_cast<size_t>(cap));
-      out += "\n[terminal list truncated]";
-    }
-    return ToolSuccess(std::move(out));
+    return FormatActivityList(supervised, DetachedRecords(),
+                              "(no supervised activities)");
   }
 
   if (std::optional<BgJob> job = supervisor.Find(static_cast<pid_t>(pid));
-      job && job->kind != "memory") {
+      job && ProcessSupervisor::IsVisible(*job)) {
     return ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
                        std::to_string(pid) + " · log " + job->log + "]\n" +
                        ReadLogTail(job->log, ToolResultCap()));
   }
 
-  auto found =
-      std::find_if(records.begin(), records.end(), [&](const json& record) {
-        return JsonValue(record, "pid", int64_t{0}) == pid;
-      });
-  if (found == records.end()) {
-    return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: activity " + std::to_string(pid) +
-                           " is not supervised by uagent");
-  }
-  const json& record = *found;
+  std::optional<json> detached = FindDetachedRecord(pid);
+  if (!detached) return ActivityNotFound(pid);
+  const json& record = *detached;
   std::string status =
       JsonValue(record, "_alive", false) ? "running" : "exited";
   return ToolSuccess(
@@ -417,17 +438,9 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
     log = supervised->log;
     detached = supervised->detached;
   } else {
-    std::vector<json> records = DetachedRecords();
-    auto found =
-        std::find_if(records.begin(), records.end(), [pid](const json& record) {
-          return JsonValue(record, "pid", pid_t{0}) == pid;
-        });
-    if (found == records.end()) {
-      return ToolFailure(ToolErrorCode::kNotFound,
-                         "error: activity " + std::to_string(pid) +
-                             " is not supervised by uagent");
-    }
-    log = JsonValue(*found, "log", "");
+    std::optional<json> record = FindDetachedRecord(pid);
+    if (!record) return ActivityNotFound(pid);
+    log = JsonValue(*record, "log", "");
     detached = true;
   }
 
@@ -531,8 +544,8 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             const ToolContext& context) {
   std::vector<pid_t> ids;
   if (requested.empty()) {
-    for (const BgJob& job : supervisor.Snapshot()) {
-      if (!job.detached && job.kind != "memory") ids.push_back(job.pid);
+    for (const BgJob& job : supervisor.VisibleSnapshot()) {
+      if (!job.detached) ids.push_back(job.pid);
     }
   } else {
     for (int64_t requested_id : requested) {

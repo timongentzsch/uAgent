@@ -140,7 +140,7 @@ inline bool McpResolveRoots(const json& conf, const std::string& configured,
 
   roots = {};
   std::set<std::string> seen;
-  for (std::string value : requested) {
+  for (const std::string& value : requested) {
     if (value.empty()) continue;
     std::filesystem::path path = ExpandProcessEnv(value);
     if (path.empty()) {

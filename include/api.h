@@ -35,7 +35,6 @@ class Api {
   bool server_tools_authorized = false;
   bool render_stream = true;
   bool image_input = true;
-  bool route_certified = false;
   bool openrouter_compatible = false;
   double session_cost = 0;
   // Set once at the user-turn boundary. Every transient status row in that

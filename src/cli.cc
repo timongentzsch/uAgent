@@ -29,8 +29,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kCost, "/cost", "", "show spend by model route"},
     {SlashCommandId::kEffort, "/effort", "LEVEL", "set reasoning effort"},
     {SlashCommandId::kHelp, "/help", "", "show this help"},
-    {SlashCommandId::kHandoff, "/handoff", "PROVIDER/MODEL",
-     "checkpoint and switch route"},
     {SlashCommandId::kMemory, "/memory", "", "show memory state and keys"},
     {SlashCommandId::kModel, "/model", "NAME", "switch model or route"},
     {SlashCommandId::kModels, "/models", "[QUERY]",

@@ -59,8 +59,6 @@ endif()
 add_library(
   uagent_core
   src/agent/agent.cc
-  src/agent/checkpoint.cc
-  src/agent/context_policy.cc
   src/agent/conversation.cc
   src/agent/request.cc
   src/agent/session_store.cc
@@ -70,7 +68,6 @@ add_library(
   src/api/openai_stream.cc
   src/app/application.cc
   src/app/bootstrap.cc
-  src/app/eval.cc
   src/app/options.cc
   src/app/runtime.cc
   src/cli.cc
@@ -86,7 +83,6 @@ add_library(
   src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
-  src/tools/memory_pipeline.cc
   src/tools/policy.cc
   src/tools/registry.cc
   src/tools/shell.cc
@@ -126,17 +122,13 @@ if(BUILD_TESTING)
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  foreach(group IN ITEMS runtime tools ui providers checkpoint mcp delegation)
+  foreach(group IN ITEMS runtime tools ui providers mcp delegation)
     add_test(NAME integration_${group}
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
                      $<TARGET_FILE:uagent> --group ${group})
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
   endforeach()
-  add_test(NAME context_policy_sim
-           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/context_policy_sim.py)
-  add_test(NAME live_evaluation_helpers
-           COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/live_evaluation_test.py)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
@@ -154,13 +146,8 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(PROGRAMS tests/agent_workflow_live.py
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent RENAME eval.py)
-install(FILES tests/eval_profiles.py tests/eval_runtime.py
-              tests/memory_fixture.py
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
-              docs/ARCHITECTURE.md docs/OPERATIONS.md docs/CHECKPOINTS.md
+              docs/ARCHITECTURE.md docs/OPERATIONS.md
               docs/PERSISTENCE.md docs/TESTING.md
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 

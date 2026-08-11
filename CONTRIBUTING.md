@@ -21,10 +21,10 @@ over local exceptions, and preserve behavior before redesigning a boundary.
 - Keep persistence versioned and validate complete temporary state before
   replacing live state.
 
-Add a focused unit test for local behavior and a hermetic integration test for
-stateful or externally visible behavior. Parser changes should also preserve
-chunk-boundary equivalence. See [the test guide](docs/TESTING.md) before adding
-or changing a billable route scenario.
+Add focused unit coverage for local behavior or one hermetic integration path
+for externally visible behavior. Avoid covering the same contract at multiple
+layers. Parser changes should preserve chunk-boundary equivalence. See
+[the test guide](docs/TESTING.md).
 
 ## Verify
 

@@ -17,7 +17,7 @@ namespace uagent {
 std::vector<Tool> BuiltinTools(
     ProcessSupervisor& supervisor,
     const std::filesystem::path& workspace = CanonicalAccessPath("."),
-    bool inline_images = false, bool memory_generate = true);
+    bool inline_images = false);
 
 }  // namespace uagent
 

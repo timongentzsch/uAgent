@@ -95,12 +95,7 @@ std::optional<ModelRoute> ResolveModelRoute(
 void ExportRoute(const Api& api);
 void ResetRouteCapabilities(Api& api);
 void ApplyRoute(Api& api, const ModelRoute& route);
-json ActivateRoute(Api& api, const std::string& checkpoint_mode);
-std::string RouteProfilesPath();
-std::string RouteProfileKey(const Api& api);
-json RouteProfile(const Api& api);
-json ApplyRouteProfile(Api& api);
-bool InvalidateRouteProfile(const Api& api, const std::string& feature);
+void ActivateRoute(Api& api);
 ProviderSetup ConfigureProvider(Api& api);
 bool CanUseRawModel(const Api& api, std::string_view name);
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,

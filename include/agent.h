@@ -22,7 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/context_policy.h"
 #include "include/agent/conversation.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
@@ -121,8 +120,7 @@ class Agent {
 
   // summarize the conversation with the model, then restart the session
   // from that summary — frees the context without losing the thread
-  bool Compact(bool automatic = false, Usage* turn_usage = nullptr,
-               bool apply = true);
+  bool Compact(bool automatic = false, Usage* turn_usage = nullptr);
 
   // Fold in what subagent processes spent. They bill against the same key, so
   // without this their cost is missing from the footer and the status bar.
@@ -185,10 +183,7 @@ class Agent {
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   bool render_output = true);
 
-  ContextPolicyInput BuildContextPolicyInput(size_t pending_bytes,
-                                             size_t schema_bytes,
-                                             bool checkpoint_enabled) const;
-  std::string PrepareContext(size_t pending_chars);
+  int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes) const;
 
   enum class MidturnCompact {
     kNotNeeded,
@@ -232,26 +227,14 @@ class Agent {
 
   size_t BaselineSize() const;
 
-  json BaselineMessages(bool checkpoint = false) const;
+  json BaselineMessages() const;
 
   std::vector<MessageKind> BaselineKinds() const;
 
   void RefreshBaseline();
 
-  json CheckpointSysMsg() const;
-
   void AppendToolResult(const ToolCall& call, bool text_mode,
                         const std::string& result);
-
-  void InvalidatePendingCheckpoint(const char* reason);
-  void RecordSideEffect(const CallTask& task, const ToolCall& call);
-  void ApplyPendingCheckpoint();
-  void ApplyCheckpoint(const std::string& state,
-                       const std::vector<std::filesystem::path>& paths,
-                       const std::vector<std::string>& results,
-                       const std::vector<std::string>& verbatim);
-  bool RunCheckpointCall(const ToolCall& call, bool text_mode,
-                         int64_t& tool_count, int64_t step);
 
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
@@ -276,12 +259,9 @@ class Agent {
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   Conversation conversation_;
-  ContextPolicy context_policy_;
+  int64_t reported_context_tokens_ = 0;
   mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;
-  json checkpoint_candidates_ = json::array();
-  json pending_checkpoint_ = nullptr;
-  json side_effects_ = json::array();
   Usage session_usage_;
   RouteUsage route_usage_;
   std::string session_id_;
@@ -291,9 +271,6 @@ class Agent {
   int64_t turn_id_ = 0;
   int64_t request_id_ = 0;
   uint64_t revision_ = 0;
-  int64_t last_checkpoint_turn_ = 0;
-  bool checkpoint_hint_active_ = false;
-  bool checkpoint_turn_complete_ = false;
   bool verbose_ = false;
   bool cost_warning_shown_ = false;
   std::chrono::steady_clock::time_point active_deadline_ =

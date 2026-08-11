@@ -49,8 +49,6 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t id);
 std::string BgResultHeader(const BgJob& job);
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind = {});
-std::vector<std::string> BgTakeCompletedExcept(ProcessSupervisor& supervisor,
-                                               std::string_view kind);
 void BgShutdownAll(ProcessSupervisor& supervisor);
 size_t BgCancelTasks(ProcessSupervisor& supervisor);
 

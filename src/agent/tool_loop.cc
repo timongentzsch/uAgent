@@ -62,14 +62,6 @@ bool Agent::RunCalls(
     std::unordered_map<std::string, std::string>& stable_arguments,
     int64_t step, std::chrono::steady_clock::time_point deadline,
     int64_t& consecutive_failed_tools) {
-  if (calls.size() == 1 && calls[0].name == "checkpoint") {
-    return RunCheckpointCall(calls[0], text_mode, tool_count, step);
-  }
-  if (pending_checkpoint_.is_object() &&
-      JsonValue(pending_checkpoint_, "turn", int64_t{-1}) == turn_id_) {
-    InvalidatePendingCheckpoint("tool call followed checkpoint");
-  }
-
   std::vector<CallTask> tasks(calls.size());
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status) {
@@ -108,10 +100,6 @@ bool Agent::RunCalls(
                     .empty()) {
       reject(task, ToolErrorCode::kInvalidArguments, std::move(invalid),
              "unstable_argument");
-    } else if (call.name == "checkpoint") {
-      reject(task, ToolErrorCode::kInvalidArguments,
-             "error: checkpoint must be the only call in its tool batch",
-             "invalid_batch");
     } else if (tool->max_calls_per_turn >= 0 &&
                tool_counts[call.name] >= tool->max_calls_per_turn) {
       reject(task, ToolErrorCode::kLimitExceeded,
@@ -233,7 +221,6 @@ bool Agent::RunCalls(
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
     PrintToolResult(task, call, model_results[index], verbose_);
-    RecordSideEffect(task, call);
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, text_mode, model_results[index]);

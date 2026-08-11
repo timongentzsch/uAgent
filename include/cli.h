@@ -16,7 +16,6 @@ enum class SlashCommandId {
   kContext,
   kEffort,
   kHelp,
-  kHandoff,
   kMemory,
   kModel,
   kModels,

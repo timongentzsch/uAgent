@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "include/app/bootstrap.h"
-#include "include/app/eval.h"
 #include "include/app/headless.h"
 #include "include/app/options.h"
 #include "include/cli.h"
@@ -55,9 +54,6 @@ int Main(int argc, char** argv) {
     return ParseInt64(argv[3], bytes) && bytes >= 1024
                ? ToolLogPump(argv[2], bytes)
                : 2;
-  }
-  if (argc >= 2 && std::string(argv[1]) == "eval") {
-    return RunEval(argc, argv);
   }
   InitializeProcess();
   ParsedOptions parsed = ParseOptions(argc, argv);

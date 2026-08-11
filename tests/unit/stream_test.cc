@@ -239,16 +239,10 @@ void TestBackgroundValidation() {
   add_job({999997, "", "", false, ""});
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
-  CHECK(supervisor.VisibleCount() == 2);
+  CHECK(supervisor.Count() == 2);
   CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
   CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
-  add_job({999995, "", "", false, "memory"});
-  CHECK(supervisor.PendingCount() == 2);
-  CHECK(supervisor.VisibleCount() == 2);
-  std::vector<BgJob> visible = supervisor.VisibleSnapshot();
-  CHECK(visible.size() == supervisor.VisibleCount());
-  CHECK(std::none_of(visible.begin(), visible.end(),
-                     [](const BgJob& job) { return job.kind == "memory"; }));
+  CHECK(supervisor.Snapshot().size() == supervisor.Count());
   CHECK(!supervisor.TakeAll().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);

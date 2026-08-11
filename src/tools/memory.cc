@@ -222,8 +222,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
 }  // namespace
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
-                            const std::optional<std::string>& content,
-                            bool allow_set) {
+                            const std::optional<std::string>& content) {
   if (action != "get" && action != "set" && action != "forget" &&
       action != "list" && action != "search") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -263,11 +262,6 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
     return AccessMemory(name, scope, std::nullopt, false);
   }
   if (action == "set" && has_content) {
-    if (!allow_set) {
-      return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: memory contributions are disabled by "
-                         "UAGENT_MEMORY_GENERATE=0");
-    }
     return AccessMemory(name, scope, RedactMemorySecrets(*content), false);
   }
   if (action == "forget" && !has_content) {

@@ -103,12 +103,8 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_WEB_SEARCH_MAX_RESULTS", "99", 1);
   setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
   setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
-  setenv("UAGENT_MEMORY_GENERATE", "0", 1);
   setenv("UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two", 1);
   setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
-  const char* checkpoint_mode = getenv("UAGENT_CHECKPOINT_MODE");
-  std::string prior_checkpoint_mode = checkpoint_mode ? checkpoint_mode : "";
-  unsetenv("UAGENT_CHECKPOINT_MODE");
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 1);
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
@@ -118,7 +114,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(ToolTraceProtectChars() == 1234);
   CHECK(ToolTracePruneMinChars() == 5678);
   CHECK(config.session_archive_bytes == 0);
-  CHECK(config.checkpoint_mode == "apply");
   CHECK(config.web_search_model == "vendor/search");
   CHECK(config.web_search_backend == "responses");
   CHECK(config.web_search_url == "https://search.example/v1");
@@ -129,7 +124,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_max_results == 25);
   CHECK(config.web_search_max_uses == 1);
   CHECK(!config.web_search_server);
-  CHECK(!config.memory_generate);
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
@@ -138,14 +132,10 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
   CHECK(diagnostics.value("openrouter_variant", "") == "floor");
-  CHECK(!diagnostics.value("memory_generate", true));
   CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
-  if (checkpoint_mode) {
-    setenv("UAGENT_CHECKPOINT_MODE", prior_checkpoint_mode.c_str(), 1);
-  }
   unsetenv("UAGENT_MAX_STEPS");
   unsetenv("UAGENT_TEST_LONG");
   unsetenv("UAGENT_SESSION_BUDGET");
@@ -153,7 +143,6 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_TASK_MODEL");
   unsetenv("UAGENT_TOOL_TRACE_PROTECT_CHARS");
   unsetenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS");
-  unsetenv("UAGENT_MEMORY_GENERATE");
   unsetenv("UAGENT_MCP_ROOTS");
   unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
   unsetenv("UAGENT_WEB_SEARCH_MODEL");
@@ -217,107 +206,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
   CHECK(body["stream_options"].value("include_usage", false));
-
-  std::filesystem::path profile_home =
-      std::filesystem::temp_directory_path() /
-      ("uagent-route-profile-" + std::to_string(getpid()));
-  std::filesystem::create_directories(profile_home / ".uagent/config");
-  const char* old_home = getenv("HOME");
-  std::string saved_home = old_home ? old_home : "";
-  setenv("HOME", profile_home.c_str(), 1);
-  std::string profile_error;
-  api.model = "profile-model";
-  api.config.openrouter_provider.clear();
-  api.config.checkpoint_mode = "apply";
-  api.parallel_tools = true;
-  api.image_input = true;
-  json saved_profile = {
-      {"schema", 3},
-      {"routes",
-       {{RouteProfileKey(api),
-         {{"samples", 4},
-          {"passing_samples", 4},
-          {"pass_rate", 1.0},
-          {"certified", true},
-          {"scenario_classes", {"analysis", "checkpoint"}},
-          {"certified_at_unix", static_cast<int64_t>(std::time(nullptr))},
-          {"checkpoint_mode", "shadow"},
-          {"parallel_hint_support", false},
-          {"image_support", false}}}}},
-      {"recommendations", json::object()}};
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  api.openrouter_compatible = true;
-  CHECK(ApplyRouteProfile(api).empty());
-  api.openrouter_compatible = false;
-  json profile = ApplyRouteProfile(api);
-  CHECK(!profile.empty());
-  CHECK(api.config.checkpoint_mode == "shadow");
-  CHECK(!api.parallel_tools);
-  CHECK(!api.image_input);
-  CHECK(api.route_certified);
-  saved_profile["routes"][RouteProfileKey(api)]["certified_at_unix"] = 1;
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  api.config.checkpoint_mode = "apply";
-  api.parallel_tools = true;
-  api.image_input = true;
-  api.route_certified = false;
-  CHECK(ApplyRouteProfile(api).empty());
-  CHECK(api.config.checkpoint_mode == "apply");
-  CHECK(api.parallel_tools);
-  CHECK(api.image_input);
-
-  saved_profile["routes"][RouteProfileKey(api)]["certified_at_unix"] =
-      static_cast<int64_t>(std::time(nullptr));
-  saved_profile["routes"][RouteProfileKey(api)]["memory_enabled"] = false;
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  CHECK(ApplyRouteProfile(api).empty());
-  api.config.memory_enabled = false;
-  CHECK(!ApplyRouteProfile(api).empty());
-  api.config.memory_enabled = true;
-  saved_profile["routes"][RouteProfileKey(api)]["memory_enabled"] = true;
-  saved_profile["routes"][RouteProfileKey(api)]["memory_generate"] = false;
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  CHECK(ApplyRouteProfile(api).empty());
-  api.config.memory_generate = false;
-  CHECK(!ApplyRouteProfile(api).empty());
-  api.config.memory_generate = true;
-
-  api.reasoning_effort.clear();
-  std::string low_route = RouteKey(api.base_url, "", api.model, "low");
-  saved_profile = {
-      {"schema", 3},
-      {"routes",
-       {{low_route,
-         {{"samples", 4},
-          {"passing_samples", 4},
-          {"pass_rate", 1.0},
-          {"certified", true},
-          {"scenario_classes", {"analysis", "checkpoint"}},
-          {"certified_at_unix", static_cast<int64_t>(std::time(nullptr))},
-          {"parallel_hint_support", true}}}}},
-      {"recommendations",
-       {{RouteKey(api.base_url, "", api.model, ""),
-         {{"effort", "low"}, {"mean_cost", 0.01}, {"route", low_route}}}}}};
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  CHECK(!ApplyRouteProfile(api).empty());
-  CHECK(api.reasoning_effort == "low");
-  api.reasoning_effort.clear();
-  saved_profile["routes"][low_route]["certified_at_unix"] = 1;
-  CHECK(AtomicWriteFile(RouteProfilesPath(), JsonDump(saved_profile), 0600,
-                        false, profile_error));
-  CHECK(ApplyRouteProfile(api).empty());
-  CHECK(api.reasoning_effort.empty());
-  if (old_home) {
-    setenv("HOME", saved_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  std::filesystem::remove_all(profile_home);
 
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;
@@ -588,8 +476,7 @@ void TestNamedProviders() {
   fixed_effort.effort = "low";
   ApplyRoute(routed, fixed_effort);
   CHECK(routed.reasoning_effort == "low");
-  json activated = ActivateRoute(routed, "apply");
-  CHECK(activated.empty());
+  ActivateRoute(routed);
   CHECK(routed.openrouter_web_search);
   CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
   CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));

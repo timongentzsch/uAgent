@@ -18,12 +18,11 @@ or multi-tenant service.
 | tool result / batch | 8,000 / 16,000 characters |
 | recent tool trace / prune batch | 64 / 32 KiB |
 | background jobs / safe workers | 8 / 4 |
-| memory file / files / session input | 2 KiB / 32 per scope / 64 KiB |
+| memory file / files | 2 KiB / 32 per scope |
 | memory always-on slice | 2 KiB |
-| memory idle / eligible age | 6 hours / 10 days |
 | attachment / terminal image | 10 / 10 MiB |
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
-| checkpoint hint / urgent / emergency | 65 / 85 / 95% |
+| automatic compaction | 85% projected context |
 | removed-trace archive | 16 MiB |
 
 Files, edits, instructions, memories, skills, schemas, MCP traffic, shell logs,
@@ -32,15 +31,9 @@ their owning modules. Raise a bound only with a representative measurement.
 Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 `UAGENT_TOOL_TRACE_PROTECT_CHARS` controls the recent-output budget.
 Use `--no-memory` to remove memory recall and writes from the coordinator and
-delegated children during reproducible runs. `UAGENT_MEMORY=0` disables recall;
-`UAGENT_MEMORY_GENERATE=0` keeps recall but prevents new contributions. `/memory`
-shows the active policy and saved keys without calling a model.
-Automatic consolidation uses the current route, consumes one supervised
-background slot, and can incur provider usage. It scans at most one eligible
-session on interactive startup. Tune its eligibility with
-`UAGENT_MEMORY_IDLE_SECONDS` and `UAGENT_MEMORY_SESSION_DAYS`, and its filtered
-input cap with `UAGENT_MEMORY_SESSION_BYTES`. Completed maintenance output is
-discarded instead of being injected into the next model request.
+delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
+environment setting. `/memory` shows the active policy and saved keys without
+calling a model.
 
 The always-on slice inlines behavioral (global-scope) memory into the startup
 context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
@@ -73,13 +66,12 @@ complete process group and removes its record and rotating logs. Output is
 limited to bytes the child has flushed. Persistent TUI and headless runs resume
 after background completion without a second process watcher.
 
-For configured MCP servers, `mcp_status` reports ready/inactive/error state,
-PID, discovered tool count, and the last lifecycle error; `mcp_restart`
-restarts and handshakes a named server. These generic tools are omitted when
-the built-in Chrome server is the only MCP configuration: `chrome_session`
-already switches its mode/toolset and performs a page-level health probe.
-µAgent advertises MCP roots and answers `roots/list`; the current workspace is
-the default root. Set colon-separated `UAGENT_MCP_ROOTS`, or a server's
+Configured MCP servers start once and expose their discovered tools directly.
+The built-in Chrome server stays lazy and slim until `chrome_session` starts or
+switches it; startup/switch performs a page-level health probe, while subsequent
+browser calls avoid a redundant preflight. µAgent advertises MCP roots and
+answers `roots/list`; the current workspace is the default root. Set
+colon-separated `UAGENT_MCP_ROOTS`, or a server's
 `roots` string array in `.mcp.json`, to authorize a different bounded set.
 Per-server paths are relative to that configuration file and override the
 global default. `--yolo` controls tool approval, not an MCP server's root
@@ -92,8 +84,8 @@ interrupts only the foreground request/tool batch and applies queued guidance
 immediately. Terminal focus changes do not clear drafts or interrupt work;
 multiline bracketed paste is normalized and inserted as one edit before Enter
 submits it.
-Background commands, delegated tasks, detached terminals, and memory
-maintenance retain their existing supervisor ownership.
+Background commands, delegated tasks, and detached terminals retain their
+existing supervisor ownership.
 
 ## Release
 
@@ -108,7 +100,7 @@ UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 CI adds warnings-as-errors, sanitizers, TSan, parser fuzzing, coverage, Google
 C++ style, and native Linux/macOS builds. Before a tag, verify the installed
 archive, one real turn per supported route, Chrome isolated and user attach,
-one private debug trace, and relevant [`uagent eval`](TESTING.md) scenarios.
+one private debug trace, and the hermetic suite.
 `install.sh` defaults to four build workers; set `UAGENT_BUILD_JOBS` for the
 host when a different resource limit is appropriate.
 
@@ -124,7 +116,6 @@ pin both the Action ref and release version.
 - `chrome_session` succeeds only after a page-level health probe; a handshake
   without a selectable page is reported as unavailable.
 - Corrupt sessions are reported and left untouched.
-- Route-profile mismatches self-heal and should trigger recertification.
 - Managed processes are reaped on catchable exits; `SIGKILL` cannot guarantee
   cleanup.
 

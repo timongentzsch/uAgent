@@ -17,26 +17,26 @@ main → Bootstrap → Application
 | Path | Responsibility |
 | --- | --- |
 | `src/app/`, `include/app/` | options, bootstrap, REPL, shutdown |
-| `src/agent/`, `include/agent/` | conversation, context, checkpoints, tool loop |
+| `src/agent/`, `include/agent/` | conversation, compaction, tool loop |
 | `src/api/`, `include/api/` | OpenAI-compatible requests and streaming |
-| `src/providers.cc`, `include/providers.h` | route activation and profiles |
+| `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
 | `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
 | `include/mcp/` | bounded stdio JSON-RPC and Chrome integration |
 | `include/core/` | configuration, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
-`Conversation` owns model-visible messages and the bounded archive.
-`ContextPolicy` alone decides context pressure. `Agent` coordinates both;
-providers and tools do not own conversation state. `ProcessSupervisor`,
+`Conversation` owns model-visible messages and the bounded archive. `Agent`
+compares estimated/reported context against one threshold; providers and tools
+do not own conversation state. `ProcessSupervisor`,
 `McpRuntime`, and `UsageAccumulator` each own one class of external resource.
 
 Shared policy stays centralized: `MakeTool` defines tool metadata,
 `RuntimeConfig` defines limits, `RouteKey` defines route identity, and
 `HeadlessResult` defines machine output.
 
-Every route mutation uses one activation path: restore configured policy,
-reset capabilities, apply certified evidence, export child state, then rotate
-the agent route identity. Provider protocol is explicit for custom proxies.
+Every route mutation uses one activation path: reset discovered capabilities,
+export child state, then rotate the agent route identity. Provider protocol is
+explicit for custom proxies.
 
 ## Turn
 
@@ -95,26 +95,18 @@ only when it changes. Older completed tool outputs are replaced in meaningful
 batches after two newer user turns and a recent-output budget; durable tool
 outputs opt out through registry metadata. A byte-identical repeated source
 read gets a short receipt only while its original result remains in that recent
-window. At context pressure the model may produce a bounded, non-authoritative
-checkpoint; applying it intentionally starts a fresh cache prefix. `/handoff`
-uses that boundary to change routes.
+window. At projected 85% context pressure, including pending input and schemas,
+one tool-free model call creates a bounded summary. History changes only after that
+summary passes validation. Automatic pre-turn and at-most-once mid-turn
+compaction use the same path as `/compact`.
 
-Active messages, removed-trace archive, and checkpoints remain separate.
-Model-authored memory or checkpoint text is evidence, never user authority.
-Memory bodies are read on demand from a bounded name-only index. The explicit
-`memory(action, key, content?)` contract handles get, set, and forget. Explicit
-user requests may write immediately. Automatic contribution is delayed: one
-eligible prior session per interactive startup is claimed after its idle
-window, stripped of system/runtime/reasoning/image content, secret-redacted,
-and sent to a bounded child with only the memory tool. That child consolidates
-at most one durable preference, workflow, constraint, or debugging insight
-into the existing scoped files, or does nothing. Its maintenance result never
-enters the active conversation, foreground steering does not cancel it, and a
-resumed session becomes eligible again after it changes and goes idle. This
-keeps the important extraction/consolidation lifecycle without a second
-database or memory store. Recall and contribution are separate controls;
-`--no-memory` removes both for reproducible runs. Required behavior belongs in
-`AGENTS.md`, not memory.
+Active messages and the removed-trace archive remain separate. Model-authored
+summary and memory text is evidence, never user authority. Memory bodies are
+read on demand from a bounded name-only index. The explicit
+`memory(action, key, content?)` contract handles get, set, forget, list, and
+search; writes require an explicit user request. `--no-memory` removes recall
+and writes for reproducible runs. Required behavior belongs in `AGENTS.md`, not
+memory.
 Skills use progressive disclosure: a bounded catalogue of installed names and
 descriptions is advertised with the `skill` tool. Explicit `$skill-name`
 mentions are resolved before the first model call; otherwise the model selects
@@ -123,23 +115,17 @@ and nested skills to depth six. A selected `SKILL.md` is loaded completely or
 rejected as oversized—partial procedures are never injected. Tool requirements
 filter unusable skills before advertisement; invocation arguments expand only
 when the selected body is loaded.
-See [CHECKPOINTS.md](CHECKPOINTS.md).
-
-## Observability and evaluation
+## Observability
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,
 background count, queue depth, and working time.
 `--debug` records reconstructable JSONL; `--json` and `--json-stream` expose
-stable automation formats. `uagent eval` runs isolated scenarios; explicit
-certification records the exact passing suite. Only identical scenario sample
-sets select the cheapest compliant effort. Capability contradictions
-persistently invalidate profiles, which expire after 30 days.
+stable automation formats.
 
 ## Failure model
 
 - Retry transient transport failures only before semantic progress.
 - Degrade unsupported optional request features once and record it.
-- Treat certified-profile mismatches as stale evidence, then self-heal.
 - Isolate MCP failure to one server.
 - Cancel and reap owned process groups on catchable exits.
 - Keep debug and persisted state private and bounded.

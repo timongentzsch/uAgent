@@ -193,14 +193,12 @@ struct Tool {
   bool dedupe_output = false;       // collapse verified recent duplicate output
   enum class Visibility {
     kAlways,
-    kCheckpointHint,
     kDetachedTerminal,
   };
   Visibility visibility = Visibility::kAlways;
 };
 
 struct ToolAvailability {
-  bool checkpoint_hint = false;
   bool detached_terminal = false;
 };
 
@@ -473,10 +471,8 @@ inline json AvailableToolSchemas(
   json available = json::array();
   for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
     const Tool& tool = tools[i];
-    if ((tool.visibility == Tool::Visibility::kCheckpointHint &&
-         !availability.checkpoint_hint) ||
-        (tool.visibility == Tool::Visibility::kDetachedTerminal &&
-         !availability.detached_terminal)) {
+    if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
+        !availability.detached_terminal) {
       continue;
     }
     auto count = counts.find(tool.name);

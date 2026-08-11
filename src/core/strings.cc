@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cwchar>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -206,6 +207,13 @@ size_t JsonEstimatedBytes(const json& value) {
     }
   }
   return total;
+}
+
+int64_t EstimatedTokens(size_t bytes) {
+  size_t tokens = bytes / 4;
+  size_t cap = static_cast<size_t>(std::numeric_limits<int64_t>::max());
+  return tokens > cap ? std::numeric_limits<int64_t>::max()
+                      : static_cast<int64_t>(tokens);
 }
 
 std::string StripTrailingSlashes(std::string s) {

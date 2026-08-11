@@ -150,7 +150,7 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       if (SkillExcluded(name) || Trim(description).empty()) continue;
       description = Utf8Trunc(std::move(description),
                               static_cast<size_t>(SkillDescriptionBytes()));
-      argument_hint = Utf8Trunc(OneLine(std::move(argument_hint)), 128);
+      argument_hint = Utf8Trunc(OneLine(argument_hint), 128);
       Skill skill{name,
                   description,
                   dir.string(),

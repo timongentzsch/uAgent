@@ -32,12 +32,6 @@ bool ValidState(const json& value) {
          value.contains("archive") && value["archive"].is_array() &&
          value.contains("archive_dropped_segments") &&
          value["archive_dropped_segments"].is_number_integer() &&
-         value.contains("checkpoint_candidates") &&
-         value["checkpoint_candidates"].is_array() &&
-         value.contains("pending_checkpoint") &&
-         (value["pending_checkpoint"].is_null() ||
-          value["pending_checkpoint"].is_object()) &&
-         value.contains("side_effects") && value["side_effects"].is_array() &&
          value.contains("context_tokens") &&
          value["context_tokens"].is_number_integer() &&
          value.contains("usage") && value["usage"].is_object();
@@ -63,9 +57,6 @@ json StateJson(const SessionState& state) {
           {"message_kinds", MessageKindsJson(state.message_kinds)},
           {"archive", state.archive},
           {"archive_dropped_segments", state.archive_dropped_segments},
-          {"checkpoint_candidates", state.checkpoint_candidates},
-          {"pending_checkpoint", state.pending_checkpoint},
-          {"side_effects", state.side_effects},
           {"context_tokens", state.context_tokens},
           {"usage", UsageJson(state.usage)},
           {"route_usage", RouteUsageJson(state.route_usage)}};
@@ -164,10 +155,6 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   record.state.archive = std::move(state["archive"]);
   record.state.archive_dropped_segments =
       std::max(int64_t{0}, state["archive_dropped_segments"].get<int64_t>());
-  record.state.checkpoint_candidates =
-      std::move(state["checkpoint_candidates"]);
-  record.state.pending_checkpoint = std::move(state["pending_checkpoint"]);
-  record.state.side_effects = std::move(state["side_effects"]);
   record.state.context_tokens =
       std::max(int64_t{0}, state["context_tokens"].get<int64_t>());
   record.state.usage = UsageFromJson(state["usage"]);

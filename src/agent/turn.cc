@@ -100,9 +100,9 @@ void Agent::RecordModelResponse(
     state.line_open = false;
   }
   if (response.usage.is_object()) {
-    context_policy_.SetReported(
+    reported_context_tokens_ =
         JsonValue(response.usage, "prompt_tokens", int64_t{0}) +
-        JsonValue(response.usage, "completion_tokens", int64_t{0}));
+        JsonValue(response.usage, "completion_tokens", int64_t{0});
     ContextUsed();
   }
 }
@@ -192,7 +192,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
                     bool harness_origin) {
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
-  checkpoint_turn_complete_ = false;
   ++turn_id_;
   ++revision_;
   if (!harness_origin) {
@@ -200,7 +199,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     if (session_title_.empty()) session_title_ = FirstLine(user_input);
   }
   std::string local_time = LocalStamp();
-  ApplyPendingCheckpoint();
   if (!conversation_.Empty()) {
     conversation_.Set(0, SysMsg(), MessageKind::kSystem);
   }
@@ -215,7 +213,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
             {"messages", conversation_.Size()},
             {"context_tokens", ContextUsed()}});
   bool attachment = !user_content.is_null();
-  checkpoint_hint_active_ = false;
   std::vector<std::string> explicit_skills =
       harness_origin ? std::vector<std::string>{}
                      : ExplicitSkillContext(user_input);
@@ -223,9 +220,16 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   for (const std::string& skill : explicit_skills) {
     skill_bytes = SaturatingAdd(skill_bytes, skill.size());
   }
-  std::string checkpoint_hint = PrepareContext(SaturatingAdd(
+  size_t pending_bytes = SaturatingAdd(
       attachment ? JsonEstimatedBytes(user_content) : user_input.size(),
-      skill_bytes));
+      skill_bytes);
+  int64_t compact_threshold =
+      std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
+  int64_t pressure = ContextPressurePct(pending_bytes, schema_chars_);
+  if (compact_threshold > 0 && pressure >= compact_threshold) {
+    DebugLog("auto_compact", {{"turn", turn_id_}, {"projected_pct", pressure}});
+    Compact(true);
+  }
   if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
     DebugLog("turn_end", {{"turn", turn_id_},
                           {"outcome", "steered_during_compaction"},
@@ -249,12 +253,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
       harness_origin
           ? MessageKind::kInternal
           : (attachment ? MessageKind::kAttachment : MessageKind::kUser));
-  if (!checkpoint_hint.empty()) {
-    conversation_.Push(HarnessMessage(std::move(checkpoint_hint)),
-                       MessageKind::kInternal);
-    checkpoint_hint_active_ = true;
-    context_policy_.HintIssued(turn_id_);
-  }
   turn_search_trace_.Reset();
   std::unordered_map<std::string, int64_t> tool_counts;
   std::unordered_map<std::string, std::string> stable_arguments;
@@ -311,7 +309,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     MergeSideUsage(state.usage);
     if (TurnCostExceeded(state)) break;
     ToolAvailability availability{
-        .checkpoint_hint = checkpoint_hint_active_,
         .detached_terminal = processes_.PendingCount() > 0 ||
                              processes_.DetachedCount() > 0 ||
                              detached_records_available,
@@ -447,11 +444,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     bool foreground_interrupted = SteeringState().Requested() || cancelled;
     bool steering_applied = apply_queued_steering();
     if (cancelled) BgCancelTasks(processes_);
-    if (checkpoint_turn_complete_) {
-      state.complete = true;
-      state.outcome = "checkpoint_prepared";
-      break;
-    }
     if (foreground_interrupted) {
       if (steering_applied) continue;
       state.outcome = "interrupted";
@@ -474,23 +466,8 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
               << ") reached — stopping this turn" << RST() << '\n';
   }
   PruneAttachments(state.start);
-  if (!checkpoint_turn_complete_) ArchiveTurnTrace(state.start);
+  ArchiveTurnTrace(state.start);
   PruneOldToolResults();
-  if (pending_checkpoint_.is_object() &&
-      JsonValue(pending_checkpoint_, "turn", int64_t{-1}) == turn_id_) {
-    if (state.complete && !processes_.PendingCount()) {
-      pending_checkpoint_["ready"] = true;
-      DebugLog(
-          "checkpoint_ready",
-          {{"turn", turn_id_},
-           {"state_chars",
-            JsonValue(pending_checkpoint_, "state", std::string()).size()}});
-    } else {
-      InvalidatePendingCheckpoint(state.complete
-                                      ? "background work is still active"
-                                      : "checkpoint turn did not complete");
-    }
-  }
 
   MergeSideUsage(state.usage);
 
@@ -551,7 +528,6 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
             {"session_usage", UsageJson(session_usage_)},
             {"messages", conversation_.Size()},
             {"context_tokens", ContextUsed()}});
-  checkpoint_hint_active_ = false;
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

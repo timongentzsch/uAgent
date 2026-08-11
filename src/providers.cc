@@ -6,7 +6,6 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
-#include <ctime>
 #include <fstream>
 #include <future>
 #include <iterator>
@@ -228,7 +227,6 @@ void ResetRouteCapabilities(Api& api) {
                               api.config.web_search_backend != "responses" &&
                               api.openrouter_compatible;
   api.image_input = true;
-  api.route_certified = false;
 }
 
 void ApplyRoute(Api& api, const ModelRoute& route) {
@@ -240,143 +238,9 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.openrouter_compatible = route.openrouter_compatible;
 }
 
-std::string RouteProfilesPath() {
-  return UagentDir(kConfigDir) + "/routes.json";
-}
-
-std::string RouteProfileKey(const Api& api) {
-  return RouteKey(api.base_url, api.config.openrouter_provider,
-                  api.RequestModel(), api.reasoning_effort);
-}
-
-namespace {
-
-json LoadRouteProfiles() {
-  std::ifstream input(RouteProfilesPath());
-  json profiles = json::parse(input, nullptr, false);
-  if (!profiles.is_object() || JsonValue(profiles, "schema", 0) != 3 ||
-      !profiles.contains("routes") || !profiles["routes"].is_object()) {
-    return json::object();
-  }
-  return profiles;
-}
-
-std::string RouteFamilyKey(const Api& api) {
-  return RouteKey(api.base_url, api.config.openrouter_provider,
-                  api.RequestModel(), "");
-}
-
-json CertifiedProfile(const json& profiles, const std::string& key) {
-  if (!profiles.contains("routes") || !profiles["routes"].is_object()) {
-    return json::object();
-  }
-  auto found = profiles["routes"].find(key);
-  if (found == profiles["routes"].end() || !found->is_object()) {
-    return json::object();
-  }
-  constexpr int64_t kProfileLifetimeSeconds = 30 * 24 * 60 * 60;
-  int64_t certified = JsonValue(*found, "certified_at_unix", int64_t{0});
-  int64_t now = static_cast<int64_t>(std::time(nullptr));
-  int64_t samples = JsonValue(*found, "samples", int64_t{0});
-  if (!JsonValue(*found, "certified", false) || samples <= 0 ||
-      JsonValue(*found, "passing_samples", int64_t{0}) != samples ||
-      JsonValue(*found, "pass_rate", 0.0) < 1.0 ||
-      JsonValue(*found, "invalidated_at_unix", int64_t{0}) > 0 ||
-      certified <= 0 || certified > now ||
-      now - certified > kProfileLifetimeSeconds) {
-    return json::object();
-  }
-  return *found;
-}
-
-bool ProfileMatchesConfig(const json& profile, const Api& api) {
-  return JsonValue(profile, "openrouter_compatible",
-                   OpenrouterUrl(api.base_url)) == api.openrouter_compatible &&
-         JsonValue(profile, "memory_enabled", true) ==
-             api.config.memory_enabled &&
-         JsonValue(profile, "memory_generate", true) ==
-             api.config.memory_generate;
-}
-
-}  // namespace
-
-json RouteProfile(const Api& api) {
-  json profiles = LoadRouteProfiles();
-  if (profiles.empty()) return json::object();
-  json profile = CertifiedProfile(profiles, RouteProfileKey(api));
-  if (!profile.empty() && !ProfileMatchesConfig(profile, api)) {
-    return json::object();
-  }
-  return profile;
-}
-
-json ApplyRouteProfile(Api& api) {
-  if (api.reasoning_effort.empty()) {
-    json profiles = LoadRouteProfiles();
-    if (profiles.contains("recommendations") &&
-        profiles["recommendations"].is_object()) {
-      auto recommendation =
-          profiles["recommendations"].find(RouteFamilyKey(api));
-      if (recommendation != profiles["recommendations"].end() &&
-          recommendation->is_object()) {
-        std::string effort = JsonValue(*recommendation, "effort", "");
-        std::string route = JsonValue(*recommendation, "route", "");
-        std::string expected =
-            RouteKey(api.base_url, api.config.openrouter_provider,
-                     api.RequestModel(), effort);
-        json profile = CertifiedProfile(profiles, route);
-        if (!effort.empty() && ValidEffort(effort) && route == expected &&
-            !profile.empty() && ProfileMatchesConfig(profile, api)) {
-          api.reasoning_effort = std::move(effort);
-          ExportRoute(api);
-        }
-      }
-    }
-  }
-  json profile = RouteProfile(api);
-  if (profile.empty()) return profile;
-  api.route_certified = profile.contains("checkpoint_mode") ||
-                        profile.contains("parallel_hint_support") ||
-                        profile.contains("image_support");
-  if (api.config.checkpoint_mode == "apply" &&
-      JsonValue(profile, "checkpoint_mode", "apply") == "shadow") {
-    api.config.checkpoint_mode = "shadow";
-  }
-  if (profile.contains("parallel_hint_support") &&
-      profile["parallel_hint_support"].is_boolean() &&
-      !profile["parallel_hint_support"].get<bool>()) {
-    api.parallel_tools = false;
-  }
-  if (profile.contains("image_support") &&
-      profile["image_support"].is_boolean() &&
-      !profile["image_support"].get<bool>()) {
-    api.image_input = false;
-  }
-  return profile;
-}
-
-json ActivateRoute(Api& api, const std::string& checkpoint_mode) {
-  api.config.checkpoint_mode = checkpoint_mode;
+void ActivateRoute(Api& api) {
   ResetRouteCapabilities(api);
-  json profile = ApplyRouteProfile(api);
   ExportRoute(api);
-  return profile;
-}
-
-bool InvalidateRouteProfile(const Api& api, const std::string& feature) {
-  json profiles = LoadRouteProfiles();
-  if (profiles.empty()) return false;
-  auto route = profiles["routes"].find(RouteProfileKey(api));
-  if (route == profiles["routes"].end() || !route->is_object()) return false;
-  (*route)["invalidated_at_unix"] = static_cast<int64_t>(std::time(nullptr));
-  (*route)["invalidated_feature"] = feature;
-  if (profiles.contains("recommendations") &&
-      profiles["recommendations"].is_object()) {
-    profiles["recommendations"].erase(RouteFamilyKey(api));
-  }
-  std::string error;
-  return AtomicWriteFile(RouteProfilesPath(), JsonDump(profiles, 2) + "\n",
-                         0600, /*preserve_mode=*/true, error);
 }
 
 ProviderSetup ConfigureProvider(Api& api) {

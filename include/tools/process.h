@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <iterator>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -70,8 +69,10 @@ class ProcessSupervisor {
   size_t DetachedCount() const {
     return CountIf([](const BgJob& j) { return j.detached; });
   }
-  static bool IsVisible(const BgJob& job) { return job.kind != "memory"; }
-  size_t VisibleCount() const { return CountIf(IsVisible); }
+  size_t Count() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return jobs_.size();
+  }
   size_t JoinableCount() const {
     return CountIf(
         [](const BgJob& job) { return !job.detached && job.kind == "task"; });
@@ -86,34 +87,31 @@ class ProcessSupervisor {
   }
   std::optional<BgJob> Find(pid_t pid) const {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto found =
-        std::find_if(jobs_.begin(), jobs_.end(),
-                     [pid](const BgJob& job) { return job.pid == pid; });
-    return found == jobs_.end() ? std::nullopt : std::optional<BgJob>(*found);
+    size_t index = IndexOf(pid);
+    return index == jobs_.size() ? std::nullopt
+                                 : std::optional<BgJob>(jobs_[index]);
   }
   std::optional<BgJob> Take(pid_t pid) {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto found =
-        std::find_if(jobs_.begin(), jobs_.end(),
-                     [pid](const BgJob& job) { return job.pid == pid; });
-    if (found == jobs_.end()) return std::nullopt;
-    BgJob job = std::move(*found);
-    jobs_.erase(found);
+    size_t index = IndexOf(pid);
+    if (index == jobs_.size()) return std::nullopt;
+    BgJob job = std::move(jobs_[index]);
+    jobs_.erase(jobs_.begin() + static_cast<std::ptrdiff_t>(index));
     return job;
   }
   std::vector<BgJob> Snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return jobs_;
   }
-  std::vector<BgJob> VisibleSnapshot() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<BgJob> jobs;
-    std::copy_if(jobs_.begin(), jobs_.end(), std::back_inserter(jobs),
-                 IsVisible);
-    return jobs;
-  }
 
  private:
+  size_t IndexOf(pid_t pid) const {
+    for (size_t i = 0; i < jobs_.size(); ++i) {
+      if (jobs_[i].pid == pid) return i;
+    }
+    return jobs_.size();
+  }
+
   template <class P>
   size_t CountIf(P predicate) const {
     std::lock_guard<std::mutex> lock(mutex_);

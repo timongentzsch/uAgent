@@ -14,8 +14,8 @@ void TestTerminalInputDecoder() {
   TerminalInputDecoder decoder;
   decoder.Feed("\x1b[2");
   CHECK(!decoder.Next());
-  constexpr char pasted[] = "00~first\r\nsecond\rthird\0";
-  decoder.Feed(std::string(pasted, sizeof(pasted) - 1));
+  constexpr char kPasted[] = "00~first\r\nsecond\rthird\0";
+  decoder.Feed(std::string(kPasted, sizeof(kPasted) - 1));
   CHECK(!decoder.Next());
   decoder.Feed("\x1b[20");
   CHECK(!decoder.Next());

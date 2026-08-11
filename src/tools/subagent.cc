@@ -214,7 +214,6 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {"UAGENT_USAGE_FILE", UsageLedger()},
             {"UAGENT_TOOLSET", std::move(mode)},
             {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"},
-            {"UAGENT_MEMORY_GENERATE", api.config.memory_generate ? "1" : "0"},
         };
         if (api.config.session_budget > 0) {
           environment.emplace_back("UAGENT_SESSION_BUDGET",

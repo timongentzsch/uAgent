@@ -122,7 +122,7 @@ void TestSafeJsonValues();
 void TestProjectInstructionDiscovery();
 void TestMcpContractHelpers();
 void TestWorkspaceScopedSession();
-void TestConversationAndContextPolicy();
+void TestConversation();
 void TestProjectTrustTracksSemanticConfig();
 void TestScopedBaseAndMemory();
 void TestSkillDiscovery();

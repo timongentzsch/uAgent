@@ -208,6 +208,11 @@ std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
     std::erase_if(tools,
                   [](const Tool& tool) { return tool.name == "memory"; });
   }
+  if (EnvStr("UAGENT_TOOLSET") == "memory") {
+    std::erase_if(tools,
+                  [](const Tool& tool) { return tool.name != "memory"; });
+    return tools;
+  }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   api.openrouter_web_search =
@@ -251,8 +256,10 @@ void LogReady(const AppContext& context) {
                  {"tools", context.tools.size()},
                  {"toolset", LeanToolset() ? "lean" : "full"},
                  {"memory", config.memory_enabled},
+                 {"memory_generate", config.memory_generate},
                  {"yolo", context.options.yolo},
                  {"auto_compact_pct", AutoCompactPct()},
+                 {"auto_compact_tokens", AutoCompactTokens()},
                  {"openrouter_provider", config.openrouter_provider},
                  {"openrouter_fallbacks", config.openrouter_fallbacks},
                  {"tool_concurrency", ToolConcurrency()},
@@ -298,16 +305,23 @@ AppContext::AppContext(RuntimeConfig config, Options parsed_options)
 
 BootstrapResult Bootstrap(Options options, const char* executable) {
   SetExecutablePath(executable);
+  std::string memory_source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
+  const bool memory_child = !memory_source.empty();
   bool trusted = false;
   json trusted_snapshot = nullptr;
   std::string error;
   int exit_code = 1;
-  if (!ResolveProjectTrust(options, trusted, trusted_snapshot, error,
-                           exit_code)) {
+  if (!memory_child && !ResolveProjectTrust(options, trusted, trusted_snapshot,
+                                            error, exit_code)) {
     return Failure(std::move(error), exit_code);
   }
 
   LoadConfigFile(trusted);
+  if (memory_child && !BuildMemoryExtractionPrompt(
+                          memory_source, CanonicalAccessPath(CanonicalCwd()),
+                          options.prompt, error)) {
+    return Failure(std::move(error), 2);
+  }
   if (options.budget > 0) {
     setenv("UAGENT_SESSION_BUDGET", std::to_string(options.budget).c_str(), 1);
   }
@@ -353,8 +367,11 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   api.render_stream = context->options.prompt.empty();
   size_t project_limit =
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
-  ProjectInstructions instructions = LoadProjectInstructions(
-      CanonicalAccessPath(CanonicalCwd()), project_limit);
+  ProjectInstructions instructions;
+  if (!memory_child) {
+    instructions = LoadProjectInstructions(CanonicalAccessPath(CanonicalCwd()),
+                                           project_limit);
+  }
   if (context->runtime.config.memory_enabled) {
     size_t remaining = instructions.text.size() >= project_limit
                            ? 0
@@ -383,7 +400,8 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   }
   printf("%s%sµAgent%s\n", RST(), BOLD(), RST());
   PrintProjectContext(instructions, project_limit);
-  std::vector<Skill> skills = LoadSkills(CanonicalCwd());
+  std::vector<Skill> skills =
+      memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);

@@ -52,7 +52,6 @@ void Agent::Reset() {
   session_usage_ = Usage{};
   api_.session_cost = 0;
   route_usage_.clear();
-  reported_context_tokens_ = 0;
   logged_msgs_ = 0;
   total_user_turns_ = 0;
   session_title_.clear();
@@ -69,7 +68,6 @@ json Agent::LatestToolTrace() const {
 }
 
 void Agent::RouteChanged() {
-  reported_context_tokens_ = 0;
   session_id_ = MakeSessionId();
   SetImageInputAvailable(api_.image_input);
   ++revision_;
@@ -141,17 +139,19 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
-  reported_context_tokens_ = record.state.context_tokens;
   logged_msgs_ = 0;
   turn_search_trace_.Reset();
   ++revision_;
   return true;
 }
 
-int64_t Agent::ContextUsed() const {
+size_t Agent::RequestContextBytes(size_t schema_bytes) const {
   size_t bytes = JsonEstimatedBytes(conversation_.Messages());
-  if (api_.native_tools) bytes = SaturatingAdd(bytes, schema_chars_);
-  int64_t used = std::max(reported_context_tokens_, EstimatedTokens(bytes));
+  return api_.native_tools ? SaturatingAdd(bytes, schema_bytes) : bytes;
+}
+
+int64_t Agent::ContextUsed() const {
+  int64_t used = EstimatedTokens(RequestContextBytes(schema_chars_));
   context_snapshot_.store(used, std::memory_order_relaxed);
   return used;
 }
@@ -213,7 +213,6 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
         "context:\n" +
             r.content}},
       MessageKind::kInternal);
-  reported_context_tokens_ = 0;
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},
@@ -269,6 +268,8 @@ void Agent::MergeSessionUsage(const Usage& usage) {
 
 bool Agent::DrainBackground() {
   bool changed = false;
+  // Extraction is maintenance, not a new conversation event.
+  (void)BgTakeCompleted(processes_, "memory");
   for (auto& note : BgTakeCompleted(processes_)) {
     size_t running = processes_.Count();
     printf("%s· bg job finished %s · %zu still running%s\n", DIM(),
@@ -299,7 +300,6 @@ bool Agent::DrainAttachments() {
     conversation_.Push(HarnessMessage("[attachment failed] " + error),
                        MessageKind::kInternal);
   }
-  reported_context_tokens_ = 0;
   DebugLog("attachments_added",
            {{"turn", turn_id_}, {"count", pending.size()}, {"error", error}});
   return true;

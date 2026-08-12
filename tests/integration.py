@@ -30,7 +30,7 @@ BINARY = pathlib.Path(sys.argv[1]).resolve()
 def integration_group(name):
     """Keep integration domains isolated without duplicating shared fixtures."""
     groups = (
-        ("mcp", ("mcp", "chrome_session")),
+        ("mcp", ("mcp",)),
         ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
         (
             "providers",
@@ -53,6 +53,7 @@ def integration_group(name):
                 "context_command",
                 "memory_command",
                 "input_redraw",
+                "resume_",
                 "reconnect_",
                 "narrow_terminal",
             ),
@@ -201,7 +202,6 @@ def base_env(home, url):
             "UAGENT_REQUEST_TIMEOUT": "5",
             "UAGENT_FIRST_EVENT_TIMEOUT": "2",
             "UAGENT_STREAM_IDLE_TIMEOUT": "2",
-            "UAGENT_CHROME_DEVTOOLS": "0",
         }
     )
     return env
@@ -241,9 +241,22 @@ def run_dialog(cwd, env, text, *args, timeout=10):
     )
 
 
-def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args=()):
+def run_pty(
+    cwd,
+    env,
+    payload=b"",
+    interrupt=False,
+    timeout=10,
+    columns=80,
+    args=(),
+    startup_marker=None,
+    configure_terminal=None,
+    before_payload=None,
+):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
+    if configure_terminal is not None:
+        configure_terminal(slave)
     process = subprocess.Popen(
         [str(BINARY), *args],
         cwd=cwd,
@@ -256,14 +269,17 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
     os.close(slave)
     output = bytearray()
     deadline = time.monotonic() + timeout
+    last_match_end = 0
 
     def read_until(marker=None, start=0, following=None):
+        nonlocal last_match_end
         while time.monotonic() < deadline:
             if marker is not None:
                 marker_at = output.find(marker, start)
                 if marker_at >= 0:
                     after_marker = marker_at + len(marker)
                     if following is None or following in output[after_marker:]:
+                        last_match_end = after_marker
                         return True
             if select.select([master], [], [], 0.1)[0]:
                 try:
@@ -278,7 +294,10 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
         return marker is None
 
     def read_prompt(start=0):
-        read_until(b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m", start)
+        read_until(
+            b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m",
+            min(start, last_match_end),
+        )
         time.sleep(0.05)  # the composer finishes raw-mode setup after drawing
 
     def write_fragment(fragment):
@@ -295,7 +314,13 @@ def run_pty(cwd, env, payload=b"", interrupt=False, timeout=10, columns=80, args
             if writable:
                 offset += os.write(master, fragment[offset : offset + 4096])
 
-    read_prompt()
+    if startup_marker is None:
+        read_prompt()
+    else:
+        read_until(startup_marker)
+        time.sleep(0.05)
+    if before_payload is not None:
+        before_payload()
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -838,6 +863,80 @@ def test_multiline_bracketed_paste(root, home):
         server.close()
 
 
+def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
+    history = home / ".uagent" / "history"
+    history.mkdir(parents=True)
+    header = {
+        "format": 3,
+        "cwd": str(root.resolve()),
+        "model": "test",
+        "session_id": "resume-picker-test",
+        "turns": 0,
+        "title": "saved session",
+    }
+    payload = {
+        "messages": [{"role": "system", "content": "saved system"}],
+        "message_kinds": ["system"],
+        "archive": [],
+        "archive_dropped_segments": 0,
+        "context_tokens": 1_900_000,
+        "usage": {},
+        "route_usage": {},
+    }
+    (history / "resume-picker.json").write_text(
+        json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8"
+    )
+
+    def disable_icrnl(slave):
+        attributes = termios.tcgetattr(slave)
+        attributes[0] &= ~termios.ICRNL
+        attributes[3] |= termios.ICANON | termios.ECHO
+        termios.tcsetattr(slave, termios.TCSANOW, attributes)
+
+    server = Server([event({"content": "unused"})])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [b"1\r", b"/q\r"],
+            args=("--resume",),
+            startup_marker=b"resume #: ",
+            configure_terminal=disable_icrnl,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"resumed" in output, output)
+        assert_true(b"ctx 1.9M" not in output, output)
+        assert_true(b"^M" not in output, output)
+        assert_true(len(server.requests) == 0, server.requests)
+    finally:
+        server.close()
+
+
+def test_session_title_replaces_initial_greeting(root, home):
+    server = Server([event({"content": "hello-ok"}), event({"content": "task-ok"})])
+    try:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"hello\n", b"hello-ok"),
+                b"",
+                (b"investigate browser efficiency\n", b"task-ok"),
+                b"",
+                b"/q\n",
+            ],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"task-ok" in output, output)
+        assert_true(len(server.requests) == 2, server.requests)
+        sessions = list((home / ".uagent" / "history").rglob("*.json"))
+        assert_true(len(sessions) == 1, sessions)
+        header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
+        assert_true(header["title"] == "investigate browser efficiency", header)
+    finally:
+        server.close()
+
+
 def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")
@@ -913,6 +1012,7 @@ def test_input_redraw_history_restores_current_draft(root, home):
             base_env(home, server.url),
             [
                 (b"first\n", b"first-ok"),
+                b"",  # wait for the next prompt, not merely streamed text
                 (b"draft", b"draft"),
                 (b"\x1b[A", b"first"),
                 b"\x1b[B\n",
@@ -945,13 +1045,30 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
             [
                 (b"go\n", b"allow run?"),
                 (b"y\n", b"approval-done"),
-                (b"\x1b[A\n", b"approval-history-ok"),
+                (b"", b"test (default)"),  # wait for the idle status
+                (b"probe", b"probe"),  # input broker is accepting drafts
+                b"\x7f" * 5,
+                (b"\x1b[A", b"go"),
+                (b"\n", b"approval-history-ok"),
                 b"\x04",
             ],
         )
         assert_true(code == 0, output)
         assert_true(b"approval-history-ok" in output, output)
         assert_true(len(server.requests) == 3, server.requests)
+    finally:
+        server.close()
+
+
+def test_multiline_run_keeps_action_color(root, home):
+    command = "printf 'one\\n'\nprintf 'two\\n'"
+    server = Server([tool_call("run", {"command": command}), event({"content": "color-ok"})])
+    try:
+        code, output = run_pty(
+            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
+        )
+        colored = b"\x1b[36m\xe2\x86\x92 run\r\nprintf 'one\\n'\r\nprintf 'two\\n'\x1b[0m"
+        assert_true(code == 0 and colored in output, output)
     finally:
         server.close()
 
@@ -1424,6 +1541,154 @@ def test_memory_reaches_context_by_scope(root, home):
         (global_dir / "style.md").unlink(missing_ok=True)
 
 
+def test_context_command_shows_memory_and_skills(root, home):
+    workspace = root / "context-workspace"
+    workspace.mkdir()
+    memory_dir = project_memory_dir(home, workspace)
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "browser.md").write_text("context-memory-body-sentinel", encoding="utf-8")
+    codex = home / ".codex" / "memories"
+    codex.mkdir(parents=True)
+    (codex / "MEMORY.md").write_text("codex-memory-body-sentinel", encoding="utf-8")
+    claude_project = re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
+    claude = home / ".claude" / "projects" / claude_project / "memory"
+    claude.mkdir(parents=True)
+    (claude / "MEMORY.md").write_text("claude-memory-body-sentinel", encoding="utf-8")
+    skill = workspace / ".uagent" / "skills" / "context-demo"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: context-demo\ndescription: context-skill-description-sentinel\n"
+        "---\n\ncontext-skill-body-sentinel\n",
+        encoding="utf-8",
+    )
+    server = Server([event({"content": "unused"})])
+    try:
+        code, output = run_pty(
+            workspace,
+            base_env(home, server.url),
+            [b"/context\n", b"/memory\n", b"/q\n"],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"Context" in output and b"Skills" in output, output)
+        assert_true(b"project/browser" in output, output)
+        assert_true(b"codex/MEMORY" in output and b"claude/MEMORY" in output, output)
+        assert_true(b"context-memory-body-sentinel" not in output, output)
+        assert_true(b"codex-memory-body-sentinel" not in output, output)
+        assert_true(b"claude-memory-body-sentinel" not in output, output)
+        assert_true(b"context-skill-description-sentinel" in output, output)
+        assert_true(b"context-skill-body-sentinel" not in output, output)
+        assert_true(b'"name": "memory"' in output, output)
+        assert_true(b'"name": "skill"' in output, output)
+        assert_true(b"memory on" in output, output)
+    finally:
+        server.close()
+
+
+def test_memory_background_extractor_is_bounded(root, home):
+    workspace = root / "memory-extract-workspace"
+    workspace.mkdir()
+    history = home / ".uagent" / "history"
+    history.mkdir(parents=True)
+    session = history / "extract.json"
+    header = {
+        "format": 3,
+        "cwd": str(workspace),
+        "model": "test",
+        "session_id": "memory-extract-test",
+        "turns": 2,
+        "title": "durable preference",
+    }
+    payload = {
+        "messages": [
+            {"role": "system", "content": "system-content-must-not-leak"},
+            {"role": "user", "content": "memory-extract-user-sentinel"},
+            {"role": "assistant", "content": "first answer"},
+            {"role": "user", "content": "please keep fixes concise"},
+            {"role": "assistant", "content": "understood"},
+        ],
+        "message_kinds": ["system", "user", "assistant", "user", "assistant"],
+        "archive": [],
+        "archive_dropped_segments": 0,
+        "context_tokens": 0,
+        "usage": {},
+        "route_usage": {},
+    }
+    session.write_text(json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8")
+    target = project_memory_dir(home, workspace) / "extracted.md"
+
+    def extract(_, body):
+        text = json.dumps(body)
+        valid = (
+            function_names(body) == {"memory"}
+            and "memory-extract-user-sentinel" in text
+            and "system-content-must-not-leak" not in text
+            and "at most one durable" in text
+        )
+        if not valid:
+            return event({"content": "extract-schema-bad"})
+        return tool_call(
+            "memory",
+            {
+                "action": "set",
+                "key": "project/extracted",
+                "content": "Keep repository fixes concise.",
+            },
+        )
+
+    def finish(_, body):
+        wrote = any(
+            message.get("role") == "tool" and "wrote " in str(message.get("content", ""))
+            for message in body["messages"]
+        )
+        return event({"content": "extract-done" if wrote else "extract-write-bad"})
+
+    server = Server([extract, finish])
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
+
+        def wait_for_extraction():
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                markers = list((home / ".uagent/memory/.processed").rglob("*.state"))
+                if target.exists() and any(
+                    marker.read_text(encoding="utf-8").strip() == "done" for marker in markers
+                ):
+                    return
+                time.sleep(0.05)
+            raise AssertionError("background memory extraction did not finish")
+
+        code, output = run_pty(
+            workspace,
+            env,
+            b"/q\n",
+            before_payload=wait_for_extraction,
+        )
+        assert_true(code == 0, output)
+        assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
+        assert_true(len(server.requests) == 2, server.requests)
+        assert_true(b"memory-extract-user-sentinel" not in output, output)
+        assert_true(b"Background result" not in output, output)
+
+        # A completed source is not processed again. Disabling generation also
+        # prevents a changed source from becoming eligible.
+        code, output = run_pty(workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2))
+        assert_true(code == 0 and len(server.requests) == 2, output)
+        time.sleep(0.01)
+        os.utime(session, None)
+        disabled = dict(env)
+        disabled["UAGENT_MEMORY_GENERATE"] = "0"
+        code, output = run_pty(
+            workspace,
+            disabled,
+            b"/q\n",
+            before_payload=lambda: time.sleep(0.2),
+        )
+        assert_true(code == 0 and len(server.requests) == 2, output)
+    finally:
+        server.close()
+
+
 def test_no_memory_hides_index_and_tool(root, home):
     workspace = root / "no-memory-workspace"
     workspace.mkdir()
@@ -1678,163 +1943,6 @@ def test_mcp_tool_round_trip(root, home):
         assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
         names = function_names(server.requests[0][1])
         assert_true("probe_echo" in names, names)
-    finally:
-        server.close()
-
-
-def test_builtin_chrome_session_modes(root, home):
-    workspace = root / "builtin-chrome"
-    workspace.mkdir()
-    fake_bin = workspace / "bin"
-    fake_bin.mkdir()
-    invocations = workspace / "npx-invocations"
-    screenshot = workspace / "slim-screenshot.png"
-    fake = workspace / "fake_chrome_mcp.py"
-    fake.write_text(
-        "import json, pathlib, sys\n"
-        "slim = '--slim' in sys.argv\n"
-        f"screenshot = pathlib.Path({str(screenshot)!r})\n"
-        "screenshot.write_bytes(b'\\x89PNG\\r\\n\\x1a\\n' + b'\\0' * 32)\n"
-        "for line in sys.stdin:\n"
-        "    message = json.loads(line)\n"
-        "    if 'id' not in message:\n"
-        "        continue\n"
-        "    method = message.get('method')\n"
-        "    if method == 'initialize':\n"
-        "        result = {'protocolVersion': '2025-11-25', "
-        "'capabilities': {'tools': {}}, 'serverInfo': {'name': 'chrome', 'version': '1'}}\n"
-        "    elif method == 'tools/list':\n"
-        "        if slim:\n"
-        "            result = {'tools': ["
-        "{'name': 'navigate', 'description': 'navigate', 'inputSchema': {'type': 'object', "
-        "'properties': {'url': {'type': 'string'}}, 'required': ['url']}}, "
-        "{'name': 'evaluate', 'description': 'evaluate', 'inputSchema': {'type': 'object', "
-        "'properties': {'script': {'type': 'string'}}, 'required': ['script']}}, "
-        "{'name': 'screenshot', 'description': 'screenshot', "
-        "'inputSchema': {'type': 'object'}}]}\n"
-        "        else:\n"
-        "            result = {'tools': ["
-        "{'name': 'list_pages', 'description': 'list pages', "
-        "'inputSchema': {'type': 'object', 'additionalProperties': False}}, "
-        "{'name': 'evaluate_script', 'description': 'evaluate script', "
-        "'inputSchema': {'type': 'object', 'properties': "
-        "{'function': {'type': 'string'}}, 'required': ['function']}}, "
-        "{'name': 'click', 'description': 'click', 'inputSchema': {'type': 'object', "
-        "'properties': {'uid': {'type': 'string'}, "
-        "'includeSnapshot': {'type': 'boolean'}}, 'required': ['uid']}}]}\n"
-        "    elif method == 'tools/call':\n"
-        "        name = message.get('params', {}).get('name')\n"
-        "        args = message.get('params', {}).get('arguments', {})\n"
-        "        if name == 'navigate':\n"
-        "            text = 'Navigated to fixture'\n"
-        "        elif name == 'evaluate':\n"
-        "            text = json.dumps({'url': 'https://fixture', 'title': 'Fixture', "
-        "'text': 'ready', 'controls': []})\n"
-        "        elif name == 'screenshot':\n"
-        "            text = str(screenshot)\n"
-        "        else:\n"
-        "            text = json.dumps(args)\n"
-        "        result = {'content': [{'type': 'text', 'text': text}]}\n"
-        "    else:\n"
-        "        result = {'content': [{'type': 'text', 'text': 'ok'}]}\n"
-        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], 'result': result}), "
-        "flush=True)\n",
-        encoding="utf-8",
-    )
-    npx = fake_bin / "npx"
-    npx.write_text(
-        "#!/bin/sh\n"
-        f"printf '%s\\n' \"$*\" >> {shlex.quote(str(invocations))}\n"
-        f'exec {shlex.quote(sys.executable)} {shlex.quote(str(fake))} "$@"\n',
-        encoding="utf-8",
-    )
-    npx.chmod(0o700)
-
-    def switch(_, body):
-        names = function_names(body)
-        assert_true("chrome-devtools_list_pages" not in names, names)
-        assert_true("chrome_session" in names, names)
-        return tool_call("chrome_session", {"mode": "user"})
-
-    def use_slim(_, body):
-        names = function_names(body)
-        assert_true("chrome-devtools_navigate" in names, names)
-        assert_true("chrome-devtools_evaluate" in names, names)
-        assert_true("chrome-devtools_screenshot" in names, names)
-        assert_true("chrome-devtools_click" not in names, names)
-        result = next(
-            message["content"] for message in body["messages"] if message.get("role") == "tool"
-        )
-        assert_true(
-            result == "User Chrome session selected (slim; page health check passed)", result
-        )
-        return tool_call("chrome-devtools_navigate", {"url": "https://fixture"})
-
-    def take_screenshot(_, body):
-        result = next(
-            message["content"]
-            for message in reversed(body["messages"])
-            if message.get("role") == "tool"
-        )
-        assert_true("Navigated to fixture" in result, result)
-        assert_true("[page state;" in result and '"title": "Fixture"' in result, result)
-        return tool_call("chrome-devtools_screenshot", {})
-
-    def switch_full(_, body):
-        parts = [
-            part
-            for message in body["messages"]
-            if isinstance(message.get("content"), list)
-            for part in message["content"]
-        ]
-        assert_true(any(part.get("type") == "image_url" for part in parts), parts)
-        return tool_call("chrome_session", {"mode": "user", "toolset": "full"})
-
-    def use_full(_, body):
-        names = function_names(body)
-        assert_true("chrome-devtools_list_pages" in names, names)
-        assert_true("chrome-devtools_click" in names, names)
-        assert_true("chrome-devtools_evaluate" not in names, names)
-        result = next(
-            message["content"]
-            for message in reversed(body["messages"])
-            if message.get("role") == "tool"
-        )
-        assert_true(
-            result == "User Chrome session selected (full; page health check passed)", result
-        )
-        return tool_call("chrome-devtools_click", {"uid": "7"})
-
-    def final(_, body):
-        results = [
-            message["content"] for message in body["messages"] if message.get("role") == "tool"
-        ]
-        return event(
-            {
-                "content": "chrome-ok"
-                if json.loads(results[-1]) == {"uid": "7", "includeSnapshot": True}
-                else "chrome-bad"
-            }
-        )
-
-    server = Server([switch, use_slim, take_screenshot, switch_full, use_full, final])
-    try:
-        env = base_env(home, server.url)
-        env["UAGENT_CHROME_DEVTOOLS"] = "1"
-        env["UAGENT_CONTEXT"] = "131072"
-        env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
-        result = run(workspace, env, "--yolo", "-p", "use my browser")
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "chrome-ok", result.stdout)
-        calls = invocations.read_text(encoding="utf-8").splitlines()
-        assert_true(len(calls) == 2, calls)
-        assert_true(all("chrome-devtools-mcp@latest" in call for call in calls), calls)
-        assert_true(
-            all("--auto-connect" in call and "--isolated" not in call for call in calls), calls
-        )
-        assert_true("--slim" in calls[0], calls)
-        assert_true("--slim" not in calls[1], calls)
-
     finally:
         server.close()
 
@@ -2175,6 +2283,94 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
         assert_true(turn_end["data"]["usage"]["output"] == 30, turn_end)
         folds = [record for record in records if record["event"] == "midturn_compact"]
         assert_true(len(folds) == 1, folds)
+    finally:
+        server.close()
+
+
+def test_absolute_compaction_ceiling(root, home):
+    history = home / ".uagent" / "history"
+    history.mkdir(parents=True)
+    header = {
+        "format": 3,
+        "cwd": str(root.resolve()),
+        "model": "test",
+        "session_id": "absolute-compact",
+        "turns": 1,
+        "title": "prior task",
+    }
+    payload = {
+        "messages": [
+            {"role": "system", "content": "saved system"},
+            {"role": "user", "content": "prior task"},
+            {"role": "assistant", "content": "large " + "x" * 10000},
+        ],
+        "message_kinds": ["system", "user", "assistant"],
+        "archive": [],
+        "archive_dropped_segments": 0,
+        "context_tokens": 2500,
+        "usage": {},
+        "route_usage": {},
+    }
+    (history / "absolute.json").write_text(
+        json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8"
+    )
+
+    def compact(_, body):
+        prompt = body["messages"][-1].get("content", "")
+        valid = str(prompt).startswith("Summarize for a fresh context:") and not body.get("tools")
+        return event({"content": "ABSOLUTE-SUMMARY" if valid else "BAD-SUMMARY"})
+
+    def finish(_, body):
+        text = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        valid = "Prior context:\nABSOLUTE-SUMMARY" in text and "large " not in text
+        return event({"content": "absolute-compact-ok" if valid else "absolute-compact-bad"})
+
+    server = Server([compact, finish])
+    try:
+        trace = root / "absolute-compact.jsonl"
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_CONTEXT": "1000000",
+                "UAGENT_MAX_TOKENS": "512",
+                "UAGENT_AUTO_COMPACT_PCT": "0",
+                "UAGENT_AUTO_COMPACT_TOKENS": "2000",
+            }
+        )
+        result = run(root, env, "-c", f"--debug={trace}", "-p", "continue")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("absolute-compact-ok"), result.stdout)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        compacted = [record for record in records if record["event"] == "auto_compact"]
+        assert_true(len(compacted) == 1, compacted)
+        assert_true(compacted[0]["data"]["projected_tokens"] >= 2000, compacted)
+    finally:
+        server.close()
+
+
+def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
+    trace = root / "repeated-tools.jsonl"
+    source = root / "rounds.txt"
+    source.write_text("\n".join(str(i) for i in range(8)), encoding="utf-8")
+    server = Server(
+        [
+            tool_call("read_file", {"path": str(source), "offset": i, "limit": 1})
+            for i in range(1, 9)
+        ]
+        + [event({"content": "rounds-finished"})]
+    )
+    try:
+        env = base_env(home, server.url)
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("rounds-finished"), result.stdout)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        signals = [r for r in records if r["event"] == "repeated_tool_rounds"]
+        assert_true(len(signals) == 1, signals)
+        assert_true(signals[0]["data"]["tool"] == "read_file", signals)
+        assert_true(signals[0]["data"]["rounds"] == 8, signals)
     finally:
         server.close()
 

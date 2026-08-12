@@ -20,6 +20,7 @@ or multi-tenant service.
 | background jobs / safe workers | 8 / 4 |
 | memory file / files | 2 KiB / 32 per scope |
 | memory always-on slice | 2 KiB |
+| memory extraction | one session, 32 KiB, after 6 idle hours |
 | attachment / terminal image | 10 / 10 MiB |
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
 | automatic compaction | 85% projected context |
@@ -37,6 +38,11 @@ calling a model.
 
 The always-on slice inlines behavioral (global-scope) memory into the startup
 context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
+Set `UAGENT_MEMORY_GENERATE=0` to retain recall while disabling background
+extraction. Each interactive startup claims at most one eligible session;
+`UAGENT_MEMORY_IDLE_SECONDS` and `UAGENT_MEMORY_EXTRACT_BYTES` tune its bounded
+input. Codex top-level memories and the current Claude project memory directory
+are indexed read-only.
 
 Set `UAGENT_IMAGE_MODEL` to a vision-capable model on the active provider when
 the primary route is text-only. When direct image input is known to be
@@ -67,16 +73,21 @@ limited to bytes the child has flushed. Persistent TUI and headless runs resume
 after background completion without a second process watcher.
 
 Configured MCP servers start once and expose their discovered tools directly.
-The built-in Chrome server stays lazy and slim until `chrome_session` starts or
-switches it; startup/switch performs a page-level health probe, while subsequent
-browser calls avoid a redundant preflight. µAgent advertises MCP roots and
-answers `roots/list`; the current workspace is the default root. Set
+µAgent advertises MCP roots and answers `roots/list`; the current workspace is
+the default root. Set
 colon-separated `UAGENT_MCP_ROOTS`, or a server's
 `roots` string array in `.mcp.json`, to authorize a different bounded set.
 Per-server paths are relative to that configuration file and override the
 global default. `--yolo` controls tool approval, not an MCP server's root
 boundary. Roots are cooperative protocol scope, not an OS sandbox; MCP servers
 still run with the user's process permissions.
+
+Browser automation is a deferred `browser-use` skill over `playwright-cli`, not
+MCP. CLI calls use the existing approved `run` tool and a per-process session;
+Playwright keeps its browser daemon alive between calls and writes snapshots
+outside model context. Install it once with
+`npm install -g @playwright/cli@latest`. Use `attach --cdp=chrome` only for a
+user-owned Chrome session; otherwise use an isolated `open` session.
 
 The interactive composer owns stdin for the whole session. Enter during work
 queues guidance into the active turn at the next model/tool boundary; Escape
@@ -99,7 +110,7 @@ UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 
 CI adds warnings-as-errors, sanitizers, TSan, parser fuzzing, coverage, Google
 C++ style, and native Linux/macOS builds. Before a tag, verify the installed
-archive, one real turn per supported route, Chrome isolated and user attach,
+archive, one real turn per supported route, Playwright isolated and user attach,
 one private debug trace, and the hermetic suite.
 `install.sh` defaults to four build workers; set `UAGENT_BUILD_JOBS` for the
 host when a different resource limit is appropriate.
@@ -113,8 +124,8 @@ pin both the Action ref and release version.
 
 - Headless failures use nonzero exit status and a complete JSON envelope.
 - MCP logs live under `~/.uagent/mcp`; debug traces are opt-in and sensitive.
-- `chrome_session` succeeds only after a page-level health probe; a handshake
-  without a selectable page is reported as unavailable.
+- A Playwright attach requires a live user-approved Chrome debugging endpoint;
+  `playwright-cli list` shows the active session and `detach` preserves Chrome.
 - Corrupt sessions are reported and left untouched.
 - Managed processes are reaped on catchable exits; `SIGKILL` cannot guarantee
   cleanup.

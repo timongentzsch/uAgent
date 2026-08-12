@@ -55,7 +55,8 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MAX_TOOL_CALLS` | 100 | tool calls per turn |
 | `UAGENT_REQUEST_BYTES` | 67108864 | maximum serialized request |
 | `UAGENT_RESPONSE_BYTES` | 33554432 | maximum response |
-| `UAGENT_AUTO_COMPACT_PCT` | 95 | emergency context compaction threshold |
+| `UAGENT_AUTO_COMPACT_PCT` | 85 | context-window compaction threshold |
+| `UAGENT_AUTO_COMPACT_TOKENS` | 131072 | absolute soft compaction ceiling; 0 disables |
 | `UAGENT_CHECKPOINT_PCT` | 65 | checkpoint hint threshold |
 | `UAGENT_CHECKPOINT_URGENT_PCT` | 85 | urgent checkpoint threshold |
 | `UAGENT_CHECKPOINT_MODE` | `apply` | route checkpoint policy |
@@ -103,15 +104,14 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SKILL_BYTES` | 524288 | complete selected skill-body bound |
 | `UAGENT_SKILL_DESC_BYTES` | 512 | startup description bound per skill |
 | `UAGENT_MEMORY` | `1` | enable memory recall |
-| `UAGENT_MEMORY_GENERATE` | `1` | permit new memory contributions |
+| `UAGENT_MEMORY_GENERATE` | `1` | enable idle-session background extraction |
 | `UAGENT_MEMORY_BYTES` | 2048 | one memory file |
 | `UAGENT_MEMORY_ALWAYS_BYTES` | 2048 | global-memory content inlined into startup context; `0` disables |
+| `UAGENT_MEMORY_EXTRACT_BYTES` | 32768 | filtered transcript sent to the extractor |
 | `UAGENT_MEMORY_FILES` | 32 | memories per scope |
-| `UAGENT_MEMORY_IDLE_SECONDS` | 21600 | session age before consolidation |
-| `UAGENT_MEMORY_SESSION_DAYS` | 10 | oldest eligible session age |
-| `UAGENT_MEMORY_SESSION_BYTES` | 65536 | filtered consolidation input |
+| `UAGENT_MEMORY_IDLE_SECONDS` | 21600 | minimum saved-session idle time |
 
-## Search, MCP, Chrome, and media
+## Search, MCP, and media
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
@@ -138,9 +138,6 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MCP_LOG_BYTES` | 16777216 | log bound |
 | `UAGENT_MCP_ROOTS` | current workspace | colon-separated roots advertised to MCP servers |
 | `UAGENT_MCP_DESC_CHARS` | 400 | tool-description bound |
-| `UAGENT_CHROME_DEVTOOLS` | `1` | enable bundled Chrome DevTools MCP |
-| `UAGENT_CHROME_MODE` | `isolated` | `isolated` or user-browser attach mode |
-| `UAGENT_CHROME_BROWSER_URL` | empty | explicit Chrome debugger URL |
 | `UAGENT_ATTACHMENT_MB` | 10 | input attachment MiB |
 | `UAGENT_PENDING_ATTACHMENTS` | 8 | queued attachment count |
 | `UAGENT_IMAGE_MODEL` | empty | vision-capable fallback model for routes that reject image input |

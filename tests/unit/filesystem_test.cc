@@ -90,6 +90,11 @@ void TestFileTools() {
       ToolEditFile(file.string(), "missing", "replacement");
   CHECK(!missing_edit.Ok());
   CHECK(missing_edit.error == ToolErrorCode::kNotFound);
+  ToolResult anchored_miss =
+      ToolEditFile(file.string(), "three\nmissing", "replacement");
+  CHECK(!anchored_miss.Ok());
+  CHECK(anchored_miss.output.find("nearby current line 2: three") !=
+        std::string::npos);
   ToolResult empty_edit = ToolEditFile(file.string(), std::vector<FileEdit>{});
   CHECK(!empty_edit.Ok());
   CHECK(empty_edit.error == ToolErrorCode::kInvalidArguments);
@@ -97,9 +102,11 @@ void TestFileTools() {
   struct stat before{}, after{};
   CHECK(stat(file.c_str(), &before) == 0);
   CHECK(ToolEditFile(file.string(), "three", "three")
-            .output.find("makes no change") != std::string::npos);
+            .output.starts_with("already applied "));
   CHECK(stat(file.c_str(), &after) == 0);
   CHECK(before.st_ino == after.st_ino);
+  CHECK(ToolEditFile(file.string(), "two", "three")
+            .output.starts_with("already applied "));
 
   fs::path crlf = root / "crlf.txt";
   CHECK(ToolWriteFile(crlf.string(), "one\r\ntwo\r\n")

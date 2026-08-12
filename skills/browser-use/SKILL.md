@@ -1,26 +1,37 @@
 ---
 name: browser-use
-description: Use Chrome through µAgent to inspect or interact with a user browser session or an isolated browser, including navigation, screenshots, forms, console, network, and page debugging.
-requires-tools: chrome_session
+description: Use token-efficient Playwright CLI browser automation for navigation, forms, screenshots, debugging, or repeatable web workflows.
+requires-tools: run
 ---
 
-# Use Chrome in µAgent
+# Browser automation
 
-1. Call `chrome_session` before using browser tools. Choose `mode=user` only
-   when the user wants their running Chrome; otherwise use `mode=isolated`.
-   Start with `toolset=slim` for navigation, evaluation, and screenshots.
-2. Treat session selection as successful only when its page health check
-   passes. If the user session has no usable page, ask the user to open a normal
-   tab in the shared Chrome window and retry. Switch to `toolset=full` when the
-   slim bridge hides the upstream error or the task needs granular page,
-   console, network, or performance tools.
-3. Use the registered `chrome-devtools_*` tools. Tool names can change when the
-   session toolset changes, so inspect the current catalogue after
-   `chrome_session` rather than assuming a stale name.
-4. After navigation or mutation, verify the page state or take a screenshot.
-   Preserve the user's control over sensitive submissions and any explicitly
-   user-owned browser step.
+Use `playwright-cli` through `run`; do not add a browser MCP server. µAgent sets
+a unique `PLAYWRIGHT_CLI_SESSION`, so commands reuse one browser daemon without
+sharing state with another agent process.
 
-Do not assume Playwright, Puppeteer, Node modules, a browser websocket, or
-Codex/Claude browser tools are installed. Do not recreate browser control with
-`run` when the Chrome MCP is available.
+```sh
+playwright-cli open https://example.com
+playwright-cli snapshot --depth=4
+playwright-cli find "Sign in"
+playwright-cli click e14
+playwright-cli fill e22 "hello" --submit
+```
+
+- Prefer `find`, shallow snapshots, element snapshots, and `--raw` extraction;
+  use screenshots only when visual evidence matters. Refs such as `e14` come
+  from the latest snapshot.
+- Use `attach --cdp=chrome` (or `--cdp=URL`) when the user requests their
+  running Chrome, then navigate with `goto`; `open` would replace it with a
+  managed browser. `detach` leaves Chrome running. Otherwise, `open` starts an
+  isolated session and `close` ends it.
+- Keep the daemon alive across related actions. Verify only the relevant state
+  after mutations instead of taking a full snapshot after every command.
+- For a known or recurring workflow, explore once, obtain resilient locators
+  with `generate-locator REF --raw`, then write and run deterministic Playwright
+  code rather than continuing an LLM click loop.
+- Preserve user control over logins, sensitive submissions, purchases, and any
+  step the user explicitly owns.
+
+If `playwright-cli` is unavailable, report the one-time official install:
+`npm install -g @playwright/cli@latest`.

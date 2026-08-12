@@ -165,11 +165,6 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "research task requiring source-cited findings; continue local work "
         "and reconsider when its result arrives.";
   }
-  if (FindTool(tools, "chrome_session")) {
-    prompt +=
-        " Start Chrome with chrome_session when browser tools are unavailable; "
-        "call it again only to switch session or toolset.";
-  }
   return prompt;
 }
 

@@ -32,13 +32,6 @@ inline std::string Tilde(const std::string& path) {
   return path;
 }
 
-inline std::string ContextUsage(int64_t used, int64_t window) {
-  std::string context = FmtCount(used);
-  if (window <= 0) return context;
-  int64_t pct = (used * 100 + window - 1) / window;
-  return context + "/" + FmtCount(window) + " (" + std::to_string(pct) + "%)";
-}
-
 inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   std::string current = ModelLabel(api.model, api.reasoning_effort);
   for (size_t i = 0; i < search.matches.size(); ++i) {

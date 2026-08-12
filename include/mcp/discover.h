@@ -24,23 +24,6 @@
 
 namespace uagent {
 
-inline bool McpSupportsPostActionSnapshot(const json& input_schema) {
-  if (!input_schema.is_object() || !input_schema.contains("properties") ||
-      !input_schema["properties"].is_object()) {
-    return false;
-  }
-  const json& properties = input_schema["properties"];
-  return properties.contains("includeSnapshot") &&
-         properties["includeSnapshot"].is_object() &&
-         JsonValue(properties["includeSnapshot"], "type", "") == "boolean";
-}
-
-inline bool McpDefaultsPostActionSnapshot(const McpServer& server,
-                                          const json& input_schema) {
-  return JsonValue(server.config, "__uagent_builtin", "") == kChromeMcpName &&
-         McpSupportsPostActionSnapshot(input_schema);
-}
-
 inline bool McpFetchToolDefinitions(
     McpServer& s, const RuntimeConfig& config,
     std::chrono::steady_clock::time_point deadline, json& listed) {
@@ -146,8 +129,6 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       McpNote(s.name, remote_name + " skipped (inputSchema is not an object)");
       continue;
     }
-    const bool include_snapshot =
-        McpDefaultsPostActionSnapshot(s, input_schema);
     json invocation_schema = input_schema;
 
     std::string tool_name = McpToolName(s.name, remote_name);
@@ -170,11 +151,11 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
     int64_t call_timeout = config.mcp_timeout_s;
     Tool tool = MakeTool(
         std::move(tool_name), McpCapDesc(description), std::move(input_schema),
-        [server, remote_name, call_timeout, include_snapshot,
+        [server, remote_name, call_timeout,
          input_schema = std::move(invocation_schema)](
             const json& arguments, const ToolContext& context) -> ToolResult {
-          return McpInvokeTool(*server, remote_name, arguments, call_timeout,
-                               context, include_snapshot, input_schema);
+          return McpInvokeRemote(*server, remote_name, arguments, call_timeout,
+                                 context, input_schema);
         });
     if (definition.contains("outputSchema") &&
         definition["outputSchema"].is_object()) {
@@ -209,8 +190,6 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
                 [&](const Tool& tool) { return tool.provider == provider; });
   tools.insert(tools.end(), std::make_move_iterator(replacement.begin()),
                std::make_move_iterator(replacement.end()));
-  s.tool_count = replacement.size();
-  s.last_error.clear();
   McpNote(s.name, std::to_string(replacement.size()) + " of " +
                       std::to_string(listed.size()) + " tools (~" +
                       FmtCount(static_cast<int64_t>(schema_bytes / 4)) +
@@ -224,7 +203,6 @@ inline bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
   json listed;
   bool loaded = McpFetchToolDefinitions(server, config, deadline, listed) &&
                 McpReplaceServerTools(tools, server, config, listed);
-  if (!loaded) server.last_error = "tool discovery failed";
   return loaded;
 }
 

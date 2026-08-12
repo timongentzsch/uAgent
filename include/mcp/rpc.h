@@ -108,7 +108,7 @@ inline json McpClientRequestReply(const McpServer& server,
   if (method == "ping") {
     reply["result"] = json::object();
   } else if (method == "roots/list") {
-    reply["result"] = {{"roots", server.roots.entries}};
+    reply["result"] = {{"roots", server.roots}};
   } else {
     reply["error"] = {{"code", -32601}, {"message", "method not found"}};
   }

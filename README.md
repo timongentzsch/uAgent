@@ -13,10 +13,14 @@ inspect, compare, and improve.
 
 ## Quick start
 
-Requires CMake, a C++20 compiler, and libcurl. Node.js enables Chrome DevTools
-MCP, and
+Requires CMake, a C++20 compiler, and libcurl.
 [uv](https://docs.astral.sh/uv/) enables Python scratch scripts and route
-evaluation.
+evaluation. Browser automation uses Microsoft's token-efficient Playwright CLI
+and requires Node.js 20+:
+
+```sh
+npm install -g @playwright/cli@latest
+```
 
 ```sh
 ./install.sh
@@ -79,7 +83,7 @@ first semantic stream event.
 | repository | `read_file`, `list_dir`, `grep`, `write_file`, `edit_file` |
 | execution | `run`, detached terminals, uv-backed `run_python` |
 | evidence | attachments, terminal images, cited `web_search` |
-| extension | MCP, Chrome DevTools, skills, project/global memory |
+| extension | MCP, Playwright CLI skills, native plus Codex/Claude memory |
 | orchestration | parallel tools, bounded `task` routes, activity wait/stop, automatic compaction |
 
 Mutating, shell, network, delegation, and MCP calls require approval unless
@@ -101,8 +105,10 @@ at its next safe boundary. Escape interrupts only the foreground operation;
 delegated and detached work keeps running unless explicitly cancelled.
 
 Memory uses progressive disclosure: startup injects bounded names, and the
-model can list, search, or fetch bodies on demand. Writes happen only when the
-user explicitly asks. Disable recall and writes with `--no-memory`.
+model can list, search, or fetch bodies on demand. Codex and the current Claude
+project are read-only sources. Foreground writes remain explicit; once per
+interactive startup, one idle saved session may produce at most one native
+memory through a bounded background child. Disable both with `--no-memory`.
 
 At 85% projected context pressure, including pending input and tool schemas,
 µAgent atomically replaces history with a bounded non-authoritative summary. The same

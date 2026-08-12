@@ -14,6 +14,15 @@
 
 namespace uagent {
 
+namespace {
+
+bool GenericSessionTitle(std::string title) {
+  title = AsciiLower(Trim(title));
+  return title == "hi" || title == "hello" || title == "hey" || title == "test";
+}
+
+}  // namespace
+
 struct Agent::TurnState {
   size_t start = 0;
   Usage usage;
@@ -30,6 +39,8 @@ struct Agent::TurnState {
   double ttt_ms = -1;
   double model_generation_ms = 0;
   int64_t model_generated_tokens = 0;
+  std::string last_single_tool;
+  int64_t same_tool_rounds = 0;
   std::string outcome = "step_limit";
 };
 
@@ -98,12 +109,6 @@ void Agent::RecordModelResponse(
     PrintCitationSources(response.annotations);
     response.content += citations;
     state.line_open = false;
-  }
-  if (response.usage.is_object()) {
-    reported_context_tokens_ =
-        JsonValue(response.usage, "prompt_tokens", int64_t{0}) +
-        JsonValue(response.usage, "completion_tokens", int64_t{0});
-    ContextUsed();
   }
 }
 
@@ -196,7 +201,12 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   ++revision_;
   if (!harness_origin) {
     ++total_user_turns_;
-    if (session_title_.empty()) session_title_ = FirstLine(user_input);
+    std::string title = FirstLine(user_input);
+    if (session_title_.empty() ||
+        (GenericSessionTitle(session_title_) && title.size() >= 12 &&
+         !GenericSessionTitle(title))) {
+      session_title_ = std::move(title);
+    }
   }
   std::string local_time = LocalStamp();
   if (!conversation_.Empty()) {
@@ -223,11 +233,13 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   size_t pending_bytes = SaturatingAdd(
       attachment ? JsonEstimatedBytes(user_content) : user_input.size(),
       skill_bytes);
-  int64_t compact_threshold =
-      std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
-  int64_t pressure = ContextPressurePct(pending_bytes, schema_chars_);
-  if (compact_threshold > 0 && pressure >= compact_threshold) {
-    DebugLog("auto_compact", {{"turn", turn_id_}, {"projected_pct", pressure}});
+  int64_t pressure = 0;
+  int64_t projected_tokens = 0;
+  if (ContextNeedsCompaction(pending_bytes, schema_chars_, pressure,
+                             projected_tokens)) {
+    DebugLog("auto_compact", {{"turn", turn_id_},
+                              {"projected_pct", pressure},
+                              {"projected_tokens", projected_tokens}});
     Compact(true);
   }
   if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
@@ -286,6 +298,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     last_call.clear();
     repeated_calls = 0;
     consecutive_failed_tools = 0;
+    state.last_single_tool.clear();
+    state.same_tool_rounds = 0;
     stable_arguments.clear();
     failure_advisory_sent = false;
     empty_response_recovered = false;
@@ -367,6 +381,21 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     if (!ToolCallsWithinLimits(calls, state, api_.config.max_tool_calls,
                                last_call, repeated_calls)) {
       break;
+    }
+    if (calls.size() == 1) {
+      state.same_tool_rounds = calls[0].name == state.last_single_tool
+                                   ? state.same_tool_rounds + 1
+                                   : 1;
+      state.last_single_tool = calls[0].name;
+      if (state.same_tool_rounds == 8) {
+        DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
+                                          {"step", step},
+                                          {"tool", calls[0].name},
+                                          {"rounds", state.same_tool_rounds}});
+      }
+    } else {
+      state.last_single_tool.clear();
+      state.same_tool_rounds = 0;
     }
 
     if (calls.empty() && r.content.empty()) {

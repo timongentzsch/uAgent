@@ -54,6 +54,9 @@ class Application {
   int Run() {
     int attachment_status = LoadInitialAttachments();
     if (attachment_status != 0) return attachment_status;
+    if (!context_.options.prompt.empty() && context_.options.resume_latest) {
+      ResumeAtStartup();
+    }
     return context_.options.prompt.empty() ? RunInteractive() : RunHeadless();
   }
 
@@ -800,6 +803,15 @@ class Application {
   int RunInteractive() {
     ResumeAtStartup();
     persist_ = isatty(STDIN_FILENO);
+    if (persist_ && AgentDepth() == 0 && api_.config.memory_enabled &&
+        api_.config.memory_generate) {
+      std::string extractor_error = StartMemoryExtractor(
+          runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
+          session_file_);
+      if (!extractor_error.empty()) {
+        DebugLog("memory_extract_start_error", {{"error", extractor_error}});
+      }
+    }
     if (persist_) {
       int persistent_status = RunPersistentInteractive();
       if (persistent_status >= 0) return FinishInteractive(persistent_status);

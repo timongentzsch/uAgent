@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 0.3.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 0.4.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -83,6 +83,7 @@ add_library(
   src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
+  src/tools/memory_pipeline.cc
   src/tools/policy.cc
   src/tools/registry.cc
   src/tools/shell.cc

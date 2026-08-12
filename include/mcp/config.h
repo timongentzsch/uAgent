@@ -81,20 +81,9 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       }
     }
   }
-  static const std::set<std::string> kNown = {"type",
-                                              "command",
-                                              "args",
-                                              "env",
-                                              "cwd",
-                                              "tools",
-                                              "roots",
-                                              "trust",
-                                              "disabled",
-                                              "__uagent_config_dir",
-                                              "__uagent_builtin",
-                                              "__uagent_lazy",
-                                              "__uagent_mode",
-                                              "__uagent_toolset"};
+  static const std::set<std::string> kNown = {
+      "type",  "command", "args",  "env",      "cwd",
+      "tools", "roots",   "trust", "disabled", "__uagent_config_dir"};
   for (const auto& [field, ignored] : conf.items()) {
     (void)ignored;
     if (!kNown.contains(field)) {
@@ -123,7 +112,7 @@ inline std::string McpFileUri(const std::filesystem::path& path) {
 }
 
 inline bool McpResolveRoots(const json& conf, const std::string& configured,
-                            McpRootSet& roots, std::string& error) {
+                            json& roots, std::string& error) {
   std::vector<std::string> requested;
   std::filesystem::path base = CanonicalCwd();
   if (conf.contains("roots")) {
@@ -138,7 +127,7 @@ inline bool McpResolveRoots(const json& conf, const std::string& configured,
     requested.push_back(base.string());
   }
 
-  roots = {};
+  roots = json::array();
   std::set<std::string> seen;
   for (const std::string& value : requested) {
     if (value.empty()) continue;
@@ -157,18 +146,17 @@ inline bool McpResolveRoots(const json& conf, const std::string& configured,
     std::string canonical = path.string();
     if (!seen.insert(canonical).second) continue;
     std::string name = path.filename().string();
-    roots.paths.push_back(path);
-    roots.entries.push_back(
+    roots.push_back(
         {{"uri", McpFileUri(path)}, {"name", name.empty() ? canonical : name}});
   }
-  if (roots.paths.empty()) {
+  if (roots.empty()) {
     error = "MCP roots resolved to an empty set";
     return false;
   }
   return true;
 }
 
-// A trusted ./.mcp.json then ~/.mcp.json then built-ins — earlier layers win.
+// A trusted ./.mcp.json then ~/.mcp.json — the project layer wins.
 // The credential/config loader never imports a project .env.
 inline json McpLoadConfig(const json& trusted_project, size_t max_bytes) {
   auto read = [max_bytes](const std::string& path) -> json {
@@ -208,12 +196,6 @@ inline json McpLoadConfig(const json& trusted_project, size_t max_bytes) {
                   : annotate(read(home_dir + "/.mcp.json"), home_dir);
   for (auto& [name, conf] : home.items()) {
     if (!cfg.contains(name)) cfg[name] = conf;
-  }
-  if (!cfg.contains(kChromeMcpName) &&
-      EnvStr("UAGENT_CHROME_DEVTOOLS", "1") != "0" &&
-      AgentDepth() == 0) {  // browser stays with the coordinator
-    std::string mode = EnvStr("UAGENT_CHROME_MODE", "isolated");
-    cfg[kChromeMcpName] = ChromeMcpConfig(mode == "user" ? mode : "isolated");
   }
   return cfg;
 }

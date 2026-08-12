@@ -21,7 +21,7 @@ main → Bootstrap → Application
 | `src/api/`, `include/api/` | OpenAI-compatible requests and streaming |
 | `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
 | `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
-| `include/mcp/` | bounded stdio JSON-RPC and Chrome integration |
+| `include/mcp/` | bounded stdio JSON-RPC integrations |
 | `include/core/` | configuration, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
@@ -101,12 +101,14 @@ summary passes validation. Automatic pre-turn and at-most-once mid-turn
 compaction use the same path as `/compact`.
 
 Active messages and the removed-trace archive remain separate. Model-authored
-summary and memory text is evidence, never user authority. Memory bodies are
-read on demand from a bounded name-only index. The explicit
-`memory(action, key, content?)` contract handles get, set, forget, list, and
-search; writes require an explicit user request. `--no-memory` removes recall
-and writes for reproducible runs. Required behavior belongs in `AGENTS.md`, not
-memory.
+summary and memory text is evidence, never user authority. Native, Codex, and
+current-project Claude names share one bounded index; external files are
+read-only. The explicit `memory(action, key, content?)` contract handles get,
+set, forget, list, and search. Foreground writes require an explicit user
+request. One supervised startup child may extract one native memory from one
+idle saved session; it receives a redacted 32 KiB transcript and only the
+memory tool. `--no-memory` disables recall and extraction. Required behavior
+belongs in `AGENTS.md`, not memory.
 Skills use progressive disclosure: a bounded catalogue of installed names and
 descriptions is advertised with the `skill` tool. Explicit `$skill-name`
 mentions are resolved before the first model call; otherwise the model selects
@@ -115,6 +117,9 @@ and nested skills to depth six. A selected `SKILL.md` is loaded completely or
 rejected as oversized—partial procedures are never injected. Tool requirements
 filter unusable skills before advertisement; invocation arguments expand only
 when the selected body is loaded.
+Browser work follows the same pattern: the deferred `browser-use` skill drives
+`playwright-cli` through the existing approved `run` tool. Playwright's daemon
+owns browser state; µAgent adds no browser schemas or protocol layer.
 ## Observability
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,

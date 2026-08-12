@@ -2,6 +2,9 @@
 
 #include "include/cli.h"
 
+#include <termios.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -19,6 +22,32 @@ InteractiveReadHandler& ReadHandler() {
   static InteractiveReadHandler handler;
   return handler;
 }
+
+// Startup prompts run before the persistent raw-mode composer is mounted. A
+// prior interrupted terminal application can leave ICRNL disabled, in which
+// case a real Enter arrives as an ordinary carriage return and getline waits
+// forever while the terminal echoes "^M". Temporarily establish the minimum
+// cooked-mode contract needed by the fallback line reader, then preserve the
+// caller's original mode for the persistent composer or shell to own.
+class ScopedCookedInput {
+ public:
+  ScopedCookedInput() {
+    if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &saved_) != 0) return;
+    termios cooked = saved_;
+    cooked.c_lflag |= static_cast<tcflag_t>(ICANON | ECHO | ISIG | IEXTEN);
+    cooked.c_iflag |= ICRNL;
+    cooked.c_iflag &= ~static_cast<tcflag_t>(INLCR | IGNCR);
+    active_ = tcsetattr(STDIN_FILENO, TCSANOW, &cooked) == 0;
+  }
+
+  ~ScopedCookedInput() {
+    if (active_) tcsetattr(STDIN_FILENO, TCSANOW, &saved_);
+  }
+
+ private:
+  termios saved_{};
+  bool active_ = false;
+};
 }  // namespace
 
 constexpr SlashCommandSpec kSlashCommands[] = {
@@ -101,6 +130,7 @@ std::string ReadInputLine(const std::string& prompt, bool* eof,
   if (ReadHandler()) {
     return ReadHandler()(prompt, eof, keep_history, initial);
   }
+  ScopedCookedInput cooked_input;
   fputs(prompt.c_str(), stdout);
   fputs(initial.c_str(), stdout);
   fflush(stdout);

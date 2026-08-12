@@ -61,6 +61,10 @@ int64_t ToolTracePruneMinChars() {
 
 int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 85); }
 
+int64_t AutoCompactTokens() {
+  return EnvBounded("UAGENT_AUTO_COMPACT_TOKENS", 128 * 1024, 0);
+}
+
 int64_t ToolConcurrency() {
   return EnvBounded("UAGENT_TOOL_CONCURRENCY", 4, 1, kFgMax);
 }
@@ -117,6 +121,14 @@ int64_t ListDirScanEntries() {
 int64_t MemoryBytes() { return EnvBounded("UAGENT_MEMORY_BYTES", 2048, 256); }
 
 int64_t MaxMemories() { return EnvBounded("UAGENT_MEMORY_FILES", 32, 1); }
+
+int64_t MemoryIdleSeconds() {
+  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", 6 * 60 * 60, 0, 48 * 60 * 60);
+}
+
+int64_t MemoryExtractBytes() {
+  return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", 32 * 1024, 4096, 256 * 1024);
+}
 
 int64_t MemoryAlwaysBytes() {
   return EnvBounded("UAGENT_MEMORY_ALWAYS_BYTES", 2048, 0, 64 * 1024);
@@ -248,6 +260,7 @@ json RuntimeConfig::DiagnosticJson() const {
       {"max_turn_cost", max_turn_cost},
       {"session_budget", session_budget},
       {"auto_compact_pct", AutoCompactPct()},
+      {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_trace_protect_chars", ToolTraceProtectChars()},
       {"tool_trace_prune_min_chars", ToolTracePruneMinChars()},
   });

@@ -49,17 +49,17 @@ inline void PrintToolCall(const CallTask& task, const ToolCall& call,
                           bool verbose) {
   std::string prefix = "→ " + task.ordinal + TerminalSafe(call.name);
   bool full_label = verbose || call.name == "run";
-  if (task.label.empty()) {
-    printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
-  } else if (full_label && task.label.find('\n') != std::string::npos) {
-    printf("%s%s%s\n%s\n", CYAN(), prefix.c_str(), RST(),
-           TerminalSafe(task.label).c_str());
-  } else {
-    std::string summary = full_label
-                              ? TerminalSafe(task.label)
-                              : TerminalSummary(task.label, prefix.size() + 3);
-    printf("%s%s(%s)%s\n", CYAN(), prefix.c_str(), summary.c_str(), RST());
+  if (!task.label.empty()) {
+    if (full_label && task.label.find('\n') != std::string::npos) {
+      prefix += '\n' + TerminalSafe(task.label);
+    } else {
+      std::string summary =
+          full_label ? TerminalSafe(task.label)
+                     : TerminalSummary(task.label, prefix.size() + 3);
+      prefix += '(' + summary + ')';
+    }
   }
+  printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
 }
 
 inline void PrintToolDisplay(const std::string& display) {

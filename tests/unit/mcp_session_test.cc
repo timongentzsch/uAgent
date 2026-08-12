@@ -1,5 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
@@ -11,33 +12,13 @@
 namespace uagent {
 
 void TestMcpContractHelpers() {
-  json action_schema = {
-      {"type", "object"},
-      {"properties", {{"includeSnapshot", {{"type", "boolean"}}}}}};
-  CHECK(McpSupportsPostActionSnapshot(action_schema));
-  CHECK(!McpSupportsPostActionSnapshot(
-      {{"type", "object"}, {"properties", json::object()}}));
-  CHECK(McpCallArguments({{"uid", "7"}}, action_schema,
-                         true)["includeSnapshot"] == true);
-  CHECK(McpCallArguments(
-            {{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}},
-            action_schema, true) ==
-        json({{"uid", "7"}, {"includeSnapshot", false}, {"timeout", 9}}));
-  CHECK(McpCallArguments({{"timeout", 9}}, action_schema, false) ==
-        json({{"timeout", 9}}));
   json optional_path_schema = {{"type", "object"},
                                {"properties",
                                 {{"filePath", {{"type", "string"}}},
                                  {"requiredPath", {{"type", "string"}}}}},
                                {"required", json::array({"requiredPath"})}};
   CHECK(McpCallArguments({{"filePath", ""}, {"requiredPath", ""}},
-                         optional_path_schema,
-                         false) == json({{"requiredPath", ""}}));
-  McpServer custom;
-  custom.config = json{{"command", "custom"}};
-  CHECK(!McpDefaultsPostActionSnapshot(custom, action_schema));
-  custom.config["__uagent_builtin"] = "chrome-devtools";
-  CHECK(McpDefaultsPostActionSnapshot(custom, action_schema));
+                         optional_path_schema) == json({{"requiredPath", ""}}));
 
   std::string decoded;
   CHECK(Base64Decode("aW1hZ2U=", decoded, 5));
@@ -49,25 +30,6 @@ void TestMcpContractHelpers() {
   CHECK(ExpandProcessEnv("pre-${UAGENT_MCP_TEST_VALUE}-$$") ==
         "pre-expanded-$");
   unsetenv("UAGENT_MCP_TEST_VALUE");
-
-  json isolated = ChromeMcpConfig();
-  CHECK(isolated["args"].dump().find("--isolated") != std::string::npos);
-  CHECK(isolated["args"].dump().find("--slim") != std::string::npos);
-  CHECK(isolated["__uagent_toolset"] == "slim");
-  CHECK(isolated["args"].dump().find(kChromeMcpPackage) != std::string::npos);
-  json user = ChromeMcpConfig("user");
-  CHECK(user["args"].dump().find("--auto-connect") != std::string::npos);
-  CHECK(user["args"].dump().find("--isolated") == std::string::npos);
-  CHECK(user["args"].dump().find("--slim") != std::string::npos);
-  json full = ChromeMcpConfig("isolated", "full");
-  CHECK(full["args"].dump().find("--slim") == std::string::npos);
-  CHECK(full["__uagent_toolset"] == "full");
-  setenv("UAGENT_CHROME_BROWSER_URL", "http://127.0.0.1:9222", 1);
-  user = ChromeMcpConfig("user");
-  CHECK(user["args"].dump().find("--browser-url") != std::string::npos);
-  CHECK(user["args"].dump().find("http://127.0.0.1:9222") != std::string::npos);
-  CHECK(user["args"].dump().find("--auto-connect") == std::string::npos);
-  unsetenv("UAGENT_CHROME_BROWSER_URL");
 
   std::string error;
   CHECK(McpValidateServerConfig("test",
@@ -91,29 +53,21 @@ void TestMcpContractHelpers() {
       ("uagent-mcp-root-" + std::to_string(static_cast<int64_t>(getpid())));
   std::filesystem::path configured_root = root_fixture / "root with space";
   std::filesystem::create_directories(configured_root);
-  McpRootSet roots;
+  json roots;
   error.clear();
   CHECK(McpResolveRoots({{"command", "server"},
                          {"roots", json::array({"root with space"})},
                          {"__uagent_config_dir", root_fixture.string()}},
                         "", roots, error));
-  CHECK(roots.entries.size() == 1);
-  CHECK(roots.entries[0]["uri"].get<std::string>().find(
-            "root%20with%20space") != std::string::npos);
-  CHECK(roots.Contains((configured_root / "image.png").string()));
-  CHECK(!roots.Contains((root_fixture / "outside.png").string()));
-  McpRootSet global_roots;
+  CHECK(roots.size() == 1);
+  CHECK(roots[0]["uri"].get<std::string>().find("root%20with%20space") !=
+        std::string::npos);
+  json global_roots;
   CHECK(McpResolveRoots({{"command", "server"}}, configured_root.string(),
                         global_roots, error));
-  CHECK(global_roots.paths ==
-        std::vector<std::filesystem::path>({configured_root}));
-  CHECK(ChromeTemporaryArtifact((std::filesystem::temp_directory_path() /
-                                 "chrome-devtools-mcp-test" / "screenshot.png")
-                                    .string()));
-  CHECK(!ChromeTemporaryArtifact(
-      (std::filesystem::temp_directory_path() / "screenshot.png").string()));
+  CHECK(global_roots.size() == 1);
   unsetenv("UAGENT_MCP_MISSING_ROOT");
-  McpRootSet invalid_roots;
+  json invalid_roots;
   CHECK(!McpResolveRoots({{"command", "server"},
                           {"roots", json::array({"$UAGENT_MCP_MISSING_ROOT"})},
                           {"__uagent_config_dir", root_fixture.string()}},
@@ -126,7 +80,7 @@ void TestMcpContractHelpers() {
   json root_reply = McpClientRequestReply(
       rooted, {{"jsonrpc", "2.0"}, {"id", 7}, {"method", "roots/list"}});
   CHECK(root_reply["id"] == 7);
-  CHECK(root_reply["result"]["roots"] == roots.entries);
+  CHECK(root_reply["result"]["roots"] == roots);
   CHECK(McpClientRequestReply(
             rooted, {{"jsonrpc", "2.0"},
                      {"id", 8},
@@ -166,7 +120,6 @@ void TestMcpContractHelpers() {
       ("uagent-mcp-image-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(image_home);
   setenv("HOME", image_home.c_str(), 1);
-  server.roots.paths = {image_home};
   json response = {
       {"result",
        {{"content", json::array({{{"type", "text"}, {"text", "plain"}},
@@ -192,20 +145,6 @@ void TestMcpContractHelpers() {
                     std::istreambuf_iterator<char>()) == "image");
   CHECK(rendered.find("file:///tmp/value") != std::string::npos);
   CHECK(rendered.find("structuredContent") != std::string::npos);
-  ToolResult missing_screenshot =
-      ToolSuccess((image_home / "missing.png").string());
-  missing_screenshot =
-      AttachChromeScreenshot(server, std::move(missing_screenshot));
-  CHECK(!missing_screenshot.Ok());
-  CHECK(missing_screenshot.output.find("cannot read") != std::string::npos);
-  ToolResult outside_screenshot = AttachChromeScreenshot(
-      server, ToolSuccess((image_home.parent_path() / "outside.png").string()));
-  CHECK(!outside_screenshot.Ok());
-  CHECK(outside_screenshot.error == ToolErrorCode::kPermissionDenied);
-  ToolResult screenshot_text =
-      AttachChromeScreenshot(server, ToolSuccess("screenshot complete"));
-  CHECK(screenshot_text.Ok());
-  CHECK(screenshot_text.output == "screenshot complete");
   ToolResult error_text = McpResultText(
       server,
       {{"result",
@@ -279,7 +218,7 @@ void TestWorkspaceScopedSession() {
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
     CHECK(payload.value("context_tokens", int64_t{-1}) == agent.ContextUsed());
-    payload["context_tokens"] = 12345;
+    payload["context_tokens"] = 1'900'000;
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .output.starts_with("wrote "));
@@ -289,7 +228,8 @@ void TestWorkspaceScopedSession() {
   CHECK((st.st_mode & 0777) == 0600);
   CHECK(agent.Load(session.string(), CanonicalCwd(), error));
   CHECK(agent.SessionId() == session_id);
-  CHECK(agent.ContextUsed() == 12345);
+  CHECK(agent.ContextUsed() > 0);
+  CHECK(agent.ContextUsed() < 1'900'000);
   CHECK(!agent.Load(session.string(), root.string(), error));
   CHECK(error.find("session belongs to") != std::string::npos);
 
@@ -435,6 +375,29 @@ void TestScopedBaseAndMemory() {
   CHECK(ToolMemoryAction("set", "project/build-uses-ninja",
                          std::string("This repo builds with ninja."))
             .output.starts_with("wrote "));
+
+  // Codex and Claude memories join the same index as read-only evidence.
+  fs::create_directories(home / ".codex/memories");
+  CHECK(ToolWriteFile((home / ".codex/memories/MEMORY.md").string(),
+                      "codex-memory-sentinel")
+            .output.starts_with("wrote "));
+  std::string claude_project = workspace.string();
+  for (char& byte : claude_project) {
+    if (!std::isalnum(static_cast<unsigned char>(byte))) byte = '-';
+  }
+  fs::path claude_memory =
+      home / ".claude/projects" / claude_project / "memory/MEMORY.md";
+  CHECK(ToolWriteFile(claude_memory.string(), "claude-memory-sentinel")
+            .output.starts_with("wrote "));
+  CHECK(ToolMemoryAction("get", "codex/MEMORY", std::nullopt)
+            .output.find("codex-memory-sentinel") != std::string::npos);
+  CHECK(ToolMemoryAction("get", "claude/MEMORY", std::nullopt)
+            .output.find("claude-memory-sentinel") != std::string::npos);
+  CHECK(ToolMemoryAction("set", "codex/MEMORY", std::string("no")).error ==
+        ToolErrorCode::kPermissionDenied);
+  CHECK(ToolMemoryAction("forget", "claude/MEMORY", std::nullopt).error ==
+        ToolErrorCode::kPermissionDenied);
+
   ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
   MemoryIndex index =
       LoadMemoryIndex(workspace, 32 * 1024 - loaded.text.size());
@@ -448,6 +411,8 @@ void TestScopedBaseAndMemory() {
         std::string::npos);
   CHECK(loaded.memory_index.find("project/build-uses-ninja") !=
         std::string::npos);
+  CHECK(loaded.memory_index.find("codex/MEMORY") != std::string::npos);
+  CHECK(loaded.memory_index.find("claude/MEMORY") != std::string::npos);
   CHECK(loaded.memory_index.find("global/prefers-tabs") <
         loaded.memory_index.find("project/build-uses-ninja"));
   CHECK(ToolMemoryAction("get", "global/prefers-tabs", std::nullopt)

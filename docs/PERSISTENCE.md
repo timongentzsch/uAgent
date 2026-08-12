@@ -9,8 +9,10 @@ model output, tool results, paths, and usage.
 | debug traces | `~/.uagent/sessions/*.jsonl` |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
+| Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
 | memories | `~/.uagent/memory/{global,projects/<repository>}/*.md` |
+| processed memory-extraction claims | `~/.uagent/memory/.processed/*` |
 | one-off Python scratch scripts | `<workspace>/.uagent/scratch/*.py` |
 | project trust | `~/.uagent/config/trusted-projects.json` |
 | preferred model | `~/.uagent/config/model-preference.json` |
@@ -27,8 +29,10 @@ must ship an explicit, tested conversion or start a new session. Interrupted
 writes leave the prior valid record intact; malformed files remain available
 for diagnosis.
 
-Individual project/global memory files are the only recall source. They change
-only through an explicitly requested `memory` tool action.
+Native project/global files are writable through an explicitly requested
+`memory` action or the single bounded background extractor. Top-level Codex
+memory files under `~/.codex/memories` and the current Claude project files
+under `~/.claude/projects/<project>/memory` are read-only recall sources.
 
 Completed process logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the
 private artifact directory instead of entering model context whole. Each is

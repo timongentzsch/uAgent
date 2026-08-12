@@ -3,6 +3,7 @@
 #include "include/tools/memory.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -58,17 +59,51 @@ std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   return CanonicalOrSelf(common_dir);
 }
 
+std::filesystem::path RepositoryLabel(const std::filesystem::path& cwd) {
+  std::filesystem::path identity = RepositoryIdentity(cwd);
+  return identity.filename() == ".git" ? identity.parent_path()
+                                       : ProjectRoot(cwd);
+}
+
 std::filesystem::path MemoryDirectory(const std::string& scope,
                                       const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   fs::path base = fs::path(GlobalBase()) / kMemoryDir;
   if (scope == "global") return base / "global";
   fs::path identity = RepositoryIdentity(cwd);
-  fs::path label =
-      identity.filename() == ".git" ? identity.parent_path() : ProjectRoot(cwd);
+  fs::path label = RepositoryLabel(cwd);
   std::string name = SafeFileComponent(label.filename().string()) + "-" +
                      WorkspaceId(identity.string());
   return base / "projects" / name;
+}
+
+void AddMarkdownMemories(std::vector<MemoryEntry>& entries,
+                         const std::filesystem::path& directory,
+                         const std::string& scope, size_t limit) {
+  namespace fs = std::filesystem;
+  std::error_code error;
+  std::vector<fs::path> paths;
+  for (fs::directory_iterator it(directory, error), end; it != end && !error;
+       it.increment(error)) {
+    if (!it->is_regular_file(error) || it->path().extension() != ".md") {
+      continue;
+    }
+    paths.push_back(it->path());
+  }
+  std::sort(paths.begin(), paths.end());
+  for (size_t index = 0; index < std::min(limit, paths.size()); ++index) {
+    entries.push_back(
+        {scope + "/" + paths[index].stem().string(), paths[index].string()});
+  }
+}
+
+std::filesystem::path ClaudeMemoryDirectory(const std::filesystem::path& cwd) {
+  std::string slug = CanonicalOrSelf(RepositoryLabel(cwd)).string();
+  for (char& byte : slug) {
+    if (!std::isalnum(static_cast<unsigned char>(byte))) byte = '-';
+  }
+  return std::filesystem::path(UserHome()) / ".claude" / "projects" / slug /
+         "memory";
 }
 
 std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
@@ -102,14 +137,17 @@ ToolResult SearchMemoryText(const std::string& query) {
     std::ifstream input(memory.path);
     if (!input) continue;
     std::string line;
+    size_t scanned = 0;
     bool key_match = AsciiLower(memory.key).find(needle) != std::string::npos;
     bool emitted = false;
-    while (std::getline(input, line)) {
+    while (scanned < 64 * 1024 && std::getline(input, line)) {
+      scanned += line.size() + 1;
       if (!key_match && AsciiLower(line).find(needle) == std::string::npos) {
         continue;
       }
       output += "- " + memory.key + ": " +
-                Utf8Trunc(OneLine(line), kMaxLineBytes) + "\n";
+                Utf8Trunc(OneLine(RedactMemorySecrets(line)), kMaxLineBytes) +
+                "\n";
       emitted = true;
       if (++matches == kMaxMatches) {
         output += "[more matches; narrow the query]";
@@ -129,6 +167,30 @@ ToolResult SearchMemoryText(const std::string& query) {
              ? ToolSuccess(std::move(output))
              : ToolFailure(ToolErrorCode::kNotFound,
                            "error: no memory matches: " + TerminalSafe(query));
+}
+
+ToolResult ReadMemoryFile(const MemoryEntry& memory) {
+  bool writable =
+      memory.key.starts_with("global/") || memory.key.starts_with("project/");
+  std::ifstream input(memory.path, std::ios::binary);
+  if (!input) {
+    return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
+  }
+  size_t max_bytes = static_cast<size_t>(MemoryBytes());
+  std::string body(max_bytes + 1, '\0');
+  input.read(body.data(), static_cast<std::streamsize>(body.size()));
+  size_t read = static_cast<size_t>(input.gcount());
+  bool truncated =
+      read > max_bytes || input.peek() != std::char_traits<char>::eof();
+  if (truncated && writable) {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: saved memory exceeds configured limit");
+  }
+  body.resize(std::min(read, max_bytes));
+  body = RedactMemorySecrets(Utf8Prefix(std::move(body), max_bytes));
+  if (truncated) body += "\n[external memory truncated; use search to narrow]";
+  return ToolSuccess("[memory " + memory.key + "; non-authoritative evidence" +
+                     (writable ? "" : "; read-only") + "]\n" + body);
 }
 
 ToolResult AccessMemory(const std::string& name, const std::string& scope,
@@ -174,21 +236,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   }
 
   if (!content) {
-    std::ifstream input(path, std::ios::binary);
-    if (!input) {
-      return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
-    }
-    std::string body(static_cast<size_t>(max_bytes) + 1, '\0');
-    input.read(body.data(), static_cast<std::streamsize>(body.size()));
-    size_t read = static_cast<size_t>(input.gcount());
-    if (read > static_cast<size_t>(max_bytes) ||
-        input.peek() != std::char_traits<char>::eof()) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: saved memory exceeds configured limit");
-    }
-    body.resize(read);
-    return ToolSuccess("[memory " + scope + "/" + SafeFileComponent(name) +
-                       "; non-authoritative evidence]\n" + body);
+    return ReadMemoryFile(
+        {scope + "/" + SafeFileComponent(name), path.string()});
   }
 
   if (Trim(*content).empty()) {
@@ -252,9 +301,23 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   }
   std::string scope = key.substr(0, slash);
   std::string name = key.substr(slash + 1);
+  if (scope == "codex" || scope == "claude") {
+    if (action != "get" || content) {
+      return ToolFailure(ToolErrorCode::kPermissionDenied,
+                         "error: " + scope + " memories are read-only");
+    }
+    std::vector<MemoryEntry> memories = ListMemories();
+    auto found = std::find_if(
+        memories.begin(), memories.end(),
+        [&](const MemoryEntry& memory) { return memory.key == key; });
+    return found == memories.end()
+               ? ToolFailure(ToolErrorCode::kNotFound, "error: no such memory")
+               : ReadMemoryFile(*found);
+  }
   if (scope != "project" && scope != "global") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: memory key must start with project/ or global/");
+                       "error: memory key must start with project/, global/, "
+                       "codex/, or claude/");
   }
   const bool has_content =
       content.has_value() && (action == "set" || !Trim(*content).empty());
@@ -312,15 +375,15 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
   for (const char* scope : {"global", "project"}) {
-    std::error_code error;
-    for (fs::directory_iterator it(MemoryDirectory(scope, cwd), error), end;
-         it != end && !error; it.increment(error)) {
-      if (!it->is_regular_file(error) || it->path().extension() != ".md") {
-        continue;
-      }
-      entries.push_back({std::string(scope) + "/" + it->path().stem().string(),
-                         it->path().string()});
-    }
+    AddMarkdownMemories(entries, MemoryDirectory(scope, cwd), scope,
+                        static_cast<size_t>(MaxMemories()));
+  }
+  std::string home = UserHome();
+  if (!home.empty()) {
+    AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
+                        "codex", static_cast<size_t>(MaxMemories()));
+    AddMarkdownMemories(entries, ClaudeMemoryDirectory(cwd), "claude",
+                        static_cast<size_t>(MaxMemories()));
   }
   std::sort(entries.begin(), entries.end(),
             [](const MemoryEntry& left, const MemoryEntry& right) {

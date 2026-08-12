@@ -55,12 +55,6 @@ inline void TerminalClearToEnd() {
 }
 // Wraps pasted text in \e[200~ … \e[201~ so a multi-line paste arrives as one
 // unit.
-inline void BracketedPaste(bool on) {
-  if (!g_tty) return;
-  fputs(on ? "\033[?2004h" : kTerminalModeReset, stdout);
-  fflush(stdout);
-}
-
 struct TerminalActivityState {
   std::mutex mutex;
   uint64_t next = 0;

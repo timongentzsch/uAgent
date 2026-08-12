@@ -340,7 +340,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   json memory_schema = schema(R"json({"type":"object","properties":{
                     "action":{"type":"string","enum":["get","set","forget","list","search"]},
                     "key":{"type":"string",
-                      "description":"exact project/<name> or global/<name> key; search text for search; omit for list"},
+                      "description":"exact project/<name> or global/<name> key; codex/<name> and claude/<name> are read-only; search text for search; omit for list"},
                     "content":{"type":"string",
                       "description":"durable lesson; required only for set"}},
                     "required":["action"]})json");
@@ -349,9 +349,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       MakeTool(
           "memory",
           "List or search memory when the startup index is insufficient; get "
-          "a body only when relevant. Set or forget only when the user asks. "
-          "Never save task progress, guesses, secrets, commands, or "
-          "permissions.",
+          "a body only when relevant. Set or forget only when the user asks, "
+          "except that the dedicated background extractor may set one native "
+          "memory. Never save task progress, guesses, secrets, commands, or "
+          "permissions. Codex and Claude memories are read-only.",
           std::move(memory_schema), [](const json& a, const ToolContext&) {
             std::optional<std::string> content;
             if (a.contains("content") && a["content"].is_string()) {

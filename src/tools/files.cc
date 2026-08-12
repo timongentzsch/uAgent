@@ -320,6 +320,25 @@ std::string FileLineEnding(const std::string& text, bool crlf,
   return out;
 }
 
+std::string EditRecoveryHint(const std::string& data,
+                             const std::string& old_text) {
+  std::istringstream input(old_text);
+  std::string line;
+  while (std::getline(input, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (Trim(line).size() < 4) continue;
+    size_t match = data.find(line);
+    if (match == std::string::npos) continue;
+    size_t begin = match == 0 ? 0 : data.rfind('\n', match - 1) + 1;
+    size_t end = data.find('\n', match);
+    if (end == std::string::npos) end = data.size();
+    int64_t number = 1 + std::count(data.begin(), data.begin() + begin, '\n');
+    return "; nearby current line " + std::to_string(number) + ": " +
+           Utf8Prefix(data.substr(begin, end - begin), 200);
+  }
+  return "; reread the current file before retrying";
+}
+
 bool EditedSize(size_t current, size_t old_size, size_t new_size, int64_t count,
                 int64_t max_bytes, size_t& next) {
   if (new_size >= old_size) {
@@ -383,6 +402,7 @@ ToolResult ToolEditFile(const std::string& path,
 
   const size_t original_size = data.size();
   int64_t replacements = 0;
+  int64_t already_applied = 0;
   EditDisplay display;
   for (size_t i = 0; i < edits.size(); ++i) {
     const FileEdit& edit = edits[i];
@@ -412,9 +432,18 @@ ToolResult ToolEditFile(const std::string& path,
       }
     }
     if (count == 0) {
+      std::string normalized_new =
+          FileLineEnding(edit.new_text, file_crlf, /*normalize_crlf=*/true);
+      if (!edit.new_text.empty() &&
+          (data.find(edit.new_text) != std::string::npos ||
+           data.find(normalized_new) != std::string::npos)) {
+        ++already_applied;
+        continue;
+      }
       return ToolFailure(ToolErrorCode::kNotFound,
                          "error: edit " + std::to_string(i + 1) +
-                             " `old` not found in " + path);
+                             " `old` not found in " + path +
+                             EditRecoveryHint(data, old_eff));
     }
     if (!edit.replace_all && count > 1) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -430,9 +459,8 @@ ToolResult ToolEditFile(const std::string& path,
     std::string new_eff =
         FileLineEnding(edit.new_text, replacement_crlf, normalized_old);
     if (old_eff == new_eff) {
-      return ToolFailure(
-          ToolErrorCode::kInvalidArguments,
-          "error: edit " + std::to_string(i + 1) + " makes no change");
+      ++already_applied;
+      continue;
     }
     int64_t applied = edit.replace_all ? count : 1;
     size_t next_size = 0;
@@ -449,6 +477,11 @@ ToolResult ToolEditFile(const std::string& path,
       data.replace(match, old_eff.size(), new_eff);
     }
     replacements += applied;
+  }
+  if (replacements == 0) {
+    return ToolSuccess("already applied " + path + " (" +
+                       std::to_string(already_applied) +
+                       (already_applied == 1 ? " edit)" : " edits)"));
   }
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions

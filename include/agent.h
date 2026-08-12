@@ -93,7 +93,7 @@ class Agent {
 
   void AddRouteUsage(const Usage& usage);
 
-  // first user message, for the session picker's one-line title
+  // Session picker's one-line title.
   std::string FirstUserText() const;
 
   // Real user prompts are tracked out of band from model-readable text.
@@ -111,8 +111,8 @@ class Agent {
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error);
 
-  // Conservative size of the next request: never below either the last
-  // server-reported exchange or the current serialized prompt estimate.
+  // Estimated tokens in the request currently represented by the conversation.
+  // Provider usage belongs to billing and may be cumulative or stale.
   int64_t ContextUsed() const;
   int64_t ContextSnapshot() const {
     return context_snapshot_.load(std::memory_order_relaxed);
@@ -183,7 +183,12 @@ class Agent {
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
                   bool render_output = true);
 
-  int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes) const;
+  size_t RequestContextBytes(size_t schema_bytes) const;
+  int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
+                             int64_t* projected_tokens = nullptr) const;
+  bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
+                              int64_t& pressure,
+                              int64_t& projected_tokens) const;
 
   enum class MidturnCompact {
     kNotNeeded,
@@ -259,7 +264,6 @@ class Agent {
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   Conversation conversation_;
-  int64_t reported_context_tokens_ = 0;
   mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;
   Usage session_usage_;

@@ -21,9 +21,9 @@ to the model when it opens the skill. Optional comma-separated
 runtime, install, and integration environment reference. It keeps that detail
 out of the base system prompt and loads it only for configuration work.
 
-`browser-use` drives either the shared user Chrome or an isolated browser with
-µAgent's built-in Chrome MCP. It includes session health checks and uses only
-the tools registered by this runtime.
+`browser-use` drives Playwright CLI through the existing approved `run` tool.
+Its daemon reuses one browser across concise calls while snapshots stay outside
+model context; recurring flows become deterministic Playwright code.
 
 `find-skills` teaches the agent to search the public skills ecosystem with
 `npx skills`. It suggests and, if asked, runs installs — every one of those is

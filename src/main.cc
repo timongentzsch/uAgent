@@ -6,6 +6,7 @@
 #include <clocale>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <utility>
@@ -26,6 +27,13 @@ namespace {
 
 void InitializeProcess() {
   std::setlocale(LC_CTYPE, "");
+  const char* session = getenv("PLAYWRIGHT_CLI_SESSION");
+  const char* generated = getenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION");
+  if (!session || (generated && session == std::string(generated))) {
+    std::string session = "uagent-" + std::to_string(getpid());
+    setenv("PLAYWRIGHT_CLI_SESSION", session.c_str(), 1);
+    setenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION", session.c_str(), 1);
+  }
   g_tty = isatty(STDOUT_FILENO);
   g_signal_tty = g_tty;
   signal(SIGINT, SigintHandler);

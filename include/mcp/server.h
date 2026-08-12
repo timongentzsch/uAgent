@@ -13,11 +13,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -25,7 +23,6 @@
 #include <vector>
 
 #include "include/core/child_env.h"
-#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
@@ -35,18 +32,6 @@
 extern char** environ;
 
 namespace uagent {
-
-struct McpRootSet {
-  json entries = json::array();
-  std::vector<std::filesystem::path> paths;
-
-  bool Contains(const std::string& path) const {
-    std::filesystem::path target = CanonicalAccessPath(path);
-    return std::any_of(paths.begin(), paths.end(), [&](const auto& root) {
-      return PathWithin(target, root);
-    });
-  }
-};
 
 struct McpServer {
   std::string name;
@@ -58,10 +43,8 @@ struct McpServer {
   int64_t next_id = 1;
   size_t response_cap = 16 * 1024 * 1024;
   json config;
-  McpRootSet roots;
+  json roots = json::array();
   bool tools_changed = false;
-  size_t tool_count = 0;
-  std::string last_error;
 
   ~McpServer() { Shutdown(); }
   // stdin EOF is the polite stop signal for stdio servers; escalate to
@@ -112,37 +95,6 @@ struct McpServer {
   }
 };
 
-inline constexpr const char* kChromeMcpName = "chrome-devtools";
-inline constexpr const char* kChromeMcpPackage = "chrome-devtools-mcp@latest";
-
-inline json ChromeMcpConfig(const std::string& mode = "isolated",
-                            const std::string& toolset = "slim") {
-  json args = json::array({"-y", kChromeMcpPackage, "--no-usage-statistics",
-                           "--no-performance-crux"});
-  if (mode == "user") {
-    std::string browser_url = EnvStr("UAGENT_CHROME_BROWSER_URL", "");
-    if (browser_url.empty()) {
-      args.push_back("--auto-connect");
-    } else {
-      args.push_back("--browser-url");
-      args.push_back(std::move(browser_url));
-    }
-  } else {
-    args.push_back("--isolated");
-  }
-  if (toolset != "full") args.push_back("--slim");
-  return {{"command", "npx"},
-          {"args", std::move(args)},
-          {"__uagent_builtin", kChromeMcpName},
-          {"__uagent_lazy", true},
-          {"__uagent_mode", mode},
-          {"__uagent_toolset", toolset == "full" ? "full" : "slim"}};
-}
-
-inline bool McpConfigLazy(const json& config) {
-  return JsonValue(config, "__uagent_lazy", false);
-}
-
 // Explicit session owner. Destruction closes every transport and reaps every
 // server before curl and the rest of the process runtime are torn down.
 class McpRuntime {
@@ -158,7 +110,6 @@ class McpRuntime {
     return raw;
   }
 
-  size_t Size() const { return servers_.size(); }
   const std::vector<std::unique_ptr<McpServer>>& Servers() const {
     return servers_;
   }

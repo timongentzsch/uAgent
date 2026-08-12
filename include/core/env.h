@@ -27,6 +27,7 @@ int64_t ToolBatchResultCap();
 int64_t ToolTraceProtectChars();
 int64_t ToolTracePruneMinChars();
 int64_t AutoCompactPct();
+int64_t AutoCompactTokens();
 int64_t ToolConcurrency();
 // Delegation depth: 0 is the interactive coordinator. A subagent may delegate
 // again while it stays under the cap, so nesting is bounded, not banned.
@@ -64,6 +65,8 @@ int64_t ListDirEntries();
 int64_t ListDirScanEntries();
 int64_t MemoryBytes();
 int64_t MaxMemories();
+int64_t MemoryIdleSeconds();
+int64_t MemoryExtractBytes();
 int64_t MemoryAlwaysBytes();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
@@ -139,6 +142,7 @@ struct RuntimeConfig {
   bool openrouter_fallbacks = true;
   bool web_search_server = true;
   bool memory_enabled = true;
+  bool memory_generate = true;
 
   struct LongOption {
     const char* env;
@@ -235,6 +239,8 @@ struct RuntimeConfig {
       {"UAGENT_WEB_SEARCH_SERVER", "web_search_server",
        &RuntimeConfig::web_search_server, true},
       {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true},
+      {"UAGENT_MEMORY_GENERATE", "memory_generate",
+       &RuntimeConfig::memory_generate, true},
   };
 
   static RuntimeConfig FromEnvironment();

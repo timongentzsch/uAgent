@@ -64,6 +64,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
+  context_snapshot_.store(
+      EstimatedTokens(RequestContextBytes(JsonEstimatedBytes(schemas))),
+      std::memory_order_relaxed);
   ChatResult result = api_.Chat(conversation_.Messages(), schemas, turn_budget,
                                 session_id_, render_output);
   if (Debug().Enabled()) {
@@ -218,26 +221,38 @@ void Agent::ReportImageFallback(const ImageFallbackResult& result) {
          RST());
 }
 
-int64_t Agent::ContextPressurePct(size_t pending_bytes,
-                                  size_t schema_bytes) const {
-  size_t bytes = JsonEstimatedBytes(conversation_.Messages());
-  if (api_.native_tools) bytes = SaturatingAdd(bytes, schema_bytes);
-  int64_t used = std::max(reported_context_tokens_, EstimatedTokens(bytes));
+int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
+                                  int64_t* projected_tokens) const {
+  size_t bytes = RequestContextBytes(schema_bytes);
+  int64_t used = EstimatedTokens(bytes);
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
     int64_t reserve =
         std::clamp(MaxOutputTokens(), int64_t{0}, api_.ctx_window / 4);
-    double projected = static_cast<double>(used) + pending + reserve;
+    int64_t tokens = used + pending + reserve;
+    if (projected_tokens) *projected_tokens = tokens;
+    double projected = static_cast<double>(tokens);
     if (projected >= api_.ctx_window) return 100;
     return static_cast<int64_t>(100.0 * projected /
                                 static_cast<double>(api_.ctx_window));
   }
+  if (projected_tokens) *projected_tokens = used + pending;
   bytes = SaturatingAdd(bytes, pending_bytes);
   if (api_.config.request_bytes <= 0) return 0;
   size_t limit = static_cast<size_t>(api_.config.request_bytes);
   if (bytes >= limit) return 100;
   return static_cast<int64_t>(100.0 * static_cast<double>(bytes) /
                               static_cast<double>(limit));
+}
+
+bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
+                                   int64_t& pressure,
+                                   int64_t& projected_tokens) const {
+  pressure = ContextPressurePct(pending_bytes, schema_bytes, &projected_tokens);
+  int64_t pct = std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
+  int64_t tokens = AutoCompactTokens();
+  return (pct > 0 && pressure >= pct) ||
+         (tokens > 0 && projected_tokens >= tokens);
 }
 
 Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
@@ -248,14 +263,16 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
   if (conversation_.HasKind(MessageKind::kAttachment)) {
     return MidturnCompact::kNotNeeded;
   }
-  int64_t threshold = std::clamp(AutoCompactPct(), int64_t{0}, int64_t{100});
-  int64_t pressure = ContextPressurePct(/*pending_bytes=*/0,
-                                        JsonEstimatedBytes(available_schemas));
-  if (threshold == 0 || pressure < threshold) {
+  int64_t pressure = 0;
+  int64_t projected_tokens = 0;
+  if (!ContextNeedsCompaction(/*pending_bytes=*/0,
+                              JsonEstimatedBytes(available_schemas), pressure,
+                              projected_tokens)) {
     return MidturnCompact::kNotNeeded;
   }
   DebugLog("midturn_compact", {{"turn", turn_id_},
                                {"projected_pct", pressure},
+                               {"projected_tokens", projected_tokens},
                                {"messages", conversation_.Size()}});
   if (!Compact(true, &usage)) return MidturnCompact::kFailed;
   EnsureRuntimeContext();
@@ -268,7 +285,6 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
 void Agent::PruneAttachments(size_t turn_start) {
   size_t attachments = conversation_.PruneAttachments(turn_start);
   if (!attachments) return;
-  reported_context_tokens_ = 0;
   DebugLog("attachments_pruned",
            {{"turn", turn_id_}, {"attachments", attachments}});
 }
@@ -298,7 +314,6 @@ void Agent::PruneOldToolResults() {
       static_cast<size_t>(ToolTraceProtectChars()),
       static_cast<size_t>(ToolTracePruneMinChars()), retained_tools);
   if (result.results == 0) return;
-  reported_context_tokens_ = 0;
   logged_msgs_ = 0;
   ++revision_;
   DebugLog("tool_trace_pruned", {{"turn", turn_id_},

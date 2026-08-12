@@ -220,6 +220,8 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
 
 inline void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kHistoryDir), HistoryDays(), HistoryFiles());
+  PruneArtifactTree(GlobalBase() + "/memory/.processed", HistoryDays(),
+                    HistoryFiles());
   PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
   PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
   PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());

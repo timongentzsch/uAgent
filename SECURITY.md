@@ -18,9 +18,9 @@ endpoint and every MCP server as trusted infrastructure.
   Explicit `$skill-name` mentions load that skill before the first model call;
   automatic selection still uses the skill tool. Treat an untrusted checkout
   as prompt input and review requested actions before approving them.
-- The default Chrome integration executes `chrome-devtools-mcp@latest` through
-  `npx`, so its code can change without a µAgent update. Disable it with
-  `UAGENT_CHROME_DEVTOOLS=0` when reproducible or offline execution matters.
+- Browser automation is an ordinary approved `run` command using the separately
+  installed `@playwright/cli`; pin its npm version when reproducible or offline
+  execution matters.
 - Mutating, process, network, cost-bearing, and MCP tools require approval
   unless yolo mode is active. External reads also prompt.
 - Paths are canonicalized to reduce symlink escapes. Writes are atomic.
@@ -32,18 +32,19 @@ endpoint and every MCP server as trusted infrastructure.
   credentials are deliberately re-added. Approved `run` commands can opt in
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
   MCP servers, delegated agents, or `run_python`.
-- Automatic memory consolidation runs only against an idle saved session. Its
+- Automatic memory extraction runs only against one idle saved session. Its
   child receives the configured model credential but exposes only the memory
   tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript
   fields are filtered and known credential forms are redacted before the model
-  request and again before any memory write. This is defense in depth, not a
-  guarantee that arbitrary secrets can always be recognized.
+  request and again before any memory write. Codex and Claude memories are
+  exposed read-only and remain untrusted evidence. This is defense in depth,
+  not a guarantee that arbitrary secrets can always be recognized.
 - Model, MCP, and tool text is terminal-sanitized.
 
 Approval grants the current user's filesystem and network permissions. Use a
 container, VM, or restricted account for untrusted code.
 
-Chrome's isolated mode uses a temporary profile. User mode can inspect and
+Playwright's isolated mode uses a separate profile. CDP attach can inspect and
 control authenticated tabs after Chrome's remote-debugging approval; close
 sensitive tabs or use isolated mode when that access is unnecessary.
 

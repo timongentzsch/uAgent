@@ -70,6 +70,12 @@ class Api {
              int64_t timeout_s, bool abortable);
   static void SetAbortable(CURL* handle, StreamCtx* context = nullptr);
   CURL* Prepare(const std::string& url);
+  // 0 means unbounded, which is how both response readers spell "no cap".
+  size_t ResponseCap() const {
+    return config.response_bytes > 0
+               ? static_cast<size_t>(config.response_bytes)
+               : 0;
+  }
 
   CURL* handle_;
 };

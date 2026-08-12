@@ -69,6 +69,15 @@ inline bool ContainsForeignToolCallMarkup(const std::string& content) {
          lower.find("tool▁call") != std::string::npos;
 }
 
+// A response that is usable as evidence rather than as a step: real text, and
+// no tool call in any protocol. Required of the summarizer and of the vision
+// model, neither of which has tools.
+inline bool ProseOnlyResponse(const ChatResult& result) {
+  return !result.content.empty() && result.tool_calls.empty() &&
+         ParseTextToolCalls(result.content).empty() &&
+         !ContainsForeignToolCallMarkup(result.content);
+}
+
 // escape the delimiters so tool output can never fake a tool call
 inline std::string EscapeToolTags(std::string s) {
   ReplaceAll(s, kTtOpen, "&#91;uagent_tool_call&#93;");

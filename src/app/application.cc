@@ -86,10 +86,15 @@ class Application {
                                   {"context_tokens", agent_.ContextUsed()}});
   }
 
-  int FinishHeadless(std::string answer, std::string error, int exit_code) {
+  // Release owned processes and per-session files, then close the trace.
+  void Teardown(const char* reason) {
     runtime_.Shutdown();
     std::remove(UsageLedger().c_str());
-    LogSessionEnd(exit_code == 0 ? "headless_complete" : "headless_error");
+    LogSessionEnd(reason);
+  }
+
+  int FinishHeadless(std::string answer, std::string error, int exit_code) {
+    Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
     if (context_.options.json_stream || context_.options.json) {
       json envelope = HeadlessResult(
           std::move(answer), std::move(error), agent_.LatestToolTrace(),
@@ -290,11 +295,7 @@ class Application {
     std::optional<ModelCandidate> selected = PickModel(search, api_);
     if (!selected) return;
     ApplyRoute(api_, selected->route);
-    bool named_route =
-        ResolveModelRoute(context_.provider.routes, context_.provider.providers,
-                          selected->selection)
-            .has_value();
-    SaveSelectedModel(selected->selection, named_route);
+    SaveSelectedModel(selected->selection);
   }
 
   void HandleCost() const {
@@ -347,13 +348,13 @@ class Application {
              TerminalSafe(argument).c_str(), RST());
       return;
     }
+    SaveSelectedModel(selected);
+  }
+
+  void SaveSelectedModel(const std::string& selected) {
     bool named_route = ResolveModelRoute(context_.provider.routes,
                                          context_.provider.providers, selected)
                            .has_value();
-    SaveSelectedModel(selected, named_route);
-  }
-
-  void SaveSelectedModel(const std::string& selected, bool named_route) {
     ActivateCurrentRoute();
     std::string error;
     bool saved =
@@ -581,12 +582,7 @@ class Application {
       return line;
     };
 
-    auto rendered_status = [&] {
-      std::string line = DisplayTrunc(
-          TerminalSafe(status()),
-          static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 1)));
-      return std::string(RST()) + DIM() + line + "\033[K" + RST();
-    };
+    auto rendered_status = [&] { return StatusBarLine(status()); };
 
     auto status_state = [&] {
       return std::string(interrupting ? "interrupting|" : "working|") +
@@ -793,9 +789,7 @@ class Application {
 
   int FinishInteractive(int status) {
     SaveSession();
-    runtime_.Shutdown();
-    std::remove(UsageLedger().c_str());
-    LogSessionEnd(exit_reason_.c_str());
+    Teardown(exit_reason_.c_str());
     TerminalRestore();
     return status;
   }

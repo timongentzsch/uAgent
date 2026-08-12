@@ -27,6 +27,4 @@ for skill in "$root"/skills/*/; do
   fi
   mv "$staging/$name" "$skills/$name"
 done
-rm -rf "$staging"
-trap - EXIT HUP INT TERM
 chmod 700 "$HOME/.uagent" "$skills" 2>/dev/null || true

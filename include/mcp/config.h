@@ -49,13 +49,20 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
     error = "`command` is required and must not be empty";
     return false;
   }
-  if (conf.contains("args")) {
-    for (const json& value : conf["args"]) {
-      if (!value.is_string()) {
-        error = "every `args` entry must be a string";
+  auto require_strings = [&](const char* field, const char* message,
+                             bool nonempty) {
+    if (!conf.contains(field)) return true;
+    for (const json& value : conf[field]) {
+      if (!value.is_string() ||
+          (nonempty && value.get_ref<const std::string&>().empty())) {
+        error = message;
         return false;
       }
     }
+    return true;
+  };
+  if (!require_strings("args", "every `args` entry must be a string", false)) {
+    return false;
   }
   if (conf.contains("env")) {
     for (const auto& [key, value] : conf["env"].items()) {
@@ -65,21 +72,11 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       }
     }
   }
-  if (conf.contains("tools")) {
-    for (const json& value : conf["tools"]) {
-      if (!value.is_string()) {
-        error = "every `tools` allowlist entry must be a string";
-        return false;
-      }
-    }
-  }
-  if (conf.contains("roots")) {
-    for (const json& value : conf["roots"]) {
-      if (!value.is_string() || value.get<std::string>().empty()) {
-        error = "every `roots` entry must be a nonempty string";
-        return false;
-      }
-    }
+  if (!require_strings(
+          "tools", "every `tools` allowlist entry must be a string", false) ||
+      !require_strings("roots", "every `roots` entry must be a nonempty string",
+                       true)) {
+    return false;
   }
   static const std::set<std::string> kNown = {
       "type",  "command", "args",  "env",      "cwd",

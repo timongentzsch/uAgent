@@ -84,7 +84,11 @@ void SigintHandler(int signal_number) {
   _exit(128 + signal_number);
 }
 
+namespace {
+
 void SigwinchHandler(int) { g_terminal_resized = 1; }
+
+}  // namespace
 
 void InstallSigwinchHandler() {
   struct sigaction action{};

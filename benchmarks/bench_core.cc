@@ -115,14 +115,13 @@ int RunBenchmarks() {
   ProcessSupervisor processes;
   auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."), false);
   auto image_tools = BuiltinTools(processes, CanonicalAccessPath("."), true);
-  auto base_tools = lean_tools;
   auto without = [](std::vector<Tool> tools, const std::string& name) {
     std::erase_if(tools, [&](const Tool& tool) { return tool.name == name; });
     return tools;
   };
   auto no_python_tools = without(lean_tools, "run_python");
   auto no_edit_tools = without(lean_tools, "edit_file");
-  base_tools = without(no_python_tools, "grep");
+  auto base_tools = without(no_python_tools, "grep");
   size_t base_schema = ToolSchemas(base_tools).dump().size();
   size_t grep_schema = ToolSchemas(no_python_tools).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();

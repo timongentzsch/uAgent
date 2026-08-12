@@ -137,17 +137,11 @@ bool Agent::RunCalls(
   }
   int64_t limit = std::max(int64_t{1}, ToolConcurrency());
   if (Debug().Enabled()) {
+    // Any two adjacent runnable calls that are both parallel-safe form a batch.
     bool parallel = false;
-    if (limit > 1) {
-      for (size_t begin = 0; begin < runnable.size();) {
-        size_t end = ParallelRunEnd(runnable, tasks, begin);
-        if (end == begin) {
-          ++begin;
-          continue;
-        }
-        parallel = parallel || end - begin > 1;
-        begin = end;
-      }
+    for (size_t i = 1; limit > 1 && !parallel && i < runnable.size(); ++i) {
+      parallel = tasks[runnable[i - 1]].tool->parallel_safe &&
+                 tasks[runnable[i]].tool->parallel_safe;
     }
     Debug().Write("tool_batch", {{"turn", turn_id_},
                                  {"step", step},
@@ -169,17 +163,13 @@ bool Agent::RunCalls(
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];
-    if (limit <= 1 || !tasks[first].tool->parallel_safe) {
+    // ParallelRunEnd returns `begin` for a call that is not parallel-safe, so
+    // both the serial and the lone-safe-call cases advance by one.
+    size_t end = limit <= 1 ? begin : ParallelRunEnd(runnable, tasks, begin);
+    if (end <= begin + 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
                   api_.config.tool_timeout_s);
       ++begin;
-      continue;
-    }
-    size_t end = ParallelRunEnd(runnable, tasks, begin);
-    if (end - begin == 1) {
-      ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                  api_.config.tool_timeout_s);
-      begin = end;
       continue;
     }
     std::atomic<size_t> next{begin};

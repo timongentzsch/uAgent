@@ -161,6 +161,8 @@ inline const json* LatestTraceSegment(const json& archive) {
   auto segment =
       std::find_if(archive.rbegin(), archive.rend(), [](const json& item) {
         std::string reason = JsonValue(item, "reason", "");
+        // "trace_pruned" is what earlier releases wrote; their format-3
+        // sessions still resume, so /trace must keep reading it.
         return reason == "tool_trace" || reason == "trace_pruned";
       });
   return segment == archive.rend() ? nullptr : &*segment;

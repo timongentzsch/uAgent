@@ -34,13 +34,8 @@ inline bool McpWrite(McpServer& s, const std::string& data) {
       s.Shutdown();
       return false;
     }  // wedged server: kill it now
-    if (p[1].revents & POLLIN) {
-      char buf[1 << 16];
-      ssize_t n = read(s.out, buf, sizeof buf);
-      if (n > 0) {
-        s.rbuf.append(buf, static_cast<size_t>(n));
-        if (!McpBufferOk(s)) return false;
-      }
+    if ((p[1].revents & POLLIN) && !McpFillBuffer(s, /*eof_is_fatal=*/false)) {
+      return false;
     }
     if (p[0].revents & (POLLERR | POLLHUP)) {
       s.Shutdown();
@@ -64,12 +59,7 @@ inline bool McpReadLine(McpServer& s, std::string& line,
                         std::chrono::steady_clock::time_point deadline,
                         bool cancellable) {
   for (;;) {
-    size_t nl = s.rbuf.find('\n');
-    if (nl != std::string::npos) {
-      line = s.rbuf.substr(0, nl);
-      s.rbuf.erase(0, nl + 1);
-      return true;
-    }
+    if (McpTakeLine(s, line)) return true;
     if (!s.alive) return false;
     if (cancellable && AbortRequested()) return false;
     if (std::chrono::steady_clock::now() >= deadline) return false;
@@ -79,15 +69,9 @@ inline bool McpReadLine(McpServer& s, std::string& line,
       s.Shutdown();
       return false;
     }
-    if (pr > 0 && (p.revents & (POLLIN | POLLHUP))) {
-      char buf[1 << 16];
-      ssize_t n = read(s.out, buf, sizeof buf);
-      if (n <= 0) {
-        s.Shutdown();
-        return false;
-      }  // EOF: server exited — reap it
-      s.rbuf.append(buf, static_cast<size_t>(n));
-      if (!McpBufferOk(s)) return false;
+    // EOF here means the server exited: McpFillBuffer reaps it.
+    if (pr > 0 && (p.revents & (POLLIN | POLLHUP)) && !McpFillBuffer(s)) {
+      return false;
     }
   }
 }
@@ -137,22 +121,10 @@ inline void McpDrainInbound(McpServer& s) {
     int ready = poll(&descriptor, 1, 0);
     if (ready < 0 && errno == EINTR) continue;
     if (ready <= 0) break;
-    if (descriptor.revents & (POLLIN | POLLHUP)) {
-      char buffer[1 << 16];
-      ssize_t count = read(s.out, buffer, sizeof buffer);
-      if (count <= 0) {
-        s.Shutdown();
-        break;
-      }
-      s.rbuf.append(buffer, static_cast<size_t>(count));
-      if (!McpBufferOk(s)) break;
-    }
+    if ((descriptor.revents & (POLLIN | POLLHUP)) && !McpFillBuffer(s)) break;
   }
-  for (;;) {
-    size_t newline = s.rbuf.find('\n');
-    if (newline == std::string::npos) break;
-    std::string line = s.rbuf.substr(0, newline);
-    s.rbuf.erase(0, newline + 1);
+  std::string line;
+  while (McpTakeLine(s, line)) {
     json message = json::parse(line, nullptr, false);
     // At this boundary no client request is outstanding. Non-request
     // messages are stale responses and can be discarded safely.
@@ -169,10 +141,14 @@ inline void McpDrainInbound(McpRuntime& runtime) {
 // wait for the response to `id`. Server pings are answered, other
 // server->client requests get "method not found", notifications and stale
 // responses (e.g. from an earlier cancelled call) are dropped.
+inline json McpErrorReply(std::string message) {
+  return json{{"error", {{"message", std::move(message)}}}};
+}
+
 inline json McpAwait(McpServer& s, int64_t id, int64_t timeout_s,
                      bool cancellable) {
-  auto fail = [&](const std::string& msg) {
-    return json{{"error", {{"message", msg}}}};
+  auto fail = [](std::string message) {
+    return McpErrorReply(std::move(message));
   };
   auto deadline = DeadlineAfter(timeout_s);
   std::string line;
@@ -183,9 +159,7 @@ inline json McpAwait(McpServer& s, int64_t id, int64_t timeout_s,
     if (m.contains("id") && m["id"] == id) return m;
   }
   if (cancellable && AbortRequested()) return fail("cancelled");
-  if (!s.alive) {
-    return fail("server exited (stderr: " + McpLogPath(s.name) + ")");
-  }
+  if (!s.alive) return fail("server exited" + McpStderrHint(s.name));
   return fail("no response after " + std::to_string(timeout_s) + "s");
 }
 
@@ -193,9 +167,7 @@ inline json McpRpc(McpServer& s, const std::string& method, const json& params,
                    int64_t timeout_s, bool cancellable = false) {
   int64_t id = s.next_id++;
   if (!McpSend(s, id, method, params)) {
-    return {{"error",
-             {{"message",
-               "server not responding (stderr: " + McpLogPath(s.name) + ")"}}}};
+    return McpErrorReply("server not responding" + McpStderrHint(s.name));
   }
   json r = McpAwait(s, id, timeout_s, cancellable);
   if (cancellable &&

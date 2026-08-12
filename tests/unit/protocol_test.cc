@@ -481,13 +481,17 @@ void TestCapsAndEscaping() {
         "one … · 2 lines · 7 chars");
   CHECK(ToolResultSummary(ToolTimedOut("late"), "late", true) ==
         "timed_out: late · truncated");
+  // Verbose rendering shows the tool's own bounded output rather than the
+  // model-facing cap, and still honours a per-call result limit.
   CallTask displayed;
   displayed.result = ToolSuccess("complete bounded output");
-  CHECK(ToolOutputForDisplay(displayed, "model cap", false) == "model cap");
-  CHECK(ToolOutputForDisplay(displayed, "model cap", true) ==
+  CHECK(ResultCharLimit(displayed) == -1);
+  CHECK(ModelResultText(displayed.result, ResultCharLimit(displayed)) ==
         "complete bounded output");
   displayed.result.result_chars = 8;
-  CHECK(ToolOutputForDisplay(displayed, "model cap", true).size() == 8);
+  CHECK(ResultCharLimit(displayed) == 8);
+  CHECK(ModelResultText(displayed.result, ResultCharLimit(displayed)).size() ==
+        8);
 
   size_t maximum = std::numeric_limits<size_t>::max();
   CHECK(CheckedAdd(maximum - 1, 1) == maximum);

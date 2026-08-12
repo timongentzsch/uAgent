@@ -39,6 +39,7 @@ class TerminalInputDecoder {
   void Reset();
 
  private:
+  bool MatchesFirst(std::string_view sequence, size_t count) const;
   bool StartsWith(std::string_view sequence) const;
   bool IsPrefixOf(std::string_view sequence) const;
   size_t CompleteCsiBytes() const;

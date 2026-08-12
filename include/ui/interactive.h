@@ -256,9 +256,7 @@ class RawComposer {
   };
 
   size_t AvailableColumns() const {
-    return static_cast<size_t>(std::max(
-        int64_t{1},
-        TerminalColumns() - static_cast<int64_t>(DisplayWidth(prompt_)) - 1));
+    return TerminalWidth(static_cast<int64_t>(DisplayWidth(prompt_)) + 1);
   }
 
   static std::string DisplayText(std::string text) {
@@ -345,23 +343,13 @@ class RawComposer {
     caret_row_ = layout.caret_row;
     caret_column_ = caret_column;
   }
+  // One character back/forward from a boundary, over the shared scanners.
   static size_t PreviousUtf8(const std::string& text, size_t at) {
-    if (at == 0) return 0;
-    --at;
-    while (at > 0 && (static_cast<unsigned char>(text[at]) & 0xc0) == 0x80) {
-      --at;
-    }
-    return at;
+    return at == 0 ? 0 : Utf8BoundaryBefore(text, at - 1);
   }
 
   static size_t NextUtf8(const std::string& text, size_t at) {
-    if (at >= text.size()) return text.size();
-    ++at;
-    while (at < text.size() &&
-           (static_cast<unsigned char>(text[at]) & 0xc0) == 0x80) {
-      ++at;
-    }
-    return at;
+    return at >= text.size() ? text.size() : Utf8BoundaryAfter(text, at + 1);
   }
 
   bool Insert(const std::string& text) {

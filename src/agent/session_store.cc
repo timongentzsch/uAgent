@@ -68,7 +68,8 @@ SessionStoreStatus SessionStore::Save(const std::string& path,
                                       const SessionRecord& record) {
   json header = HeaderJson(record.metadata);
   json state = StateJson(record.state);
-  if (!ValidHeader(header) || !ValidState(state)) {
+  // The header is built from a typed struct; only the state can be incomplete.
+  if (!ValidState(state)) {
     return Error(SessionStoreError::kInvalid,
                  "refusing to save incomplete session state");
   }

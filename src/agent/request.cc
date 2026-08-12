@@ -64,9 +64,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
-  context_snapshot_.store(
-      EstimatedTokens(RequestContextBytes(JsonEstimatedBytes(schemas))),
-      std::memory_order_relaxed);
+  SnapshotContext(JsonEstimatedBytes(schemas));
   ChatResult result = api_.Chat(conversation_.Messages(), schemas, turn_budget,
                                 session_id_, render_output);
   if (Debug().Enabled()) {
@@ -138,9 +136,7 @@ std::string Agent::AnalyzeImageContent(const json& content,
     error = "image analysis was interrupted";
   } else if (!result.error.empty()) {
     error = result.error;
-  } else if (result.content.empty() || !result.tool_calls.empty() ||
-             !ParseTextToolCalls(result.content).empty() ||
-             ContainsForeignToolCallMarkup(result.content)) {
+  } else if (!ProseOnlyResponse(result)) {
     error = "image analysis model returned an invalid response";
   }
   return error.empty() ? Trim(result.content) : "";
@@ -212,6 +208,16 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
   } else {
     fallback.status += "attachments continue as file paths";
   }
+  return fallback;
+}
+
+Agent::ImageFallbackResult Agent::ApplyImageFallbackToUserContent(
+    json& content) {
+  json messages = json::array({{{"role", "user"}, {"content", content}}});
+  ImageFallbackResult fallback = ApplyImageAnalysisFallback(
+      messages, ImageFallbackCause::kKnownUnsupported);
+  if (fallback.applied) content = std::move(messages[0]["content"]);
+  ReportImageFallback(fallback);
   return fallback;
 }
 
@@ -431,10 +437,7 @@ static bool HasMemoryContent(const ProjectInstructions& p) {
   return !p.memory_index.empty() || !p.memory_always.empty();
 }
 
-size_t Agent::BaselineSize() const {
-  return 1 + !project_instructions_.text.empty() +
-         HasMemoryContent(project_instructions_);
-}
+size_t Agent::BaselineSize() const { return BaselineKinds().size(); }
 
 json Agent::BaselineMessages() const {
   json messages = json::array({SysMsg()});

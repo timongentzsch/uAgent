@@ -77,14 +77,6 @@ class ProcessSupervisor {
     return CountIf(
         [](const BgJob& job) { return !job.detached && job.kind == "task"; });
   }
-  std::vector<pid_t> PendingPids() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    std::vector<pid_t> pids;
-    for (const BgJob& job : jobs_) {
-      if (!job.detached) pids.push_back(job.pid);
-    }
-    return pids;
-  }
   std::optional<BgJob> Find(pid_t pid) const {
     std::lock_guard<std::mutex> lock(mutex_);
     size_t index = IndexOf(pid);

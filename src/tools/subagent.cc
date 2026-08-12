@@ -86,24 +86,53 @@ std::string TaskProvider(const std::string& selection,
   return provider ? provider->name : "custom";
 }
 
+// Where a delegated task would run: the parent's route unless the request (or
+// UAGENT_TASK_MODEL) names one that resolves. `unresolved` marks a named route
+// that matched nothing, which only the execution path treats as an error.
+struct TaskRoute {
+  std::string selection, model, base_url, api_key, effort;
+  int64_t context = 0;
+  bool openrouter_compatible = false;
+  bool unresolved = false;
+};
+
+TaskRoute ResolveTaskRoute(const Api& api,
+                           const std::vector<ModelRoute>& routes,
+                           const std::vector<NamedProvider>& providers,
+                           const std::string& requested) {
+  TaskRoute resolved;
+  resolved.selection = requested.empty() ? DefaultTaskModel(api) : requested;
+  resolved.model = resolved.selection.empty() ? api.model : resolved.selection;
+  resolved.base_url = api.base_url;
+  resolved.api_key = api.api_key;
+  resolved.effort = api.reasoning_effort;
+  resolved.context = api.ctx_window;
+  resolved.openrouter_compatible = api.openrouter_compatible;
+  if (resolved.selection.empty() || InheritsParentRoute(api, requested)) {
+    return resolved;
+  }
+  std::optional<ModelRoute> route =
+      ResolveModelRoute(routes, providers, resolved.selection);
+  if (!route) {
+    resolved.unresolved = true;
+    return resolved;
+  }
+  resolved.base_url = route->base_url;
+  resolved.api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
+  resolved.model = route->model;
+  if (!route->effort.empty()) resolved.effort = route->effort;
+  resolved.context = route->context;
+  resolved.openrouter_compatible = route->openrouter_compatible;
+  return resolved;
+}
+
 std::string TaskTargetLabel(const Api& api,
                             const std::vector<ModelRoute>& routes,
                             const std::vector<NamedProvider>& providers,
                             const std::string& requested) {
-  std::string selection = requested.empty() ? DefaultTaskModel(api) : requested;
-  std::string model = selection.empty() ? api.model : selection;
-  std::string base_url = api.base_url;
-  std::string effort = api.reasoning_effort;
-  if (!selection.empty() && !InheritsParentRoute(api, requested)) {
-    if (std::optional<ModelRoute> route =
-            ResolveModelRoute(routes, providers, selection)) {
-      model = route->model;
-      base_url = route->base_url;
-      if (!route->effort.empty()) effort = route->effort;
-    }
-  }
-  return ModelLabel(model, effort) + " @ " +
-         TaskProvider(selection, base_url, providers);
+  TaskRoute route = ResolveTaskRoute(api, routes, providers, requested);
+  return ModelLabel(route.model, route.effort) + " @ " +
+         TaskProvider(route.selection, route.base_url, providers);
 }
 
 }  // namespace
@@ -164,29 +193,13 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         const std::string requested =
             NormalizeModelId(JsonValue(arguments, "model", ""));
-        std::string selection =
-            requested.empty() ? DefaultTaskModel(api) : requested;
-        std::string base_url = api.base_url;
-        std::string api_key = api.api_key;
-        std::string model = selection.empty() ? api.model : selection;
-        std::string effort = api.reasoning_effort;
-        int64_t context_window = api.ctx_window;
-        bool openrouter_compatible = api.openrouter_compatible;
-        if (!selection.empty() && !InheritsParentRoute(api, requested)) {
-          if (std::optional<ModelRoute> route =
-                  ResolveModelRoute(routes, providers, selection)) {
-            base_url = route->base_url;
-            api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
-            model = route->model;
-            if (!route->effort.empty()) effort = route->effort;
-            context_window = route->context;
-            openrouter_compatible = route->openrouter_compatible;
-          } else if (selection.find('/') != std::string::npos &&
-                     !CanUseRawModel(api, selection)) {
-            return ToolFailure(
-                ToolErrorCode::kInvalidArguments,
-                "error: unknown model route: " + TerminalSafe(selection));
-          }
+        TaskRoute route = ResolveTaskRoute(api, routes, providers, requested);
+        if (route.unresolved &&
+            route.selection.find('/') != std::string::npos &&
+            !CanUseRawModel(api, route.selection)) {
+          return ToolFailure(
+              ToolErrorCode::kInvalidArguments,
+              "error: unknown model route: " + TerminalSafe(route.selection));
         }
         double remaining_budget = api.config.session_budget - api.session_cost;
         if (api.config.session_budget > 0) {
@@ -204,12 +217,13 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {"UAGENT_DEPTH", child_depth},
             {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
             {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
-            {"UAGENT_BASE_URL", std::move(base_url)},
-            {"UAGENT_API_KEY", std::move(api_key)},
-            {"UAGENT_MODEL", std::move(model)},
-            {"UAGENT_CONTEXT", std::to_string(context_window)},
-            {"UAGENT_REASONING_EFFORT", std::move(effort)},
-            {"UAGENT_OPENROUTER_COMPATIBLE", openrouter_compatible ? "1" : "0"},
+            {"UAGENT_BASE_URL", std::move(route.base_url)},
+            {"UAGENT_API_KEY", std::move(route.api_key)},
+            {"UAGENT_MODEL", std::move(route.model)},
+            {"UAGENT_CONTEXT", std::to_string(route.context)},
+            {"UAGENT_REASONING_EFFORT", std::move(route.effort)},
+            {"UAGENT_OPENROUTER_COMPATIBLE",
+             route.openrouter_compatible ? "1" : "0"},
             {"UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant},
             {"UAGENT_USAGE_FILE", UsageLedger()},
             {"UAGENT_TOOLSET", std::move(mode)},

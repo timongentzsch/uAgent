@@ -38,15 +38,15 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         parsed.error = argument + " requires a value";
         return parsed;
       }
-      if (argument == "--budget" &&
-          (!ParseFiniteDouble(argv[index], parsed.options.budget) ||
-           parsed.options.budget <= 0)) {
+      const char* value = argv[index];
+      if (argument == "-p") {
+        parsed.options.prompt = value;
+      } else if (argument == "--attach") {
+        parsed.options.attach_paths.push_back(value);
+      } else if (!ParseFiniteDouble(value, parsed.options.budget) ||
+                 parsed.options.budget <= 0) {
         parsed.error = "--budget must be a positive dollar amount";
         return parsed;
-      } else if (argument == "-p") {
-        parsed.options.prompt = argv[index];
-      } else if (argument == "--attach") {
-        parsed.options.attach_paths.push_back(argv[index]);
       }
     } else if (argument.starts_with("--debug=")) {
       parsed.options.debug = true;

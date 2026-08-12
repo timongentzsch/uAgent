@@ -29,9 +29,10 @@ void TerminalInputDecoder::Feed(std::string_view data) {
   Feed(reinterpret_cast<const unsigned char*>(data.data()), data.size());
 }
 
-bool TerminalInputDecoder::StartsWith(std::string_view sequence) const {
-  if (pending_.size() < sequence.size()) return false;
-  for (size_t index = 0; index < sequence.size(); ++index) {
+// Compare the first `count` pending bytes against `sequence`.
+bool TerminalInputDecoder::MatchesFirst(std::string_view sequence,
+                                        size_t count) const {
+  for (size_t index = 0; index < count; ++index) {
     if (pending_[index] != static_cast<unsigned char>(sequence[index])) {
       return false;
     }
@@ -39,14 +40,14 @@ bool TerminalInputDecoder::StartsWith(std::string_view sequence) const {
   return true;
 }
 
+bool TerminalInputDecoder::StartsWith(std::string_view sequence) const {
+  return pending_.size() >= sequence.size() &&
+         MatchesFirst(sequence, sequence.size());
+}
+
 bool TerminalInputDecoder::IsPrefixOf(std::string_view sequence) const {
-  if (pending_.size() > sequence.size()) return false;
-  for (size_t index = 0; index < pending_.size(); ++index) {
-    if (pending_[index] != static_cast<unsigned char>(sequence[index])) {
-      return false;
-    }
-  }
-  return true;
+  return pending_.size() <= sequence.size() &&
+         MatchesFirst(sequence, pending_.size());
 }
 
 size_t TerminalInputDecoder::CompleteCsiBytes() const {

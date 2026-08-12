@@ -45,9 +45,8 @@ inline ToolResult McpInvokeRemote(McpServer& server,
                                   const json& input_schema = json::object()) {
   if (!server.alive) {
     return ToolFailure(ToolErrorCode::kUnavailable,
-                       "error: mcp server " + server.name +
-                           " has exited (stderr: " + McpLogPath(server.name) +
-                           ")");
+                       "error: mcp server " + server.name + " has exited" +
+                           McpStderrHint(server.name));
   }
   json response;
   if (RunCancellable([&] {

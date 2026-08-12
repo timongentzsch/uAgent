@@ -50,9 +50,8 @@ ToolPolicy ToolPolicyFromEnvironment() {
   std::string configured = Trim(EnvStr("UAGENT_TOOL_CAPABILITIES"));
   if (!configured.empty()) {
     policy.allowed = 0;
-    for (size_t begin = 0; begin <= configured.size();) {
-      size_t end = configured.find(',', begin);
-      std::string name = Trim(configured.substr(begin, end - begin));
+    for (const std::string& entry : SplitPathList(configured, ',')) {
+      std::string name = Trim(entry);
       uint32_t capability = CapabilityNamed(name);
       if (!capability) {
         policy.error = "unknown tool capability: " + name;
@@ -60,8 +59,6 @@ ToolPolicy ToolPolicyFromEnvironment() {
         break;
       }
       policy.allowed |= capability;
-      if (end == std::string::npos) break;
-      begin = end + 1;
     }
   }
 

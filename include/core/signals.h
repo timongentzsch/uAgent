@@ -51,7 +51,6 @@ inline void ClearAbort() {
 }
 
 void SigintHandler(int signal_number);
-void SigwinchHandler(int signal_number);
 void InstallSigwinchHandler();
 
 // Run fn with Ctrl+C wired to cancel it instead of exiting the program. The

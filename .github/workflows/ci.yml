@@ -88,19 +88,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure ASan and UBSan
-        run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DUAGENT_ENABLE_ASAN=ON
-          -DUAGENT_ENABLE_UBSAN=ON
+        run: cmake --preset sanitize
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build --preset sanitize --parallel
       - name: Test
-        env:
-          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --preset sanitize
 
   thread-sanitizer:
     runs-on: ubuntu-24.04
@@ -110,17 +102,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure TSan
-        run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DUAGENT_ENABLE_TSAN=ON
+        run: cmake --preset tsan
       - name: Build core tests
-        run: cmake --build build --target uagent_tests --parallel
+        run: cmake --build --preset tsan --target uagent_tests --parallel
       - name: Test concurrent core paths
-        env:
-          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
-        run: ctest --test-dir build -R '^core$' --output-on-failure
+        run: ctest --preset tsan -R '^core$'
 
   fuzzers:
     runs-on: ubuntu-24.04
@@ -133,18 +119,15 @@ jobs:
         env:
           CC: clang
           CXX: clang++
-        run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DBUILD_TESTING=OFF
-          -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DUAGENT_BUILD_FUZZERS=ON
+        run: cmake --preset fuzz
       - name: Build fuzzers
-        run: cmake --build build --target uagent_fuzz_sse uagent_fuzz_openai_stream --parallel
+        run: >-
+          cmake --build --preset fuzz
+          --target uagent_fuzz_sse uagent_fuzz_openai_stream --parallel
       - name: Smoke fuzz
         run: |
-          build/uagent_fuzz_sse -runs=1000 -max_len=8192
-          build/uagent_fuzz_openai_stream -runs=1000 -max_len=8192
+          build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192
+          build/fuzz/uagent_fuzz_openai_stream -runs=1000 -max_len=8192
 
   coverage:
     runs-on: ubuntu-24.04
@@ -154,15 +137,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev
       - name: Configure coverage
-        run: >-
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DUAGENT_WARNINGS_AS_ERRORS=ON
-          -DUAGENT_ENABLE_COVERAGE=ON
+        run: cmake --preset coverage
       - name: Build and test
         run: |
-          cmake --build build --target uagent_tests --parallel
-          ctest --test-dir build -R '^core$' --output-on-failure
+          cmake --build --preset coverage --target uagent_tests --parallel
+          ctest --preset coverage -R '^core$'
       - name: Generate branch report
         run: >-
           gcovr --root .
@@ -170,15 +149,15 @@ jobs:
           --exclude third_party
           --branches
           --xml-pretty
-          --xml build/coverage.xml
-          --html-details build/coverage.html
+          --xml build/coverage/coverage.xml
+          --html-details build/coverage/coverage.html
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage
           path: |
-            build/coverage.xml
-            build/coverage.html
-            build/coverage.*.html
+            build/coverage/coverage.xml
+            build/coverage/coverage.html
+            build/coverage/coverage.*.html
           if-no-files-found: error
           retention-days: 7
 
@@ -217,15 +196,11 @@ jobs:
           --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check
           include src tests benchmarks
       - name: Configure clang-tidy
-        run: >-
-          cmake -S . -B build-style
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-          -DUAGENT_BUILD_BENCHMARKS=ON
+        run: cmake --preset tidy
       - name: Check C++ semantics and naming
         run: >-
           uvx --from clang-tidy==22.1.8 run-clang-tidy.py
-          -p build-style
+          -p build/tidy
           -header-filter='.*/(include|src|tests|benchmarks)/.*'
 
   release:

@@ -240,7 +240,7 @@ void TestBackgroundValidation() {
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.Count() == 2);
-  CHECK(supervisor.PendingPids() == std::vector<pid_t>{999997});
+  CHECK(supervisor.Find(999997).has_value());
   CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
   CHECK(supervisor.Snapshot().size() == supervisor.Count());
   CHECK(!supervisor.TakeAll().empty());

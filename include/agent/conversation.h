@@ -67,7 +67,6 @@ class Conversation {
   std::string FirstUserText() const;
   int64_t UserTurns() const;
   size_t UserVisibleCount() const;
-  std::vector<std::string> RecentToolResults(int64_t count) const;
   bool HasRecentToolResult(const std::string& name,
                            const std::string& arguments,
                            const std::string& result) const;
@@ -78,7 +77,6 @@ class Conversation {
   size_t PruneAttachments(size_t begin);
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
                    json metadata);
-  size_t StripImageParts();
 
   void ArchiveRange(const char* reason, size_t begin, size_t end, int64_t turn,
                     int64_t archive_cap, json metadata = json::object());

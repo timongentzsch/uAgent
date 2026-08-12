@@ -216,8 +216,10 @@ void TestToolExecutionPolicy() {
                             .result;
   CHECK(launched.output.starts_with("[started] task id "));
   CHECK(task_processes.JoinableCount() == 1);
-  std::vector<pid_t> task_ids = task_processes.PendingPids();
-  CHECK(task_ids.size() == 1);
+  std::vector<BgJob> tasks = task_processes.Snapshot();
+  CHECK(tasks.size() == 1);
+  std::vector<pid_t> task_ids;
+  for (const BgJob& job : tasks) task_ids.push_back(job.pid);
   CHECK(BgCancelTasks(task_processes) == 1);
   CHECK(!task_processes.PendingCount());
   if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));

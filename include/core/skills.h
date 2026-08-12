@@ -38,7 +38,7 @@ struct SkillReadResult {
 // scalar metadata and a comma-separated tool dependency list; other keys are
 // ignored.
 inline void ParseSkillFrontMatter(
-    std::istream& input, std::string& name, std::string& description,
+    std::istream& input, std::string* description = nullptr,
     std::vector<std::string>* required_tools = nullptr,
     std::string* argument_hint = nullptr) {
   std::string line;
@@ -49,10 +49,8 @@ inline void ParseSkillFrontMatter(
     if (colon == std::string::npos) continue;
     std::string key = Trim(line.substr(0, colon));
     std::string value = Unquote(Trim(line.substr(colon + 1)));
-    if (key == "name") {
-      name = std::move(value);
-    } else if (key == "description") {
-      description = std::move(value);
+    if (key == "description" && description) {
+      *description = std::move(value);
     } else if (key == "requires-tools" && required_tools) {
       for (std::string tool : SplitPathList(value, ',')) {
         tool = Trim(tool);
@@ -139,14 +137,14 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       fs::path file = dir / "SKILL.md";
       std::ifstream input(file);
       if (!input) continue;
-      std::string name, description;
+      std::string description;
       std::vector<std::string> required_tools;
       std::string argument_hint;
-      ParseSkillFrontMatter(input, name, description, &required_tools,
+      ParseSkillFrontMatter(input, &description, &required_tools,
                             &argument_hint);
       // The directory name wins: it is what the model names, and it cannot
       // collide with another skill or carry a path separator.
-      name = SafeFileComponent(dir.filename().string());
+      std::string name = SafeFileComponent(dir.filename().string());
       if (SkillExcluded(name) || Trim(description).empty()) continue;
       description = Utf8Trunc(std::move(description),
                               static_cast<size_t>(SkillDescriptionBytes()));
@@ -189,18 +187,13 @@ inline SkillReadResult ReadSkillBody(const Skill& skill,
                                      std::string arguments = {}) {
   std::ifstream input(skill.path, std::ios::binary);
   if (!input) return {false, "error: cannot read " + skill.path};
-  std::string name, description;
-  ParseSkillFrontMatter(input, name, description);
+  ParseSkillFrontMatter(input);
   size_t cap = static_cast<size_t>(SkillBodyBytes());
-  std::string body(cap + 1, '\0');
-  input.read(body.data(), static_cast<std::streamsize>(body.size()));
-  size_t read = static_cast<size_t>(input.gcount());
-  if (read > cap) {
+  std::string body;
+  if (ReadBounded(input, cap, body)) {
     return {false, "error: " + skill.path + " exceeds " + std::to_string(cap) +
                        " bytes; raise UAGENT_SKILL_BYTES to load it fully"};
   }
-  body.resize(read);
-  body = Utf8Prefix(std::move(body), cap);
   if (Trim(body).empty()) {
     return {false, "error: " + skill.path + " has no body"};
   }

@@ -82,18 +82,24 @@ std::string FmtCost(double cost);
 std::string FmtAgo(int64_t seconds);
 int64_t TerminalColumns();
 
+// Usable columns after reserving room for a prompt, marker or trailing cell.
+// Never zero: callers pass the result straight to a width-bounded formatter.
+size_t TerminalWidth(int64_t reserved = 0);
+
 std::string TerminalSummary(const std::string& text,
                             size_t reserved_columns = 0);
 
 std::string SpinnerLabel(const std::string& label);
 
+inline constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size);
 
 std::string Hex64(uint64_t value);
 
-std::string UrlHost(std::string url);
+// Stable short digest for session and workspace identity.
+std::string HashHex(const std::string& data);
 
-std::string UrlAuthority(std::string url);
+std::string UrlHost(std::string url);
 
 std::string ModelLabel(const std::string& model, const std::string& effort);
 
@@ -101,8 +107,6 @@ std::string RouteKey(const std::string& base_url, const std::string& provider,
                      const std::string& model, const std::string& effort);
 
 bool OpenrouterUrl(std::string url);
-
-bool LoopbackUrl(std::string url);
 
 bool OpenaiUrl(std::string url);
 

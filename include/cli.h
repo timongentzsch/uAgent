@@ -43,7 +43,6 @@ struct ParsedSlashCommand {
   std::string argument;
 };
 
-const SlashCommandSpec* SlashCommand(const std::string& name);
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
 

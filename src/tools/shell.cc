@@ -26,55 +26,20 @@
 #include "include/tools/jobs.h"
 
 namespace uagent {
+namespace {
 
-ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
-                                   const ToolContext& context,
-                                   ShellCommand spec) {
-  const std::string& cmd = spec.command;
-  const std::string& shell = spec.shell;
-  const bool detach = spec.detach;
-  if (shell.empty() || shell.find('\0') != std::string::npos) {
-    return {ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "error: shell must be a non-empty executable name or path")};
-  }
-  int64_t max_jobs = MaxBackgroundJobs();
-  if (static_cast<int64_t>(supervisor.PendingCount()) >= max_jobs) {
-    return {ToolFailure(ToolErrorCode::kLimitExceeded,
-                        "error: background job limit reached (" +
-                            std::to_string(max_jobs) + ")")};
-  }
-  int64_t window = (detach || spec.immediate)
-                       ? 0
-                       : context.RemainingSeconds(int64_t{1} << 30);
-  const char* log_kind = detach ? "terminals" : "bg";
-  std::string pattern =
-      UagentDir(log_kind) + "/pending-" + std::to_string(getpid()) + "-XXXXXX";
-  std::vector<char> temp(pattern.begin(), pattern.end());
-  temp.push_back('\0');
-  int lfd = mkstemp(temp.data());
-  std::string log = temp.data();
-  if (lfd < 0) {
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: cannot create log file " + log)};
-  }
-  fchmod(lfd, 0600);
-  int64_t log_bytes = BashLogBytes();
-  // Foreground commands may be stopped at the cap. Detached servers instead
-  // stream through this binary's tiny rotating log pump and keep running.
-  std::string bounded_cmd =
-      detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
-                   ShellQuote(ExecutablePath()) + " --log-pump " +
-                   ShellQuote(log) + " " + std::to_string(log_bytes)
-             : "ulimit -f " + std::to_string((log_bytes - 1) / 1024 + 1) +
-                   "; " + cmd;
+// Spawn `shell -c command` with stdin at /dev/null, both output streams on the
+// log, default signal dispositions, and its own process group (or session, for
+// a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
+int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
+                     bool detach, char* const* environment, pid_t& pid) {
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);
   posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
                                    O_RDONLY, 0);
-  posix_spawn_file_actions_adddup2(&actions, lfd, STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, lfd, STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, lfd);
+  posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
+  posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
+  posix_spawn_file_actions_addclose(&actions, log_fd);
   posix_spawnattr_t attributes;
   posix_spawnattr_init(&attributes);
   // POSIX specifies `short` for posix_spawnattr_setflags; fixed-width types
@@ -98,21 +63,70 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   posix_spawnattr_setflags(&attributes, static_cast<PosixSpawnFlags>(
                                             group_flag | POSIX_SPAWN_SETSIGDEF |
                                             POSIX_SPAWN_SETSIGMASK));
-  pid_t pid = -1;
-  ChildEnvironment child_environment(spec.environment, spec.environment_policy);
-  auto spawn_shell = [&](const std::string& executable) {
+  auto spawn = [&](const std::string& executable) {
     char* const argv[] = {const_cast<char*>(executable.c_str()),
-                          const_cast<char*>("-c"), bounded_cmd.data(), nullptr};
+                          const_cast<char*>("-c"), command.data(), nullptr};
     return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
-                        child_environment.Data());
+                        environment);
   };
-  int spawn_error = spawn_shell(shell);
-  if (spawn_error != 0 && shell == "bash") {
-    spawn_error = spawn_shell("/bin/bash");
-  }
-  if (spawn_error != 0 && shell == "bash") spawn_error = spawn_shell("/bin/sh");
+  int error = spawn(shell);
+  // `bash` is the documented default, so fall back to the usual absolute
+  // paths before giving up on a PATH that does not have it.
+  if (error != 0 && shell == "bash") error = spawn("/bin/bash");
+  if (error != 0 && shell == "bash") error = spawn("/bin/sh");
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
+  return error;
+}
+
+}  // namespace
+
+ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
+                                   const ToolContext& context,
+                                   ShellCommand spec) {
+  const std::string& cmd = spec.command;
+  const std::string& shell = spec.shell;
+  const bool detach = spec.detach;
+  if (shell.empty() || shell.find('\0') != std::string::npos) {
+    return {ToolFailure(
+        ToolErrorCode::kInvalidArguments,
+        "error: shell must be a non-empty executable name or path")};
+  }
+  int64_t max_jobs = MaxBackgroundJobs();
+  auto job_limit_error = [max_jobs] {
+    return ToolFailure(ToolErrorCode::kLimitExceeded,
+                       "error: background job limit reached (" +
+                           std::to_string(max_jobs) + ")");
+  };
+  if (static_cast<int64_t>(supervisor.PendingCount()) >= max_jobs) {
+    return {job_limit_error()};
+  }
+  int64_t window = (detach || spec.immediate)
+                       ? 0
+                       : context.RemainingSeconds(int64_t{1} << 30);
+  const char* log_kind = detach ? kTerminalsDir : kBgDir;
+  std::string log;
+  int lfd = CreateTempFile(
+      UagentDir(log_kind) + "/pending-" + std::to_string(getpid()) + "-XXXXXX",
+      log);
+  if (lfd < 0) {
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: cannot create log file " + log)};
+  }
+  fchmod(lfd, 0600);
+  int64_t log_bytes = BashLogBytes();
+  // Foreground commands may be stopped at the cap. Detached servers instead
+  // stream through this binary's tiny rotating log pump and keep running.
+  std::string bounded_cmd =
+      detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
+                   ShellQuote(ExecutablePath()) + " --log-pump " +
+                   ShellQuote(log) + " " + std::to_string(log_bytes)
+             : "ulimit -f " + std::to_string((log_bytes - 1) / 1024 + 1) +
+                   "; " + cmd;
+  pid_t pid = -1;
+  ChildEnvironment child_environment(spec.environment, spec.environment_policy);
+  int spawn_error = SpawnLoggedShell(shell, bounded_cmd, lfd, detach,
+                                     child_environment.Data(), pid);
   if (spawn_error != 0) {
     close(lfd);
     unlink(log.c_str());
@@ -157,38 +171,40 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   TrackPid(g_child_pgids, kFgMax, pid, false);
 
+  // Both terminal paths end the same way: take the log, keep an oversized one
+  // as an artifact, and report the wait status alongside the result.
+  auto finish = [&](auto build) {
+    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
+    ToolResult result = build(std::move(collected.output));
+    result.artifact = std::move(collected.artifact);
+    return ShellCommandResult{std::move(result), status};
+  };
   if (exited) {
     if (detach) unlink(DetachedRecordPath(pid).c_str());
     if (cancelled) {
       RemoveLog(log);
       return {ToolCancelled("error: command cancelled by user"), status};
     }
-    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
-    std::string out = std::move(collected.output);
-    out += FmtExit(status, /*show_ok=*/false);
-    ToolResult result = ProcessResult(std::move(out), status);
-    result.artifact = std::move(collected.artifact);
-    return {std::move(result), status};
+    return finish([status](std::string output) {
+      output += FmtExit(status, /*show_ok=*/false);
+      return ProcessResult(std::move(output), status);
+    });
   }
   if (!spec.background) {
     KillProcess(pid, &status);
     if (detach) unlink(DetachedRecordPath(pid).c_str());
-    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
-    std::string output = std::move(collected.output);
-    if (!output.empty() && output.back() != '\n') output += '\n';
-    output += "error: command exceeded its execution deadline";
-    ToolResult result = ToolTimedOut(std::move(output));
-    result.artifact = std::move(collected.artifact);
-    return {std::move(result), status};
+    return finish([](std::string output) {
+      if (!output.empty() && output.back() != '\n') output += '\n';
+      output += "error: command exceeded its execution deadline";
+      return ToolTimedOut(std::move(output));
+    });
   }
   bool is_task = spec.job_kind == "task";
   BgJob job{pid, log, cmd, detach, std::move(spec.job_kind)};
   if (!supervisor.TryAdd(std::move(job), max_jobs)) {
     KillProcess(pid, &status);
     RemoveLog(log);
-    return {ToolFailure(ToolErrorCode::kLimitExceeded,
-                        "error: background job limit reached (" +
-                            std::to_string(max_jobs) + ")")};
+    return {job_limit_error()};
   }
   if (detach) {
     return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
@@ -318,6 +334,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
 
   bool create = code.is_string();
   bool replaced = false;
+  std::string source;
   if (create != packages.is_array() || (!create && !packages.is_null())) {
     return ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -348,7 +365,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
                          "error: code must contain only the script body; "
                          "packages generate the PEP 723 header");
     }
-    std::string source = "# /// script\n# dependencies = [\n";
+    source = "# /// script\n# dependencies = [\n";
     for (const json& value : packages) {
       std::string package = value.get<std::string>();
       if (package.find_first_of("\r\n") != std::string::npos ||
@@ -382,9 +399,11 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
         "error: Python scratch script does not exist: " + relative_path);
   }
 
-  std::ifstream input(script);
-  std::string source{std::istreambuf_iterator<char>(input),
-                     std::istreambuf_iterator<char>()};
+  if (!create) {  // a rerun executes whatever is on disk now
+    std::ifstream input(script);
+    source.assign(std::istreambuf_iterator<char>(input),
+                  std::istreambuf_iterator<char>());
+  }
   bool uv = ExecutableOnPath("uv");
   if (!uv && PythonScriptHasDependencies(source)) {
     return ToolFailure(

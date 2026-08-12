@@ -11,7 +11,7 @@ inputs:
   version:
     description: Release tag to install
     required: false
-    default: v0.2.0
+    default: v0.4.0
 outputs:
   result:
     description: uagent.headless.v1 JSON envelope

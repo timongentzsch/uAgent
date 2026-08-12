@@ -21,6 +21,13 @@ inline std::chrono::steady_clock::time_point DeadlineAfter(int64_t seconds) {
   return DeadlineAfter(std::chrono::steady_clock::now(), seconds);
 }
 
+// Whole seconds left, truncated toward zero and negative once past.
+inline int64_t SecondsUntil(std::chrono::steady_clock::time_point deadline) {
+  return std::chrono::duration_cast<std::chrono::seconds>(
+             deadline - std::chrono::steady_clock::now())
+      .count();
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_TIME_H_

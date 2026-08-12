@@ -71,12 +71,10 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
                        const std::string& new_text, int64_t applied) {
   size_t line_start = match == 0 ? 0 : data.rfind('\n', match - 1);
   line_start = line_start == std::string::npos ? 0 : line_start + 1;
-  size_t block_start = line_start;
+  size_t block_start = 0;  // one line of leading context, when there is one
   if (line_start > 1) {
     size_t previous = data.rfind('\n', line_start - 2);
     block_start = previous == std::string::npos ? 0 : previous + 1;
-  } else if (line_start == 1) {
-    block_start = 0;
   }
   size_t affected_end = data.find('\n', match + old_text.size());
   size_t block_end = affected_end == std::string::npos
@@ -123,9 +121,24 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
 
 ToolResult FileOpenFailure(const std::string& path) {
   std::error_code error(errno, std::generic_category());
-  return ToolFailure(
-      path.empty() ? ToolErrorCode::kInvalidArguments : FileToolError(error),
-      "error: cannot open " + path);
+  return ToolFailure(FileToolError(error), "error: cannot open " + path);
+}
+
+// Atomic write: temp file in the same directory, then rename — a disk-full or
+// crash mid-write can never leave the target truncated. Keeps an existing
+// file's permissions.
+ToolResult ToolWriteFileMode(const std::string& path,
+                             const std::string& content, mode_t create_mode) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
+    return std::move(*invalid);
+  }
+  std::string error;
+  if (!AtomicWriteFile(path, content, create_mode, /*preserve_mode=*/true,
+                       error)) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
+  }
+  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
+                     path);
 }
 
 }  // namespace
@@ -204,25 +217,6 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
   return ToolSuccess(header + "]\n" + out);
 }
 
-// Atomic write: temp file in the same directory, then rename — a disk-full or
-// crash mid-write can never leave the target truncated. Keeps an existing
-// file's permissions.
-ToolResult ToolWriteFileMode(const std::string& path,
-                             const std::string& content, mode_t create_mode) {
-  if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
-    return std::move(*invalid);
-  }
-  std::string error;
-  if (!AtomicWriteFile(path, content, create_mode, /*preserve_mode=*/true,
-                       error)) {
-    return ToolFailure(path.empty() ? ToolErrorCode::kInvalidArguments
-                                    : ToolErrorCode::kInternal,
-                       "error: " + error);
-  }
-  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
-                     path);
-}
-
 ToolResult ToolWriteFile(const std::string& path, const std::string& content) {
   return ToolWriteFileMode(path, content, 0644);
 }
@@ -258,6 +252,8 @@ std::string StripLineNumbers(const std::string& s) {
   if (!s.empty() && s.back() == '\n') out += '\n';
   return out;
 }
+
+namespace {
 
 int64_t CountOccurrences(const std::string& hay, const std::string& needle) {
   if (needle.empty()) return 0;
@@ -369,6 +365,8 @@ void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
   out.append(data, copied, std::string::npos);
   data.swap(out);
 }
+
+}  // namespace
 
 ToolResult ToolEditFile(const std::string& path,
                         const std::vector<FileEdit>& edits) {
@@ -505,6 +503,8 @@ ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
   return ToolEditFile(path, {{old_s, new_s, replace_all}});
 }
 
+namespace {
+
 bool LikelyTextFile(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) return false;
@@ -521,6 +521,43 @@ bool LikelyTextFile(const std::filesystem::path& path) {
   return true;
 }
 
+// The whole contents of a tiny directory, when every entry is a small text
+// file. Any reason not to inline them leaves the plain listing in place.
+std::optional<std::string> SmallDirectoryPreview(
+    const std::string& dir, const std::vector<std::string>& entries,
+    const std::string& listing) {
+  namespace fs = std::filesystem;
+  uintmax_t total_bytes = 0;
+  uintmax_t max_bytes = static_cast<uintmax_t>(ReadFileBytes());
+  for (const std::string& entry : entries) {
+    fs::path entry_path = fs::path(dir) / entry;
+    std::error_code type_error;
+    if (!fs::is_regular_file(fs::symlink_status(entry_path, type_error)) ||
+        type_error) {
+      return std::nullopt;
+    }
+    std::error_code size_error;
+    uintmax_t bytes = fs::file_size(entry_path, size_error);
+    if (size_error || bytes > max_bytes - total_bytes) return std::nullopt;
+    total_bytes += bytes;
+    if (!LikelyTextFile(entry_path)) return std::nullopt;
+  }
+
+  std::string preview = listing + "\n[small directory contents]\n";
+  for (const std::string& entry : entries) {
+    ToolResult read = ToolReadFile((fs::path(dir) / entry).string(), 1, -1);
+    if (!read.Ok()) return std::nullopt;
+    preview += "\n";
+    preview += read.output;
+    if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
+      return std::nullopt;
+    }
+  }
+  return preview;
+}
+
+}  // namespace
+
 ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
                        bool include_small_files) {
   std::string p = path.empty() ? "." : path;
@@ -531,10 +568,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   if (limit <= 0) limit = ListDirEntries();
   int64_t scan_cap = ListDirScanEntries();
   std::error_code ec;
-  struct Entry {
-    std::string name;
-  };
-  std::vector<Entry> entries;
+  std::vector<std::string> entries;
   for (auto& e : std::filesystem::directory_iterator(p, ec)) {
     if (static_cast<int64_t>(entries.size()) >= scan_cap) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
@@ -543,14 +577,12 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
     }
     std::error_code type_error;
     bool directory = e.is_directory(type_error);
-    entries.push_back({e.path().filename().string() + (directory ? "/" : "")});
+    entries.push_back(e.path().filename().string() + (directory ? "/" : ""));
   }
   if (ec) {
     return ToolFailure(FileToolError(ec), "error: cannot open directory " + p);
   }
-  std::sort(
-      entries.begin(), entries.end(),
-      [](const Entry& lhs, const Entry& rhs) { return lhs.name < rhs.name; });
+  std::sort(entries.begin(), entries.end());
   if (entries.empty()) return ToolSuccess("(empty directory)");
   if (offset >= static_cast<int64_t>(entries.size())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -566,8 +598,8 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   std::string out = "[" + p + " entries " + std::to_string(offset + 1) + "-" +
                     std::to_string(end) + " of " +
                     std::to_string(entries.size()) + "]\n";
-  for (size_t i = static_cast<size_t>(offset); i < end; ++i) {
-    out += entries[i].name;
+  for (size_t i = begin; i < end; ++i) {
+    out += entries[i];
     out += '\n';
   }
 
@@ -576,39 +608,11 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
       entries.size() > kPreviewFiles) {
     return ToolSuccess(std::move(out));
   }
-
-  uintmax_t total_bytes = 0;
-  uintmax_t max_bytes = static_cast<uintmax_t>(ReadFileBytes());
-  for (const Entry& entry : entries) {
-    std::filesystem::path entry_path = std::filesystem::path(p) / entry.name;
-    std::error_code type_error;
-    if (!std::filesystem::is_regular_file(
-            std::filesystem::symlink_status(entry_path, type_error)) ||
-        type_error) {
-      return ToolSuccess(std::move(out));
-    }
-    std::error_code size_error;
-    uintmax_t bytes = std::filesystem::file_size(entry_path, size_error);
-    if (size_error || bytes > max_bytes - total_bytes) {
-      return ToolSuccess(std::move(out));
-    }
-    total_bytes += bytes;
-
-    if (!LikelyTextFile(entry_path)) return ToolSuccess(std::move(out));
+  if (std::optional<std::string> preview =
+          SmallDirectoryPreview(p, entries, out)) {
+    return ToolSuccess(std::move(*preview), ReadFileResultChars());
   }
-
-  std::string preview = out + "\n[small directory contents]\n";
-  for (const Entry& entry : entries) {
-    ToolResult read =
-        ToolReadFile((std::filesystem::path(p) / entry.name).string(), 1, -1);
-    if (!read.Ok()) return ToolSuccess(std::move(out));
-    preview += "\n";
-    preview += read.output;
-    if (static_cast<int64_t>(preview.size()) > ReadFileResultChars()) {
-      return ToolSuccess(std::move(out));
-    }
-  }
-  return ToolSuccess(std::move(preview), ReadFileResultChars());
+  return ToolSuccess(std::move(out));
 }
 
 }  // namespace uagent

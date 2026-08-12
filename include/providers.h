@@ -92,8 +92,6 @@ void AddAvailableProviderTemplates(ProviderCatalog& catalog);
 std::optional<ModelRoute> ResolveModelRoute(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers, const std::string& selection);
-void ExportRoute(const Api& api);
-void ResetRouteCapabilities(Api& api);
 void ApplyRoute(Api& api, const ModelRoute& route);
 void ActivateRoute(Api& api);
 ProviderSetup ConfigureProvider(Api& api);

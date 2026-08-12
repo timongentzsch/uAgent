@@ -1550,7 +1550,7 @@ def test_context_command_shows_memory_and_skills(root, home):
     codex = home / ".codex" / "memories"
     codex.mkdir(parents=True)
     (codex / "MEMORY.md").write_text("codex-memory-body-sentinel", encoding="utf-8")
-    claude_project = re.sub(r"[^A-Za-z0-9]", "-", str(workspace))
+    claude_project = re.sub(r"[^A-Za-z0-9]", "-", str(workspace.resolve()))
     claude = home / ".claude" / "projects" / claude_project / "memory"
     claude.mkdir(parents=True)
     (claude / "MEMORY.md").write_text("claude-memory-body-sentinel", encoding="utf-8")
@@ -1592,7 +1592,7 @@ def test_memory_background_extractor_is_bounded(root, home):
     session = history / "extract.json"
     header = {
         "format": 3,
-        "cwd": str(workspace),
+        "cwd": str(workspace.resolve()),
         "model": "test",
         "session_id": "memory-extract-test",
         "turns": 2,

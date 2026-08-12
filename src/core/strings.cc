@@ -279,20 +279,17 @@ std::string TerminalSafe(const std::string& s) {
 }
 
 std::string TerminalSummary(const std::string& text, size_t reserved_columns) {
-  std::string summary = TerminalSafe(FirstLine(text));
   size_t newline = text.find('\n');
+  std::string summary = TerminalSafe(text.substr(0, newline));
   if (newline != std::string::npos && newline + 1 < text.size()) {
     summary += " …";
   }
-  size_t width = static_cast<size_t>(std::max(
-      int64_t{1}, TerminalColumns() - static_cast<int64_t>(reserved_columns)));
-  return DisplayTrunc(std::move(summary), width);
+  return DisplayTrunc(std::move(summary),
+                      TerminalWidth(static_cast<int64_t>(reserved_columns)));
 }
 
 std::string SpinnerLabel(const std::string& label) {
-  size_t columns =
-      static_cast<size_t>(std::max(int64_t{1}, TerminalColumns() - 12));
-  return DisplayTrunc(TerminalSafe(label), columns);
+  return DisplayTrunc(TerminalSafe(label), TerminalWidth(12));
 }
 
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
@@ -302,6 +299,28 @@ uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   }
   return hash;
 }
+
+std::string HashHex(const std::string& data) {
+  return Hex64(Fnv1aUpdate(kFnv1aOffsetBasis, data.data(), data.size()));
+}
+
+namespace {
+
+// scheme, credentials and path stripped: the host[:port] a route is keyed by
+std::string UrlAuthority(std::string url) {
+  if (auto pos = url.find("://"); pos != std::string::npos) {
+    url = url.substr(pos + 3);
+  }
+  if (auto pos = url.find('/'); pos != std::string::npos) {
+    url.resize(pos);
+  }
+  if (auto pos = url.rfind('@'); pos != std::string::npos) {
+    url = url.substr(pos + 1);
+  }
+  return AsciiLower(std::move(url));
+}
+
+}  // namespace
 
 std::string UrlHost(std::string url) {
   std::string host = UrlAuthority(std::move(url));
@@ -318,26 +337,8 @@ bool OpenrouterUrl(std::string url) {
          (url.size() > kSuffix.size() && url.ends_with(kSuffix));
 }
 
-bool LoopbackUrl(std::string url) {
-  std::string host = UrlHost(std::move(url));
-  return host == "127.0.0.1" || host == "localhost";
-}
-
 bool OpenaiUrl(std::string url) {
   return UrlHost(std::move(url)) == "api.openai.com";
-}
-
-std::string UrlAuthority(std::string url) {
-  if (auto pos = url.find("://"); pos != std::string::npos) {
-    url = url.substr(pos + 3);
-  }
-  if (auto pos = url.find('/'); pos != std::string::npos) {
-    url.resize(pos);
-  }
-  if (auto pos = url.rfind('@'); pos != std::string::npos) {
-    url = url.substr(pos + 1);
-  }
-  return AsciiLower(std::move(url));
 }
 
 std::string ModelLabel(const std::string& model, const std::string& effort) {
@@ -400,6 +401,11 @@ int64_t TerminalColumns() {
     }
   }
   return std::max(int64_t{1}, EnvLong("COLUMNS", 80));
+}
+
+size_t TerminalWidth(int64_t reserved) {
+  return static_cast<size_t>(
+      std::max(int64_t{1}, TerminalColumns() - reserved));
 }
 
 std::string Hex64(uint64_t value) {

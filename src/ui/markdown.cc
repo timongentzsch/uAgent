@@ -248,9 +248,11 @@ std::string MathBody(const std::string& span) {
   return span.substr(1, span.size() - 2);
 }
 
+// ANSI escapes are zero-width to DisplayWidth, and TerminalSafe has already
+// removed any raw escape the model could have emitted, so the rendered string
+// measures exactly like its visible text.
 std::string RenderCell(const std::string& text, size_t& visible_columns) {
   std::string output;
-  std::string visible;
   bool bold = false, italic = false, code = false;
   for (size_t index = 0; index < text.size(); ++index) {
     char value = text[index];
@@ -266,14 +268,12 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
       output += MATH();
       output += rendered;
       output += FgDfl();
-      visible += rendered;
       index = math_end - 1;
       continue;
     }
     if (!code && value == '\\' && index + 1 < text.size() &&
         MarkdownEscapable(text[index + 1])) {
       output += text[++index];
-      visible += text[index];
       continue;
     }
     if (value == '*' && !code) {
@@ -287,14 +287,12 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
         output += italic ? ITAL() : ItalOff();
       } else {
         output += value;
-        visible += value;
       }
       continue;
     }
     output += value;
-    visible += value;
   }
-  visible_columns = DisplayWidth(visible);
+  visible_columns = DisplayWidth(output);
   if (bold || italic || code) output += RST();
   return output;
 }
@@ -454,8 +452,7 @@ void MdStream::Step(char c) {
       if (fence) fputs(CodeBlk(), stdout);  // color the block body
       fencehead = false;
       linestart = true;
-      prev_raw.clear();
-      prev_rows = 1;
+      ForgetPreviousLine();
     } else {
       putchar(c);
     }
@@ -473,8 +470,7 @@ void MdStream::Step(char c) {
     putchar(c);
     if (c == '\n') {
       linestart = true;
-      prev_raw.clear();
-      prev_rows = 1;
+      ForgetPreviousLine();
     }
     return;
   }
@@ -801,6 +797,11 @@ void MdStream::ReplayMath() {
   for (char value : text) InlineChar(value);
 }
 
+void MdStream::ForgetPreviousLine() {
+  prev_raw.clear();
+  prev_rows = 1;
+}
+
 void MdStream::EndLine() {  // inline styles never span lines
   if (bold || ital || code || heading) {
     fputs(RST(), stdout);
@@ -808,7 +809,7 @@ void MdStream::EndLine() {  // inline styles never span lines
   }
   putchar('\n');
   prev_raw = cur_raw;
-  size_t columns = static_cast<size_t>(std::max(int64_t{1}, TerminalColumns()));
+  size_t columns = TerminalWidth();
   prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;
   cur_raw.clear();
   vis_line = 0;
@@ -824,8 +825,7 @@ void MdStream::RetroTable() {
   pre.clear();
   cur_raw.clear();
   vis_line = 0;
-  prev_raw.clear();
-  prev_rows = 1;
+  ForgetPreviousLine();
   tablemode = true;  // body rows follow until a line without '|'
 }
 
@@ -893,8 +893,7 @@ void MdStream::FlushTable() {
       }
     }
     table.clear();
-    prev_raw.clear();
-    prev_rows = 1;
+    ForgetPreviousLine();
     return;
   }
   for (size_t r = 0; r < rows.size(); r++) {
@@ -911,8 +910,7 @@ void MdStream::FlushTable() {
     printf("%s%s%s\n", r == header ? BOLD() : "", ln.c_str(), RST());
   }
   table.clear();
-  prev_raw.clear();
-  prev_rows = 1;
+  ForgetPreviousLine();
 }
 
 void MdPrint(const std::string& text) {

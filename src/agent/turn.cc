@@ -44,13 +44,19 @@ struct Agent::TurnState {
   std::string outcome = "step_limit";
 };
 
+// Every bound the turn enforces ends the same way: record why, mark the turn,
+// and say so in red.
+void Agent::FailBudget(TurnState& state, std::string message) {
+  last_error_ = std::move(message);
+  state.outcome = "budget_exceeded";
+  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+}
+
 bool Agent::TurnDeadlineExceeded(TurnState& state,
                                  std::chrono::seconds reserve) {
   if (std::chrono::steady_clock::now() + reserve < state.deadline) return false;
-  last_error_ = "turn time limit reached (" +
-                std::to_string(state.max_turn_seconds) + "s)";
-  state.outcome = "budget_exceeded";
-  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+  FailBudget(state, "turn time limit reached (" +
+                        std::to_string(state.max_turn_seconds) + "s)");
   return true;
 }
 
@@ -64,17 +70,14 @@ bool Agent::TurnCostExceeded(TurnState& state) {
     scope = "session";
   }
   if (limit <= 0 || spent <= limit) return false;
-  last_error_ = scope + " cost limit exceeded (" + FmtCost(limit) + ")";
-  state.outcome = "budget_exceeded";
-  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+  FailBudget(state, scope + " cost limit exceeded (" + FmtCost(limit) + ")");
   return true;
 }
 
 void Agent::RecordModelResponse(
     ChatResult& response, TurnState& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
-  Usage response_usage;
-  response_usage.Add(response.usage);
+  Usage response_usage = AccountModelUsage(response.usage);
   if (state.session_budget > 0 && response.usage.is_object() &&
       !response_usage.cost_reported && !cost_warning_shown_) {
     cost_warning_shown_ = true;
@@ -94,8 +97,6 @@ void Agent::RecordModelResponse(
     state.model_generated_tokens += response_usage.GeneratedTokens();
   }
   state.usage.Merge(response_usage);
-  MergeSessionUsage(response_usage);
-  AddRouteUsage(response_usage);
   tool_counts["web_search"] += response_usage.web_searches;
   turn_search_trace_.Add(response_usage.web_searches, response.annotations);
   state.line_open = !response.suppressed && !response.content.empty() &&
@@ -118,10 +119,8 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                                   int64_t& repeated_calls) {
   if (calls.empty()) return true;
   if (state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
-    last_error_ =
-        "tool call limit reached (" + std::to_string(max_tool_calls) + ")";
-    state.outcome = "budget_exceeded";
-    printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+    FailBudget(state, "tool call limit reached (" +
+                          std::to_string(max_tool_calls) + ")");
     return false;
   }
   auto blocking_wait = [](const ToolCall& call) {
@@ -143,9 +142,7 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     repeated = repeated || repeated_calls > 3;
   }
   if (!repeated) return true;
-  last_error_ = "model repeated the same tool call more than 3 times";
-  state.outcome = "budget_exceeded";
-  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+  FailBudget(state, "model repeated the same tool call more than 3 times");
   return false;
 }
 
@@ -182,14 +179,7 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 }
 
 void Agent::Turn(const std::string& user_input, json user_content) {
-  if (!user_content.is_null()) {
-    json messages =
-        json::array({{{"role", "user"}, {"content", user_content}}});
-    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
-        messages, ImageFallbackCause::kKnownUnsupported);
-    if (fallback.applied) user_content = std::move(messages[0]["content"]);
-    ReportImageFallback(fallback);
-  }
+  if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
   RunTurn(user_input, std::move(user_content), /*harness_origin=*/false);
 }
 
@@ -279,8 +269,9 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   int64_t consecutive_failed_tools = 0;
   bool failure_advisory_sent = false;
   bool empty_response_recovered = false;
-  std::optional<size_t> empty_recovery_message;
-  std::optional<size_t> failure_advisory_message;
+  // A harness note that guides exactly the next model call and is retracted
+  // once it has been sent. At most one is ever live.
+  std::optional<size_t> pending_note;
   bool detached_records_available = !DetachedRecords().empty();
   bool midturn_compaction_enabled = true;
 
@@ -329,22 +320,23 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     };
     json available_schemas =
         AvailableToolSchemas(tools_, schemas_, tool_counts, availability);
-    if (step > 0 && midturn_compaction_enabled &&
-        MaybeCompactDuringTurn(available_schemas, user_input, state.usage,
-                               state.start) != MidturnCompact::kNotNeeded) {
-      midturn_compaction_enabled = false;
-      --step;
-      continue;
+    if (step > 0 && midturn_compaction_enabled) {
+      MidturnCompact compacted = MaybeCompactDuringTurn(
+          available_schemas, user_input, state.usage, state.start);
+      if (compacted != MidturnCompact::kNotNeeded) {
+        midturn_compaction_enabled = false;
+        // A successful compaction rebuilt the history, so a recorded note
+        // index no longer refers to its note; a failed one left history
+        // exactly as it was, and the note still has to be retracted.
+        if (compacted == MidturnCompact::kSucceeded) pending_note.reset();
+        --step;
+        continue;
+      }
     }
     ChatResult r = Chat("turn", step, available_schemas);
-    if (failure_advisory_message) {
-      conversation_.Erase(*failure_advisory_message,
-                          *failure_advisory_message + 1);
-      failure_advisory_message.reset();
-    }
-    if (empty_recovery_message) {
-      conversation_.Erase(*empty_recovery_message, *empty_recovery_message + 1);
-      empty_recovery_message.reset();
+    if (pending_note) {
+      conversation_.Erase(*pending_note, *pending_note + 1);
+      pending_note.reset();
     }
 
     if (r.interrupted) {
@@ -406,7 +398,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
                            "from existing results. Do not repeat completed "
                            "work."),
             MessageKind::kInternal);
-        empty_recovery_message = conversation_.Size() - 1;
+        pending_note = conversation_.Size() - 1;
         DebugLog("empty_response_recovery",
                  {{"turn", turn_id_}, {"step", step}});
         printf("%s· recovering empty response%s\n", DIM(), RST());
@@ -464,7 +456,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
                          "variant; use existing evidence or a different "
                          "approach when possible."),
           MessageKind::kInternal);
-      failure_advisory_message = conversation_.Size() - 1;
+      pending_note = conversation_.Size() - 1;
       DebugLog("tool_failure_advisory",
                {{"turn", turn_id_},
                 {"step", step},
@@ -487,26 +479,9 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   FinishTurn(state, step);
 }
 
-void Agent::FinishTurn(TurnState& state, int64_t step) {
-  if (step >= state.max_steps) {
-    last_error_ =
-        "step limit (" + std::to_string(state.max_steps) + ") reached";
-    std::cout << RED() << "step limit (" << state.max_steps
-              << ") reached — stopping this turn" << RST() << '\n';
-  }
-  PruneAttachments(state.start);
-  ArchiveTurnTrace(state.start);
-  PruneOldToolResults();
-
-  MergeSideUsage(state.usage);
-
-  double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                              state.started)
-                    .count();
-  double tokens_per_second =
-      state.model_generation_ms > 0
-          ? state.model_generated_tokens * 1000.0 / state.model_generation_ms
-          : 0;
+// The one-line accounting footer printed after every turn.
+std::string Agent::TurnStatsLine(const TurnState& state, double seconds,
+                                 double tokens_per_second) {
   std::ostringstream stats;
   stats << FmtCount(state.usage.input) << " in";
   if (state.usage.cache_read) {
@@ -537,11 +512,35 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
     stats << " · first " << std::fixed << std::setprecision(2)
           << state.ttt_ms / 1000.0 << 's';
   }
-  stats << " · " << std::fixed << std::setprecision(1) << secs << 's';
-  std::string stats_line = stats.str();
+  stats << " · " << std::fixed << std::setprecision(1) << seconds << 's';
+  return stats.str();
+}
+
+void Agent::FinishTurn(TurnState& state, int64_t step) {
+  if (step >= state.max_steps) {
+    last_error_ =
+        "step limit (" + std::to_string(state.max_steps) + ") reached";
+    std::cout << RED() << "step limit (" << state.max_steps
+              << ") reached — stopping this turn" << RST() << '\n';
+  }
+  PruneAttachments(state.start);
+  ArchiveTurnTrace(state.start);
+  PruneOldToolResults();
+
+  MergeSideUsage(state.usage);
+
+  double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                              state.started)
+                    .count();
+  double tokens_per_second =
+      state.model_generation_ms > 0
+          ? state.model_generated_tokens * 1000.0 / state.model_generation_ms
+          : 0;
+  // One write: the interactive composer repaints on every chunk it observes,
+  // so a footer split across writes would redraw the input line mid-line.
   std::ostringstream footer;
-  footer << (state.line_open ? "\n" : "") << RST() << BLUE() << stats_line
-         << RST() << '\n';
+  footer << (state.line_open ? "\n" : "") << RST() << BLUE()
+         << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
   std::cout << footer.str();
   DebugLog("turn_end",
            {{"turn", turn_id_},

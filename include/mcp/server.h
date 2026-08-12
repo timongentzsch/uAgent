@@ -33,6 +33,15 @@ extern char** environ;
 
 namespace uagent {
 
+// Give stdio EOF a brief chance to perform the protocol's polite shutdown
+// before escalating to signals, then again before the kill.
+inline constexpr int kMcpEofAttempts = 4;
+inline constexpr int kMcpTermAttempts = 6;
+inline constexpr useconds_t kMcpReapInterval = 50 * 1000;
+
+struct McpServer;
+inline void McpShutdown(McpServer& server);
+
 struct McpServer {
   std::string name;
   pid_t pid = -1;
@@ -47,12 +56,9 @@ struct McpServer {
   bool tools_changed = false;
 
   ~McpServer() { Shutdown(); }
-  // stdin EOF is the polite stop signal for stdio servers; escalate to
-  // SIGTERM, then SIGKILL for the ones that don't watch their stdin.
-  // Signals target the whole group (-pid): servers spawn their own workers.
-  // Also called the moment a server is detected dead/wedged, so fds close
-  // and the child is reaped immediately, not at program exit.
-  void Shutdown() {
+
+  // Closing our ends is the polite stop signal for a stdio server.
+  void CloseTransport() {
     alive = false;
     if (in >= 0) {
       close(in);
@@ -62,38 +68,67 @@ struct McpServer {
       close(out);
       out = -1;
     }
-    if (pid > 0) {
-      int st;
-      bool gone = false;
-      // Give stdio EOF a brief chance to perform the protocol's polite
-      // shutdown before escalating to signals.
-      for (int i = 0; i < 4 && !gone; i++) {
-        if (waitpid(pid, &st, WNOHANG) != 0) {
-          gone = true;
-        } else {
-          usleep(50 * 1000);
-        }
-      }
-      if (!gone && kill(-pid, SIGTERM) != 0) kill(pid, SIGTERM);
-      for (int i = 0; i < 6 && !gone; i++) {
-        if (waitpid(pid, &st, WNOHANG) != 0) {
-          gone = true;
-        } else {
-          usleep(50 * 1000);
-        }
-      }
-      if (!gone) {
-        kill(-pid, SIGKILL);
-        kill(pid, SIGKILL);
-        waitpid(pid, &st, 0);
-      }
-      for (int i = 0; i < kMcpMax; i++) {  // drop from the SIGINT kill list
-        if (g_mcp_pids[i] == pid) g_mcp_pids[i] = 0;
-      }
-      pid = -1;
-    }
   }
+
+  // Signals target the whole group (-pid): servers spawn their own workers.
+  void Escalate(int signal_number) {
+    if (pid > 0 && kill(-pid, signal_number) != 0) kill(pid, signal_number);
+  }
+
+  // True once the child is gone and dropped from the SIGINT kill list.
+  bool Reaped() {
+    if (pid <= 0) return true;
+    int status = 0;
+    pid_t result = waitpid(pid, &status, WNOHANG);
+    if (result != pid && !(result < 0 && errno == ECHILD)) return false;
+    TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
+    pid = -1;
+    return true;
+  }
+
+  void ReapBlocking() {
+    if (pid <= 0) return;
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
+    pid = -1;
+  }
+
+  // Also called the moment a server is detected dead/wedged, so fds close and
+  // the child is reaped immediately, not at program exit.
+  void Shutdown() { McpShutdown(*this); }
 };
+
+// One shutdown ladder for one or many servers: close every transport first so
+// they all observe EOF together, then escalate in lockstep. Batching is the
+// reason ShutdownAll cannot simply loop over one-server shutdowns.
+template <class Servers>
+inline void McpShutdownGroup(const Servers& servers) {
+  auto wait_all = [&](int attempts) {
+    for (int attempt = 0; attempt < attempts; ++attempt) {
+      bool pending = false;
+      for (McpServer* server : servers) pending = !server->Reaped() || pending;
+      if (!pending) return;
+      usleep(kMcpReapInterval);
+    }
+  };
+  for (McpServer* server : servers) server->CloseTransport();
+  wait_all(kMcpEofAttempts);
+  for (McpServer* server : servers) server->Escalate(SIGTERM);
+  wait_all(kMcpTermAttempts);
+  for (McpServer* server : servers) {
+    if (server->pid <= 0) continue;
+    kill(-server->pid, SIGKILL);
+    kill(server->pid, SIGKILL);
+    server->ReapBlocking();
+  }
+}
+
+inline void McpShutdown(McpServer& server) {
+  McpServer* one[] = {&server};
+  McpShutdownGroup(one);
+}
 
 // Explicit session owner. Destruction closes every transport and reaps every
 // server before curl and the rest of the process runtime are torn down.
@@ -104,10 +139,8 @@ class McpRuntime {
   McpRuntime(const McpRuntime&) = delete;
   McpRuntime& operator=(const McpRuntime&) = delete;
 
-  McpServer* Add(std::unique_ptr<McpServer> server) {
-    McpServer* raw = server.get();
+  void Add(std::unique_ptr<McpServer> server) {
     servers_.push_back(std::move(server));
-    return raw;
   }
 
   const std::vector<std::unique_ptr<McpServer>>& Servers() const {
@@ -115,60 +148,10 @@ class McpRuntime {
   }
 
   void ShutdownAll() {
-    auto reaped = [](McpServer& server) {
-      for (int i = 0; i < kMcpMax; ++i) {
-        if (g_mcp_pids[i] == server.pid) g_mcp_pids[i] = 0;
-      }
-      server.pid = -1;
-    };
-    auto reap_ready = [&](McpServer& server) {
-      if (server.pid <= 0) return true;
-      int status = 0;
-      pid_t result = waitpid(server.pid, &status, WNOHANG);
-      if (result == server.pid || (result < 0 && errno == ECHILD)) {
-        reaped(server);
-        return true;
-      }
-      return false;
-    };
-    auto wait_all = [&](int attempts) {
-      for (int attempt = 0; attempt < attempts; ++attempt) {
-        bool pending = false;
-        for (auto& server : servers_) pending = !reap_ready(*server) || pending;
-        if (!pending) return;
-        usleep(50 * 1000);
-      }
-    };
-
-    // Close every transport first so all servers observe EOF together.
-    for (auto& server : servers_) {
-      server->alive = false;
-      if (server->in >= 0) {
-        close(server->in);
-        server->in = -1;
-      }
-      if (server->out >= 0) {
-        close(server->out);
-        server->out = -1;
-      }
-    }
-    wait_all(4);
-    for (auto& server : servers_) {
-      if (server->pid > 0 && kill(-server->pid, SIGTERM) != 0) {
-        kill(server->pid, SIGTERM);
-      }
-    }
-    wait_all(6);
-    for (auto& server : servers_) {
-      if (server->pid > 0) {
-        kill(-server->pid, SIGKILL);
-        kill(server->pid, SIGKILL);
-        int status = 0;
-        while (waitpid(server->pid, &status, 0) < 0 && errno == EINTR) {
-        }
-        reaped(*server);
-      }
-    }
+    std::vector<McpServer*> live;
+    live.reserve(servers_.size());
+    for (auto& server : servers_) live.push_back(server.get());
+    McpShutdownGroup(live);
     servers_.clear();
   }
 
@@ -195,10 +178,40 @@ inline std::string McpLogPath(const std::string& name) {
          std::to_string(getpid()) + ".log";
 }
 
+// Where a failing server's own diagnostics went. Appended to every error the
+// model or user sees, so the next step is always obvious.
+inline std::string McpStderrHint(const std::string& name) {
+  return " (stderr: " + McpLogPath(name) + ")";
+}
+
 inline bool McpBufferOk(McpServer& s) {
   if (s.response_cap == 0 || s.rbuf.size() <= s.response_cap) return true;
   s.Shutdown();
   return false;
+}
+
+// Append one available chunk of server stdout to the read buffer. Returns
+// false when the server closed or the response cap was hit. McpWrite's
+// opportunistic drain tolerates EOF, so it passes eof_is_fatal=false.
+inline bool McpFillBuffer(McpServer& s, bool eof_is_fatal = true) {
+  char buffer[1 << 16];
+  ssize_t count = read(s.out, buffer, sizeof buffer);
+  if (count <= 0) {
+    if (!eof_is_fatal) return true;
+    s.Shutdown();
+    return false;
+  }
+  s.rbuf.append(buffer, static_cast<size_t>(count));
+  return McpBufferOk(s);
+}
+
+// Take one complete newline-terminated message out of the read buffer.
+inline bool McpTakeLine(McpServer& s, std::string& line) {
+  size_t newline = s.rbuf.find('\n');
+  if (newline == std::string::npos) return false;
+  line = s.rbuf.substr(0, newline);
+  s.rbuf.erase(0, newline + 1);
+  return true;
 }
 
 inline bool McpSpawn(
@@ -267,13 +280,8 @@ inline bool McpSpawn(
   s.in = inp[1];
   s.out = outp[0];
   s.alive = true;
-  for (int i = 0; i < kMcpMax;
-       i++) {  // SIGINT idle-exit TERMs these (see core/signals.h)
-    if (g_mcp_pids[i] == 0) {
-      g_mcp_pids[i] = pid;
-      break;
-    }
-  }
+  // SIGINT idle-exit TERMs these (see core/signals.h)
+  TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/true);
   return true;
 }
 

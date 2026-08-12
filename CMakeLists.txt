@@ -97,9 +97,13 @@ target_link_libraries(uagent_core PUBLIC uagent_options)
 add_executable(uagent src/main.cc)
 target_link_libraries(uagent PRIVATE uagent_core)
 
+# Link-time optimization has to cover the library: main.cc is a few lines and
+# every code path lives in uagent_core.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
+  set_property(TARGET uagent_core PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE
+                                           TRUE)
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
 endif()
 
@@ -151,10 +155,3 @@ install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
               docs/ARCHITECTURE.md docs/OPERATIONS.md
               docs/PERSISTENCE.md docs/TESTING.md
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
-
-set(CPACK_PACKAGE_NAME "uagent")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lean C++ terminal coding agent")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-set(CPACK_GENERATOR "TGZ")
-include(CPack)

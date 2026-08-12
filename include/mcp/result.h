@@ -71,12 +71,9 @@ inline ToolResult McpImageResult(const json& content) {
 // and queued separately; their base64 never enters the tool result history.
 inline ToolResult McpResultText(const McpServer& s, const json& resp) {
   if (!resp.contains("result")) {
-    std::string msg = "unknown error";
-    if (resp.contains("error") && resp["error"].is_object()) {
-      msg = JsonValue(resp["error"], "message", msg);
-    }
     return ToolFailure(ToolErrorCode::kRemoteError,
-                       "error: mcp(" + s.name + "): " + msg);
+                       "error: mcp(" + s.name +
+                           "): " + JsonErrorMessage(resp, "unknown error"));
   }
   const json& r = resp["result"];
   if (!r.is_object()) {
@@ -88,14 +85,10 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp) {
   if (r.contains("content") && r["content"].is_array()) {
     for (const json& c : r["content"]) {
       if (!text.empty()) text += '\n';
-      std::string type;
-      if (c.is_object() && c.contains("type") && c["type"].is_string()) {
-        type = c["type"].get<std::string>();
-      }
-      if (type == "text" && c.is_object() && c.contains("text") &&
-          c["text"].is_string()) {
+      std::string type = JsonValue(c, "type", "");
+      if (type == "text" && c.contains("text") && c["text"].is_string()) {
         text += c["text"].get<std::string>();
-      } else if (type == "image" && c.is_object()) {
+      } else if (type == "image") {
         ToolResult image = McpImageResult(c);
         text += image.output;
         if (!image.Ok() && local_error == ToolErrorCode::kNone) {
@@ -137,14 +130,7 @@ inline std::string McpCapDesc(std::string d) {
 // <server>_<tool>, restricted to the [A-Za-z0-9_-]{1,64} function-name charset
 inline std::string McpToolName(const std::string& server,
                                const std::string& tool) {
-  std::string n = server + "_" + tool;
-  for (auto& c : n) {
-    if (!isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') {
-      c = '_';
-    }
-  }
-  if (n.size() > 64) n.resize(64);
-  return n;
+  return SanitizeComponent(server + "_" + tool, 64);
 }
 
 }  // namespace uagent

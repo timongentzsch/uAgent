@@ -144,20 +144,20 @@ struct StreamCtx {
       error_body.append(data, len);
       return len;
     }
-    if (!sse.Feed(std::string_view(data, len))) {
-      res->error = sse.Error();
-      return 0;
-    }
-    for (const SseEvent& event : sse.TakeEvents()) HandleEvent(event);
+    if (!Drain(sse.Feed(std::string_view(data, len)))) return 0;
     return len;
   }
 
-  void Finish() {
-    if (!sse.Finish()) {
+  void Finish() { Drain(sse.Finish()); }
+
+  // Surface a parser failure, else hand every completed event to the decoder.
+  bool Drain(bool parsed) {
+    if (!parsed) {
       res->error = sse.Error();
-      return;
+      return false;
     }
     for (const SseEvent& event : sse.TakeEvents()) HandleEvent(event);
+    return true;
   }
 };
 

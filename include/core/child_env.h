@@ -17,8 +17,6 @@ enum class ChildEnvironmentPolicy {
   kApprovedShell,
 };
 
-bool SensitiveEnvironmentKey(std::string_view key);
-
 class ChildEnvironment {
  public:
   explicit ChildEnvironment(

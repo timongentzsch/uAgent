@@ -79,13 +79,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kContext, "/ctx", "", ""},
 };
 
-const SlashCommandSpec* SlashCommand(const std::string& name) {
-  for (const SlashCommandSpec& command : kSlashCommands) {
-    if (name == command.name) return &command;
-  }
-  return nullptr;
-}
-
 ParsedSlashCommand ParseSlashCommand(const std::string& input) {
   for (const SlashCommandSpec& command : kSlashCommands) {
     if (input == command.name) return {&command, ""};

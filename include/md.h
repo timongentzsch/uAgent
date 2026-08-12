@@ -57,6 +57,9 @@ class MdStream {
   void FinishMath();
   void ReplayMath();
   void EndLine();
+  // prev_raw and prev_rows describe the same line and are always reset
+  // together.
+  void ForgetPreviousLine();
   void RetroTable();
   void FlushTable();
 };

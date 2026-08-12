@@ -211,6 +211,16 @@ std::optional<ModelRoute> ResolveModelRoute(
                     provider->openrouter_compatible};
 }
 
+namespace {
+
+// Two selections naming the same endpoint, model and protocol are the same
+// route however they were spelled; only one of them is offered.
+std::string RouteIdentity(const std::string& base_url, const std::string& model,
+                          bool openrouter) {
+  return base_url + "\n" + model + "\n" +
+         (openrouter ? "openrouter" : "openai");
+}
+
 void ExportRoute(const Api& api) {
   setenv("UAGENT_BASE_URL", api.base_url.c_str(), 1);
   setenv("UAGENT_MODEL", api.model.c_str(), 1);
@@ -228,6 +238,8 @@ void ResetRouteCapabilities(Api& api) {
                               api.openrouter_compatible;
   api.image_input = true;
 }
+
+}  // namespace
 
 void ApplyRoute(Api& api, const ModelRoute& route) {
   api.base_url = route.base_url;
@@ -368,32 +380,22 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       continue;
     }
     std::string identity =
-        route.base_url + "\n" + route.model + "\n" +
-        (route.openrouter_compatible ? "openrouter" : "openai");
+        RouteIdentity(route.base_url, route.model, route.openrouter_compatible);
     if (!selections.insert(route.name).second) continue;
     route_identities.insert(std::move(identity));
     ModelInfo info{route.model, {}, {}, route.context};
     result.matches.push_back({route.name, route, std::move(info)});
   }
 
-  struct Catalog {
-    std::string name, base_url, api_key;
-    int64_t context = 0;
-    bool named = false;
-    bool openrouter_compatible = false;
-  };
-  std::vector<Catalog> catalogs;
-  catalogs.reserve(providers.size() + 1);
-  for (const NamedProvider& provider : providers) {
-    catalogs.push_back({provider.name, provider.base_url, provider.api_key,
-                        provider.context, true,
-                        provider.openrouter_compatible});
-  }
-  bool active_is_named = std::any_of(
-      catalogs.begin(), catalogs.end(),
-      [&](const Catalog& source) { return source.base_url == api.base_url; });
+  // Configured providers plus, when it is not one of them, the active
+  // endpoint — which has no name, and therefore no `provider/model` prefix.
+  std::vector<NamedProvider> catalogs = providers;
+  bool active_is_named = std::any_of(catalogs.begin(), catalogs.end(),
+                                     [&](const NamedProvider& source) {
+                                       return source.base_url == api.base_url;
+                                     });
   if (!active_is_named && !api.base_url.empty()) {
-    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window, false,
+    catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window,
                         api.openrouter_compatible});
   }
 
@@ -408,7 +410,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     workers.push_back(std::async(std::launch::async, [&] {
       for (size_t index; !AbortRequested() &&
                          (index = next.fetch_add(1)) < catalogs.size();) {
-        const Catalog& source = catalogs[index];
+        const NamedProvider& source = catalogs[index];
         Api catalog_api(api.config);
         catalog_api.base_url = source.base_url;
         catalog_api.api_key = source.api_key;
@@ -419,7 +421,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
   }
   for (auto& worker : workers) worker.get();
   for (size_t i = 0; i < catalogs.size(); ++i) {
-    const Catalog& source = catalogs[i];
+    const NamedProvider& source = catalogs[i];
     CatalogModels models = std::move(responses[i]);
     if (!models) {
       result.unavailable.push_back(
@@ -428,10 +430,9 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
     }
     for (ModelInfo& info : *models) {
       std::string selection =
-          source.named ? source.name + "/" + info.id : info.id;
+          source.name.empty() ? info.id : source.name + "/" + info.id;
       std::string identity =
-          source.base_url + "\n" + info.id + "\n" +
-          (source.openrouter_compatible ? "openrouter" : "openai");
+          RouteIdentity(source.base_url, info.id, source.openrouter_compatible);
       if (!ContainsCaseInsensitive(selection, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {

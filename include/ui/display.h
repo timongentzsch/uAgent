@@ -107,8 +107,7 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   if (agent.Verbose()) s += " · verbose";
   if (yolo) s += " · YOLO";
   if (attachments) s += " · " + std::to_string(attachments) + " attached";
-  int64_t width = std::max(int64_t{1}, TerminalColumns() - 1);
-  if (g_tty && DisplayWidth(s) > static_cast<size_t>(width)) {
+  if (g_tty && DisplayWidth(s) > TerminalWidth(1)) {
     // On a cramped terminal keep live state ahead of long path/route labels.
     // PrintStatusBar performs the final UTF-8-safe clipping.
     s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " · ctx " +
@@ -122,15 +121,20 @@ inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
   return s;
 }
 
+// The pinned status row: dim, clipped to the terminal, and cleared to the
+// right so a shorter line never leaves stale text behind.
+inline std::string StatusBarLine(const std::string& status) {
+  return std::string(RST()) + DIM() +
+         DisplayTrunc(TerminalSafe(status), TerminalWidth(1)) + "\033[K" +
+         RST();
+}
+
 inline void PrintStatusBar(const std::string& status) {
-  std::string safe = TerminalSafe(status);
   if (!g_tty) {
-    printf("%s\n", safe.c_str());
+    printf("%s\n", TerminalSafe(status).c_str());
     return;
   }
-  safe = DisplayTrunc(std::move(safe), static_cast<size_t>(std::max(
-                                           int64_t{1}, TerminalColumns() - 1)));
-  printf("%s%s%s\033[K%s\n", RST(), DIM(), safe.c_str(), RST());
+  printf("%s\n", StatusBarLine(status).c_str());
 }
 
 }  // namespace uagent

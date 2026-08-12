@@ -37,9 +37,7 @@ inline bool McpFetchToolDefinitions(
       McpError(s.name, "tools/list exceeded pagination limits");
       return false;
     }
-    int64_t remaining = std::chrono::duration_cast<std::chrono::seconds>(
-                            deadline - std::chrono::steady_clock::now())
-                            .count();
+    int64_t remaining = SecondsUntil(deadline);
     if (remaining <= 0) {
       McpError(s.name, "tools/list deadline exceeded");
       return false;
@@ -47,13 +45,7 @@ inline bool McpFetchToolDefinitions(
     json params = cursor.empty() ? json::object() : json{{"cursor", cursor}};
     json resp = McpRpc(s, "tools/list", params, remaining);
     if (!resp.contains("result") || !resp["result"].is_object()) {
-      std::string message = "failed";
-      if (resp.contains("error") && resp["error"].is_object() &&
-          resp["error"].contains("message") &&
-          resp["error"]["message"].is_string()) {
-        message = resp["error"]["message"].get<std::string>();
-      }
-      McpError(s.name, "tools/list: " + message);
+      McpError(s.name, "tools/list: " + JsonErrorMessage(resp, "failed"));
       return false;
     }
     json page = JsonValue(resp["result"], "tools", json::array());
@@ -111,13 +103,8 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       continue;
     }
 
-    std::string task_support;
-    if (definition.contains("execution") &&
-        definition["execution"].is_object() &&
-        definition["execution"].contains("taskSupport") &&
-        definition["execution"]["taskSupport"].is_string()) {
-      task_support = definition["execution"]["taskSupport"].get<std::string>();
-    }
+    std::string task_support = JsonValue(
+        JsonValue(definition, "execution", json::object()), "taskSupport", "");
     if (task_support == "required") {
       McpNote(s.name, remote_name + " skipped (requires MCP tasks)");
       continue;
@@ -137,15 +124,8 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       continue;
     }
     occupied.insert(tool_name);
-    std::string description;
-    if (definition.contains("description") &&
-        definition["description"].is_string()) {
-      description = definition["description"].get<std::string>();
-    }
-    if (description.empty() && definition.contains("title") &&
-        definition["title"].is_string()) {
-      description = definition["title"].get<std::string>();
-    }
+    std::string description = JsonValue(definition, "description", "");
+    if (description.empty()) description = JsonValue(definition, "title", "");
     if (description.empty()) description = remote_name;
     McpServer* server = &s;
     int64_t call_timeout = config.mcp_timeout_s;
@@ -173,11 +153,9 @@ inline bool McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
       break;
     }
 
-    bool read_only = definition.contains("annotations") &&
-                     definition["annotations"].is_object() &&
-                     definition["annotations"].contains("readOnlyHint") &&
-                     definition["annotations"]["readOnlyHint"].is_boolean() &&
-                     definition["annotations"]["readOnlyHint"].get<bool>();
+    bool read_only =
+        JsonValue(JsonValue(definition, "annotations", json::object()),
+                  "readOnlyHint", false);
     tool.mutating = !(trust && read_only);
     tool.capabilities = Capability(ToolCapability::kExternal) |
                         Capability(read_only ? ToolCapability::kInspect
@@ -201,9 +179,8 @@ inline bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,
                                const RuntimeConfig& config,
                                std::chrono::steady_clock::time_point deadline) {
   json listed;
-  bool loaded = McpFetchToolDefinitions(server, config, deadline, listed) &&
-                McpReplaceServerTools(tools, server, config, listed);
-  return loaded;
+  return McpFetchToolDefinitions(server, config, deadline, listed) &&
+         McpReplaceServerTools(tools, server, config, listed);
 }
 
 // Apply notifications only between tool batches, when the agent holds no Tool

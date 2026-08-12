@@ -4,7 +4,6 @@
 #define UAGENT_INCLUDE_TOOLS_FILES_H_
 // Bounded file inspection and atomic editing declarations.
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <system_error>
@@ -26,8 +25,6 @@ struct FileEdit {
   std::string new_text;
   bool replace_all = false;
 };
-
-inline constexpr size_t kMaxFileEdits = 64;
 
 ToolResult ToolEditFile(const std::string& path,
                         const std::vector<FileEdit>& edits);

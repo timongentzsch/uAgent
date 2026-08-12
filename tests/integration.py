@@ -10,7 +10,6 @@ import re
 import select
 import shlex
 import signal
-import socket
 import struct
 import subprocess
 import sys
@@ -114,12 +113,6 @@ def write_json_response(handler, payload, status=200):
     write_http_response(handler, json.dumps(payload).encode(), status=status)
 
 
-def unused_api_url():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return f"http://127.0.0.1:{sock.getsockname()[1]}/v1"
-
-
 def two_route_providers(first_url, second_url):
     return {
         "first": {
@@ -184,6 +177,12 @@ class Server:
     @property
     def url(self):
         return f"http://127.0.0.1:{self.httpd.server_port}/v1"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
 
     def close(self):
         self.httpd.shutdown()
@@ -374,23 +373,15 @@ def assert_true(value, message):
         raise AssertionError(message)
 
 
+def tool_results(messages):
+    """Every tool-role message content, in order."""
+    return [str(m.get("content", "")) for m in messages if m.get("role") == "tool"]
+
+
 def has_message(messages, role, content):
     return any(
         message.get("role") == role and message.get("content") == content for message in messages
     )
-
-
-def timeout_retry_env(home, url):
-    env = base_env(home, url)
-    env.update(
-        {
-            "UAGENT_REQUEST_TIMEOUT": "1",
-            "UAGENT_FIRST_EVENT_TIMEOUT": "0",
-            "UAGENT_STREAM_IDLE_TIMEOUT": "0",
-            "UAGENT_MAX_TURN_SECONDS": "6",
-        }
-    )
-    return env
 
 
 def tool_calls(calls, usage=None):
@@ -412,31 +403,6 @@ def tool_calls(calls, usage=None):
 
 def tool_call(name, arguments, *, call_id="call-1", usage=None):
     return tool_calls([(call_id, name, arguments)], usage)
-
-
-def read_file_calls(paths):
-    return tool_calls(
-        [(f"call-{index}", "read_file", {"path": str(path)}) for index, path in enumerate(paths)]
-    )
-
-
-def run_queued_interrupt(workspace, home, url, initial):
-    code, output = run_pty(
-        workspace,
-        base_env(home, url),
-        [
-            initial,
-            (b"stop now\n", b"steer:1"),
-            (b"\x1b", b"test (default) @ 127.0.0.1"),
-            b"/q\n",
-        ],
-        args=("--yolo",),
-        timeout=12,
-    )
-    assert_true(code == 0, output)
-    assert_true(b"steer:1" in output, output)
-    assert_true(b"interrupting" in output, output)
-    return output
 
 
 def detached_pid(body):
@@ -518,25 +484,19 @@ def test_plain_turn(root, home):
         assert_true("activity_output" not in names, names)
         return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
 
-    server = Server([reply])
-    try:
+    with Server([reply]) as server:
         result = run(root, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
-    finally:
-        server.close()
 
 
 def test_stream_error_is_not_an_empty_response(root, home):
-    server = Server([{"error": {"message": "upstream overloaded", "type": "server_error"}}])
-    try:
+    with Server([{"error": {"message": "upstream overloaded", "type": "server_error"}}]) as server:
         result = run(root, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode != 0, result.stdout)
         assert_true("upstream overloaded" in result.stderr, result.stderr)
         assert_true("empty response" not in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
-    finally:
-        server.close()
 
 
 def test_empty_response_after_tools_recovers_once(root, home):
@@ -551,39 +511,33 @@ def test_empty_response_after_tools_recovers_once(root, home):
         )
         return event({"content": "recovered" if valid else "missing-recovery"})
 
-    server = Server(
+    with Server(
         [
             tool_call("list_dir", {"path": "."}),
             event(),
             recovered,
         ]
-    )
-    try:
+    ) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "recovered", result.stdout)
         assert_true(len(server.requests) == 3, len(server.requests))
-    finally:
-        server.close()
 
-    exhausted = Server(
+    with Server(
         [
             tool_call("list_dir", {"path": "."}),
             event(),
             event(),
         ]
-    )
-    try:
+    ) as exhausted:
         result = run(root, base_env(home, exhausted.url), "--yolo", "-p", "inspect")
         assert_true(result.returncode != 0, result.stdout)
         assert_true("model returned an empty response" in result.stderr, result.stderr)
         assert_true(len(exhausted.requests) == 3, len(exhausted.requests))
-    finally:
-        exhausted.close()
 
 
 def test_transient_stream_errors_retry_before_progress(root, home):
-    server = Server(
+    with Server(
         [
             {
                 "error": {
@@ -603,19 +557,15 @@ def test_transient_stream_errors_retry_before_progress(root, home):
             },
             event({"content": "retry-ok"}),
         ]
-    )
-    try:
+    ) as server:
         result = run(root, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "retry-ok", result.stdout)
         assert_true(len(server.requests) == 3, server.requests)
-    finally:
-        server.close()
 
 
 def test_command_help(root, home):
-    server = Server([event({"content": "unused"})])
-    try:
+    with Server([event({"content": "unused"})]) as server:
         result = run_dialog(root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
@@ -628,8 +578,6 @@ def test_command_help(root, home):
         assert_true("commands:" not in result.stdout, result.stdout)
         assert_true("use /models QUERY" in result.stdout, result.stdout)
         assert_true(not server.get_requests, server.get_requests)
-    finally:
-        server.close()
 
 
 def test_project_instructions_precede_first_turn(root, home):
@@ -665,13 +613,10 @@ def test_project_instructions_precede_first_turn(root, home):
         )
         return event({"content": "instructions-ok" if valid else "instructions-bad"})
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         result = run(nested, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
-    finally:
-        server.close()
 
 
 def test_attach_tool_puts_bytes_in_context(root, home):
@@ -680,7 +625,7 @@ def test_attach_tool_puts_bytes_in_context(root, home):
     workspace = root / "attach-workspace"
     workspace.mkdir()
     png = workspace / "shot.png"
-    png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    png.write_bytes(SMALL_PNG)
     pdf = workspace / "paper.pdf"
     # Large enough to exceed the synthetic 4K context estimate if encoded
     # bytes are incorrectly offered to mid-turn compaction.
@@ -711,8 +656,7 @@ def test_attach_tool_puts_bytes_in_context(root, home):
             finish="tool_calls",
         )
 
-    server = Server([route])
-    try:
+    with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_CONTEXT"] = "4096"
         trace = workspace / "trace.jsonl"
@@ -738,14 +682,12 @@ def test_attach_tool_puts_bytes_in_context(root, home):
             s for s in sessions if "base64," in s.read_text(encoding="utf-8", errors="replace")
         ]
         assert_true(not blobs, blobs)
-    finally:
-        server.close()
 
 
 def test_full_run_and_python_terminal_trace(root, home):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"
-    server = Server(
+    with Server(
         [
             tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
             tool_call(
@@ -754,8 +696,7 @@ def test_full_run_and_python_terminal_trace(root, home):
             ),
             event({"content": "trace-ok"}),
         ]
-    )
-    try:
+    ) as server:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
         result = run_dialog(
@@ -778,8 +719,6 @@ def test_full_run_and_python_terminal_trace(root, home):
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
-    finally:
-        server.close()
 
 
 def test_large_run_output_is_recoverable(root, home):
@@ -787,11 +726,7 @@ def test_large_run_output_is_recoverable(root, home):
     artifact = {}
 
     def inspect_result(_, body):
-        result = next(
-            message["content"]
-            for message in reversed(body["messages"])
-            if message.get("role") == "tool"
-        )
+        result = tool_results(body["messages"])[-1]
         path = captured_log_path(result)
         artifact["path"] = path
         assert_true(len(result) <= 512, len(result))
@@ -802,20 +737,17 @@ def test_large_run_output_is_recoverable(root, home):
         return tool_call("run", {"command": json_sentinel_command(path)})
 
     def verify_recovery(_, body):
-        results = [
-            message["content"] for message in body["messages"] if message.get("role") == "tool"
-        ]
+        results = tool_results(body["messages"])
         recovered = results[-1].strip() == "HEAD-ONLY"
         return event({"content": "artifact-ok" if recovered else "artifact-bad"})
 
-    server = Server(
+    with Server(
         [
             tool_call("run", {"command": command}),
             inspect_result,
             verify_recovery,
         ]
-    )
-    try:
+    ) as server:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_RESULT_CHARS"] = "512"
         env["UAGENT_CONTEXT"] = "131072"
@@ -823,8 +755,6 @@ def test_large_run_output_is_recoverable(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "artifact-ok", result.stdout)
         assert_true(artifact["path"].exists(), artifact)
-    finally:
-        server.close()
 
 
 def test_multiline_bracketed_paste(root, home):
@@ -838,8 +768,7 @@ def test_multiline_bracketed_paste(root, home):
             }
         )
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         paste = [
             b"\x1b",
             b"[2",
@@ -859,8 +788,6 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(b"\x1b[48;5;" not in output, output)
         assert_true(b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
-    finally:
-        server.close()
 
 
 def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
@@ -893,8 +820,7 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
         attributes[3] |= termios.ICANON | termios.ECHO
         termios.tcsetattr(slave, termios.TCSANOW, attributes)
 
-    server = Server([event({"content": "unused"})])
-    try:
+    with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -908,13 +834,10 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
         assert_true(b"ctx 1.9M" not in output, output)
         assert_true(b"^M" not in output, output)
         assert_true(len(server.requests) == 0, server.requests)
-    finally:
-        server.close()
 
 
 def test_session_title_replaces_initial_greeting(root, home):
-    server = Server([event({"content": "hello-ok"}), event({"content": "task-ok"})])
-    try:
+    with Server([event({"content": "hello-ok"}), event({"content": "task-ok"})]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -933,8 +856,6 @@ def test_session_title_replaces_initial_greeting(root, home):
         assert_true(len(sessions) == 1, sessions)
         header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["title"] == "investigate browser efficiency", header)
-    finally:
-        server.close()
 
 
 def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
@@ -950,8 +871,7 @@ def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
             }
         )
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         input_fragments = [
             b"\x1b[200~first line\r\nsecond line\x1b[201~",
             b"\x1b",
@@ -972,8 +892,6 @@ def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
         assert_true(b"[Ifirst" not in output and b"[Ofirst" not in output, output)
         assert_true(b"response interrupted" not in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
-    finally:
-        server.close()
 
 
 def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
@@ -981,8 +899,7 @@ def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
         user = body["messages"][-1].get("content")
         return event({"content": "bare-escape-ok" if user == "kept" else "bare-escape-bad"})
 
-    server = Server([verify])
-    try:
+    with Server([verify]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -996,8 +913,6 @@ def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
         assert_true(code == 0, output)
         assert_true(b"bare-escape-ok" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
-    finally:
-        server.close()
 
 
 def test_input_redraw_history_restores_current_draft(root, home):
@@ -1005,8 +920,7 @@ def test_input_redraw_history_restores_current_draft(root, home):
         user = body["messages"][-1].get("content")
         return event({"content": "history-draft-ok" if user == "draft" else "history-draft-bad"})
 
-    server = Server([event({"content": "first-ok"}), verify_draft])
-    try:
+    with Server([event({"content": "first-ok"}), verify_draft]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -1022,8 +936,6 @@ def test_input_redraw_history_restores_current_draft(root, home):
         assert_true(code == 0, output)
         assert_true(b"history-draft-ok" in output, output)
         assert_true(len(server.requests) == 2, server.requests)
-    finally:
-        server.close()
 
 
 def test_input_redraw_approval_does_not_pollute_history(root, home):
@@ -1031,14 +943,13 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
         user = body["messages"][-1].get("content")
         return event({"content": "approval-history-ok" if user == "go" else "approval-history-bad"})
 
-    server = Server(
+    with Server(
         [
             tool_call("run", {"command": "printf approved"}),
             event({"content": "approval-done"}),
             verify_recalled,
         ]
-    )
-    try:
+    ) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -1056,21 +967,16 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
         assert_true(code == 0, output)
         assert_true(b"approval-history-ok" in output, output)
         assert_true(len(server.requests) == 3, server.requests)
-    finally:
-        server.close()
 
 
 def test_multiline_run_keeps_action_color(root, home):
     command = "printf 'one\\n'\nprintf 'two\\n'"
-    server = Server([tool_call("run", {"command": command}), event({"content": "color-ok"})])
-    try:
+    with Server([tool_call("run", {"command": command}), event({"content": "color-ok"})]) as server:
         code, output = run_pty(
             root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
         )
         colored = b"\x1b[36m\xe2\x86\x92 run\r\nprintf 'one\\n'\r\nprintf 'two\\n'\x1b[0m"
         assert_true(code == 0 and colored in output, output)
-    finally:
-        server.close()
 
 
 def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
@@ -1078,8 +984,7 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
         time.sleep(2)
         return event({"content": "too-late"})
 
-    server = Server([delayed])
-    try:
+    with Server([delayed]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -1089,8 +994,6 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
         assert_true(code == 0, output)
         assert_true(b"interrupting" in output, output)
         assert_true(b"too-late" not in output, output)
-    finally:
-        server.close()
 
 
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
@@ -1098,8 +1001,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
         time.sleep(0.7)
         return event({"content": "status-redraw-ok"})
 
-    server = Server([delayed])
-    try:
+    with Server([delayed]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -1112,19 +1014,14 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
         assert_true(code == 0, output)
         assert_true(b"status-redraw-ok" in output, output)
         assert_true(output.count(b"pending draft") <= 2, output)
-    finally:
-        server.close()
 
 
 def test_signal_exit_restores_terminal(root, home):
-    server = Server([event({"content": "unused"})])
-    try:
+    with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(root, base_env(home, server.url), interrupt=True)
         restore = b"\x1b[0m\x1b[39m\x1b[49m"
         assert_true(code == 130, (code, output))
         assert_true(output.rfind(restore) > output.rfind(b"\x1b[48;5;"), output)
-    finally:
-        server.close()
 
 
 def test_input_redraw_survives_terminal_resize_and_delete(root, home):
@@ -1139,8 +1036,7 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         )
         return event({"content": "resize-ok" if user == expected else "resize-bad"})
 
-    server = Server([answer])
-    try:
+    with Server([answer]) as server:
         code, output = run_pty(
             root,
             base_env(home, server.url),
@@ -1155,45 +1051,32 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         assert_true(code == 0, text)
         assert_true("resize-ok" in text, text)
         assert_true(len(server.requests) == 1, server.requests)
-    finally:
-        server.close()
 
 
 def test_run_rejects_python_and_sudo_before_execution(root, home):
     def after_python(_, body):
-        results = [
-            message.get("content", "")
-            for message in body["messages"]
-            if message.get("role") == "tool"
-        ]
+        results = tool_results(body["messages"])
         assert_true(any("use run_python" in value for value in results), results)
         return tool_call("run", {"command": "sudo true"})
 
     def after_sudo(_, body):
-        results = [
-            message.get("content", "")
-            for message in body["messages"]
-            if message.get("role") == "tool"
-        ]
+        results = tool_results(body["messages"])
         assert_true(
             any("privileged commands are unavailable" in value for value in results),
             results,
         )
         return event({"content": "guarded"})
 
-    server = Server(
+    with Server(
         [
             tool_call("run", {"command": "python -c 'print(1)'"}),
             after_python,
             after_sudo,
         ]
-    )
-    try:
+    ) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "work")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "guarded", result.stdout)
-    finally:
-        server.close()
 
 
 def test_streamed_search_citations(root, home):
@@ -1213,7 +1096,7 @@ def test_streamed_search_citations(root, home):
             "content": "legacy snippet",
         },
     }
-    server = Server(
+    with Server(
         [
             {
                 "choices": [
@@ -1241,8 +1124,7 @@ def test_streamed_search_citations(root, home):
                 "usage": {"prompt_tokens": 2, "completion_tokens": 1},
             },
         ]
-    )
-    try:
+    ) as server:
         result = run_dialog(root, base_env(home, server.url), "probe\nagain\n/trace\n/q\n")
         assert_true(result.returncode == 0, result.stderr)
         assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)
@@ -1251,8 +1133,6 @@ def test_streamed_search_citations(root, home):
         assert_true("Sources:" in result.stdout, result.stdout)
         assert_true("https://example.com/source" in result.stdout, result.stdout)
         assert_true("legacy snippet" in result.stdout, result.stdout)
-    finally:
-        server.close()
 
 
 def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
@@ -1263,7 +1143,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
         "completion_tokens_details": {"reasoning_tokens": 1},
         "cost": 0.01,
     }
-    server = Server(
+    with Server(
         [
             first,
             event(
@@ -1271,8 +1151,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
                 usage={"prompt_tokens": 5, "completion_tokens": 2, "cost": 0.02},
             ),
         ]
-    )
-    try:
+    ) as server:
         result = run(
             root,
             base_env(home, server.url),
@@ -1298,12 +1177,10 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
         assert_true(call["name"] == "run", call)
         assert_true(call["arguments"] == {"command": "printf tool-json"}, call)
         assert_true("tool-json" in call["result"], call)
-    finally:
-        server.close()
 
 
 def test_headless_json_stream_emits_lifecycle_events(root, home):
-    server = Server(
+    with Server(
         [
             tool_call("list_dir", {"path": "."}),
             event(
@@ -1311,8 +1188,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
                 usage={"prompt_tokens": 4, "completion_tokens": 2, "cost": 0.01},
             ),
         ]
-    )
-    try:
+    ) as server:
         result = run(
             root,
             base_env(home, server.url),
@@ -1329,8 +1205,6 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         assert_true("tool.call" in types and "tool.result" in types, types)
         assert_true("usage" in types and types[-1] == "answer", types)
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
-    finally:
-        server.close()
 
 
 def test_session_budget_stops_before_the_next_call(root, home):
@@ -1340,8 +1214,7 @@ def test_session_budget_stops_before_the_next_call(root, home):
         "completion_tokens": 2,
         "cost": 0.06,
     }
-    server = Server([expensive, event({"content": "too-late"})])
-    try:
+    with Server([expensive, event({"content": "too-late"})]) as server:
         result = run(
             root,
             base_env(home, server.url),
@@ -1356,8 +1229,6 @@ def test_session_budget_stops_before_the_next_call(root, home):
         assert_true(result.returncode == 1, envelope)
         assert_true("session cost limit exceeded" in envelope["error"], envelope)
         assert_true(len(server.requests) == 1, server.requests)
-    finally:
-        server.close()
 
 
 def test_tool_policy_scopes_schema_and_runtime(root, home):
@@ -1370,16 +1241,11 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
         return tool_call("run", {"command": f"touch {marker}"})
 
     def verify_rejected(_, body):
-        results = [
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "tool"
-        ]
+        results = tool_results(body["messages"])
         rejected = any("not allowed by tool policy" in result for result in results)
         return event({"content": "policy-ok" if rejected else "policy-bad"})
 
-    server = Server([request_forbidden, verify_rejected])
-    try:
+    with Server([request_forbidden, verify_rejected]) as server:
         env = base_env(home, server.url)
         env.update(
             {
@@ -1393,8 +1259,6 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "policy-ok", result.stdout)
         assert_true(not marker.exists(), marker)
-    finally:
-        server.close()
 
 
 def test_grep_tool_round_trip(root, home):
@@ -1404,9 +1268,7 @@ def test_grep_tool_round_trip(root, home):
     (workspace / "ignored.txt").write_text("project_wide_symbol\n", encoding="utf-8")
 
     def final(_, body):
-        result = next(
-            message["content"] for message in body["messages"] if message.get("role") == "tool"
-        )
+        result = tool_results(body["messages"])[0]
         valid = (
             "one.cpp" in result
             and "ignored.txt" not in result
@@ -1416,7 +1278,7 @@ def test_grep_tool_round_trip(root, home):
         )
         return event({"content": "grep-ok" if valid else "grep-bad"})
 
-    server = Server(
+    with Server(
         [
             tool_call(
                 "grep",
@@ -1429,8 +1291,7 @@ def test_grep_tool_round_trip(root, home):
             ),
             final,
         ]
-    )
-    try:
+    ) as server:
         env = base_env(home, server.url)
         env["UAGENT_IMAGE_PROTOCOL"] = "iterm"
         result = run(workspace, env, "-p", "search")
@@ -1439,8 +1300,6 @@ def test_grep_tool_round_trip(root, home):
         names = function_names(server.requests[0][1])
         assert_true("grep" in names, names)
         assert_true("show_image" not in names, names)
-    finally:
-        server.close()
 
 
 def test_project_agent_config_trust(root, home):
@@ -1561,8 +1420,7 @@ def test_context_command_shows_memory_and_skills(root, home):
         "---\n\ncontext-skill-body-sentinel\n",
         encoding="utf-8",
     )
-    server = Server([event({"content": "unused"})])
-    try:
+    with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
@@ -1580,8 +1438,6 @@ def test_context_command_shows_memory_and_skills(root, home):
         assert_true(b'"name": "memory"' in output, output)
         assert_true(b'"name": "skill"' in output, output)
         assert_true(b"memory on" in output, output)
-    finally:
-        server.close()
 
 
 def test_memory_background_extractor_is_bounded(root, home):
@@ -1642,8 +1498,7 @@ def test_memory_background_extractor_is_bounded(root, home):
         )
         return event({"content": "extract-done" if wrote else "extract-write-bad"})
 
-    server = Server([extract, finish])
-    try:
+    with Server([extract, finish]) as server:
         env = base_env(home, server.url)
         env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
 
@@ -1685,8 +1540,6 @@ def test_memory_background_extractor_is_bounded(root, home):
             before_payload=lambda: time.sleep(0.2),
         )
         assert_true(code == 0 and len(server.requests) == 2, output)
-    finally:
-        server.close()
 
 
 def test_no_memory_hides_index_and_tool(root, home):
@@ -1762,8 +1615,7 @@ def test_skill_tool_offers_and_opens(root, home):
         opened = any("demo-body-sentinel" in str(m.get("content", "")) for m in body["messages"])
         return event({"content": "skill-ok" if opened else "skill-bad"})
 
-    server = Server([offer, confirm])
-    try:
+    with Server([offer, confirm]) as server:
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
@@ -1779,8 +1631,6 @@ def test_skill_tool_offers_and_opens(root, home):
             output.find(b"demo-body-sentinel") > output.find(b"skill-ok"),
             output,
         )
-    finally:
-        server.close()
 
 
 def test_mcp_image_reaches_the_model(root, home):
@@ -1821,9 +1671,7 @@ def test_mcp_image_reaches_the_model(root, home):
     )
 
     def verify(_, body):
-        tool_text = "".join(
-            str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
-        )
+        tool_text = "".join(tool_results(body["messages"]))
         parts = [
             part
             for m in body["messages"]
@@ -1836,14 +1684,11 @@ def test_mcp_image_reaches_the_model(root, home):
         quiet = "displayed inline" not in tool_text
         return event({"content": "image-ok" if (got_image and saved and quiet) else "image-bad"})
 
-    server = Server([tool_call("cam_shot", {}), verify])
-    try:
+    with Server([tool_call("cam_shot", {}), verify]) as server:
         env = base_env(home, server.url)
         result = run(workspace, env, "--trust-project-config", "--yolo", "-p", "screenshot")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "image-ok", result.stdout + result.stderr)
-    finally:
-        server.close()
 
 
 def test_invalid_mcp_config_not_executed(root, home):
@@ -1866,8 +1711,7 @@ def test_invalid_mcp_config_not_executed(root, home):
         ),
         encoding="utf-8",
     )
-    server = Server([event({"content": "ok"})])
-    try:
+    with Server([event({"content": "ok"})]) as server:
         result = run(
             workspace,
             base_env(home, server.url),
@@ -1878,8 +1722,6 @@ def test_invalid_mcp_config_not_executed(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
         assert_true(not marker.exists(), "invalid MCP server config executed")
-    finally:
-        server.close()
 
 
 def test_mcp_tool_round_trip(root, home):
@@ -1924,13 +1766,10 @@ def test_mcp_tool_round_trip(root, home):
     )
 
     def final(_, body):
-        result = next(
-            message["content"] for message in body["messages"] if message.get("role") == "tool"
-        )
+        result = tool_results(body["messages"])[0]
         return event({"content": "mcp-ok" if "mcp:hello" in result else "mcp-bad"})
 
-    server = Server([tool_call("probe_echo", {"text": "hello"}), final])
-    try:
+    with Server([tool_call("probe_echo", {"text": "hello"}), final]) as server:
         result = run(
             workspace,
             base_env(home, server.url),
@@ -1943,8 +1782,6 @@ def test_mcp_tool_round_trip(root, home):
         assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
         names = function_names(server.requests[0][1])
         assert_true("probe_echo" in names, names)
-    finally:
-        server.close()
 
 
 def test_model_route_switch(root, home):
@@ -2152,8 +1989,7 @@ def test_first_event_timeout(root, home):
         except BrokenPipeError:
             pass
 
-    server = Server([stall, stall, stall])
-    try:
+    with Server([stall, stall, stall]) as server:
         env = base_env(home, server.url)
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
         started = time.monotonic()
@@ -2163,8 +1999,6 @@ def test_first_event_timeout(root, home):
         assert_true("no event within 1s" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
         assert_true(3.0 < elapsed < 6.5, elapsed)
-    finally:
-        server.close()
 
 
 def test_midturn_compaction_preserves_progress_and_usage(root, home):
@@ -2263,8 +2097,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
             usage={"prompt_tokens": 40, "completion_tokens": 8},
         )
 
-    server = Server([first, compact, finish, final])
-    try:
+    with Server([first, compact, finish, final]) as server:
         env = midturn_compaction_env(home, server.url)
         result = run(
             root,
@@ -2283,8 +2116,6 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
         assert_true(turn_end["data"]["usage"]["output"] == 30, turn_end)
         folds = [record for record in records if record["event"] == "midturn_compact"]
         assert_true(len(folds) == 1, folds)
-    finally:
-        server.close()
 
 
 def test_absolute_compaction_ceiling(root, home):
@@ -2325,8 +2156,7 @@ def test_absolute_compaction_ceiling(root, home):
         valid = "Prior context:\nABSOLUTE-SUMMARY" in text and "large " not in text
         return event({"content": "absolute-compact-ok" if valid else "absolute-compact-bad"})
 
-    server = Server([compact, finish])
-    try:
+    with Server([compact, finish]) as server:
         trace = root / "absolute-compact.jsonl"
         env = base_env(home, server.url)
         env.update(
@@ -2344,22 +2174,19 @@ def test_absolute_compaction_ceiling(root, home):
         compacted = [record for record in records if record["event"] == "auto_compact"]
         assert_true(len(compacted) == 1, compacted)
         assert_true(compacted[0]["data"]["projected_tokens"] >= 2000, compacted)
-    finally:
-        server.close()
 
 
 def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
     trace = root / "repeated-tools.jsonl"
     source = root / "rounds.txt"
     source.write_text("\n".join(str(i) for i in range(8)), encoding="utf-8")
-    server = Server(
+    with Server(
         [
             tool_call("read_file", {"path": str(source), "offset": i, "limit": 1})
             for i in range(1, 9)
         ]
         + [event({"content": "rounds-finished"})]
-    )
-    try:
+    ) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
         env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
@@ -2371,8 +2198,6 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         assert_true(len(signals) == 1, signals)
         assert_true(signals[0]["data"]["tool"] == "read_file", signals)
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
-    finally:
-        server.close()
 
 
 def test_subagent_auto_join_continues_turn(root, home):
@@ -2391,8 +2216,7 @@ def test_subagent_auto_join_continues_turn(root, home):
             return tool_call("activity_wait", {"wait_ms": 30000})
         return tool_call("task", {"prompt": "child"})
 
-    server = Server([route])
-    try:
+    with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "4"
         env["UAGENT_STREAM_IDLE_TIMEOUT"] = "4"
@@ -2407,8 +2231,6 @@ def test_subagent_auto_join_continues_turn(root, home):
             for _, body in server.requests
         ]
         assert_true(len(server.requests) == 4, request_summary)
-    finally:
-        server.close()
 
 
 def test_subagent_foreground_returns_result_without_wait_round(root, home):
@@ -2417,11 +2239,9 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
         if has_message(messages, "user", "child"):
             time.sleep(0.3)
             return event({"content": "foreground-child-result"})
-        tool_results = [
-            str(message.get("content", "")) for message in messages if message.get("role") == "tool"
-        ]
-        if any("foreground-child-result" in result for result in tool_results):
-            direct = all("[started] task id " not in result for result in tool_results)
+        results = tool_results(messages)
+        if any("foreground-child-result" in result for result in results):
+            direct = all("[started] task id " not in result for result in results)
             return event({"content": "foreground-task-ok" if direct else "foreground-task-bad"})
         task = function_tool(body, "task")
         background = task["parameters"]["properties"]["background"]
@@ -2429,8 +2249,7 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
         assert_true("final result directly" in background["description"], background)
         return tool_call("task", {"prompt": "child", "background": False})
 
-    server = Server([route])
-    try:
+    with Server([route]) as server:
         env = base_env(home, server.url)
         result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
         assert_true(result.returncode == 0, result.stderr)
@@ -2444,8 +2263,6 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
             )
         ]
         assert_true(len(parent_requests) == 2, len(parent_requests))
-    finally:
-        server.close()
 
 
 def test_parallel_subagents_auto_join(root, home):
@@ -2497,8 +2314,7 @@ def test_parallel_subagents_auto_join(root, home):
             finish="tool_calls",
         )
 
-    server = Server([route])
-    try:
+    with Server([route]) as server:
         env = base_env(home, server.url)
         result = run(
             root,
@@ -2530,8 +2346,6 @@ def test_parallel_subagents_auto_join(root, home):
                 {"prompt", "model"}.issubset(task_schema["parameters"]["properties"]),
                 task_schema,
             )
-    finally:
-        server.close()
 
 
 def test_subagent_interrupt_reaps_child(root, home):
@@ -2642,8 +2456,7 @@ def test_parallel_run_overlaps(root, home):
         },
         finish="tool_calls",
     )
-    server = Server([batch, event({"content": "parallel-run-ok"})])
-    try:
+    with Server([batch, event({"content": "parallel-run-ok"})]) as server:
         started = time.time()
         result = run(root, base_env(home, server.url), "--yolo", "-p", "go", timeout=90)
         elapsed = time.time() - started
@@ -2651,8 +2464,6 @@ def test_parallel_run_overlaps(root, home):
         assert_true(result.stdout.strip() == "parallel-run-ok", result.stdout)
         # serial would be count*sleep; allow generous slack for spawn overhead
         assert_true(elapsed < sleep * count * 0.7, f"{elapsed:.1f}s for {count}x{sleep}s")
-    finally:
-        server.close()
 
 
 def test_subagent_uses_selected_model_route(root, home):
@@ -2746,8 +2557,7 @@ def test_subagent_recursion_is_depth_bounded(root, home):
         ("2", "2", False),
         ("0", "0", False),
     ):
-        server = Server([lambda _, body: event({"content": str(has_task(body))})])
-        try:
+        with Server([lambda _, body: event({"content": str(has_task(body))})]) as server:
             env = base_env(home, server.url)
             env["UAGENT_DEPTH"] = depth
             env["UAGENT_SUBAGENT_DEPTH"] = cap
@@ -2757,8 +2567,6 @@ def test_subagent_recursion_is_depth_bounded(root, home):
                 result.stdout.strip() == str(expected),
                 (depth, cap, expected, result.stdout),
             )
-        finally:
-            server.close()
 
 
 def test_headless_reaps_timed_out_process(root, home):
@@ -2768,8 +2576,7 @@ def test_headless_reaps_timed_out_process(root, home):
     command = (
         f"echo $$ > {shlex.quote(str(pid_file))}; printf 'partial-before-timeout\\n'; sleep 30"
     )
-    server = Server([tool_call("run", {"command": command})])
-    try:
+    with Server([tool_call("run", {"command": command})]) as server:
         trace = workspace / "trace.jsonl"
         env = base_env(home, server.url)
         env["UAGENT_MAX_TURN_SECONDS"] = "1"
@@ -2800,8 +2607,6 @@ def test_headless_reaps_timed_out_process(root, home):
             pass
         else:
             raise AssertionError(f"timed-out process {pid} survived uagent exit")
-    finally:
-        server.close()
 
 
 def test_detached_terminal_survives_and_is_readable(root, home):
@@ -2817,7 +2622,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 
     pid = None
     try:
-        launch_server = Server(
+        with Server(
             [
                 tool_call(
                     "run",
@@ -2825,8 +2630,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 ),
                 event({"content": "launched"}),
             ]
-        )
-        try:
+        ) as launch_server:
             launch_env = base_env(home, launch_server.url)
             launch_env["UAGENT_BASH_LOG_BYTES"] = "4096"
             launched = run_dialog(
@@ -2848,11 +2652,8 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             assert_true("background work" in launched.stdout, launched.stdout)
             assert_true("[detached] activity" in launched.stdout, launched.stdout)
             os.kill(pid, 0)
-        finally:
-            launch_server.close()
 
-        fresh_server = Server([event({"content": "fresh"})])
-        try:
+        with Server([event({"content": "fresh"})]) as fresh_server:
             fresh = run_dialog(
                 workspace,
                 base_env(home, fresh_server.url),
@@ -2861,31 +2662,21 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             )
             assert_true(fresh.returncode == 0, fresh.stderr)
             assert_true("terminals:" not in fresh.stdout, fresh.stdout)
-        finally:
-            fresh_server.close()
 
         def request_output(_, body):
-            tool_results = [
-                message.get("content", "")
-                for message in body["messages"]
-                if message.get("role") == "tool"
-            ]
+            results = tool_results(body["messages"])
             listing = next(
-                (text for text in tool_results if text.startswith("[running] activity ")),
+                (text for text in results if text.startswith("[running] activity ")),
                 "",
             )
             assert_true(f"activity {pid} " in listing, listing)
             return tool_call("activity_output", {"id": pid})
 
         def verify_output(_, body):
-            tool_results = [
-                message.get("content", "")
-                for message in body["messages"]
-                if message.get("role") == "tool"
-            ]
+            results = tool_results(body["messages"])
             readable = any(
                 text.startswith("[running · activity ") and "server-ready" in text
-                for text in tool_results
+                for text in results
             )
             return event({"content": "terminal-ok" if readable else "terminal-bad"})
 
@@ -2894,8 +2685,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             assert_true("activity_output" in names, names)
             return tool_call("activity_output", {})
 
-        server = Server([offer_output, request_output, verify_output])
-        try:
+        with Server([offer_output, request_output, verify_output]) as server:
             inspect_env = base_env(home, server.url)
             result = run(
                 workspace,
@@ -2919,21 +2709,14 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             )
             assert_true(log_bytes <= 4096, log_bytes)
             assert_true(pathlib.Path(str(log) + ".1").exists(), log)
-        finally:
-            server.close()
 
         def verify_stop(_, body):
-            result = next(
-                message.get("content", "")
-                for message in reversed(body["messages"])
-                if message.get("role") == "tool"
-            )
+            result = tool_results(body["messages"])[-1]
             return event(
                 {"content": "terminal-stop-ok" if "stopped process group" in result else result}
             )
 
-        stop_server = Server([tool_call("activity_stop", {"id": pid}), verify_stop])
-        try:
+        with Server([tool_call("activity_stop", {"id": pid}), verify_stop]) as stop_server:
             stop_env = base_env(home, stop_server.url)
             stopped = run(
                 workspace,
@@ -2955,8 +2738,6 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             else:
                 raise AssertionError(f"detached process group {pid} survived activity_stop")
             pid = None
-        finally:
-            stop_server.close()
     finally:
         signal_process_group(pid)
 
@@ -2979,11 +2760,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         return tool_call("activity_output", {"id": state["pid"]})
 
     def stop_group(_, body):
-        result = next(
-            message.get("content", "")
-            for message in reversed(body["messages"])
-            if message.get("role") == "tool"
-        )
+        result = tool_results(body["messages"])[-1]
         os.kill(state["child"], 0)
         tracked = result.startswith(f"[detached · activity {state['pid']} ")
         return (
@@ -2993,11 +2770,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         )
 
     def verify_group_stopped(_, body):
-        result = next(
-            message.get("content", "")
-            for message in reversed(body["messages"])
-            if message.get("role") == "tool"
-        )
+        result = tool_results(body["messages"])[-1]
         try:
             os.killpg(state["pid"], 0)
         except ProcessLookupError:

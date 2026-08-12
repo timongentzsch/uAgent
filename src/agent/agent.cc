@@ -82,6 +82,16 @@ void Agent::AddRouteUsage(const Usage& usage) {
   route_usage_[ActiveRoute()].Merge(usage);
 }
 
+// Every model response is billed the same way: parse the provider's usage
+// block once, then charge it to the session and to the active route.
+Usage Agent::AccountModelUsage(const json& reported) {
+  Usage usage;
+  usage.Add(reported);
+  MergeSessionUsage(usage);
+  AddRouteUsage(usage);
+  return usage;
+}
+
 std::string Agent::FirstUserText() const {
   if (!session_title_.empty()) return session_title_;
   return conversation_.FirstUserText();
@@ -150,11 +160,14 @@ size_t Agent::RequestContextBytes(size_t schema_bytes) const {
   return api_.native_tools ? SaturatingAdd(bytes, schema_bytes) : bytes;
 }
 
-int64_t Agent::ContextUsed() const {
-  int64_t used = EstimatedTokens(RequestContextBytes(schema_chars_));
+// Publishes the estimate the status row reads from the UI thread.
+int64_t Agent::SnapshotContext(size_t schema_bytes) const {
+  int64_t used = EstimatedTokens(RequestContextBytes(schema_bytes));
   context_snapshot_.store(used, std::memory_order_relaxed);
   return used;
 }
+
+int64_t Agent::ContextUsed() const { return SnapshotContext(schema_chars_); }
 
 bool Agent::Compact(bool automatic, Usage* turn_usage) {
   if (MessageCount() < 2) {
@@ -176,14 +189,9 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
       MessageKind::kInternal);
   ChatResult r = Chat("compact", -1, json::array(), false);
   conversation_.PopBack();  // never archive the summarization instruction
-  Usage compact_usage;
-  compact_usage.Add(r.usage);
-  MergeSessionUsage(compact_usage);
-  AddRouteUsage(compact_usage);
+  Usage compact_usage = AccountModelUsage(r.usage);
   if (turn_usage) turn_usage->Merge(compact_usage);
-  bool invalid_summary = r.content.empty() || !r.tool_calls.empty() ||
-                         !ParseTextToolCalls(r.content).empty() ||
-                         ContainsForeignToolCallMarkup(r.content) ||
+  bool invalid_summary = !ProseOnlyResponse(r) ||
                          source_bytes <= baseline_bytes ||
                          r.content.size() >= source_bytes - baseline_bytes;
   if (r.interrupted || !r.error.empty() || invalid_summary) {
@@ -288,12 +296,8 @@ bool Agent::DrainAttachments() {
   std::string error;
   json content = AttachmentContent("[attached on request]", pending, error);
   if (error.empty()) {
-    json messages = json::array({{{"role", "user"}, {"content", content}}});
-    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
-        messages, ImageFallbackCause::kKnownUnsupported);
-    if (fallback.applied) content = std::move(messages[0]["content"]);
+    ImageFallbackResult fallback = ApplyImageFallbackToUserContent(content);
     if (!fallback.error.empty()) error = fallback.error;
-    ReportImageFallback(fallback);
     conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                        MessageKind::kAttachment);
   } else {
@@ -310,13 +314,6 @@ void Agent::ContinueAfterActivity() {
       "[harness continuation: background activity completed] Continue "
       "from the delivered result. Do not repeat completed work.",
       nullptr, /*harness_origin=*/true);
-}
-
-void Agent::ArchiveRange(const char* reason, size_t begin, size_t end,
-                         json metadata) {
-  conversation_.ArchiveRange(reason, begin, end, turn_id_,
-                             api_.config.session_archive_bytes,
-                             std::move(metadata));
 }
 
 void Agent::ArchiveAll(const char* reason) {

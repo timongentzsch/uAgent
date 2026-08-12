@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/core/strings.h"
@@ -38,6 +39,11 @@ constexpr int64_t kMaxMinusOne = std::numeric_limits<int64_t>::max() - 1;
 int64_t EnvBounded(const char* name, int64_t dflt, int64_t minimum,
                    int64_t maximum = std::numeric_limits<int64_t>::max()) {
   return std::clamp(EnvLong(name, dflt), minimum, maximum);
+}
+
+bool OneOf(std::string_view value,
+           std::initializer_list<std::string_view> allowed) {
+  return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
 }
 
 }  // namespace
@@ -227,19 +233,15 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
   if (!ValidOpenRouterVariant(c.openrouter_variant)) {
     c.openrouter_variant.clear();
   }
-  if (c.web_search_backend != "auto" && c.web_search_backend != "responses" &&
-      c.web_search_backend != "openrouter" && c.web_search_backend != "off") {
+  if (!OneOf(c.web_search_backend,
+             {"auto", "responses", "openrouter", "off"})) {
     c.web_search_backend = "auto";
   }
-  const std::vector<std::string> search_engines = {
-      "auto", "native", "exa", "firecrawl", "parallel", "perplexity"};
-  if (std::find(search_engines.begin(), search_engines.end(),
-                c.web_search_engine) == search_engines.end()) {
+  if (!OneOf(c.web_search_engine, {"auto", "native", "exa", "firecrawl",
+                                   "parallel", "perplexity"})) {
     c.web_search_engine = "auto";
   }
-  if (c.web_search_context_size != "low" &&
-      c.web_search_context_size != "medium" &&
-      c.web_search_context_size != "high") {
+  if (!OneOf(c.web_search_context_size, {"low", "medium", "high"})) {
     c.web_search_context_size.clear();
   }
   return c;

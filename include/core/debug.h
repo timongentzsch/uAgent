@@ -25,7 +25,6 @@ std::string LocalDay();
 // this session to fold into its own totals. Named by the parent's pid; pruned
 // with the other background files.
 std::string UsageLedger();
-std::string DefaultDebugPath();
 
 class DebugSink {
  public:

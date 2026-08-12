@@ -57,10 +57,6 @@ UAGENT_MODEL=local/fast
 | `UAGENT_RESPONSE_BYTES` | 33554432 | maximum response |
 | `UAGENT_AUTO_COMPACT_PCT` | 85 | context-window compaction threshold |
 | `UAGENT_AUTO_COMPACT_TOKENS` | 131072 | absolute soft compaction ceiling; 0 disables |
-| `UAGENT_CHECKPOINT_PCT` | 65 | checkpoint hint threshold |
-| `UAGENT_CHECKPOINT_URGENT_PCT` | 85 | urgent checkpoint threshold |
-| `UAGENT_CHECKPOINT_MODE` | `apply` | route checkpoint policy |
-| `UAGENT_CHECKPOINT_FILE_LINES` | 120 | checkpoint file excerpt lines |
 | `UAGENT_PROJECT_DOC_BYTES` | 32768 | startup instruction budget |
 | `UAGENT_SESSION_ARCHIVE_BYTES` | 16777216 | removed-trace archive bound |
 
@@ -102,7 +98,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SKILL_EXCLUDE` | empty | comma-separated skill names to hide |
 | `UAGENT_SKILLS` | 64 | maximum discovered skills |
 | `UAGENT_SKILL_BYTES` | 524288 | complete selected skill-body bound |
-| `UAGENT_SKILL_DESC_BYTES` | 512 | startup description bound per skill |
+| `UAGENT_SKILL_DESC_BYTES` | 1024 | startup description bound per skill |
 | `UAGENT_MEMORY` | `1` | enable memory recall |
 | `UAGENT_MEMORY_GENERATE` | `1` | enable idle-session background extraction |
 | `UAGENT_MEMORY_BYTES` | 2048 | one memory file |
@@ -158,7 +154,6 @@ UAGENT_MODEL=local/fast
 | `UAGENT_TERMINAL_DAYS` | 7 | detached-terminal record retention; `0` removes completed records |
 | `UAGENT_CONFIG_FILE` | empty | replace normal config-file lookup |
 | `UAGENT_TRUST_PROJECT_CONFIG` | `0` | trust the current project config without prompting |
-| `UAGENT_EVAL_SCRIPT` | bundled path | evaluation runner override |
 
 ## MCP server configuration
 
@@ -207,7 +202,7 @@ These configure tooling rather than the installed runtime:
 | `UAGENT_ACTION_BUDGET` | Action input | GitHub Action budget |
 | `UAGENT_ACTION_VERSION` | Action input | GitHub Action release version |
 
-`UAGENT_WARNINGS_AS_ERRORS`, `UAGENT_ENABLE_TSAN`,
-`UAGENT_ENABLE_COVERAGE`, `UAGENT_BUILD_FUZZERS`, and
+`UAGENT_WARNINGS_AS_ERRORS`, `UAGENT_ENABLE_ASAN`, `UAGENT_ENABLE_UBSAN`,
+`UAGENT_ENABLE_TSAN`, `UAGENT_ENABLE_COVERAGE`, `UAGENT_BUILD_FUZZERS`, and
 `UAGENT_BUILD_BENCHMARKS` are CMake cache options (`-D...=ON`), not runtime
 environment settings.

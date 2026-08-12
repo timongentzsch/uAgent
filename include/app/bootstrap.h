@@ -41,7 +41,6 @@ struct AppContext {
   std::vector<Tool> tools;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
-  bool debug = false;
 };
 
 struct BootstrapResult {

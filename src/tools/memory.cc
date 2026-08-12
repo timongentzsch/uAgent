@@ -59,8 +59,8 @@ std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
   return CanonicalOrSelf(common_dir);
 }
 
-std::filesystem::path RepositoryLabel(const std::filesystem::path& cwd) {
-  std::filesystem::path identity = RepositoryIdentity(cwd);
+std::filesystem::path RepositoryLabel(const std::filesystem::path& cwd,
+                                      const std::filesystem::path& identity) {
   return identity.filename() == ".git" ? identity.parent_path()
                                        : ProjectRoot(cwd);
 }
@@ -71,7 +71,7 @@ std::filesystem::path MemoryDirectory(const std::string& scope,
   fs::path base = fs::path(GlobalBase()) / kMemoryDir;
   if (scope == "global") return base / "global";
   fs::path identity = RepositoryIdentity(cwd);
-  fs::path label = RepositoryLabel(cwd);
+  fs::path label = RepositoryLabel(cwd, identity);
   std::string name = SafeFileComponent(label.filename().string()) + "-" +
                      WorkspaceId(identity.string());
   return base / "projects" / name;
@@ -98,7 +98,8 @@ void AddMarkdownMemories(std::vector<MemoryEntry>& entries,
 }
 
 std::filesystem::path ClaudeMemoryDirectory(const std::filesystem::path& cwd) {
-  std::string slug = CanonicalOrSelf(RepositoryLabel(cwd)).string();
+  std::string slug =
+      CanonicalOrSelf(RepositoryLabel(cwd, RepositoryIdentity(cwd))).string();
   for (char& byte : slug) {
     if (!std::isalnum(static_cast<unsigned char>(byte))) byte = '-';
   }
@@ -133,6 +134,11 @@ ToolResult SearchMemoryText(const std::string& query) {
   constexpr size_t kMaxLineBytes = 320;
   std::string output = "[memory search; non-authoritative evidence]\n";
   size_t matches = 0;
+  auto capped = [&] {
+    if (++matches < kMaxMatches) return false;
+    output += "[more matches; narrow the query]";
+    return true;
+  };
   for (const MemoryEntry& memory : ListMemories()) {
     std::ifstream input(memory.path);
     if (!input) continue;
@@ -149,18 +155,12 @@ ToolResult SearchMemoryText(const std::string& query) {
                 Utf8Trunc(OneLine(RedactMemorySecrets(line)), kMaxLineBytes) +
                 "\n";
       emitted = true;
-      if (++matches == kMaxMatches) {
-        output += "[more matches; narrow the query]";
-        return ToolSuccess(std::move(output));
-      }
+      if (capped()) return ToolSuccess(std::move(output));
       break;
     }
     if (key_match && !emitted) {
       output += "- " + memory.key + "\n";
-      if (++matches == kMaxMatches) {
-        output += "[more matches; narrow the query]";
-        return ToolSuccess(std::move(output));
-      }
+      if (capped()) return ToolSuccess(std::move(output));
     }
   }
   return matches
@@ -177,17 +177,13 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
     return ToolFailure(ToolErrorCode::kNotFound, "error: no such memory");
   }
   size_t max_bytes = static_cast<size_t>(MemoryBytes());
-  std::string body(max_bytes + 1, '\0');
-  input.read(body.data(), static_cast<std::streamsize>(body.size()));
-  size_t read = static_cast<size_t>(input.gcount());
-  bool truncated =
-      read > max_bytes || input.peek() != std::char_traits<char>::eof();
+  std::string body;
+  bool truncated = ReadBounded(input, max_bytes, body);
   if (truncated && writable) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: saved memory exceeds configured limit");
   }
-  body.resize(std::min(read, max_bytes));
-  body = RedactMemorySecrets(Utf8Prefix(std::move(body), max_bytes));
+  body = RedactMemorySecrets(std::move(body));
   if (truncated) body += "\n[external memory truncated; use search to narrow]";
   return ToolSuccess("[memory " + memory.key + "; non-authoritative evidence" +
                      (writable ? "" : "; read-only") + "]\n" + body);
@@ -200,15 +196,6 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: memory name must not be empty");
-  }
-  if (scope != "project" && scope != "global") {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: scope must be \"project\" or \"global\"");
-  }
-  if (forget && content) {
-    return ToolFailure(
-        ToolErrorCode::kInvalidArguments,
-        "error: memory content and forget are mutually exclusive");
   }
   int64_t max_bytes = MemoryBytes();
   if (content && static_cast<int64_t>(content->size()) > max_bytes) {
@@ -431,12 +418,8 @@ MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
       break;
     }
     size_t body_cap = max_bytes - used - overhead;
-    std::string body(body_cap + 1, '\0');
-    input.read(body.data(), static_cast<std::streamsize>(body.size()));
-    size_t read = static_cast<size_t>(input.gcount());
-    if (read > body_cap) index.truncated = true;
-    body.resize(std::min(read, body_cap));
-    body = Utf8Prefix(std::move(body), body_cap);
+    std::string body;
+    if (ReadBounded(input, body_cap, body)) index.truncated = true;
     body = RedactMemorySecrets(std::move(body));
     if (Trim(body).empty()) continue;
     std::string block = "# " + memory.key + "\n" + body + "\n\n";

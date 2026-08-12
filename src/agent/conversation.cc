@@ -15,7 +15,6 @@
 #include "include/core/checked.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
-#include "include/media.h"
 
 namespace uagent {
 
@@ -52,6 +51,22 @@ void NormalizeRoles(json& messages, const std::vector<MessageKind>& kinds) {
     NormalizeRole(messages[index], kinds[index]);
   }
 }
+
+// One list, both directions: the persisted names and the enum never drift.
+constexpr struct {
+  const char* name;
+  MessageKind kind;
+} kKinds[] = {
+    {"system", MessageKind::kSystem},
+    {"project_instructions", MessageKind::kProjectInstructions},
+    {"memory", MessageKind::kMemory},
+    {"user", MessageKind::kUser},
+    {"assistant", MessageKind::kAssistant},
+    {"tool_result", MessageKind::kToolResult},
+    {"attachment", MessageKind::kAttachment},
+    {"runtime_context", MessageKind::kRuntimeContext},
+    {"internal", MessageKind::kInternal},
+};
 
 constexpr size_t kMinimumPrunableResultChars = 1024;
 constexpr int64_t kProtectedUserTurns = 2;
@@ -118,44 +133,13 @@ bool MatchingToolCall(const json& message, const std::string& id,
 }  // namespace
 
 const char* MessageKindName(MessageKind kind) {
-  switch (kind) {
-    case MessageKind::kSystem:
-      return "system";
-    case MessageKind::kProjectInstructions:
-      return "project_instructions";
-    case MessageKind::kMemory:
-      return "memory";
-    case MessageKind::kUser:
-      return "user";
-    case MessageKind::kAssistant:
-      return "assistant";
-    case MessageKind::kToolResult:
-      return "tool_result";
-    case MessageKind::kAttachment:
-      return "attachment";
-    case MessageKind::kRuntimeContext:
-      return "runtime_context";
-    case MessageKind::kInternal:
-      return "internal";
+  for (const auto& item : kKinds) {
+    if (item.kind == kind) return item.name;
   }
   return "internal";
 }
 
 bool ParseMessageKind(const std::string& name, MessageKind& kind) {
-  static constexpr struct {
-    const char* name;
-    MessageKind kind;
-  } kKinds[] = {
-      {"system", MessageKind::kSystem},
-      {"project_instructions", MessageKind::kProjectInstructions},
-      {"memory", MessageKind::kMemory},
-      {"user", MessageKind::kUser},
-      {"assistant", MessageKind::kAssistant},
-      {"tool_result", MessageKind::kToolResult},
-      {"attachment", MessageKind::kAttachment},
-      {"runtime_context", MessageKind::kRuntimeContext},
-      {"internal", MessageKind::kInternal},
-  };
   for (const auto& item : kKinds) {
     if (name == item.name) {
       kind = item.kind;
@@ -312,20 +296,6 @@ size_t Conversation::UserVisibleCount() const {
       }));
 }
 
-std::vector<std::string> Conversation::RecentToolResults(int64_t count) const {
-  std::vector<std::string> results;
-  for (size_t index = messages_.size();
-       index > 0 && static_cast<int64_t>(results.size()) < count; --index) {
-    if (kinds_[index - 1] != MessageKind::kToolResult) continue;
-    const json& message = messages_[index - 1];
-    if (message.contains("content") && message["content"].is_string()) {
-      results.push_back(CapResult(message["content"].get<std::string>()));
-    }
-  }
-  std::reverse(results.begin(), results.end());
-  return results;
-}
-
 bool Conversation::HasRecentToolResult(const std::string& name,
                                        const std::string& arguments,
                                        const std::string& result) const {
@@ -429,10 +399,6 @@ void Conversation::ArchiveTurn(size_t turn_start, int64_t turn,
   if (messages_.size() <= turn_start + 2 && metadata.empty()) return;
   ArchiveRange("tool_trace", turn_start + 1, messages_.size() - 1, turn,
                archive_cap, std::move(metadata));
-}
-
-size_t Conversation::StripImageParts() {
-  return StripImageContentParts(messages_);
 }
 
 void Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,

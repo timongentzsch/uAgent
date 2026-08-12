@@ -138,19 +138,17 @@ void RemoveLog(const std::string& path) {
 }
 
 ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
-  std::string pattern = UagentDir(kArtifactsDir) + "/output-XXXXXX";
-  std::vector<char> target(pattern.begin(), pattern.end());
-  target.push_back('\0');
-  int fd = mkstemp(target.data());
+  std::string target;
+  int fd = CreateTempFile(UagentDir(kArtifactsDir) + "/output-XXXXXX", target);
   if (fd >= 0) {
     fchmod(fd, 0600);
     close(fd);
-    if (rename(path.c_str(), target.data()) == 0) {
-      chmod(target.data(), 0600);
-      return {target.data(), bytes};
+    if (rename(path.c_str(), target.c_str()) == 0) {
+      chmod(target.c_str(), 0600);
+      return {target, bytes};
     }
     int rename_error = errno;
-    unlink(target.data());
+    unlink(target.c_str());
     if (Debug().Enabled()) {
       Debug().Write("artifact_promotion_failed",
                     {{"path", path}, {"error", strerror(rename_error)}});
@@ -223,7 +221,7 @@ bool ProcessGroupAlive(pid_t leader) {
 }
 
 std::string DetachedRecordPath(pid_t pid) {
-  return UagentDir("terminals") + "/" + std::to_string(pid) + ".json";
+  return UagentDir(kTerminalsDir) + "/" + std::to_string(pid) + ".json";
 }
 
 std::vector<json> DetachedRecords() {
@@ -232,7 +230,7 @@ std::vector<json> DetachedRecords() {
   auto cutoff = fs::file_time_type::clock::now() -
                 std::chrono::hours(24 * TerminalRecordDays());
   std::error_code ec;
-  for (fs::directory_iterator it(UagentDir("terminals"), ec), end;
+  for (fs::directory_iterator it(UagentDir(kTerminalsDir), ec), end;
        !ec && it != end; it.increment(ec)) {
     if (it->path().extension() != ".json") continue;
     std::ifstream input(it->path());
@@ -241,13 +239,14 @@ std::vector<json> DetachedRecords() {
       fs::remove(it->path(), ec);
       continue;
     }
-    record["_alive"] = ProcessGroupAlive(JsonValue(record, "pid", 0));
+    bool alive = ProcessGroupAlive(JsonValue(record, "pid", 0));
+    record["_alive"] = alive;
     std::error_code time_error;
     auto modified = fs::last_write_time(it->path(), time_error);
-    if (!record["_alive"].get<bool>() && !time_error && modified < cutoff) {
-      fs::remove(JsonValue(record, "log", ""), ec);
-      fs::remove(JsonValue(record, "log", "") + ".1", ec);
-      fs::remove(it->path(), ec);
+    if (!alive && !time_error && modified < cutoff) {
+      RemoveLog(JsonValue(record, "log", ""));
+      std::error_code remove_error;
+      fs::remove(it->path(), remove_error);
       continue;
     }
     records.push_back(std::move(record));

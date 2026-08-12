@@ -271,8 +271,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.first_event_timeout_s = config.first_event_timeout_s;
   ctx.idle_timeout_s = config.stream_idle_timeout_s;
   ctx.render_output = render_stream && render_output;
-  int64_t response_cap = config.response_bytes;
-  ctx.response_cap = response_cap > 0 ? static_cast<size_t>(response_cap) : 0;
+  ctx.response_cap = ResponseCap();
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
   bool headers_ok = headers.Add("Content-Type: application/json") &&
@@ -318,7 +317,6 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     ctx.md.Flush();
     if (ctx.in_reasoning) printf("%s\n", RST());
   }
-  res.duration_ms = ElapsedMs(ctx.started);
   if (!ctx.timeout_reason.empty()) {
     res.error = ctx.timeout_reason;
     res.retryable = true;
@@ -336,20 +334,13 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   }
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &res.http_status);
   if (res.http_status >= 400) {
-    std::string message = ctx.error_body;
     json error_response = json::parse(ctx.error_body, nullptr, false);
     if (error_response.is_object() && error_response.contains("error")) {
-      const json& error = error_response["error"];
-      res.remote_error_type = RemoteErrorType(error);
-      res.remote_error_code = RemoteErrorCode(error);
-      res.retryable =
-          RetryableRemoteMessage(JsonValue(error, "message", std::string()));
+      res.retryable = ApplyRemoteError(error_response["error"], res);
     }
-    message = JsonErrorMessage(error_response, std::move(message));
-    res.error = "HTTP " + std::to_string(res.http_status) + ": " + message;
-    res.retryable =
-        res.retryable || RetryableHttpStatus(res.http_status) ||
-        RetryableRemoteError(res.remote_error_type, res.remote_error_code);
+    res.error = "HTTP " + std::to_string(res.http_status) + ": " +
+                JsonErrorMessage(error_response, std::move(ctx.error_body));
+    res.retryable = res.retryable || RetryableHttpStatus(res.http_status);
     return res;
   }
   if (!CollectToolCalls(ctx.calls, res)) return res;
@@ -383,8 +374,7 @@ json Api::Fetch(const std::string& path, const std::string* payload,
     size_t cap = 0;
     bool exceeded = false;
   } out;
-  int64_t configured_cap = config.response_bytes;
-  out.cap = configured_cap > 0 ? static_cast<size_t>(configured_cap) : 0;
+  out.cap = ResponseCap();
   CurlHeaders headers;
   bool headers_ok = headers.Add("Authorization: Bearer " + api_key);
   if (payload) {

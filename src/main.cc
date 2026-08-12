@@ -43,15 +43,19 @@ void InitializeProcess() {
   InstallSigwinchHandler();
 }
 
-void PrintHeadlessFailure(const std::string& error, int exit_code) {
+// Report a startup failure in whichever shape the caller asked for. Emit is a
+// no-op when the event stream never started, so no extra guard is needed.
+int Fail(const Options& options, const std::string& error, int exit_code) {
   json envelope = HeadlessResult("", error, json::array(), Usage{},
                                  json::object(), exit_code);
-  printf("%s\n", JsonDump(envelope).c_str());
-}
-
-void PrintStreamFailure(const std::string& error, int exit_code) {
-  Events().Emit("error", HeadlessResult("", error, json::array(), Usage{},
-                                        json::object(), exit_code));
+  if (options.json_stream) {
+    Events().Emit("error", std::move(envelope));
+  } else if (options.json) {
+    printf("%s\n", JsonDump(envelope).c_str());
+  } else {
+    fprintf(stderr, "%s\n", error.c_str());
+  }
+  return exit_code;
 }
 
 }  // namespace
@@ -66,14 +70,8 @@ int Main(int argc, char** argv) {
   InitializeProcess();
   ParsedOptions parsed = ParseOptions(argc, argv);
   if (!parsed.Ok()) {
-    if (parsed.options.json_stream) {
-      if (Events().Start()) PrintStreamFailure(parsed.error, 2);
-    } else if (parsed.options.json) {
-      PrintHeadlessFailure(parsed.error, 2);
-    } else {
-      fprintf(stderr, "%s\n", parsed.error.c_str());
-    }
-    return 2;
+    if (parsed.options.json_stream) Events().Start();
+    return Fail(parsed.options, parsed.error, 2);
   }
   if (parsed.action == OptionsAction::kHelp) {
     printf("%s", UsageText());
@@ -84,23 +82,13 @@ int Main(int argc, char** argv) {
     return 0;
   }
 
-  bool json_output = parsed.options.json;
-  bool json_stream = parsed.options.json_stream;
-  if (json_stream && !Events().Start()) {
+  const Options reporting = parsed.options;
+  if (reporting.json_stream && !Events().Start()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;
   }
   BootstrapResult boot = Bootstrap(std::move(parsed.options), argv[0]);
-  if (!boot.Ok()) {
-    if (json_stream) {
-      PrintStreamFailure(boot.error, boot.exit_code);
-    } else if (json_output) {
-      PrintHeadlessFailure(boot.error, boot.exit_code);
-    } else {
-      fprintf(stderr, "%s\n", boot.error.c_str());
-    }
-    return boot.exit_code;
-  }
+  if (!boot.Ok()) return Fail(reporting, boot.error, boot.exit_code);
   return RunApplication(*boot.context);
 }
 

@@ -58,6 +58,16 @@ inline std::string RemoteErrorCode(const json& error) {
   return "";
 }
 
+// Record a provider error's type/code on the result and say whether it is
+// worth another attempt. Used for both HTTP error bodies and stream frames.
+inline bool ApplyRemoteError(const json& error, ChatResult& result) {
+  result.remote_error_type = RemoteErrorType(error);
+  result.remote_error_code = RemoteErrorCode(error);
+  return RetryableRemoteError(result.remote_error_type,
+                              result.remote_error_code) ||
+         RetryableRemoteMessage(JsonValue(error, "message", std::string()));
+}
+
 inline bool SafeToRetry(const ChatResult& result) {
   // Reasoning-only progress has no external side effect and is discarded with
   // a failed response. Never replay visible answer text or a completed call.

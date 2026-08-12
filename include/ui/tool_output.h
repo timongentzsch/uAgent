@@ -38,13 +38,6 @@ inline std::string ToolResultSummary(const ToolResult& result,
   return summary;
 }
 
-inline std::string ToolOutputForDisplay(const CallTask& task,
-                                        const std::string& model_output,
-                                        bool verbose) {
-  return verbose ? ModelResultText(task.result, ResultCharLimit(task))
-                 : model_output;
-}
-
 inline void PrintToolCall(const CallTask& task, const ToolCall& call,
                           bool verbose) {
   std::string prefix = "→ " + task.ordinal + TerminalSafe(call.name);
@@ -91,7 +84,9 @@ inline void PrintToolResult(const CallTask& task, const ToolCall& call,
     style = YEL();
   }
   std::string prefix = "  ← " + task.ordinal + TerminalSafe(call.name);
-  std::string shown = ToolOutputForDisplay(task, model_output, verbose);
+  std::string shown = verbose
+                          ? ModelResultText(task.result, ResultCharLimit(task))
+                          : model_output;
   if (verbose && shown.find('\n') != std::string::npos) {
     std::string status =
         task.result.Ok()

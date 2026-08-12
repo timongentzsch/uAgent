@@ -252,9 +252,9 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         std::vector<std::string> queries;
         if (a.contains("queries") && a["queries"].is_array()) {
           for (const json& value : a["queries"]) {
-            if (value.is_string() && !Trim(value.get<std::string>()).empty()) {
-              queries.push_back(Trim(value.get<std::string>()));
-            }
+            if (!value.is_string()) continue;
+            std::string query = Trim(value.get<std::string>());
+            if (!query.empty()) queries.push_back(std::move(query));
           }
         }
         if (queries.empty()) {
@@ -305,19 +305,19 @@ inline Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         if (AbortRequested()) {
           return ToolCancelled("error: search cancelled by user");
         }
+        WebSearchResult result = active.backend == WebSearchBackend::kResponses
+                                     ? ParseResponsesSearch(response)
+                                     : ParseOpenRouterSearch(response);
         if (response.is_object() && response.contains("usage")) {
           Usage normalized;
           normalized.Add(response["usage"]);
           if (active.backend == WebSearchBackend::kResponses) {
-            normalized.web_searches = ParseResponsesSearch(response).searches;
+            normalized.web_searches = result.searches;
           }
           usage.Add(RouteKey(active.base_url, "web_search", active.model,
                              api.config.web_search_effort),
                     normalized);
         }
-        WebSearchResult result = active.backend == WebSearchBackend::kResponses
-                                     ? ParseResponsesSearch(response)
-                                     : ParseOpenRouterSearch(response);
         if (!result.text.empty()) {
           std::string evidence = CitationEvidence(result.annotations);
           std::string output =

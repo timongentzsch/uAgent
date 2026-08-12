@@ -91,8 +91,6 @@ class Agent {
 
   std::string ActiveRoute() const;
 
-  void AddRouteUsage(const Usage& usage);
-
   // Session picker's one-line title.
   std::string FirstUserText() const;
 
@@ -163,7 +161,13 @@ class Agent {
   ImageFallbackResult ApplyImageAnalysisFallback(json& messages,
                                                  ImageFallbackCause cause);
   static void ReportImageFallback(const ImageFallbackResult& result);
+  // Run the fallback over one user message's content parts and report it.
+  ImageFallbackResult ApplyImageFallbackToUserContent(json& content);
 
+  void AddRouteUsage(const Usage& usage);
+  Usage AccountModelUsage(const json& reported);
+
+  void FailBudget(TurnState& state, std::string message);
   bool TurnDeadlineExceeded(TurnState& state,
                             std::chrono::seconds reserve = {});
   bool TurnCostExceeded(TurnState& state);
@@ -174,9 +178,8 @@ class Agent {
                              TurnState& state, int64_t max_tool_calls,
                              std::string& last_call, int64_t& repeated_calls);
   void FinishTurn(TurnState& state, int64_t step);
-
-  void ArchiveRange(const char* reason, size_t begin, size_t end,
-                    json metadata = json::object());
+  static std::string TurnStatsLine(const TurnState& state, double seconds,
+                                   double tokens_per_second);
 
   void ArchiveAll(const char* reason);
 
@@ -184,6 +187,7 @@ class Agent {
                   bool render_output = true);
 
   size_t RequestContextBytes(size_t schema_bytes) const;
+  int64_t SnapshotContext(size_t schema_bytes) const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;
   bool ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,

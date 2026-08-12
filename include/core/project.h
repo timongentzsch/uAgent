@@ -68,14 +68,8 @@ inline ProjectInstructions LoadProjectInstructions(
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
     size_t remaining = max_bytes - *with_header;
-    std::string content(remaining + 1, '\0');
-    input.read(content.data(), static_cast<std::streamsize>(content.size()));
-    size_t read = static_cast<size_t>(input.gcount());
-    content.resize(std::min(read, remaining));
-    if (read > remaining || input.peek() != std::char_traits<char>::eof()) {
-      loaded.truncated = true;
-    }
-    content = Utf8Prefix(std::move(content), remaining);
+    std::string content;
+    if (ReadBounded(input, remaining, content)) loaded.truncated = true;
     if (Trim(content).empty()) return false;
     if (!destination.empty()) destination += "\n\n";
     used = SaturatingAdd(used, header.size());

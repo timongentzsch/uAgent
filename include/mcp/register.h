@@ -21,6 +21,9 @@
 
 namespace uagent {
 
+inline constexpr char kMcpProtocolVersion[] = "2025-11-25";
+inline constexpr char kMcpProtocolVersionLegacy[] = "2025-06-18";
+
 inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
                                int64_t& initialize_id, std::string& error) {
   const json& conf = server.config;
@@ -60,7 +63,7 @@ inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
   }
   initialize_id = server.next_id++;
   if (!McpSend(server, initialize_id, "initialize",
-               {{"protocolVersion", "2025-11-25"},
+               {{"protocolVersion", kMcpProtocolVersion},
                 {"capabilities", {{"roots", {{"listChanged", false}}}}},
                 {"clientInfo", {{"name", "uagent"}, {"version", kVersion}}}})) {
     error = "failed to initialize";
@@ -74,17 +77,13 @@ inline bool McpFinishInitialize(McpServer& server, int64_t initialize_id,
                                 int64_t timeout, std::string& error) {
   json init = McpAwait(server, initialize_id, timeout, false);
   if (!init.contains("result")) {
-    error = "handshake failed";
-    if (init.contains("error") && init["error"].is_object() &&
-        init["error"].contains("message") &&
-        init["error"]["message"].is_string()) {
-      error = init["error"]["message"].get<std::string>();
-    }
+    error = JsonErrorMessage(init, "handshake failed");
     return false;
   }
   const json& result = init["result"];
   std::string protocol = JsonValue(result, "protocolVersion", "");
-  if (protocol != "2025-11-25" && protocol != "2025-06-18") {
+  if (protocol != kMcpProtocolVersion &&
+      protocol != kMcpProtocolVersionLegacy) {
     error = "unsupported protocol version `" + protocol + "`";
     return false;
   }
@@ -157,9 +156,7 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
   auto startup_deadline = DeadlineAfter(timeout);
   for (auto& b : boots) {
     McpServer& s = *b.s;
-    int64_t remaining = std::chrono::duration_cast<std::chrono::seconds>(
-                            startup_deadline - std::chrono::steady_clock::now())
-                            .count();
+    int64_t remaining = SecondsUntil(startup_deadline);
     if (remaining <= 0) {
       McpError(s.name, "startup deadline exceeded");
       s.Shutdown();

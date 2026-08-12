@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/core/platform.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 namespace {
@@ -21,33 +22,26 @@ std::string KeyOf(std::string_view entry) {
   return std::string(entry.substr(0, equals));
 }
 
-bool ContainsMarker(const std::string& key, std::string_view marker) {
-  return key.find(marker) != std::string::npos;
-}
-
-bool ShellAllows(std::string_view key) {
+// The keys an approved shell may keep despite looking sensitive. Parsed once
+// per child rather than once per inherited variable.
+std::vector<std::string> ShellAllowList() {
+  std::vector<std::string> allowed;
   const char* configured = getenv("UAGENT_SHELL_ENV_ALLOW");
-  if (!configured) return false;
-  std::string_view list(configured);
-  while (!list.empty()) {
-    size_t comma = list.find(',');
-    std::string_view item = list.substr(0, comma);
-    while (!item.empty() &&
-           std::isspace(static_cast<unsigned char>(item.front()))) {
-      item.remove_prefix(1);
+  if (!configured) return allowed;
+  for (std::string entry : SplitPathList(configured, ',')) {
+    size_t begin = 0, end = entry.size();
+    while (begin < end &&
+           std::isspace(static_cast<unsigned char>(entry[begin]))) {
+      ++begin;
     }
-    while (!item.empty() &&
-           std::isspace(static_cast<unsigned char>(item.back()))) {
-      item.remove_suffix(1);
+    while (end > begin &&
+           std::isspace(static_cast<unsigned char>(entry[end - 1]))) {
+      --end;
     }
-    if (item == key) return true;
-    if (comma == std::string_view::npos) break;
-    list.remove_prefix(comma + 1);
+    allowed.push_back(entry.substr(begin, end - begin));
   }
-  return false;
+  return allowed;
 }
-
-}  // namespace
 
 bool SensitiveEnvironmentKey(std::string_view key) {
   std::string upper(key);
@@ -65,18 +59,25 @@ bool SensitiveEnvironmentKey(std::string_view key) {
       "_API_KEY",  "_ACCESS_KEY", "_PRIVATE_KEY",  "_TOKEN",      "_SECRET",
       "_PASSWORD", "_CREDENTIAL", "AUTHORIZATION", "_AUTH_TOKEN", "_COOKIE",
   };
-  return std::any_of(
-      std::begin(kMarkers), std::end(kMarkers),
-      [&](std::string_view marker) { return ContainsMarker(upper, marker); });
+  return std::any_of(std::begin(kMarkers), std::end(kMarkers),
+                     [&](std::string_view marker) {
+                       return upper.find(marker) != std::string::npos;
+                     });
 }
+
+}  // namespace
 
 ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
                                    ChildEnvironmentPolicy policy) {
+  std::vector<std::string> allow_list;
+  if (policy == ChildEnvironmentPolicy::kApprovedShell) {
+    allow_list = ShellAllowList();
+  }
   for (char** current = ProcessEnvironment(); current && *current; ++current) {
     std::string entry(*current);
     std::string key = KeyOf(entry);
-    bool allowed =
-        policy == ChildEnvironmentPolicy::kApprovedShell && ShellAllows(key);
+    bool allowed = std::find(allow_list.begin(), allow_list.end(), key) !=
+                   allow_list.end();
     if (!SensitiveEnvironmentKey(key) || allowed) {
       values_.push_back(std::move(entry));
     }

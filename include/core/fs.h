@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <istream>
 #include <queue>
 #include <string>
 #include <utility>
@@ -65,9 +66,43 @@ inline constexpr const char* kMemoryDir = "memory";
 inline constexpr const char* kHistoryDir = "history";
 inline constexpr const char* kSessionsDir = "sessions";
 inline constexpr const char* kBgDir = "bg";
+inline constexpr const char* kTerminalsDir = "terminals";
 inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
+
+// Write every byte or report why not; errno is left set for the caller.
+inline bool WriteFully(int fd, const std::string& data) {
+  for (size_t offset = 0; offset < data.size();) {
+    ssize_t written = write(fd, data.data() + offset, data.size() - offset);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) return false;
+    offset += static_cast<size_t>(written);
+  }
+  return true;
+}
+
+// mkstemp over a pattern string. `path` always receives the expanded template,
+// including on failure — callers name it in their error message.
+inline int CreateTempFile(const std::string& pattern, std::string& path) {
+  std::vector<char> buffer(pattern.begin(), pattern.end());
+  buffer.push_back('\0');
+  int fd = mkstemp(buffer.data());
+  path = buffer.data();
+  return fd;
+}
+
+// Read at most `cap` bytes from an open stream — one byte further, so a longer
+// source is detectable — cut back to a UTF-8 boundary. Returns whether the
+// source had more to give.
+inline bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
+  out.assign(cap + 1, '\0');
+  input.read(out.data(), static_cast<std::streamsize>(out.size()));
+  size_t read = static_cast<size_t>(input.gcount());
+  out.resize(std::min(read, cap));
+  out = Utf8Prefix(std::move(out), cap);
+  return read > cap;
+}
 
 inline std::string UagentConfigPath() {
   std::string home = UserHome();
@@ -106,11 +141,10 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   }
   fs::path parent =
       target.has_parent_path() ? target.parent_path() : fs::path(".");
-  std::string pattern =
-      (parent / ("." + target.filename().string() + ".uagent.XXXXXX")).string();
-  std::vector<char> temp(pattern.begin(), pattern.end());
-  temp.push_back('\0');
-  int fd = mkstemp(temp.data());
+  std::string temp;
+  int fd = CreateTempFile(
+      (parent / ("." + target.filename().string() + ".uagent.XXXXXX")).string(),
+      temp);
   if (fd < 0) {
     error = "cannot create temporary file for " + path + ": " + strerror(errno);
     return false;
@@ -118,7 +152,7 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   // `message` is built by the caller before unlink() can clobber errno.
   auto fail = [&](std::string message) {
     error = std::move(message);
-    unlink(temp.data());
+    unlink(temp.c_str());
     return false;
   };
   struct stat st{};
@@ -130,23 +164,17 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
     close(fd);
     return fail(message);
   }
-  for (size_t offset = 0; offset < content.size();) {
-    ssize_t written =
-        write(fd, content.data() + offset, content.size() - offset);
-    if (written < 0 && errno == EINTR) continue;
-    if (written <= 0) {
-      std::string message = "write to " + path + " failed: " + strerror(errno);
-      close(fd);
-      return fail(message);
-    }
-    offset += static_cast<size_t>(written);
+  if (!WriteFully(fd, content)) {
+    std::string message = "write to " + path + " failed: " + strerror(errno);
+    close(fd);
+    return fail(message);
   }
   int failure = fsync(fd) != 0 ? errno : 0;
   if (close(fd) != 0 && !failure) failure = errno;
   if (failure) {
     return fail("write to " + path + " failed: " + strerror(failure));
   }
-  if (rename(temp.data(), target.c_str()) != 0) {
+  if (rename(temp.c_str(), target.c_str()) != 0) {
     return fail("cannot replace " + path + ": " + strerror(errno));
   }
   return true;
@@ -220,23 +248,29 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
 
 inline void MaintainArtifacts() {
   PruneArtifactTree(UagentDir(kHistoryDir), HistoryDays(), HistoryFiles());
-  PruneArtifactTree(GlobalBase() + "/memory/.processed", HistoryDays(),
-                    HistoryFiles());
+  PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
+                    HistoryDays(), HistoryFiles());
   PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
   PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
   PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());
   PruneArtifactTree(UagentDir(kMcpDir), McpLogDays(), McpLogFiles());
 }
 
-inline std::string SafeFileComponent(std::string value) {
+// Restrict to [A-Za-z0-9_-] and cap the length. The cap differs by consumer:
+// file components and protocol-visible tool names have different limits.
+inline std::string SanitizeComponent(std::string value, size_t cap) {
   for (char& c : value) {
     if (!isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') {
       c = '_';
     }
   }
-  if (value.empty()) value = "unnamed";
-  if (value.size() > 80) value.resize(80);
+  if (value.size() > cap) value.resize(cap);
   return value;
+}
+
+inline std::string SafeFileComponent(std::string value) {
+  if (value.empty()) return "unnamed";
+  return SanitizeComponent(std::move(value), 80);
 }
 
 inline std::string CanonicalCwd() {
@@ -248,17 +282,16 @@ inline std::string CanonicalCwd() {
 
 inline std::string MakeSessionId() {
   static std::atomic<uint64_t> sequence{0};
-  std::string seed =
-      CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
-      std::to_string(
-          std::chrono::steady_clock::now().time_since_epoch().count()) +
-      ":" + std::to_string(++sequence);
   return "uagent-" +
-         Hex64(Fnv1aUpdate(1469598103934665603ULL, seed.data(), seed.size()));
+         HashHex(
+             CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
+             std::to_string(
+                 std::chrono::steady_clock::now().time_since_epoch().count()) +
+             ":" + std::to_string(++sequence));
 }
 
 inline std::string WorkspaceId(const std::string& root) {
-  return Hex64(Fnv1aUpdate(1469598103934665603ULL, root.data(), root.size()));
+  return HashHex(root);
 }
 
 inline bool AppendPrivateLine(const std::string& path, const std::string& line,
@@ -274,18 +307,11 @@ inline bool AppendPrivateLine(const std::string& path, const std::string& line,
     close(fd);
     return false;
   }
-  std::string record = line + "\n";
-  size_t offset = 0;
-  while (offset < record.size()) {
-    ssize_t written = write(fd, record.data() + offset, record.size() - offset);
-    if (written < 0 && errno == EINTR) continue;
-    if (written <= 0) {
-      error = strerror(errno);
-      flock(fd, LOCK_UN);
-      close(fd);
-      return false;
-    }
-    offset += static_cast<size_t>(written);
+  if (!WriteFully(fd, line + "\n")) {
+    error = strerror(errno);
+    flock(fd, LOCK_UN);
+    close(fd);
+    return false;
   }
   flock(fd, LOCK_UN);
   close(fd);

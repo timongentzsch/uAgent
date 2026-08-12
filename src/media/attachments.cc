@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <limits>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,13 +27,46 @@ constexpr char kBase64Alphabet[] =
 
 std::atomic<bool> g_image_input{true};
 
+// Extension to MIME type. Also read backwards to name a saved image, so the
+// first entry for a type is the one its files get (.jpg, never .jpeg).
+constexpr std::pair<const char*, const char*> kTypes[] = {
+    {".png", "image/png"},
+    {".jpg", "image/jpeg"},
+    {".jpeg", "image/jpeg"},
+    {".webp", "image/webp"},
+    {".gif", "image/gif"},
+    {".pdf", "application/pdf"},
+    {".txt", "text/plain"},
+    {".md", "text/markdown"},
+    {".json", "application/json"},
+    {".html", "text/html"},
+    {".xml", "application/xml"},
+    {".csv", "text/csv"},
+    {".tsv", "text/tsv"},
+    {".doc", "application/msword"},
+    {".docx",
+     "application/"
+     "vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    {".rtf", "application/rtf"},
+    {".odt", "application/vnd.oasis.opendocument.text"},
+    {".ppt", "application/vnd.ms-powerpoint"},
+    {".pptx",
+     "application/"
+     "vnd.openxmlformats-officedocument.presentationml.presentation"},
+    {".xls", "application/vnd.ms-excel"},
+    {".xlsx",
+     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+};
+
 }  // namespace
 
+// Empty for anything that is not an image: callers use that to reject
+// non-image content outright.
 std::string ImageExtension(const std::string& mime) {
-  if (mime == "image/png") return ".png";
-  if (mime == "image/jpeg") return ".jpg";
-  if (mime == "image/webp") return ".webp";
-  if (mime == "image/gif") return ".gif";
+  if (!std::string_view(mime).starts_with("image/")) return "";
+  for (const auto& [suffix, value] : kTypes) {
+    if (mime == value) return suffix;
+  }
   return "";
 }
 
@@ -54,38 +88,10 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     return false;
   }
   std::string ext = AsciiLower(file.extension().string());
-  static const std::pair<const char*, const char*> kTypes[] = {
-      {".png", "image/png"},
-      {".jpg", "image/jpeg"},
-      {".jpeg", "image/jpeg"},
-      {".webp", "image/webp"},
-      {".gif", "image/gif"},
-      {".pdf", "application/pdf"},
-      {".txt", "text/plain"},
-      {".md", "text/markdown"},
-      {".json", "application/json"},
-      {".html", "text/html"},
-      {".xml", "application/xml"},
-      {".csv", "text/csv"},
-      {".tsv", "text/tsv"},
-      {".doc", "application/msword"},
-      {".docx",
-       "application/"
-       "vnd.openxmlformats-officedocument.wordprocessingml.document"},
-      {".rtf", "application/rtf"},
-      {".odt", "application/vnd.oasis.opendocument.text"},
-      {".ppt", "application/vnd.ms-powerpoint"},
-      {".pptx",
-       "application/"
-       "vnd.openxmlformats-officedocument.presentationml.presentation"},
-      {".xls", "application/vnd.ms-excel"},
-      {".xlsx",
-       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-  };
   for (const auto& [suffix, mime] : kTypes) {
     if (ext == suffix) {
       out = {file.string(), file.filename().string(), mime, bytes,
-             std::string(mime).starts_with("image/")};
+             std::string_view(mime).starts_with("image/")};
       return true;
     }
   }
@@ -115,27 +121,25 @@ const char* ModelImageInputInstruction() {
 
 std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
                        std::string& error, const std::string& prefix) {
-  FILE* file = fopen(attachment.path.c_str(), "rb");
+  std::unique_ptr<FILE, int (*)(FILE*)> file(
+      fopen(attachment.path.c_str(), "rb"), &fclose);
   if (!file) {
     error = "cannot open " + attachment.path;
     return "";
   }
   struct stat st{};
-  if (fstat(fileno(file), &st) != 0 || !S_ISREG(st.st_mode)) {
+  if (fstat(fileno(file.get()), &st) != 0 || !S_ISREG(st.st_mode)) {
     error = "attachment is not a regular file: " + attachment.path;
-    fclose(file);
     return "";
   }
   uintmax_t current_bytes = static_cast<uintmax_t>(st.st_size);
   if (current_bytes > max_bytes) {
     error = "attachment exceeds remaining byte limit: " + attachment.path;
-    fclose(file);
     return "";
   }
   std::string out = prefix;
   if (current_bytes > std::numeric_limits<size_t>::max()) {
     error = "attachment is too large to encode: " + attachment.path;
-    fclose(file);
     return "";
   }
   std::optional<size_t> padded =
@@ -146,18 +150,16 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
       encoded ? CheckedAdd(prefix.size(), *encoded) : std::nullopt;
   if (!reserved) {
     error = "attachment size overflow";
-    fclose(file);
     return "";
   }
   out.reserve(*reserved);
   unsigned char in[3];
   uintmax_t read_bytes = 0;
-  for (size_t n; (n = fread(in, 1, 3, file)) > 0;) {
+  for (size_t n; (n = fread(in, 1, 3, file.get())) > 0;) {
     read_bytes += n;
     if (read_bytes > max_bytes) {
       error = "attachment grew beyond the byte limit while reading: " +
               attachment.path;
-      fclose(file);
       return "";
     }
     out += kBase64Alphabet[in[0] >> 2];
@@ -168,9 +170,7 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
     out += n > 2 ? kBase64Alphabet[in[2] & 63] : '=';
     if (n < 3) break;
   }
-  bool read_failed = ferror(file);
-  fclose(file);
-  if (!read_failed) return out;
+  if (!ferror(file.get())) return out;
   error = "failed to read " + attachment.path;
   return "";
 }

@@ -11,29 +11,36 @@ namespace uagent {
 
 bool SseParser::Feed(std::string_view bytes) {
   if (!error_.empty()) return false;
-  for (char byte : bytes) {
+  // Copy whole runs between line terminators: this is the hot path for every
+  // streamed token.
+  while (!bytes.empty()) {
     if (pending_cr_) {
       pending_cr_ = false;
       if (!ProcessLine()) return false;
-      if (byte == '\n') continue;
+      if (bytes.front() == '\n') {
+        bytes.remove_prefix(1);
+        continue;
+      }
     }
-    if (byte == '\r') {
+    size_t end = bytes.find_first_of("\r\n");
+    std::string_view chunk = bytes.substr(0, end);
+    if (!chunk.empty() && !Append(line_, chunk)) return false;
+    if (end == std::string_view::npos) break;
+    if (bytes[end] == '\r') {
       pending_cr_ = true;
-    } else if (byte == '\n') {
-      if (!ProcessLine()) return false;
-    } else if (!Append(line_, std::string_view(&byte, 1))) {
+    } else if (!ProcessLine()) {
       return false;
     }
+    bytes.remove_prefix(end + 1);
   }
   return true;
 }
 
 bool SseParser::Finish() {
   if (!error_.empty()) return false;
-  if (pending_cr_) {
+  // A held CR ends its line; so does any unterminated trailing text.
+  if (pending_cr_ || !line_.empty()) {
     pending_cr_ = false;
-    if (!ProcessLine()) return false;
-  } else if (!line_.empty()) {
     if (!ProcessLine()) return false;
   }
   return Dispatch();

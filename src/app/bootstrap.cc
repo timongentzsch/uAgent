@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -51,6 +50,17 @@ void PrintWarning(const std::string& warning) {
   }
 }
 
+// A y/N (or Y/n) prompt. EOF always declines: an unattended run must never
+// grant trust or approval by accident.
+bool Confirm(const std::string& question, bool default_yes) {
+  bool eof = false;
+  std::string answer =
+      Trim(ReadInputLine(question, &eof, /*keep_history=*/false));
+  if (eof) return false;
+  if (answer.empty()) return default_yes;
+  return answer == "y" || answer == "Y" || answer == "yes";
+}
+
 bool ResolveProjectTrust(const Options& options, bool& trusted,
                          json& trusted_snapshot, std::string& error,
                          int& exit_code) {
@@ -76,11 +86,8 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
               "project .uagent/.config is untrusted and was ignored; rerun "
               "with --trust-project-config after reviewing it\n");
     } else {
-      bool eof = false;
-      std::string answer =
-          Trim(ReadInputLine("Trust this workspace's " + surfaces + "? [y/N] ",
-                             &eof, /*keep_history=*/false));
-      trusted = !eof && (answer == "y" || answer == "Y" || answer == "yes");
+      trusted = Confirm("Trust this workspace's " + surfaces + "? [y/N] ",
+                        /*default_yes=*/false);
       if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
         error = "cannot save project trust: " + error;
         return false;
@@ -136,8 +143,8 @@ void PrintProjectContext(const ProjectInstructions& instructions,
                     std::move(display));
   }
   if (instructions.truncated) {
-    std::cerr << YEL() << "project instructions truncated at " << byte_limit
-              << " bytes" << RST() << '\n';
+    PrintWarning("project instructions truncated at " +
+                 std::to_string(byte_limit) + " bytes");
   }
 }
 
@@ -195,15 +202,17 @@ bool ProbeModel(Api& api) {
   return !api.model.empty();
 }
 
-std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
+std::vector<Tool> BuildTools(AppContext& context,
+                             const std::filesystem::path& workspace,
+                             const json& trusted_snapshot,
                              std::vector<Skill> skills) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
-  std::vector<Tool> tools = BuiltinTools(
-      runtime.processes, CanonicalAccessPath(CanonicalCwd()), inline_images);
+  std::vector<Tool> tools =
+      BuiltinTools(runtime.processes, workspace, inline_images);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools,
                   [](const Tool& tool) { return tool.name == "memory"; });
@@ -223,9 +232,9 @@ std::vector<Tool> BuildTools(AppContext& context, const json& trusted_snapshot,
   }
   McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
   if (CanDelegate()) {
-    tools.push_back(SubagentTool(api, runtime.processes,
-                                 context.provider.routes,
-                                 context.provider.providers, context.debug));
+    tools.push_back(
+        SubagentTool(api, runtime.processes, context.provider.routes,
+                     context.provider.providers, context.options.debug));
   }
   if (LeanToolset()) KeepLeanTools(tools);
   ApplyToolPolicy(tools, context.tool_policy);
@@ -305,6 +314,8 @@ AppContext::AppContext(RuntimeConfig config, Options parsed_options)
 
 BootstrapResult Bootstrap(Options options, const char* executable) {
   SetExecutablePath(executable);
+  // Nothing chdir()s during startup, so the canonical workspace is invariant.
+  const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
   std::string memory_source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
   const bool memory_child = !memory_source.empty();
   bool trusted = false;
@@ -317,9 +328,8 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   }
 
   LoadConfigFile(trusted);
-  if (memory_child && !BuildMemoryExtractionPrompt(
-                          memory_source, CanonicalAccessPath(CanonicalCwd()),
-                          options.prompt, error)) {
+  if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
+                                                   options.prompt, error)) {
     return Failure(std::move(error), 2);
   }
   if (options.budget > 0) {
@@ -347,8 +357,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   if (!context->options.prompt.empty() && !context->output.Silence()) {
     return Failure("cannot redirect headless output");
   }
-  context->debug = context->options.debug;
-  if (context->debug && !Debug().Start(context->options.debug_path)) {
+  if (context->options.debug && !Debug().Start(context->options.debug_path)) {
     return Failure("cannot open debug log: " + Debug().Error());
   }
   if (Debug().Enabled()) {
@@ -369,15 +378,13 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
   ProjectInstructions instructions;
   if (!memory_child) {
-    instructions = LoadProjectInstructions(CanonicalAccessPath(CanonicalCwd()),
-                                           project_limit);
+    instructions = LoadProjectInstructions(workspace, project_limit);
   }
   if (context->runtime.config.memory_enabled) {
     size_t remaining = instructions.text.size() >= project_limit
                            ? 0
                            : project_limit - instructions.text.size();
-    MemoryIndex memories =
-        LoadMemoryIndex(CanonicalAccessPath(CanonicalCwd()), remaining);
+    MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
     instructions.memory_index = std::move(memories.text);
     instructions.memory_sources = std::move(memories.sources);
     instructions.truncated |= memories.truncated;
@@ -385,8 +392,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     size_t always_bytes =
         static_cast<size_t>(std::max(int64_t{0}, MemoryAlwaysBytes()));
     if (always_bytes > 0) {
-      MemoryIndex always =
-          LoadAlwaysOnMemory(CanonicalAccessPath(CanonicalCwd()), always_bytes);
+      MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
       instructions.memory_always = std::move(always.text);
       for (const std::string& source : always.sources) {
         if (std::find(instructions.memory_sources.begin(),
@@ -422,7 +428,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
   api.server_tools_authorized = context->options.yolo;
   context->tool_policy = ToolPolicyFromEnvironment();
   PrintWarning(context->tool_policy.error);
-  context->tools = BuildTools(*context, trusted_snapshot, skills);
+  context->tools = BuildTools(*context, workspace, trusted_snapshot, skills);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,
@@ -438,11 +444,7 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
                   RST());
           std::string question = std::string(YEL()) + "allow " +
                                  TerminalSafe(tool.name) + "? [Y/n] " + RST();
-          bool eof = false;
-          std::string answer =
-              Trim(ReadInputLine(question, &eof, /*keep_history=*/false));
-          granted = !eof && (answer.empty() || answer == "y" || answer == "Y" ||
-                             answer == "yes");
+          granted = Confirm(question, /*default_yes=*/true);
         }
         DebugLog("approval", {{"tool", tool.name},
                               {"automatic", app->options.yolo},

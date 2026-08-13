@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "include/cli.h"
+#include "include/core/platform.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/input_decoder.h"
@@ -85,15 +86,7 @@ class InteractiveOutput {
   }
 
   void Write(const std::string& text) const {
-    const char* data = text.data();
-    size_t left = text.size();
-    while (left > 0) {
-      ssize_t count = write(saved_, data, left);
-      if (count < 0 && errno == EINTR) continue;
-      if (count <= 0) return;
-      data += count;
-      left -= static_cast<size_t>(count);
-    }
+    (void)WriteAll(saved_, text.data(), text.size());
   }
 
  private:

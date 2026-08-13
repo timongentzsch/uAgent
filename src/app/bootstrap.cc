@@ -183,14 +183,7 @@ bool ProbeModel(Api& api) {
         if (!model.is_object()) continue;
         std::string id = JsonValue(model, "id", "");
         if (id != api.model && id != base) continue;
-        api.ctx_window = JsonValue(model, "context_length", int64_t{0});
-        if (!api.ctx_window) {
-          api.ctx_window = JsonValue(model, "max_model_len", int64_t{0});
-        }
-        if (!api.ctx_window && model.contains("meta") &&
-            model["meta"].is_object()) {
-          api.ctx_window = JsonValue(model["meta"], "n_ctx_train", int64_t{0});
-        }
+        api.ctx_window = CatalogContextLength(model);
         break;
       }
     }
@@ -211,8 +204,9 @@ std::vector<Tool> BuildTools(AppContext& context,
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
-  std::vector<Tool> tools =
-      BuiltinTools(runtime.processes, workspace, inline_images);
+  std::vector<Tool> tools = BuiltinTools(
+      runtime.processes, workspace, inline_images,
+      AdaptiveSystemEnabled() ? &runtime.adaptive_system : nullptr);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools,
                   [](const Tool& tool) { return tool.name == "memory"; });
@@ -277,6 +271,7 @@ void LogReady(const AppContext& context) {
                  {"attachment_mb", AttachmentLimitMb()},
                  {"image_detail", ImageDetail()},
                  {"steering", SteeringEnabled()},
+                 {"adaptive_system", AdaptiveSystemEnabled()},
                  {"max_tokens", MaxOutputTokens()},
                  {"limits", config.DiagnosticJson()}});
 }
@@ -457,7 +452,8 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
         if (changed) ApplyToolPolicy(app->tools, app->tool_policy);
         return changed;
       },
-      std::move(instructions), std::move(skills));
+      std::move(instructions), std::move(skills),
+      &context->runtime.adaptive_system);
   LogReady(*context);
   return {std::move(context), {}, 0};
 }

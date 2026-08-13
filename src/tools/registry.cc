@@ -10,6 +10,7 @@
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/media.h"
+#include "include/tools/adapt_system.h"
 #include "include/tools/files.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
@@ -20,9 +21,11 @@ namespace uagent {
 
 std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                const std::filesystem::path& workspace,
-                               bool inline_images) {
+                               bool inline_images,
+                               AdaptiveSystemState* adaptive_system) {
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
+  if (adaptive_system) tools.push_back(AdaptSystemTool(*adaptive_system));
   auto path_tool = [&](Tool tool) -> Tool& {
     tool.needs_approval = [workspace](const json& args) {
       return PathApprovalRequired(JsonValue(args, "path", ""), workspace);

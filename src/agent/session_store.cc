@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/adaptive_system.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
@@ -25,9 +26,20 @@ SessionStoreStatus Error(SessionStoreError code, std::string message) {
 }
 
 bool ValidState(const json& value) {
-  return value.is_object() && value.contains("messages") &&
-         value["messages"].is_array() && !value["messages"].empty() &&
-         value.contains("message_kinds") && value["message_kinds"].is_array() &&
+  if (!value.is_object()) return false;
+  if (value.contains("adaptive_system") &&
+      (!value["adaptive_system"].is_string() ||
+       value["adaptive_system"].get_ref<const std::string&>().size() >
+           kAdaptiveSystemBytes)) {
+    return false;
+  }
+  if (value.contains("adaptive_system_revision") &&
+      !value["adaptive_system_revision"].is_number_unsigned()) {
+    return false;
+  }
+  return value.contains("messages") && value["messages"].is_array() &&
+         !value["messages"].empty() && value.contains("message_kinds") &&
+         value["message_kinds"].is_array() &&
          value["message_kinds"].size() == value["messages"].size() &&
          value.contains("archive") && value["archive"].is_array() &&
          value.contains("archive_dropped_segments") &&
@@ -59,7 +71,9 @@ json StateJson(const SessionState& state) {
           {"archive_dropped_segments", state.archive_dropped_segments},
           {"context_tokens", state.context_tokens},
           {"usage", UsageJson(state.usage)},
-          {"route_usage", RouteUsageJson(state.route_usage)}};
+          {"route_usage", RouteUsageJson(state.route_usage)},
+          {"adaptive_system", state.adaptive_system},
+          {"adaptive_system_revision", state.adaptive_system_revision}};
 }
 
 }  // namespace
@@ -161,6 +175,9 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   record.state.usage = UsageFromJson(state["usage"]);
   record.state.route_usage =
       RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
+  record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
+  record.state.adaptive_system_revision =
+      JsonValue(state, "adaptive_system_revision", uint64_t{0});
   return {{}, std::move(record)};
 }
 

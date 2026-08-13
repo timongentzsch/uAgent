@@ -58,7 +58,9 @@ separate sanitized processes. One `ProcessSupervisor` owns commands, tasks,
 and detached services under activity IDs. `activity_output` snapshots a bounded
 log without changing ownership. A task runs in the foreground when its result is
 required for the next step, or in the background when useful parent work can
-continue. Background results are delivered automatically on exit;
+continue. An exact live detached command and working-directory match returns
+the existing activity rather than spawning a second service. Background
+results are delivered automatically on exit;
 `activity_wait` is an optional join for blocked work, and `activity_stop`
 terminates the complete process group. An optional output wait watches for new
 bytes, exit, or a readiness marker instead of repeated polling. Results arrive
@@ -99,6 +101,17 @@ window. At projected 85% context pressure, including pending input and schemas,
 one tool-free model call creates a bounded summary. History changes only after that
 summary passes validation. Automatic pre-turn and at-most-once mid-turn
 compaction use the same path as `/compact`.
+
+When enabled, `adapt_system` owns one separately persisted free-form directive.
+The tool may replace or clear it at any step; the agent then reconstructs
+message zero from the immutable core plus the latest revision before the next
+request. Complete replacement avoids accumulating stale prompt fragments.
+The model-facing contract treats revision as an exceptional response to a
+concrete observation and requires the reason to identify the corresponding
+strategy delta, discouraging an automatic generic rewrite at turn start.
+Host code continues to own permissions, approvals, capabilities, and limits.
+Debug telemetry records revisions and forces a full request snapshot after an
+in-place system-message change.
 
 Active messages and the removed-trace archive remain separate. Model-authored
 summary and memory text is evidence, never user authority. Native, Codex, and

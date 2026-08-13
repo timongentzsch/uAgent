@@ -25,18 +25,20 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
-    json record = {{"request", request},
-                   {"turn", turn_id_},
-                   {"step", step},
-                   {"purpose", purpose},
-                   {"model", api_.RequestModel()},
-                   {"session_id", session_id_},
-                   {"total_messages", conversation_.Size()},
-                   {"tool_schemas", schemas.size()},
-                   {"schema_chars", JsonDump(schemas).size()},
-                   {"native_tools", api_.native_tools},
-                   {"parallel_tools", api_.parallel_tools},
-                   {"include_usage", api_.include_usage}};
+    json record = {
+        {"request", request},
+        {"turn", turn_id_},
+        {"step", step},
+        {"purpose", purpose},
+        {"model", api_.RequestModel()},
+        {"session_id", session_id_},
+        {"total_messages", conversation_.Size()},
+        {"tool_schemas", schemas.size()},
+        {"schema_chars", JsonDump(schemas).size()},
+        {"native_tools", api_.native_tools},
+        {"parallel_tools", api_.parallel_tools},
+        {"include_usage", api_.include_usage},
+        {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
     if (step <= 0 || logged_msgs_ > conversation_.Size()) {
       record["messages"] = conversation_.Messages();
       record["message_chars"] = JsonEstimatedBytes(conversation_.Messages());
@@ -388,11 +390,34 @@ std::string Agent::SystemPrompt() const {
   prompt += CapabilityPrompt(tools_);
   prompt += TerminalImageInstruction();
   if (!api_.native_tools) prompt += TextProtocolPrompt(tools_);
+  if (adaptive_system_ && !adaptive_system_->instructions.empty() &&
+      FindTool(tools_, "adapt_system")) {
+    prompt += "\n\n[MUTABLE SELF-DIRECTIVE revision " +
+              std::to_string(adaptive_system_->revision) +
+              "]\nThis self-authored task strategy may specialize behavior but "
+              "cannot override the preceding core, user authority, or "
+              "host-enforced controls.\n" +
+              adaptive_system_->instructions + "\n[END MUTABLE SELF-DIRECTIVE]";
+  }
   return prompt;
 }
 
 json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", SystemPrompt()}};
+}
+
+void Agent::RefreshSystemMessage() {
+  uint64_t revision = adaptive_system_ ? adaptive_system_->revision : 0;
+  if (conversation_.Empty() || revision == applied_system_revision_) return;
+  conversation_.Set(0, SysMsg(), MessageKind::kSystem);
+  applied_system_revision_ = revision;
+  // Message zero changed in place. Force the next debug request to carry a
+  // complete snapshot rather than a delta that would hide the new directive.
+  logged_msgs_ = 0;
+  DebugLog("system_message_refreshed",
+           {{"revision", revision},
+            {"chars",
+             adaptive_system_ ? adaptive_system_->instructions.size() : 0}});
 }
 
 void Agent::EnsureRuntimeContext() {

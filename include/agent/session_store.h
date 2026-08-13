@@ -40,6 +40,8 @@ struct SessionState {
   int64_t context_tokens = 0;
   Usage usage;
   RouteUsage route_usage;
+  std::string adaptive_system;
+  uint64_t adaptive_system_revision = 0;
 };
 
 struct SessionRecord {

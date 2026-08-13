@@ -21,6 +21,11 @@ struct CollectedLog {
   std::optional<ToolArtifact> artifact;
 };
 
+struct DetachedActivity {
+  pid_t pid;
+  std::string log;
+};
+
 void BgTrackSignal(pid_t pid, bool add);
 void KillProcess(pid_t pid, int* status = nullptr);
 std::string FmtExit(int status, bool show_ok);
@@ -34,6 +39,8 @@ int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);
 std::vector<json> DetachedRecords();
+std::optional<DetachedActivity> FindRunningDetachedActivity(
+    const std::string& command);
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                               const std::string& command);
 ToolResult ToolActivityList(const ProcessSupervisor& supervisor);

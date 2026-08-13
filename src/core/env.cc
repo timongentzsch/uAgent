@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -68,7 +69,7 @@ int64_t ToolTracePruneMinChars() {
 int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 85); }
 
 int64_t AutoCompactTokens() {
-  return EnvBounded("UAGENT_AUTO_COMPACT_TOKENS", 128 * 1024, 0);
+  return EnvBounded("UAGENT_AUTO_COMPACT_TOKENS", 0, 0);
 }
 
 int64_t ToolConcurrency() {
@@ -94,6 +95,10 @@ std::string TaskModel() { return EnvStr("UAGENT_TASK_MODEL"); }
 int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", 16000); }
 
 bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
+
+bool AdaptiveSystemEnabled() {
+  return EnvStr("UAGENT_ADAPT_SYSTEM", "0") != "0";
+}
 
 int64_t ReadFileLines() { return EnvLong("UAGENT_READ_FILE_LINES", 1000); }
 
@@ -214,6 +219,110 @@ int64_t TerminalRecordDays() {
   return EnvBounded("UAGENT_TERMINAL_DAYS", 7, 0);
 }
 
+namespace {
+
+constexpr int64_t kAnyMin = std::numeric_limits<int64_t>::min();
+constexpr int64_t kAnyMax = std::numeric_limits<int64_t>::max();
+
+struct LongOption {
+  const char* env;
+  const char* name;
+  int64_t RuntimeConfig::* field;
+  int64_t minimum;
+  int64_t maximum;
+};
+struct StringOption {
+  const char* env;
+  const char* name;
+  std::string RuntimeConfig::* field;
+  const char* default_value;
+};
+struct BoolOption {
+  const char* env;
+  const char* name;
+  bool RuntimeConfig::* field;
+  bool default_value;
+};
+
+constexpr LongOption kLongOptions[] = {
+    {"UAGENT_FIRST_EVENT_TIMEOUT", "first_event_timeout_s",
+     &RuntimeConfig::first_event_timeout_s, kAnyMin, kAnyMax},
+    {"UAGENT_STREAM_IDLE_TIMEOUT", "stream_idle_timeout_s",
+     &RuntimeConfig::stream_idle_timeout_s, kAnyMin, kAnyMax},
+    {"UAGENT_REQUEST_TIMEOUT", "request_timeout_s",
+     &RuntimeConfig::request_timeout_s, kAnyMin, kAnyMax},
+    {"UAGENT_REQUEST_BYTES", "request_bytes", &RuntimeConfig::request_bytes,
+     1024, kAnyMax},
+    {"UAGENT_RESPONSE_BYTES", "response_bytes", &RuntimeConfig::response_bytes,
+     kAnyMin, kAnyMax},
+    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 1, kAnyMax},
+    {"UAGENT_MAX_TOOL_CALLS", "max_tool_calls", &RuntimeConfig::max_tool_calls,
+     0, kAnyMax},
+    {"UAGENT_MAX_TURN_SECONDS", "max_turn_seconds",
+     &RuntimeConfig::max_turn_seconds, 1, kAnyMax},
+    {"UAGENT_TOOL_TIMEOUT", "tool_timeout_s", &RuntimeConfig::tool_timeout_s, 0,
+     kAnyMax},
+    {"UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s",
+     &RuntimeConfig::web_search_timeout_s, 1, kAnyMax},
+    {"UAGENT_WEB_SEARCH_MAX_TOKENS", "web_search_max_tokens",
+     &RuntimeConfig::web_search_max_tokens, 128, kAnyMax},
+    {"UAGENT_WEB_SEARCH_CALLS", "web_search_calls",
+     &RuntimeConfig::web_search_calls, 1, kAnyMax},
+    {"UAGENT_WEB_SEARCH_MAX_RESULTS", "web_search_max_results",
+     &RuntimeConfig::web_search_max_results, 1, 25},
+    {"UAGENT_WEB_SEARCH_MAX_USES", "web_search_max_uses",
+     &RuntimeConfig::web_search_max_uses, 1, 30},
+    {"UAGENT_MCP_TIMEOUT", "mcp_timeout_s", &RuntimeConfig::mcp_timeout_s, 1,
+     kAnyMax},
+    {"UAGENT_MCP_SERVERS", "mcp_servers", &RuntimeConfig::mcp_servers, 1,
+     kMcpMax},
+    {"UAGENT_MCP_PAGES", "mcp_pages", &RuntimeConfig::mcp_pages, 1, kAnyMax},
+    {"UAGENT_MCP_TOOLS", "mcp_tools", &RuntimeConfig::mcp_tools, 1, kAnyMax},
+    {"UAGENT_MCP_CONFIG_BYTES", "mcp_config_bytes",
+     &RuntimeConfig::mcp_config_bytes, 1024, kAnyMax},
+    {"UAGENT_MCP_RESPONSE_BYTES", "mcp_response_bytes",
+     &RuntimeConfig::mcp_response_bytes, 1024, kAnyMax},
+    {"UAGENT_MCP_SCHEMA_BYTES", "mcp_schema_bytes",
+     &RuntimeConfig::mcp_schema_bytes, 1024, kAnyMax},
+    {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes,
+     1024, kAnyMax},
+    {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
+     &RuntimeConfig::project_doc_bytes, 0, kAnyMax},
+    {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",
+     &RuntimeConfig::session_archive_bytes, 0, kAnyMax},
+};
+constexpr StringOption kStringOptions[] = {
+    {"UAGENT_OPENROUTER_PROVIDER", "openrouter_provider",
+     &RuntimeConfig::openrouter_provider, ""},
+    {"UAGENT_OPENROUTER_VARIANT", "openrouter_variant",
+     &RuntimeConfig::openrouter_variant, ""},
+    {"UAGENT_WEB_SEARCH_BACKEND", "web_search_backend",
+     &RuntimeConfig::web_search_backend, "auto"},
+    {"UAGENT_WEB_SEARCH_URL", "web_search_url", &RuntimeConfig::web_search_url,
+     ""},
+    {"UAGENT_WEB_SEARCH_EFFORT", "web_search_effort",
+     &RuntimeConfig::web_search_effort, ""},
+    {"UAGENT_WEB_SEARCH_MODEL", "web_search_model",
+     &RuntimeConfig::web_search_model, ""},
+    {"UAGENT_WEB_SEARCH_ENGINE", "web_search_engine",
+     &RuntimeConfig::web_search_engine, "auto"},
+    {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
+     &RuntimeConfig::web_search_context_size, ""},
+    {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, ""},
+    {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, ""},
+};
+constexpr BoolOption kBoolOptions[] = {
+    {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
+     &RuntimeConfig::openrouter_fallbacks, true},
+    {"UAGENT_WEB_SEARCH_SERVER", "web_search_server",
+     &RuntimeConfig::web_search_server, true},
+    {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true},
+    {"UAGENT_MEMORY_GENERATE", "memory_generate",
+     &RuntimeConfig::memory_generate, true},
+};
+
+}  // namespace
+
 RuntimeConfig RuntimeConfig::FromEnvironment() {
   RuntimeConfig c;
   for (const LongOption& option : kLongOptions) {
@@ -228,7 +337,7 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
     c.*option.field =
         EnvStr(option.env, option.default_value ? "1" : "0") != "0";
   }
-  c.max_turn_cost = EnvDouble("UAGENT_MAX_TURN_COST", 1.0);
+  c.max_turn_cost = std::max(0.0, EnvDouble("UAGENT_MAX_TURN_COST", 0));
   c.session_budget = std::max(0.0, EnvDouble("UAGENT_SESSION_BUDGET", 0));
   if (!ValidOpenRouterVariant(c.openrouter_variant)) {
     c.openrouter_variant.clear();

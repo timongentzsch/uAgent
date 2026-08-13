@@ -84,7 +84,7 @@ first semantic stream event.
 | execution | `run`, detached terminals, uv-backed `run_python` |
 | evidence | attachments, terminal images, cited `web_search` |
 | extension | MCP, Playwright CLI skills, native plus Codex/Claude memory |
-| orchestration | parallel tools, bounded `task` routes, activity wait/stop, automatic compaction |
+| orchestration | parallel tools, bounded `task` routes, activity wait/stop, optional mutable system directives, automatic compaction |
 
 Mutating, shell, network, delegation, and MCP calls require approval unless
 `--yolo` is active. Child processes are credential-sanitized. Inputs, outputs,

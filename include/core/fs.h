@@ -13,7 +13,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -26,6 +28,7 @@
 
 #include "include/core/checked.h"
 #include "include/core/env.h"
+#include "include/core/platform.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -73,13 +76,7 @@ inline constexpr const char* kConfigDir = "config";
 
 // Write every byte or report why not; errno is left set for the caller.
 inline bool WriteFully(int fd, const std::string& data) {
-  for (size_t offset = 0; offset < data.size();) {
-    ssize_t written = write(fd, data.data() + offset, data.size() - offset);
-    if (written < 0 && errno == EINTR) continue;
-    if (written <= 0) return false;
-    offset += static_cast<size_t>(written);
-  }
-  return true;
+  return WriteAll(fd, data.data(), data.size());
 }
 
 // mkstemp over a pattern string. `path` always receives the expanded template,

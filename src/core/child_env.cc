@@ -3,7 +3,6 @@
 #include "include/core/child_env.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <iterator>
 #include <string>
@@ -29,39 +28,27 @@ std::vector<std::string> ShellAllowList() {
   const char* configured = getenv("UAGENT_SHELL_ENV_ALLOW");
   if (!configured) return allowed;
   for (std::string entry : SplitPathList(configured, ',')) {
-    size_t begin = 0, end = entry.size();
-    while (begin < end &&
-           std::isspace(static_cast<unsigned char>(entry[begin]))) {
-      ++begin;
-    }
-    while (end > begin &&
-           std::isspace(static_cast<unsigned char>(entry[end - 1]))) {
-      --end;
-    }
-    allowed.push_back(entry.substr(begin, end - begin));
+    entry = Trim(entry);
+    if (!entry.empty()) allowed.push_back(std::move(entry));
   }
   return allowed;
 }
 
 bool SensitiveEnvironmentKey(std::string_view key) {
-  std::string upper(key);
-  std::transform(upper.begin(), upper.end(), upper.begin(),
-                 [](unsigned char value) {
-                   return static_cast<char>(std::toupper(value));
-                 });
-  if (upper == "UAGENT_API_KEY" || upper == "UAGENT_PROVIDERS" ||
-      upper == "UAGENT_SESSION_BUDGET" || upper == "UAGENT_USAGE_FILE" ||
-      upper == "OPENROUTER_API_KEY" || upper == "SSH_AUTH_SOCK" ||
-      upper == "XAUTHORITY") {
+  std::string lower = AsciiLower(std::string(key));
+  if (lower == "uagent_api_key" || lower == "uagent_providers" ||
+      lower == "uagent_session_budget" || lower == "uagent_usage_file" ||
+      lower == "openrouter_api_key" || lower == "ssh_auth_sock" ||
+      lower == "xauthority") {
     return true;
   }
   static constexpr std::string_view kMarkers[] = {
-      "_API_KEY",  "_ACCESS_KEY", "_PRIVATE_KEY",  "_TOKEN",      "_SECRET",
-      "_PASSWORD", "_CREDENTIAL", "AUTHORIZATION", "_AUTH_TOKEN", "_COOKIE",
+      "_api_key",  "_access_key", "_private_key",  "_token",      "_secret",
+      "_password", "_credential", "authorization", "_auth_token", "_cookie",
   };
   return std::any_of(std::begin(kMarkers), std::end(kMarkers),
                      [&](std::string_view marker) {
-                       return upper.find(marker) != std::string::npos;
+                       return lower.find(marker) != std::string::npos;
                      });
 }
 

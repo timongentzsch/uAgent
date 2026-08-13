@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/protocol.h"
@@ -63,7 +64,8 @@ class Agent {
         UsageAccumulator& side_usage, Approver approve,
         ToolRefresher refresh_tools = {},
         ProjectInstructions project_instructions = {},
-        std::vector<Skill> skills = {});
+        std::vector<Skill> skills = {},
+        AdaptiveSystemState* adaptive_system = nullptr);
 
   void Reset();
 
@@ -222,6 +224,7 @@ class Agent {
   bool DegradeAndRetry(const ChatResult& result);
 
   std::string SystemPrompt() const;
+  void RefreshSystemMessage();
 
   // Message 0 is the one place the system shape is defined. Always rebuilt
   // rather than restored, so it tracks the current tools/protocol (see load()).
@@ -267,6 +270,8 @@ class Agent {
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
+  AdaptiveSystemState* adaptive_system_ = nullptr;
+  uint64_t applied_system_revision_ = 0;
   Conversation conversation_;
   mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;

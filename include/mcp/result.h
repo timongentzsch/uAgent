@@ -108,7 +108,8 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp) {
                   r["isError"].get<bool>();
   if (text.empty()) {
     text = is_error ? "error: mcp(" + s.name +
-                          ") returned isError without diagnostic text"
+                          ") returned isError without diagnostic text" +
+                          McpStderrHint(s.name)
                     : "(empty result)";
   }
   if (is_error && !text.starts_with("error")) text = "error: " + text;

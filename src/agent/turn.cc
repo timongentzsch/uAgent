@@ -118,7 +118,8 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                                   std::string& last_call,
                                   int64_t& repeated_calls) {
   if (calls.empty()) return true;
-  if (state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
+  if (max_tool_calls > 0 &&
+      state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
     FailBudget(state, "tool call limit reached (" +
                           std::to_string(max_tool_calls) + ")");
     return false;
@@ -201,6 +202,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   std::string local_time = LocalStamp();
   if (!conversation_.Empty()) {
     conversation_.Set(0, SysMsg(), MessageKind::kSystem);
+    applied_system_revision_ =
+        adaptive_system_ ? adaptive_system_->revision : 0;
   }
   DebugLog("turn_start",
            {{"turn", turn_id_},
@@ -302,6 +305,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   int64_t step = 0;
   for (; step < state.max_steps; ++step) {
     apply_queued_steering();
+    RefreshSystemMessage();
     if (SteeringState().Requested()) {
       state.outcome = "interrupted";
       last_error_ = state.outcome;

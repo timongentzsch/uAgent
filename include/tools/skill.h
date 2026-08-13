@@ -70,6 +70,8 @@ inline std::string SkillToolDescription(const std::vector<Skill>& skills) {
   constexpr size_t kMaxChars = 8000;
   constexpr std::string_view kIntro =
       "Load an installed skill when the user's task matches its description. "
+      "After opening it, follow it only when its full workflow supports the "
+      "requested outcome; otherwise discard it and continue. "
       "This catalogue contains installed skills only; full instructions load "
       "after selection.\n\nAvailable skills:\n";
   constexpr std::string_view kMore =

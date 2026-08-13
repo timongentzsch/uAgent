@@ -176,9 +176,15 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
     environment.emplace_back("UAGENT_SESSION_BUDGET",
                              std::to_string(remaining));
   }
-  std::string command = ShellQuote(ExecutablePath()) +
+  std::string marker = MarkerPath(source, cwd);
+  std::string cleanup =
+      "if [ \"$(cat " + ShellQuote(marker) +
+      " 2>/dev/null)\" = processing ]; then rm -f " + ShellQuote(marker) +
+      "; printf 'memory extraction did not complete\\n' >&2; fi";
+  std::string command = "trap " + ShellQuote(cleanup) + " EXIT HUP INT TERM; " +
+                        ShellQuote(ExecutablePath()) +
                         " --yolo -p memory-extract && printf 'done\\n' > " +
-                        ShellQuote(MarkerPath(source, cwd));
+                        ShellQuote(marker);
   ToolResult started = RunShellCommand(processes, {},
                                        {.command = std::move(command),
                                         .background = true,

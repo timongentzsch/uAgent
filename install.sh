@@ -18,13 +18,25 @@ trap 'rm -rf "$staging"' EXIT HUP INT TERM
 for skill in "$root"/skills/*/; do
   [ -f "$skill/SKILL.md" ] || continue
   name=$(basename "$skill")
-  cp -R "$skill" "$staging/$name"
-  if [ -d "$skills/$name" ]; then
-    rm -rf "$skills/$name"
-    echo "-- Refreshing bundled skill: $skills/$name"
-  else
-    echo "-- Installing bundled skill: $skills/$name"
+  dest="$skills/$name"
+  src="$staging/$name"
+  cp -R "$skill" "$src"
+  if [ ! -e "$dest" ]; then
+    mv "$src" "$dest"
+    echo "-- Installing bundled skill: $dest"
+    continue
   fi
-  mv "$staging/$name" "$skills/$name"
+  backup=$(mktemp -d "${skills}/.replace.XXXXXX")
+  if mv "$dest" "$backup/old" && mv "$src" "$dest"; then
+    rm -rf "$backup"
+    echo "-- Refreshing bundled skill: $dest"
+    continue
+  fi
+  if [ ! -e "$dest" ] && [ -e "$backup/old" ]; then
+    mv "$backup/old" "$dest" || true
+  fi
+  rm -rf "$backup"
+  echo "cannot install bundled skill: $dest" >&2
+  exit 1
 done
 chmod 700 "$HOME/.uagent" "$skills" 2>/dev/null || true

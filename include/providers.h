@@ -99,6 +99,7 @@ bool CanUseRawModel(const Api& api, std::string_view name);
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                         const std::vector<NamedProvider>& providers,
                         const std::string& name);
+int64_t CatalogContextLength(const json& model);
 std::optional<std::vector<ModelInfo>> ParseModels(const json& response);
 std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
                                                   bool abortable = false);

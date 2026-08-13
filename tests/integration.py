@@ -1700,49 +1700,45 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
 
     def run_cleanup_case(name, responder, payload=None, wait_for_request=False):
         case_home, workspace = scenario(name, payload)
-        saw_processing = threading.Event()
-        stop_watcher = threading.Event()
+        trace = root / f"memory-{name}.jsonl"
+        with Server([responder]) as server:
+            env = base_env(case_home, server.url)
+            env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
+            env["UAGENT_REQUEST_TIMEOUT"] = "1"
+            env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
+            env["UAGENT_STREAM_IDLE_TIMEOUT"] = "1"
 
-        def watch_claim():
-            while not stop_watcher.is_set():
-                for marker in markers(case_home):
-                    try:
-                        if marker.read_text(encoding="utf-8").strip() == "processing":
-                            saw_processing.set()
-                    except FileNotFoundError:
-                        pass
-                time.sleep(0.005)
-
-        watcher = threading.Thread(target=watch_claim, daemon=True)
-        watcher.start()
-        try:
-            with Server([responder]) as server:
-                env = base_env(case_home, server.url)
-                env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
-                env["UAGENT_REQUEST_TIMEOUT"] = "1"
-                env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
-                env["UAGENT_STREAM_IDLE_TIMEOUT"] = "1"
-
-                def wait_for_cleanup():
-                    if wait_for_request:
-                        wait_until(lambda: bool(server.requests), f"{name} request did not start")
-                    wait_until(saw_processing.is_set, f"{name} never created a claim")
-                    if name != "terminated":
-                        wait_until(lambda: not markers(case_home), f"{name} claim was not released")
-
-                code, output = run_pty(
-                    workspace,
-                    env,
-                    b"/q\n",
-                    before_payload=wait_for_cleanup,
-                    timeout=12,
+            def completion_logged():
+                return trace.exists() and '"event":"memory_extract_finished"' in trace.read_text(
+                    encoding="utf-8"
                 )
-                assert_true(code == 0, output)
-                wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
-                return server.requests
-        finally:
-            stop_watcher.set()
-            watcher.join(timeout=1)
+
+            def wait_for_cleanup():
+                if wait_for_request:
+                    wait_until(lambda: bool(server.requests), f"{name} request did not start")
+                if name == "terminated":
+                    wait_until(
+                        lambda: any(
+                            marker.read_text(encoding="utf-8").strip() == "processing"
+                            for marker in markers(case_home)
+                        ),
+                        "termination case did not retain its live claim",
+                    )
+                else:
+                    wait_until(completion_logged, f"{name} extractor did not complete")
+                    wait_until(lambda: not markers(case_home), f"{name} claim was not released")
+
+            code, output = run_pty(
+                workspace,
+                env,
+                b"/q\n",
+                args=(f"--debug={trace}",),
+                before_payload=wait_for_cleanup,
+                timeout=12,
+            )
+            assert_true(code == 0, output)
+            wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
+            return server.requests
 
     def fail_request(handler, _):
         write_json_response(handler, {"error": {"message": "extract failed"}}, status=500)

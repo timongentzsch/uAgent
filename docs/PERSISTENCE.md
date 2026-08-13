@@ -18,7 +18,8 @@ model output, tool results, paths, and usage.
 | preferred model | `~/.uagent/config/model-preference.json` |
 
 Session format 3 persists active messages, their structured kinds, the bounded
-archive, usage, and provider session identity. Only the current
+archive, usage, provider session identity, and any active mutable system
+directive and revision. Only the current
 format is accepted: incompatible, incomplete, or corrupt records are reported
 without mutating live state or rewriting the source file. Missing files are a
 normal empty state. Saves validate the complete record, then use a private
@@ -33,6 +34,9 @@ Native project/global files are writable through an explicitly requested
 `memory` action or the single bounded background extractor. Top-level Codex
 memory files under `~/.codex/memories` and the current Claude project files
 under `~/.claude/projects/<project>/memory` are read-only recall sources.
+The extractor marks a source `done` only after a successful run. A failed or
+interrupted child releases its `processing` claim immediately so a later run
+can retry; an untrappable process death still falls back to stale-claim expiry.
 
 Completed process logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the
 private artifact directory instead of entering model context whole. Each is

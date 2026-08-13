@@ -169,6 +169,18 @@ void TestRegistries() {
   std::string research_prompt = CapabilityPrompt(capability_tools);
   CHECK(research_prompt.find("background research") != std::string::npos);
   CHECK(research_prompt.find("source-cited findings") != std::string::npos);
+  capability_tools.push_back(MakeTool(
+      "adapt_system", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  std::string adaptive_prompt = CapabilityPrompt(capability_tools);
+  CHECK(adaptive_prompt.find("mutable portion") != std::string::npos);
+  CHECK(adaptive_prompt.find("exception, not a planning ritual") !=
+        std::string::npos);
+  CHECK(adaptive_prompt.find("concrete task-specific observation") !=
+        std::string::npos);
+  CHECK(adaptive_prompt.find("materially different behavior") !=
+        std::string::npos);
+  CHECK(adaptive_prompt.find("evidence standards") != std::string::npos);
   CHECK(CapabilityPrompt({}).empty());
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
@@ -247,6 +259,10 @@ void TestRegistries() {
     CHECK((*models)[0].efforts.size() == 2);
     CHECK((*models)[0].default_effort == "low");
   }
+  CHECK(CatalogContextLength({{"max_model_len", 8192}}) == 8192);
+  CHECK(CatalogContextLength({{"meta", {{"n_ctx_train", 4096}}}}) == 4096);
+  CHECK(CatalogContextLength(
+            {{"context_length", 2048}, {"max_model_len", 8192}}) == 2048);
 }
 
 void TestOptions() {

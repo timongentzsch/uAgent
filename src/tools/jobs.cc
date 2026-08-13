@@ -27,6 +27,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -39,11 +40,7 @@ bool SignalProcessGroup(pid_t leader, int signal_number) {
 }
 
 pid_t PollProcess(pid_t pid, int* status) {
-  pid_t result;
-  do {
-    result = waitpid(pid, status, WNOHANG);
-  } while (result < 0 && errno == EINTR);
-  return result;
+  return WaitPid(pid, status, WNOHANG);
 }
 
 void ReapLeader(pid_t leader) {
@@ -69,8 +66,7 @@ void BgTrackSignal(pid_t pid, bool add) {
 
 void KillProcess(pid_t pid, int* status) {
   SignalProcessGroup(pid, SIGKILL);
-  while (waitpid(pid, status, 0) < 0 && errno == EINTR) {
-  }
+  WaitPid(pid, status);
 }
 
 // "[exit code N]" / "[killed by signal N]" suffix; "" for a clean exit unless
@@ -255,6 +251,25 @@ std::vector<json> DetachedRecords() {
     return JsonValue(a, "started_at", "") > JsonValue(b, "started_at", "");
   });
   return records;
+}
+
+std::optional<DetachedActivity> FindRunningDetachedActivity(
+    const std::string& command) {
+  std::error_code error;
+  std::filesystem::path cwd = std::filesystem::current_path(error);
+  if (error) return std::nullopt;
+  cwd = CanonicalAccessPath(cwd.string());
+  for (const json& record : DetachedRecords()) {
+    std::string recorded_cwd = JsonValue(record, "cwd", "");
+    if (!JsonValue(record, "_alive", false) || recorded_cwd.empty() ||
+        JsonValue(record, "command", "") != command ||
+        CanonicalAccessPath(recorded_cwd) != cwd) {
+      continue;
+    }
+    return DetachedActivity{JsonValue(record, "pid", pid_t{-1}),
+                            JsonValue(record, "log", "")};
+  }
+  return std::nullopt;
 }
 
 namespace {

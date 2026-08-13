@@ -15,7 +15,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
              UsageAccumulator& side_usage, Approver approve,
              ToolRefresher refresh_tools,
              ProjectInstructions project_instructions,
-             std::vector<Skill> skills)
+             std::vector<Skill> skills, AdaptiveSystemState* adaptive_system)
     : api_(api),
       tools_(tools),
       processes_(processes),
@@ -24,7 +24,8 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
       approve_(std::move(approve)),
       refresh_tools_(std::move(refresh_tools)),
       project_instructions_(std::move(project_instructions)),
-      skills_(std::move(skills)) {
+      skills_(std::move(skills)),
+      adaptive_system_(adaptive_system) {
   schema_chars_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();
@@ -47,6 +48,8 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
 void Agent::Reset() {
   DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                              {"prior_usage", UsageJson(session_usage_)}});
+  if (adaptive_system_) adaptive_system_->Reset();
+  applied_system_revision_ = 0;
   conversation_.Reset(BaselineMessages(), BaselineKinds());
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
@@ -117,7 +120,9 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                   conversation_.DroppedSegments(),
                   ContextUsed(),
                   session_usage_,
-                  route_usage_};
+                  route_usage_,
+                  adaptive_system_ ? adaptive_system_->instructions : "",
+                  adaptive_system_ ? adaptive_system_->revision : 0};
   SessionStoreStatus status = SessionStore::Save(path, record);
   if (!status.Ok()) {
     error = std::move(status.message);
@@ -141,7 +146,12 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     error = "session conversation state is invalid";
     return false;
   }
+  if (adaptive_system_) {
+    adaptive_system_->instructions = std::move(record.state.adaptive_system);
+    adaptive_system_->revision = record.state.adaptive_system_revision;
+  }
   RefreshBaseline();
+  applied_system_revision_ = adaptive_system_ ? adaptive_system_->revision : 0;
   session_usage_ = record.state.usage;
   api_.session_cost = session_usage_.cost;
   route_usage_ = std::move(record.state.route_usage);
@@ -277,7 +287,9 @@ void Agent::MergeSessionUsage(const Usage& usage) {
 bool Agent::DrainBackground() {
   bool changed = false;
   // Extraction is maintenance, not a new conversation event.
-  (void)BgTakeCompleted(processes_, "memory");
+  for (std::string& note : BgTakeCompleted(processes_, "memory")) {
+    DebugLog("memory_extract_finished", {{"result", note}});
+  }
   for (auto& note : BgTakeCompleted(processes_)) {
     size_t running = processes_.Count();
     printf("%s· bg job finished %s · %zu still running%s\n", DIM(),

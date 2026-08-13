@@ -6,8 +6,6 @@ if(NOT UNIX)
   message(FATAL_ERROR "uagent currently requires a POSIX platform")
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -19,6 +17,7 @@ find_package(Threads REQUIRED)
 add_library(uagent_options INTERFACE)
 target_include_directories(uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
+target_compile_features(uagent_options INTERFACE cxx_std_20)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic)
@@ -32,6 +31,16 @@ option(UAGENT_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(UAGENT_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 option(UAGENT_ENABLE_COVERAGE "Enable coverage instrumentation" OFF)
 option(UAGENT_BUILD_FUZZERS "Build libFuzzer targets" OFF)
+if(UAGENT_ENABLE_TSAN AND (UAGENT_ENABLE_ASAN OR UAGENT_ENABLE_UBSAN))
+  message(FATAL_ERROR "ThreadSanitizer cannot be combined with ASan or UBSan")
+endif()
+if(UAGENT_ENABLE_TSAN AND UAGENT_BUILD_FUZZERS)
+  message(FATAL_ERROR "ThreadSanitizer cannot be combined with fuzzing")
+endif()
+if((UAGENT_ENABLE_ASAN OR UAGENT_ENABLE_UBSAN OR UAGENT_ENABLE_TSAN) AND
+   NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  message(FATAL_ERROR "Sanitizers require Clang or GCC")
+endif()
 if(UAGENT_ENABLE_ASAN)
   target_compile_options(uagent_options INTERFACE -fsanitize=address -fno-omit-frame-pointer)
   target_link_options(uagent_options INTERFACE -fsanitize=address)
@@ -79,8 +88,9 @@ add_library(
   src/core/steering.cc
   src/core/strings.cc
   src/media/attachments.cc
-  src/providers.cc
-  src/tools/files.cc
+   src/providers.cc
+   src/tools/adapt_system.cc
+   src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc

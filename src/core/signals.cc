@@ -2,14 +2,13 @@
 
 #include "include/core/signals.h"
 
-#include <sys/wait.h>
 #include <unistd.h>
 
-#include <cerrno>
 #include <mutex>
 #include <string>
 #include <utility>
 
+#include "include/core/platform.h"
 #include "include/core/term.h"
 
 namespace uagent {
@@ -66,8 +65,7 @@ void SigintHandler(int signal_number) {
     pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
     kill(-pid, SIGKILL);
     kill(pid, SIGKILL);
-    while (waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
-    }
+    WaitPid(pid, nullptr);
   }
   for (int index = 0; index < kMcpMax; ++index) {
     if (g_mcp_pids[index] <= 0) continue;

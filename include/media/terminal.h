@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cerrno>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -17,6 +16,7 @@
 
 #include "include/core/child_env.h"
 #include "include/core/env.h"
+#include "include/core/platform.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/tools/tool.h"
@@ -141,9 +141,7 @@ inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {
     return false;
   }
   int status = 0;
-  while (waitpid(pid, &status, 0) < 0) {
-    if (errno != EINTR) return false;
-  }
+  if (WaitPid(pid, &status) < 0) return false;
   return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 

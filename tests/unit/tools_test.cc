@@ -6,12 +6,59 @@
 #include <vector>
 
 #include "include/api/stream.h"
+#include "include/tools/adapt_system.h"
 #include "include/tools/web_search.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
 void TestToolExecutionPolicy() {
+  AdaptiveSystemState adaptive;
+  Tool adapt = AdaptSystemTool(adaptive);
+  CHECK(adapt.capabilities == 0);
+  CHECK(adapt.description.find("exception, not a planning ritual") !=
+        std::string::npos);
+  CHECK(adapt.description.find("triggering observation") != std::string::npos);
+  CHECK(adapt.parameters["properties"]["reason"]["description"]
+            .get<std::string>()
+            .find("material strategy delta") != std::string::npos);
+  CHECK(!ToolMutates(adapt, {{"instructions", "x"}, {"reason", "phase"}}));
+  CHECK(adapt.max_calls_per_turn < 0);
+  CHECK(
+      InvalidToolArgument(
+          adapt, {{"instructions", std::string(kAdaptiveSystemBytes + 1, 'x')},
+                  {"reason", "too long"}})
+          .find("maximum length") != std::string::npos);
+  ToolContext adaptive_context{std::chrono::steady_clock::now() +
+                               std::chrono::seconds(30)};
+  ToolResult adapted =
+      adapt.run({{"instructions", "  Inspect the full lifecycle.  "},
+                 {"reason", "The issue is cross-cutting."}},
+                adaptive_context);
+  CHECK(adapted.Ok());
+  CHECK(adaptive.instructions == "Inspect the full lifecycle.");
+  CHECK(adaptive.revision == 1);
+  CHECK(!adapt
+             .run({{"instructions", "Inspect the full lifecycle."},
+                   {"reason", "same"}},
+                  adaptive_context)
+             .Ok());
+  CHECK(adapt
+            .run({{"instructions", "Validate the narrowed invariant."},
+                  {"reason", "Evidence localized the failure."}},
+                 adaptive_context)
+            .Ok());
+  CHECK(adaptive.revision == 2);
+  CHECK(adapt
+            .run({{"instructions", ""}, {"reason", "Specialization done."}},
+                 adaptive_context)
+            .Ok());
+  CHECK(adaptive.instructions.empty());
+  CHECK(adaptive.revision == 3);
+  CHECK(
+      !adapt.run({{"instructions", "new"}, {"reason", "   "}}, adaptive_context)
+           .Ok());
+
   Tool tool;
   tool.name = "probe";
   tool.parameters = {{"type", "object"}, {"properties", json::object()}};

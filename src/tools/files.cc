@@ -21,6 +21,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/path_policy.h"
 

@@ -158,6 +158,8 @@ void TestSkillDiscovery() {
   skills = LoadSkills(workspace);
   Tool tool = SkillTool(skills);
   CHECK(tool.name == "skill");
+  CHECK(tool.description.find("full workflow supports the requested outcome") !=
+        std::string::npos);
   CHECK(!ToolParameters(tool).at("properties").contains("timeout"));
   CHECK(!tool.mutating);
   CHECK(!tool.parameters["properties"]["name"].contains("enum"));

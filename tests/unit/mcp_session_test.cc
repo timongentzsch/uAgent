@@ -166,7 +166,8 @@ void TestMcpContractHelpers() {
       server, {{"result", {{"content", json::array()}, {"isError", true}}}});
   CHECK(!empty_remote_error.Ok());
   CHECK(empty_remote_error.output ==
-        "error: mcp(probe) returned isError without diagnostic text");
+        "error: mcp(probe) returned isError without diagnostic text" +
+            McpStderrHint(server.name));
   if (inherited_home) {
     setenv("HOME", prior_home.c_str(), 1);
   } else {
@@ -190,8 +191,11 @@ void TestWorkspaceScopedSession() {
   ProcessSupervisor processes;
   UsageAccumulator usage;
   std::vector<Tool> tools;
-  Agent agent(api, tools, processes, usage,
-              [](const Tool&, const json&) { return false; });
+  AdaptiveSystemState adaptive_system;
+  Agent agent(
+      api, tools, processes, usage,
+      [](const Tool&, const json&) { return false; }, {}, {}, {},
+      &adaptive_system);
   SetImageInputAvailable(false);
   agent.RouteChanged();
   CHECK(ImageInputAvailable());
@@ -200,6 +204,8 @@ void TestWorkspaceScopedSession() {
   CHECK(ImageInputAvailable());
   std::string session_id = agent.SessionId();
   std::string error;
+  adaptive_system.instructions = "Persist this task strategy.";
+  adaptive_system.revision = 4;
   CHECK(agent.Save(session.string(), error));
   {
     std::ifstream saved(session);
@@ -218,6 +224,9 @@ void TestWorkspaceScopedSession() {
           std::string::npos);
     CHECK(payload.value("archive_dropped_segments", int64_t{-1}) == 0);
     CHECK(payload.value("context_tokens", int64_t{-1}) == agent.ContextUsed());
+    CHECK(payload.value("adaptive_system", "") ==
+          "Persist this task strategy.");
+    CHECK(payload.value("adaptive_system_revision", uint64_t{0}) == 4);
     payload["context_tokens"] = 1'900'000;
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
@@ -226,7 +235,10 @@ void TestWorkspaceScopedSession() {
   struct stat st{};
   CHECK(stat(session.c_str(), &st) == 0);
   CHECK((st.st_mode & 0777) == 0600);
+  adaptive_system.Reset();
   CHECK(agent.Load(session.string(), CanonicalCwd(), error));
+  CHECK(adaptive_system.instructions == "Persist this task strategy.");
+  CHECK(adaptive_system.revision == 4);
   CHECK(agent.SessionId() == session_id);
   CHECK(agent.ContextUsed() > 0);
   CHECK(agent.ContextUsed() < 1'900'000);

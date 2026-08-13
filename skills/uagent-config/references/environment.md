@@ -29,9 +29,10 @@ Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 | `UAGENT_OPENROUTER_VARIANT` | empty | routing mode: `nitro`, `floor`, or `exacto` |
 | `UAGENT_APPROVAL` | prompt | set `yolo` for non-interactive tool approval |
 | `UAGENT_SESSION_BUDGET` | `0` | reported-cost session limit in USD; `0` disables |
-| `UAGENT_MAX_TURN_COST` | `1` | reported-cost limit per turn in USD |
+| `UAGENT_MAX_TURN_COST` | `0` | reported-cost limit per turn in USD; `0` disables |
 | `UAGENT_MAX_TOKENS` | `16000` | maximum response tokens |
 | `UAGENT_STEERING` | `1` | enable Escape foreground interruption |
+| `UAGENT_ADAPT_SYSTEM` | `0` | expose experimental free-form mutable system-directive tool |
 | `UAGENT_MARKDOWN` | `1` | render terminal Markdown |
 | `UAGENT_DEBUG_LOG` | empty | default debug JSONL path |
 | `UAGENT_USAGE_FILE` | internal | append-only usage ledger used by supervised children |
@@ -52,11 +53,11 @@ UAGENT_MODEL=local/fast
 | `UAGENT_REQUEST_TIMEOUT` | 600 | complete request seconds |
 | `UAGENT_MAX_TURN_SECONDS` | 3600 | complete turn seconds |
 | `UAGENT_MAX_STEPS` | 100 | model rounds per turn |
-| `UAGENT_MAX_TOOL_CALLS` | 100 | tool calls per turn |
+| `UAGENT_MAX_TOOL_CALLS` | 0 | tool calls per turn; 0 disables |
 | `UAGENT_REQUEST_BYTES` | 67108864 | maximum serialized request |
 | `UAGENT_RESPONSE_BYTES` | 33554432 | maximum response |
 | `UAGENT_AUTO_COMPACT_PCT` | 85 | context-window compaction threshold |
-| `UAGENT_AUTO_COMPACT_TOKENS` | 131072 | absolute soft compaction ceiling; 0 disables |
+| `UAGENT_AUTO_COMPACT_TOKENS` | 0 | optional absolute soft compaction ceiling; 0 disables |
 | `UAGENT_PROJECT_DOC_BYTES` | 32768 | startup instruction budget |
 | `UAGENT_SESSION_ARCHIVE_BYTES` | 16777216 | removed-trace archive bound |
 

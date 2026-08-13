@@ -2,6 +2,7 @@
 
 #include "include/tools/shell.h"
 
+#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -21,6 +22,8 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/platform.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/tools/jobs.h"
@@ -92,6 +95,16 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         ToolErrorCode::kInvalidArguments,
         "error: shell must be a non-empty executable name or path")};
   }
+  if (detach) {
+    if (std::optional<DetachedActivity> existing =
+            FindRunningDetachedActivity(cmd)) {
+      return {ToolSuccess("[detached] pid " + std::to_string(existing->pid) +
+                          ", log: " + existing->log +
+                          " — reused existing live activity id " +
+                          std::to_string(existing->pid) +
+                          "; verify readiness with activity output")};
+    }
+  }
   int64_t max_jobs = MaxBackgroundJobs();
   auto job_limit_error = [max_jobs] {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
@@ -158,7 +171,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   bool cancelled = false;
   auto deadline = DeadlineAfter(window);
   while (std::chrono::steady_clock::now() < deadline) {
-    if (waitpid(pid, &status, WNOHANG) == pid) {
+    if (WaitPid(pid, &status, WNOHANG) == pid) {
       exited = true;
       break;
     }

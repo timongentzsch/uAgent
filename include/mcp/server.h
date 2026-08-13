@@ -25,6 +25,7 @@
 #include "include/core/child_env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -79,7 +80,7 @@ struct McpServer {
   bool Reaped() {
     if (pid <= 0) return true;
     int status = 0;
-    pid_t result = waitpid(pid, &status, WNOHANG);
+    pid_t result = WaitPid(pid, &status, WNOHANG);
     if (result != pid && !(result < 0 && errno == ECHILD)) return false;
     TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
     pid = -1;
@@ -89,8 +90,7 @@ struct McpServer {
   void ReapBlocking() {
     if (pid <= 0) return;
     int status = 0;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-    }
+    WaitPid(pid, &status);
     TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
     pid = -1;
   }

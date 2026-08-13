@@ -490,6 +490,79 @@ def test_plain_turn(root, home):
         assert_true(result.stdout.strip() == "ok", result.stdout)
 
 
+def test_adaptive_system_revises_replaces_and_clears(root, home):
+    def initial(_, body):
+        assert_true("adapt_system" in function_names(body), function_names(body))
+        schema = function_tool(body, "adapt_system")["parameters"]
+        assert_true(set(schema["required"]) == {"instructions", "reason"}, schema)
+        assert_true("MUTABLE SELF-DIRECTIVE" not in body["messages"][0]["content"], body)
+        return tool_call(
+            "adapt_system",
+            {
+                "instructions": "Inspect broadly and challenge the initial hypothesis.",
+                "reason": "The task is still ambiguous.",
+            },
+            call_id="adapt-1",
+        )
+
+    def replace(_, body):
+        system = body["messages"][0]["content"]
+        assert_true("MUTABLE SELF-DIRECTIVE revision 1" in system, system)
+        assert_true("Inspect broadly and challenge" in system, system)
+        return tool_call(
+            "adapt_system",
+            {
+                "instructions": "Stop broad exploration and validate the localized invariant.",
+                "reason": "New evidence localized the issue.",
+            },
+            call_id="adapt-2",
+        )
+
+    def clear(_, body):
+        system = body["messages"][0]["content"]
+        assert_true("MUTABLE SELF-DIRECTIVE revision 2" in system, system)
+        assert_true("validate the localized invariant" in system, system)
+        assert_true("Inspect broadly and challenge" not in system, system)
+        return tool_call(
+            "adapt_system",
+            {"instructions": "", "reason": "Specialized execution is complete."},
+            call_id="adapt-3",
+        )
+
+    def finish(_, body):
+        system = body["messages"][0]["content"]
+        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
+        results = tool_results(body["messages"])
+        assert_true(any("revision 3 cleared" in result for result in results), results)
+        return event({"content": "adaptive-system-ok"})
+
+    with Server([initial, replace, clear, finish]) as server:
+        trace = root / "adaptive-system.jsonl"
+        env = base_env(home, server.url)
+        env["UAGENT_ADAPT_SYSTEM"] = "1"
+        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "adapt as needed")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("adaptive-system-ok"), result.stdout)
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        revisions = [
+            record["data"]["revision"]
+            for record in records
+            if record.get("event") == "system_adapted"
+        ]
+        assert_true(revisions == [1, 2, 3], revisions)
+        snapshots = [record["data"] for record in records if record.get("event") == "model_request"]
+        assert_true([item["system_revision"] for item in snapshots] == [0, 1, 2, 3], snapshots)
+
+    def static_reply(_, body):
+        assert_true("adapt_system" not in function_names(body), function_names(body))
+        return event({"content": "static-system-ok"})
+
+    with Server([static_reply]) as server:
+        result = run(root, base_env(home, server.url), "-p", "work normally")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "static-system-ok", result.stdout)
+
+
 def test_stream_error_is_not_an_empty_response(root, home):
     with Server([{"error": {"message": "upstream overloaded", "type": "server_error"}}]) as server:
         result = run(root, base_env(home, server.url), "-p", "reply")
@@ -1231,6 +1304,20 @@ def test_session_budget_stops_before_the_next_call(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_turn_cost_is_unlimited_by_default(root, home):
+    expensive = tool_call("list_dir", {"path": "."})
+    expensive["usage"] = {
+        "prompt_tokens": 10,
+        "completion_tokens": 2,
+        "cost": 1.50,
+    }
+    with Server([expensive, event({"content": "cost-unlimited-ok"})]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("cost-unlimited-ok"), result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+
+
 def test_tool_policy_scopes_schema_and_runtime(root, home):
     marker = root / "tool-policy-marker"
 
@@ -1540,6 +1627,155 @@ def test_memory_background_extractor_is_bounded(root, home):
             before_payload=lambda: time.sleep(0.2),
         )
         assert_true(code == 0 and len(server.requests) == 2, output)
+
+
+def test_memory_background_extractor_releases_failed_claims(root, _home):
+    def scenario(name, payload=None):
+        case_home = root / f"memory-{name}-home"
+        workspace = root / f"memory-{name}-workspace"
+        workspace.mkdir()
+        history = case_home / ".uagent" / "history"
+        history.mkdir(parents=True)
+        session = history / "extract.json"
+        header = {
+            "format": 3,
+            "cwd": str(workspace.resolve()),
+            "model": "test",
+            "session_id": f"memory-{name}",
+            "turns": 2,
+            "title": name,
+        }
+        valid_payload = {
+            "messages": [
+                {"role": "user", "content": f"remember-{name}"},
+                {"role": "assistant", "content": "understood"},
+            ],
+            "message_kinds": ["user", "assistant"],
+            "archive": [],
+            "archive_dropped_segments": 0,
+            "context_tokens": 0,
+            "usage": {},
+            "route_usage": {},
+        }
+        session.write_text(
+            json.dumps(header) + "\n" + json.dumps(payload or valid_payload),
+            encoding="utf-8",
+        )
+        return case_home, workspace
+
+    def markers(case_home):
+        return list((case_home / ".uagent/memory/.processed").rglob("*.state"))
+
+    def wait_until(predicate, message, timeout=8):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(0.02)
+        raise AssertionError(message)
+
+    no_write_home, no_write_workspace = scenario("no-write")
+    with Server([event({"content": "Nothing durable to save."})]) as server:
+        env = base_env(no_write_home, server.url)
+        env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
+
+        def wait_for_done():
+            wait_until(
+                lambda: any(
+                    marker.read_text(encoding="utf-8").strip() == "done"
+                    for marker in markers(no_write_home)
+                ),
+                "successful no-write extraction did not finish",
+            )
+
+        code, output = run_pty(
+            no_write_workspace,
+            env,
+            b"/q\n",
+            before_payload=wait_for_done,
+        )
+        assert_true(code == 0, output)
+        assert_true(len(server.requests) == 1, server.requests)
+        assert_true(not list((no_write_home / ".uagent/memory").rglob("*.md")), no_write_home)
+
+    def run_cleanup_case(name, responder, payload=None, wait_for_request=False):
+        case_home, workspace = scenario(name, payload)
+        saw_processing = threading.Event()
+        stop_watcher = threading.Event()
+
+        def watch_claim():
+            while not stop_watcher.is_set():
+                for marker in markers(case_home):
+                    try:
+                        if marker.read_text(encoding="utf-8").strip() == "processing":
+                            saw_processing.set()
+                    except FileNotFoundError:
+                        pass
+                time.sleep(0.005)
+
+        watcher = threading.Thread(target=watch_claim, daemon=True)
+        watcher.start()
+        try:
+            with Server([responder]) as server:
+                env = base_env(case_home, server.url)
+                env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
+                env["UAGENT_REQUEST_TIMEOUT"] = "1"
+                env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
+                env["UAGENT_STREAM_IDLE_TIMEOUT"] = "1"
+
+                def wait_for_cleanup():
+                    if wait_for_request:
+                        wait_until(lambda: bool(server.requests), f"{name} request did not start")
+                    wait_until(saw_processing.is_set, f"{name} never created a claim")
+                    if name != "terminated":
+                        wait_until(lambda: not markers(case_home), f"{name} claim was not released")
+
+                code, output = run_pty(
+                    workspace,
+                    env,
+                    b"/q\n",
+                    before_payload=wait_for_cleanup,
+                    timeout=12,
+                )
+                assert_true(code == 0, output)
+                wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
+                return server.requests
+        finally:
+            stop_watcher.set()
+            watcher.join(timeout=1)
+
+    def fail_request(handler, _):
+        write_json_response(handler, {"error": {"message": "extract failed"}}, status=500)
+
+    failed_requests = run_cleanup_case("model-failure", fail_request, wait_for_request=True)
+    assert_true(failed_requests, "model failure did not reach the provider")
+
+    invalid_payload = {
+        "messages": [
+            {"role": "user", "content": "invalid"},
+            {"role": "assistant", "content": "invalid"},
+        ],
+        "message_kinds": ["user"],
+        "archive": [],
+        "archive_dropped_segments": 0,
+        "context_tokens": 0,
+        "usage": {},
+        "route_usage": {},
+    }
+    invalid_requests = run_cleanup_case(
+        "invalid-session", event({"content": "unused"}), payload=invalid_payload
+    )
+    assert_true(not invalid_requests, invalid_requests)
+
+    request_started = threading.Event()
+
+    def block_request(_, __):
+        request_started.set()
+        time.sleep(20)
+        return event({"content": "too late"})
+
+    run_cleanup_case("terminated", block_request, wait_for_request=True)
+    assert_true(request_started.is_set(), "termination case never entered the provider request")
 
 
 def test_no_memory_hides_index_and_tool(root, home):
@@ -2200,6 +2436,26 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
 
 
+def test_tool_call_budget_is_unlimited_by_default(root, home):
+    source = root / "many-lines.txt"
+    source.write_text("\n".join(str(i) for i in range(101)), encoding="utf-8")
+    calls = [
+        (f"read-{i}", "read_file", {"path": str(source), "offset": i + 1, "limit": 1})
+        for i in range(101)
+    ]
+
+    def finish(_, body):
+        count = len(tool_results(body["messages"]))
+        return event({"content": "unlimited-tools-ok" if count == 101 else f"only-{count}"})
+
+    with Server([tool_calls(calls), finish]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        result = run(root, env, "--yolo", "-p", "read every line")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("unlimited-tools-ok"), result.stdout)
+
+
 def test_subagent_auto_join_continues_turn(root, home):
     def route(_, body):
         messages = body["messages"]
@@ -2662,6 +2918,32 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             )
             assert_true(fresh.returncode == 0, fresh.stderr)
             assert_true("terminals:" not in fresh.stdout, fresh.stdout)
+
+        def verify_reuse(_, body):
+            result = tool_results(body["messages"])[-1]
+            reused = (
+                f"[detached] pid {pid}," in result
+                and f"reused existing live activity id {pid}" in result
+            )
+            return event({"content": "terminal-reuse-ok" if reused else result})
+
+        with Server(
+            [
+                tool_call("run", {"command": command, "detach": True}),
+                verify_reuse,
+            ]
+        ) as reuse_server:
+            reused = run(
+                workspace,
+                base_env(home, reuse_server.url),
+                "--yolo",
+                "-p",
+                "launch the same detached server again",
+                timeout=8,
+            )
+            assert_true(reused.returncode == 0, reused.stderr)
+            assert_true(reused.stdout.strip() == "terminal-reuse-ok", reused.stdout)
+            os.kill(pid, 0)
 
         def request_output(_, body):
             results = tool_results(body["messages"])

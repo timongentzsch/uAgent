@@ -174,6 +174,21 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "research task requiring source-cited findings; continue local work "
         "and reconsider when its result arrives.";
   }
+  if (FindTool(tools, "adapt_system")) {
+    prompt +=
+        " You may revise the free-form mutable portion of this system message "
+        "with adapt_system, but revision is an exception, not a planning "
+        "ritual. Call it only when a concrete task-specific observation that "
+        "is not already reflected in the current guidance warrants materially "
+        "different behavior on later requests. State both that observation "
+        "and the strategy delta in reason. The initial request alone warrants "
+        "revision only for specific specialization beyond the existing user "
+        "and system instructions. Use it for newly justified decomposition, "
+        "perspective, evidence standards, phase priorities, or recovery—not "
+        "to repeat the request, install a generic inspect/edit/test workflow, "
+        "or announce completion. Keep it current and concise; clear it when "
+        "specialization is no longer useful.";
+  }
   return prompt;
 }
 

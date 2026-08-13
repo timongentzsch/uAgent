@@ -325,6 +325,19 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
   return api.model;
 }
 
+int64_t CatalogContextLength(const json& model) {
+  if (int64_t context = JsonValue(model, "context_length", int64_t{0})) {
+    return context;
+  }
+  if (int64_t context = JsonValue(model, "max_model_len", int64_t{0})) {
+    return context;
+  }
+  if (model.contains("meta") && model["meta"].is_object()) {
+    return JsonValue(model["meta"], "n_ctx_train", int64_t{0});
+  }
+  return 0;
+}
+
 std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
   if (!response.is_object() || !response.contains("data") ||
       !response["data"].is_array()) {
@@ -336,8 +349,7 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
     if (!model.is_object()) continue;
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
-    ModelInfo info{
-        std::move(id), {}, {}, JsonValue(model, "context_length", int64_t{0})};
+    ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
     if (model.contains("reasoning") && model["reasoning"].is_object()) {
       const json& reasoning = model["reasoning"];
       info.default_effort = JsonValue(reasoning, "default_effort", "");

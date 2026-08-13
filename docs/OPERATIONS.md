@@ -9,9 +9,9 @@ or multi-tenant service.
 | --- | ---: |
 | first event / stream idle | 300 / 300 s |
 | request / complete turn | 600 / 3600 s |
-| model rounds / tool calls | 100 / 100 |
+| model rounds / tool calls | 100 / unlimited |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
-| reported turn cost | $1 |
+| reported turn cost | unlimited |
 | request / response | 64 / 32 MiB |
 | source read / grep | 32 KiB / 200 matches |
 | selected skill body / discovery depth | 512 KiB / 6 |
@@ -23,18 +23,35 @@ or multi-tenant service.
 | memory extraction | one session, 32 KiB, after 6 idle hours |
 | attachment / terminal image | 10 / 10 MiB |
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
-| automatic compaction | 85% projected context |
+| automatic compaction | 85% projected model context |
 | removed-trace archive | 16 MiB |
 
 Files, edits, instructions, memories, skills, schemas, MCP traffic, shell logs,
 and Python scratch scripts have additional fixed bounds in `RuntimeConfig` and
 their owning modules. Raise a bound only with a representative measurement.
+`UAGENT_MAX_TOOL_CALLS` optionally adds an aggregate per-turn tool-call budget;
+zero leaves it unlimited. `UAGENT_AUTO_COMPACT_TOKENS` optionally adds an
+absolute compaction threshold; zero relies on the model-relative percentage.
+`UAGENT_MAX_TURN_COST` optionally adds a reported-cost limit per turn; zero
+leaves it unlimited. `UAGENT_SESSION_BUDGET` independently limits cumulative
+reported session cost when set to a positive amount.
 Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 `UAGENT_TOOL_TRACE_PROTECT_CHARS` controls the recent-output budget.
 Use `--no-memory` to remove memory recall and writes from the coordinator and
 delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
 environment setting. `/memory` shows the active policy and saved keys without
 calling a model.
+
+Set `UAGENT_ADAPT_SYSTEM=1` to expose the experimental `adapt_system` tool. It
+lets the model replace or clear a bounded free-form mutable section of message
+zero at any model/tool boundary. Revisions persist until changed, including
+across session save/resume, while permissions, tool availability, approval,
+and resource limits remain host-enforced. Each revision and the next complete
+request snapshot are recorded by `--debug`; leave it disabled for a static
+prompt control run. A revision is intended for a concrete task observation
+that changes subsequent strategy, not as an automatic first-step plan or a
+restatement of the existing workflow; the tool's `reason` records both the
+observation and the resulting strategic delta.
 
 The always-on slice inlines behavioral (global-scope) memory into the startup
 context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
@@ -62,6 +79,8 @@ with the remaining allowance.
 
 Commands, delegated tasks, and detached terminals share activity IDs.
 `/ps` lists the current session's active work behind the status bar's `bg:N`.
+Launching the exact same detached command again from the same working directory
+reuses its live activity instead of starting a duplicate process group.
 `activity_output(id)` reads a bounded log without cancelling ownership;
 `wait_ms` optionally blocks for output/exit and `until` requires fixed
 readiness text. Use `task(background=false)` when the next step requires the
@@ -73,6 +92,8 @@ limited to bytes the child has flushed. Persistent TUI and headless runs resume
 after background completion without a second process watcher.
 
 Configured MCP servers start once and expose their discovered tools directly.
+When a server reports an error without diagnostic text, the result points to
+that server's private stderr log under `~/.uagent/mcp/`.
 µAgent advertises MCP roots and answers `roots/list`; the current workspace is
 the default root. Set
 colon-separated `UAGENT_MCP_ROOTS`, or a server's

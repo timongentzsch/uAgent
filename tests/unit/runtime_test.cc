@@ -86,6 +86,7 @@ void TestRuntimeOwnershipHelpers() {
   std::filesystem::remove(ledger);
 
   setenv("UAGENT_MAX_STEPS", "0", 1);
+  setenv("UAGENT_MAX_TOOL_CALLS", "0", 1);
   setenv("UAGENT_TEST_LONG", "999999999999999999999999999999", 1);
   setenv("UAGENT_SESSION_BUDGET", "2.5", 1);
   setenv("UAGENT_MAX_TURN_COST", "nan", 1);
@@ -107,9 +108,10 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 1);
+  CHECK(config.max_tool_calls == 0);
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
-  CHECK(config.max_turn_cost == 1.0);
+  CHECK(config.max_turn_cost == 0);
   CHECK(TaskModel() == "fast/model");
   CHECK(ToolTraceProtectChars() == 1234);
   CHECK(ToolTracePruneMinChars() == 5678);
@@ -137,6 +139,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
   unsetenv("UAGENT_MAX_STEPS");
+  unsetenv("UAGENT_MAX_TOOL_CALLS");
   unsetenv("UAGENT_TEST_LONG");
   unsetenv("UAGENT_SESSION_BUDGET");
   unsetenv("UAGENT_MAX_TURN_COST");
@@ -160,6 +163,9 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_OPENROUTER_VARIANT");
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 100);
+  CHECK(defaults.max_tool_calls == 0);
+  CHECK(defaults.max_turn_cost == 0);
+  CHECK(AutoCompactTokens() == 0);
   CHECK(defaults.max_turn_seconds == 3600);
   CHECK(defaults.first_event_timeout_s == 300);
   CHECK(defaults.stream_idle_timeout_s == 300);

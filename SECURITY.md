@@ -40,6 +40,10 @@ endpoint and every MCP server as trusted infrastructure.
 - Automatic memory extraction runs only against one idle saved session. Its
   child receives the configured model credential but exposes only the memory
   tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript
+  text and event previews pass through deterministic secret redaction. A private
+  per-activity receipt reports the result; the bounded private
+  `~/.uagent/memory/events.jsonl` audit stores only action/key/time/source and a
+  redacted 160-character preview, never the complete memory body. Transcript
   fields are filtered and known credential forms are redacted before the model
   request and again before any memory write. Codex and Claude memories are
   exposed read-only and remain untrusted evidence. This is defense in depth,

@@ -173,6 +173,25 @@ void TestSseChunkPartitions() {
   stream.Finish();
   CHECK(result.content == "complete");
 
+  StreamCtx compact;
+  ChatResult compact_result;
+  compact.res = &compact_result;
+  compact.render_output = true;
+  compact.full_reasoning = false;
+  compact.OutputReasoning("checking include dependencies");
+  CHECK(!compact.in_reasoning);
+  CHECK(compact.reasoning_preview == "checking include dependencies");
+  StreamCtx full_reasoning;
+  ChatResult full_result;
+  full_reasoning.res = &full_result;
+  full_reasoning.render_output = true;
+  full_reasoning.OutputReasoning("full reasoning");
+  CHECK(full_reasoning.in_reasoning);
+  uint64_t activity = BeginTerminalActivity("working");
+  UpdateTerminalActivity(activity, "thinking · compact preview");
+  CHECK(CurrentTerminalActivity() == "thinking · compact preview");
+  EndTerminalActivity(activity);
+
   std::map<int, ToolCall> missing_id = {
       {0, ToolCall{"", "read_file", R"({"path":"x"})"}}};
   ChatResult invalid;

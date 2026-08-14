@@ -177,6 +177,47 @@ void TestActivitySessions() {
     }
   }
 
+  ProcessSupervisor memory_activity;
+  CHECK(RunShellCommand(memory_activity, context,
+                        {.command = "printf memory-done",
+                         .background = true,
+                         .immediate = true,
+                         .job_kind = "memory",
+                         .activity_label = "extracting from source-123",
+                         .receipt_path = "/tmp/receipt-123.json",
+                         .source_id = "source-123"})
+            .result.Ok());
+  std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
+  CHECK(memory_jobs.size() == 1);
+  CHECK(ToolActivityList(memory_activity).output.find(
+            "[memory] activity") != std::string::npos);
+  CHECK(ToolActivityList(memory_activity).output.find(
+            "extracting from source-123") != std::string::npos);
+  if (!memory_jobs.empty()) {
+    auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    for (;;) {
+      bool drained = false;
+      {
+        std::lock_guard<std::mutex> lock(memory_jobs[0].session->mutex);
+        drained = memory_jobs[0].session->state == ActivityState::kDrained;
+      }
+      if (drained || std::chrono::steady_clock::now() >= deadline) break;
+      uint64_t generation = memory_activity.Generation();
+      memory_activity.WaitForChange(generation, deadline);
+    }
+    std::vector<BackgroundCompletion> completed =
+        BgTakeCompletedDetails(memory_activity, "memory");
+    CHECK(completed.size() == 1);
+    if (!completed.empty()) {
+      CHECK(completed[0].kind == ActivityKind::kMemory);
+      CHECK(completed[0].display_label == "extracting from source-123");
+      CHECK(completed[0].receipt_path == "/tmp/receipt-123.json");
+      CHECK(completed[0].source_id == "source-123");
+      CHECK(completed[0].output.find("memory-done") != std::string::npos);
+    }
+  }
+
   ProcessSupervisor delivery_race;
   CHECK(RunShellCommand(
             delivery_race, context,

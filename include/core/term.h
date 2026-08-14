@@ -74,6 +74,17 @@ inline uint64_t BeginTerminalActivity(std::string label) {
   return id;
 }
 
+inline void UpdateTerminalActivity(uint64_t id, std::string label) {
+  TerminalActivityState& state = TerminalActivities();
+  std::lock_guard<std::mutex> lock(state.mutex);
+  for (auto& entry : state.active) {
+    if (entry.first == id) {
+      entry.second = std::move(label);
+      return;
+    }
+  }
+}
+
 inline void EndTerminalActivity(uint64_t id) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
@@ -126,6 +137,15 @@ class TerminalSpinner {
   ~TerminalSpinner() { Stop(); }
   TerminalSpinner(const TerminalSpinner&) = delete;
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
+
+  void SetLabel(std::string label) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      label_ = label;
+    }
+    UpdateTerminalActivity(activity_id_, std::move(label));
+    wake_.notify_one();
+  }
 
   void Stop() {
     if (!active_) return;

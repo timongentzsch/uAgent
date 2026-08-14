@@ -7,6 +7,7 @@ model output, tool results, paths, and usage.
 | --- | --- |
 | sessions | `~/.uagent/history/<workspace>/*.json` |
 | debug traces | `~/.uagent/sessions/*.jsonl` |
+| native memory audit | `~/.uagent/memory/events.jsonl` (bounded metadata and redacted previews) |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
 | session-lifetime activity state | memory only; not resumable after process exit |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
@@ -42,6 +43,12 @@ under `~/.claude/projects/<project>/memory` are read-only recall sources.
 The extractor marks a source `done` only after a successful run. A failed or
 interrupted child releases its `processing` claim immediately so a later run
 can retry; an untrappable process death still falls back to stale-claim expiry.
+
+Memory Markdown files remain the authoritative editable content. The bounded
+private event audit stores only action, key, timestamp, automatic source, and a
+redacted preview so `/memory` can explain when and why an entry changed. Each
+automatic extractor also uses a private per-activity receipt that is removed
+after its parent renders the maintenance notification.
 
 Completed process logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the
 private artifact directory instead of entering model context whole. Each is

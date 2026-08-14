@@ -316,6 +316,7 @@ std::string SupervisedJobLabel(const BgJob& job) {
   ActivityKind kind = job.session ? job.session->kind
                                   : ParseActivityKind(job.kind, job.detached);
   if (kind == ActivityKind::kTask) return "task";
+  if (kind == ActivityKind::kMemory) return "memory";
   return job.detached ? "detached" : "background";
 }
 
@@ -327,9 +328,11 @@ static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
   }
   std::string output;
   for (const BgJob& job : supervised) {
+    std::string summary = job.display_label.empty() ? FirstLine(job.cmd)
+                                                    : job.display_label;
     output += "[" + SupervisedJobLabel(job) + "] activity " +
-              std::to_string(ActivityId(job)) + " · " + FirstLine(job.cmd) +
-              " · " + job.log + "\n";
+              std::to_string(ActivityId(job)) + " · " + summary + " · " +
+              job.log + "\n";
   }
   for (const json& record : records) {
     pid_t record_pid = JsonValue(record, "pid", 0);
@@ -651,7 +654,8 @@ namespace {
 
 std::vector<std::string> TakeCompleted(
     ProcessSupervisor& supervisor, std::string_view kind,
-    const std::vector<int64_t>* ids = nullptr) {
+    const std::vector<int64_t>* ids = nullptr,
+    std::vector<BackgroundCompletion>* details = nullptr) {
   std::vector<BgJob> jobs = supervisor.Snapshot();
   std::vector<std::string> notes;
   for (BgJob& candidate : jobs) {
@@ -700,8 +704,22 @@ std::vector<std::string> TakeCompleted(
       output = std::move(collected.output);
     }
     if (collected.artifact) output += ArtifactHint(*collected.artifact);
-    notes.push_back(BgResultHeader(job) + "\n" + output +
-                    FmtExit(status, /*show_ok=*/true));
+    std::string formatted = BgResultHeader(job) + "\n" + output +
+                            FmtExit(status, /*show_ok=*/true);
+    notes.push_back(formatted);
+    if (details) {
+      ActivityKind activity_kind =
+          job.session ? job.session->kind
+                      : ParseActivityKind(job.kind, job.detached);
+      details->push_back({ActivityId(job),
+                          activity_kind,
+                          status,
+                          job.cmd,
+                          std::move(output),
+                          job.display_label,
+                          job.receipt_path,
+                          job.source_id});
+    }
     if (!job.detached) supervisor.Retain(std::move(job));
   }
   return notes;
@@ -712,6 +730,13 @@ std::vector<std::string> TakeCompleted(
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind) {
   return TakeCompleted(supervisor, kind);
+}
+
+std::vector<BackgroundCompletion> BgTakeCompletedDetails(
+    ProcessSupervisor& supervisor, std::string_view kind) {
+  std::vector<BackgroundCompletion> details;
+  (void)TakeCompleted(supervisor, kind, nullptr, &details);
+  return details;
 }
 
 ToolResult ToolActivityWait(ProcessSupervisor& supervisor,

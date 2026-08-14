@@ -57,14 +57,15 @@ class Api {
                      bool* web_available = nullptr) const;
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
-                  bool render_output = true, size_t estimated_bytes = 0);
+                  bool render_output = true, size_t estimated_bytes = 0,
+                  bool full_reasoning = true);
   json Post(const std::string& path, const json& body, int64_t timeout_s = 120);
   json Get(const std::string& path, bool abortable = false);
 
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
-                         bool render_output);
+                         bool render_output, bool full_reasoning);
   bool WaitForRetry(std::chrono::milliseconds delay, bool render_output) const;
   json Fetch(const std::string& path, const std::string* payload,
              int64_t timeout_s, bool abortable);

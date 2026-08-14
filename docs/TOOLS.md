@@ -19,7 +19,7 @@ next request.
 | `show_image` | Render a local image with the terminal's native inline protocol | interactive terminals with inline-image support |
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `run_python` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
-| `memory` | List, search, read, or explicitly mutate native memory | standard toolset when memory and policy allow it |
+| `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
 
 Filesystem and external-read approval follows the active path policy. Mutating
 and process tools require approval unless yolo mode is active. Child processes

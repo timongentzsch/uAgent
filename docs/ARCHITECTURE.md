@@ -127,8 +127,11 @@ Host code continues to own permissions, approvals, capabilities, and limits.
 Debug telemetry records revisions and forces a full request snapshot after an
 in-place system-message change.
 
-Active messages and the removed-trace archive remain separate. On conversation
-resume, successful archived `show_image` calls are matched to their tool results
+Active messages and the removed-trace archive remain separate. Automatic
+memory extraction writes a per-activity private receipt and a bounded private
+`memory/events.jsonl` audit. The parent displays created/updated/failure
+receipts as maintenance UI, never as model context or an automatic continuation.
+Successful archived `show_image` calls are matched to their tool results
 by call ID and retransmitted at the original timeline position. Sessions retain
 the path and tool trace, not image bytes; unavailable paths fail safely.
 Model-authored summary and memory text is evidence, never user authority. Native, Codex, and
@@ -159,6 +162,9 @@ and is visible through `/context`.
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,
 background count, queue depth, working time, and transferable foreground work.
+Reasoning remains streamed and persisted in every mode. Normally its latest
+bounded clause updates the transient activity row; verbose mode sends the full
+muted italic stream into scrollback alongside expanded tool output.
 `--debug` records reconstructable JSONL through an ordered background writer so
 serialization and flushing stay off the request path. Model-response records
 separate request preparation and end-to-end time from DNS, connection, TLS,

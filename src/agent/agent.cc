@@ -2,8 +2,11 @@
 
 #include "include/agent.h"
 
+#include <sys/wait.h>
+
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -19,6 +22,7 @@
 #include "include/core/term.h"
 #include "include/media.h"
 #include "include/tools/jobs.h"
+#include "include/tools/memory.h"
 #include "include/ui/conversation.h"
 
 namespace uagent {
@@ -307,8 +311,73 @@ void Agent::MergeSessionUsage(const Usage& usage) {
 bool Agent::DrainBackground() {
   bool changed = false;
   // Extraction is maintenance, not a new conversation event.
-  for (std::string& note : BgTakeCompleted(processes_, "memory")) {
-    DebugLog("memory_extract_finished", {{"result", note}});
+  for (BackgroundCompletion& completion :
+       BgTakeCompletedDetails(processes_, "memory")) {
+    bool success = WIFEXITED(completion.status) &&
+                   WEXITSTATUS(completion.status) == 0;
+    MemoryEvent event;
+    std::string receipt_error;
+    bool receipt_exists = !completion.receipt_path.empty() &&
+                          std::filesystem::exists(completion.receipt_path);
+    bool has_receipt =
+        receipt_exists &&
+        ReadMemoryReceipt(completion.receipt_path, event, receipt_error);
+    if (!success || !has_receipt) {
+      event = {};
+      if (!success) {
+        event.action = "failed";
+      } else if (receipt_exists) {
+        event.action = "receipt_unavailable";
+      } else {
+        event.action = "no_change";
+      }
+      event.source_session = completion.source_id;
+      event.timestamp = UtcStamp();
+      event.automatic = true;
+      if (!success) {
+        event.preview = Utf8Trunc(
+            OneLine(RedactMemorySecrets(completion.output)), 160);
+      }
+      std::string event_error;
+      if (!WriteMemoryEvent(event, {}, event_error)) {
+        DebugLog("memory_event_write_error", {{"error", event_error}});
+      }
+    }
+    if (!completion.receipt_path.empty()) {
+      std::error_code ignored;
+      std::filesystem::remove(completion.receipt_path, ignored);
+    }
+
+    bool show = verbose_ || event.action == "created" ||
+                event.action == "updated" || event.action == "failed" ||
+                event.action == "receipt_unavailable";
+    if (show) {
+      bool warning = event.action == "failed" ||
+                     event.action == "receipt_unavailable";
+      const char* mark = warning ? "!" : "◇";
+      if (event.action == "created" || event.action == "updated") mark = "◆";
+      std::string label = event.action;
+      if (event.action == "no_change") {
+        label = "extraction complete · nothing saved";
+      } else if (event.action == "receipt_unavailable") {
+        label = "extraction complete · receipt unavailable";
+      }
+      printf("%s%s memory %s", warning ? RED() : DIM(), mark,
+             TerminalSafe(label).c_str());
+      if (!event.key.empty()) {
+        printf(" · %s", TerminalSafe(event.key).c_str());
+      }
+      printf("%s\n", RST());
+      if (!event.preview.empty()) {
+        printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
+      }
+    }
+    DebugLog("memory_extract_finished",
+             {{"activity_id", completion.activity_id},
+              {"action", event.action},
+              {"key", event.key},
+              {"source_session", event.source_session},
+              {"receipt_error", receipt_error}});
   }
   for (auto& note : BgTakeCompleted(processes_)) {
     size_t running = processes_.Count();

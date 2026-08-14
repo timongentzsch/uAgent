@@ -169,7 +169,8 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
-                     bool render_output, size_t estimated_bytes) {
+                     bool render_output, size_t estimated_bytes,
+                     bool full_reasoning) {
   ChatResult res;
   auto overall_started = std::chrono::steady_clock::now();
   size_t estimated = estimated_bytes;
@@ -232,7 +233,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     }
     auto attempt_started = std::chrono::steady_clock::now();
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      render_output);
+                      render_output, full_reasoning);
     res.request_preparation_ms = preparation_ms;
     res.end_to_end_ms = ElapsedMs(overall_started);
     if (res.first_event_ms >= 0) {
@@ -288,7 +289,7 @@ json Api::Get(const std::string& path, bool abortable) {
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
-                            bool render_output) {
+                            bool render_output, bool full_reasoning) {
   ChatResult res;
   CURL* h = Prepare(base_url + "/chat/completions");
   if (!h) {
@@ -303,6 +304,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.first_event_timeout_s = config.first_event_timeout_s;
   ctx.idle_timeout_s = config.stream_idle_timeout_s;
   ctx.render_output = render_stream && render_output;
+  ctx.full_reasoning = full_reasoning;
   ctx.response_cap = ResponseCap();
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;

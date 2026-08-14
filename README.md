@@ -45,7 +45,8 @@ uagent --yolo
 ## Highlights
 
 - Native streamed answers and reasoning, including OpenRouter
-  `reasoning_details`.
+  `reasoning_details`; compact mode keeps live reasoning in the transient status
+  row, while `/verbose` preserves the full reasoning stream in scrollback.
 - Persistent editable composer with queued steering, Escape interruption, and
   Ctrl+B foreground-command handoff.
 - Parallel safe tools, bounded delegated tasks, automatic compaction, and
@@ -73,7 +74,9 @@ The core registry includes:
 | conditional | `web_search`, `task`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
-the active schemas. See [the tool reference](docs/TOOLS.md), or run `/context`
+the active schemas. In the interactive UI, compact reasoning updates only the
+transient activity row; `/verbose` restores the full muted reasoning stream and
+expanded bounded tool output. See [the tool reference](docs/TOOLS.md), or run `/context`
 to inspect the exact registry for the next request.
 
 ## Interactive controls
@@ -88,7 +91,9 @@ to inspect the exact registry for the next request.
 | `/attach` | Queue or clear an attachment |
 | `/context`, `/trace`, `/cost`, `/ps` | Inspect active state |
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
-| `/memory`, `/verbose`, `/online`, `/yolo` | Inspect or toggle behavior |
+| `/memory` | Show saved memory action, time, source, and redacted preview |
+| `/verbose` | Toggle full reasoning and expanded tool traces |
+| `/online`, `/yolo` | Toggle server search and automatic approval |
 | `/help`, `/quit` | Show help or exit |
 
 Successful historical `show_image` calls are retransmitted at their original

@@ -328,9 +328,29 @@ void TestScopedBaseAndMemory() {
   CHECK(!fs::exists(workspace / ".uagent"));
 
   // A global memory lands in the home directory even from inside a workspace.
+  fs::path receipt = home / ".uagent/memory/test-receipt.json";
+  setenv("UAGENT_MEMORY_RECEIPT", receipt.c_str(), 1);
+  setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "/tmp/source-session.json", 1);
   CHECK(ToolMemoryAction("set", "global/prefers-tabs",
                          std::string("The user prefers tabs."))
             .output.starts_with("wrote "));
+  MemoryEvent memory_event;
+  std::string receipt_error;
+  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
+  CHECK(memory_event.action == "created");
+  CHECK(memory_event.key == "global/prefers-tabs");
+  CHECK(memory_event.automatic);
+  CHECK(memory_event.source_session == WorkspaceId("/tmp/source-session.json"));
+  CHECK(ToolMemoryAction("set", "global/prefers-tabs",
+                         std::string("The user prefers tabs."))
+            .output.starts_with("unchanged "));
+  CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
+  CHECK(memory_event.action == "unchanged");
+  unsetenv("UAGENT_MEMORY_RECEIPT");
+  unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
+  std::vector<MemoryEvent> memory_events = LoadMemoryEvents();
+  CHECK(memory_events.size() >= 2);
+  CHECK(memory_events.back().action == "unchanged");
   CHECK(fs::is_regular_file(home / ".uagent/memory/global/prefers-tabs.md"));
 
   // Project memory is private user state; visiting a workspace never mutates
@@ -338,6 +358,11 @@ void TestScopedBaseAndMemory() {
   CHECK(ToolMemoryAction("set", "project/build-uses-ninja",
                          std::string("This repo builds with ninja."))
             .output.starts_with("wrote "));
+  memory_events = LoadMemoryEvents();
+  CHECK(!memory_events.empty());
+  CHECK(memory_events.back().key == "project/build-uses-ninja");
+  CHECK(!memory_events.back().automatic);
+  CHECK(!memory_events.back().workspace.empty());
   std::vector<MemoryEntry> initial_memories = ListMemories();
   auto project_entry =
       std::find_if(initial_memories.begin(), initial_memories.end(),

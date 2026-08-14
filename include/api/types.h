@@ -29,6 +29,13 @@ struct ChatResult {
   int64_t http_status = 0;
   double first_event_ms = -1;
   double duration_ms = -1;
+  double request_preparation_ms = -1;
+  double end_to_end_ms = -1;
+  double dns_ms = -1;
+  double connect_ms = -1;
+  double tls_ms = -1;
+  double pretransfer_ms = -1;
+  double start_transfer_ms = -1;
   std::string finish_reason;
   std::string error;
   std::string remote_error_type;

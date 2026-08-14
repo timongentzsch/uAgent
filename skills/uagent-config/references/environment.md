@@ -52,7 +52,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_STREAM_IDLE_TIMEOUT` | 300 | seconds between streamed events |
 | `UAGENT_REQUEST_TIMEOUT` | 600 | complete request seconds |
 | `UAGENT_MAX_TURN_SECONDS` | 3600 | complete turn seconds |
-| `UAGENT_MAX_STEPS` | 100 | model rounds per turn |
+| `UAGENT_MAX_STEPS` | 0 | model rounds per turn; 0 disables |
 | `UAGENT_MAX_TOOL_CALLS` | 0 | tool calls per turn; 0 disables |
 | `UAGENT_REQUEST_BYTES` | 67108864 | maximum serialized request |
 | `UAGENT_RESPONSE_BYTES` | 33554432 | maximum response |
@@ -83,7 +83,8 @@ UAGENT_MODEL=local/fast
 | `UAGENT_GREP_RESULTS` | 200 | grep matches |
 | `UAGENT_GREP_BYTES` | tool-result cap | grep result bytes |
 | `UAGENT_BASH_LOG_BYTES` | 67108864 | bounded rotating process log |
-| `UAGENT_MAX_BACKGROUND_JOBS` | 8 | supervised background slots |
+| `UAGENT_RUN_YIELD_MS` | 10000 | default initial wait for public `run`; 0 disables automatic yielding |
+| `UAGENT_MAX_BACKGROUND_JOBS` | 8 | supervised live-activity slots |
 | `UAGENT_SHELL_ENV_ALLOW` | empty | comma list of sensitive vars forwarded only to approved shell commands |
 | `UAGENT_SUBAGENT_DEPTH` | 2 | maximum delegation depth |
 | `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |

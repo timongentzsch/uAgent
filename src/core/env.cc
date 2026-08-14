@@ -167,6 +167,10 @@ int64_t BashLogBytes() {
   return EnvBounded("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024, 1024);
 }
 
+int64_t RunDefaultYieldMs() {
+  return EnvBounded("UAGENT_RUN_YIELD_MS", 10000, 0, 30000);
+}
+
 int64_t MaxBackgroundJobs() {
   return EnvBounded("UAGENT_MAX_BACKGROUND_JOBS", 8, 1, kBgMax);
 }
@@ -255,7 +259,7 @@ constexpr LongOption kLongOptions[] = {
      1024, kAnyMax},
     {"UAGENT_RESPONSE_BYTES", "response_bytes", &RuntimeConfig::response_bytes,
      kAnyMin, kAnyMax},
-    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 1, kAnyMax},
+    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 0, kAnyMax},
     {"UAGENT_MAX_TOOL_CALLS", "max_tool_calls", &RuntimeConfig::max_tool_calls,
      0, kAnyMax},
     {"UAGENT_MAX_TURN_SECONDS", "max_turn_seconds",

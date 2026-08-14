@@ -5,9 +5,39 @@
 
 #include "tests/unit/test_support.h"
 
+#include "include/ui/conversation.h"
+
 namespace uagent {
 
 void TestConversation() {
+  json image_call =
+      {{"id", "image-1"},
+       {"function",
+        {{"name", "show_image"},
+         {"arguments", R"({"path":"plots/result.png"})"}}}};
+  CHECK(ReplayableImagePath(
+            image_call,
+            "displayed plots/result.png inline via kitty") ==
+        "plots/result.png");
+  image_call["function"]["arguments"] = {{"path", "plots/other.png"}};
+  CHECK(ReplayableImagePath(
+            image_call,
+            "displayed plots/other.png inline via kitty") ==
+        "plots/other.png");
+  CHECK(ReplayableImagePath(image_call, "error: image is missing").empty());
+  CHECK(ReplayableImagePath(
+            image_call, "[old tool output compacted: image omitted]")
+            .empty());
+  image_call["function"]["arguments"] = "not json";
+  CHECK(ReplayableImagePath(image_call,
+                            "displayed image inline via kitty")
+            .empty());
+  image_call["function"]["name"] = "read_file";
+  image_call["function"]["arguments"] = {{"path", "plots/result.png"}};
+  CHECK(ReplayableImagePath(image_call,
+                            "displayed plots/result.png inline via kitty")
+            .empty());
+
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});

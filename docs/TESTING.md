@@ -8,9 +8,13 @@ cmake --build --preset debug
 ctest --preset debug --output-on-failure
 ```
 
-`tests/unit/` covers local policy and protocols. One shared HTTP/PTY fixture
-drives isolated `runtime`, `tools`, `ui`, `providers`, `mcp`, and `delegation`
-CTest processes. Fuzz targets run in CI.
+`tests/unit/` covers local policy and protocols, including activity IDs,
+head/tail buffering and LRU retention, atomic pre-spawn admission, default
+yielding, event-driven PTY and pipe input/output, split readiness markers, exactly-once completion delivery,
+200 Ctrl+B/exit races, parallel foreground handoff, PTY input/resize, non-TTY
+rejection, and resumed-image matching. One shared HTTP/PTY fixture drives isolated
+`runtime`, `tools`, `ui`, `providers`, `mcp`, and `delegation` CTest processes.
+Fuzz targets run in CI.
 
 Keep tests proportional: pure helpers get focused unit coverage; externally
 visible behavior gets one hermetic integration path. Avoid duplicating the

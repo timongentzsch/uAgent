@@ -75,6 +75,7 @@ int64_t MaxSkills();
 int64_t GrepResults();
 int64_t GrepBytes();
 int64_t BashLogBytes();
+int64_t RunDefaultYieldMs();
 int64_t MaxBackgroundJobs();
 int64_t McpConfigBytes();
 int64_t McpDescriptionChars();
@@ -106,9 +107,11 @@ struct RuntimeConfig {
   int64_t request_timeout_s = 600;
   int64_t request_bytes = 64 * 1024 * 1024;
   int64_t response_bytes = 32 * 1024 * 1024;
-  int64_t max_steps = 100;
+  int64_t max_steps = 0;
+  // Zero disables the model-round limit; turn time, cost, context, process,
+  // and tool-call budgets remain independent safety limits.
   // Zero disables the aggregate per-turn tool-call budget. Individual tools,
-  // repeated identical calls, model rounds, time, and cost remain bounded.
+  // repeated identical calls, time, and cost remain bounded.
   int64_t max_tool_calls = 0;
   int64_t max_turn_seconds = 3600;
   // Zero disables the per-turn reported-cost budget. Users may opt into a

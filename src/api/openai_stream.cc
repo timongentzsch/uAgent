@@ -24,10 +24,19 @@ void AddAnnotations(const json& annotations, ChatResult& result) {
   }
 }
 
-void AddReasoningDetails(const json& details, ChatResult& result) {
-  if (!details.is_array()) return;
+std::string AddReasoningDetails(const json& details, ChatResult& result) {
+  std::string streamed_text;
+  if (!details.is_array()) return streamed_text;
   for (const json& detail : details) {
     if (!detail.is_object()) continue;
+    std::string type = JsonValue(detail, "type", "");
+    if (type == "reasoning.text" && detail.contains("text") &&
+        detail["text"].is_string()) {
+      streamed_text += detail["text"].get<std::string>();
+    } else if (type == "reasoning.summary" && detail.contains("summary") &&
+               detail["summary"].is_string()) {
+      streamed_text += detail["summary"].get<std::string>();
+    }
     int64_t index = JsonValue(detail, "index", -1);
     json* target = nullptr;
     if (index >= 0) {
@@ -55,7 +64,8 @@ void AddReasoningDetails(const json& details, ChatResult& result) {
       continue;
     }
     for (const auto& [key, value] : detail.items()) {
-      if ((key == "text" || key == "data" || key == "signature") &&
+      if ((key == "text" || key == "summary" || key == "data" ||
+           key == "signature") &&
           value.is_string() && target->contains(key) &&
           (*target)[key].is_string()) {
         (*target)[key] =
@@ -65,6 +75,7 @@ void AddReasoningDetails(const json& details, ChatResult& result) {
       }
     }
   }
+  return streamed_text;
 }
 
 }  // namespace
@@ -109,8 +120,10 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   if (event_delta.contains("annotations")) {
     AddAnnotations(event_delta["annotations"], result);
   }
+  std::string details_reasoning;
   if (event_delta.contains("reasoning_details")) {
-    AddReasoningDetails(event_delta["reasoning_details"], result);
+    details_reasoning =
+        AddReasoningDetails(event_delta["reasoning_details"], result);
     delta.activity =
         delta.activity || !event_delta["reasoning_details"].empty();
   }
@@ -125,6 +138,11 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   if (reasoning) {
     delta.reasoning = reasoning->get<std::string>();
     delta.activity = delta.activity || !delta.reasoning.empty();
+  } else if (!details_reasoning.empty()) {
+    // Some OpenRouter providers stream normalized reasoning only through
+    // reasoning_details, without the convenience `reasoning` field.
+    delta.reasoning = std::move(details_reasoning);
+    delta.activity = true;
   }
   if (event_delta.contains("content") && event_delta["content"].is_string()) {
     delta.content = event_delta["content"].get<std::string>();

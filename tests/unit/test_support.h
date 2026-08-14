@@ -107,6 +107,7 @@ void TestTerminalInputDecoder();
 void TestSseChunkPartitions();
 void TestSseFraming();
 void TestBackgroundValidation();
+void TestActivitySessions();
 void TestToolExecutionPolicy();
 void TestOpenRouterServerSearch();
 void TestAttachmentEncoding();

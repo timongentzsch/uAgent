@@ -32,6 +32,7 @@ int RunTests() {
   TestSseChunkPartitions();
   TestSseFraming();
   TestBackgroundValidation();
+  TestActivitySessions();
   TestToolExecutionPolicy();
   TestOpenRouterServerSearch();
   TestAttachmentEncoding();

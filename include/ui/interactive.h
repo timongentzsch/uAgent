@@ -104,6 +104,8 @@ class RawComposer {
   bool Drawn() const { return drawn_rows_ > 0; }
   size_t CaretRow() const { return caret_row_; }
   size_t CaretColumn() const { return caret_column_; }
+  size_t LastSubmittedRows() const { return last_submitted_rows_; }
+  const std::string& Prompt() const { return prompt_; }
 
   bool Start() {
     if (active_ || tcgetattr(STDIN_FILENO, &saved_) != 0) return false;
@@ -206,11 +208,15 @@ class RawComposer {
         history_index_ = history_.size();
         history_draft_.clear();
         input_limit_bell_ = false;
+        last_submitted_rows_ = drawn_rows_;
         MoveToTop();
         EraseDrawnRows();
         output_.Write("\r" + prompt_ + TerminalSafe(line) + "\n");
         Detach();
         return {InteractiveInputKind::kLine, std::move(line)};
+      }
+      if (ch == 0x02) {
+        return {InteractiveInputKind::kBackground, buffer_};
       }
       if (ch == 0x04) {
         if (buffer_.empty()) return {InteractiveInputKind::kEof, {}};
@@ -451,6 +457,7 @@ class RawComposer {
   size_t drawn_rows_ = 0;
   size_t caret_row_ = 0;
   size_t caret_column_ = 0;
+  size_t last_submitted_rows_ = 1;
   std::string prompt_ = InputPrompt();
   std::string buffer_;
   size_t cursor_ = 0;

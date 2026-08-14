@@ -46,7 +46,13 @@ struct ParsedSlashCommand {
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
 
-enum class InteractiveInputKind { kNone, kLine, kEscape, kEof };
+enum class InteractiveInputKind {
+  kNone,
+  kLine,
+  kEscape,
+  kBackground,
+  kEof
+};
 
 struct InteractiveInputEvent {
   InteractiveInputKind kind = InteractiveInputKind::kNone;

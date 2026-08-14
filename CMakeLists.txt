@@ -95,6 +95,7 @@ add_library(
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
+  src/tools/process_io.cc
   src/tools/registry.cc
   src/tools/shell.cc
   src/tools/subagent.cc
@@ -162,7 +163,14 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
-              docs/ARCHITECTURE.md docs/OPERATIONS.md
-              docs/PERSISTENCE.md docs/TESTING.md
+set(UAGENT_GUIDES
+    docs/ARCHITECTURE.md
+    docs/OPERATIONS.md
+    docs/PERSISTENCE.md
+    docs/TESTING.md
+    docs/TOOLS.md)
+install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE ${UAGENT_GUIDES}
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
+# Keep the source-relative paths used by README and CONTRIBUTING valid in an
+# installed documentation tree while retaining the historical flat copies.
+install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)

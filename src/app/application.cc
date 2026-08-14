@@ -549,7 +549,6 @@ class Application {
     std::optional<std::string> next_input;
     std::string saved_draft;
     std::string pending_output;
-    size_t spinner_frame = 0;
     auto started = std::chrono::steady_clock::now();
 
     auto status = [&] {
@@ -562,22 +561,33 @@ class Application {
              .attachments = attachments_.size(),
              .background = runtime_.processes.Count()});
       }
-      double elapsed = std::chrono::duration<double>(
-                           std::chrono::steady_clock::now() - started)
-                           .count();
+      auto now = std::chrono::steady_clock::now();
+      double elapsed =
+          std::chrono::duration<double>(now - started).count();
       size_t background = runtime_.processes.Count();
       char seconds[32];
       snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
       std::string activity = CurrentTerminalActivity();
+      static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
       static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
                                                 "⠴", "⠦", "⠧", "⠇", "⠏"};
-      std::string line = kFrames[spinner_frame % 10];
+      auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       now - started) /
+                   kSpinnerInterval;
+      std::string line = kFrames[static_cast<size_t>(ticks) % 10];
       line += " ";
       line += interrupting ? "interrupting"
                            : (activity.empty() ? "working" : activity);
       line += " · " + std::string(seconds);
       line += " · ctx " + FmtCount(agent_.ContextSnapshot());
       if (background > 0) line += " · bg:" + std::to_string(background);
+      size_t foreground = runtime_.processes.ForegroundCount();
+      if (foreground > 0) {
+        line += " · Ctrl+B background";
+        if (foreground > 1) {
+          line += " " + std::to_string(foreground) + " commands";
+        }
+      }
       if (SteeringEnabled()) line += " · Esc interrupt";
       size_t queued = SteeringState().QueuedCount();
       if (queued > 0) {
@@ -592,7 +602,8 @@ class Application {
       return std::string(interrupting ? "interrupting|" : "working|") +
              CurrentTerminalActivity() + "|" +
              std::to_string(SteeringState().QueuedCount()) + "|" +
-             std::to_string(runtime_.processes.Count());
+             std::to_string(runtime_.processes.Count()) + "|" +
+             std::to_string(runtime_.processes.ForegroundCount());
     };
 
     auto unmount = [&] {
@@ -653,7 +664,6 @@ class Application {
       working = true;
       worker_quit = false;
       interrupting = false;
-      spinner_frame = 0;
       started = std::chrono::steady_clock::now();
       worker = std::thread([&, input = std::move(input)]() mutable {
         if (input) {
@@ -673,7 +683,7 @@ class Application {
       pollfd events[3] = {{STDIN_FILENO, POLLIN, 0},
                           {output.Fd(), POLLIN, 0},
                           {broker.Fd(), POLLIN, 0}};
-      int ready = poll(events, 3, 100);
+      int ready = poll(events, 3, 50);
       if (ready < 0 && errno != EINTR) break;
       if (g_terminal_resized) {
         g_terminal_resized = 0;
@@ -702,7 +712,22 @@ class Application {
       if ((events[0].revents & POLLIN) || composer.HasPending()) {
         InteractiveInputEvent event = composer.Read();
         if (event.kind != InteractiveInputKind::kNone) {
-          if (answering) {
+          if (event.kind == InteractiveInputKind::kLine && !answering) {
+            // Submission has already printed the prompt below the status row.
+            // Replace both regions so the transient working row does not enter
+            // scrollback above steering or ordinary user input.
+            size_t rows_up = composer.LastSubmittedRows() + 1;
+            output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
+            output.Write("\r" + composer.Prompt() + TerminalSafe(event.text) +
+                         "\n");
+          }
+          if (event.kind == InteractiveInputKind::kBackground) {
+            if (!working ||
+                !runtime_.processes.RequestForegroundBackground()) {
+              output.Write("\a");
+            }
+            refresh_status();
+          } else if (answering) {
             bool eof = event.kind == InteractiveInputKind::kEscape ||
                        event.kind == InteractiveInputKind::kEof;
             broker.Answer(std::move(event.text), eof);
@@ -717,6 +742,7 @@ class Application {
             if (working && SteeringEnabled() && !interrupting) {
               interrupting = true;
               SteeringState().Request();
+              runtime_.processes.Wake();
               refresh_status();
             }
           } else if (event.kind == InteractiveInputKind::kEof) {
@@ -738,6 +764,11 @@ class Application {
             mount();
           }
         }
+      }
+
+      if (interrupting && !AbortRequested()) {
+        interrupting = false;
+        refresh_status();
       }
 
       if (!working && worker.joinable()) {
@@ -772,8 +803,7 @@ class Application {
         std::string current_state = status_state();
         bool state_changed = current_state != last_state;
         if (state_changed ||
-            now - last_redraw >= std::chrono::milliseconds(200)) {
-          ++spinner_frame;
+            now - last_redraw >= std::chrono::milliseconds(100)) {
           refresh_status();
           last_redraw = now;
           last_state = std::move(current_state);

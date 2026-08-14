@@ -137,11 +137,27 @@ void TestSseChunkPartitions() {
                    {{{"type", "reasoning.text"}, {"text", text}},
                     {{"type", "reasoning.encrypted"}, {"data", data}}})}}}}}}});
   };
-  DecodeOpenAiStreamEvent(reasoning_event("one", "a"), unindexed, no_calls);
-  DecodeOpenAiStreamEvent(reasoning_event(" two", "b"), unindexed, no_calls);
+  OpenAiStreamDelta first_details = DecodeOpenAiStreamEvent(
+      reasoning_event("one", "a"), unindexed, no_calls);
+  OpenAiStreamDelta second_details = DecodeOpenAiStreamEvent(
+      reasoning_event(" two", "b"), unindexed, no_calls);
+  CHECK(first_details.reasoning == "one");
+  CHECK(second_details.reasoning == " two");
   CHECK(unindexed.reasoning_details.size() == 2);
   CHECK(unindexed.reasoning_details[0]["text"] == "one two");
   CHECK(unindexed.reasoning_details[1]["data"] == "ab");
+
+  OpenAiStreamDelta summary_delta = DecodeOpenAiStreamEvent(
+      R"({"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.summary","summary":"Summary chunk"}]}}]})",
+      unindexed, no_calls);
+  CHECK(summary_delta.reasoning == "Summary chunk");
+  CHECK(unindexed.reasoning_details.size() == 3);
+
+  ChatResult aliased_reasoning;
+  OpenAiStreamDelta aliased_delta = DecodeOpenAiStreamEvent(
+      R"({"choices":[{"delta":{"reasoning":"once","reasoning_details":[{"type":"reasoning.text","text":"once"}]}}]})",
+      aliased_reasoning, no_calls);
+  CHECK(aliased_delta.reasoning == "once");
 
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
@@ -240,10 +256,11 @@ void TestBackgroundValidation() {
   CHECK(supervisor.PendingCount());
   CHECK(supervisor.PendingCount() == 1);
   CHECK(supervisor.Count() == 2);
-  CHECK(supervisor.Find(999997).has_value());
+  CHECK(!supervisor.Find(999997).has_value());
+  CHECK(supervisor.Find(ActivityId(supervisor.Snapshot().back())).has_value());
   CHECK(!supervisor.TryAdd({999996, "", "", false, ""}, 1));
   CHECK(supervisor.Snapshot().size() == supervisor.Count());
-  CHECK(!supervisor.TakeAll().empty());
+  CHECK(!supervisor.TakeAllForShutdown().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);
   const Tool* edit = FindTool(tools, "edit_file");

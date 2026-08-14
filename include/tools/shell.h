@@ -27,6 +27,9 @@ struct ShellCommand {
   bool background = false;
   bool detach = false;
   bool immediate = false;
+  bool tty = false;
+  int64_t yield_ms = 0;
+  int64_t max_output_chars = 0;
   std::string job_kind = {};
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
@@ -40,7 +43,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const std::string& command,
                                 const ToolContext& context, bool detach,
-                                const std::string& shell);
+                                const std::string& shell, bool tty = false,
+                                int64_t yield_ms = 0,
+                                int64_t max_output_chars = 0);
 bool StartsWithShellWord(const std::string& command, const std::string& word);
 std::string RunCommandPolicyError(const std::string& command);
 bool PythonScriptHasDependencies(const std::string& source);

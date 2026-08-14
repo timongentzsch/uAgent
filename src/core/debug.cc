@@ -65,6 +65,12 @@ std::string UsageLedger() {
 }
 
 DebugSink::~DebugSink() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stopping_ = true;
+  }
+  wake_.notify_one();
+  if (writer_.joinable()) writer_.join();
   if (file_) fclose(file_);
 }
 
@@ -100,18 +106,36 @@ bool DebugSink::Start(std::string path) {
   std::filesystem::path absolute = std::filesystem::absolute(path, error);
   path_ = error ? path : absolute.string();
   started_ = std::chrono::steady_clock::now();
+  writer_ = std::thread([this] { Run(); });
   return true;
 }
 
 void DebugSink::Write(const std::string& event, json data) noexcept {
   if (!file_) return;
   std::lock_guard<std::mutex> lock(mutex_);
-  json record = {{"seq", ++seq_},
-                 {"time", UtcStamp()},
-                 {"elapsed_ms", ElapsedMs(started_)},
-                 {"event", event},
-                 {"data", std::move(data)}};
-  WriteJsonLine(file_, record);
+  queue_.push_back({{"seq", ++seq_},
+                    {"time", UtcStamp()},
+                    {"elapsed_ms", ElapsedMs(started_)},
+                    {"event", event},
+                    {"data", std::move(data)}});
+  wake_.notify_one();
+}
+
+void DebugSink::Run() {
+  for (;;) {
+    json record;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      wake_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
+      if (queue_.empty()) {
+        if (stopping_) break;
+        continue;
+      }
+      record = std::move(queue_.front());
+      queue_.pop_front();
+    }
+    WriteJsonLine(file_, record);
+  }
 }
 
 DebugSink& Debug() {

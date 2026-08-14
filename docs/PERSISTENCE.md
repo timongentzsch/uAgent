@@ -8,6 +8,7 @@ model output, tool results, paths, and usage.
 | sessions | `~/.uagent/history/<workspace>/*.json` |
 | debug traces | `~/.uagent/sessions/*.jsonl` |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
+| session-lifetime activity state | memory only; not resumable after process exit |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
@@ -19,7 +20,11 @@ model output, tool results, paths, and usage.
 
 Session format 3 persists active messages, their structured kinds, the bounded
 archive, usage, provider session identity, and any active mutable system
-directive and revision. Only the current
+directive and revision. It also retains tool calls and results used to rebuild
+the visible timeline. Successful `show_image` entries are retransmitted on
+resume from their recorded paths; image bytes are not copied into the session.
+Replay therefore requires the original file to remain available, and a missing
+or invalid path is skipped safely. Only the current
 format is accepted: incompatible, incomplete, or corrupt records are reported
 without mutating live state or rewriting the source file. Missing files are a
 normal empty state. Saves validate the complete record, then use a private
@@ -42,6 +47,10 @@ Completed process logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the
 private artifact directory instead of entering model context whole. Each is
 bounded by `UAGENT_BASH_LOG_BYTES` and pruned during startup using
 `UAGENT_BG_DAYS` and `UAGENT_BG_FILES`; a returned path can therefore expire.
+Session-lifetime supervised activities have opaque IDs, bounded incremental
+head/tail output, and optional PTY state only in memory. They cannot be resumed
+after µAgent exits. Persistent detached records remain PID-backed, rotating-log
+based, and noninteractive; no broker retains their stdin.
 
 Completed turn traces enter the bounded archive before old bulky tool results
 are compacted in active model context. The placeholder preserves protocol and a

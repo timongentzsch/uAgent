@@ -10,6 +10,7 @@
 #include <string>
 
 #include "include/agent.h"
+#include "include/agent/protocol.h"
 #include "include/api/stream.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"

@@ -48,6 +48,14 @@ inline std::string UserHome() {
   return result && entry.pw_dir ? entry.pw_dir : "";
 }
 
+inline std::string Tilde(const std::string& path) {
+  std::string home = UserHome();
+  if (!home.empty() && path.starts_with(home)) {
+    return "~" + path.substr(home.size());
+  }
+  return path;
+}
+
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a project-controlled location.
 inline std::string GlobalBase() {

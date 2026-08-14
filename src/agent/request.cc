@@ -8,6 +8,14 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/protocol.h"
+#include "include/core/checked.h"
+#include "include/core/debug.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
+#include "include/media.h"
 #include "include/providers.h"
 #include "include/tools/subagent.h"
 

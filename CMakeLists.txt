@@ -98,6 +98,7 @@ add_library(
   src/tools/registry.cc
   src/tools/shell.cc
   src/tools/subagent.cc
+  src/tools/web_search.cc
   src/transport/sse.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc

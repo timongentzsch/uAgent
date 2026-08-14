@@ -7,50 +7,26 @@
 // runs in a separate uagent process, so only its final result enters this
 // conversation.
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <functional>
-#include <iomanip>
-#include <iostream>
-#include <optional>
-#include <sstream>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
-#include "include/agent/dispatch.h"
-#include "include/agent/protocol.h"
-#include "include/agent/session_store.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
-#include "include/core/debug.h"
-#include "include/core/env.h"
-#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
-#include "include/core/signals.h"
 #include "include/core/skills.h"
-#include "include/core/steering.h"
-#include "include/core/strings.h"
-#include "include/core/term.h"
-#include "include/md.h"
-#include "include/media.h"
-#include "include/tools/files.h"
-#include "include/tools/jobs.h"
+#include "include/core/usage.h"
 #include "include/tools/process.h"
 #include "include/tools/tool.h"
-#include "include/ui/conversation.h"
-#include "third_party/json.hpp"
 
 namespace uagent {
-
-using nlohmann::json;
 
 class Agent {
  public:
@@ -78,7 +54,7 @@ class Agent {
   // Show the most recent completed turn's archived tool traffic. Server search
   // can expose sources and snippets, but not necessarily the provider-internal
   // query.
-  void PrintTrace() const { PrintLatestTrace(conversation_.Archive(), tools_); }
+  void PrintTrace() const;
 
   json LatestToolTrace() const;
 
@@ -102,7 +78,7 @@ class Agent {
   // Replay the conversation to the terminal, in the live REPL's visual
   // language (user prompts, rendered assistant prose, dim tool traffic), so a
   // resumed session shows the context it is picking up from.
-  void PrintHistory() const { PrintConversationHistory(conversation_, tools_); }
+  void PrintHistory() const;
 
   void PrintContext() const;
 

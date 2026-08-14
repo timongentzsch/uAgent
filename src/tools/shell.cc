@@ -281,7 +281,17 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
 
   if (detach) {
-    BgJob job{pid, log, cmd, true, spec.job_kind, std::nullopt, pid, nullptr};
+    BgJob job{pid,
+              log,
+              cmd,
+              true,
+              spec.job_kind,
+              std::nullopt,
+              pid,
+              nullptr,
+              std::move(spec.activity_label),
+              std::move(spec.receipt_path),
+              std::move(spec.source_id)};
     if (!supervisor.TryAdd(std::move(job), max_jobs)) {
       KillProcess(pid);
       RemoveLog(log);
@@ -292,8 +302,17 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                         "; verify readiness with activity output")};
   }
 
-  BgJob foreground{pid, log, cmd, false, spec.job_kind, std::nullopt, 0,
-                   session};
+  BgJob foreground{pid,
+                   log,
+                   cmd,
+                   false,
+                   spec.job_kind,
+                   std::nullopt,
+                   0,
+                   session,
+                   std::move(spec.activity_label),
+                   std::move(spec.receipt_path),
+                   std::move(spec.source_id)};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
     KillProcess(pid);

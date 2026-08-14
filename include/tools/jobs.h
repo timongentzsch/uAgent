@@ -21,6 +21,17 @@ struct CollectedLog {
   std::optional<ToolArtifact> artifact;
 };
 
+struct BackgroundCompletion {
+  int64_t activity_id = 0;
+  ActivityKind kind = ActivityKind::kCommand;
+  int status = 0;
+  std::string command;
+  std::string output;
+  std::string display_label;
+  std::string receipt_path;
+  std::string source_id;
+};
+
 struct DetachedActivity {
   pid_t pid;
   std::string log;
@@ -63,6 +74,8 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t id);
 std::string BgResultHeader(const BgJob& job);
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind = {});
+std::vector<BackgroundCompletion> BgTakeCompletedDetails(
+    ProcessSupervisor& supervisor, std::string_view kind = {});
 void BgShutdownAll(ProcessSupervisor& supervisor);
 size_t BgCancelTasks(ProcessSupervisor& supervisor);
 

@@ -20,6 +20,7 @@
 #include "include/api/types.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/transport/sse.h"
@@ -45,6 +46,8 @@ struct StreamCtx {
   size_t received = 0;
   std::string timeout_reason;
   bool render_output = true;
+  bool full_reasoning = true;
+  std::string reasoning_preview;
   SseParser sse;
   MdStream md;  // renders streamed content as ANSI-styled markdown (TTY only)
 
@@ -80,6 +83,30 @@ struct StreamCtx {
 
   void OutputReasoning(const std::string& r) {
     if (!render_output) return;
+    if (!full_reasoning) {
+      reasoning_preview += r;
+      size_t line = reasoning_preview.find_last_of("\r\n");
+      if (line != std::string::npos && line + 1 < reasoning_preview.size()) {
+        reasoning_preview.erase(0, line + 1);
+      }
+      std::string preview = OneLine(reasoning_preview);
+      constexpr size_t kPreviewBytes = 120;
+      if (preview.size() > kPreviewBytes) {
+        size_t start = preview.size() - kPreviewBytes;
+        while (start < preview.size() &&
+               (static_cast<unsigned char>(preview[start]) & 0xc0) == 0x80) {
+          ++start;
+        }
+        preview = "…" + preview.substr(start);
+      }
+      if (spinner && !preview.empty()) {
+        spinner->SetLabel("thinking · " + TerminalSafe(preview));
+      }
+      if (reasoning_preview.size() > 512) {
+        reasoning_preview.erase(0, reasoning_preview.size() - 512);
+      }
+      return;
+    }
     BeginOutput();
     if (!in_reasoning) {
       std::string style = std::string(RST()) + MUTED() + ITAL();

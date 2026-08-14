@@ -31,6 +31,9 @@ struct ShellCommand {
   int64_t yield_ms = 0;
   int64_t max_output_chars = 0;
   std::string job_kind = {};
+  std::string activity_label = {};
+  std::string receipt_path = {};
+  std::string source_id = {};
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;

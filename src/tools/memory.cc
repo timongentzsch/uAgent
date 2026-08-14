@@ -2,11 +2,17 @@
 
 #include "include/tools/memory.h"
 
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <regex>
 #include <string>
@@ -15,7 +21,10 @@
 #include <vector>
 
 #include "include/core/checked.h"
+#include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/core/json.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
@@ -113,6 +122,85 @@ std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
   if (!code) return cwd;
   error = code.message();
   return std::nullopt;
+}
+
+constexpr size_t kMemoryEventBytes = 256 * 1024;
+constexpr size_t kMemoryEventLineBytes = 4096;
+
+std::string MemoryEventsPath() {
+  return UagentDir(kMemoryDir) + "/events.jsonl";
+}
+
+json MemoryEventJson(const MemoryEvent& event) {
+  return {{"version", 1},
+          {"action", event.action},
+          {"key", event.key},
+          {"preview", event.preview},
+          {"source_session", event.source_session},
+          {"workspace", event.workspace},
+          {"timestamp", event.timestamp},
+          {"automatic", event.automatic}};
+}
+
+bool ParseMemoryEvent(const json& value, MemoryEvent& event) {
+  if (!value.is_object() || JsonValue(value, "version", 0) != 1) return false;
+  event.action = JsonValue(value, "action", "");
+  event.key = JsonValue(value, "key", "");
+  event.preview = JsonValue(value, "preview", "");
+  event.source_session = JsonValue(value, "source_session", "");
+  event.workspace = JsonValue(value, "workspace", "");
+  event.timestamp = JsonValue(value, "timestamp", "");
+  event.automatic = JsonValue(value, "automatic", false);
+  return !event.action.empty();
+}
+
+bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
+  if (line.size() + 1 > kMemoryEventLineBytes) {
+    error = "memory event exceeds its private record limit";
+    return false;
+  }
+  std::string path = MemoryEventsPath();
+  int fd = open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC, 0600);
+  if (fd < 0) {
+    error = strerror(errno);
+    return false;
+  }
+  auto fail = [&](const std::string& message) {
+    error = message;
+    flock(fd, LOCK_UN);
+    close(fd);
+    return false;
+  };
+  if (flock(fd, LOCK_EX) != 0) return fail(strerror(errno));
+  struct stat status {};
+  if (fstat(fd, &status) != 0) return fail(strerror(errno));
+  if (status.st_size > static_cast<off_t>(kMemoryEventBytes)) {
+    off_t keep = static_cast<off_t>(kMemoryEventBytes / 2);
+    off_t start = std::max<off_t>(0, status.st_size - keep);
+    std::string tail(static_cast<size_t>(status.st_size - start), '\0');
+    ssize_t count = pread(fd, tail.data(), tail.size(), start);
+    if (count < 0) return fail(strerror(errno));
+    tail.resize(static_cast<size_t>(count));
+    size_t first_line = tail.find('\n');
+    if (start > 0 && first_line != std::string::npos) {
+      tail.erase(0, first_line + 1);
+    }
+    if (ftruncate(fd, 0) != 0 || lseek(fd, 0, SEEK_SET) < 0 ||
+        !WriteFully(fd, tail)) {
+      return fail(strerror(errno));
+    }
+  }
+  if (!WriteFully(fd, line + "\n")) return fail(strerror(errno));
+  flock(fd, LOCK_UN);
+  if (close(fd) != 0) {
+    error = strerror(errno);
+    return false;
+  }
+  return true;
+}
+
+std::string MemoryPreview(const std::string& content) {
+  return Utf8Trunc(OneLine(RedactMemorySecrets(content)), 160);
 }
 
 ToolResult ListMemoryKeys() {
@@ -231,7 +319,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: memory content must not be empty; use forget");
   }
-  if (!fs::exists(path)) {
+  bool existed = fs::exists(path);
+  if (!existed) {
     int64_t count = 0;
     for (const MemoryEntry& memory : ListMemories(*cwd)) {
       count += memory.key.starts_with(scope + "/");
@@ -252,10 +341,86 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     std::string project = path.parent_path().filename().string();
     MakePrivateDir(projects, project.c_str());
   }
-  return ToolWritePrivateFile(path.string(), *content);
+  std::string previous;
+  if (existed) {
+    std::ifstream input(path, std::ios::binary);
+    previous.assign(std::istreambuf_iterator<char>(input),
+                    std::istreambuf_iterator<char>());
+  }
+  std::string action = !existed ? "created"
+                       : previous == *content ? "unchanged"
+                                              : "updated";
+  ToolResult saved = action == "unchanged"
+                         ? ToolSuccess("unchanged " + path.string())
+                         : ToolWritePrivateFile(path.string(), *content);
+  if (!saved.Ok()) return saved;
+
+  std::string source = EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE");
+  std::string workspace =
+      scope == "project" ? path.parent_path().filename().string() : "";
+  MemoryEvent event{action,
+                    scope + "/" + SafeFileComponent(name),
+                    MemoryPreview(*content),
+                    source.empty() ? "" : WorkspaceId(source),
+                    std::move(workspace),
+                    UtcStamp(),
+                    !source.empty()};
+  std::string event_error;
+  std::string receipt =
+      source.empty() ? "" : EnvStr("UAGENT_MEMORY_RECEIPT");
+  if (!WriteMemoryEvent(event, receipt, event_error)) {
+    DebugLog("memory_event_write_error",
+             {{"error", event_error}, {"key", event.key}});
+  }
+  return saved;
 }
 
 }  // namespace
+
+bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
+                      std::string& error) {
+  std::string serialized = JsonDump(MemoryEventJson(event));
+  bool appended = AppendBoundedMemoryEvent(serialized, error);
+  if (receipt_path.empty()) return appended;
+  std::string receipt_error;
+  bool receipt = AtomicWriteFile(receipt_path, serialized + "\n", 0600,
+                                 /*preserve_mode=*/false, receipt_error);
+  if (!receipt) {
+    if (!error.empty()) error += "; ";
+    error += "receipt: " + receipt_error;
+  }
+  return appended && receipt;
+}
+
+bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
+                       std::string& error) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    error = "receipt not found";
+    return false;
+  }
+  json value = json::parse(input, nullptr, false);
+  if (value.is_discarded() || !ParseMemoryEvent(value, event)) {
+    error = "invalid memory receipt";
+    return false;
+  }
+  return true;
+}
+
+std::vector<MemoryEvent> LoadMemoryEvents(size_t limit) {
+  std::ifstream input(MemoryEventsPath());
+  std::vector<MemoryEvent> events;
+  std::string line;
+  while (std::getline(input, line)) {
+    json value = json::parse(line, nullptr, false);
+    MemoryEvent event;
+    if (!value.is_discarded() && ParseMemoryEvent(value, event)) {
+      events.push_back(std::move(event));
+      if (events.size() > limit) events.erase(events.begin());
+    }
+  }
+  return events;
+}
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content) {

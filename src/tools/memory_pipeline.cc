@@ -177,6 +177,11 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                              std::to_string(remaining));
   }
   std::string marker = MarkerPath(source, cwd);
+  std::string receipt = marker + ".receipt.json";
+  std::error_code ignored;
+  std::filesystem::remove(receipt, ignored);
+  std::string source_id = WorkspaceId(source);
+  environment.emplace_back("UAGENT_MEMORY_RECEIPT", receipt);
   std::string cleanup =
       "if [ \"$(cat " + ShellQuote(marker) +
       " 2>/dev/null)\" = processing ]; then rm -f " + ShellQuote(marker) +
@@ -190,10 +195,15 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                                         .background = true,
                                         .immediate = true,
                                         .job_kind = "memory",
+                                        .activity_label =
+                                            "extracting from " + source_id,
+                                        .receipt_path = receipt,
+                                        .source_id = source_id,
                                         .environment = std::move(environment)})
                            .result;
   if (!started.Ok()) {
     ReleaseClaim(source, cwd);
+    std::filesystem::remove(receipt, ignored);
     return started.output;
   }
   return {};

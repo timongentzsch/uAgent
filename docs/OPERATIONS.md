@@ -24,6 +24,7 @@ or multi-tenant service.
 | memory file / files | 2 KiB / 32 per scope |
 | memory always-on slice | 2 KiB |
 | memory extraction | one session, 32 KiB, after 6 idle hours |
+| memory event audit | 256 KiB, compacted under a cross-process file lock |
 | attachment / terminal image | 10 / 10 MiB |
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
 | automatic compaction | 85% projected model context |
@@ -63,6 +64,12 @@ extraction. Each interactive startup claims at most one eligible session;
 `UAGENT_MEMORY_IDLE_SECONDS` and `UAGENT_MEMORY_EXTRACT_BYTES` tune its bounded
 input. Codex top-level memories and the current Claude project memory directory
 are indexed read-only.
+
+Automatic extraction appears as a semantic `[memory]` activity rather than its
+shell wrapper. On completion, created and updated memories (and failures) enter
+UI scrollback but not model context. `/verbose` also shows unchanged/no-change
+receipts. `/memory` lists the latest action, timestamp, automatic source, and a
+redacted 160-character preview from the private bounded `events.jsonl` audit.
 
 Set `UAGENT_IMAGE_MODEL` to a vision-capable model on the active provider when
 the primary route is text-only. When direct image input is known to be

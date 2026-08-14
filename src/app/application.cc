@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -222,8 +223,9 @@ class Application {
       case SlashCommandId::kVerbose:
         agent_.SetVerbose(!agent_.Verbose());
         printf("%s· verbose %s%s\n", DIM(),
-               agent_.Verbose() ? "ON — expanded bounded tool output"
-                                : "off — compact tool output",
+               agent_.Verbose()
+                   ? "ON — full reasoning and expanded bounded tool output"
+                   : "off — compact reasoning and compact tool output",
                RST());
         break;
       case SlashCommandId::kHelp:
@@ -329,9 +331,41 @@ class Application {
       printf("%s· no saved memories%s\n", DIM(), RST());
       return;
     }
+    std::map<std::string, MemoryEvent> latest;
+    for (MemoryEvent& event : LoadMemoryEvents()) {
+      if (!event.key.empty()) {
+        latest[event.key + "\n" + event.workspace] = std::move(event);
+      }
+    }
     for (const MemoryEntry& entry : entries) {
-      printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
-             TerminalSafe(Tilde(entry.path)).c_str(), RST());
+      std::string workspace = entry.key.starts_with("project/")
+                                  ? std::filesystem::path(entry.path)
+                                        .parent_path()
+                                        .filename()
+                                        .string()
+                                  : "";
+      auto found = latest.find(entry.key + "\n" + workspace);
+      if (found == latest.end()) {
+        printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
+               TerminalSafe(Tilde(entry.path)).c_str(), RST());
+        continue;
+      }
+      const MemoryEvent& event = found->second;
+      printf("%s· %s · %s · %s", DIM(), TerminalSafe(entry.key).c_str(),
+             TerminalSafe(event.action).c_str(),
+             TerminalSafe(event.timestamp).c_str());
+      if (event.automatic) {
+        printf(" · automatic");
+        if (!event.source_session.empty()) {
+          printf(" · source %s", TerminalSafe(event.source_session).c_str());
+        }
+      } else {
+        printf(" · explicit");
+      }
+      printf("%s\n", RST());
+      if (!event.preview.empty()) {
+        printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
+      }
     }
   }
 

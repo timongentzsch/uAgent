@@ -83,7 +83,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   }
   ChatResult result =
       api_.Chat(conversation_.Messages(), schemas, turn_budget, session_id_,
-                render_output, estimated_bytes);
+                render_output, estimated_bytes, verbose_);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {

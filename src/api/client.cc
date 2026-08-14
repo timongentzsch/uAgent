@@ -50,6 +50,21 @@ long CurlTimeout(int64_t seconds) {  // NOLINT: libcurl ABI
           static_cast<int64_t>(std::numeric_limits<long>::max())));  // NOLINT
 }
 
+double CurlTimingMs(CURL* handle, CURLINFO info) {
+  double seconds = 0;
+  return curl_easy_getinfo(handle, info, &seconds) == CURLE_OK
+             ? seconds * 1000.0
+             : -1;
+}
+
+void CollectCurlTimings(CURL* handle, ChatResult& result) {
+  result.dns_ms = CurlTimingMs(handle, CURLINFO_NAMELOOKUP_TIME);
+  result.connect_ms = CurlTimingMs(handle, CURLINFO_CONNECT_TIME);
+  result.tls_ms = CurlTimingMs(handle, CURLINFO_APPCONNECT_TIME);
+  result.pretransfer_ms = CurlTimingMs(handle, CURLINFO_PRETRANSFER_TIME);
+  result.start_transfer_ms = CurlTimingMs(handle, CURLINFO_STARTTRANSFER_TIME);
+}
+
 }  // namespace
 
 Api::Api(RuntimeConfig config)
@@ -154,14 +169,20 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
-                     bool render_output) {
+                     bool render_output, size_t estimated_bytes) {
   ChatResult res;
-  size_t estimated =
-      JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
+  auto overall_started = std::chrono::steady_clock::now();
+  size_t estimated = estimated_bytes;
+  if (estimated == 0) {
+    estimated =
+        JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
+  }
   if (config.request_bytes > 0 &&
       estimated > static_cast<size_t>(config.request_bytes)) {
     res.error =
         "request exceeds " + std::to_string(config.request_bytes) + " bytes";
+    res.request_preparation_ms = ElapsedMs(overall_started);
+    res.end_to_end_ms = res.request_preparation_ms;
     return res;
   }
   bool web_available = false;
@@ -171,8 +192,11 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
       payload.size() > static_cast<size_t>(config.request_bytes)) {
     res.error = "serialized request exceeds " +
                 std::to_string(config.request_bytes) + " bytes";
+    res.request_preparation_ms = ElapsedMs(overall_started);
+    res.end_to_end_ms = res.request_preparation_ms;
     return res;
   }
+  double preparation_ms = ElapsedMs(overall_started);
 
   // timeout_s is the caller's total budget (normally the remaining turn).
   // UAGENT_REQUEST_TIMEOUT caps one transport attempt. Keeping those clocks
@@ -198,6 +222,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
       if (remaining.count() <= 0) {
         res.error = "request deadline exhausted before retry";
         res.duration_ms = ElapsedMs(started);
+        res.request_preparation_ms = preparation_ms;
+        res.end_to_end_ms = ElapsedMs(overall_started);
         return res;
       }
       attempt_timeout = attempt_limit > 0
@@ -207,12 +233,15 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     auto attempt_started = std::chrono::steady_clock::now();
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
                       render_output);
+    res.request_preparation_ms = preparation_ms;
+    res.end_to_end_ms = ElapsedMs(overall_started);
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
               .count();
     }
     res.duration_ms = ElapsedMs(started);
+    res.end_to_end_ms = ElapsedMs(overall_started);
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
 
     uint64_t jitter_seed = static_cast<uint64_t>(
@@ -220,6 +249,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     std::chrono::milliseconds delay = RetryDelay(attempt, jitter_seed);
     if (request_timeout > 0 &&
         std::chrono::steady_clock::now() + delay >= deadline) {
+      res.end_to_end_ms = ElapsedMs(overall_started);
       return res;
     }
     DebugLog("api_retry", {{"attempt", attempt},
@@ -239,6 +269,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     if (!WaitForRetry(delay, render_output)) {
       res.error.clear();
       res.interrupted = true;
+      res.duration_ms = ElapsedMs(started);
+      res.end_to_end_ms = ElapsedMs(overall_started);
       return res;
     }
   }
@@ -307,6 +339,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
 
   CURLcode rc = CURLE_OK;
   bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
+  CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
   ctx.BeginOutput();
   ctx.Finish();

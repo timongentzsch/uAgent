@@ -107,7 +107,7 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two", 1);
   setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
-  CHECK(config.max_steps == 1);
+  CHECK(config.max_steps == 0);
   CHECK(config.max_tool_calls == 0);
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
@@ -162,7 +162,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
   unsetenv("UAGENT_OPENROUTER_VARIANT");
   RuntimeConfig defaults;
-  CHECK(defaults.max_steps == 100);
+  CHECK(defaults.max_steps == 0);
   CHECK(defaults.max_tool_calls == 0);
   CHECK(defaults.max_turn_cost == 0);
   CHECK(AutoCompactTokens() == 0);

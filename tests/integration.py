@@ -2657,9 +2657,10 @@ def test_subagent_interrupt_reaps_child(root, home):
             stderr=subprocess.PIPE,
             text=True,
         )
-        task_pid = None
+        task_started = False
+        child_pids = set()
         deadline = time.monotonic() + 4
-        while time.monotonic() < deadline and task_pid is None:
+        while time.monotonic() < deadline and not task_started:
             if trace.exists():
                 for line in trace.read_text().splitlines():
                     event_data = json.loads(line)
@@ -2670,18 +2671,34 @@ def test_subagent_interrupt_reaps_child(root, home):
                         and data.get("name") == "task"
                         and result.startswith("[started] task id ")
                     ):
-                        task_pid = int(result.split("[started] task id ", 1)[1].split(";", 1)[0])
+                        task_started = True
+                        processes = subprocess.check_output(
+                            ["ps", "-axo", "pid=,ppid="], text=True
+                        ).splitlines()
+                        children = {}
+                        for process_line in processes:
+                            child, parent = map(int, process_line.split())
+                            children.setdefault(parent, []).append(child)
+                        pending = [process.pid]
+                        while pending:
+                            parent = pending.pop()
+                            for child in children.get(parent, []):
+                                if child not in child_pids:
+                                    child_pids.add(child)
+                                    pending.append(child)
                         break
             time.sleep(0.02)
-        assert_true(task_pid is not None, "delegated child did not start")
+        assert_true(task_started, "delegated child did not start")
+        assert_true(child_pids, "delegated child pid was not observable")
         process.send_signal(signal.SIGINT)
         process.communicate(timeout=8)
-        try:
-            os.kill(task_pid, 0)
-        except ProcessLookupError:
-            pass
-        else:
-            raise AssertionError(f"delegated child {task_pid} survived interrupt")
+        for child_pid in child_pids:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                pass
+            else:
+                raise AssertionError(f"delegated child process {child_pid} survived interrupt")
     finally:
         if process is not None and process.poll() is None:
             process.kill()

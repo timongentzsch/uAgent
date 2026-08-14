@@ -32,6 +32,11 @@ endpoint and every MCP server as trusted infrastructure.
   credentials are deliberately re-added. Approved `run` commands can opt in
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
   MCP servers, delegated agents, or `run_python`.
+- A `run(tty=true)` activity retains a writable PTY for the lifetime of the
+  harness. `activity_input` sends raw bytes with the permissions of the original
+  process, so treat every write, interrupt, and resize as process control.
+  Ordinary input to non-TTY activities is rejected. Detached persistent
+  activities retain logs but no reattachable stdin channel.
 - Automatic memory extraction runs only against one idle saved session. Its
   child receives the configured model credential but exposes only the memory
   tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript

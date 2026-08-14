@@ -30,6 +30,13 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     return result;
   }
   int64_t request = ++request_id_;
+  const size_t schema_bytes = JsonEstimatedBytes(schemas);
+  const size_t message_bytes = JsonEstimatedBytes(conversation_.Messages());
+  const size_t estimated_bytes =
+      api_.native_tools ? SaturatingAdd(message_bytes, schema_bytes)
+                        : message_bytes;
+  context_snapshot_.store(EstimatedTokens(estimated_bytes),
+                          std::memory_order_relaxed);
   if (Debug().Enabled()) {
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
@@ -42,14 +49,14 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"session_id", session_id_},
         {"total_messages", conversation_.Size()},
         {"tool_schemas", schemas.size()},
-        {"schema_chars", JsonDump(schemas).size()},
+        {"schema_chars", schema_bytes},
         {"native_tools", api_.native_tools},
         {"parallel_tools", api_.parallel_tools},
         {"include_usage", api_.include_usage},
         {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
     if (step <= 0 || logged_msgs_ > conversation_.Size()) {
       record["messages"] = conversation_.Messages();
-      record["message_chars"] = JsonEstimatedBytes(conversation_.Messages());
+      record["message_chars"] = message_bytes;
     } else {
       json added = json::array();
       for (size_t i = logged_msgs_; i < conversation_.Size(); ++i) {
@@ -74,9 +81,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
-  SnapshotContext(JsonEstimatedBytes(schemas));
-  ChatResult result = api_.Chat(conversation_.Messages(), schemas, turn_budget,
-                                session_id_, render_output);
+  ChatResult result =
+      api_.Chat(conversation_.Messages(), schemas, turn_budget, session_id_,
+                render_output, estimated_bytes);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {
@@ -89,7 +96,14 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                    {"step", step},
                    {"purpose", purpose},
                    {"duration_ms", result.duration_ms},
+                   {"request_preparation_ms", result.request_preparation_ms},
+                   {"end_to_end_ms", result.end_to_end_ms},
                    {"first_event_ms", result.first_event_ms},
+                   {"dns_ms", result.dns_ms},
+                   {"connect_ms", result.connect_ms},
+                   {"tls_ms", result.tls_ms},
+                   {"pretransfer_ms", result.pretransfer_ms},
+                   {"start_transfer_ms", result.start_transfer_ms},
                    {"http_status", result.http_status},
                    {"finish_reason", result.finish_reason},
                    {"content", result.content},

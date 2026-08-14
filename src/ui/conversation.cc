@@ -14,15 +14,38 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/media/terminal.h"
 #include "include/tools/tool.h"
 #include "include/ui/tool_output.h"
 
 namespace uagent {
 
+std::string ReplayableImagePath(const json& call, const std::string& result) {
+  if (!result.starts_with("displayed ") || !call.is_object() ||
+      !call.contains("function") || !call["function"].is_object()) {
+    return "";
+  }
+  const json& function = call["function"];
+  if (JsonValue(function, "name", "") != "show_image" ||
+      !function.contains("arguments")) {
+    return "";
+  }
+  json arguments;
+  if (function["arguments"].is_object()) {
+    arguments = function["arguments"];
+  } else if (function["arguments"].is_string()) {
+    arguments =
+        json::parse(function["arguments"].get<std::string>(), nullptr, false);
+  }
+  if (!arguments.is_object()) return "";
+  return JsonValue(arguments, "path", "");
+}
+
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools) {
   static const json kEmpty;
   std::unordered_map<std::string, std::string> tool_names;
+  std::unordered_map<std::string, const json*> image_calls;
   for (size_t index = 0; index < conversation.Size(); ++index) {
     const json& message = conversation.At(index);
     MessageKind kind = conversation.KindAt(index);
@@ -32,6 +55,12 @@ void PrintConversationHistory(const Conversation& conversation,
     if (kind == MessageKind::kToolResult && content.is_string()) {
       std::string id = JsonValue(message, "tool_call_id", "");
       auto name = tool_names.find(id);
+      auto image = image_calls.find(id);
+      if (image != image_calls.end()) {
+        std::string path = ReplayableImagePath(*image->second,
+                                               content.get<std::string>());
+        if (!path.empty()) (void)ToolShowImage(path);
+      }
       PrintStoredToolResult(name == tool_names.end() ? "" : name->second,
                             content.get<std::string>());
     } else if (kind == MessageKind::kAssistant) {
@@ -43,7 +72,10 @@ void PrintConversationHistory(const Conversation& conversation,
         for (const json& call : message["tool_calls"]) {
           std::string name = PrintToolCallSummary(call, tools);
           std::string id = JsonValue(call, "id", "");
-          if (!id.empty() && !name.empty()) tool_names[id] = std::move(name);
+          if (!id.empty() && !name.empty()) {
+            if (name == "show_image") image_calls[id] = &call;
+            tool_names[id] = std::move(name);
+          }
         }
       }
     } else if (kind == MessageKind::kUser && content.is_string()) {

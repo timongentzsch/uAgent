@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_UI_CONVERSATION_H_
 #define UAGENT_INCLUDE_UI_CONVERSATION_H_
 
+#include <string>
 #include <vector>
 
 #include "include/agent/conversation.h"
@@ -10,6 +11,8 @@
 
 namespace uagent {
 
+std::string ReplayableImagePath(const json& call,
+                                const std::string& result);
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools);
 void PrintModelContext(const json& request);

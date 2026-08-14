@@ -319,7 +319,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   };
 
   int64_t step = 0;
-  for (; step < state.max_steps; ++step) {
+  for (; state.max_steps <= 0 || step < state.max_steps; ++step) {
     apply_queued_steering();
     RefreshSystemMessage();
     if (SteeringState().Requested()) {
@@ -537,7 +537,7 @@ std::string Agent::TurnStatsLine(const TurnState& state, double seconds,
 }
 
 void Agent::FinishTurn(TurnState& state, int64_t step) {
-  if (step >= state.max_steps) {
+  if (state.max_steps > 0 && step >= state.max_steps) {
     last_error_ =
         "step limit (" + std::to_string(state.max_steps) + ") reached";
     std::cout << RED() << "step limit (" << state.max_steps
@@ -565,7 +565,9 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   DebugLog("turn_end",
            {{"turn", turn_id_},
             {"outcome", state.outcome},
-            {"steps", step >= state.max_steps ? state.max_steps : step + 1},
+            {"steps", state.max_steps > 0 && step >= state.max_steps
+                         ? state.max_steps
+                         : step + 1},
             {"tool_calls", state.tool_count},
             {"duration_ms", secs * 1000},
             {"ttt_ms", state.ttt_ms},

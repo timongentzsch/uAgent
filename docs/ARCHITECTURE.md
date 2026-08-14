@@ -52,34 +52,48 @@ user input
   → archive trace, compact old bulky results in batches, atomically save
 ```
 
-Time, rounds, calls, output, processes, memory, context, and reported cost are
-bounded. Persistent commands require `run(detach=true)`. Delegated work runs in
-separate sanitized processes. One `ProcessSupervisor` owns commands, tasks,
-and detached services under activity IDs. `activity_output` snapshots a bounded
-log without changing ownership. A task runs in the foreground when its result is
-required for the next step, or in the background when useful parent work can
-continue. An exact live detached command and working-directory match returns
-the existing activity rather than spawning a second service. Background
-results are delivered automatically on exit;
-`activity_wait` is an optional join for blocked work, and `activity_stop`
-terminates the complete process group. An optional output wait watches for new
-bytes, exit, or a readiness marker instead of repeated polling. Results arrive
-at model-step boundaries. The persistent interactive loop and headless runner
-both drain completions and resume through an internal harness turn that does not
-count as user input. They reuse the existing event poll and process supervisor,
-without a watcher thread or parallel registry. Detached ownership follows the
-process group after its wrapper exits.
+Time, output, processes, memory, and context are bounded by default; model
+rounds, tool calls, and reported cost have configurable opt-in caps. Persistent commands require `run(detach=true)`. Delegated work runs in
+separate sanitized processes. One `ProcessSupervisor` owns foreground commands,
+background commands, tasks, and detached services. Session activities receive
+opaque IDs distinct from OS PIDs; persistent detached records remain PID-backed
+for reattachment compatibility.
+
+`run` applies a configurable 10-second initial wait by default; explicit
+`yield_ms=0` preserves full synchronous waiting. `tty=true` retains a POSIX PTY,
+merged output, writable input, process-group signaling, and resize support.
+Ctrl+B requests that every foreground command in the current tool batch yield
+without being signaled or restarted, allowing queued steering to apply at the
+next tool boundary. Persistent detached activities remain log-only and do not
+retain interactive input after the harness exits.
+
+A single process-I/O thread polls PTY masters and ordinary command pipes. It
+feeds the private log, an incremental 1 MiB head/tail buffer, and an aggregate
+bounded transcript, and it is the sole owner of process reaping and I/O-FD
+closure. The buffer preserves the oldest and newest bytes
+and reports an omitted middle. `activity_output` drains new output or waits for
+output, exit, or a readiness marker; `activity_input` serializes PTY writes,
+polling, interruption, and resize for one activity. `activity_wait` optionally
+joins blocked work, while `activity_stop` terminates the complete process group.
+An exact live detached command and working-directory match returns the existing
+activity rather than spawning a duplicate. Results arrive at model-step
+boundaries. The persistent interactive loop and headless runner drain
+completions and resume through an internal harness turn that does not count as
+user input. Detached ownership follows the process group after its wrapper
+exits.
 The application owns a small raw-mode composer while the foreground agent runs
 on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. A stateful decoder retains fragmented
 CSI and bracketed-paste sequences across reads; the composer owns history and
 paste bounds.
 Terminal focus and Meta key sequences preserve the draft; only a genuinely
-bare Escape becomes an interrupt. Enter appends guidance to the active turn's steering
-queue; Escape raises only the foreground abort flag. One turn
-timestamp drives the sole dynamic status row, which also reports queued
-steering, live context, and active background count. That row stays directly
-above the input and changes in place instead of entering scrollback.
+bare Escape becomes an interrupt. Enter appends guidance to the active turn's
+steering queue; Escape raises only the foreground abort flag. While foreground
+commands are transferable, Ctrl+B moves the complete active command batch into
+background supervision without restarting it. One turn timestamp drives the
+fixed-rate 10 Hz status animation, which also reports queued steering, live
+context, active background count, and applicable keyboard hints. That row stays
+directly above the input and changes in place instead of entering scrollback.
 One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;
 tool-specific contracts such as visibility, call budgets, and stable arguments
@@ -113,8 +127,11 @@ Host code continues to own permissions, approvals, capabilities, and limits.
 Debug telemetry records revisions and forces a full request snapshot after an
 in-place system-message change.
 
-Active messages and the removed-trace archive remain separate. Model-authored
-summary and memory text is evidence, never user authority. Native, Codex, and
+Active messages and the removed-trace archive remain separate. On conversation
+resume, successful archived `show_image` calls are matched to their tool results
+by call ID and retransmitted at the original timeline position. Sessions retain
+the path and tool trace, not image bytes; unavailable paths fail safely.
+Model-authored summary and memory text is evidence, never user authority. Native, Codex, and
 current-project Claude names share one bounded index; external files are
 read-only. The explicit `memory(action, key, content?)` contract handles get,
 set, forget, list, and search. Foreground writes require an explicit user
@@ -133,12 +150,20 @@ when the selected body is loaded.
 Browser work follows the same pattern: the deferred `browser-use` skill drives
 `playwright-cli` through the existing approved `run` tool. Playwright's daemon
 owns browser state; µAgent adds no browser schemas or protocol layer.
+
+The complete built-in, conditional, and dynamically discovered tool inventory
+is documented in [TOOLS.md](TOOLS.md). The active registry remains authoritative
+and is visible through `/context`.
+
 ## Observability
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,
-background count, queue depth, and working time.
-`--debug` records reconstructable JSONL; `--json` and `--json-stream` expose
-stable automation formats.
+background count, queue depth, working time, and transferable foreground work.
+`--debug` records reconstructable JSONL through an ordered background writer so
+serialization and flushing stay off the request path. Model-response records
+separate request preparation and end-to-end time from DNS, connection, TLS,
+pre-transfer, start-transfer, first-semantic-event, and total request timings.
+`--json` and `--json-stream` expose stable automation formats.
 
 ## Failure model
 

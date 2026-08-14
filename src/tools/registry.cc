@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/media.h"
@@ -182,14 +183,20 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       tools,
       MakeTool("run",
                "Execute a non-privileged build, test, or shell command in cwd "
-               "(bash default; omit cd; no stdin or sudo). Do not use it for "
-               "file search, reading, or editing when a dedicated tool exists. "
+               "(bash default; omit cd; no sudo). Set tty=true only when the "
+               "process needs interactive stdin. Do not use it for file "
+               "search, reading, or editing when a dedicated tool exists. "
                "Use a project's existing Python runner such as uv run or "
                "pytest. Detach only for a persistent terminal that may outlive "
                "the current session.",
                schema(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
+                    "tty":{"type":"boolean","description":"retain an interactive PTY"},
+                    "yield_ms":{"type":"integer","minimum":0,"maximum":30000,
+                      "description":"initial wait; 0 blocks to deadline; omitted uses UAGENT_RUN_YIELD_MS"},
+                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536,
+                      "description":"lower per-call returned-output cap"},
                     "detach":{"type":"boolean",
                       "description":"persist terminal and log"}},
                     "required":["command"]})json"),
@@ -197,13 +204,22 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                  return ToolRunApprovedShell(
                      supervisor, JsonValue(a, "command", ""), context,
                      JsonValue(a, "detach", false),
-                     JsonValue(a, "shell", "bash"));
+                     JsonValue(a, "shell", "bash"),
+                     JsonValue(a, "tty", false),
+                     JsonValue(a, "yield_ms", RunDefaultYieldMs()),
+                     JsonValue(a, "max_output_chars", int64_t{0}));
                }));
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
   run.validate = [](const json& a) {
-    return RunCommandPolicyError(JsonValue(a, "command", ""));
+    std::string error = RunCommandPolicyError(JsonValue(a, "command", ""));
+    if (!error.empty()) return error;
+    int64_t yield_ms = JsonValue(a, "yield_ms", int64_t{0});
+    if (yield_ms > 0 && yield_ms < 250) {
+      return std::string("error: yield_ms must be 0 or at least 250");
+    }
+    return std::string();
   };
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
@@ -252,17 +268,20 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
 
   Tool& activity_output = AddTool(
       tools, MakeTool("activity_output",
-                      "List activities or read one bounded log. Set wait_ms "
-                      "for new output; add until for a readiness marker.",
+                      "List activities or drain one activity's bounded new "
+                      "output. Set wait_ms for new output; add until for a "
+                      "readiness marker.",
                       schema(R"json({"type":"object","properties":{
                     "id":{"type":"integer","minimum":1,"maximum":2147483647},
-                    "wait_ms":{"type":"integer","minimum":1000,"maximum":300000},
-                    "until":{"type":"string","maxLength":256}}})json"),
+                    "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
+                    "until":{"type":"string","maxLength":256},
+                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}}})json"),
                       [&supervisor](const json& a, const ToolContext& context) {
                         return ToolActivityOutput(
                             supervisor, JsonValue(a, "id", int64_t{0}),
                             JsonValue(a, "wait_ms", int64_t{0}),
-                            JsonValue(a, "until", ""), context);
+                            JsonValue(a, "until", ""), context,
+                            JsonValue(a, "max_output_chars", int64_t{0}));
                       }));
   activity_output.parallel_safe = true;
   activity_output.capabilities = Capability(ToolCapability::kInspect);
@@ -284,6 +303,47 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     return summary;
   };
 
+  Tool& activity_input = AddTool(
+      tools,
+      MakeTool("activity_input",
+               "Write raw characters to an existing TTY activity, or pass an "
+               "empty string to poll it. Use \\u0003 to interrupt a non-TTY "
+               "activity. Supply rows and cols together to resize a PTY.",
+               schema(R"json({"type":"object","additionalProperties":false,"properties":{
+                    "id":{"type":"integer","minimum":1,"maximum":2147483647},
+                    "chars":{"type":"string","maxLength":65536},
+                    "wait_ms":{"type":"integer","minimum":0,"maximum":30000},
+                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536},
+                    "rows":{"type":"integer","minimum":1,"maximum":1000},
+                    "cols":{"type":"integer","minimum":1,"maximum":1000}},
+                    "required":["id","chars"]})json"),
+               [&supervisor](const json& a, const ToolContext& context) {
+                 return ToolActivityInput(
+                     supervisor, JsonValue(a, "id", int64_t{0}),
+                     JsonValue(a, "chars", ""),
+                     JsonValue(a, "wait_ms", int64_t{5000}), context,
+                     JsonValue(a, "rows", int64_t{0}),
+                     JsonValue(a, "cols", int64_t{0}),
+                     JsonValue(a, "max_output_chars", int64_t{0}));
+               }));
+  activity_input.mutating = true;
+  activity_input.parallel_safe = true;
+  activity_input.capabilities = Capability(ToolCapability::kExecute) |
+                                Capability(ToolCapability::kMutate);
+  activity_input.result_chars = 6000;
+  activity_input.visibility = Tool::Visibility::kDetachedTerminal;
+  activity_input.validate = [](const json& a) {
+    if (a.contains("rows") != a.contains("cols")) {
+      return std::string("error: rows and cols must be supplied together");
+    }
+    return std::string();
+  };
+  activity_input.summary = [](const json& a) {
+    return "activity " +
+           std::to_string(JsonValue(a, "id", int64_t{0})) + " · " +
+           std::to_string(JsonValue(a, "chars", "").size()) + " bytes";
+  };
+
   Tool& activity_wait = AddTool(
       tools,
       MakeTool("activity_wait",
@@ -295,7 +355,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "ids":{"type":"array","maxItems":20,
                       "items":{"type":"integer","minimum":1,"maximum":2147483647}},
                     "mode":{"type":"string","enum":["any","all"]},
-                    "wait_ms":{"type":"integer","minimum":1000,"maximum":300000}}})json"),
+                    "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
+                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}}})json"),
                [&supervisor](const json& a, const ToolContext& context) {
                  std::vector<int64_t> ids;
                  if (a.contains("ids")) {
@@ -306,7 +367,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                  }
                  return ToolActivityWait(
                      supervisor, ids, JsonValue(a, "mode", "any"),
-                     JsonValue(a, "wait_ms", int64_t{30000}), context);
+                     JsonValue(a, "wait_ms", int64_t{30000}), context,
+                     JsonValue(a, "max_output_chars", int64_t{0}));
                }));
   activity_wait.parallel_safe = true;
   activity_wait.capabilities = Capability(ToolCapability::kInspect);

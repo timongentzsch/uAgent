@@ -57,7 +57,7 @@ class Api {
                      bool* web_available = nullptr) const;
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
-                  bool render_output = true);
+                  bool render_output = true, size_t estimated_bytes = 0);
   json Post(const std::string& path, const json& body, int64_t timeout_s = 120);
   json Get(const std::string& path, bool abortable = false);
 

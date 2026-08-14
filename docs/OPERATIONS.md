@@ -9,7 +9,7 @@ or multi-tenant service.
 | --- | ---: |
 | first event / stream idle | 300 / 300 s |
 | request / complete turn | 600 / 3600 s |
-| model rounds / tool calls | 100 / unlimited |
+| model rounds / tool calls | unlimited / unlimited (both configurable) |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
 | reported turn cost | unlimited |
 | request / response | 64 / 32 MiB |
@@ -18,6 +18,9 @@ or multi-tenant service.
 | tool result / batch | 8,000 / 16,000 characters |
 | recent tool trace / prune batch | 64 / 32 KiB |
 | background jobs / safe workers | 8 / 4 |
+| per-activity incremental output buffer | 1 MiB, equal head/tail |
+| default public `run` yield | 10 seconds (`UAGENT_RUN_YIELD_MS`) |
+| retained delivered activity sessions | 16, LRU |
 | memory file / files | 2 KiB / 32 per scope |
 | memory always-on slice | 2 KiB |
 | memory extraction | one session, 32 KiB, after 6 idle hours |
@@ -77,19 +80,44 @@ Dollar limits are enforced between calls and require provider-reported
 may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
+Debug model-response records expose `request_preparation_ms`, `end_to_end_ms`,
+`dns_ms`, `connect_ms`, `tls_ms`, `pretransfer_ms`, `start_transfer_ms`,
+`first_event_ms`, and `duration_ms`. Trace records are queued in sequence and
+serialized/flushed by a background writer; shutdown drains the queue.
+
 Commands, delegated tasks, and detached terminals share activity IDs.
-`/ps` lists the current session's active work behind the status bar's `bg:N`.
-Launching the exact same detached command again from the same working directory
-reuses its live activity instead of starting a duplicate process group.
-`activity_output(id)` reads a bounded log without cancelling ownership;
-`wait_ms` optionally blocks for output/exit and `until` requires fixed
-readiness text. Use `task(background=false)` when the next step requires the
-child result; background tasks notify the agent automatically on exit.
-`activity_wait(ids, mode)` is available when no useful work remains and a join
-is intentional. `activity_stop(id)` sends TERM, then KILL if needed, to the
-complete process group and removes its record and rotating logs. Output is
-limited to bytes the child has flushed. Persistent TUI and headless runs resume
-after background completion without a second process watcher.
+Session-lifetime activities use opaque IDs distinct from OS PIDs; persistent
+detached records remain PID-backed. `/ps` lists active work behind the status
+bar's `bg:N`. Launching the exact same detached command again from the same
+working directory reuses its process group.
+
+`run` waits 10 seconds by default before returning a still-running command as
+an activity; `UAGENT_RUN_YIELD_MS` changes that default. Explicit `yield_ms=0`
+waits to the turn deadline, while 250 through 30,000 select another initial
+wait. Set `tty=true` only when the process needs interactive input. A PTY
+activity retains merged output, writable input, process-group interruption, and resize support.
+Persistent `detach=true` activities remain rotating-log based and cannot be
+interactively reattached after the harness exits.
+
+`activity_output(id)` drains bounded new output without cancelling ownership;
+`wait_ms` optionally blocks for output or exit and `until` waits for fixed
+readiness text. `activity_input(id, chars)` writes raw PTY bytes; empty input
+polls, `\u0003` interrupts the process group, and `rows` plus `cols` resize the
+PTY. Ordinary writes to non-TTY activities are rejected. Ordinary and PTY
+activities share one event-driven output/reap thread, so
+`activity_output`, `activity_input`, foreground yielding, and `activity_wait`
+use notifications rather than log polling. Interactions against one activity
+are serialized. Incremental output uses a 1 MiB equal head/tail buffer, while
+private logs continue to support diagnostics and large-output artifacts.
+`max_output_chars` can lower the host cap for one `run`, output, input, or wait
+interaction.
+
+Use `task(background=false)` when the next step requires the child result;
+background tasks notify the agent automatically on exit. `activity_wait(ids,
+mode)` is an intentional join when no useful parent work remains.
+`activity_stop(id)` sends TERM, then KILL if needed, to the complete process
+group and removes its records and logs. Persistent TUI and headless runs resume
+automatically after background completion.
 
 Configured MCP servers start once and expose their discovered tools directly.
 When a server reports an error without diagnostic text, the result points to
@@ -111,13 +139,18 @@ outside model context. Install it once with
 user-owned Chrome session; otherwise use an isolated `open` session.
 
 The interactive composer owns stdin for the whole session. Enter during work
-queues guidance into the active turn at the next model/tool boundary; Escape
-interrupts only the foreground request/tool batch and applies queued guidance
-immediately. Terminal focus changes do not clear drafts or interrupt work;
-multiline bracketed paste is normalized and inserted as one edit before Enter
-submits it.
-Background commands, delegated tasks, and detached terminals retain their
-existing supervisor ownership.
+queues guidance into the active turn at the next model/tool boundary. While a
+foreground command is running, Ctrl+B transfers the complete foreground tool
+batch to background supervision without signaling or restarting it, so queued
+guidance can apply immediately. Escape interrupts only the foreground
+request/tool batch and applies queued guidance. Terminal focus changes do not
+clear drafts or interrupt work; multiline bracketed paste is normalized and
+inserted as one edit before Enter submits it. Background commands, delegated
+tasks, and detached terminals retain their supervisor ownership.
+
+The active and conditional tool inventory is listed in [TOOLS.md](TOOLS.md).
+Use `/context` for the exact schemas currently advertised after policy, route,
+state, skill, delegation, and MCP filtering.
 
 ## Release
 

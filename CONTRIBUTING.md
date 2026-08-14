@@ -42,4 +42,5 @@ Before release, also run the Release preset and the sanitizer, TSan, fuzz, and
 coverage CI jobs. Benchmarks are trend signals, not correctness gates.
 
 See [architecture](docs/ARCHITECTURE.md),
-[persistence](docs/PERSISTENCE.md), and [operations](docs/OPERATIONS.md).
+[persistence](docs/PERSISTENCE.md), [operations](docs/OPERATIONS.md), and
+[tools](docs/TOOLS.md).

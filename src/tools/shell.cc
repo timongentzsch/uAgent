@@ -2,12 +2,15 @@
 
 #include "include/tools/shell.h"
 
+#include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -15,8 +18,11 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -82,6 +88,86 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
   return error;
 }
 
+int SpawnPtyShell(const std::string& shell, std::string& command,
+                  char* const* environment, pid_t& pid, int& master_fd) {
+#if defined(__unix__) || defined(__APPLE__)
+  master_fd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
+  if (master_fd < 0) return errno;
+  if (grantpt(master_fd) != 0 || unlockpt(master_fd) != 0) {
+    int error = errno;
+    close(master_fd);
+    master_fd = -1;
+    return error;
+  }
+  const char* slave_name = ptsname(master_fd);
+  if (!slave_name) {
+    int error = errno;
+    close(master_fd);
+    master_fd = -1;
+    return error;
+  }
+  winsize initial_size{};
+  initial_size.ws_row = 24;
+  initial_size.ws_col = 80;
+  (void)ioctl(master_fd, TIOCSWINSZ, &initial_size);
+
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, slave_name, O_RDWR,
+                                   0);
+  posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
+  posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
+  posix_spawn_file_actions_addclose(&actions, master_fd);
+  posix_spawnattr_t attributes;
+  posix_spawnattr_init(&attributes);
+  using PosixSpawnFlags = short;
+  PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
+#ifdef POSIX_SPAWN_SETSID
+  group_flag = POSIX_SPAWN_SETSID;
+#else
+  posix_spawnattr_setpgroup(&attributes, 0);
+#endif
+  sigset_t defaults, mask;
+  sigemptyset(&defaults);
+  for (int signal_number : {SIGINT, SIGTERM, SIGHUP, SIGPIPE}) {
+    sigaddset(&defaults, signal_number);
+  }
+  sigemptyset(&mask);
+  posix_spawnattr_setsigdefault(&attributes, &defaults);
+  posix_spawnattr_setsigmask(&attributes, &mask);
+  posix_spawnattr_setflags(&attributes, static_cast<PosixSpawnFlags>(
+                                            group_flag | POSIX_SPAWN_SETSIGDEF |
+                                            POSIX_SPAWN_SETSIGMASK));
+  auto spawn = [&](const std::string& executable) {
+    char* const argv[] = {const_cast<char*>(executable.c_str()),
+                          const_cast<char*>("-c"), command.data(), nullptr};
+    return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
+                        environment);
+  };
+  int error = spawn(shell);
+  if (error != 0 && shell == "bash") error = spawn("/bin/bash");
+  if (error != 0 && shell == "bash") error = spawn("/bin/sh");
+  posix_spawnattr_destroy(&attributes);
+  posix_spawn_file_actions_destroy(&actions);
+  if (error != 0) {
+    close(master_fd);
+    master_fd = -1;
+  }
+  return error;
+#else
+  (void)shell;
+  (void)command;
+  (void)environment;
+  (void)pid;
+  (void)master_fd;
+  return ENOTSUP;
+#endif
+}
+
+void SignalShellGroup(pid_t pid, int signal_number) {
+  if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
+}
+
 }  // namespace
 
 ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
@@ -90,6 +176,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   const std::string& cmd = spec.command;
   const std::string& shell = spec.shell;
   const bool detach = spec.detach;
+  if (spec.yield_ms > 0) spec.yield_ms = std::clamp(spec.yield_ms, int64_t{250}, int64_t{30000});
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -111,8 +198,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                        "error: background job limit reached (" +
                            std::to_string(max_jobs) + ")");
   };
-  if (static_cast<int64_t>(supervisor.PendingCount()) >= max_jobs) {
-    return {job_limit_error()};
+  std::optional<ActivityReservation> reservation;
+  if (!detach) {
+    reservation = supervisor.ReserveActivity(max_jobs);
+    if (!reservation) return {job_limit_error()};
   }
   int64_t window = (detach || spec.immediate)
                        ? 0
@@ -128,26 +217,53 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   fchmod(lfd, 0600);
   int64_t log_bytes = BashLogBytes();
-  // Foreground commands may be stopped at the cap. Detached servers instead
-  // stream through this binary's tiny rotating log pump and keep running.
+  int64_t interaction_cap =
+      spec.max_output_chars > 0
+          ? std::min(spec.max_output_chars, ToolResultCap())
+          : ToolResultCap();
+  auto limit_output = [interaction_cap](std::string output) {
+    if (interaction_cap <= 0 ||
+        output.size() <= static_cast<size_t>(interaction_cap)) {
+      return output;
+    }
+    HeadTailBuffer limited(static_cast<size_t>(interaction_cap));
+    limited.Push(output);
+    return limited.Snapshot();
+  };
   std::string bounded_cmd =
       detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
                    ShellQuote(ExecutablePath()) + " --log-pump " +
                    ShellQuote(log) + " " + std::to_string(log_bytes)
-             : "ulimit -f " + std::to_string((log_bytes - 1) / 1024 + 1) +
-                   "; " + cmd;
+             : cmd;
   pid_t pid = -1;
+  int master_fd = -1;
+  int pipe_fds[2] = {-1, -1};
+  bool tty = spec.tty && !detach;
+  if (!tty && !detach && pipe(pipe_fds) != 0) {
+    close(lfd);
+    unlink(log.c_str());
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: cannot create process output pipe")};
+  }
+  auto session = detach ? std::shared_ptr<ActivitySession>()
+                        : std::make_shared<ActivitySession>();
+  if (session) session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
-  int spawn_error = SpawnLoggedShell(shell, bounded_cmd, lfd, detach,
-                                     child_environment.Data(), pid);
+  int child_output = detach ? lfd : pipe_fds[1];
+  int spawn_error = tty ? SpawnPtyShell(shell, bounded_cmd,
+                                        child_environment.Data(), pid, master_fd)
+                        : SpawnLoggedShell(shell, bounded_cmd, child_output,
+                                           detach, child_environment.Data(), pid);
+  if (pipe_fds[1] >= 0) close(pipe_fds[1]);
   if (spawn_error != 0) {
+    if (pipe_fds[0] >= 0) close(pipe_fds[0]);
     close(lfd);
     unlink(log.c_str());
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
         "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
-  close(lfd);
+  if (detach) close(lfd);
   if (!detach) {
     std::string named =
         UagentDir(log_kind) + "/" + std::to_string(pid) + ".log";
@@ -164,88 +280,167 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     }
   }
 
-  // Ctrl+C during the window is a hard stop: kill it too
+  if (detach) {
+    BgJob job{pid, log, cmd, true, spec.job_kind, std::nullopt, pid, nullptr};
+    if (!supervisor.TryAdd(std::move(job), max_jobs)) {
+      KillProcess(pid);
+      RemoveLog(log);
+      return {job_limit_error()};
+    }
+    return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
+                        log + " — activity id " + std::to_string(pid) +
+                        "; verify readiness with activity output")};
+  }
+
+  BgJob foreground{pid, log, cmd, false, spec.job_kind, std::nullopt, 0,
+                   session};
+  std::optional<int64_t> registered = reservation->Register(foreground);
+  if (!registered) {
+    KillProcess(pid);
+    close(lfd);
+    if (master_fd >= 0) close(master_fd);
+    if (pipe_fds[0] >= 0) close(pipe_fds[0]);
+    RemoveLog(log);
+    return {job_limit_error()};
+  }
+  int64_t activity_id = *registered;
+  int output_fd = tty ? master_fd : pipe_fds[0];
+  int input_fd = tty ? dup(master_fd) : -1;
+  supervisor.RegisterIo(session, output_fd, input_fd, lfd, log_bytes);
+
   TrackPid(g_child_pgids, kFgMax, pid, true);
-  int status = 0;
-  bool exited = false;
   bool cancelled = false;
+  bool handed_off = false;
+  bool exited = false;
   auto deadline = DeadlineAfter(window);
-  while (std::chrono::steady_clock::now() < deadline) {
-    if (WaitPid(pid, &status, WNOHANG) == pid) {
-      exited = true;
+  if (spec.yield_ms > 0) {
+    deadline = std::min(deadline, std::chrono::steady_clock::now() +
+                                      std::chrono::milliseconds(spec.yield_ms));
+  }
+  for (;;) {
+    uint64_t generation = supervisor.Generation();
+    {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      handed_off = session->background_requested;
+      exited = ActivityTerminal(session->state);
+    }
+    if (handed_off || exited || std::chrono::steady_clock::now() >= deadline) {
       break;
     }
     if (AbortRequested()) {
-      KillProcess(pid, &status);
-      exited = cancelled = true;
-      break;
+      cancelled = true;
+      SignalShellGroup(pid, SIGKILL);
+      supervisor.Wake();
     }
-    usleep(100 * 1000);
+    supervisor.WaitForChange(generation, deadline);
+  }
+
+  if (cancelled) {
+    auto stop_deadline = std::chrono::steady_clock::now() +
+                         std::chrono::seconds(2);
+    auto terminal = [&] {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      return ActivityTerminal(session->state);
+    };
+    while (!terminal() && std::chrono::steady_clock::now() < stop_deadline) {
+      uint64_t generation = supervisor.Generation();
+      supervisor.WaitForChange(generation, stop_deadline);
+    }
+    exited = terminal();
   }
   TrackPid(g_child_pgids, kFgMax, pid, false);
 
-  // Both terminal paths end the same way: take the log, keep an oversized one
-  // as an artifact, and report the wait status alongside the result.
   auto finish = [&](auto build) {
+    int status = 0;
+    std::string output;
+    {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      status = session->wait_status.value_or(0);
+      output = limit_output(session->transcript.Snapshot());
+    }
     CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
-    ToolResult result = build(std::move(collected.output));
+    if (collected.artifact) output = std::move(collected.output);
+    ToolResult result = build(std::move(output), status);
     result.artifact = std::move(collected.artifact);
     return ShellCommandResult{std::move(result), status};
   };
+
+  if (cancelled) {
+    (void)supervisor.RemoveForeground(pid);
+    RemoveLog(log);
+    return {ToolCancelled("error: command cancelled by user")};
+  }
   if (exited) {
-    if (detach) unlink(DetachedRecordPath(pid).c_str());
-    if (cancelled) {
-      RemoveLog(log);
-      return {ToolCancelled("error: command cancelled by user"), status};
-    }
-    return finish([status](std::string output) {
+    (void)supervisor.RemoveForeground(pid);
+    return finish([](std::string output, int status) {
       output += FmtExit(status, /*show_ok=*/false);
       return ProcessResult(std::move(output), status);
     });
   }
-  if (!spec.background) {
-    KillProcess(pid, &status);
-    if (detach) unlink(DetachedRecordPath(pid).c_str());
-    return finish([](std::string output) {
+  if (!spec.background && !handed_off && spec.yield_ms <= 0) {
+    (void)supervisor.RemoveForeground(pid);
+    SignalShellGroup(pid, SIGKILL);
+    auto stop_deadline = std::chrono::steady_clock::now() +
+                         std::chrono::seconds(2);
+    auto terminal = [&] {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      return ActivityTerminal(session->state);
+    };
+    for (;;) {
+      uint64_t generation = supervisor.Generation();
+      if (terminal() || std::chrono::steady_clock::now() >= stop_deadline) break;
+      supervisor.WaitForChange(generation, stop_deadline);
+    }
+    return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';
       output += "error: command exceeded its execution deadline";
       return ToolTimedOut(std::move(output));
     });
   }
-  bool is_task = spec.job_kind == "task";
-  BgJob job{pid, log, cmd, detach, std::move(spec.job_kind)};
-  if (!supervisor.TryAdd(std::move(job), max_jobs)) {
-    KillProcess(pid, &status);
+
+  bool is_task = session->kind == ActivityKind::kTask;
+  std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
+  if (!moved) {
+    SignalShellGroup(pid, SIGKILL);
     RemoveLog(log);
-    return {job_limit_error()};
-  }
-  if (detach) {
-    return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
-                        log + " — activity id " + std::to_string(pid) +
-                        "; verify readiness with activity output")};
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: foreground activity ownership was lost")};
   }
   BgTrackSignal(pid, true);
   if (is_task) {
-    return {ToolSuccess("[started] task id " + std::to_string(pid) +
+    return {ToolSuccess("[started] task id " + std::to_string(activity_id) +
                         "; result will be delivered automatically; inspect "
                         "activity output for progress/readiness, or wait only "
                         "when the next step is blocked")};
   }
-  return {ToolSuccess("[running] pid " + std::to_string(pid) +
-                      "; result will be delivered automatically; use "
-                      "activity output to inspect it")};
+  std::string initial_output;
+  {
+    std::lock_guard<std::mutex> lock(session->mutex);
+    initial_output = limit_output(session->pending_output.Drain());
+    session->last_used = std::chrono::steady_clock::now();
+  }
+  std::string output =
+      "[running] activity " + std::to_string(activity_id) +
+      (handed_off ? " moved to background; " : "; ") +
+      "result will be delivered automatically; use activity output to inspect it";
+  if (!initial_output.empty()) output += "\n" + initial_output;
+  return {ToolSuccess(std::move(output))};
 }
 
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const std::string& command,
                                 const ToolContext& context, bool detach,
-                                const std::string& shell) {
+                                const std::string& shell, bool tty,
+                                int64_t yield_ms, int64_t max_output_chars) {
   return RunShellCommand(
              supervisor, context,
              {.command = command,
               .shell = shell,
               .background = detach,
               .detach = detach,
+              .tty = tty,
+              .yield_ms = yield_ms,
+              .max_output_chars = max_output_chars,
               .environment_policy = ChildEnvironmentPolicy::kApprovedShell})
       .result;
 }

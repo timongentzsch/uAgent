@@ -6,10 +6,13 @@
 // private source and model reasoning, so they are off unless asked for.
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "include/core/json.h"
@@ -39,8 +42,14 @@ class DebugSink {
   void Write(const std::string& event, json data = json::object()) noexcept;
 
  private:
+  void Run();
+
   FILE* file_ = nullptr;
   std::mutex mutex_;
+  std::condition_variable wake_;
+  std::deque<json> queue_;
+  std::thread writer_;
+  bool stopping_ = false;
   std::chrono::steady_clock::time_point started_;
   std::string path_, error_;
   int64_t seq_ = 0;

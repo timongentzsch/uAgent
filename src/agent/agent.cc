@@ -9,6 +9,18 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/protocol.h"
+#include "include/agent/session_store.h"
+#include "include/agent/trace.h"
+#include "include/core/checked.h"
+#include "include/core/debug.h"
+#include "include/core/fs.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
+#include "include/media.h"
+#include "include/tools/jobs.h"
+#include "include/ui/conversation.h"
+
 namespace uagent {
 
 Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
@@ -43,6 +55,14 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
          {"project_instructions_truncated", project_instructions_.truncated}});
   }
   Reset();
+}
+
+void Agent::PrintTrace() const {
+  PrintLatestTrace(conversation_.Archive(), tools_);
+}
+
+void Agent::PrintHistory() const {
+  PrintConversationHistory(conversation_, tools_);
 }
 
 void Agent::Reset() {

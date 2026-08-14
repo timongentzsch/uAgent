@@ -12,6 +12,12 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/dispatch.h"
+#include "include/core/debug.h"
+#include "include/core/signals.h"
+#include "include/core/steering.h"
+#include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/ui/tool_output.h"
 
 namespace uagent {

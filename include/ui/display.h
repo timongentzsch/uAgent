@@ -2,10 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_UI_DISPLAY_H_
 #define UAGENT_INCLUDE_UI_DISPLAY_H_
-// Terminal rendering for the REPL: path abbreviation, the model and
-// route listings and the status line.
+// Terminal rendering for the REPL: model/route listings and the status line.
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -13,24 +11,14 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent.h"
 #include "include/api.h"
 #include "include/cli.h"
-#include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/usage.h"
 #include "include/providers.h"
 
 namespace uagent {
-
-// abbreviate $HOME to ~ for display
-inline std::string Tilde(const std::string& path) {
-  std::string home = UserHome();
-  if (!home.empty() && path.starts_with(home)) {
-    return "~" + path.substr(home.size());
-  }
-  return path;
-}
 
 inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   std::string current = ModelLabel(api.model, api.reasoning_effort);
@@ -92,31 +80,43 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
 
 // Compact session metadata for the persistent composer. Keep the stable
 // identity first; transient work state gets its own line while a turn runs.
-inline std::string StatusBar(const Api& api, const Agent& agent, bool yolo,
-                             size_t attachments,
-                             const ProcessSupervisor& processes) {
-  const Usage& u = agent.SessionUsage();
+struct StatusView {
+  int64_t context_used = 0;
+  bool verbose = false;
+  bool yolo = false;
+  size_t attachments = 0;
+  size_t background = 0;
+};
+
+inline std::string StatusBar(const Api& api, const Usage& usage,
+                             const StatusView& view) {
   std::string host = UrlHost(api.base_url);
-  int64_t used = agent.ContextUsed();
   std::string s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " @ " +
-                  host + " · ctx " + FmtCount(used);
-  if (u.cache_read) s += " · cache " + FmtCount(u.cache_read) + " total";
-  if (u.cost > 0) s += " · spent " + FmtCost(u.cost);
-  size_t background = processes.Count();
-  if (background) s += " · bg:" + std::to_string(background);
-  if (agent.Verbose()) s += " · verbose";
-  if (yolo) s += " · YOLO";
-  if (attachments) s += " · " + std::to_string(attachments) + " attached";
+                  host + " · ctx " + FmtCount(view.context_used);
+  if (usage.cache_read) {
+    s += " · cache " + FmtCount(usage.cache_read) + " total";
+  }
+  if (usage.cost > 0) s += " · spent " + FmtCost(usage.cost);
+  if (view.background) s += " · bg:" + std::to_string(view.background);
+  if (view.verbose) s += " · verbose";
+  if (view.yolo) s += " · YOLO";
+  if (view.attachments) {
+    s += " · " + std::to_string(view.attachments) + " attached";
+  }
   if (g_tty && DisplayWidth(s) > TerminalWidth(1)) {
     // On a cramped terminal keep live state ahead of long path/route labels.
     // PrintStatusBar performs the final UTF-8-safe clipping.
     s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " · ctx " +
-        FmtCount(used);
-    if (u.cost > 0) s += " · " + FmtCost(u.cost);
-    if (yolo) s += " · YOLO";
-    if (attachments) s += " · " + std::to_string(attachments) + " attached";
-    if (background) s += " · bg:" + std::to_string(background);
-    if (agent.Verbose()) s += " · verbose";
+        FmtCount(view.context_used);
+    if (usage.cost > 0) s += " · " + FmtCost(usage.cost);
+    if (view.yolo) s += " · YOLO";
+    if (view.attachments) {
+      s += " · " + std::to_string(view.attachments) + " attached";
+    }
+    if (view.background) {
+      s += " · bg:" + std::to_string(view.background);
+    }
+    if (view.verbose) s += " · verbose";
   }
   return s;
 }

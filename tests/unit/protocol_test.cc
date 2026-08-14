@@ -5,8 +5,11 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/dispatch.h"
+#include "include/agent/protocol.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
+#include "include/md.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

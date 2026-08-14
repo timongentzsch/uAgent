@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
 #include "include/tools/memory.h"
 #include "tests/unit/test_support.h"
 

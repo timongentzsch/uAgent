@@ -12,7 +12,6 @@
 #include <utility>
 
 #include "include/app/bootstrap.h"
-#include "include/app/headless.h"
 #include "include/app/options.h"
 #include "include/cli.h"
 #include "include/core/debug.h"

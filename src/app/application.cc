@@ -20,7 +20,6 @@
 
 #include "include/agent.h"
 #include "include/app/bootstrap.h"
-#include "include/app/headless.h"
 #include "include/cli.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -555,8 +554,13 @@ class Application {
 
     auto status = [&] {
       if (!working) {
-        return StatusBar(api_, agent_, context_.options.yolo,
-                         attachments_.size(), runtime_.processes);
+        return StatusBar(
+            api_, agent_.SessionUsage(),
+            {.context_used = agent_.ContextUsed(),
+             .verbose = agent_.Verbose(),
+             .yolo = context_.options.yolo,
+             .attachments = attachments_.size(),
+             .background = runtime_.processes.Count()});
       }
       double elapsed = std::chrono::duration<double>(
                            std::chrono::steady_clock::now() - started)
@@ -813,8 +817,13 @@ class Application {
     for (;;) {
       SaveSession();
       agent_.DrainBackground();
-      PrintStatusBar(StatusBar(api_, agent_, context_.options.yolo,
-                               attachments_.size(), runtime_.processes));
+      PrintStatusBar(StatusBar(
+          api_, agent_.SessionUsage(),
+          {.context_used = agent_.ContextUsed(),
+           .verbose = agent_.Verbose(),
+           .yolo = context_.options.yolo,
+           .attachments = attachments_.size(),
+           .background = runtime_.processes.Count()}));
       bool eof = false;
       std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {

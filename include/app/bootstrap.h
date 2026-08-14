@@ -10,6 +10,8 @@
 #include "include/agent.h"
 #include "include/app/options.h"
 #include "include/app/runtime.h"
+#include "include/core/json.h"
+#include "include/core/usage.h"
 #include "include/providers.h"
 #include "include/tools/tool.h"
 
@@ -53,6 +55,17 @@ struct BootstrapResult {
 
 BootstrapResult Bootstrap(Options options, const char* executable);
 int RunApplication(AppContext& context);
+
+inline json HeadlessResult(std::string answer, std::string error, json trace,
+                           const Usage& usage, json routes, int exit_code) {
+  return {{"schema", "uagent.headless.v1"},
+          {"answer", std::move(answer)},
+          {"error", error.empty() ? json(nullptr) : json(std::move(error))},
+          {"trace", std::move(trace)},
+          {"usage", UsageJson(usage)},
+          {"routes", std::move(routes)},
+          {"exit_code", exit_code}};
+}
 
 }  // namespace uagent
 

@@ -83,14 +83,15 @@ add_library(
   src/core/child_env.cc
   src/core/debug.cc
   src/core/env.cc
+  src/core/file_watch.cc
   src/core/platform_posix.cc
   src/core/signals.cc
   src/core/steering.cc
   src/core/strings.cc
   src/media/attachments.cc
-   src/providers.cc
-   src/tools/adapt_system.cc
-   src/tools/files.cc
+  src/providers.cc
+  src/tools/adapt_system.cc
+  src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc

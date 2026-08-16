@@ -35,6 +35,7 @@ class TerminalInputDecoder {
   void Feed(const unsigned char* data, size_t size);
   void Feed(std::string_view data);
   bool HasReady() const;
+  std::optional<std::chrono::steady_clock::time_point> WakeDeadline() const;
   std::optional<TerminalInputToken> Next(bool expire_escape = false);
   void Reset();
 

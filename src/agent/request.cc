@@ -136,8 +136,6 @@ std::string Agent::AnalyzeImageContent(const json& content,
   vision.openrouter_compatible = api_.openrouter_compatible;
   vision.native_tools = false;
   vision.parallel_tools = false;
-  vision.openrouter_web_search = false;
-  vision.server_tools_authorized = false;
   vision.image_input = true;
   vision.render_stream = false;
 
@@ -383,19 +381,6 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
       lowered.find("stream_options") != std::string::npos) {
     return drop(api_.include_usage, "stream_options");
   }
-  if (api_.openrouter_compatible && api_.config.web_search_server &&
-      api_.openrouter_web_search &&
-      (lowered.find("openrouter:web_search") != std::string::npos ||
-       lowered.find("web_search") != std::string::npos ||
-       lowered.find("web search") != std::string::npos ||
-       lowered.find("server tool") != std::string::npos)) {
-    drop(api_.openrouter_web_search, "openrouter_web_search");
-    printf(
-        "%s· server rejected native web search — using compatibility "
-        "search%s\n",
-        DIM(), RST());
-    return true;
-  }
   if (api_.native_tools && lowered.find("tool") != std::string::npos) {
     drop(api_.native_tools, "native_tools");
     conversation_.Set(0, SysMsg(), MessageKind::kSystem);
@@ -421,6 +406,7 @@ std::string Agent::SystemPrompt() const {
               "host-enforced controls.\n" +
               adaptive_system_->instructions + "\n[END MUTABLE SELF-DIRECTIVE]";
   }
+  prompt += HostCapabilityPrompt(tools_);
   return prompt;
 }
 

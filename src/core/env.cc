@@ -318,8 +318,6 @@ constexpr StringOption kStringOptions[] = {
 constexpr BoolOption kBoolOptions[] = {
     {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
      &RuntimeConfig::openrouter_fallbacks, true},
-    {"UAGENT_WEB_SEARCH_SERVER", "web_search_server",
-     &RuntimeConfig::web_search_server, true},
     {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true},
     {"UAGENT_MEMORY_GENERATE", "memory_generate",
      &RuntimeConfig::memory_generate, true},

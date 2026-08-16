@@ -83,7 +83,7 @@ to inspect the exact registry for the next request.
 
 | Input | Action |
 | --- | --- |
-| Enter while working | Queue steering for the next model/tool boundary |
+| Enter while working | Queue steering; passive activity waits yield at once |
 | Ctrl+B during a command | Move the foreground command batch to background supervision |
 | Escape | Interrupt the foreground operation and apply queued steering |
 | `/models`, `/model` | Search or change model route |
@@ -93,7 +93,7 @@ to inspect the exact registry for the next request.
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
 | `/memory` | Show saved memory action, time, source, and redacted preview |
 | `/verbose` | Toggle full reasoning and expanded tool traces |
-| `/online`, `/yolo` | Toggle server search and automatic approval |
+| `/yolo` | Toggle automatic approval |
 | `/help`, `/quit` | Show help or exit |
 
 Successful historical `show_image` calls are retransmitted at their original

@@ -120,7 +120,7 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_addclose(&actions, master_fd);
   posix_spawnattr_t attributes;
   posix_spawnattr_init(&attributes);
-  using PosixSpawnFlags = short;
+  using PosixSpawnFlags = int16_t;
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   group_flag = POSIX_SPAWN_SETSID;
@@ -176,7 +176,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   const std::string& cmd = spec.command;
   const std::string& shell = spec.shell;
   const bool detach = spec.detach;
-  if (spec.yield_ms > 0) spec.yield_ms = std::clamp(spec.yield_ms, int64_t{250}, int64_t{30000});
+  if (spec.yield_ms > 0) {
+    spec.yield_ms = std::clamp(spec.yield_ms, int64_t{250}, int64_t{30000});
+  }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -230,11 +232,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     limited.Push(output);
     return limited.Snapshot();
   };
-  std::string bounded_cmd =
-      detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
-                   ShellQuote(ExecutablePath()) + " --log-pump " +
-                   ShellQuote(log) + " " + std::to_string(log_bytes)
-             : cmd;
+  std::string bounded_cmd = detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
+                                         ShellQuote(ExecutablePath()) +
+                                         " --log-pump " + ShellQuote(log) +
+                                         " " + std::to_string(log_bytes)
+                                   : cmd;
   pid_t pid = -1;
   int master_fd = -1;
   int pipe_fds[2] = {-1, -1};
@@ -250,10 +252,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (session) session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int child_output = detach ? lfd : pipe_fds[1];
-  int spawn_error = tty ? SpawnPtyShell(shell, bounded_cmd,
-                                        child_environment.Data(), pid, master_fd)
-                        : SpawnLoggedShell(shell, bounded_cmd, child_output,
-                                           detach, child_environment.Data(), pid);
+  int spawn_error =
+      tty ? SpawnPtyShell(shell, bounded_cmd, child_environment.Data(), pid,
+                          master_fd)
+          : SpawnLoggedShell(shell, bounded_cmd, child_output, detach,
+                             child_environment.Data(), pid);
   if (pipe_fds[1] >= 0) close(pipe_fds[1]);
   if (spawn_error != 0) {
     if (pipe_fds[0] >= 0) close(pipe_fds[0]);
@@ -355,8 +358,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
 
   if (cancelled) {
-    auto stop_deadline = std::chrono::steady_clock::now() +
-                         std::chrono::seconds(2);
+    auto stop_deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
     auto terminal = [&] {
       std::lock_guard<std::mutex> lock(session->mutex);
       return ActivityTerminal(session->state);
@@ -399,15 +402,17 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
     (void)supervisor.RemoveForeground(pid);
     SignalShellGroup(pid, SIGKILL);
-    auto stop_deadline = std::chrono::steady_clock::now() +
-                         std::chrono::seconds(2);
+    auto stop_deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
     auto terminal = [&] {
       std::lock_guard<std::mutex> lock(session->mutex);
       return ActivityTerminal(session->state);
     };
     for (;;) {
       uint64_t generation = supervisor.Generation();
-      if (terminal() || std::chrono::steady_clock::now() >= stop_deadline) break;
+      if (terminal() || std::chrono::steady_clock::now() >= stop_deadline) {
+        break;
+      }
       supervisor.WaitForChange(generation, stop_deadline);
     }
     return finish([](std::string output, int) {
@@ -438,10 +443,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     initial_output = limit_output(session->pending_output.Drain());
     session->last_used = std::chrono::steady_clock::now();
   }
-  std::string output =
-      "[running] activity " + std::to_string(activity_id) +
-      (handed_off ? " moved to background; " : "; ") +
-      "result will be delivered automatically; use activity output to inspect it";
+  std::string output = "[running] activity " + std::to_string(activity_id) +
+                       (handed_off ? " moved to background; " : "; ") +
+                       "result will be delivered automatically; use activity "
+                       "output to inspect it";
   if (!initial_output.empty()) output += "\n" + initial_output;
   return {ToolSuccess(std::move(output))};
 }

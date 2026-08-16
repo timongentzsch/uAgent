@@ -3,8 +3,10 @@
 #ifndef UAGENT_INCLUDE_CORE_TIME_H_
 #define UAGENT_INCLUDE_CORE_TIME_H_
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <limits>
 
 namespace uagent {
 
@@ -26,6 +28,17 @@ inline int64_t SecondsUntil(std::chrono::steady_clock::time_point deadline) {
   return std::chrono::duration_cast<std::chrono::seconds>(
              deadline - std::chrono::steady_clock::now())
       .count();
+}
+
+// poll(2) timeout for a steady-clock deadline, rounded up so a sub-millisecond
+// remainder does not become a premature timeout.
+inline int PollTimeoutMs(std::chrono::steady_clock::time_point deadline) {
+  auto now = std::chrono::steady_clock::now();
+  if (deadline <= now) return 0;
+  int64_t remaining =
+      std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+  return static_cast<int>(
+      std::min<int64_t>(remaining, std::numeric_limits<int>::max()));
 }
 
 }  // namespace uagent

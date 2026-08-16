@@ -103,7 +103,6 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge", 1);
   setenv("UAGENT_WEB_SEARCH_MAX_RESULTS", "99", 1);
   setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
-  setenv("UAGENT_WEB_SEARCH_SERVER", "0", 1);
   setenv("UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two", 1);
   setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
@@ -125,7 +124,6 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.web_search_context_size.empty());
   CHECK(config.web_search_max_results == 25);
   CHECK(config.web_search_max_uses == 1);
-  CHECK(!config.web_search_server);
   CHECK(config.mcp_roots == "/tmp/one:/tmp/two");
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
@@ -157,7 +155,6 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE");
   unsetenv("UAGENT_WEB_SEARCH_MAX_RESULTS");
   unsetenv("UAGENT_WEB_SEARCH_MAX_USES");
-  unsetenv("UAGENT_WEB_SEARCH_SERVER");
   setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
   CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
   unsetenv("UAGENT_OPENROUTER_VARIANT");
@@ -483,7 +480,6 @@ void TestNamedProviders() {
   ApplyRoute(routed, fixed_effort);
   CHECK(routed.reasoning_effort == "low");
   ActivateRoute(routed);
-  CHECK(routed.openrouter_web_search);
   CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
   CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
   CHECK(!ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "deepseek"));

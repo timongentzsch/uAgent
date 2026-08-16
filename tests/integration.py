@@ -509,6 +509,7 @@ def test_adaptive_system_revises_replaces_and_clears(root, home):
         system = body["messages"][0]["content"]
         assert_true("MUTABLE SELF-DIRECTIVE revision 1" in system, system)
         assert_true("Inspect broadly and challenge" in system, system)
+        assert_true(system.rfind("[HOST CAPABILITIES]") > system.rfind("[END MUTABLE"), system)
         return tool_call(
             "adapt_system",
             {
@@ -595,6 +596,24 @@ def test_empty_response_after_tools_recovers_once(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "recovered", result.stdout)
         assert_true(len(server.requests) == 3, len(server.requests))
+
+
+def test_foreign_tool_markup_recovers_as_prose(root, home):
+    markup = '<｜DSML｜tool_calls><｜DSML｜invoke name="web_search">'
+
+    def recovered(_, body):
+        notes = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+        ]
+        assert_true(any("invalid model tool markup" in note for note in notes), notes)
+        return event({"content": "markup-recovered"})
+
+    with Server([event({"content": markup}), recovered]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "answer")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "markup-recovered", result.stdout)
 
     with Server(
         [
@@ -1069,6 +1088,70 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
         assert_true(b"too-late" not in output, output)
 
 
+def test_input_steering_yields_activity_wait(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        results = tool_results(messages)
+        if has_message(messages, "user", "change course"):
+            yielded = any("wait yielded for queued steering" in result for result in results)
+            still_running = any("activity(s) still running" in result for result in results)
+            return event(
+                {
+                    "content": (
+                        "steering-wait-ok" if yielded and still_running else "steering-wait-bad"
+                    )
+                }
+            )
+        if any("[running] activity" in result for result in results):
+            return tool_call("activity_wait", {"wait_ms": 30000})
+        return tool_call("run", {"command": "sleep 30", "yield_ms": 250})
+
+    with Server([route]) as server:
+        started = time.monotonic()
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"start\n", b"activity_wait"),
+                (b"change course\n", b"steering-wait-ok"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            timeout=8,
+        )
+        elapsed = time.monotonic() - started
+        assert_true(code == 0, output)
+        assert_true(b"steering-wait-ok" in output, output)
+        assert_true(b"steering-wait-bad" not in output, output)
+        assert_true(elapsed < 8, elapsed)
+
+
+def test_input_idle_background_completion_is_notified(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        results = tool_results(messages)
+        if any("[Background result:" in str(message.get("content", "")) for message in messages):
+            return event({"content": "background-notify-ok"})
+        if any("[running] activity" in result for result in results):
+            return event({"content": "background-launched"})
+        return tool_call("run", {"command": "sleep 0.8; printf notified", "yield_ms": 250})
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"start\n", b"background-launched"),
+                (b"", b"background-notify-ok"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            timeout=8,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"background-notify-ok" in output, output)
+
+
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
     def delayed(_, __):
         time.sleep(0.7)
@@ -1181,7 +1264,7 @@ def test_streamed_search_citations(root, home):
                 "usage": {
                     "prompt_tokens": 2,
                     "completion_tokens": 1,
-                    "server_tool_use": {"web_search_requests": 1},
+                    "server_tool_use_details": {"web_search_requests": 1},
                 },
             },
             {
@@ -1206,6 +1289,81 @@ def test_streamed_search_citations(root, home):
         assert_true("Sources:" in result.stdout, result.stdout)
         assert_true("https://example.com/source" in result.stdout, result.stdout)
         assert_true("legacy snippet" in result.stdout, result.stdout)
+
+
+def test_openrouter_named_search_contract_and_errors(root, home):
+    citation = {
+        "type": "url_citation",
+        "url_citation": {"url": "https://example.com/current", "title": "Current"},
+    }
+
+    def successful_search(_, body):
+        assert_true(body["model"] == "search-model", body)
+        assert_true(body["max_tool_calls"] == 3, body)
+        assert_true(len(body["tools"]) == 1, body)
+        tool = body["tools"][0]
+        assert_true(tool["type"] == "openrouter:web_search", tool)
+        assert_true(tool["parameters"]["max_uses"] == 3, tool)
+        return {
+            "choices": [
+                {
+                    "message": {"content": "grounded answer", "annotations": [citation]},
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 5,
+                "completion_tokens": 2,
+                "server_tool_use_details": {"web_search_requests": 2},
+            },
+        }
+
+    def rejected_search(handler, _):
+        write_json_response(handler, {"error": {"message": "rate limited"}}, status=429)
+
+    def ask_again(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("grounded answer" in result, result)
+        assert_true("https://example.com/current" in result, result)
+        return tool_call("web_search", {"query": "failure probe"}, call_id="search-2")
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("web_search OpenRouter HTTP 429: rate limited" in result, result)
+        return event({"content": "search-contract-ok"})
+
+    with Server([successful_search, rejected_search]) as search_server:
+        with Server(
+            [tool_call("web_search", {"query": "current fact"}), ask_again, finish]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "UAGENT_OPENROUTER_COMPATIBLE": "1",
+                    "UAGENT_WEB_SEARCH_BACKEND": "openrouter",
+                    "UAGENT_WEB_SEARCH_URL": search_server.url,
+                    "UAGENT_WEB_SEARCH_API_KEY": "search-key",
+                    "UAGENT_WEB_SEARCH_MODEL": "search-model",
+                }
+            )
+            result = run(root, env, "--yolo", "--json", "-p", "search")
+            envelope = json.loads(result.stdout)
+            assert_true(result.returncode == 0, (result.stderr, envelope))
+            assert_true(envelope["answer"] == "search-contract-ok", envelope)
+            assert_true(envelope["usage"]["web_searches"] == 2, envelope)
+            schema = function_tool(model_server.requests[0][1], "web_search")
+            assert_true(
+                schema["parameters"]["properties"]["queries"]["maxItems"] == 3,
+                schema,
+            )
+            assert_true(
+                all(
+                    function_names(body) >= {"web_search"}
+                    and all(tool.get("type") == "function" for tool in body.get("tools", []))
+                    for _, body in model_server.requests
+                ),
+                model_server.requests,
+            )
 
 
 def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
@@ -1569,6 +1727,15 @@ def test_memory_background_extractor_is_bounded(root, home):
         )
         if not valid:
             return event({"content": "extract-schema-bad"})
+        return tool_call("memory", {"action": "list"})
+
+    def search(_, _body):
+        return tool_call("memory", {"action": "search", "key": "concise"})
+
+    def inspect(_, _body):
+        return tool_call("memory", {"action": "get", "key": "project/extracted"})
+
+    def write(_, _body):
         return tool_call(
             "memory",
             {
@@ -1585,7 +1752,7 @@ def test_memory_background_extractor_is_bounded(root, home):
         )
         return event({"content": "extract-done" if wrote else "extract-write-bad"})
 
-    with Server([extract, finish]) as server:
+    with Server([extract, search, inspect, write, finish]) as server:
         env = base_env(home, server.url)
         env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
 
@@ -1608,14 +1775,14 @@ def test_memory_background_extractor_is_bounded(root, home):
         )
         assert_true(code == 0, output)
         assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
-        assert_true(len(server.requests) == 2, server.requests)
+        assert_true(len(server.requests) == 5, server.requests)
         assert_true(b"memory-extract-user-sentinel" not in output, output)
         assert_true(b"Background result" not in output, output)
 
         # A completed source is not processed again. Disabling generation also
         # prevents a changed source from becoming eligible.
         code, output = run_pty(workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2))
-        assert_true(code == 0 and len(server.requests) == 2, output)
+        assert_true(code == 0 and len(server.requests) == 5, output)
         time.sleep(0.01)
         os.utime(session, None)
         disabled = dict(env)
@@ -1626,7 +1793,7 @@ def test_memory_background_extractor_is_bounded(root, home):
             b"/q\n",
             before_payload=lambda: time.sleep(0.2),
         )
-        assert_true(code == 0 and len(server.requests) == 2, output)
+        assert_true(code == 0 and len(server.requests) == 5, output)
 
 
 def test_memory_background_extractor_releases_failed_claims(root, _home):
@@ -2814,8 +2981,7 @@ def test_subagent_uses_selected_model_route(root, home):
 
 
 def test_subagent_recursion_is_depth_bounded(root, home):
-    """A subagent may delegate again, but only while under UAGENT_SUBAGENT_DEPTH —
-    the cap is what keeps nested spawning from fanning out without limit."""
+    """Full agents honor depth; lean workers never expose recursive delegation."""
 
     def has_task(body):
         return "task" in function_names(body)
@@ -2836,6 +3002,15 @@ def test_subagent_recursion_is_depth_bounded(root, home):
                 result.stdout.strip() == str(expected),
                 (depth, cap, expected, result.stdout),
             )
+
+    with Server([lambda _, body: event({"content": str(has_task(body))})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_DEPTH"] = "1"
+        env["UAGENT_SUBAGENT_DEPTH"] = "2"
+        env["UAGENT_TOOLSET"] = "lean"
+        result = run(root, env, "-p", "probe")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "False", result.stdout)
 
 
 def test_headless_reaps_timed_out_process(root, home):

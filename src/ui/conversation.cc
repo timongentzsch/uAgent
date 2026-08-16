@@ -57,8 +57,8 @@ void PrintConversationHistory(const Conversation& conversation,
       auto name = tool_names.find(id);
       auto image = image_calls.find(id);
       if (image != image_calls.end()) {
-        std::string path = ReplayableImagePath(*image->second,
-                                               content.get<std::string>());
+        std::string path =
+            ReplayableImagePath(*image->second, content.get<std::string>());
         if (!path.empty()) (void)ToolShowImage(path);
       }
       PrintStoredToolResult(name == tool_names.end() ? "" : name->second,

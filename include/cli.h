@@ -20,7 +20,6 @@ enum class SlashCommandId {
   kModel,
   kModels,
   kCost,
-  kOnline,
   kProcesses,
   kQuit,
   kReset,
@@ -46,13 +45,7 @@ struct ParsedSlashCommand {
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
 
-enum class InteractiveInputKind {
-  kNone,
-  kLine,
-  kEscape,
-  kBackground,
-  kEof
-};
+enum class InteractiveInputKind { kNone, kLine, kEscape, kBackground, kEof };
 
 struct InteractiveInputEvent {
   InteractiveInputKind kind = InteractiveInputKind::kNone;

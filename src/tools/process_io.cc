@@ -1,9 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/tools/process.h"
-
-#include "include/tools/jobs.h"
-
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -14,9 +10,18 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
-#include <limits>
+#include <memory>
+#include <string>
 #include <utility>
+#include <vector>
+
+#include "include/core/platform.h"
+#include "include/core/signals.h"
+#include "include/core/time.h"
+#include "include/tools/jobs.h"
+#include "include/tools/process.h"
 
 namespace uagent {
 namespace {
@@ -27,13 +32,6 @@ constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
 void CloseFd(int& fd) {
   if (fd >= 0) close(fd);
   fd = -1;
-}
-
-void WakeFd(int fd) {
-  if (fd < 0) return;
-  const char byte = 1;
-  ssize_t ignored = write(fd, &byte, 1);
-  (void)ignored;
 }
 
 }  // namespace
@@ -61,15 +59,13 @@ std::string ActivityKindName(ActivityKind kind) {
 
 bool ActivityTerminal(ActivityState state) {
   return state == ActivityState::kDrained ||
-         state == ActivityState::kDelivered ||
-         state == ActivityState::kStopped;
+         state == ActivityState::kDelivered || state == ActivityState::kStopped;
 }
 
 BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
-             bool is_detached, std::string job_kind,
-             std::optional<int> status, int64_t activity_id,
-             std::shared_ptr<ActivitySession> activity, std::string label,
-             std::string receipt, std::string source)
+             bool is_detached, std::string job_kind, std::optional<int> status,
+             int64_t activity_id, std::shared_ptr<ActivitySession> activity,
+             std::string label, std::string receipt, std::string source)
     : pid(process_pid),
       log(std::move(log_path)),
       cmd(std::move(command)),
@@ -109,37 +105,42 @@ std::optional<int64_t> ActivityReservation::Register(BgJob job) {
 }
 
 ProcessSupervisor::ProcessSupervisor() {
-  int wake[2] = {-1, -1};
-  if (pipe(wake) == 0) {
-    wake_read_ = wake[0];
-    wake_write_ = wake[1];
-    fcntl(wake_read_, F_SETFL, fcntl(wake_read_, F_GETFL) | O_NONBLOCK);
-    fcntl(wake_write_, F_SETFL, fcntl(wake_write_, F_GETFL) | O_NONBLOCK);
-    fcntl(wake_read_, F_SETFD, FD_CLOEXEC);
-    fcntl(wake_write_, F_SETFD, FD_CLOEXEC);
-  }
+  InitializeSignalNotifications();
+  InstallSigchldHandler();
 }
 
 ProcessSupervisor::~ProcessSupervisor() {
   BgShutdownAll(*this);
+  int wake_fd = -1;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     stopping_ = true;
     NotifyLocked();
+    wake_fd = wake_write_;
   }
-  WakeFd(wake_write_);
+  WakeDescriptor(wake_fd);
   if (io_thread_.joinable()) io_thread_.join();
+  if (child_wake_registered_) {
+    (void)RegisterChildWakeFd(wake_write_, /*add=*/false);
+  }
   CloseFd(wake_read_);
   CloseFd(wake_write_);
 }
 
 void ProcessSupervisor::StartIoLocked() {
-  if (!io_thread_.joinable()) io_thread_ = std::thread([this] { IoLoop(); });
+  if (io_thread_.joinable()) return;
+  int wake[2] = {-1, -1};
+  if (OpenNonblockingPipe(wake)) {
+    wake_read_ = wake[0];
+    wake_write_ = wake[1];
+  }
+  child_wake_registered_ = RegisterChildWakeFd(wake_write_, /*add=*/true);
+  io_thread_ = std::thread([this] { IoLoop(); });
 }
 
 void ProcessSupervisor::RegisterIo(
-    const std::shared_ptr<ActivitySession>& session, int output_fd, int input_fd,
-    int log_fd, int64_t log_limit) {
+    const std::shared_ptr<ActivitySession>& session, int output_fd,
+    int input_fd, int log_fd, int64_t log_limit) {
   if (!session) return;
   if (output_fd >= 0) {
     fcntl(output_fd, F_SETFL, fcntl(output_fd, F_GETFL) | O_NONBLOCK);
@@ -159,8 +160,8 @@ void ProcessSupervisor::RegisterIo(
     io_sessions_.push_back(session);
     StartIoLocked();
     NotifyLocked();
+    WakeDescriptor(wake_write_);
   }
-  WakeFd(wake_write_);
 }
 
 void ProcessSupervisor::AssignId(BgJob& job) {
@@ -181,11 +182,10 @@ void ProcessSupervisor::AssignId(BgJob& job) {
 std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
     int64_t max_pending) {
   std::lock_guard<std::mutex> lock(mutex_);
-  size_t live = foreground_.size() + static_cast<size_t>(std::count_if(
-                                           jobs_.begin(), jobs_.end(),
-                                           [](const BgJob& current) {
-                                             return !current.detached;
-                                           }));
+  size_t live = foreground_.size() +
+                static_cast<size_t>(std::count_if(
+                    jobs_.begin(), jobs_.end(),
+                    [](const BgJob& current) { return !current.detached; }));
   if (static_cast<int64_t>(live) + reservations_ >= max_pending) {
     return std::nullopt;
   }
@@ -269,12 +269,13 @@ bool ProcessSupervisor::RequestForegroundBackground() {
 bool ProcessSupervisor::TryAdd(BgJob job, int64_t max_pending) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!job.detached) {
-    size_t count = foreground_.size() + static_cast<size_t>(std::count_if(
-                                             jobs_.begin(), jobs_.end(),
-                                             [](const BgJob& current) {
-                                               return !current.detached;
-                                             }));
-    if (static_cast<int64_t>(count) + reservations_ >= max_pending) return false;
+    size_t count = foreground_.size() +
+                   static_cast<size_t>(std::count_if(
+                       jobs_.begin(), jobs_.end(),
+                       [](const BgJob& current) { return !current.detached; }));
+    if (static_cast<int64_t>(count) + reservations_ >= max_pending) {
+      return false;
+    }
   }
   AssignId(job);
   jobs_.push_back(std::move(job));
@@ -298,18 +299,16 @@ size_t ProcessSupervisor::RetainedIndexOfLocked(int64_t id) const {
 
 size_t ProcessSupervisor::PendingCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(std::count_if(jobs_.begin(), jobs_.end(),
-                                           [](const BgJob& job) {
-                                             return !job.detached;
-                                           }));
+  return static_cast<size_t>(
+      std::count_if(jobs_.begin(), jobs_.end(),
+                    [](const BgJob& job) { return !job.detached; }));
 }
 
 size_t ProcessSupervisor::DetachedCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(std::count_if(jobs_.begin(), jobs_.end(),
-                                           [](const BgJob& job) {
-                                             return job.detached;
-                                           }));
+  return static_cast<size_t>(
+      std::count_if(jobs_.begin(), jobs_.end(),
+                    [](const BgJob& job) { return job.detached; }));
 }
 
 size_t ProcessSupervisor::Count() const {
@@ -319,13 +318,11 @@ size_t ProcessSupervisor::Count() const {
 
 size_t ProcessSupervisor::JoinableCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<size_t>(std::count_if(jobs_.begin(), jobs_.end(),
-                                           [](const BgJob& job) {
-                                             return !job.detached &&
-                                                    job.session &&
-                                                    job.session->kind ==
-                                                        ActivityKind::kTask;
-                                           }));
+  return static_cast<size_t>(
+      std::count_if(jobs_.begin(), jobs_.end(), [](const BgJob& job) {
+        return !job.detached && job.session &&
+               job.session->kind == ActivityKind::kTask;
+      }));
 }
 
 bool ProcessSupervisor::IsLive(int64_t id) const {
@@ -412,19 +409,32 @@ uint64_t ProcessSupervisor::Generation() const {
 void ProcessSupervisor::NotifyLocked() {
   ++generation_;
   event_.notify_all();
+  WakeDescriptor(notify_fd_);
+}
+
+void ProcessSupervisor::SetNotifyFd(int fd) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  notify_fd_ = fd;
+  WakeDescriptor(notify_fd_);
 }
 
 void ProcessSupervisor::Wake() {
+  int wake_fd = -1;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     NotifyLocked();
+    wake_fd = wake_write_;
   }
-  WakeFd(wake_write_);
+  WakeDescriptor(wake_fd);
+}
+
+void ProcessSupervisor::WaitForChange(uint64_t generation) const {
+  std::unique_lock<std::mutex> lock(mutex_);
+  event_.wait(lock, [&] { return generation_ != generation; });
 }
 
 bool ProcessSupervisor::WaitForChange(
-    uint64_t generation,
-    std::chrono::steady_clock::time_point deadline) const {
+    uint64_t generation, std::chrono::steady_clock::time_point deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
   return event_.wait_until(lock, deadline,
                            [&] { return generation_ != generation; });
@@ -447,22 +457,32 @@ void ProcessSupervisor::IoLoop() {
         std::lock_guard<std::mutex> lock(session->mutex);
         fd = session->output_fd;
       }
-      poll_fds.push_back({fd, static_cast<short>(POLLIN | POLLHUP | POLLERR),
-                          0});
+      poll_fds.push_back(
+          {fd, static_cast<int16_t>(POLLIN | POLLHUP | POLLERR), 0});
     }
-    int ready = poll(poll_fds.data(), poll_fds.size(), 50);
+    int timeout_ms = child_wake_registered_ ? -1 : 1000;
+    for (const auto& session : sessions) {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      if (!session->wait_status || session->output_eof ||
+          ActivityTerminal(session->state)) {
+        continue;
+      }
+      int candidate = PollTimeoutMs(session->exited_at + kTrailingOutputGrace);
+      timeout_ms = timeout_ms < 0 ? candidate : std::min(timeout_ms, candidate);
+    }
+    int ready = poll(poll_fds.data(), poll_fds.size(), timeout_ms);
     if (ready < 0 && errno != EINTR) continue;
     if (!poll_fds.empty() && (poll_fds[0].revents & POLLIN)) {
-      std::array<char, 128> wake{};
-      while (read(wake_read_, wake.data(), wake.size()) > 0) {
-      }
+      DrainDescriptor(wake_read_);
+      std::lock_guard<std::mutex> lock(mutex_);
+      NotifyLocked();
     }
 
     auto now = std::chrono::steady_clock::now();
     for (size_t i = 0; i < sessions.size(); ++i) {
       const auto& session = sessions[i];
       bool notify = false;
-      short events = poll_fds[i + 1].revents;
+      int16_t events = poll_fds[i + 1].revents;
       if (events & (POLLIN | POLLHUP | POLLERR)) {
         std::array<char, 8192> bytes{};
         for (;;) {
@@ -487,11 +507,11 @@ void ProcessSupervisor::IoLoop() {
             session->transcript.Push(chunk);
             session->until_window.append(chunk);
             if (session->until_window.size() > 64 * 1024) {
-              session->until_window.erase(0,
-                                          session->until_window.size() - 64 * 1024);
+              session->until_window.erase(
+                  0, session->until_window.size() - 64 * 1024);
             }
-            int64_t remaining =
-                std::max(int64_t{0}, session->log_limit - session->logged_bytes);
+            int64_t remaining = std::max(
+                int64_t{0}, session->log_limit - session->logged_bytes);
             keep = std::min(static_cast<size_t>(remaining), chunk.size());
             session->logged_bytes += static_cast<int64_t>(keep);
             log_fd = session->log_fd;
@@ -499,7 +519,8 @@ void ProcessSupervisor::IoLoop() {
           }
           size_t offset = 0;
           while (log_fd >= 0 && offset < keep) {
-            ssize_t written = write(log_fd, bytes.data() + offset, keep - offset);
+            ssize_t written =
+                write(log_fd, bytes.data() + offset, keep - offset);
             if (written < 0 && errno == EINTR) continue;
             if (written <= 0) break;
             offset += static_cast<size_t>(written);

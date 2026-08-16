@@ -313,8 +313,8 @@ bool Agent::DrainBackground() {
   // Extraction is maintenance, not a new conversation event.
   for (BackgroundCompletion& completion :
        BgTakeCompletedDetails(processes_, "memory")) {
-    bool success = WIFEXITED(completion.status) &&
-                   WEXITSTATUS(completion.status) == 0;
+    bool success =
+        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
     MemoryEvent event;
     std::string receipt_error;
     bool receipt_exists = !completion.receipt_path.empty() &&
@@ -335,8 +335,8 @@ bool Agent::DrainBackground() {
       event.timestamp = UtcStamp();
       event.automatic = true;
       if (!success) {
-        event.preview = Utf8Trunc(
-            OneLine(RedactMemorySecrets(completion.output)), 160);
+        event.preview =
+            Utf8Trunc(OneLine(RedactMemorySecrets(completion.output)), 160);
       }
       std::string event_error;
       if (!WriteMemoryEvent(event, {}, event_error)) {
@@ -352,8 +352,8 @@ bool Agent::DrainBackground() {
                 event.action == "updated" || event.action == "failed" ||
                 event.action == "receipt_unavailable";
     if (show) {
-      bool warning = event.action == "failed" ||
-                     event.action == "receipt_unavailable";
+      bool warning =
+          event.action == "failed" || event.action == "receipt_unavailable";
       const char* mark = warning ? "!" : "◇";
       if (event.action == "created" || event.action == "updated") mark = "◆";
       std::string label = event.action;

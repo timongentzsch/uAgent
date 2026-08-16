@@ -299,6 +299,14 @@ inline std::string WorkspaceId(const std::string& root) {
   return HashHex(root);
 }
 
+inline bool LockFileExclusive(int fd) {
+  int result;
+  do {
+    result = flock(fd, LOCK_EX);
+  } while (result != 0 && errno == EINTR);
+  return result == 0;
+}
+
 inline bool AppendPrivateLine(const std::string& path, const std::string& line,
                               std::string& error) {
   int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0600);
@@ -307,7 +315,7 @@ inline bool AppendPrivateLine(const std::string& path, const std::string& line,
     return false;
   }
   fchmod(fd, 0600);
-  if (flock(fd, LOCK_EX) != 0) {
+  if (!LockFileExclusive(fd)) {
     error = strerror(errno);
     close(fd);
     return false;
@@ -335,7 +343,7 @@ inline bool TakePrivateText(const std::string& path, std::string& content,
     error = strerror(errno);
     return false;
   }
-  if (flock(fd, LOCK_EX) != 0) {
+  if (!LockFileExclusive(fd)) {
     error = strerror(errno);
     close(fd);
     return false;

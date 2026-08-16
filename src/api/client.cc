@@ -1,11 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <poll.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <limits>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 
 #include "include/api.h"
@@ -65,12 +67,103 @@ void CollectCurlTimings(CURL* handle, ChatResult& result) {
   result.start_transfer_ms = CurlTimingMs(handle, CURLINFO_STARTTRANSFER_TIME);
 }
 
+bool StreamDeadlineExpired(StreamCtx* context) {
+  if (!context) return false;
+  auto now = std::chrono::steady_clock::now();
+  if (context->res->first_event_ms < 0 && context->first_event_timeout_s > 0 &&
+      now >= context->started +
+                 std::chrono::seconds(context->first_event_timeout_s)) {
+    context->timeout_reason = "model produced no event within " +
+                              std::to_string(context->first_event_timeout_s) +
+                              "s";
+    return true;
+  }
+  if (context->idle_timeout_s > 0 &&
+      now >=
+          context->last_byte + std::chrono::seconds(context->idle_timeout_s)) {
+    context->timeout_reason = "model stream was idle for " +
+                              std::to_string(context->idle_timeout_s) + "s";
+    return true;
+  }
+  return false;
+}
+
+int CurlPollTimeout(CURLM* multi, StreamCtx* context) {
+  long curl_timeout = -1;  // NOLINT: libcurl ABI
+  (void)curl_multi_timeout(multi, &curl_timeout);
+  int64_t timeout = curl_timeout >= 0 ? curl_timeout : 10000;
+  if (context) {
+    auto deadline = std::chrono::steady_clock::time_point::max();
+    if (context->res->first_event_ms < 0 &&
+        context->first_event_timeout_s > 0) {
+      deadline = context->started +
+                 std::chrono::seconds(context->first_event_timeout_s);
+    }
+    if (context->idle_timeout_s > 0) {
+      deadline =
+          std::min(deadline, context->last_byte +
+                                 std::chrono::seconds(context->idle_timeout_s));
+    }
+    if (deadline != std::chrono::steady_clock::time_point::max()) {
+      timeout = std::min<int64_t>(timeout, PollTimeoutMs(deadline));
+    }
+  }
+  return static_cast<int>(
+      std::clamp<int64_t>(timeout, 0, std::numeric_limits<int>::max()));
+}
+
+CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
+                              StreamCtx* context = nullptr) {
+  if (!multi) return CURLE_FAILED_INIT;
+  CURLcode result = CURLE_FAILED_INIT;
+  if (curl_multi_add_handle(multi, easy) != CURLM_OK) {
+    return result;
+  }
+
+  int running = 0;
+  CURLMcode multi_result = curl_multi_perform(multi, &running);
+  while (multi_result == CURLM_OK && running > 0 && !AbortRequested() &&
+         !StreamDeadlineExpired(context)) {
+    curl_waitfd wake = {AbortWakeFd(), CURL_WAIT_POLLIN, 0};
+    int descriptors = 0;
+#if LIBCURL_VERSION_NUM >= 0x074200
+    multi_result = curl_multi_poll(
+        multi, &wake, 1, CurlPollTimeout(multi, context), &descriptors);
+#else
+    multi_result = curl_multi_wait(
+        multi, &wake, 1, CurlPollTimeout(multi, context), &descriptors);
+#endif
+    if ((wake.revents & CURL_WAIT_POLLIN) && !AbortRequested()) {
+      NormalizeAbortWake();
+    }
+    if (multi_result == CURLM_OK && !AbortRequested()) {
+      multi_result = curl_multi_perform(multi, &running);
+    }
+  }
+
+  if (AbortRequested() || (running > 0 && StreamDeadlineExpired(context))) {
+    result = CURLE_ABORTED_BY_CALLBACK;
+  } else if (multi_result == CURLM_OK) {
+    int remaining = 0;
+    while (CURLMsg* message = curl_multi_info_read(multi, &remaining)) {
+      if (message->msg == CURLMSG_DONE) result = message->data.result;
+    }
+  } else {
+    result = CURLE_RECV_ERROR;
+  }
+  curl_multi_remove_handle(multi, easy);
+  return result;
+}
+
 }  // namespace
 
 Api::Api(RuntimeConfig config)
-    : config(std::move(config)), handle_(curl_easy_init()) {}
+    : config(std::move(config)),
+      handle_(curl_easy_init()),
+      multi_(curl_multi_init()) {}
 
 Api::~Api() {
+  if (multi_) curl_multi_cleanup(multi_);
   if (handle_) curl_easy_cleanup(handle_);
 }
 
@@ -108,37 +201,15 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   json body = {
       {"model", RequestModel()}, {"messages", messages}, {"stream", true}};
   if (native_tools && !tool_schemas.empty()) {
-    json request_tools = json::array();
-    bool server_search = openrouter_compatible && config.web_search_server &&
-                         openrouter_web_search && server_tools_authorized;
-    bool search_offered = false;
+    body["tools"] = tool_schemas;
     for (const json& tool : tool_schemas) {
-      bool compatibility_search =
-          tool.is_object() && tool.contains("function") &&
+      if (web_available && tool.is_object() && tool.contains("function") &&
           tool["function"].is_object() &&
-          JsonValue(tool["function"], "name", "") == "web_search";
-      search_offered = search_offered || compatibility_search;
-      if (compatibility_search && server_search) continue;
-      request_tools.push_back(tool);
-    }
-    if (server_search && search_offered) {
-      if (web_available) *web_available = true;
-      json parameters = {
-          {"engine", config.web_search_engine},
-          {"max_results", config.web_search_max_results},
-          {"max_total_results",
-           config.web_search_max_results * config.web_search_max_uses},
-      };
-      if (!config.web_search_context_size.empty()) {
-        parameters["search_context_size"] = config.web_search_context_size;
+          JsonValue(tool["function"], "name", "") == "web_search") {
+        *web_available = true;
       }
-      request_tools.push_back({{"type", "openrouter:web_search"},
-                               {"parameters", std::move(parameters)}});
     }
-    if (!request_tools.empty()) {
-      body["tools"] = std::move(request_tools);
-      if (parallel_tools) body["parallel_tool_calls"] = true;
-    }
+    if (parallel_tools) body["parallel_tool_calls"] = true;
   }
   // OpenRouter always includes usage in the final SSE event; its
   // stream_options.include_usage switch is deprecated and adds no value.
@@ -175,8 +246,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   auto overall_started = std::chrono::steady_clock::now();
   size_t estimated = estimated_bytes;
   if (estimated == 0) {
-    estimated =
-        JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
+    estimated = JsonEstimatedBytes(messages) + JsonEstimatedBytes(tool_schemas);
   }
   if (config.request_bytes > 0 &&
       estimated > static_cast<size_t>(config.request_bytes)) {
@@ -278,13 +348,14 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
   return res;
 }
 
-json Api::Post(const std::string& path, const json& body, int64_t timeout_s) {
+JsonResponse Api::Post(const std::string& path, const json& body,
+                       int64_t timeout_s) {
   std::string payload = JsonDump(body);
   return Fetch(path, &payload, timeout_s, /*abortable=*/true);
 }
 
 json Api::Get(const std::string& path, bool abortable) {
-  return Fetch(path, nullptr, 15, abortable);
+  return Fetch(path, nullptr, 15, abortable).body;
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
@@ -340,7 +411,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.spinner = &spinner;
 
   CURLcode rc = CURLE_OK;
-  bool cancelled = RunCancellable([&] { rc = curl_easy_perform(h); });
+  bool cancelled =
+      RunCancellable([&] { rc = PerformWithAbortWake(multi_, h, &ctx); });
   CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
   ctx.BeginOutput();
@@ -388,22 +460,30 @@ bool Api::WaitForRetry(std::chrono::milliseconds delay,
                           SpinnerLabel("retrying"), turn_started);
   auto deadline = std::chrono::steady_clock::now() + delay;
   bool cancelled = RunCancellable([&] {
-    while (!AbortRequested() && std::chrono::steady_clock::now() < deadline) {
-      auto remaining = deadline - std::chrono::steady_clock::now();
-      auto quantum =
-          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-              std::chrono::milliseconds(50));
-      std::this_thread::sleep_for(std::min(remaining, quantum));
+    pollfd wake = {AbortWakeFd(), POLLIN, 0};
+    for (;;) {
+      auto now = std::chrono::steady_clock::now();
+      if (now >= deadline || AbortRequested()) break;
+      int ready = poll(&wake, 1, PollTimeoutMs(deadline));
+      if (ready < 0 && errno == EINTR) continue;
+      if (ready <= 0) break;
+      if (AbortRequested()) break;
+      NormalizeAbortWake();
+      wake.revents = 0;
     }
   });
   if (cancelled) ClearAbort();
   return !cancelled;
 }
 
-json Api::Fetch(const std::string& path, const std::string* payload,
-                int64_t timeout_s, bool abortable) {
+JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
+                        int64_t timeout_s, bool abortable) {
+  JsonResponse result;
   CURL* h = Prepare(base_url + path);
-  if (!h) return json(json::value_t::discarded);
+  if (!h) {
+    result.error = "curl init failed";
+    return result;
+  }
   struct FetchBuffer {
     std::string data;
     size_t cap = 0;
@@ -418,7 +498,10 @@ json Api::Fetch(const std::string& path, const std::string* payload,
     curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE_LARGE,
                      static_cast<curl_off_t>(payload->size()));
   }
-  if (!headers_ok) return json(json::value_t::discarded);
+  if (!headers_ok) {
+    result.error = "failed to allocate HTTP headers";
+    return result;
+  }
   curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
   curl_easy_setopt(
       h, CURLOPT_WRITEFUNCTION,
@@ -438,9 +521,24 @@ json Api::Fetch(const std::string& path, const std::string* payload,
   curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
   curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING,
                    "");  // 531 KB -> 63 KB on /models
-  CURLcode rc = curl_easy_perform(h);
-  if (rc != CURLE_OK || out.exceeded) return json(json::value_t::discarded);
-  return json::parse(out.data, nullptr, false);
+  CURLcode rc =
+      abortable ? PerformWithAbortWake(multi_, h) : curl_easy_perform(h);
+  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &result.http_status);
+  if (out.exceeded) {
+    result.error = "response exceeds configured byte limit";
+    return result;
+  }
+  if (rc != CURLE_OK) {
+    result.error = std::string("connection error: ") + curl_easy_strerror(rc);
+    return result;
+  }
+  result.body = json::parse(out.data, nullptr, false);
+  if (result.body.is_discarded()) {
+    result.error = "invalid JSON response";
+  } else if (result.http_status >= 400) {
+    result.error = "HTTP " + std::to_string(result.http_status);
+  }
+  return result;
 }
 
 void Api::SetAbortable(CURL* h, StreamCtx* ctx) {
@@ -448,26 +546,7 @@ void Api::SetAbortable(CURL* h, StreamCtx* ctx) {
       h, CURLOPT_XFERINFOFUNCTION,
       +[](void* user, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int {
         if (AbortRequested()) return 1;
-        auto* ctx = static_cast<StreamCtx*>(user);
-        if (!ctx) return 0;
-        auto now = std::chrono::steady_clock::now();
-        if (ctx->res->first_event_ms < 0 && ctx->first_event_timeout_s > 0 &&
-            std::chrono::duration_cast<std::chrono::seconds>(now - ctx->started)
-                    .count() >= ctx->first_event_timeout_s) {
-          ctx->timeout_reason = "model produced no event within " +
-                                std::to_string(ctx->first_event_timeout_s) +
-                                "s";
-          return 1;
-        }
-        if (ctx->idle_timeout_s > 0 &&
-            std::chrono::duration_cast<std::chrono::seconds>(now -
-                                                             ctx->last_byte)
-                    .count() >= ctx->idle_timeout_s) {
-          ctx->timeout_reason = "model stream was idle for " +
-                                std::to_string(ctx->idle_timeout_s) + "s";
-          return 1;
-        }
-        return 0;
+        return StreamDeadlineExpired(static_cast<StreamCtx*>(user)) ? 1 : 0;
       });
   curl_easy_setopt(h, CURLOPT_XFERINFODATA, ctx);
   curl_easy_setopt(h, CURLOPT_NOPROGRESS, 0L);

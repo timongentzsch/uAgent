@@ -248,6 +248,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.retain_output = true;
+  tool.available_in_lean = false;
+  tool.max_calls_per_turn = MaxBackgroundJobs();
   tool.summary = [&api, &routes, &providers](const json& arguments) {
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");

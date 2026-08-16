@@ -62,7 +62,6 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kModel, "/model", "NAME", "switch model or route"},
     {SlashCommandId::kModels, "/models", "[QUERY]",
      "search and select across providers"},
-    {SlashCommandId::kOnline, "/online", "", "toggle OpenRouter web search"},
     {SlashCommandId::kProcesses, "/ps", "", "show active background work"},
     {SlashCommandId::kQuit, "/quit", "", "exit µAgent"},
     {SlashCommandId::kReset, "/reset", "", "start a fresh session"},

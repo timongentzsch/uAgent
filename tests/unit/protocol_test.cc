@@ -56,6 +56,17 @@ void TestTextToolProtocol() {
       "[/uagent_tool_call]");
   CHECK(calls.size() == 1);
   CHECK(calls[0].name == "read_file");
+  std::string spaced_call =
+      std::string(kTtOpen) +
+      R"({"name": "list_dir", "arguments": {"path": "."}})" + kTtClose;
+  CHECK(ParseTextToolCalls(spaced_call).size() == 1);
+  std::string result_name;
+  std::string result_text;
+  CHECK(ParseTextToolResult("[tool_result read_file]\nfile body", result_name,
+                            result_text));
+  CHECK(result_name == "read_file");
+  CHECK(result_text == "file body");
+  CHECK(!ParseTextToolResult("ordinary output", result_name, result_text));
   CHECK(ParseTextToolCalls("example [uagent_tool_call]{}[/uagent_tool_call]")
             .empty());
   CHECK(ContainsForeignToolCallMarkup(
@@ -333,6 +344,12 @@ void TestOptions() {
   char* conflicting_json[] = {executable, prompt_flag, prompt, json,
                               json_stream};
   CHECK(!ParseOptions(5, conflicting_json).Ok());
+
+  std::string usage = UsageText();
+  CHECK(usage.find("--debug[=PATH]") != std::string::npos);
+  CHECK(usage.find("sensitive reconstructable JSONL trace") !=
+        std::string::npos);
+  CHECK(usage.find("--yolo") != std::string::npos);
 }
 
 void TestLineNumberStripping() {

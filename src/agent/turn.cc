@@ -390,7 +390,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     bool text_mode =
         calls.empty() && !(calls = ParseTextToolCalls(r.content)).empty();
 
-    if (calls.empty() && ContainsForeignToolCallMarkup(r.content)) {
+    if (calls.empty() &&
+        (ContainsForeignToolCallMarkup(r.content) || r.suppressed)) {
       if (!empty_response_recovered) {
         empty_response_recovered = true;
         conversation_.Push(
@@ -458,8 +459,11 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
              {"function", {{"name", c.name}, {"arguments", c.args}}}});
       }
       amsg["tool_calls"] = std::move(tcs);
-      api_.PreserveAssistantReasoning(amsg, r);
     }
+    // Preserve provider replay state for every tool protocol. OpenRouter and
+    // direct DeepSeek-compatible routes require it while a tool turn
+    // continues; ordinary completed prose does not need to burden later turns.
+    if (!calls.empty()) api_.PreserveAssistantReasoning(amsg, r);
     conversation_.Push(std::move(amsg), MessageKind::kAssistant);
 
     if (calls.empty()) {

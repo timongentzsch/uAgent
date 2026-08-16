@@ -45,8 +45,10 @@ uagent --yolo
 ## Highlights
 
 - Native streamed answers and reasoning, including OpenRouter
-  `reasoning_details`; compact mode keeps live reasoning in the transient status
-  row, while `/verbose` preserves the full reasoning stream in scrollback.
+  `reasoning_details` and direct DeepSeek-compatible `reasoning_content`
+  replay; compact mode keeps live reasoning in the transient status row, while
+  `/verbose` preserves the clearly labelled full reasoning stream in
+  scrollback.
 - Persistent editable composer with queued steering, Escape interruption, and
   Ctrl+B foreground-command handoff.
 - Parallel safe tools, bounded delegated tasks, automatic compaction, and
@@ -92,7 +94,7 @@ to inspect the exact registry for the next request.
 | `/context`, `/trace`, `/cost`, `/ps` | Inspect active state |
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
 | `/memory` | Show saved memory action, time, source, and redacted preview |
-| `/verbose` | Toggle full reasoning and expanded tool traces |
+| `/verbose` | Toggle full reasoning and expanded bounded tool output |
 | `/yolo` | Toggle automatic approval |
 | `/help`, `/quit` | Show help or exit |
 

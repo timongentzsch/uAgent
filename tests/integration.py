@@ -55,6 +55,7 @@ def integration_group(name):
                 "resume_",
                 "reconnect_",
                 "narrow_terminal",
+                "reasoning_",
             ),
         ),
         (
@@ -96,6 +97,24 @@ def event(delta=None, finish="stop", usage=None):
 
 def sse(payload):
     return ("data: " + json.dumps(payload) + "\n\ndata: [DONE]\n\n").encode()
+
+
+def write_sse_sequence(handler, payloads, delay=0):
+    handler.send_response(200)
+    handler.send_header("Content-Type", "text/event-stream")
+    handler.send_header("Connection", "close")
+    handler.end_headers()
+    handler.close_connection = True
+    try:
+        for payload in payloads:
+            handler.wfile.write(("data: " + json.dumps(payload) + "\n\n").encode())
+            handler.wfile.flush()
+            if delay:
+                time.sleep(delay)
+        handler.wfile.write(b"data: [DONE]\n\n")
+        handler.wfile.flush()
+    except (BrokenPipeError, ConnectionResetError):
+        pass
 
 
 def write_http_response(handler, data, content_type="application/json", status=200):
@@ -672,6 +691,54 @@ def test_command_help(root, home):
         assert_true(not server.get_requests, server.get_requests)
 
 
+def test_reasoning_modes_render_consistently(root, home):
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                event({"reasoning": "first line\nlatest line"}, finish=None),
+                event(
+                    {"content": "Final answer"},
+                    usage={"prompt_tokens": 2, "completion_tokens": 2},
+                ),
+            ],
+            delay=0.25,
+        )
+
+    with Server([streamed]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MEMORY"] = "0"
+        code, verbose = run_pty(
+            root,
+            env,
+            [
+                (b"/verbose\n", b"verbose ON"),
+                (b"go\n", b"Final answer"),
+                b"/q\n",
+            ],
+            timeout=10,
+        )
+        assert_true(code == 0, verbose)
+        assert_true(b"\xc2\xb7 thinking" in verbose, verbose)
+        reasoning_style = b"\x1b[0m\x1b[39m\x1b[49m\x1b[90m\x1b[3m"
+        assert_true(reasoning_style + b"latest line" in verbose, verbose)
+        assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
+
+        code, compact = run_pty(
+            root,
+            env,
+            [
+                (b"go\n", b"thinking \xc2\xb7 latest line"),
+                (b"", b"Final answer"),
+                b"/q\n",
+            ],
+            timeout=10,
+        )
+        assert_true(code == 0, compact)
+        assert_true(b"thinking \xc2\xb7 latest line" in compact, compact)
+        assert_true(b"\xc2\xb7 thinking" not in compact, compact)
+
+
 def test_project_instructions_precede_first_turn(root, home):
     workspace = root / "instructions-workspace"
     nested = workspace / "nested"
@@ -794,7 +861,7 @@ def test_full_run_and_python_terminal_trace(root, home):
         result = run_dialog(
             root,
             env,
-            "/verbose\ntrace\n/q\n",
+            "/verbose\ntrace\n/trace\n/q\n",
             "--yolo",
             timeout=20,
         )
@@ -808,6 +875,9 @@ def test_full_run_and_python_terminal_trace(root, home):
             "[script: .uagent/scratch/trace.py · wrote · executed]",
             "python-one",
             "python-two",
+            "latest trace · turn 1 · 2 tools",
+            "→ [1] run",
+            "← [2] run_python",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -1366,6 +1436,133 @@ def test_openrouter_named_search_contract_and_errors(root, home):
             )
 
 
+def test_openrouter_reasoning_details_survive_tool_step(root, home):
+    details = [
+        {
+            "type": "reasoning.text",
+            "index": 0,
+            "text": "provider thought",
+            "signature": "opaque-signature",
+        }
+    ]
+
+    def verify_tool_step(_, body):
+        assistant = next(
+            message
+            for message in body["messages"]
+            if message.get("role") == "assistant" and message.get("tool_calls")
+        )
+        return event(
+            {
+                "content": (
+                    "openrouter-replay-ok"
+                    if assistant.get("reasoning_details") == details
+                    else "openrouter-replay-bad"
+                )
+            }
+        )
+
+    first = event(
+        {
+            "reasoning_details": details,
+            "tool_calls": [
+                {
+                    "index": 0,
+                    "id": "reasoning-call",
+                    "function": {
+                        "name": "list_dir",
+                        "arguments": json.dumps({"path": "."}),
+                    },
+                }
+            ],
+        },
+        finish="tool_calls",
+    )
+    with Server([first, verify_tool_step]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_OPENROUTER_COMPATIBLE"] = "1"
+        result = run(root, env, "-p", "inspect")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
+
+
+def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
+    trace_path = root / "text-protocol-debug.jsonl"
+    call_markup = (
+        "[uagent_tool_call]"
+        + json.dumps({"name": "list_dir", "arguments": {"path": "."}})
+        + "[/uagent_tool_call]"
+    )
+
+    def reject_native_tools(handler, body):
+        assert_true("tools" in body, body)
+        write_json_response(
+            handler,
+            {"error": {"message": "tools are unsupported", "type": "invalid_request_error"}},
+            status=400,
+        )
+
+    def text_call_response(_, body):
+        assert_true("tools" not in body, body)
+        return event(
+            {"reasoning_content": "direct provider reasoning", "content": call_markup},
+            finish="stop",
+        )
+
+    def finish(_, body):
+        assistant = next(
+            message
+            for message in reversed(body["messages"])
+            if message.get("role") == "assistant" and message.get("content") == call_markup
+        )
+        assert_true(assistant.get("reasoning_content") == "direct provider reasoning", assistant)
+        results = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+            and str(message.get("content", "")).startswith("[tool_result list_dir]")
+        ]
+        return event({"content": "text-provider-ok" if results else "text-provider-bad"})
+
+    with Server([reject_native_tools, text_call_response, finish]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--json",
+            f"--debug={trace_path}",
+            "-p",
+            "inspect",
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("debug trace:" in result.stderr, result.stderr)
+        assert_true(str(trace_path.resolve()) in result.stderr, result.stderr)
+        envelope = json.loads(result.stdout)
+        assert_true(envelope["answer"] == "text-provider-ok", envelope)
+        assert_true(len(envelope["trace"]) == 1, envelope)
+        call = envelope["trace"][0]
+        assert_true(call["name"] == "list_dir", call)
+        assert_true(call["arguments"] == {"path": "."}, call)
+        assert_true(call["text_protocol"], call)
+        assert_true(" entries " in call["result"], call)
+        assert_true("uagent_tool_call" not in json.dumps(envelope["trace"]), envelope)
+
+        records = [json.loads(line) for line in trace_path.read_text().splitlines()]
+        ready = next(record["data"] for record in records if record["event"] == "session_ready")
+        assert_true(ready["run_mode"] == "headless" and ready["output_mode"] == "json", ready)
+        requests = [record["data"] for record in records if record["event"] == "model_request"]
+        assert_true(any("schema_snapshot" in request for request in requests), requests)
+        responses = [record["data"] for record in records if record["event"] == "model_response"]
+        assert_true(
+            any(
+                response.get("reasoning_content_field")
+                and response.get("reasoning") == "direct provider reasoning"
+                for response in responses
+            ),
+            responses,
+        )
+
+
 def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
     first = tool_call("run", {"command": "printf tool-json"})
     first["usage"] = {
@@ -1434,6 +1631,9 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         types = [item["type"] for item in records]
         assert_true(types[0] == "turn.started", types)
         assert_true("tool.call" in types and "tool.result" in types, types)
+        tool_event = next(item for item in records if item["type"] == "tool.call")
+        assert_true(json.loads(tool_event["data"]["arguments"]) == {"path": "."}, tool_event)
+        assert_true(tool_event["data"]["parsed_arguments"] == {"path": "."}, tool_event)
         assert_true("usage" in types and types[-1] == "answer", types)
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
 

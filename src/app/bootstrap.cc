@@ -246,32 +246,38 @@ void LogReady(const AppContext& context) {
   if (!Debug().Enabled()) return;
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
-  Debug().Write("session_ready",
-                {{"base_url", api.base_url},
-                 {"model", api.RequestModel()},
-                 {"reasoning_effort", api.reasoning_effort},
-                 {"openrouter_variant", config.openrouter_variant},
-                 {"openrouter_compatible", api.openrouter_compatible},
-                 {"configured_models", context.provider.routes.size()},
-                 {"context_window", api.ctx_window},
-                 {"tools", context.tools.size()},
-                 {"toolset", LeanToolset() ? "lean" : "full"},
-                 {"memory", config.memory_enabled},
-                 {"memory_generate", config.memory_generate},
-                 {"yolo", context.options.yolo},
-                 {"auto_compact_pct", AutoCompactPct()},
-                 {"auto_compact_tokens", AutoCompactTokens()},
-                 {"openrouter_provider", config.openrouter_provider},
-                 {"openrouter_fallbacks", config.openrouter_fallbacks},
-                 {"tool_concurrency", ToolConcurrency()},
-                 {"tool_result_chars", ToolResultCap()},
-                 {"tool_batch_result_chars", ToolBatchResultCap()},
-                 {"attachment_mb", AttachmentLimitMb()},
-                 {"image_detail", ImageDetail()},
-                 {"steering", SteeringEnabled()},
-                 {"adaptive_system", AdaptiveSystemEnabled()},
-                 {"max_tokens", MaxOutputTokens()},
-                 {"limits", config.DiagnosticJson()}});
+  Debug().Write(
+      "session_ready",
+      {{"base_url", api.base_url},
+       {"model", api.RequestModel()},
+       {"reasoning_effort", api.reasoning_effort},
+       {"openrouter_variant", config.openrouter_variant},
+       {"openrouter_compatible", api.openrouter_compatible},
+       {"configured_models", context.provider.routes.size()},
+       {"context_window", api.ctx_window},
+       {"tools", context.tools.size()},
+       {"toolset", LeanToolset() ? "lean" : "full"},
+       {"memory", config.memory_enabled},
+       {"memory_generate", config.memory_generate},
+       {"run_mode",
+        context.options.prompt.empty() ? "interactive" : "headless"},
+       {"output_mode", context.options.json_stream
+                           ? "json-stream"
+                           : (context.options.json ? "json" : "text")},
+       {"yolo", context.options.yolo},
+       {"auto_compact_pct", AutoCompactPct()},
+       {"auto_compact_tokens", AutoCompactTokens()},
+       {"openrouter_provider", config.openrouter_provider},
+       {"openrouter_fallbacks", config.openrouter_fallbacks},
+       {"tool_concurrency", ToolConcurrency()},
+       {"tool_result_chars", ToolResultCap()},
+       {"tool_batch_result_chars", ToolBatchResultCap()},
+       {"attachment_mb", AttachmentLimitMb()},
+       {"image_detail", ImageDetail()},
+       {"steering", SteeringEnabled()},
+       {"adaptive_system", AdaptiveSystemEnabled()},
+       {"max_tokens", MaxOutputTokens()},
+       {"limits", config.DiagnosticJson()}});
 }
 
 }  // namespace
@@ -354,7 +360,9 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     return Failure("cannot open debug log: " + Debug().Error());
   }
   if (Debug().Enabled()) {
-    printf("%s· debug log: %s%s\n", DIM(), Debug().Path().c_str(), RST());
+    FILE* notice = context->options.prompt.empty() ? stdout : stderr;
+    fprintf(notice, "%s· debug trace: %s%s\n", DIM(), Debug().Path().c_str(),
+            RST());
     Debug().Write("process_start",
                   {{"pid", getpid()},
                    {"cwd", std::filesystem::current_path().string()},

@@ -169,11 +169,23 @@ Api::~Api() {
 
 void Api::PreserveAssistantReasoning(json& message,
                                      const ChatResult& result) const {
-  if (!openrouter_compatible) return;
-  if (!result.reasoning_details.empty()) {
-    message["reasoning_details"] = result.reasoning_details;
-  } else if (!result.reasoning.empty()) {
-    message["reasoning"] = result.reasoning;
+  if (openrouter_compatible) {
+    if (!result.reasoning_details.empty()) {
+      message["reasoning_details"] = result.reasoning_details;
+    } else if (!result.reasoning.empty()) {
+      message["reasoning"] = result.reasoning;
+    } else if (result.reasoning_details_field) {
+      // Preserve an explicitly emitted empty array when no plaintext replay
+      // state exists; some OpenRouter routes distinguish empty from absent.
+      message["reasoning_details"] = result.reasoning_details;
+    }
+    return;
+  }
+  // DeepSeek's native OpenAI-compatible API requires reasoning_content to be
+  // echoed during tool turns. Only send the extension when the provider
+  // actually emitted it; generic OpenAI endpoints may reject unknown fields.
+  if (result.reasoning_content_field && !result.reasoning.empty()) {
+    message["reasoning_content"] = result.reasoning;
   }
 }
 
@@ -415,15 +427,14 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       RunCancellable([&] { rc = PerformWithAbortWake(multi_, h, &ctx); });
   CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
-  ctx.BeginOutput();
   ctx.Finish();
+  // Completed final SSE data may itself contain the first visible event, so
+  // drain it before stopping the transient activity row.
+  ctx.BeginOutput();
   if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
     ctx.OutputText(res.content);
   }
-  if (ctx.render_output) {
-    ctx.md.Flush();
-    if (ctx.in_reasoning) printf("%s\n", RST());
-  }
+  if (ctx.render_output) ctx.FinishOutput();
   if (!ctx.timeout_reason.empty()) {
     res.error = ctx.timeout_reason;
     res.retryable = true;

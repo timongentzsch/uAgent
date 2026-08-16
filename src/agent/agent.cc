@@ -80,6 +80,7 @@ void Agent::Reset() {
   api_.session_cost = 0;
   route_usage_.clear();
   logged_msgs_ = 0;
+  logged_schemas_.clear();
   total_user_turns_ = 0;
   session_title_.clear();
   session_id_ = MakeSessionId();
@@ -184,6 +185,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   total_user_turns_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
   logged_msgs_ = 0;
+  logged_schemas_.clear();
   turn_search_trace_.Reset();
   ++revision_;
   return true;
@@ -425,6 +427,7 @@ void Agent::ArchiveAll(const char* reason) {
 void Agent::RebuildToolSchemas() {
   schemas_ = ToolSchemas(tools_);
   schema_chars_ = JsonDump(schemas_).size();
+  logged_schemas_.clear();
   if (!conversation_.Empty()) {
     conversation_.Set(0, SysMsg(), MessageKind::kSystem);
   }

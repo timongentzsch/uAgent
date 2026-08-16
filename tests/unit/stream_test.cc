@@ -65,6 +65,13 @@ void TestSseChunkPartitions() {
                                          {"function",
                                           {{"name", "file"},
                                            {"arguments", "\"x\"}"}}}}})}}}}}}});
+  wire += event(
+      {{"choices",
+        {{{"delta",
+           {{"tool_calls",
+             json::array({{{"index", 0},
+                           {"id", "call_1"},
+                           {"function", {{"name", "read_file"}}}}})}}}}}}});
   wire +=
       event({{"choices",
               {{{"delta",
@@ -100,6 +107,7 @@ void TestSseChunkPartitions() {
   auto verify_parsed = [&](const Parsed& parsed) {
     CHECK(parsed.result.content == "Hello");
     CHECK(parsed.result.reasoning == "think carefullyafter");
+    CHECK(parsed.result.reasoning_content_field);
     CHECK(parsed.result.reasoning_details.size() == 1);
     if (parsed.result.reasoning_details.size() == 1) {
       CHECK(parsed.result.reasoning_details[0]["text"] ==
@@ -158,6 +166,25 @@ void TestSseChunkPartitions() {
       R"({"choices":[{"delta":{"reasoning":"once","reasoning_details":[{"type":"reasoning.text","text":"once"}]}}]})",
       aliased_reasoning, no_calls);
   CHECK(aliased_delta.reasoning == "once");
+  CHECK(aliased_reasoning.reasoning_details_field);
+
+  ChatResult empty_details;
+  DecodeOpenAiStreamEvent(R"({"choices":[{"delta":{"reasoning_details":[]}}]})",
+                          empty_details, no_calls);
+  CHECK(empty_details.reasoning_details_field);
+  CHECK(empty_details.reasoning_details.empty());
+
+  ChatResult empty_alias;
+  OpenAiStreamDelta details_fallback = DecodeOpenAiStreamEvent(
+      R"({"choices":[{"delta":{"reasoning":"","reasoning_details":[{"type":"reasoning.text","text":"details only"}]}}]})",
+      empty_alias, no_calls);
+  CHECK(details_fallback.reasoning == "details only");
+
+  CHECK(ReasoningStatusPreview("first line\nlatest line\n") == "latest line");
+  CHECK(ReasoningStatusPreview("  padded latest  ") == "padded latest");
+  std::string long_preview = ReasoningStatusPreview(std::string(140, 'x'));
+  CHECK(long_preview.starts_with("…"));
+  CHECK(long_preview.size() <= 123);
 
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
@@ -194,22 +221,23 @@ void TestSseChunkPartitions() {
 
   std::map<int, ToolCall> missing_id = {
       {0, ToolCall{"", "read_file", R"({"path":"x"})"}}};
-  ChatResult invalid;
-  CHECK(!CollectToolCalls(missing_id, invalid));
-  CHECK(invalid.error.find("missing id") != std::string::npos);
-  CHECK(invalid.tool_calls.empty());
+  ChatResult normalized;
+  CHECK(CollectToolCalls(missing_id, normalized));
+  CHECK(normalized.tool_calls.size() == 1);
+  CHECK(normalized.tool_calls[0].id == "uagent-call-0");
 
   std::map<int, ToolCall> duplicate_ids = {
       {0, ToolCall{"same", "read_file", R"({"path":"x"})"}},
       {1, ToolCall{"same", "list_dir", R"({"path":"."})"}}};
-  invalid = {};
-  CHECK(!CollectToolCalls(duplicate_ids, invalid));
-  CHECK(invalid.error.find("duplicate id") != std::string::npos);
-  CHECK(invalid.tool_calls.empty());
+  normalized = {};
+  CHECK(CollectToolCalls(duplicate_ids, normalized));
+  CHECK(normalized.tool_calls.size() == 2);
+  CHECK(normalized.tool_calls[0].id == "same");
+  CHECK(normalized.tool_calls[1].id == "same-2");
 
   std::map<int, ToolCall> malformed = {
       {0, ToolCall{"call", "read_file", R"({"path")"}}};
-  invalid = {};
+  ChatResult invalid;
   CHECK(!CollectToolCalls(malformed, invalid));
   CHECK(invalid.error.find("incomplete function") != std::string::npos);
   CHECK(invalid.tool_calls.empty());

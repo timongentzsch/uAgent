@@ -176,7 +176,16 @@ void DebugLog(const std::string& event, json data) {
     if (event == "turn_start") {
       Events().Emit("turn.started", data);
     } else if (event == "tool_call") {
-      Events().Emit("tool.call", data);
+      json public_data = data;
+      if (public_data.contains("arguments") &&
+          public_data["arguments"].is_string()) {
+        json arguments = json::parse(
+            public_data["arguments"].get<std::string>(), nullptr, false);
+        if (!arguments.is_discarded()) {
+          public_data["parsed_arguments"] = std::move(arguments);
+        }
+      }
+      Events().Emit("tool.call", std::move(public_data));
     } else if (event == "tool_result") {
       Events().Emit("tool.result", data);
     } else if (event == "turn_end") {

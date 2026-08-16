@@ -87,10 +87,16 @@ Dollar limits are enforced between calls and require provider-reported
 may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
-Debug model-response records expose `request_preparation_ms`, `end_to_end_ms`,
-`dns_ms`, `connect_ms`, `tls_ms`, `pretransfer_ms`, `start_transfer_ms`,
-`first_event_ms`, and `duration_ms`. Trace records are queued in sequence and
-serialized/flushed by a background writer; shutdown drains the queue.
+Debug model-response records expose `request_preparation_ms`,
+`end_to_end_ms`, `dns_ms`, `connect_ms`, `tls_ms`, `pretransfer_ms`,
+`start_transfer_ms`, `first_event_ms`, and `duration_ms`, plus structured
+reasoning details, annotations, remote errors, and retry/suppression state.
+Model-request records include an exact schema snapshot whenever the active
+schema set changes, so the message deltas and snapshots remain reconstructable.
+Trace records are queued in sequence and serialized/flushed by a background
+writer; shutdown drains the queue. `--json-stream` keeps the v1 raw
+`tool.call.data.arguments` field and also exposes `parsed_arguments` whenever
+the payload is valid JSON.
 
 Commands, delegated tasks, and detached terminals share activity IDs.
 Session-lifetime activities use opaque IDs distinct from OS PIDs; persistent

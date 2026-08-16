@@ -70,7 +70,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kVariant, "/variant", "MODE",
      "set OpenRouter provider routing"},
     {SlashCommandId::kVerbose, "/verbose", "",
-     "toggle full reasoning and tool traces"},
+     "toggle full reasoning and expanded tool output"},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval"},
     {SlashCommandId::kQuit, "/exit", "", ""},
     {SlashCommandId::kQuit, "/q", "", ""},

@@ -45,7 +45,8 @@ void WakeDescriptor(int fd) {
   if (fd < 0) return;
   const char byte = 1;
   int saved_errno = errno;
-  (void)write(fd, &byte, 1);
+  ssize_t ignored = write(fd, &byte, 1);
+  (void)ignored;
   errno = saved_errno;
 }
 

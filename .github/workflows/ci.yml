@@ -148,6 +148,7 @@ jobs:
           --filter include --filter src
           --exclude third_party
           --branches
+          --gcov-ignore-parse-errors negative_hits.warn_once_per_file
           --xml-pretty
           --xml build/coverage/coverage.xml
           --html-details build/coverage/coverage.html

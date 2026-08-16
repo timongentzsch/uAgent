@@ -53,18 +53,29 @@ void PrintConversationHistory(const Conversation& conversation,
         message.contains("content") ? message["content"] : kEmpty;
     if (kind == MessageKind::kSystem) continue;
     if (kind == MessageKind::kToolResult && content.is_string()) {
+      std::string stored = content.get<std::string>();
+      std::string text_name;
+      std::string text_result;
+      if (ParseTextToolResult(stored, text_name, text_result)) {
+        PrintStoredToolResult(text_name, text_result);
+        continue;
+      }
       std::string id = JsonValue(message, "tool_call_id", "");
       auto name = tool_names.find(id);
       auto image = image_calls.find(id);
       if (image != image_calls.end()) {
-        std::string path =
-            ReplayableImagePath(*image->second, content.get<std::string>());
+        std::string path = ReplayableImagePath(*image->second, stored);
         if (!path.empty()) (void)ToolShowImage(path);
       }
       PrintStoredToolResult(name == tool_names.end() ? "" : name->second,
-                            content.get<std::string>());
+                            stored);
     } else if (kind == MessageKind::kAssistant) {
-      if (content.is_string() && !content.get<std::string>().empty()) {
+      std::vector<ToolCall> text_calls;
+      if (content.is_string()) {
+        text_calls = ParseTextToolCalls(content.get<std::string>());
+      }
+      if (content.is_string() && !content.get<std::string>().empty() &&
+          text_calls.empty()) {
         MdPrint(content.get<std::string>());
         printf("\n");
       }
@@ -76,6 +87,13 @@ void PrintConversationHistory(const Conversation& conversation,
             if (name == "show_image") image_calls[id] = &call;
             tool_names[id] = std::move(name);
           }
+        }
+      } else {
+        for (const ToolCall& call : text_calls) {
+          json stored_call = {
+              {"id", call.id},
+              {"function", {{"name", call.name}, {"arguments", call.args}}}};
+          PrintToolCallSummary(stored_call, tools);
         }
       }
     } else if (kind == MessageKind::kUser && content.is_string()) {

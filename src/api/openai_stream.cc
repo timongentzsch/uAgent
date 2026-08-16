@@ -14,6 +14,15 @@
 namespace uagent {
 namespace {
 
+void MergeStreamIdentity(std::string& target, const std::string& fragment) {
+  if (fragment.empty()) return;
+  if (target.empty() || fragment.starts_with(target)) {
+    target = fragment;
+  } else if (fragment != target) {
+    target += fragment;
+  }
+}
+
 void AddAnnotations(const json& annotations, ChatResult& result) {
   if (!annotations.is_array()) return;
   for (const json& annotation : annotations) {
@@ -121,23 +130,30 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     AddAnnotations(event_delta["annotations"], result);
   }
   std::string details_reasoning;
-  if (event_delta.contains("reasoning_details")) {
+  if (event_delta.contains("reasoning_details") &&
+      event_delta["reasoning_details"].is_array()) {
+    result.reasoning_details_field = true;
     details_reasoning =
         AddReasoningDetails(event_delta["reasoning_details"], result);
     delta.activity =
         delta.activity || !event_delta["reasoning_details"].empty();
   }
-  const json* reasoning = nullptr;
+  std::string direct_reasoning;
+  if (event_delta.contains("reasoning_content") &&
+      event_delta["reasoning_content"].is_string()) {
+    result.reasoning_content_field = true;
+  }
   if (event_delta.contains("reasoning") &&
       event_delta["reasoning"].is_string()) {
-    reasoning = &event_delta["reasoning"];
-  } else if (event_delta.contains("reasoning_content") &&
-             event_delta["reasoning_content"].is_string()) {
-    reasoning = &event_delta["reasoning_content"];
+    direct_reasoning = event_delta["reasoning"].get<std::string>();
   }
-  if (reasoning) {
-    delta.reasoning = reasoning->get<std::string>();
-    delta.activity = delta.activity || !delta.reasoning.empty();
+  if (direct_reasoning.empty() && event_delta.contains("reasoning_content") &&
+      event_delta["reasoning_content"].is_string()) {
+    direct_reasoning = event_delta["reasoning_content"].get<std::string>();
+  }
+  if (!direct_reasoning.empty()) {
+    delta.reasoning = std::move(direct_reasoning);
+    delta.activity = true;
   } else if (!details_reasoning.empty()) {
     // Some OpenRouter providers stream normalized reasoning only through
     // reasoning_details, without the convenience `reasoning` field.
@@ -160,14 +176,14 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     if (index < 0 || index > std::numeric_limits<int>::max()) continue;
     ToolCall& target = tool_calls[static_cast<int>(index)];
     if (tool_call.contains("id") && tool_call["id"].is_string()) {
-      target.id += tool_call["id"].get<std::string>();
+      MergeStreamIdentity(target.id, tool_call["id"].get<std::string>());
     }
     if (!tool_call.contains("function") || !tool_call["function"].is_object()) {
       continue;
     }
     const json& function = tool_call["function"];
     if (function.contains("name") && function["name"].is_string()) {
-      target.name += function["name"].get<std::string>();
+      MergeStreamIdentity(target.name, function["name"].get<std::string>());
     }
     if (function.contains("arguments") && function["arguments"].is_string()) {
       target.args += function["arguments"].get<std::string>();

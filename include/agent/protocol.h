@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -50,6 +51,18 @@ inline std::vector<ToolCall> ParseTextToolCalls(const std::string& content) {
     s = Trim(s.substr(close + strlen(kTtClose)));
   }
   return calls;
+}
+
+inline bool ParseTextToolResult(const std::string& content, std::string& name,
+                                std::string& result) {
+  constexpr std::string_view kPrefix = "[tool_result ";
+  if (!content.starts_with(kPrefix)) return false;
+  size_t close = content.find("]\n", kPrefix.size());
+  if (close == std::string::npos) return false;
+  name = content.substr(kPrefix.size(), close - kPrefix.size());
+  if (name.empty()) return false;
+  result = content.substr(close + 2);
+  return true;
 }
 
 // A summarizer has no tools. Reject provider-internal tool syntax if a model

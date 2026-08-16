@@ -66,6 +66,11 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       record["new_messages"] = std::move(added);
     }
     logged_msgs_ = conversation_.Size();
+    std::string serialized_schemas = JsonDump(schemas);
+    if (serialized_schemas != logged_schemas_) {
+      record["schema_snapshot"] = schemas;
+      logged_schemas_ = std::move(serialized_schemas);
+    }
     Debug().Write("model_request", std::move(record));
   }
   int64_t turn_budget = 0;
@@ -110,10 +115,19 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                    {"content_chars", result.content.size()},
                    {"reasoning", result.reasoning},
                    {"reasoning_chars", result.reasoning.size()},
+                   {"reasoning_content_field", result.reasoning_content_field},
+                   {"reasoning_details", result.reasoning_details},
+                   {"reasoning_details_field", result.reasoning_details_field},
                    {"tool_calls", std::move(calls)},
+                   {"annotations", result.annotations},
                    {"usage", result.usage},
                    {"error", result.error},
-                   {"interrupted", result.interrupted}});
+                   {"remote_error_type", result.remote_error_type},
+                   {"remote_error_code", result.remote_error_code},
+                   {"interrupted", result.interrupted},
+                   {"suppressed", result.suppressed},
+                   {"semantic_progress", result.semantic_progress},
+                   {"retryable", result.retryable}});
   }
   return result;
 }

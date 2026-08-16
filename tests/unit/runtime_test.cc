@@ -223,6 +223,15 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(!assistant.contains("reasoning"));
   CHECK(assistant["reasoning_details"] == reasoning_result.reasoning_details);
   reasoning_result.reasoning_details = json::array();
+  reasoning_result.reasoning_details_field = true;
+  reasoning_result.reasoning.clear();
+  json empty_details_assistant = {{"role", "assistant"}, {"content", ""}};
+  api.PreserveAssistantReasoning(empty_details_assistant, reasoning_result);
+  CHECK(empty_details_assistant.contains("reasoning_details"));
+  CHECK(empty_details_assistant["reasoning_details"].empty());
+  CHECK(!empty_details_assistant.contains("reasoning"));
+  reasoning_result.reasoning = "reasoning state";
+  reasoning_result.reasoning_details_field = false;
   json text_assistant = {{"role", "assistant"}, {"content", ""}};
   api.PreserveAssistantReasoning(text_assistant, reasoning_result);
   CHECK(text_assistant.value("reasoning", "") == "reasoning state");
@@ -236,6 +245,11 @@ void TestRuntimeOwnershipHelpers() {
   api.PreserveAssistantReasoning(generic_assistant, reasoning_result);
   CHECK(!generic_assistant.contains("reasoning"));
   CHECK(!generic_assistant.contains("reasoning_details"));
+  CHECK(!generic_assistant.contains("reasoning_content"));
+  reasoning_result.reasoning_content_field = true;
+  json deepseek_assistant = {{"role", "assistant"}, {"content", ""}};
+  api.PreserveAssistantReasoning(deepseek_assistant, reasoning_result);
+  CHECK(deepseek_assistant.value("reasoning_content", "") == "reasoning state");
 
   ChatResult retryable;
   retryable.retryable = true;

@@ -22,7 +22,12 @@ struct ToolCall {
 struct ChatResult {
   std::string content;
   std::string reasoning;
+  // True when the provider used DeepSeek's `reasoning_content` extension.
+  // Direct DeepSeek-compatible routes require that field to be echoed on
+  // assistant messages while a tool turn continues.
+  bool reasoning_content_field = false;
   json reasoning_details = json::array();
+  bool reasoning_details_field = false;
   std::vector<ToolCall> tool_calls;
   json annotations = json::array();
   json usage;

@@ -27,6 +27,18 @@
 
 namespace uagent {
 
+inline std::string ReasoningStatusPreview(const std::string& text,
+                                          size_t cap = 120) {
+  size_t end = text.find_last_not_of(" \t\r\n");
+  if (end == std::string::npos) return "";
+  size_t newline = text.find_last_of("\r\n", end);
+  size_t begin = newline == std::string::npos ? 0 : newline + 1;
+  std::string preview = Trim(text.substr(begin, end - begin + 1));
+  if (preview.size() <= cap) return preview;
+  size_t start = Utf8BoundaryAfter(preview, preview.size() - cap);
+  return "…" + preview.substr(start);
+}
+
 // Incremental SSE parser; prints content and muted italic reasoning as it
 // streams.
 struct StreamCtx {
@@ -36,6 +48,7 @@ struct StreamCtx {
   int64_t status = 0;
   bool in_reasoning = false;
   bool content_started = false;
+  bool output_line_open = false;
   std::map<int, ToolCall> calls;  // keyed by stream index
   TerminalSpinner* spinner = nullptr;
   std::chrono::steady_clock::time_point started;
@@ -71,49 +84,82 @@ struct StreamCtx {
     BeginOutput();
     if (in_reasoning) {
       md.Control(RST());
-      md.FeedPlain("\n");
+      if (output_line_open) md.FeedPlain("\n");
       in_reasoning = false;
+      output_line_open = false;
     }
     if (!content_started) {
       md.Control(RST());
       content_started = true;
     }
     md.Feed(c);
+    if (!c.empty()) {
+      output_line_open = c.back() != '\n' && c.back() != '\r';
+    }
+  }
+
+  void FeedReasoning(const std::string& text, const std::string& style) {
+    size_t begin = 0;
+    while (begin < text.size()) {
+      size_t newline = text.find_first_of("\r\n", begin);
+      if (newline == std::string::npos) {
+        md.FeedPlain(text.substr(begin));
+        break;
+      }
+      size_t end = newline + 1;
+      if (text[newline] == '\r' && end < text.size() && text[end] == '\n') {
+        ++end;
+      }
+      md.FeedPlain(text.substr(begin, end - begin));
+      // The persistent composer paints its status row between complete output
+      // lines and resets SGR. Put the reasoning style at the start of the
+      // pending next line so every line remains visibly classified.
+      md.Control(style.c_str());
+      begin = end;
+    }
   }
 
   void OutputReasoning(const std::string& r) {
     if (!render_output) return;
     if (!full_reasoning) {
       reasoning_preview += r;
-      size_t line = reasoning_preview.find_last_of("\r\n");
-      if (line != std::string::npos && line + 1 < reasoning_preview.size()) {
-        reasoning_preview.erase(0, line + 1);
-      }
-      std::string preview = OneLine(reasoning_preview);
-      constexpr size_t kPreviewBytes = 120;
-      if (preview.size() > kPreviewBytes) {
-        size_t start = preview.size() - kPreviewBytes;
-        while (start < preview.size() &&
-               (static_cast<unsigned char>(preview[start]) & 0xc0) == 0x80) {
-          ++start;
-        }
-        preview = "…" + preview.substr(start);
-      }
-      if (spinner && !preview.empty()) {
-        spinner->SetLabel("thinking · " + TerminalSafe(preview));
-      }
       if (reasoning_preview.size() > 512) {
-        reasoning_preview.erase(0, reasoning_preview.size() - 512);
+        size_t start = Utf8BoundaryAfter(reasoning_preview,
+                                         reasoning_preview.size() - 512);
+        reasoning_preview.erase(0, start);
+      }
+      std::string preview = ReasoningStatusPreview(reasoning_preview);
+      if (spinner && !preview.empty()) {
+        spinner->SetLabel(SpinnerLabel("thinking · " + TerminalSafe(preview)));
       }
       return;
     }
     BeginOutput();
+    std::string style = std::string(RST()) + MUTED() + ITAL();
     if (!in_reasoning) {
-      std::string style = std::string(RST()) + MUTED() + ITAL();
-      md.Control(style.c_str());
+      if (content_started && output_line_open) md.FeedPlain("\n");
+      md.Control(RST());
+      md.Control(DIM());
+      md.FeedPlain("· thinking\n");
+      output_line_open = false;
+      in_reasoning = true;
     }
-    in_reasoning = true;
-    md.FeedPlain(r);
+    // A status repaint may have reset styling since the previous provider
+    // delta, so every delta begins by restoring the semantic style.
+    md.Control(style.c_str());
+    FeedReasoning(r, style);
+    if (!r.empty()) {
+      output_line_open = r.back() != '\n' && r.back() != '\r';
+    }
+  }
+
+  void FinishOutput() {
+    if (in_reasoning) {
+      md.Control(RST());
+      if (output_line_open) md.FeedPlain("\n");
+      output_line_open = false;
+    }
+    md.Flush();
   }
 
   void EmitContent(const std::string& c) {
@@ -192,15 +238,23 @@ inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
                              ChatResult& result) {
   std::set<std::string> ids;
   for (auto& [index, call] : streamed) {
-    (void)index;
-    if (call.id.empty()) {
-      result.error = "invalid model tool call: missing id";
-      return false;
+    std::string original = call.id;
+    std::string base =
+        original.empty() ? "uagent-call-" + std::to_string(index) : original;
+    std::string candidate = base;
+    int suffix = 2;
+    while (ids.contains(candidate)) {
+      candidate = base + "-" + std::to_string(suffix++);
     }
-    if (!ids.insert(call.id).second) {
-      result.error = "invalid model tool call: duplicate id";
-      return false;
+    if (candidate != original) {
+      call.id = candidate;
+      DebugLog("tool_call_id_normalized",
+               {{"stream_index", index},
+                {"original", original},
+                {"normalized", candidate},
+                {"reason", original.empty() ? "missing" : "duplicate"}});
     }
+    ids.insert(candidate);
     json arguments = json::parse(call.args, nullptr, false);
     if (call.name.empty() || arguments.is_discarded() ||
         !arguments.is_object()) {

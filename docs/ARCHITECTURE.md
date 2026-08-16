@@ -180,9 +180,12 @@ and is visible through `/context`.
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,
 background count, queue depth, working time, and transferable foreground work.
-Reasoning remains streamed and persisted in every mode. Normally its latest
-bounded clause updates the transient activity row; verbose mode sends the full
-muted italic stream into scrollback alongside expanded tool output.
+Reasoning is collected in every mode. Provider replay blocks are retained on
+assistant messages when the protocol requires them, while `--debug` captures
+the complete flattened reasoning text and structured OpenRouter details.
+Normally the latest bounded line updates the transient activity row; verbose
+mode sends a clearly labelled, muted italic stream into scrollback alongside
+expanded tool output.
 `--debug` records reconstructable JSONL through an ordered background writer so
 serialization and flushing stay off the request path. Model-response records
 separate request preparation and end-to-end time from DNS, connection, TLS,

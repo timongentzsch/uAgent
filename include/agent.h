@@ -256,7 +256,8 @@ class Agent {
   std::string session_id_;
   std::string session_title_;
   int64_t total_user_turns_ = 0;
-  size_t logged_msgs_ = 0;  // messages already written to the debug trace
+  size_t logged_msgs_ = 0;      // messages already written to the debug trace
+  std::string logged_schemas_;  // last exact per-request schema snapshot
   int64_t turn_id_ = 0;
   int64_t request_id_ = 0;
   uint64_t revision_ = 0;

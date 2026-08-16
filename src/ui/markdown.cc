@@ -471,6 +471,10 @@ void MdStream::Step(char c) {
     if (c == '\n') {
       linestart = true;
       ForgetPreviousLine();
+      // The persistent composer inserts a reset-styled status row after a
+      // complete line. Queue the fence color at the start of the next line so
+      // streamed code blocks do not lose their styling after line one.
+      fputs(CodeBlk(), stdout);
     }
     return;
   }
@@ -629,6 +633,7 @@ void MdStream::FenceClassify(
   if (c == '\n') {
     putchar('\n');
     prev_raw.clear();
+    fputs(CodeBlk(), stdout);
     return;
   }
   putchar(c);

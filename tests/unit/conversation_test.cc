@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/trace.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -134,6 +135,40 @@ void TestConversation() {
   CHECK(JsonDump(traces.Archive()).find(std::string(2000, 'a')) !=
         std::string::npos);
   CHECK(traces.PruneOldToolResults(1500, 2500, {"skill"}).results == 0);
+
+  std::string text_call = std::string(kTtOpen) +
+                          R"({"name":"list_dir","arguments":{"path":"."}})" +
+                          kTtClose;
+  json text_messages = json::array(
+      {{{"role", "assistant"}, {"content", text_call}},
+       {{"role", "system"}, {"content", "[tool_result list_dir]\nentry"}}});
+  json text_kinds = json::array({"assistant", "tool_result"});
+  json text_trace = ToolTraceMessages(text_messages, text_kinds);
+  CHECK(text_trace.size() == 1);
+  CHECK(text_trace[0]["name"] == "list_dir");
+  CHECK(text_trace[0]["arguments"] == json({{"path", "."}}));
+  CHECK(text_trace[0]["result"] == "entry");
+  CHECK(text_trace[0].value("text_protocol", false));
+
+  json parallel_messages = json::array(
+      {{{"role", "assistant"},
+        {"content", ""},
+        {"tool_calls",
+         json::array(
+             {{{"id", "one"},
+               {"function", {{"name", "read_file"}, {"arguments", "{}"}}}},
+              {{"id", "two"},
+               {"function", {{"name", "grep"}, {"arguments", "{}"}}}}})}},
+       {{"role", "tool"}, {"tool_call_id", "one"}, {"content", "first"}},
+       {{"role", "tool"}, {"tool_call_id", "two"}, {"content", "second"}}});
+  json parallel_kinds =
+      json::array({"assistant", "tool_result", "tool_result"});
+  json parallel_trace = ToolTraceMessages(parallel_messages, parallel_kinds);
+  CHECK(parallel_trace.size() == 2);
+  CHECK(parallel_trace[0]["name"] == "read_file");
+  CHECK(parallel_trace[0]["result"] == "first");
+  CHECK(parallel_trace[1]["name"] == "grep");
+  CHECK(parallel_trace[1]["result"] == "second");
 
   Conversation small_batch;
   small_batch.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),

@@ -997,7 +997,7 @@ def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
             base_env(home, server.url),
             [
                 (b"discard me", b"discard"),
-                ([b"\x1b"] + [b""] * 7, b"> "),
+                ([b"\x1b"] + [b""] * 15, b"> "),
                 b"kept\n",
                 b"\x04",
             ],

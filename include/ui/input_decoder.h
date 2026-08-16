@@ -18,7 +18,9 @@ inline constexpr size_t kInputHistoryEntryBytes = 16 * 1024;
 inline constexpr size_t kInputBufferBytes = 64 * 1024;
 inline constexpr size_t kInputPasteBytes = kInputBufferBytes;
 inline constexpr size_t kInputSequenceBytes = 64;
-inline constexpr std::chrono::milliseconds kInputEscapeDelay{50};
+// A complete sequence is handled immediately; only a genuinely lone Escape
+// waits, long enough for fragmented PTY input under load.
+inline constexpr std::chrono::milliseconds kInputEscapeDelay{100};
 
 bool ShouldRememberInput(std::string_view input);
 

@@ -1,12 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/agent/protocol.h"
+
 #include <cstdio>
 #include <limits>
 #include <string>
 #include <vector>
 
 #include "include/agent/dispatch.h"
-#include "include/agent/protocol.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/md.h"
@@ -170,7 +171,9 @@ void TestRegistries() {
       "web_search", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string research_prompt = CapabilityPrompt(capability_tools);
-  CHECK(research_prompt.find("background research") != std::string::npos);
+  CHECK(research_prompt.find("Use web_search directly") != std::string::npos);
+  CHECK(research_prompt.find("do not scrape") != std::string::npos);
+  CHECK(research_prompt.find("single search") != std::string::npos);
   CHECK(research_prompt.find("source-cited findings") != std::string::npos);
   capability_tools.push_back(MakeTool(
       "adapt_system", "", json::object(),
@@ -185,6 +188,12 @@ void TestRegistries() {
         std::string::npos);
   CHECK(adaptive_prompt.find("evidence standards") != std::string::npos);
   CHECK(CapabilityPrompt({}).empty());
+  std::string host_prompt = HostCapabilityPrompt(capability_tools);
+  CHECK(host_prompt.find("web_search=available") != std::string::npos);
+  CHECK(host_prompt.find("task=available") != std::string::npos);
+  CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
+  CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
+        std::string::npos);
 
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);

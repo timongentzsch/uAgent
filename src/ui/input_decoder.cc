@@ -82,6 +82,14 @@ bool TerminalInputDecoder::HasReady() const {
   return true;
 }
 
+std::optional<std::chrono::steady_clock::time_point>
+TerminalInputDecoder::WakeDeadline() const {
+  if (!escape_pending_ || pending_.size() != 1 || pending_.front() != 0x1b) {
+    return std::nullopt;
+  }
+  return escape_started_ + kInputEscapeDelay;
+}
+
 std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     bool expire_escape) {
   while (!pending_.empty()) {

@@ -150,7 +150,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
   EnvironmentOverrides environment = {
       {"UAGENT_DEPTH", "1"},
       {"UAGENT_MAX_STEPS", "5"},
-      {"UAGENT_MAX_TOOL_CALLS", "3"},
+      {"UAGENT_MAX_TOOL_CALLS", "4"},
       {"UAGENT_MAX_TURN_SECONDS", "300"},
       {"UAGENT_REQUEST_TIMEOUT", "300"},
       {"UAGENT_BASE_URL", api.base_url},
@@ -165,7 +165,6 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
       {"UAGENT_MEMORY_GENERATE", "0"},
       {"UAGENT_TOOLSET", "memory"},
       {"UAGENT_INTERNAL_MEMORY_SOURCE", source},
-      {"UAGENT_WEB_SEARCH_SERVER", "0"},
   };
   if (api.config.session_budget > 0) {
     double remaining = api.config.session_budget - api.session_cost;
@@ -190,17 +189,17 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                         ShellQuote(ExecutablePath()) +
                         " --yolo -p memory-extract && printf 'done\\n' > " +
                         ShellQuote(marker);
-  ToolResult started = RunShellCommand(processes, {},
-                                       {.command = std::move(command),
-                                        .background = true,
-                                        .immediate = true,
-                                        .job_kind = "memory",
-                                        .activity_label =
-                                            "extracting from " + source_id,
-                                        .receipt_path = receipt,
-                                        .source_id = source_id,
-                                        .environment = std::move(environment)})
-                           .result;
+  ToolResult started =
+      RunShellCommand(processes, {},
+                      {.command = std::move(command),
+                       .background = true,
+                       .immediate = true,
+                       .job_kind = "memory",
+                       .activity_label = "extracting from " + source_id,
+                       .receipt_path = receipt,
+                       .source_id = source_id,
+                       .environment = std::move(environment)})
+          .result;
   if (!started.Ok()) {
     ReleaseClaim(source, cwd);
     std::filesystem::remove(receipt, ignored);
@@ -228,7 +227,9 @@ bool BuildMemoryExtractionPrompt(const std::string& source,
       "most one durable cross-session preference, workflow, constraint, or "
       "debugging insight. Search or read existing native, Codex, or Claude "
       "memory only when relevant; update a native memory instead of "
-      "duplicating it. Use project scope unless the lesson clearly applies "
+      "duplicating it. Plan first and use at most three memory calls total; "
+      "after a set, finish without another tool call. Use project scope unless "
+      "the lesson clearly applies "
       "everywhere. Never save progress, guesses, volatile facts, permissions, "
       "commands, secrets, or raw output. Never forget or modify Codex/Claude "
       "memory. If nothing qualifies, write nothing. Finish briefly.\n\n"

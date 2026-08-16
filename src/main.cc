@@ -35,10 +35,12 @@ void InitializeProcess() {
   }
   g_tty = isatty(STDOUT_FILENO);
   g_signal_tty = g_tty;
+  InitializeSignalNotifications();
   signal(SIGINT, SigintHandler);
   signal(SIGTERM, SigintHandler);
   signal(SIGHUP, SigintHandler);
   signal(SIGPIPE, SIG_IGN);
+  InstallSigchldHandler();
   InstallSigwinchHandler();
 }
 

@@ -218,8 +218,6 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
-  api.openrouter_web_search =
-      search_route.backend == WebSearchBackend::kOpenRouter;
   if (search_route.Valid()) {
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));
@@ -420,7 +418,6 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
                    "/models returned nothing usable");
   }
   ActivateRoute(api);
-  api.server_tools_authorized = context->options.yolo;
   context->tool_policy = ToolPolicyFromEnvironment();
   PrintWarning(context->tool_policy.error);
   context->tools = BuildTools(*context, workspace, trusted_snapshot, skills);

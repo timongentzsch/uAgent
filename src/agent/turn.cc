@@ -390,6 +390,24 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     bool text_mode =
         calls.empty() && !(calls = ParseTextToolCalls(r.content)).empty();
 
+    if (calls.empty() && ContainsForeignToolCallMarkup(r.content)) {
+      if (!empty_response_recovered) {
+        empty_response_recovered = true;
+        conversation_.Push(
+            HarnessMessage("[invalid model tool markup] The attempted call was "
+                           "not executed. Return prose using existing results; "
+                           "do not imitate a tool protocol."),
+            MessageKind::kInternal);
+        pending_note = conversation_.Size() - 1;
+        DebugLog("foreign_tool_markup_recovery",
+                 {{"turn", turn_id_}, {"step", step}});
+        continue;
+      }
+      state.outcome = "error";
+      last_error_ = "model repeatedly returned invalid tool markup";
+      break;
+    }
+
     if (!ToolCallsWithinLimits(calls, state, api_.config.max_tool_calls,
                                last_call, repeated_calls)) {
       break;
@@ -562,22 +580,21 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   footer << (state.line_open ? "\n" : "") << RST() << BLUE()
          << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
   std::cout << footer.str();
-  DebugLog("turn_end",
-           {{"turn", turn_id_},
-            {"outcome", state.outcome},
-            {"steps", state.max_steps > 0 && step >= state.max_steps
-                         ? state.max_steps
-                         : step + 1},
-            {"tool_calls", state.tool_count},
-            {"duration_ms", secs * 1000},
-            {"ttt_ms", state.ttt_ms},
-            {"tokens_per_second", tokens_per_second},
-            {"generation_ms", state.model_generation_ms},
-            {"generated_tokens", state.model_generated_tokens},
-            {"usage", UsageJson(state.usage)},
-            {"session_usage", UsageJson(session_usage_)},
-            {"messages", conversation_.Size()},
-            {"context_tokens", ContextUsed()}});
+  DebugLog("turn_end", {{"turn", turn_id_},
+                        {"outcome", state.outcome},
+                        {"steps", state.max_steps > 0 && step >= state.max_steps
+                                      ? state.max_steps
+                                      : step + 1},
+                        {"tool_calls", state.tool_count},
+                        {"duration_ms", secs * 1000},
+                        {"ttt_ms", state.ttt_ms},
+                        {"tokens_per_second", tokens_per_second},
+                        {"generation_ms", state.model_generation_ms},
+                        {"generated_tokens", state.model_generated_tokens},
+                        {"usage", UsageJson(state.usage)},
+                        {"session_usage", UsageJson(session_usage_)},
+                        {"messages", conversation_.Size()},
+                        {"context_tokens", ContextUsed()}});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

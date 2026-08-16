@@ -113,7 +113,6 @@ UAGENT_MODEL=local/fast
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `UAGENT_WEB_SEARCH_SERVER` | `1` | enable provider server search |
 | `UAGENT_WEB_SEARCH_BACKEND` | `auto` | search backend selection |
 | `UAGENT_WEB_SEARCH_URL` | empty | custom search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
@@ -121,11 +120,11 @@ UAGENT_MODEL=local/fast
 | `UAGENT_WEB_SEARCH_EFFORT` | empty | search reasoning effort |
 | `UAGENT_WEB_SEARCH_ENGINE` | `auto` | engine selection |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | empty | provider search context size |
-| `UAGENT_WEB_SEARCH_TIMEOUT` | 25 | search seconds |
+| `UAGENT_WEB_SEARCH_TIMEOUT` | 60 | search seconds |
 | `UAGENT_WEB_SEARCH_MAX_TOKENS` | 1200 | search response tokens |
-| `UAGENT_WEB_SEARCH_CALLS` | 4 | search calls per tool invocation |
+| `UAGENT_WEB_SEARCH_CALLS` | 4 | `web_search` calls per turn |
 | `UAGENT_WEB_SEARCH_MAX_RESULTS` | 5 | results per search call, maximum 25 |
-| `UAGENT_WEB_SEARCH_MAX_USES` | 3 | search tool uses per turn, maximum 30 |
+| `UAGENT_WEB_SEARCH_MAX_USES` | 3 | requested provider search-use limit, maximum 30 |
 | `UAGENT_MCP_TIMEOUT` | 60 | MCP operation seconds |
 | `UAGENT_MCP_SERVERS` | 32 | server bound |
 | `UAGENT_MCP_PAGES` | 100 | discovery page bound |

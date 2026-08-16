@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_CORE_USAGE_H_
 #define UAGENT_INCLUDE_CORE_USAGE_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <mutex>
@@ -65,8 +66,10 @@ struct Usage {
     if (!output_tokens) {
       output_tokens = JsonValue(value, "output_tokens", int64_t{0});
     }
-    input += input_tokens - cache;
-    output += output_tokens - reason;
+    // Compatibility providers occasionally report detail counts larger than
+    // their parent totals. Never surface impossible negative token counts.
+    input += std::max(int64_t{0}, input_tokens - cache);
+    output += std::max(int64_t{0}, output_tokens - reason);
     cache_read += cache;
     cache_write += cache_write_tokens;
     reasoning += reason;
@@ -74,10 +77,17 @@ struct Usage {
       cost += value["cost"].get<double>();
       cost_reported = true;
     }
-    if (value.contains("server_tool_use") &&
-        value["server_tool_use"].is_object()) {
-      web_searches += JsonValue(value["server_tool_use"], "web_search_requests",
-                                int64_t{0});
+    const json* server_tools = nullptr;
+    if (value.contains("server_tool_use_details") &&
+        value["server_tool_use_details"].is_object()) {
+      server_tools = &value["server_tool_use_details"];
+    } else if (value.contains("server_tool_use") &&
+               value["server_tool_use"].is_object()) {
+      server_tools = &value["server_tool_use"];
+    }
+    if (server_tools) {
+      web_searches +=
+          JsonValue(*server_tools, "web_search_requests", int64_t{0});
     }
   }
 };

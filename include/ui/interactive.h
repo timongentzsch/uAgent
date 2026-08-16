@@ -170,6 +170,9 @@ class RawComposer {
 
   const std::string& Buffer() const { return buffer_; }
   bool HasPending() const { return decoder_.HasReady(); }
+  std::optional<std::chrono::steady_clock::time_point> WakeDeadline() const {
+    return decoder_.WakeDeadline();
+  }
 
   InteractiveInputEvent Read() {
     unsigned char bytes[4096];
@@ -471,13 +474,7 @@ class RawComposer {
 
 class InputBroker {
  public:
-  InputBroker() {
-    if (pipe(wake_) != 0) wake_[0] = wake_[1] = -1;
-    if (wake_[0] >= 0) {
-      fcntl(wake_[0], F_SETFL, fcntl(wake_[0], F_GETFL) | O_NONBLOCK);
-      fcntl(wake_[1], F_SETFL, fcntl(wake_[1], F_GETFL) | O_NONBLOCK);
-    }
-  }
+  InputBroker() { (void)OpenNonblockingPipe(wake_); }
 
   ~InputBroker() {
     Shutdown();
@@ -500,12 +497,9 @@ class InputBroker {
   }
 
   int Fd() const { return wake_[0]; }
+  int NotifyFd() const { return wake_[1]; }
 
-  void DrainWake() const {
-    char bytes[32];
-    while (wake_[0] >= 0 && read(wake_[0], bytes, sizeof bytes) > 0) {
-    }
-  }
+  void DrainWake() const { DrainDescriptor(wake_[0]); }
 
   bool Take(std::string& prompt, std::string& initial, bool& keep_history) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -527,12 +521,7 @@ class InputBroker {
     changed_.notify_one();
   }
 
-  void Notify() const {
-    if (wake_[1] < 0) return;
-    const char byte = 'x';
-    ssize_t ignored = write(wake_[1], &byte, 1);
-    (void)ignored;
-  }
+  void Notify() const { WakeDescriptor(wake_[1]); }
 
   void Shutdown() {
     {

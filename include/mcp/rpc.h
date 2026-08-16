@@ -27,13 +27,19 @@ inline bool McpWrite(McpServer& s, const std::string& data) {
   size_t off = 0;
   while (off < data.size()) {
     if (AbortRequested()) return false;  // user hit Ctrl+C mid-call
-    struct pollfd p[2] = {{s.in, POLLOUT, 0}, {s.out, POLLIN, 0}};
-    int pr = poll(p, 2, 10000);
+    struct pollfd p[3] = {
+        {s.in, POLLOUT, 0}, {s.out, POLLIN, 0}, {AbortWakeFd(), POLLIN, 0}};
+    int pr = poll(p, 3, 10000);
     if (pr < 0 && errno == EINTR) continue;
     if (pr <= 0) {
       s.Shutdown();
       return false;
     }  // wedged server: kill it now
+    if (p[2].revents & POLLIN) {
+      if (AbortRequested()) return false;
+      NormalizeAbortWake();
+      continue;
+    }
     if ((p[1].revents & POLLIN) && !McpFillBuffer(s, /*eof_is_fatal=*/false)) {
       return false;
     }
@@ -63,14 +69,20 @@ inline bool McpReadLine(McpServer& s, std::string& line,
     if (!s.alive) return false;
     if (cancellable && AbortRequested()) return false;
     if (std::chrono::steady_clock::now() >= deadline) return false;
-    struct pollfd p = {s.out, POLLIN, 0};
-    int pr = poll(&p, 1, 200);
+    struct pollfd p[2] = {{s.out, POLLIN, 0},
+                          {cancellable ? AbortWakeFd() : -1, POLLIN, 0}};
+    int pr = poll(p, 2, PollTimeoutMs(deadline));
     if (pr < 0 && errno != EINTR) {
       s.Shutdown();
       return false;
     }
+    if (cancellable && (p[1].revents & POLLIN)) {
+      if (AbortRequested()) return false;
+      NormalizeAbortWake();
+      continue;
+    }
     // EOF here means the server exited: McpFillBuffer reaps it.
-    if (pr > 0 && (p.revents & (POLLIN | POLLHUP)) && !McpFillBuffer(s)) {
+    if (pr > 0 && (p[0].revents & (POLLIN | POLLHUP)) && !McpFillBuffer(s)) {
       return false;
     }
   }

@@ -137,8 +137,8 @@ void TestSseChunkPartitions() {
                    {{{"type", "reasoning.text"}, {"text", text}},
                     {{"type", "reasoning.encrypted"}, {"data", data}}})}}}}}}});
   };
-  OpenAiStreamDelta first_details = DecodeOpenAiStreamEvent(
-      reasoning_event("one", "a"), unindexed, no_calls);
+  OpenAiStreamDelta first_details =
+      DecodeOpenAiStreamEvent(reasoning_event("one", "a"), unindexed, no_calls);
   OpenAiStreamDelta second_details = DecodeOpenAiStreamEvent(
       reasoning_event(" two", "b"), unindexed, no_calls);
   CHECK(first_details.reasoning == "one");

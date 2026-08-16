@@ -37,8 +37,10 @@ void TestTerminalInputDecoder() {
 
   decoder.Feed("\x1b");
   CHECK(!decoder.Next());
+  CHECK(decoder.WakeDeadline().has_value());
   token = decoder.Next(true);
   CHECK(token && token->kind == TerminalInputTokenKind::kEscape);
+  CHECK(!decoder.WakeDeadline().has_value());
 
   decoder.Feed("\x1bx");
   token = decoder.Next();

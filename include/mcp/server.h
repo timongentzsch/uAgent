@@ -13,6 +13,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -29,6 +31,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
 
 extern char** environ;
 
@@ -36,9 +39,8 @@ namespace uagent {
 
 // Give stdio EOF a brief chance to perform the protocol's polite shutdown
 // before escalating to signals, then again before the kill.
-inline constexpr int kMcpEofAttempts = 4;
-inline constexpr int kMcpTermAttempts = 6;
-inline constexpr useconds_t kMcpReapInterval = 50 * 1000;
+inline constexpr auto kMcpEofGrace = std::chrono::milliseconds(200);
+inline constexpr auto kMcpTermGrace = std::chrono::milliseconds(300);
 
 struct McpServer;
 inline void McpShutdown(McpServer& server);
@@ -105,18 +107,23 @@ struct McpServer {
 // reason ShutdownAll cannot simply loop over one-server shutdowns.
 template <class Servers>
 inline void McpShutdownGroup(const Servers& servers) {
-  auto wait_all = [&](int attempts) {
-    for (int attempt = 0; attempt < attempts; ++attempt) {
+  auto wait_all = [&](std::chrono::milliseconds grace) {
+    auto deadline = std::chrono::steady_clock::now() + grace;
+    for (;;) {
       bool pending = false;
       for (McpServer* server : servers) pending = !server->Reaped() || pending;
       if (!pending) return;
-      usleep(kMcpReapInterval);
+      auto now = std::chrono::steady_clock::now();
+      if (now >= deadline) return;
+      pollfd child_event = {ChildSignalFd(), POLLIN, 0};
+      int ready = poll(&child_event, 1, PollTimeoutMs(deadline));
+      if (ready > 0 && (child_event.revents & POLLIN)) DrainChildSignal();
     }
   };
   for (McpServer* server : servers) server->CloseTransport();
-  wait_all(kMcpEofAttempts);
+  wait_all(kMcpEofGrace);
   for (McpServer* server : servers) server->Escalate(SIGTERM);
-  wait_all(kMcpTermAttempts);
+  wait_all(kMcpTermGrace);
   for (McpServer* server : servers) {
     if (server->pid <= 0) continue;
     kill(-server->pid, SIGKILL);
@@ -195,7 +202,10 @@ inline bool McpBufferOk(McpServer& s) {
 // opportunistic drain tolerates EOF, so it passes eof_is_fatal=false.
 inline bool McpFillBuffer(McpServer& s, bool eof_is_fatal = true) {
   char buffer[1 << 16];
-  ssize_t count = read(s.out, buffer, sizeof buffer);
+  ssize_t count;
+  do {
+    count = read(s.out, buffer, sizeof buffer);
+  } while (count < 0 && errno == EINTR);
   if (count <= 0) {
     if (!eof_is_fatal) return true;
     s.Shutdown();

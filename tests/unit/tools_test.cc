@@ -1,8 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
+
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -10,6 +15,9 @@
 #include <vector>
 
 #include "include/api/stream.h"
+#include "include/core/file_watch.h"
+#include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
@@ -20,6 +28,64 @@
 namespace uagent {
 
 void TestActivitySessions() {
+  RequestAbort();
+  ClearAbort();
+  pollfd stale_abort = {AbortWakeFd(), POLLIN, 0};
+  CHECK(poll(&stale_abort, 1, 0) == 1);
+  NormalizeAbortWake();
+  stale_abort.revents = 0;
+  CHECK(poll(&stale_abort, 1, 0) == 0);
+
+  int resize_wake[2] = {-1, -1};
+  CHECK(pipe(resize_wake) == 0);
+  if (resize_wake[0] >= 0) {
+    SetTerminalWakeFd(resize_wake[1]);
+    InstallSigwinchHandler();
+    raise(SIGWINCH);
+    pollfd resize_event = {resize_wake[0], POLLIN, 0};
+    CHECK(poll(&resize_event, 1, 100) == 1);
+    SetTerminalWakeFd(-1);
+    close(resize_wake[0]);
+    close(resize_wake[1]);
+    g_terminal_resized = 0;
+  }
+
+  FileWaitResult missing_file = WaitForFileChange(
+      "/tmp/uagent-file-watch-does-not-exist", {},
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(30));
+  CHECK(missing_file == FileWaitResult::kTimedOut);
+
+  char watched_path[] = "/tmp/uagent-file-watch-XXXXXX";
+  int watched_fd = mkstemp(watched_path);
+  CHECK(watched_fd >= 0);
+  if (watched_fd >= 0) {
+    FileStamp observed = SnapshotFile(watched_path);
+    FileWaitResult file_changed = FileWaitResult::kTimedOut;
+    std::thread watcher([&] {
+      file_changed = WaitForFileChange(
+          watched_path, observed,
+          std::chrono::steady_clock::now() + std::chrono::seconds(2));
+    });
+    CHECK(write(watched_fd, "x", 1) == 1);
+    watcher.join();
+    CHECK(file_changed == FileWaitResult::kChanged);
+
+    observed = SnapshotFile(watched_path);
+    FileWaitResult steering_changed = FileWaitResult::kTimedOut;
+    std::thread steering_watcher([&] {
+      steering_changed = WaitForFileChange(
+          watched_path, observed,
+          std::chrono::steady_clock::now() + std::chrono::seconds(2));
+    });
+    SteeringState().Queue("watch steering");
+    steering_watcher.join();
+    CHECK(steering_changed == FileWaitResult::kSteering);
+    std::vector<std::string> watch_steering = SteeringState().TakeQueued();
+    CHECK(watch_steering.size() == 1 && watch_steering[0] == "watch steering");
+    close(watched_fd);
+    unlink(watched_path);
+  }
+
   HeadTailBuffer buffer(10);
   buffer.Push("abcdefghij");
   buffer.Push("klmnop");
@@ -43,10 +109,9 @@ void TestActivitySessions() {
   std::vector<int64_t> retained_ids;
   for (int index = 0; index < 17; ++index) {
     auto session = std::make_shared<ActivitySession>();
-    CHECK(retained.TryAdd(
-        {static_cast<pid_t>(900000 + index), "", "done", false, "",
-         std::nullopt, 0, session},
-        32));
+    CHECK(retained.TryAdd({static_cast<pid_t>(900000 + index), "", "done",
+                           false, "", std::nullopt, 0, session},
+                          32));
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
     std::optional<BgJob> completed = retained.Take(id);
@@ -90,59 +155,125 @@ void TestActivitySessions() {
     CHECK(started.result.output.find("tty=yes") != std::string::npos);
     ToolResult initial = ToolActivityOutput(pty_processes, id);
     CHECK(initial.output.find("(no new output)") != std::string::npos);
-    CHECK(ToolActivityInput(pty_processes, id, "", 0, context, 30, 100)
-              .Ok());
-    ToolResult input = ToolActivityInput(pty_processes, id, "hello\n", 2000,
-                                         context);
+    CHECK(ToolActivityInput(pty_processes, id, "", 0, context, 30, 100).Ok());
+    ToolResult input =
+        ToolActivityInput(pty_processes, id, "hello\n", 2000, context);
     CHECK(input.Ok());
     CHECK(input.output.find("got:hello") != std::string::npos);
-    ToolResult completed = ToolActivityWait(pty_processes, {id}, "all", 2000,
-                                             context);
+    ToolResult completed =
+        ToolActivityWait(pty_processes, {id}, "all", 2000, context);
     CHECK(completed.Ok());
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
 
   ProcessSupervisor non_tty;
-  CHECK(RunShellCommand(non_tty, context,
-                        {.command = "sleep 10",
-                         .background = true,
-                         .immediate = true})
+  CHECK(RunShellCommand(
+            non_tty, context,
+            {.command = "sleep 10", .background = true, .immediate = true})
             .result.Ok());
   std::vector<BgJob> pipe_jobs = non_tty.Snapshot();
   CHECK(pipe_jobs.size() == 1);
   if (!pipe_jobs.empty()) {
     int64_t id = ActivityId(pipe_jobs[0]);
-    ToolResult rejected =
-        ToolActivityInput(non_tty, id, "hello\n", 0, context);
+    ToolResult rejected = ToolActivityInput(non_tty, id, "hello\n", 0, context);
     CHECK(!rejected.Ok());
     CHECK(rejected.output.find("tty=true") != std::string::npos);
     CHECK(ToolActivityInput(non_tty, id, "\x03", 0, context).Ok());
     (void)ToolActivityWait(non_tty, {id}, "all", 2000, context);
   }
 
+  ProcessSupervisor steering_wait;
+  CHECK(RunShellCommand(
+            steering_wait, context,
+            {.command = "sleep 5", .background = true, .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> steering_jobs = steering_wait.Snapshot();
+  CHECK(steering_jobs.size() == 1);
+  if (!steering_jobs.empty()) {
+    std::thread interrupt([&] {
+      std::this_thread::sleep_for(std::chrono::milliseconds(30));
+      SteeringState().Request();
+      steering_wait.Wake();
+    });
+    auto started_wait = std::chrono::steady_clock::now();
+    ToolResult interrupted = ToolActivityWait(
+        steering_wait, {ActivityId(steering_jobs[0])}, "all", 5000, context);
+    auto wait_time = std::chrono::steady_clock::now() - started_wait;
+    interrupt.join();
+    CHECK(!interrupted.Ok());
+    CHECK(interrupted.output.find("wait interrupted") != std::string::npos);
+    CHECK(wait_time < std::chrono::milliseconds(500));
+    CHECK(SteeringState().Take());
+    CHECK(ToolActivityStop(steering_wait, ActivityId(steering_jobs[0])).Ok());
+  }
+
+  ProcessSupervisor steering_yield;
+  CHECK(RunShellCommand(
+            steering_yield, context,
+            {.command = "sleep 5", .background = true, .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> steering_yield_jobs = steering_yield.Snapshot();
+  CHECK(steering_yield_jobs.size() == 1);
+  if (!steering_yield_jobs.empty()) {
+    int64_t id = ActivityId(steering_yield_jobs[0]);
+    ToolResult yielded_wait;
+    std::thread waiter([&] {
+      yielded_wait =
+          ToolActivityWait(steering_yield, {id}, "all", 5000, context);
+    });
+    SteeringState().Queue("change course");
+    steering_yield.Wake();
+    waiter.join();
+    CHECK(yielded_wait.Ok());
+    CHECK(yielded_wait.output.find("wait yielded for queued steering") !=
+          std::string::npos);
+    CHECK(steering_yield.IsLive(id));
+    CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
+    std::vector<std::string> queued = SteeringState().TakeQueued();
+    CHECK(queued.size() == 1 && queued[0] == "change course");
+
+    ToolResult yielded_output;
+    std::thread output_waiter([&] {
+      yielded_output =
+          ToolActivityOutput(steering_yield, id, 5000, {}, context);
+    });
+    SteeringState().Queue("inspect output");
+    steering_yield.Wake();
+    output_waiter.join();
+    CHECK(yielded_output.Ok());
+    CHECK(yielded_output.output.find("wait yielded for queued steering") !=
+          std::string::npos);
+    CHECK(steering_yield.IsLive(id));
+    CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
+    queued = SteeringState().TakeQueued();
+    CHECK(queued.size() == 1 && queued[0] == "inspect output");
+    CHECK(ToolActivityStop(steering_yield, id).Ok());
+  }
+
   ProcessSupervisor no_duplicate_completion;
-  ShellCommandResult yielded_once = RunShellCommand(
-      no_duplicate_completion, context,
-      {.command = "printf once; sleep 0.5", .yield_ms = 250});
+  ShellCommandResult yielded_once =
+      RunShellCommand(no_duplicate_completion, context,
+                      {.command = "printf once; sleep 0.5", .yield_ms = 250});
   CHECK(yielded_once.result.output.find("once") != std::string::npos);
   std::vector<BgJob> once_jobs = no_duplicate_completion.Snapshot();
   CHECK(once_jobs.size() == 1);
   if (!once_jobs.empty()) {
-    ToolResult final = ToolActivityWait(no_duplicate_completion,
-                                        {ActivityId(once_jobs[0])}, "all", 2000,
-                                        context);
+    ToolResult final =
+        ToolActivityWait(no_duplicate_completion, {ActivityId(once_jobs[0])},
+                         "all", 2000, context);
     CHECK(final.Ok());
     CHECK(final.output.find("(no new output)") != std::string::npos);
     CHECK(final.output.find("\nonce") == std::string::npos);
   }
 
   ProcessSupervisor incremental;
-  CHECK(RunShellCommand(incremental, context,
-                        {.command = "printf 'Server '; sleep 0.1; printf ready; "
-                                    "sleep 0.1; printf done",
-                         .background = true,
-                         .immediate = true})
-            .result.Ok());
+  CHECK(
+      RunShellCommand(incremental, context,
+                      {.command = "printf 'Server '; sleep 0.1; printf ready; "
+                                  "sleep 0.1; printf done",
+                       .background = true,
+                       .immediate = true})
+          .result.Ok());
   std::vector<BgJob> incremental_jobs = incremental.Snapshot();
   CHECK(incremental_jobs.size() == 1);
   if (!incremental_jobs.empty()) {
@@ -189,13 +320,12 @@ void TestActivitySessions() {
             .result.Ok());
   std::vector<BgJob> memory_jobs = memory_activity.Snapshot();
   CHECK(memory_jobs.size() == 1);
-  CHECK(ToolActivityList(memory_activity).output.find(
-            "[memory] activity") != std::string::npos);
-  CHECK(ToolActivityList(memory_activity).output.find(
-            "extracting from source-123") != std::string::npos);
+  CHECK(ToolActivityList(memory_activity).output.find("[memory] activity") !=
+        std::string::npos);
+  CHECK(ToolActivityList(memory_activity)
+            .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
-    auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     for (;;) {
       bool drained = false;
       {
@@ -219,12 +349,11 @@ void TestActivitySessions() {
   }
 
   ProcessSupervisor delivery_race;
-  CHECK(RunShellCommand(
-            delivery_race, context,
-            {.command = "sleep 0.05; printf \"$RACE_VALUE\"",
-             .background = true,
-             .immediate = true,
-             .environment = {{"RACE_VALUE", "delivery-token"}}})
+  CHECK(RunShellCommand(delivery_race, context,
+                        {.command = "sleep 0.05; printf \"$RACE_VALUE\"",
+                         .background = true,
+                         .immediate = true,
+                         .environment = {{"RACE_VALUE", "delivery-token"}}})
             .result.Ok());
   std::vector<BgJob> delivery_jobs = delivery_race.Snapshot();
   CHECK(delivery_jobs.size() == 1);
@@ -289,8 +418,7 @@ void TestActivitySessions() {
   ProcessSupervisor handoff;
   ShellCommandResult handoff_result;
   std::thread foreground([&] {
-    handoff_result = RunShellCommand(handoff, context,
-                                     {.command = "sleep 10"});
+    handoff_result = RunShellCommand(handoff, context, {.command = "sleep 10"});
   });
   CHECK(handoff.WaitForForeground(
       1, std::chrono::steady_clock::now() + std::chrono::seconds(2)));
@@ -565,6 +693,32 @@ void TestToolExecutionPolicy() {
   CHECK(BgCancelTasks(task_processes) == 1);
   CHECK(!task_processes.PendingCount());
   if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));
+
+  {
+    TestWorkspace memory_workspace("automatic-memory-write-limit");
+    setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "test-source", 1);
+    ProcessSupervisor memory_processes;
+    std::vector<Tool> memory_tools = BuiltinTools(memory_processes);
+    unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
+    const Tool* memory = FindTool(memory_tools, "memory");
+    CHECK(memory != nullptr);
+    if (memory) {
+      ToolResult first =
+          memory->run({{"action", "set"},
+                       {"key", "project/one"},
+                       {"content", "One durable automatic lesson."}},
+                      base);
+      ToolResult second =
+          memory->run({{"action", "set"},
+                       {"key", "project/two"},
+                       {"content", "A second automatic lesson."}},
+                      base);
+      CHECK(first.Ok());
+      CHECK(!second.Ok());
+      CHECK(second.output.find("already wrote one memory") !=
+            std::string::npos);
+    }
+  }
 }
 
 void TestOpenRouterServerSearch() {
@@ -580,56 +734,56 @@ void TestOpenRouterServerSearch() {
         {"function",
          {{"name", "read_file"}, {"parameters", json::object()}}}}});
 
-  json body = api.BuildChatBody(json::array(), schemas);
+  bool web_available = false;
+  json body = api.BuildChatBody(json::array(), schemas, "", &web_available);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][0]["function"]["name"] == "web_search");
-  api.server_tools_authorized = true;
-  body = api.BuildChatBody(json::array(), schemas);
-  CHECK(body["tools"].size() == 2);
-  CHECK(body["tools"][0]["function"]["name"] == "read_file");
-  CHECK(body["tools"][1]["type"] == "openrouter:web_search");
-  CHECK(body["tools"][1]["parameters"]["engine"] == "auto");
-  CHECK(body["tools"][1]["parameters"]["max_results"] == 5);
-  CHECK(body["tools"][1]["parameters"]["max_total_results"] == 15);
-  CHECK(!body["tools"][1]["parameters"].contains("max_uses"));
-  CHECK(!body["tools"][1]["parameters"].contains("search_context_size"));
+  CHECK(web_available);
 
-  body = api.BuildChatBody(json::array(), json::array({schemas[1]}));
+  web_available = true;
+  body = api.BuildChatBody(json::array(), json::array({schemas[1]}), "",
+                           &web_available);
   CHECK(body["tools"].size() == 1);
   CHECK(body["tools"][0]["function"]["name"] == "read_file");
+  CHECK(!web_available);
 
   auto check_native_search = [&] {
     body = api.BuildChatBody(json::array(), schemas);
     CHECK(body["tools"].size() == 2);
     CHECK(body["tools"][0]["function"]["name"] == "web_search");
   };
-  api.openrouter_web_search = false;
-  check_native_search();
-
   api.base_url = "http://127.0.0.1:8080/v1";
   api.openrouter_compatible = false;
   check_native_search();
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
   api.openrouter_compatible = true;
-  api.openrouter_web_search = true;
-  body = api.BuildChatBody(json::array(), schemas);
-  CHECK(body["tools"].size() == 2);
-  CHECK(body["tools"][1]["type"] == "openrouter:web_search");
+  check_native_search();
 
   api.base_url = "https://openrouter.ai/api/v1";
   api.openrouter_compatible = true;
-  api.openrouter_web_search = true;
   body = api.BuildChatBody(json::array(), json::array());
   CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
 
   Usage usage;
   usage.Add({{"prompt_tokens", 1},
              {"completion_tokens", 2},
-             {"server_tool_use", {{"web_search_requests", 3}}}});
+             {"server_tool_use_details", {{"web_search_requests", 3}}}});
   CHECK(usage.web_searches == 3);
+  usage.Add({{"server_tool_use", {{"web_search_requests", 2}}}});
+  CHECK(usage.web_searches == 5);
+  usage.Add({{"server_tool_use_details", {{"web_search_requests", 1}}},
+             {"server_tool_use", {{"web_search_requests", 9}}}});
+  CHECK(usage.web_searches == 6);
+  Usage inconsistent;
+  inconsistent.Add({{"prompt_tokens", 2},
+                    {"prompt_tokens_details", {{"cached_tokens", 3}}},
+                    {"completion_tokens", 1},
+                    {"completion_tokens_details", {{"reasoning_tokens", 2}}}});
+  CHECK(inconsistent.input == 0);
+  CHECK(inconsistent.output == 0);
   CHECK(!usage.cost_reported);
-  CHECK(UsageFromJson(UsageJson(usage)).web_searches == 3);
+  CHECK(UsageFromJson(UsageJson(usage)).web_searches == 6);
   usage.Add({{"cost", 0.0}});
   CHECK(usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).cost_reported);
@@ -663,6 +817,32 @@ void TestOpenRouterServerSearch() {
   CHECK(search_body["include"][0] == "web_search_call.action.sources");
   CHECK(search_body["max_tool_calls"] == 3);
   CHECK(search_body["stream"] == false);
+
+  RuntimeConfig openrouter_config;
+  openrouter_config.web_search_engine = "exa";
+  openrouter_config.web_search_context_size = "high";
+  WebSearchRoute openrouter_route{WebSearchBackend::kOpenRouter,
+                                  "https://openrouter.ai/api/v1", "key",
+                                  "vendor/search-model"};
+  json openrouter_body =
+      WebSearchRequest(openrouter_route, openrouter_config, "current facts");
+  CHECK(openrouter_body["model"] == "vendor/search-model");
+  CHECK(openrouter_body["tools"].size() == 1);
+  CHECK(openrouter_body["tools"][0]["type"] == "openrouter:web_search");
+  CHECK(openrouter_body["tools"][0]["parameters"]["engine"] == "exa");
+  CHECK(openrouter_body["tools"][0]["parameters"]["max_uses"] == 3);
+  CHECK(openrouter_body["tools"][0]["parameters"]["max_results"] == 5);
+  CHECK(openrouter_body["tools"][0]["parameters"]["max_total_results"] == 15);
+  CHECK(openrouter_body["tools"][0]["parameters"]["search_context_size"] ==
+        "high");
+  CHECK(openrouter_body["max_tool_calls"] == 3);
+  UsageAccumulator side_usage;
+  Tool search_tool = WebSearchTool(api, side_usage, {});
+  CHECK(search_tool.timeout_s == config.web_search_timeout_s);
+  CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
+  CHECK(!search_tool.mutating);
+  CHECK(search_tool.needs_approval &&
+        search_tool.needs_approval(json::object()));
 
   WebSearchResult normalized = ParseResponsesSearch(
       {{"status", "completed"},

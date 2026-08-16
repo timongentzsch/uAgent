@@ -50,7 +50,8 @@ Supervised PTY and non-TTY outputs share one event-driven process-I/O layer.
 Once returned by `run`, `activity_output`, or `activity_input`, output is not returned again as new output. A 1 MiB head/tail
 buffer preserves the oldest and newest bytes and reports an omitted middle.
 Persistent detached commands remain log-based and cannot be interactively
-reattached after the harness exits.
+reattached after the harness exits. Waiting readers use native kqueue/inotify
+file notifications where available.
 
 ## Conditional and extensible tools
 
@@ -61,6 +62,10 @@ reattached after the harness exits.
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
+
+`web_search` is always one named model-facing function. Its host implementation
+selects OpenAI Responses or OpenRouter server search, so models, yolo mode, and
+delegated workers receive the same schema and accounting.
 
 Independent parallel-safe calls may execute concurrently, but results are
 appended to the conversation in model call order. Tool-specific limits,

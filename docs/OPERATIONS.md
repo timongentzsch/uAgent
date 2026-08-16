@@ -104,7 +104,9 @@ waits to the turn deadline, while 250 through 30,000 select another initial
 wait. Set `tty=true` only when the process needs interactive input. A PTY
 activity retains merged output, writable input, process-group interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
-interactively reattached after the harness exits.
+interactively reattached after the harness exits. Waiting log readers use
+kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
+bounded polling fallback.
 
 `activity_output(id)` drains bounded new output without cancelling ownership;
 `wait_ms` optionally blocks for output or exit and `until` waits for fixed
@@ -127,8 +129,10 @@ group and removes its records and logs. Persistent TUI and headless runs resume
 automatically after background completion.
 
 Configured MCP servers start once and expose their discovered tools directly.
-When a server reports an error without diagnostic text, the result points to
-that server's private stderr log under `~/.uagent/mcp/`.
+Their stdio and shutdown waits share pollable abort/SIGCHLD notifications, so
+an idle server or cancellation does not depend on a periodic check. When a
+server reports an error without diagnostic text, the result points to that
+server's private stderr log under `~/.uagent/mcp/`.
 µAgent advertises MCP roots and answers `roots/list`; the current workspace is
 the default root. Set
 colon-separated `UAGENT_MCP_ROOTS`, or a server's
@@ -146,10 +150,12 @@ outside model context. Install it once with
 user-owned Chrome session; otherwise use an isolated `open` session.
 
 The interactive composer owns stdin for the whole session. Enter during work
-queues guidance into the active turn at the next model/tool boundary. While a
-foreground command is running, Ctrl+B transfers the complete foreground tool
-batch to background supervision without signaling or restarting it, so queued
-guidance can apply immediately. Escape interrupts only the foreground
+queues guidance into the active turn. Passive `activity_wait` and waiting
+`activity_output` calls are notified and yield immediately without cancelling
+the supervised activity, so guidance reaches the next model/tool boundary.
+While a foreground command is running, Ctrl+B transfers the complete foreground
+tool batch to background supervision without signaling or restarting it, so
+queued guidance can apply immediately. Escape interrupts only the foreground
 request/tool batch and applies queued guidance. Terminal focus changes do not
 clear drafts or interrupt work; multiline bracketed paste is normalized and
 inserted as one edit before Enter submits it. Background commands, delegated

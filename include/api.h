@@ -14,12 +14,19 @@
 #include "include/core/env.h"
 
 typedef void CURL;
+typedef void CURLM;
 
 namespace uagent {
 
 using nlohmann::json;
 
 struct StreamCtx;
+
+struct JsonResponse {
+  json body = json(json::value_t::discarded);
+  int64_t http_status = 0;
+  std::string error;
+};
 
 // Single-owner client. Calls are intentionally serialized so one easy handle
 // can retain libcurl's connection cache between requests; Api is not reentrant
@@ -31,8 +38,6 @@ class Api {
   bool native_tools = true;
   bool include_usage = true;
   bool parallel_tools = true;
-  bool openrouter_web_search = true;
-  bool server_tools_authorized = false;
   bool render_stream = true;
   bool image_input = true;
   bool openrouter_compatible = false;
@@ -59,7 +64,8 @@ class Api {
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   bool render_output = true, size_t estimated_bytes = 0,
                   bool full_reasoning = true);
-  json Post(const std::string& path, const json& body, int64_t timeout_s = 120);
+  JsonResponse Post(const std::string& path, const json& body,
+                    int64_t timeout_s = 120);
   json Get(const std::string& path, bool abortable = false);
 
  private:
@@ -67,8 +73,8 @@ class Api {
                          int64_t timeout_s, const std::string& session_id,
                          bool render_output, bool full_reasoning);
   bool WaitForRetry(std::chrono::milliseconds delay, bool render_output) const;
-  json Fetch(const std::string& path, const std::string* payload,
-             int64_t timeout_s, bool abortable);
+  JsonResponse Fetch(const std::string& path, const std::string* payload,
+                     int64_t timeout_s, bool abortable);
   static void SetAbortable(CURL* handle, StreamCtx* context = nullptr);
   CURL* Prepare(const std::string& url);
   // 0 means unbounded, which is how both response readers spell "no cap".
@@ -79,6 +85,7 @@ class Api {
   }
 
   CURL* handle_;
+  CURLM* multi_;
 };
 
 }  // namespace uagent

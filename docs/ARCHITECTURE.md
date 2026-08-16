@@ -34,6 +34,10 @@ Shared policy stays centralized: `MakeTool` defines tool metadata,
 `RuntimeConfig` defines limits, `RouteKey` defines route identity, and
 `HeadlessResult` defines machine output.
 
+Web search follows the same boundary: models always see one named function,
+while its host adapter selects the provider protocol and owns limits, citations,
+errors, and usage accounting.
+
 Every route mutation uses one activation path: reset discovered capabilities,
 export child state, then rotate the agent route identity. Provider protocol is
 explicit for custom proxies.
@@ -67,14 +71,18 @@ without being signaled or restarted, allowing queued steering to apply at the
 next tool boundary. Persistent detached activities remain log-only and do not
 retain interactive input after the harness exits.
 
-A single process-I/O thread polls PTY masters and ordinary command pipes. It
-feeds the private log, an incremental 1 MiB head/tail buffer, and an aggregate
-bounded transcript, and it is the sole owner of process reaping and I/O-FD
-closure. The buffer preserves the oldest and newest bytes
+A single process-I/O thread blocks on PTY/pipe readiness and a nonblocking
+control pipe. `SIGCHLD` wakes a signal dispatcher that safely fans out to each
+supervisor control pipe, so child reaping does not require a fixed-frequency
+timer; only the bounded trailing-output grace creates a real deadline. The thread feeds the private log, an incremental 1 MiB head/tail
+buffer, and an aggregate bounded transcript, and it is the sole owner of
+process reaping and I/O-FD closure. The buffer preserves the oldest and newest bytes
 and reports an omitted middle. `activity_output` drains new output or waits for
-output, exit, or a readiness marker; `activity_input` serializes PTY writes,
-polling, interruption, and resize for one activity. `activity_wait` optionally
-joins blocked work, while `activity_stop` terminates the complete process group.
+output, exit, a readiness marker, or queued steering; `activity_input`
+serializes PTY writes, polling, interruption, and resize for one activity.
+`activity_wait` optionally joins blocked work and yields on queued steering
+without cancelling it, while `activity_stop` terminates the complete process
+group.
 An exact live detached command and working-directory match returns the existing
 activity rather than spawning a duplicate. Results arrive at model-step
 boundaries. The persistent interactive loop and headless runner drain
@@ -86,13 +94,23 @@ on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. A stateful decoder retains fragmented
 CSI and bracketed-paste sequences across reads; the composer owns history and
 paste bounds.
+The application event loop blocks on stdin, captured output, worker requests,
+activity notifications, and idle MCP stdout together. Its timeout is the
+nearest real Escape-decoder or 10 Hz status-animation deadline rather than a
+background-completion tick. MCP request waits and curl multi transfers include
+the pollable abort descriptor, while SIGCHLD-driven shutdown waits use child
+notifications. Persistent detached logs use kqueue on macOS or inotify on
+Linux, with bounded polling only as an unsupported-platform fallback.
+
 Terminal focus and Meta key sequences preserve the draft; only a genuinely
-bare Escape becomes an interrupt. Enter appends guidance to the active turn's
-steering queue; Escape raises only the foreground abort flag. While foreground
-commands are transferable, Ctrl+B moves the complete active command batch into
-background supervision without restarting it. One turn timestamp drives the
-fixed-rate 10 Hz status animation, which also reports queued steering, live
-context, active background count, and applicable keyboard hints. That row stays
+bare Escape becomes a hard interrupt. Enter appends guidance to the active
+turn's steering queue and notifies passive activity waits, which yield while
+leaving their supervised work alive. Escape raises only the foreground abort
+flag. While foreground commands are transferable, Ctrl+B moves the complete
+active command batch into background supervision without restarting it. One
+turn timestamp drives the fixed-rate 10 Hz status animation, which also reports
+queued steering, live context, active background count, and applicable keyboard
+hints. That row stays
 directly above the input and changes in place instead of entering scrollback.
 One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;

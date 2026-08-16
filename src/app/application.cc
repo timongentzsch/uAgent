@@ -30,6 +30,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
 #include "include/mcp/rpc.h"
 #include "include/media.h"
 #include "include/providers.h"
@@ -128,10 +129,13 @@ class Application {
     // alive and resume from each completion instead of silently killing pending
     // work during runtime shutdown.
     while (runtime_.processes.JoinableCount() > 0 && !AbortRequested()) {
+      uint64_t generation = runtime_.processes.Generation();
       if (agent_.DrainBackground()) {
         agent_.ContinueAfterActivity();
       } else {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Activity state changes wake this predicate wait; no idle polling is
+        // needed in headless mode.
+        runtime_.processes.WaitForChange(generation);
       }
     }
     context_.output.Restore();
@@ -147,6 +151,9 @@ class Application {
       }
     }
     std::string answer = agent_.LastText();
+    if (!agent_.LastError().empty()) {
+      return FinishHeadless("", agent_.LastError(), 1);
+    }
     if (answer.empty()) {
       std::string error = agent_.LastError().empty()
                               ? "agent produced no answer"
@@ -242,7 +249,6 @@ class Application {
         break;
       case SlashCommandId::kYolo:
         context_.options.yolo = !context_.options.yolo;
-        api_.server_tools_authorized = context_.options.yolo;
         printf("%s· yolo %s%s\n", DIM(),
                context_.options.yolo ? "ON — auto-approving everything" : "off",
                RST());
@@ -261,9 +267,6 @@ class Application {
         break;
       case SlashCommandId::kAttach:
         HandleAttach(command.argument);
-        break;
-      case SlashCommandId::kOnline:
-        HandleOnline();
         break;
       case SlashCommandId::kProcesses:
         HandleProcesses();
@@ -502,26 +505,6 @@ class Application {
            attachments_.back().name.c_str(), RST());
   }
 
-  void HandleOnline() {
-    if (!api_.openrouter_compatible) {
-      printf("%s· /online is available only for OpenRouter%s\n", RED(), RST());
-      return;
-    }
-    constexpr std::string_view kOnline = ":online";
-    bool enabled =
-        api_.model.size() > kOnline.size() && api_.model.ends_with(kOnline);
-    if (enabled) {
-      api_.model.erase(api_.model.size() - kOnline.size());
-    } else {
-      api_.model += kOnline;
-    }
-    ActivateCurrentRoute();
-    printf("%s· web search %s%s\n", DIM(),
-           enabled ? "off"
-                   : "ON — ~2K extra input tokens + search fees per request",
-           RST());
-  }
-
   void HandleProcesses() const {
     ToolResult activities = ToolActivityList(runtime_.processes);
     if (activities.output.starts_with('(')) {
@@ -567,6 +550,8 @@ class Application {
     RawComposer composer(output);
     if (!composer.Start()) return -1;
     InputBroker broker;
+    SetTerminalWakeFd(broker.NotifyFd());
+    runtime_.processes.SetNotifyFd(broker.NotifyFd());
     SetInteractiveReadHandler([&broker](const std::string& prompt, bool* eof,
                                         bool keep_history,
                                         const std::string& initial) {
@@ -587,17 +572,15 @@ class Application {
 
     auto status = [&] {
       if (!working) {
-        return StatusBar(
-            api_, agent_.SessionUsage(),
-            {.context_used = agent_.ContextUsed(),
-             .verbose = agent_.Verbose(),
-             .yolo = context_.options.yolo,
-             .attachments = attachments_.size(),
-             .background = runtime_.processes.Count()});
+        return StatusBar(api_, agent_.SessionUsage(),
+                         {.context_used = agent_.ContextUsed(),
+                          .verbose = agent_.Verbose(),
+                          .yolo = context_.options.yolo,
+                          .attachments = attachments_.size(),
+                          .background = runtime_.processes.Count()});
       }
       auto now = std::chrono::steady_clock::now();
-      double elapsed =
-          std::chrono::duration<double>(now - started).count();
+      double elapsed = std::chrono::duration<double>(now - started).count();
       size_t background = runtime_.processes.Count();
       char seconds[32];
       snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
@@ -605,9 +588,9 @@ class Application {
       static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
       static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
                                                 "⠴", "⠦", "⠧", "⠇", "⠏"};
-      auto ticks = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       now - started) /
-                   kSpinnerInterval;
+      auto ticks =
+          std::chrono::duration_cast<std::chrono::milliseconds>(now - started) /
+          kSpinnerInterval;
       std::string line = kFrames[static_cast<size_t>(ticks) % 10];
       line += " ";
       line += interrupting ? "interrupting"
@@ -713,11 +696,41 @@ class Application {
     mount();
     auto last_redraw = std::chrono::steady_clock::now();
     std::string last_state = status_state();
+    std::vector<pollfd> events;
+    events.reserve(3 + runtime_.mcp.Servers().size());
     while (!exit_when_idle || working) {
-      pollfd events[3] = {{STDIN_FILENO, POLLIN, 0},
-                          {output.Fd(), POLLIN, 0},
-                          {broker.Fd(), POLLIN, 0}};
-      int ready = poll(events, 3, 50);
+      events = {{STDIN_FILENO, POLLIN, 0},
+                {output.Fd(), POLLIN, 0},
+                {broker.Fd(), POLLIN, 0}};
+      if (!working) {
+        for (const auto& server : runtime_.mcp.Servers()) {
+          if (server->alive && server->out >= 0) {
+            events.push_back({server->out,
+                              static_cast<int16_t>(POLLIN | POLLHUP | POLLERR),
+                              0});
+          }
+        }
+      }
+
+      std::optional<std::chrono::steady_clock::time_point> wake_deadline =
+          composer.WakeDeadline();
+      if (working && !answering) {
+        auto status_deadline = last_redraw + std::chrono::milliseconds(100);
+        wake_deadline = wake_deadline
+                            ? std::min(*wake_deadline, status_deadline)
+                            : status_deadline;
+      }
+      int timeout_ms = -1;
+      if (wake_deadline) {
+        auto now = std::chrono::steady_clock::now();
+        if (*wake_deadline <= now) {
+          timeout_ms = 0;
+        } else {
+          timeout_ms = PollTimeoutMs(*wake_deadline);
+        }
+      }
+
+      int ready = poll(events.data(), events.size(), timeout_ms);
       if (ready < 0 && errno != EINTR) break;
       if (g_terminal_resized) {
         g_terminal_resized = 0;
@@ -726,8 +739,8 @@ class Application {
         last_state = status_state();
       }
 
-      // Keep cooperative MCP requests responsive while the composer is idle.
-      // The worker owns MCP transports during a turn, so the two never race.
+      // Idle MCP stdout participates in the same poll set; any event also
+      // drains messages buffered just before a worker released ownership.
       if (!working) McpDrainInbound(runtime_.mcp);
 
       if (events[1].revents & POLLIN) flush_output(false);
@@ -756,8 +769,7 @@ class Application {
                          "\n");
           }
           if (event.kind == InteractiveInputKind::kBackground) {
-            if (!working ||
-                !runtime_.processes.RequestForegroundBackground()) {
+            if (!working || !runtime_.processes.RequestForegroundBackground()) {
               output.Write("\a");
             }
             refresh_status();
@@ -788,7 +800,10 @@ class Application {
               if ((input == "/q" || input == "/quit") && working) {
                 exit_when_idle = true;
               } else if (working) {
+                // Publish guidance before waking passive tool waits. Their
+                // generation predicate makes this pairing lost-wakeup-safe.
                 SteeringState().Queue(std::move(input));
+                runtime_.processes.Wake();
               } else if (worker.joinable()) {
                 next_input = std::move(input);
               } else {
@@ -821,10 +836,8 @@ class Application {
         refresh_status();
       }
 
-      // A task or command can finish after the parent has returned prose. Fold
-      // its result into the conversation and resume the idle agent directly;
-      // the existing 100 ms UI poll is the event source, so no watcher thread
-      // or second process owner is needed.
+      // ProcessSupervisor mirrors activity changes into the broker pipe, so
+      // idle completion is handled without a periodic UI tick.
       if (!working && !worker.joinable() && !answering && !exit_when_idle) {
         if (agent_.DrainBackground()) {
           start_work(std::nullopt);
@@ -849,6 +862,8 @@ class Application {
     flush_output(true);
     composer.Stop();
     SetInteractiveReadHandler({});
+    runtime_.processes.SetNotifyFd(-1);
+    SetTerminalWakeFd(-1);
     broker.Shutdown();
     g_persistent_composer = false;
     output.Stop();
@@ -881,13 +896,12 @@ class Application {
     for (;;) {
       SaveSession();
       agent_.DrainBackground();
-      PrintStatusBar(StatusBar(
-          api_, agent_.SessionUsage(),
-          {.context_used = agent_.ContextUsed(),
-           .verbose = agent_.Verbose(),
-           .yolo = context_.options.yolo,
-           .attachments = attachments_.size(),
-           .background = runtime_.processes.Count()}));
+      PrintStatusBar(StatusBar(api_, agent_.SessionUsage(),
+                               {.context_used = agent_.ContextUsed(),
+                                .verbose = agent_.Verbose(),
+                                .yolo = context_.options.yolo,
+                                .attachments = attachments_.size(),
+                                .background = runtime_.processes.Count()}));
       bool eof = false;
       std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {

@@ -23,7 +23,7 @@ void SetExecutablePath(std::string path);
 const std::string& ExecutablePath();
 
 // Signals may only touch sig_atomic_t. Steering runs on an ordinary C++ thread
-// and therefore uses a real atomic; abort_requested() joins the two domains.
+// and therefore uses a real atomic; AbortRequested() joins the two domains.
 extern volatile sig_atomic_t g_signal_abort;
 extern std::atomic<bool> g_thread_abort;
 inline constexpr int kFgMax = 16;  // concurrent foreground shells
@@ -41,16 +41,27 @@ inline bool AbortRequested() {
   return g_signal_abort != 0 || g_thread_abort.load(std::memory_order_relaxed);
 }
 
-inline void RequestAbort() {
-  g_thread_abort.store(true, std::memory_order_relaxed);
-}
+void RequestAbort();
+void ClearAbort();
+// Drain a stale abort byte only while the flag is clear, then re-arm if a
+// concurrent request arrived during the drain.
+void NormalizeAbortWake();
 
-inline void ClearAbort() {
-  g_thread_abort.store(false, std::memory_order_relaxed);
-  g_signal_abort = 0;
-}
+// Pollable signal bridges. Initialize before handlers are installed. SIGCHLD
+// writes both the shared child-event pipe and every registered subsystem wake
+// descriptor; writes are nonblocking and coalescing is intentional.
+void InitializeSignalNotifications();
+int AbortWakeFd();
+int ChildSignalFd();
+// Single-consumer process-wide child-event stream used by MCP shutdown.
+void DrainChildSignal();
+bool RegisterChildWakeFd(int fd, bool add);
+// Optional UI wake destination. SIGWINCH writes here after setting the resize
+// flag so an otherwise idle event loop redraws immediately.
+void SetTerminalWakeFd(int fd);
 
 void SigintHandler(int signal_number);
+void InstallSigchldHandler();
 void InstallSigwinchHandler();
 
 // Run fn with Ctrl+C wired to cancel it instead of exiting the program. The

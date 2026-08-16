@@ -63,8 +63,7 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
 ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
                              const std::string& chars, int64_t wait_ms,
                              const ToolContext& context, int64_t rows = 0,
-                             int64_t cols = 0,
-                             int64_t max_output_chars = 0);
+                             int64_t cols = 0, int64_t max_output_chars = 0);
 ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             const std::vector<int64_t>& ids,
                             std::string_view mode, int64_t wait_ms,

@@ -14,8 +14,7 @@ namespace uagent {
 class HeadTailBuffer {
  public:
   explicit HeadTailBuffer(size_t max_bytes = 1024 * 1024)
-      : head_budget_(max_bytes / 2),
-        tail_budget_(max_bytes - head_budget_) {}
+      : head_budget_(max_bytes / 2), tail_budget_(max_bytes - head_budget_) {}
 
   void Push(std::string_view bytes) {
     size_t head = std::min(head_budget_ - head_.size(), bytes.size());

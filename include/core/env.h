@@ -119,7 +119,7 @@ struct RuntimeConfig {
   double max_turn_cost = 0;
   double session_budget = 0;
   int64_t tool_timeout_s = 30;
-  int64_t web_search_timeout_s = 25;
+  int64_t web_search_timeout_s = 60;
   int64_t web_search_max_tokens = 1200;
   int64_t web_search_calls = 4;
   int64_t web_search_max_results = 5;
@@ -146,7 +146,6 @@ struct RuntimeConfig {
   std::string image_model;
   std::string mcp_roots;
   bool openrouter_fallbacks = true;
-  bool web_search_server = true;
   bool memory_enabled = true;
   bool memory_generate = true;
 

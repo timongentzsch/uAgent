@@ -171,8 +171,8 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
     close(fd);
     return false;
   };
-  if (flock(fd, LOCK_EX) != 0) return fail(strerror(errno));
-  struct stat status {};
+  if (!LockFileExclusive(fd)) return fail(strerror(errno));
+  struct stat status{};
   if (fstat(fd, &status) != 0) return fail(strerror(errno));
   if (status.st_size > static_cast<off_t>(kMemoryEventBytes)) {
     off_t keep = static_cast<off_t>(kMemoryEventBytes / 2);
@@ -347,7 +347,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     previous.assign(std::istreambuf_iterator<char>(input),
                     std::istreambuf_iterator<char>());
   }
-  std::string action = !existed ? "created"
+  std::string action = !existed               ? "created"
                        : previous == *content ? "unchanged"
                                               : "updated";
   ToolResult saved = action == "unchanged"
@@ -366,8 +366,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                     UtcStamp(),
                     !source.empty()};
   std::string event_error;
-  std::string receipt =
-      source.empty() ? "" : EnvStr("UAGENT_MEMORY_RECEIPT");
+  std::string receipt = source.empty() ? "" : EnvStr("UAGENT_MEMORY_RECEIPT");
   if (!WriteMemoryEvent(event, receipt, event_error)) {
     DebugLog("memory_event_write_error",
              {{"error", event_error}, {"key", event.key}});

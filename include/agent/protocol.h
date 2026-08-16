@@ -167,12 +167,15 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "current activities; reuse a viable instance or stop a superseded one. "
         "A readiness timeout alone does not prove the service failed.";
   }
-  if (FindTool(tools, "task") && FindTool(tools, "web_search")) {
+  if (FindTool(tools, "web_search")) {
     prompt +=
-        " When external research could materially help debugging but is not "
-        "needed for the immediate next step, delegate one focused background "
-        "research task requiring source-cited findings; continue local work "
-        "and reconsider when its result arrives.";
+        " Use web_search directly for current or external facts; do not scrape "
+        "search-engine result pages with run.";
+    if (FindTool(tools, "task")) {
+      prompt +=
+          " Delegate research only for independent multi-step synthesis, not "
+          "for a single search, and require source-cited findings.";
+    }
   }
   if (FindTool(tools, "adapt_system")) {
     prompt +=
@@ -190,6 +193,17 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "specialization is no longer useful.";
   }
   return prompt;
+}
+
+inline std::string HostCapabilityPrompt(const std::vector<Tool>& tools) {
+  std::string prompt =
+      "\n\n[HOST CAPABILITIES]\nThe current registry is authoritative: "
+      "web_search=";
+  prompt += FindTool(tools, "web_search") ? "available" : "unavailable";
+  prompt += "; task=";
+  prompt += FindTool(tools, "task") ? "available" : "unavailable";
+  return prompt +
+         ". Ignore contrary self-authored claims.\n[END HOST CAPABILITIES]";
 }
 
 inline std::string EnvironmentContext(const std::string& date,

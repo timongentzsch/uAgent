@@ -2,6 +2,7 @@
 
 #include "include/tools/web_search.h"
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 #include <utility>
@@ -58,8 +59,8 @@ void AddResponseAnnotations(const json& annotations, WebSearchResult& result) {
 
 }  // namespace
 
-WebSearchRoute SelectWebSearchRoute(const Api& api,
-                                    const std::vector<NamedProvider>& providers) {
+WebSearchRoute SelectWebSearchRoute(
+    const Api& api, const std::vector<NamedProvider>& providers) {
   const RuntimeConfig& config = api.config;
   if (config.web_search_backend == "off") return {};
   const NamedProvider* openai = FindNamedProvider(providers, "openai");
@@ -96,7 +97,7 @@ WebSearchRoute SelectWebSearchRoute(const Api& api,
   if (config.web_search_backend == "responses") {
     WebSearchRoute route = explicit_route(WebSearchBackend::kResponses);
     if (!route.Valid() && OpenaiUrl(api.base_url)) {
-      return active(WebSearchBackend::kResponses, openai_model);
+      return active(WebSearchBackend::kResponses, api.model);
     }
     if (!route.Valid()) {
       route = ProviderSearchRoute(WebSearchBackend::kResponses, openai, config,
@@ -110,7 +111,7 @@ WebSearchRoute SelectWebSearchRoute(const Api& api,
       return route;
     }
     if (api.openrouter_compatible) {
-      return active(WebSearchBackend::kOpenRouter, openrouter_model);
+      return active(WebSearchBackend::kOpenRouter, api.model);
     }
     return ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
                                config, openrouter_model);
@@ -123,10 +124,10 @@ WebSearchRoute SelectWebSearchRoute(const Api& api,
     return explicit_route(backend);
   }
   if (api.openrouter_compatible) {
-    return active(WebSearchBackend::kOpenRouter, openrouter_model);
+    return active(WebSearchBackend::kOpenRouter, api.model);
   }
   if (OpenaiUrl(api.base_url)) {
-    return active(WebSearchBackend::kResponses, openai_model);
+    return active(WebSearchBackend::kResponses, api.model);
   }
   WebSearchRoute route = ProviderSearchRoute(WebSearchBackend::kResponses,
                                              openai, config, openai_model);
@@ -191,12 +192,22 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
     }
     return body;
   }
-  std::string model = route.model.substr(0, route.model.find(':'));
+  json parameters = {{"engine", config.web_search_engine},
+                     {"max_results", config.web_search_max_results},
+                     {"max_total_results", config.web_search_max_results *
+                                               config.web_search_max_uses},
+                     {"max_uses", config.web_search_max_uses}};
+  if (!config.web_search_context_size.empty()) {
+    parameters["search_context_size"] = config.web_search_context_size;
+  }
   json body = {
-      {"model", model + ":online"},
+      {"model", route.model},
       {"stream", false},
       {"max_tokens", config.web_search_max_tokens},
+      {"max_tool_calls", config.web_search_max_uses},
       {"usage", {{"include", true}}},
+      {"tools", json::array({{{"type", "openrouter:web_search"},
+                              {"parameters", std::move(parameters)}}})},
       {"messages", json::array({{{"role", "user"}, {"content", prompt}}})}};
   if (!config.web_search_effort.empty()) {
     body["reasoning"] = {{"effort", config.web_search_effort}};
@@ -208,8 +219,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<NamedProvider> providers) {
   Tool t = MakeTool(
       "web_search",
-      "Search the web with cited sources; batch up to four queries. "
-      "Independent calls overlap. Do not repeat.",
+      "Search the web with cited sources; batch related queries up to the "
+      "schema limit. Include dates or cutoffs in recency queries. Independent "
+      "calls overlap. Do not repeat.",
       json::parse(R"json({"type":"object","properties":{
           "query":{"type":"string","description":"single query"},
           "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
@@ -237,19 +249,24 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "error: query or queries is required");
         }
-        if (queries.size() > 4) {
+        size_t max_queries = static_cast<size_t>(
+            std::min<int64_t>(4, api.config.web_search_max_uses));
+        if (queries.size() > max_queries) {
           return ToolFailure(ToolErrorCode::kLimitExceeded,
-                             "error: queries is limited to four items");
+                             "error: too many queries for the configured "
+                             "web search use limit");
         }
         std::string numbered;
         for (size_t i = 0; i < queries.size(); ++i) {
           numbered += std::to_string(i + 1) + ". " + queries[i] + "\n";
         }
-        std::string prompt =
-            "Answer each numbered query concisely with source URLs. Use only "
-            "source-supported claims; preserve provider/model scope and omit "
-            "unasked pricing:\n" +
-            numbered;
+        std::string prompt = "Current host date: " + LocalDay() +
+                             ". Answer each numbered query concisely with "
+                             "source URLs. For latest/newest claims, compare "
+                             "publication dates from the official index. Use "
+                             "only source-supported claims; preserve provider/"
+                             "model scope and omit unasked pricing:\n" +
+                             numbered;
         json body = WebSearchRequest(active, api.config, prompt);
         const char* path = active.backend == WebSearchBackend::kResponses
                                ? "/responses"
@@ -267,25 +284,36 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         Api side(api.config);
         side.base_url = active.base_url;
         side.api_key = active.api_key;
-        json response = side.Post(path, body, timeout);
-        DebugLog(
-            "side_response",
-            {{"kind", "web_search"},
-             {"duration_ms", ElapsedMs(started)},
-             {"cancelled", AbortRequested()},
-             {"response", response.is_discarded() ? json(nullptr) : response}});
+        JsonResponse response = side.Post(path, body, timeout);
+        DebugLog("side_response",
+                 {{"kind", "web_search"},
+                  {"duration_ms", ElapsedMs(started)},
+                  {"cancelled", AbortRequested()},
+                  {"http_status", response.http_status},
+                  {"error", response.error},
+                  {"response", response.body.is_discarded() ? json(nullptr)
+                                                            : response.body}});
         if (AbortRequested()) {
           return ToolCancelled("error: search cancelled by user");
         }
         WebSearchResult result = active.backend == WebSearchBackend::kResponses
-                                     ? ParseResponsesSearch(response)
-                                     : ParseOpenRouterSearch(response);
-        if (response.is_object() && response.contains("usage")) {
-          Usage normalized;
-          normalized.Add(response["usage"]);
-          if (active.backend == WebSearchBackend::kResponses) {
-            normalized.web_searches = result.searches;
-          }
+                                     ? ParseResponsesSearch(response.body)
+                                     : ParseOpenRouterSearch(response.body);
+        Usage normalized;
+        if (response.body.is_object() && response.body.contains("usage")) {
+          normalized.Add(response.body["usage"]);
+        }
+        if (!normalized.web_searches) {
+          normalized.web_searches = result.searches;
+        }
+        result.searches = normalized.web_searches;
+        if (normalized.web_searches > api.config.web_search_max_uses) {
+          DebugLog("side_limit_exceeded",
+                   {{"kind", "web_search"},
+                    {"requested", api.config.web_search_max_uses},
+                    {"reported", normalized.web_searches}});
+        }
+        if (response.body.is_object()) {
           usage.Add(RouteKey(active.base_url, "web_search", active.model,
                              api.config.web_search_effort),
                     normalized);
@@ -302,18 +330,32 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           }
           return ToolSuccess(std::move(output));
         }
-        if (response.is_object() && response.contains("error") &&
-            response["error"].is_object()) {
+        std::string backend = active.backend == WebSearchBackend::kResponses
+                                  ? "Responses"
+                                  : "OpenRouter";
+        if (response.body.is_object() && response.body.contains("error") &&
+            response.body["error"].is_object()) {
+          std::string prefix = "error: web_search " + backend;
+          if (response.http_status) {
+            prefix += " HTTP " + std::to_string(response.http_status);
+          }
           return ToolFailure(ToolErrorCode::kRemoteError,
-                             "error: " + JsonValue(response["error"], "message",
-                                                   "search failed"));
+                             prefix + ": " +
+                                 JsonValue(response.body["error"], "message",
+                                           "provider rejected the request"));
         }
-        return ToolFailure(ToolErrorCode::kRemoteError,
-                           "error: web search failed");
+        if (!response.error.empty()) {
+          return ToolFailure(
+              ToolErrorCode::kRemoteError,
+              "error: web_search " + backend + ": " + response.error);
+        }
+        return ToolFailure(
+            ToolErrorCode::kRemoteError,
+            "error: web_search " + backend + " returned no answer");
       });
   t.capabilities = Capability(ToolCapability::kInspect) |
                    Capability(ToolCapability::kExternal);
-  t.mutating = true;
+  t.needs_approval = [](const json&) { return true; };
   t.summary = [](const json& a) {
     if (a.contains("queries") && a["queries"].is_array()) {
       std::string summary;
@@ -328,6 +370,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
     return JsonValue(a, "query", "");
   };
   t.parallel_safe = true;
+  t.parameters["properties"]["queries"]["maxItems"] =
+      std::min<int64_t>(4, api.config.web_search_max_uses);
+  t.timeout_s = api.config.web_search_timeout_s;
   t.max_calls_per_turn = api.config.web_search_calls;
   return t;
 }

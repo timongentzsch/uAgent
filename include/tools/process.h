@@ -142,6 +142,10 @@ class ProcessSupervisor {
 
   uint64_t Generation() const;
   void Wake();
+  // Mirror supervisor state changes to one application-owned nonblocking pipe.
+  // The caller must clear the descriptor before closing it.
+  void SetNotifyFd(int fd);
+  void WaitForChange(uint64_t generation) const;
   bool WaitForChange(uint64_t generation,
                      std::chrono::steady_clock::time_point deadline) const;
 
@@ -166,6 +170,8 @@ class ProcessSupervisor {
   std::thread io_thread_;
   int wake_read_ = -1;
   int wake_write_ = -1;
+  int notify_fd_ = -1;
+  bool child_wake_registered_ = false;
   bool stopping_ = false;
   int64_t reservations_ = 0;
   uint64_t generation_ = 0;

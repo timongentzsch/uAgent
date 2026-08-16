@@ -204,8 +204,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                  return ToolRunApprovedShell(
                      supervisor, JsonValue(a, "command", ""), context,
                      JsonValue(a, "detach", false),
-                     JsonValue(a, "shell", "bash"),
-                     JsonValue(a, "tty", false),
+                     JsonValue(a, "shell", "bash"), JsonValue(a, "tty", false),
                      JsonValue(a, "yield_ms", RunDefaultYieldMs()),
                      JsonValue(a, "max_output_chars", int64_t{0}));
                }));
@@ -305,11 +304,13 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
 
   Tool& activity_input = AddTool(
       tools,
-      MakeTool("activity_input",
-               "Write raw characters to an existing TTY activity, or pass an "
-               "empty string to poll it. Use \\u0003 to interrupt a non-TTY "
-               "activity. Supply rows and cols together to resize a PTY.",
-               schema(R"json({"type":"object","additionalProperties":false,"properties":{
+      MakeTool(
+          "activity_input",
+          "Write raw characters to an existing TTY activity, or pass an "
+          "empty string to poll it. Use \\u0003 to interrupt a non-TTY "
+          "activity. Supply rows and cols together to resize a PTY.",
+          schema(
+              R"json({"type":"object","additionalProperties":false,"properties":{
                     "id":{"type":"integer","minimum":1,"maximum":2147483647},
                     "chars":{"type":"string","maxLength":65536},
                     "wait_ms":{"type":"integer","minimum":0,"maximum":30000},
@@ -317,15 +318,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "rows":{"type":"integer","minimum":1,"maximum":1000},
                     "cols":{"type":"integer","minimum":1,"maximum":1000}},
                     "required":["id","chars"]})json"),
-               [&supervisor](const json& a, const ToolContext& context) {
-                 return ToolActivityInput(
-                     supervisor, JsonValue(a, "id", int64_t{0}),
-                     JsonValue(a, "chars", ""),
-                     JsonValue(a, "wait_ms", int64_t{5000}), context,
-                     JsonValue(a, "rows", int64_t{0}),
-                     JsonValue(a, "cols", int64_t{0}),
-                     JsonValue(a, "max_output_chars", int64_t{0}));
-               }));
+          [&supervisor](const json& a, const ToolContext& context) {
+            return ToolActivityInput(
+                supervisor, JsonValue(a, "id", int64_t{0}),
+                JsonValue(a, "chars", ""),
+                JsonValue(a, "wait_ms", int64_t{5000}), context,
+                JsonValue(a, "rows", int64_t{0}),
+                JsonValue(a, "cols", int64_t{0}),
+                JsonValue(a, "max_output_chars", int64_t{0}));
+          }));
   activity_input.mutating = true;
   activity_input.parallel_safe = true;
   activity_input.capabilities = Capability(ToolCapability::kExecute) |
@@ -339,9 +340,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     return std::string();
   };
   activity_input.summary = [](const json& a) {
-    return "activity " +
-           std::to_string(JsonValue(a, "id", int64_t{0})) + " · " +
-           std::to_string(JsonValue(a, "chars", "").size()) + " bytes";
+    return "activity " + std::to_string(JsonValue(a, "id", int64_t{0})) +
+           " · " + std::to_string(JsonValue(a, "chars", "").size()) + " bytes";
   };
 
   Tool& activity_wait = AddTool(
@@ -409,6 +409,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "content":{"type":"string",
                       "description":"durable lesson; required only for set"}},
                     "required":["action"]})json");
+  bool automatic_extraction = !EnvStr("UAGENT_INTERNAL_MEMORY_SOURCE").empty();
+  bool automatic_write = false;
   Tool& memory = AddTool(
       tools,
       MakeTool(
@@ -418,13 +420,30 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
           "except that the dedicated background extractor may set one native "
           "memory. Never save task progress, guesses, secrets, commands, or "
           "permissions. Codex and Claude memories are read-only.",
-          std::move(memory_schema), [](const json& a, const ToolContext&) {
+          std::move(memory_schema),
+          [automatic_extraction, automatic_write](const json& a,
+                                                  const ToolContext&) mutable {
+            std::string action = JsonValue(a, "action", "");
+            if (automatic_extraction && action == "forget") {
+              return ToolFailure(ToolErrorCode::kPermissionDenied,
+                                 "error: background extraction cannot forget "
+                                 "memory");
+            }
+            if (automatic_extraction && automatic_write && action == "set") {
+              return ToolFailure(
+                  ToolErrorCode::kLimitExceeded,
+                  "error: background extraction already wrote one memory");
+            }
             std::optional<std::string> content;
             if (a.contains("content") && a["content"].is_string()) {
               content = a["content"].get<std::string>();
             }
-            return ToolMemoryAction(JsonValue(a, "action", ""),
-                                    JsonValue(a, "key", ""), content);
+            ToolResult result =
+                ToolMemoryAction(action, JsonValue(a, "key", ""), content);
+            if (automatic_extraction && action == "set" && result.Ok()) {
+              automatic_write = true;
+            }
+            return result;
           }));
   memory.mutates = [](const json& a) {
     std::string action = JsonValue(a, "action", "");

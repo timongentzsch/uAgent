@@ -233,9 +233,6 @@ void ResetRouteCapabilities(Api& api) {
   api.native_tools = true;
   api.include_usage = true;
   api.parallel_tools = true;
-  api.openrouter_web_search = api.config.web_search_backend != "off" &&
-                              api.config.web_search_backend != "responses" &&
-                              api.openrouter_compatible;
   api.image_input = true;
 }
 

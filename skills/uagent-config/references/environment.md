@@ -8,6 +8,13 @@ Project `.env` files are never imported. A project file and `.mcp.json` require
 `--trust-project-config` or `UAGENT_TRUST_PROJECT_CONFIG=1`, and changes revoke
 the saved trust decision.
 
+`/context` reports every `RuntimeConfig` value with redacted provenance and the
+active route capabilities. Trusted config files are checked between turns;
+request-, budget-, and turn-scoped changes apply to the next turn, while
+registry/MCP/startup-shape changes are listed as restart-required. Environment
+and CLI overrides remain immutable for the process lifetime. Reload never
+changes an in-flight turn.
+
 Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 
 ## Provider and session
@@ -51,7 +58,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_FIRST_EVENT_TIMEOUT` | 300 | seconds to first streamed event |
 | `UAGENT_STREAM_IDLE_TIMEOUT` | 300 | seconds between streamed events |
 | `UAGENT_REQUEST_TIMEOUT` | 600 | complete request seconds |
-| `UAGENT_MAX_TURN_SECONDS` | 3600 | complete turn seconds |
+| `UAGENT_MAX_TURN_SECONDS` | 0 | complete turn seconds; `0` disables |
 | `UAGENT_MAX_STEPS` | 0 | model rounds per turn; 0 disables |
 | `UAGENT_MAX_TOOL_CALLS` | 0 | tool calls per turn; 0 disables |
 | `UAGENT_REQUEST_BYTES` | 67108864 | maximum serialized request |

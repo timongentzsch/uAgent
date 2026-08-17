@@ -8,7 +8,6 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstring>
 #include <map>
 #include <optional>
 #include <set>
@@ -19,38 +18,20 @@
 #include "include/api/openai_stream.h"
 #include "include/api/types.h"
 #include "include/core/checked.h"
-#include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
-#include "include/md.h"
 #include "include/transport/sse.h"
 
 namespace uagent {
 
-inline std::string ReasoningStatusPreview(const std::string& text,
-                                          size_t cap = 120) {
-  size_t end = text.find_last_not_of(" \t\r\n");
-  if (end == std::string::npos) return "";
-  size_t newline = text.find_last_of("\r\n", end);
-  size_t begin = newline == std::string::npos ? 0 : newline + 1;
-  std::string preview = Trim(text.substr(begin, end - begin + 1));
-  if (preview.size() <= cap) return preview;
-  size_t start = Utf8BoundaryAfter(preview, preview.size() - cap);
-  return "…" + preview.substr(start);
-}
-
-// Incremental SSE parser; prints content and muted italic reasoning as it
+// Incremental SSE parser; emits provider-independent reasoning and answer
 // streams.
 struct StreamCtx {
   CURL* handle = nullptr;
   ChatResult* res = nullptr;
   std::string error_body;  // body when HTTP status >= 400
   int64_t status = 0;
-  bool in_reasoning = false;
-  bool content_started = false;
-  bool output_line_open = false;
   std::map<int, ToolCall> calls;  // keyed by stream index
-  TerminalSpinner* spinner = nullptr;
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
   int64_t first_event_timeout_s = 300;
@@ -58,11 +39,7 @@ struct StreamCtx {
   size_t response_cap = 32 * 1024 * 1024;
   size_t received = 0;
   std::string timeout_reason;
-  bool render_output = true;
-  bool full_reasoning = true;
-  std::string reasoning_preview;
   SseParser sse;
-  MdStream md;  // renders streamed content as ANSI-styled markdown (TTY only)
 
   // Hold content back while it could still be a text-protocol tool call, so
   // raw [uagent_tool_call] blocks never flash on screen. UNDECIDED until the
@@ -75,91 +52,16 @@ struct StreamCtx {
     if (res->first_event_ms < 0) res->first_event_ms = ElapsedMs(started);
   }
 
-  void BeginOutput() {  // stop the spinner before any visible bytes
-    if (render_output && spinner) spinner->Stop();
+  void OutputText(const std::string& value) {
+    Event event{EventId::kAnswerDelta};
+    event.text = value;
+    Emit(std::move(event));
   }
 
-  void OutputText(const std::string& c) {
-    if (!render_output) return;
-    BeginOutput();
-    if (in_reasoning) {
-      md.Control(RST());
-      if (output_line_open) md.FeedPlain("\n");
-      in_reasoning = false;
-      output_line_open = false;
-    }
-    if (!content_started) {
-      md.Control(RST());
-      content_started = true;
-    }
-    md.Feed(c);
-    if (!c.empty()) {
-      output_line_open = c.back() != '\n' && c.back() != '\r';
-    }
-  }
-
-  void FeedReasoning(const std::string& text, const std::string& style) {
-    size_t begin = 0;
-    while (begin < text.size()) {
-      size_t newline = text.find_first_of("\r\n", begin);
-      if (newline == std::string::npos) {
-        md.FeedPlain(text.substr(begin));
-        break;
-      }
-      size_t end = newline + 1;
-      if (text[newline] == '\r' && end < text.size() && text[end] == '\n') {
-        ++end;
-      }
-      md.FeedPlain(text.substr(begin, end - begin));
-      // The persistent composer paints its status row between complete output
-      // lines and resets SGR. Put the reasoning style at the start of the
-      // pending next line so every line remains visibly classified.
-      md.Control(style.c_str());
-      begin = end;
-    }
-  }
-
-  void OutputReasoning(const std::string& r) {
-    if (!render_output) return;
-    if (!full_reasoning) {
-      reasoning_preview += r;
-      if (reasoning_preview.size() > 512) {
-        size_t start = Utf8BoundaryAfter(reasoning_preview,
-                                         reasoning_preview.size() - 512);
-        reasoning_preview.erase(0, start);
-      }
-      std::string preview = ReasoningStatusPreview(reasoning_preview);
-      if (spinner && !preview.empty()) {
-        spinner->SetLabel(SpinnerLabel("thinking · " + TerminalSafe(preview)));
-      }
-      return;
-    }
-    BeginOutput();
-    std::string style = std::string(RST()) + MUTED() + ITAL();
-    if (!in_reasoning) {
-      if (content_started && output_line_open) md.FeedPlain("\n");
-      md.Control(RST());
-      md.Control(DIM());
-      md.FeedPlain("· thinking\n");
-      output_line_open = false;
-      in_reasoning = true;
-    }
-    // A status repaint may have reset styling since the previous provider
-    // delta, so every delta begins by restoring the semantic style.
-    md.Control(style.c_str());
-    FeedReasoning(r, style);
-    if (!r.empty()) {
-      output_line_open = r.back() != '\n' && r.back() != '\r';
-    }
-  }
-
-  void FinishOutput() {
-    if (in_reasoning) {
-      md.Control(RST());
-      if (output_line_open) md.FeedPlain("\n");
-      output_line_open = false;
-    }
-    md.Flush();
+  void OutputReasoning(const std::string& value) {
+    Event event{EventId::kReasoningDelta};
+    event.text = value;
+    Emit(std::move(event));
   }
 
   void EmitContent(const std::string& c) {
@@ -172,16 +74,16 @@ struct StreamCtx {
     const std::string& full = res->content;
     size_t start = full.find_first_not_of(" \t\r\n");
     if (start == std::string::npos) return;  // only whitespace so far
-    std::string vis = full.substr(start);
-    size_t tl = strlen(kTtOpen);
-    if (vis.size() >= tl) {
-      show = vis.compare(0, tl, kTtOpen) == 0 ? Show::kSuppress : Show::kPrint;
+    std::string_view vis(full.data() + start, full.size() - start);
+    std::string_view open(kTtOpen);
+    if (vis.size() >= open.size()) {
+      show = vis.starts_with(open) ? Show::kSuppress : Show::kPrint;
       if (show == Show::kPrint) {
         OutputText(full);
       } else {
         res->suppressed = true;
       }
-    } else if (std::string(kTtOpen).compare(0, vis.size(), vis) != 0) {
+    } else if (!open.starts_with(vis)) {
       show = Show::kPrint;
       OutputText(full);
     }  // else: still a prefix of the tag — keep holding

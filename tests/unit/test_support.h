@@ -23,6 +23,7 @@
 #include "include/cli.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
+#include "include/core/effective_config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -115,6 +116,7 @@ void TestGrepTool();
 void TestPythonTool();
 void TestRuntimeOwnershipHelpers();
 void TestAgentConfigAllowlist();
+void TestEffectiveConfigReload();
 void TestChildEnvironmentPolicy();
 void TestModelPreference();
 void TestProviderTemplates();
@@ -124,6 +126,7 @@ void TestProjectInstructionDiscovery();
 void TestMcpContractHelpers();
 void TestWorkspaceScopedSession();
 void TestConversation();
+void TestObservabilityEvents();
 void TestProjectTrustTracksSemanticConfig();
 void TestScopedBaseAndMemory();
 void TestSkillDiscovery();

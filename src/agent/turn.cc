@@ -16,9 +16,11 @@
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"
 #include "include/api/citations.h"
+#include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/events.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
@@ -140,11 +142,11 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                           std::to_string(max_tool_calls) + ")");
     return false;
   }
-  auto blocking_wait = [](const ToolCall& call) {
-    if (call.name == "activity_wait") return true;
-    if (call.name != "activity_output") return false;
+  auto blocking_wait = [&](const ToolCall& call) {
+    const Tool* tool = FindTool(tools_, call.name);
+    if (!tool || tool->blocking_wait_default_ms < 0) return false;
     json arguments = json::parse(call.args, nullptr, false);
-    return JsonValue(arguments, "wait_ms", int64_t{0}) > 0;
+    return JsonValue(arguments, "wait_ms", tool->blocking_wait_default_ms) > 0;
   };
   bool repeated = false;
   for (const ToolCall& call : calls) {
@@ -197,23 +199,20 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 
 void Agent::Turn(const std::string& user_input, json user_content) {
   if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
-  RunTurn(user_input, std::move(user_content), /*harness_origin=*/false);
+  RunTurn(user_input, std::move(user_content));
 }
 
-void Agent::RunTurn(const std::string& user_input, json user_content,
-                    bool harness_origin) {
+void Agent::RunTurn(const std::string& user_input, json user_content) {
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
   ++turn_id_;
   ++revision_;
-  if (!harness_origin) {
-    ++total_user_turns_;
-    std::string title = FirstLine(user_input);
-    if (session_title_.empty() ||
-        (GenericSessionTitle(session_title_) && title.size() >= 12 &&
-         !GenericSessionTitle(title))) {
-      session_title_ = std::move(title);
-    }
+  ++total_user_turns_;
+  std::string title = FirstLine(user_input);
+  if (session_title_.empty() ||
+      (GenericSessionTitle(session_title_) && title.size() >= 12 &&
+       !GenericSessionTitle(title))) {
+    session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();
   if (!conversation_.Empty()) {
@@ -221,20 +220,18 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     applied_system_revision_ =
         adaptive_system_ ? adaptive_system_->revision : 0;
   }
-  DebugLog("turn_start",
-           {{"turn", turn_id_},
-            {"origin", harness_origin ? "harness" : "user"},
-            {"local_time", local_time},
-            {"input", user_input},
-            {"attachments", user_content.is_array() && !user_content.empty()
-                                ? user_content.size() - 1
-                                : 0},
-            {"messages", conversation_.Size()},
-            {"context_tokens", ContextUsed()}});
+  Emit(Event{EventId::kTurnStarted,
+             {{"turn", turn_id_},
+              {"origin", "user"},
+              {"local_time", local_time},
+              {"input", user_input},
+              {"attachments", user_content.is_array() && !user_content.empty()
+                                  ? user_content.size() - 1
+                                  : 0},
+              {"messages", conversation_.Size()},
+              {"context_tokens", ContextUsed()}}});
   bool attachment = !user_content.is_null();
-  std::vector<std::string> explicit_skills =
-      harness_origin ? std::vector<std::string>{}
-                     : ExplicitSkillContext(user_input);
+  std::vector<std::string> explicit_skills = ExplicitSkillContext(user_input);
   size_t skill_bytes = 0;
   for (const std::string& skill : explicit_skills) {
     skill_bytes = SaturatingAdd(skill_bytes, skill.size());
@@ -252,9 +249,10 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     Compact(true);
   }
   if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
-    DebugLog("turn_end", {{"turn", turn_id_},
-                          {"outcome", "steered_during_compaction"},
-                          {"steps", 0}});
+    Emit(Event{EventId::kTurnStopped,
+               {{"turn", turn_id_},
+                {"outcome", "steered_during_compaction"},
+                {"steps", 0}}});
     api_.turn_started = {};
     return;
   }
@@ -271,9 +269,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   conversation_.Push(
       {{"role", "user"},
        {"content", attachment ? std::move(user_content) : json(user_input)}},
-      harness_origin
-          ? MessageKind::kInternal
-          : (attachment ? MessageKind::kAttachment : MessageKind::kUser));
+      attachment ? MessageKind::kAttachment : MessageKind::kUser);
   turn_search_trace_.Reset();
   std::unordered_map<std::string, int64_t> tool_counts;
   std::unordered_map<std::string, std::string> stable_arguments;
@@ -281,13 +277,16 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
   state.max_turn_seconds = api_.config.max_turn_seconds;
   state.max_turn_cost = api_.config.max_turn_cost;
   state.session_budget = api_.config.session_budget;
-  state.deadline = DeadlineAfter(state.started, state.max_turn_seconds);
+  state.deadline = state.max_turn_seconds > 0
+                       ? DeadlineAfter(state.started, state.max_turn_seconds)
+                       : std::chrono::steady_clock::time_point::max();
   active_deadline_ = state.deadline;
   std::string last_call;
   int64_t repeated_calls = 0;
   int64_t consecutive_failed_tools = 0;
   bool failure_advisory_sent = false;
   bool empty_response_recovered = false;
+  bool context_overflow_recovery_attempted = false;
   // A harness note that guides exactly the next model call and is retracted
   // once it has been sent. At most one is ever live.
   std::optional<size_t> pending_note;
@@ -374,6 +373,56 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
     if (!r.error.empty()) {
       state.line_open = false;
       if (TurnDeadlineExceeded(state)) break;
+      if (!context_overflow_recovery_attempted && SafeContextRecovery(r) &&
+          !attachment) {
+        context_overflow_recovery_attempted = true;
+        int64_t rejected_tokens = EstimatedTokens(
+            RequestContextBytes(JsonEstimatedBytes(available_schemas)));
+        int64_t learned_context =
+            std::max<int64_t>(4096, rejected_tokens - rejected_tokens / 10);
+        int64_t prior_context = api_.ctx_window;
+        if (prior_context <= 0 || learned_context < prior_context) {
+          api_.ctx_window = learned_context;
+          Emit(Event{EventId::kCapabilityChanged,
+                     {{"feature", "context_window"},
+                      {"from", prior_context},
+                      {"to", learned_context},
+                      {"reason", "provider_rejected_request"}}});
+        }
+        DebugLog("context_overflow_recovery",
+                 {{"turn", turn_id_},
+                  {"step", step},
+                  {"rejected_tokens", rejected_tokens},
+                  {"learned_context", api_.ctx_window},
+                  {"messages", conversation_.Size()}});
+        printf("%s· provider context limit reached — compacting once%s\n",
+               DIM(), RST());
+        midturn_compaction_enabled = false;
+        if (Compact(true, &state.usage)) {
+          EnsureRuntimeContext();
+          state.start = conversation_.Size();
+          conversation_.Push(
+              {{"role", "user"},
+               {"content",
+                "[harness continuation after context compaction] Continue "
+                "the current task from the summary without repeating "
+                "completed work."}},
+              MessageKind::kInternal);
+          --step;
+          continue;
+        }
+        state.outcome = "error";
+        last_error_ = r.error;
+        break;
+      }
+      if (r.remote_error_kind == RemoteErrorKind::kContextLengthExceeded) {
+        DebugLog("context_overflow_recovery_skipped",
+                 {{"turn", turn_id_},
+                  {"step", step},
+                  {"already_attempted", context_overflow_recovery_attempted},
+                  {"attachment", attachment},
+                  {"semantic_progress", r.semantic_progress}});
+      }
       if (DegradeAndRetry(r)) {
         --step;
         continue;
@@ -460,9 +509,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content,
       }
       amsg["tool_calls"] = std::move(tcs);
     }
-    // Preserve provider replay state for every tool protocol. OpenRouter and
-    // direct DeepSeek-compatible routes require it while a tool turn
-    // continues; ordinary completed prose does not need to burden later turns.
+    // Preserve the replay fields the active route actually emitted while any
+    // tool protocol continues; completed prose does not burden later turns.
     if (!calls.empty()) api_.PreserveAssistantReasoning(amsg, r);
     conversation_.Push(std::move(amsg), MessageKind::kAssistant);
 
@@ -584,21 +632,22 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   footer << (state.line_open ? "\n" : "") << RST() << BLUE()
          << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
   std::cout << footer.str();
-  DebugLog("turn_end", {{"turn", turn_id_},
-                        {"outcome", state.outcome},
-                        {"steps", state.max_steps > 0 && step >= state.max_steps
-                                      ? state.max_steps
-                                      : step + 1},
-                        {"tool_calls", state.tool_count},
-                        {"duration_ms", secs * 1000},
-                        {"ttt_ms", state.ttt_ms},
-                        {"tokens_per_second", tokens_per_second},
-                        {"generation_ms", state.model_generation_ms},
-                        {"generated_tokens", state.model_generated_tokens},
-                        {"usage", UsageJson(state.usage)},
-                        {"session_usage", UsageJson(session_usage_)},
-                        {"messages", conversation_.Size()},
-                        {"context_tokens", ContextUsed()}});
+  Emit(Event{EventId::kTurnCompleted,
+             {{"turn", turn_id_},
+              {"outcome", state.outcome},
+              {"steps", state.max_steps > 0 && step >= state.max_steps
+                            ? state.max_steps
+                            : step + 1},
+              {"tool_calls", state.tool_count},
+              {"duration_ms", secs * 1000},
+              {"ttt_ms", state.ttt_ms},
+              {"tokens_per_second", tokens_per_second},
+              {"generation_ms", state.model_generation_ms},
+              {"generated_tokens", state.model_generated_tokens},
+              {"usage", UsageJson(state.usage)},
+              {"session_usage", UsageJson(session_usage_)},
+              {"messages", conversation_.Size()},
+              {"context_tokens", ContextUsed()}}});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

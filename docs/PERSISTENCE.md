@@ -6,6 +6,7 @@ model output, tool results, paths, and usage.
 | State | Location |
 | --- | --- |
 | sessions | `~/.uagent/history/<workspace>/*.json` |
+| bounded session journals | `<session>.json.events.jsonl` |
 | debug traces | `~/.uagent/sessions/*.jsonl` |
 | native memory audit | `~/.uagent/memory/events.jsonl` (bounded metadata and redacted previews) |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
@@ -21,7 +22,15 @@ model output, tool results, paths, and usage.
 
 Session format 3 persists active messages, their structured kinds, the bounded
 archive, usage, provider session identity, and any active mutable system
-directive and revision. It also retains tool calls and results used to rebuild
+directive and revision. Its format remains unchanged. A private sidecar journal
+uses `uagent.session.event.v1` JSONL and retains at most 512 lifecycle records
+or 256 KiB. It contains bounded turn/tool/capability/config metadata and
+presentation status/artifact metadata, never prompts, reasoning deltas, answer deltas, or
+full tool results. The journal is observational: corrupt or absent journal data
+is reported or ignored without preventing the format-3 conversation from
+loading, and it is never a replay authority or model-context source.
+
+The session snapshot also retains tool calls and results used to rebuild
 the visible timeline. Successful `show_image` entries are retransmitted on
 resume from their recorded paths; image bytes are not copied into the session.
 Replay therefore requires the original file to remain available, and a missing
@@ -65,6 +74,9 @@ short preview; the archive and optional debug log retain the original while
 their configured retention permits. Repeated source reads still hit the
 filesystem; only byte-identical results with a recent visible original are
 deduplicated before the next model request.
+
+Session journals share snapshot retention, do not count independently against
+the history file ceiling, and are removed when their owning snapshot expires.
 
 Delete the corresponding files to remove local state. Rotate any credential
 that appeared in a prompt, attachment, tool result, or debug trace. Sharing the

@@ -73,6 +73,7 @@ add_library(
   src/agent/session_store.cc
   src/agent/tool_loop.cc
   src/agent/turn.cc
+  src/api/capabilities.cc
   src/api/client.cc
   src/api/openai_stream.cc
   src/app/application.cc
@@ -82,7 +83,9 @@ add_library(
   src/cli.cc
   src/core/child_env.cc
   src/core/debug.cc
+  src/core/effective_config.cc
   src/core/env.cc
+  src/core/events.cc
   src/core/file_watch.cc
   src/core/platform_posix.cc
   src/core/signals.cc
@@ -104,7 +107,8 @@ add_library(
   src/transport/sse.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
-  src/ui/markdown.cc)
+  src/ui/markdown.cc
+  src/ui/presentation.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
 
 add_executable(uagent src/main.cc)
@@ -126,6 +130,7 @@ if(BUILD_TESTING)
     uagent_tests
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
+    tests/unit/events_test.cc
     tests/unit/filesystem_test.cc
     tests/unit/input_decoder_test.cc
     tests/unit/mcp_session_test.cc

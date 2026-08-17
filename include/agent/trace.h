@@ -18,6 +18,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/tool.h"
+#include "include/ui/presentation.h"
 
 namespace uagent {
 
@@ -68,6 +69,23 @@ inline json ParsedToolCallArguments(const json& function) {
   return arguments.is_discarded() ? json(std::move(raw)) : std::move(arguments);
 }
 
+inline PresentationRecord StoredToolCallPresentation(
+    const std::string& name, const json& arguments,
+    const std::vector<Tool>& tools, const std::string& ordinal = "") {
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolCall;
+  record.title = ordinal + name;
+  const Tool* tool = FindTool(tools, name);
+  record.verbatim = tool && tool->verbatim_label;
+  std::string summary =
+      tool && arguments.is_object()
+          ? ToolSummary(*tool, arguments)
+          : (arguments.is_string() ? arguments.get<std::string>()
+                                   : JsonDump(arguments));
+  record.summary = Utf8Trunc(std::move(summary), size_t{2048});
+  return record;
+}
+
 inline std::string PrintToolCallSummary(const json& call,
                                         const std::vector<Tool>& tools) {
   if (!call.is_object() || !call.contains("function") ||
@@ -77,14 +95,7 @@ inline std::string PrintToolCallSummary(const json& call,
   const json& function = call["function"];
   std::string name = JsonValue(function, "name", "");
   json args = ParsedToolCallArguments(function);
-  const Tool* tool = FindTool(tools, name);
-  std::string summary =
-      tool && args.is_object()
-          ? ToolSummary(*tool, args)
-          : (args.is_string() ? args.get<std::string>() : JsonDump(args));
-  std::string shown = TerminalSummary(summary, DisplayWidth(name) + 4);
-  printf("%s→ %s(%s)%s\n", CYAN(), TerminalSafe(name).c_str(), shown.c_str(),
-         RST());
+  PrintPresentation(StoredToolCallPresentation(name, args, tools));
   return name;
 }
 
@@ -231,36 +242,31 @@ inline void PrintTraceToolCall(const json& call, const std::vector<Tool>& tools,
   std::string name = JsonValue(call, "name", "tool");
   json arguments =
       call.contains("arguments") ? call["arguments"] : json::object();
-  const Tool* tool = FindTool(tools, name);
-  std::string summary =
-      tool && arguments.is_object()
-          ? ToolSummary(*tool, arguments)
-          : (arguments.is_string() ? arguments.get<std::string>()
-                                   : JsonDump(arguments));
-  std::string prefix = "→ " + ordinal + TerminalSafe(name);
-  if (!summary.empty()) {
-    prefix += "(" + TerminalSummary(summary, DisplayWidth(prefix) + 3) + ")";
-  }
-  printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
+  PrintPresentation(
+      StoredToolCallPresentation(name, arguments, tools, ordinal));
 }
 
 inline void PrintTraceToolResult(const json& call, const std::string& ordinal) {
   std::string name = JsonValue(call, "name", "tool");
-  std::string prefix = "  ← " + ordinal + TerminalSafe(name);
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolResult;
+  record.title = ordinal + name;
+  record.status = PresentationStatus::kSucceeded;
   if (!call.contains("result") || call["result"].is_null()) {
-    printf("%s%s: (no result)%s\n", DIM(), prefix.c_str(), RST());
+    record.summary = "(no result)";
+    PrintPresentation(record);
     return;
   }
   std::string result = call["result"].is_string()
                            ? call["result"].get<std::string>()
                            : JsonDump(call["result"]);
-  std::string safe = TerminalSafe(result);
-  if (safe.find('\n') != std::string::npos) {
-    printf("%s%s%s\n%s%s%s\n", DIM(), prefix.c_str(), RST(), DIM(),
-           safe.c_str(), RST());
+  if (result.find('\n') != std::string::npos) {
+    record.detail = std::move(result);
+    record.multiline = true;
   } else {
-    printf("%s%s: %s%s\n", DIM(), prefix.c_str(), safe.c_str(), RST());
+    record.summary = std::move(result);
   }
+  PrintPresentation(record);
 }
 
 inline void PrintLatestTrace(const json& archive,

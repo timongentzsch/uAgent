@@ -5,7 +5,6 @@
 #include <sys/stat.h>
 
 #include <array>
-#include <atomic>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
@@ -24,8 +23,6 @@ namespace {
 
 constexpr char kBase64Alphabet[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-std::atomic<bool> g_image_input{true};
 
 // Extension to MIME type. Also read backwards to name a saved image, so the
 // first entry for a type is the one its files get (.jpg, never .jpeg).
@@ -99,9 +96,10 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   return false;
 }
 
-std::string ImageInputError(const Attachment& attachment) {
-  if (!attachment.image || ImageInputAvailable() ||
-      !EnvStr("UAGENT_IMAGE_MODEL").empty()) {
+std::string ImageInputError(const Attachment& attachment,
+                            bool image_input_available,
+                            bool image_fallback_available) {
+  if (!attachment.image || image_input_available || image_fallback_available) {
     return "";
   }
   return "this model rejected image input for " + attachment.path +
@@ -109,9 +107,10 @@ std::string ImageInputError(const Attachment& attachment) {
          "vision-capable model";
 }
 
-const char* ModelImageInputInstruction() {
-  if (ImageInputAvailable()) return "";
-  return EnvStr("UAGENT_IMAGE_MODEL").empty()
+const char* ModelImageInputInstruction(bool image_input_available,
+                                       bool image_fallback_available) {
+  if (image_input_available) return "";
+  return !image_fallback_available
              ? " Image input unavailable; image attachments are provided "
                "only as file paths."
              : " Direct image input unavailable; attached images are "
@@ -220,10 +219,12 @@ bool Base64Decode(std::string_view input, std::string& output,
 
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
-                       std::string& error) {
+                       std::string& error, bool image_input_available,
+                       bool image_fallback_available) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
-    error = ImageInputError(attachment);
+    error = ImageInputError(attachment, image_input_available,
+                            image_fallback_available);
     if (!error.empty()) return nullptr;
     std::error_code ec;
     uintmax_t current = std::filesystem::file_size(attachment.path, ec);
@@ -292,17 +293,17 @@ size_t StripImageContentParts(json& messages) {
   return rewritten;
 }
 
-bool ImageInputAvailable() { return g_image_input.load(); }
-
-void SetImageInputAvailable(bool available) { g_image_input = available; }
-
-ToolResult AttachmentQueue::Add(const std::string& path) {
+ToolResult AttachmentQueue::Add(const std::string& path,
+                                bool image_input_available,
+                                bool image_fallback_available) {
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(path, attachment, error)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
   }
-  if (!(error = ImageInputError(attachment)).empty()) {
+  if (!(error = ImageInputError(attachment, image_input_available,
+                                image_fallback_available))
+           .empty()) {
     return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
   }
   std::string result = "attached " + attachment.name + " (" + attachment.mime +

@@ -24,6 +24,7 @@
 #include "include/cli.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
@@ -75,23 +76,56 @@ class Application {
     return 0;
   }
 
+  void ReloadConfigAtTurnBoundary() {
+    std::optional<ConfigReload> reload =
+        context_.config_manager.Reload(runtime_.config);
+    if (!reload) return;
+    runtime_.config = reload->active;
+    api_.config = reload->active;
+    Emit(Event{EventId::kConfigChanged,
+               {{"changed", reload->applied},
+                {"deferred", reload->deferred},
+                {"source", "config_file"}}});
+    if (context_.options.prompt.empty() &&
+        (!reload->applied.empty() || !reload->deferred.empty())) {
+      printf("%s· configuration reloaded for the next turn", DIM());
+      if (!reload->deferred.empty()) {
+        if (reload->deferred.size() == 1) {
+          printf(" · 1 setting requires restart");
+        } else {
+          printf(" · %zu settings require restart", reload->deferred.size());
+        }
+      }
+      printf("%s\n", RST());
+    }
+  }
+
   void RunTurns(std::string input, json content = nullptr) {
+    ReloadConfigAtTurnBoundary();
     agent_.Turn(input, std::move(content));
     SteeringState().Take();
   }
 
   void LogSessionEnd(const char* reason) const {
-    if (!Debug().Enabled()) return;
-    Debug().Write("session_end", {{"reason", reason},
-                                  {"usage", UsageJson(agent_.SessionUsage())},
-                                  {"context_tokens", agent_.ContextUsed()}});
+    Emit(Event{EventId::kSessionEnded,
+               {{"reason", reason},
+                {"usage", UsageJson(agent_.SessionUsage())},
+                {"context_tokens", agent_.ContextUsed()}}});
   }
 
-  // Release owned processes and per-session files, then close the trace.
+  // Release owned processes and per-session files, then drain observations.
   void Teardown(const char* reason) {
     runtime_.Shutdown();
-    std::remove(UsageLedger().c_str());
     LogSessionEnd(reason);
+    std::remove(UsageLedger().c_str());
+    if (!session_file_.empty()) {
+      std::string error;
+      if (!context_.observability.Journal().Flush(
+              session_file_ + ".events.jsonl", error)) {
+        fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
+      }
+    }
+    context_.observability.Flush();
   }
 
   int FinishHeadless(std::string answer, std::string error, int exit_code) {
@@ -101,7 +135,8 @@ class Application {
           std::move(answer), std::move(error), agent_.LatestToolTrace(),
           agent_.SessionUsage(), agent_.RouteUsageJson(), exit_code);
       if (context_.options.json_stream) {
-        Events().Emit(exit_code == 0 ? "answer" : "error", std::move(envelope));
+        Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
+                   std::move(envelope)});
       } else {
         printf("%s\n", JsonDump(envelope).c_str());
       }
@@ -117,24 +152,20 @@ class Application {
     json content;
     if (!attachments_.empty()) {
       std::string error;
-      content = AttachmentContent(context_.options.prompt, attachments_, error);
+      content = AttachmentContent(context_.options.prompt, attachments_, error,
+                                  api_.capabilities.image_input,
+                                  !api_.config.image_model.empty());
       if (!error.empty()) {
         context_.output.Restore();
         return FinishHeadless("", std::move(error), 2);
       }
     }
     RunTurns(context_.options.prompt, std::move(content));
-    // A background task may finish after the model has yielded prose. Headless
-    // mode has no idle REPL to deliver that event later, so keep the process
-    // alive and resume from each completion instead of silently killing pending
-    // work during runtime shutdown.
+    // Background work is observational and never starts a model turn. Keep the
+    // process alive long enough to publish completion and drain retained state.
     while (runtime_.processes.JoinableCount() > 0 && !AbortRequested()) {
       uint64_t generation = runtime_.processes.Generation();
-      if (agent_.DrainBackground()) {
-        agent_.ContinueAfterActivity();
-      } else {
-        // Activity state changes wake this predicate wait; no idle polling is
-        // needed in headless mode.
+      if (!agent_.DrainBackground()) {
         runtime_.processes.WaitForChange(generation);
       }
     }
@@ -163,7 +194,20 @@ class Application {
     return FinishHeadless(std::move(answer), "", 0);
   }
 
+  void LoadSessionJournal(const std::string& previous_path) {
+    if (session_file_.empty() || session_file_ == previous_path) return;
+    std::string error;
+    if (!context_.observability.Journal().Load(session_file_ + ".events.jsonl",
+                                               error)) {
+      fprintf(stderr, "cannot load session journal: %s\n", error.c_str());
+    }
+    Emit(Event{
+        EventId::kSessionResumed,
+        {{"model", api_.RequestModel()}, {"messages", agent_.MessageCount()}}});
+  }
+
   void ResumeAtStartup() {
+    std::string previous_path = session_file_;
     if (context_.options.resume_pick) {
       ResumeInto(agent_, PickSession(), session_file_);
     } else if (context_.options.resume_latest) {
@@ -174,6 +218,7 @@ class Application {
         ResumeInto(agent_, sessions.front().path, session_file_);
       }
     }
+    LoadSessionJournal(previous_path);
     saved_revision_ = agent_.Revision();
   }
 
@@ -197,6 +242,11 @@ class Application {
       fprintf(stderr, "cannot save session: %s\n", error.c_str());
       return;
     }
+    if (!context_.observability.Journal().Flush(session_file_ + ".events.jsonl",
+                                                error)) {
+      fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
+      return;
+    }
     saved_revision_ = agent_.Revision();
   }
 
@@ -207,6 +257,7 @@ class Application {
         return true;
       case SlashCommandId::kReset:
         agent_.Reset();
+        context_.observability.Journal().Clear();
         attachments_.clear();
         session_file_.clear();
         saved_revision_ = agent_.Revision();
@@ -215,7 +266,9 @@ class Application {
       case SlashCommandId::kSessions: {
         std::string chosen = PickSession();
         if (!chosen.empty()) {
+          std::string previous_path = session_file_;
           ResumeInto(agent_, chosen, session_file_);
+          LoadSessionJournal(previous_path);
           attachments_.clear();
           saved_revision_ = agent_.Revision();
         }
@@ -256,9 +309,35 @@ class Application {
       case SlashCommandId::kCompact:
         HandleCompact();
         break;
-      case SlashCommandId::kContext:
+      case SlashCommandId::kContext: {
+        json effective =
+            context_.config_manager.DiagnosticJson(runtime_.config);
+        effective["capabilities"] = api_.capabilities.DiagnosticJson();
+        const json& sources = effective["sources"];
+        auto source = [&](const char* key, std::string fallback = "runtime") {
+          return sources.is_object() ? JsonValue(sources, key, fallback)
+                                     : fallback;
+        };
+        std::string model_source =
+            source("UAGENT_MODEL", source("OPENROUTER_MODEL"));
+        std::string credential_source =
+            source("UAGENT_API_KEY", source("OPENROUTER_API_KEY"));
+        effective["route"] = {
+            {"base_url", RedactedUrl(api_.base_url)},
+            {"base_url_source", source("UAGENT_BASE_URL")},
+            {"model", api_.RequestModel()},
+            {"model_source", std::move(model_source)},
+            {"credentials", api_.api_key.empty() || api_.api_key == "sk-noop"
+                                ? "<unset>"
+                                : "<set>"},
+            {"credential_source", std::move(credential_source)},
+            {"context_window", api_.ctx_window}};
+        printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
+               TerminalSafe(JsonDump(effective, 2)).c_str());
+        printf("%smodel request%s\n", BOLD(), RST());
         agent_.PrintContext();
         break;
+      }
       case SlashCommandId::kCost:
         HandleCost();
         break;
@@ -436,8 +515,9 @@ class Application {
   }
 
   void HandleVariant(const std::string& argument) {
-    if (!api_.openrouter_compatible) {
-      printf("%s· /variant is available only for OpenRouter%s\n", RED(), RST());
+    if (!api_.capabilities.model_variants) {
+      printf("%s· /variant is unavailable on the active route%s\n", RED(),
+             RST());
       return;
     }
     std::string variant = argument;
@@ -496,7 +576,9 @@ class Application {
     Attachment attachment;
     std::string error;
     if (!InspectAttachment(argument, attachment, error) ||
-        !(error = ImageInputError(attachment)).empty()) {
+        !(error = ImageInputError(attachment, api_.capabilities.image_input,
+                                  !api_.config.image_model.empty()))
+             .empty()) {
       printf("%s%s%s\n", RED(), error.c_str(), RST());
       return;
     }
@@ -519,7 +601,9 @@ class Application {
     json content;
     if (!attachments_.empty()) {
       std::string error;
-      content = AttachmentContent(input, attachments_, error);
+      content = AttachmentContent(input, attachments_, error,
+                                  api_.capabilities.image_input,
+                                  !api_.config.image_model.empty());
       if (!error.empty()) {
         printf("%s%s%s\n", RED(), error.c_str(), RST());
         return;
@@ -591,26 +675,36 @@ class Application {
       auto ticks =
           std::chrono::duration_cast<std::chrono::milliseconds>(now - started) /
           kSpinnerInterval;
-      std::string line = kFrames[static_cast<size_t>(ticks) % 10];
-      line += " ";
-      line += interrupting ? "interrupting"
-                           : (activity.empty() ? "working" : activity);
-      line += " · " + std::string(seconds);
-      line += " · ctx " + FmtCount(agent_.ContextSnapshot());
-      if (background > 0) line += " · bg:" + std::to_string(background);
+      std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
+      prefix += " ";
+      std::string state = interrupting
+                              ? "interrupting"
+                              : (activity.empty() ? "working" : activity);
+      std::string suffix = " · " + std::string(seconds);
+      suffix += " · ctx " + FmtCount(agent_.ContextSnapshot());
+      if (background > 0) suffix += " · bg:" + std::to_string(background);
       size_t foreground = runtime_.processes.ForegroundCount();
       if (foreground > 0) {
-        line += " · Ctrl+B background";
+        suffix += " · Ctrl+B background";
         if (foreground > 1) {
-          line += " " + std::to_string(foreground) + " commands";
+          suffix += " " + std::to_string(foreground) + " commands";
         }
       }
-      if (SteeringEnabled()) line += " · Esc interrupt";
       size_t queued = SteeringState().QueuedCount();
       if (queued > 0) {
-        line += " · steer:" + std::to_string(queued);
+        suffix += " · steer:" + std::to_string(queued);
       }
-      return line;
+      size_t width = TerminalWidth(1);
+      if (SteeringEnabled()) {
+        std::string hint = " · Esc interrupt";
+        size_t desired = std::min<size_t>(DisplayWidth(state), 64);
+        size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
+                           DisplayWidth(hint) + desired;
+        if (with_hint <= width) suffix += hint;
+      }
+      size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
+      size_t activity_width = width > reserved ? width - reserved : 0;
+      return prefix + ActivityLabel(state, activity_width) + suffix;
     };
 
     auto rendered_status = [&] { return StatusBarLine(status()); };
@@ -676,18 +770,14 @@ class Application {
       insert(std::move(ready));
     };
 
-    auto start_work = [&](std::optional<std::string> input) {
+    auto start_work = [&](std::string input) {
       agent_.ContextUsed();
       working = true;
       worker_quit = false;
       interrupting = false;
       started = std::chrono::steady_clock::now();
       worker = std::thread([&, input = std::move(input)]() mutable {
-        if (input) {
-          worker_quit = ProcessInput(std::move(*input));
-        } else {
-          agent_.ContinueAfterActivity();
-        }
+        worker_quit = ProcessInput(std::move(input));
         working = false;
         broker.Notify();
       });
@@ -823,16 +913,15 @@ class Application {
       if (!working && worker.joinable()) {
         worker.join();
         flush_output(true);
-        SaveSession();
         bool activity_ready = agent_.DrainBackground();
+        SaveSession();
         if (worker_quit) exit_when_idle = true;
         interrupting = false;
         if (!exit_when_idle && next_input) {
           start_work(std::move(*next_input));
           next_input.reset();
-        } else if (!exit_when_idle && activity_ready) {
-          start_work(std::nullopt);
         }
+        if (activity_ready) mount();
         refresh_status();
       }
 
@@ -840,7 +929,8 @@ class Application {
       // idle completion is handled without a periodic UI tick.
       if (!working && !worker.joinable() && !answering && !exit_when_idle) {
         if (agent_.DrainBackground()) {
-          start_work(std::nullopt);
+          SaveSession();
+          mount();
           refresh_status();
         }
       }

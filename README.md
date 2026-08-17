@@ -44,11 +44,10 @@ uagent --yolo
 
 ## Highlights
 
-- Native streamed answers and reasoning, including OpenRouter
-  `reasoning_details` and direct DeepSeek-compatible `reasoning_content`
-  replay; compact mode keeps live reasoning in the transient status row, while
-  `/verbose` preserves the clearly labelled full reasoning stream in
-  scrollback.
+- Native streamed answers and reasoning across OpenAI-compatible
+  `reasoning`, `reasoning_details`, and `reasoning_content` fields; compact
+  mode keeps a clean latest-line preview in the transient status row without a
+  leading ellipsis, while `/verbose` preserves the labelled full stream.
 - Persistent editable composer with queued steering, Escape interruption, and
   Ctrl+B foreground-command handoff.
 - Parallel safe tools, bounded delegated tasks, automatic compaction, and
@@ -57,8 +56,16 @@ uagent --yolo
   PTYs, writable input, resize, wait, stop, and persistent log-only detach.
 - Repository tools, attachments, terminal images, web search, skills, memory,
   Playwright automation, and dynamically discovered MCP tools.
-- Reconstructable JSONL traces with request preparation, transport, first-event,
-  usage, cost, and end-to-end timing.
+- One typed observational event spine with fixed terminal, stable JSONL,
+  sensitive debug, and bounded metadata-only session-journal consumers.
+- Centralized route capabilities and provider-independent tool presentation;
+  provider/model names do not drive scheduling or rendering behavior.
+- Redacted effective configuration and provenance in `/context`, with validated
+  request/turn settings reloaded only between turns.
+- Semantic context-overflow recovery: one bounded compaction and at most one
+  safe retry. Command completion stays in UI/retained activity state; bounded
+  task completion joins the next naturally occurring model call without
+  starting one.
 - Explicit limits for time, output, processes, context, persistence, and
   provider-reported spend.
 
@@ -78,7 +85,9 @@ The core registry includes:
 Policy, lean mode, route capabilities, runtime state, and configuration filter
 the active schemas. In the interactive UI, compact reasoning updates only the
 transient activity row; `/verbose` restores the full muted reasoning stream and
-expanded bounded tool output. See [the tool reference](docs/TOOLS.md), or run `/context`
+expanded bounded tool output. `/context` also reports redacted effective
+configuration, provenance, restart-required fields, and negotiated route
+capabilities before showing the exact next request. See [the tool reference](docs/TOOLS.md), or run `/context`
 to inspect the exact registry for the next request.
 
 ## Interactive controls

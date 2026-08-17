@@ -14,6 +14,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/events.h"
 #include "include/core/fs.h"
 
 namespace uagent {
@@ -64,17 +65,12 @@ std::string UsageLedger() {
   return UagentDir(kBgDir) + "/usage-" + std::to_string(getpid()) + ".jsonl";
 }
 
-DebugSink::~DebugSink() {
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    stopping_ = true;
-  }
-  wake_.notify_one();
-  if (writer_.joinable()) writer_.join();
-  if (file_) fclose(file_);
-}
+DebugSink::~DebugSink() { Stop(); }
 
 bool DebugSink::Start(std::string path) {
+  if (file_) return true;
+  stopping_ = false;
+  writing_ = false;
   if (path.empty() || path == "1") path = DefaultDebugPath();
   if (path.starts_with("~/")) {
     const char* home = getenv("HOME");
@@ -110,6 +106,24 @@ bool DebugSink::Start(std::string path) {
   return true;
 }
 
+void DebugSink::Flush() {
+  if (!file_) return;
+  std::unique_lock<std::mutex> lock(mutex_);
+  wake_.wait(lock, [this] { return queue_.empty() && !writing_; });
+}
+
+void DebugSink::Stop() {
+  if (!file_) return;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stopping_ = true;
+  }
+  wake_.notify_all();
+  if (writer_.joinable()) writer_.join();
+  fclose(file_);
+  file_ = nullptr;
+}
+
 void DebugSink::Write(const std::string& event, json data) noexcept {
   if (!file_) return;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -133,26 +147,38 @@ void DebugSink::Run() {
       }
       record = std::move(queue_.front());
       queue_.pop_front();
+      writing_ = true;
     }
     WriteJsonLine(file_, record);
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      writing_ = false;
+    }
+    wake_.notify_all();
   }
 }
 
 DebugSink& Debug() {
-  static DebugSink debug;
-  return debug;
+  static DebugSink inactive;
+  Observability* observability = ActiveObservability();
+  return observability ? observability->DebugOutput() : inactive;
 }
 
-JsonEventStream::~JsonEventStream() {
-  if (file_) fclose(file_);
-}
+JsonEventStream::~JsonEventStream() { Stop(); }
 
 bool JsonEventStream::Start() {
+  if (file_) return true;
   int fd = dup(STDOUT_FILENO);
   if (fd < 0) return false;
   file_ = fdopen(fd, "w");
   if (!file_) close(fd);
   return file_ != nullptr;
+}
+
+void JsonEventStream::Stop() {
+  if (!file_) return;
+  fclose(file_);
+  file_ = nullptr;
 }
 
 void JsonEventStream::Emit(const std::string& type, json data) noexcept {
@@ -166,33 +192,9 @@ void JsonEventStream::Emit(const std::string& type, json data) noexcept {
   WriteJsonLine(file_, record);
 }
 
-JsonEventStream& Events() {
-  static JsonEventStream events;
-  return events;
-}
-
 void DebugLog(const std::string& event, json data) {
-  if (Events().Enabled()) {
-    if (event == "turn_start") {
-      Events().Emit("turn.started", data);
-    } else if (event == "tool_call") {
-      json public_data = data;
-      if (public_data.contains("arguments") &&
-          public_data["arguments"].is_string()) {
-        json arguments = json::parse(
-            public_data["arguments"].get<std::string>(), nullptr, false);
-        if (!arguments.is_discarded()) {
-          public_data["parsed_arguments"] = std::move(arguments);
-        }
-      }
-      Events().Emit("tool.call", std::move(public_data));
-    } else if (event == "tool_result") {
-      Events().Emit("tool.result", data);
-    } else if (event == "turn_end") {
-      Events().Emit("usage", data);
-    }
-  }
-  if (Debug().Enabled()) Debug().Write(event, std::move(data));
+  Observability* observability = ActiveObservability();
+  if (observability) observability->Diagnostic(event, std::move(data));
 }
 
 }  // namespace uagent

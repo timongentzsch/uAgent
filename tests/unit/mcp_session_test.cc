@@ -197,12 +197,11 @@ void TestWorkspaceScopedSession() {
       api, tools, processes, usage,
       [](const Tool&, const json&) { return false; }, {}, {}, {},
       &adaptive_system);
-  SetImageInputAvailable(false);
+  api.capabilities.image_input = false;
   agent.RouteChanged();
-  CHECK(ImageInputAvailable());
-  SetImageInputAvailable(false);
+  CHECK(!api.capabilities.image_input);
   agent.Reset();
-  CHECK(ImageInputAvailable());
+  CHECK(!api.capabilities.image_input);
   std::string session_id = agent.SessionId();
   std::string error;
   adaptive_system.instructions = "Persist this task strategy.";
@@ -507,14 +506,20 @@ void TestScopedBaseAndMemory() {
   unsetenv("UAGENT_CONFIG_FILE");
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  LoadConfigFile(/*trust_project=*/true);
+  ConfigManager trusted = ConfigManager::Capture(
+      /*trust_project=*/true, /*cli_budget=*/-1,
+      /*cli_no_memory=*/false);
+  (void)trusted.Initialize();
   CHECK(EnvStr("UAGENT_MODEL") == "project/model");
   CHECK(EnvStr("UAGENT_API_KEY") == "global-key");
 
   // Untrusted, the project file is skipped entirely.
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  LoadConfigFile(/*trust_project=*/false);
+  ConfigManager untrusted = ConfigManager::Capture(
+      /*trust_project=*/false, /*cli_budget=*/-1,
+      /*cli_no_memory=*/false);
+  (void)untrusted.Initialize();
   CHECK(EnvStr("UAGENT_MODEL") == "global/model");
 
   unsetenv("UAGENT_MODEL");

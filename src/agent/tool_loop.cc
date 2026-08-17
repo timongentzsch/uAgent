@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <future>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -13,7 +14,7 @@
 
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
-#include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -69,6 +70,7 @@ bool Agent::RunCalls(
     int64_t step, std::chrono::steady_clock::time_point deadline,
     int64_t& consecutive_failed_tools) {
   std::vector<CallTask> tasks(calls.size());
+  std::atomic<int64_t> completion_sequence{0};
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status) {
     task.result = ToolFailure(code, std::move(message));
@@ -80,7 +82,6 @@ bool Agent::RunCalls(
     if (calls.size() > 1) {
       task.ordinal = "[" + std::to_string(index + 1) + "] ";
     }
-    LogToolCall(call, turn_id_, step, text_mode);
     task.args = json::parse(call.args, nullptr, false);
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
@@ -118,7 +119,11 @@ bool Agent::RunCalls(
       task.label = ToolSummary(*tool, arguments);
       valid = true;
     }
-    PrintToolCall(task, call, verbose_);
+    Event call_event{EventId::kToolCall,
+                     ToolCallData(call, turn_id_, step, text_mode)};
+    call_event.presentation = ToolCallPresentation(task, call, verbose_);
+    call_event.render = api_.render_stream;
+    Emit(std::move(call_event));
     if (valid) {
       bool approval_required =
           ToolMutates(*tool, arguments) ||
@@ -134,7 +139,11 @@ bool Agent::RunCalls(
                "denied");
       }
     }
-    if (!task.execute) LogToolResult(task, call, turn_id_, step);
+    if (!task.execute) {
+      task.completion_order =
+          completion_sequence.fetch_add(1, std::memory_order_relaxed);
+      EmitToolResultObservation(task, call, turn_id_, step);
+    }
   }
 
   std::vector<size_t> runnable;
@@ -157,15 +166,18 @@ bool Agent::RunCalls(
                                  {"concurrency_limit", limit}});
   }
 
-  bool quiet = std::none_of(
-      runnable.begin(), runnable.end(),
-      [&](size_t index) { return calls[index].name == "show_image"; });
+  bool quiet =
+      std::none_of(runnable.begin(), runnable.end(), [&](size_t index) {
+        return tasks[index].tool && tasks[index].tool->serial_media;
+      });
   std::string activity = runnable.size() == 1
                              ? calls[runnable.front()].name
                              : std::to_string(runnable.size()) + " tools";
   TerminalSpinner spinner(!runnable.empty() && quiet, SpinnerLabel(activity),
                           api_.turn_started);
   ToolContext context{deadline};
+  context.image_input_available = api_.capabilities.image_input;
+  context.image_fallback_available = !api_.config.image_model.empty();
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];
@@ -174,7 +186,7 @@ bool Agent::RunCalls(
     size_t end = limit <= 1 ? begin : ParallelRunEnd(runnable, tasks, begin);
     if (end <= begin + 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                  api_.config.tool_timeout_s);
+                  api_.config.tool_timeout_s, completion_sequence);
       ++begin;
       continue;
     }
@@ -188,7 +200,7 @@ bool Agent::RunCalls(
                           (work = next.fetch_add(1)) < end;) {
           size_t call_index = runnable[work];
           ExecuteCall(tasks[call_index], calls[call_index], turn_id_, step,
-                      context, api_.config.tool_timeout_s);
+                      context, api_.config.tool_timeout_s, completion_sequence);
         }
       }));
     }
@@ -204,19 +216,36 @@ bool Agent::RunCalls(
     } else {
       CancelCall(task);
     }
-    LogToolResult(task, calls[index], turn_id_, step);
+    task.completion_order =
+        completion_sequence.fetch_add(1, std::memory_order_relaxed);
+    EmitToolResultObservation(task, calls[index], turn_id_, step);
   }
   spinner.Stop();
 
   bool cancelled = AbortRequested() && !SteeringState().Requested();
   if (!SteeringState().Requested()) ClearAbort();
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
+  std::vector<size_t> result_order(tasks.size());
+  std::iota(result_order.begin(), result_order.end(), size_t{0});
+  std::stable_sort(
+      result_order.begin(), result_order.end(), [&](size_t left, size_t right) {
+        return tasks[left].completion_order < tasks[right].completion_order;
+      });
+  for (size_t index : result_order) {
+    if (!api_.render_stream) break;
+    const ToolCall& call = calls[index];
+    CallTask& task = tasks[index];
+    Event result_event{EventId::kPresentation};
+    result_event.presentation =
+        ToolResultPresentation(task, call, model_results[index], verbose_);
+    result_event.render = api_.render_stream;
+    Emit(std::move(result_event));
+  }
   size_t original_chars = 0;
   size_t model_chars = 0;
   for (size_t index = 0; index < tasks.size(); ++index) {
     const ToolCall& call = calls[index];
     CallTask& task = tasks[index];
-    PrintToolResult(task, call, model_results[index], verbose_);
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
     AppendToolResult(call, text_mode, model_results[index]);

@@ -6,8 +6,6 @@
 // ./.uagent/.config, which beats ~/.uagent/.config; project .env files are
 // application data and are never imported.
 
-#include <sys/stat.h>
-
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -50,9 +48,12 @@ inline EnvValues ReadEnvValues(const std::string& path) {
 
 inline std::string ResolveEnvValue(const std::string& key,
                                    const EnvValues& values,
-                                   std::set<std::string>& resolving) {
-  const char* inherited = getenv(key.c_str());
-  if (inherited) return inherited;
+                                   std::set<std::string>& resolving,
+                                   bool process_fallback = true) {
+  if (process_fallback) {
+    const char* inherited = getenv(key.c_str());
+    if (inherited) return inherited;
+  }
   auto found = values.find(key);
   if (found == values.end() || !resolving.insert(key).second) return "";
   const std::string& value = found->second;
@@ -88,7 +89,7 @@ inline std::string ResolveEnvValue(const std::string& key,
       }
     }
     std::string ref = value.substr(begin, end - begin);
-    out += ResolveEnvValue(ref, values, resolving);
+    out += ResolveEnvValue(ref, values, resolving, process_fallback);
     i = braced ? end + 1 : end;
   }
   resolving.erase(key);
@@ -105,33 +106,6 @@ inline std::string ExpandProcessEnv(const std::string& value) {
 inline bool AgentConfigKey(const std::string& key) {
   return key.starts_with("UAGENT_") || key == "OPENROUTER_API_KEY" ||
          key == "OPENROUTER_MODEL" || key == "OPENROUTER_EFFORT";
-}
-
-inline void ApplyConfigFile(const std::string& path) {
-  if (path.empty()) return;
-  EnvValues values = ReadEnvValues(path);
-  if (!values.empty()) chmod(path.c_str(), 0600);
-  for (const auto& [key, ignored] : values) {
-    (void)ignored;
-    if (!AgentConfigKey(key) || getenv(key.c_str())) continue;
-    std::set<std::string> resolving;
-    std::string value = ResolveEnvValue(key, values, resolving);
-    setenv(key.c_str(), value.c_str(), /*overwrite=*/0);
-  }
-}
-
-// Shell exports always win. Below them, a trusted ./.uagent/.config wins over
-// ~/.uagent/.config key by key, because setenv() never overwrites: whatever the
-// project omits falls back to the global file. Project .env files are
-// application data and are still never imported into the agent.
-inline void LoadConfigFile(bool trust_project) {
-  std::string custom = EnvStr("UAGENT_CONFIG_FILE");
-  if (!custom.empty()) {
-    ApplyConfigFile(custom);
-    return;
-  }
-  if (trust_project) ApplyConfigFile(ProjectConfigFilePath());
-  ApplyConfigFile(UagentConfigPath());
 }
 
 inline bool ProjectMcpPresent() {

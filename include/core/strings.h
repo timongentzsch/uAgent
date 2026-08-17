@@ -54,6 +54,8 @@ std::string Utf8Trunc(std::string s, size_t cap);
 size_t DisplayWidth(const std::string& s);
 
 std::string DisplayTrunc(std::string s, size_t columns);
+std::string DisplayTail(std::string text, size_t columns);
+std::string ActivityLabel(const std::string& label, size_t columns);
 
 // Wrap ANSI-free display text into rows each bounded by `columns` display
 // columns, never splitting a UTF-8 codepoint. Used for line-wrapping terminal
@@ -73,7 +75,7 @@ std::string OneLine(const std::string& s, size_t cap = 80);
 // Model, tool and MCP text is untrusted terminal input. Preserve normal text,
 // tabs and newlines but render control bytes visibly instead of letting them
 // execute terminal commands. Piped output is not a terminal and remains exact.
-std::string TerminalSafe(const std::string& s);
+std::string TerminalSafe(std::string_view s);
 
 std::string FmtCount(int64_t n);
 std::string FmtCost(double cost);
@@ -100,6 +102,7 @@ std::string Hex64(uint64_t value);
 std::string HashHex(const std::string& data);
 
 std::string UrlHost(std::string url);
+std::string RedactedUrl(std::string url);
 
 std::string ModelLabel(const std::string& model, const std::string& effort);
 

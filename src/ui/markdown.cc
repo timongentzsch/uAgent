@@ -326,7 +326,7 @@ std::vector<std::string> SplitCells(const std::string& text) {
 
 MdStream::MdStream() { on = g_tty && EnvStr("UAGENT_MARKDOWN", "1") != "0"; }
 
-void MdStream::Feed(const std::string& s) {
+void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);
   if (!on) {
     fputs(safe.c_str(), stdout);
@@ -337,7 +337,7 @@ void MdStream::Feed(const std::string& s) {
   FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
 }
 
-void MdStream::FeedPlain(const std::string& s) {
+void MdStream::FeedPlain(std::string_view s) {
   std::string safe = TerminalSafe(s);
   fputs(safe.c_str(), stdout);
   FlushOutput(safe.size(), false, true);

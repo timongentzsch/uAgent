@@ -255,8 +255,8 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
-std::string TerminalSafe(const std::string& s) {
-  if (!g_tty) return s;
+std::string TerminalSafe(std::string_view s) {
+  if (!g_tty) return std::string(s);
   std::string out;
   out.reserve(s.size());
   for (unsigned char c : s) {
@@ -288,8 +288,55 @@ std::string TerminalSummary(const std::string& text, size_t reserved_columns) {
                       TerminalWidth(static_cast<int64_t>(reserved_columns)));
 }
 
+std::string DisplayTail(std::string text, size_t columns) {
+  size_t total = DisplayWidth(text);
+  if (total <= columns) return text;
+  if (columns == 0) return "";
+  struct Boundary {
+    size_t offset;
+    size_t width;
+  };
+  std::vector<Boundary> boundaries{{0, 0}};
+  std::mbstate_t state{};
+  size_t offset = 0;
+  size_t width = 0;
+  while (offset < text.size()) {
+    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
+    width += glyph.width;
+    offset += glyph.bytes;
+    boundaries.push_back({offset, width});
+  }
+  for (const Boundary& boundary : boundaries) {
+    if (total - boundary.width <= columns) {
+      return text.substr(boundary.offset);
+    }
+  }
+  return "";
+}
+
+std::string ActivityLabel(const std::string& label, size_t columns) {
+  std::string safe = TerminalSafe(label);
+  if (DisplayWidth(safe) <= columns) return safe;
+  constexpr std::string_view kSeparator = " · ";
+  size_t separator = safe.find(kSeparator);
+  if (separator == std::string::npos)
+    return DisplayTail(std::move(safe), columns);
+  std::string prefix = safe.substr(0, separator + kSeparator.size());
+  size_t prefix_width = DisplayWidth(prefix);
+  if (prefix_width >= columns) return DisplayTrunc(std::move(prefix), columns);
+  std::string detail = safe.substr(separator + kSeparator.size());
+  std::string tail = DisplayTail(detail, columns - prefix_width);
+  if (tail.size() < detail.size()) {
+    size_t split = tail.find(' ');
+    if (split != std::string::npos && split + 1 < tail.size()) {
+      tail.erase(0, split + 1);
+    }
+  }
+  return prefix + tail;
+}
+
 std::string SpinnerLabel(const std::string& label) {
-  return DisplayTrunc(TerminalSafe(label), TerminalWidth(12));
+  return ActivityLabel(label, TerminalWidth(12));
 }
 
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
@@ -328,6 +375,18 @@ std::string UrlHost(std::string url) {
     host.resize(p);
   }
   return host;
+}
+
+std::string RedactedUrl(std::string url) {
+  size_t authority = url.find("://");
+  authority = authority == std::string::npos ? 0 : authority + 3;
+  size_t end = url.find_first_of("/?#", authority);
+  if (end == std::string::npos) end = url.size();
+  size_t credentials = url.rfind('@', end);
+  if (credentials != std::string::npos && credentials >= authority) {
+    url.erase(authority, credentials - authority + 1);
+  }
+  return url;
 }
 
 bool OpenrouterUrl(std::string url) {

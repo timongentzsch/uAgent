@@ -19,7 +19,7 @@ namespace uagent {
 
 volatile sig_atomic_t g_streaming = 0;
 volatile sig_atomic_t g_terminal_resized = 0;
-volatile sig_atomic_t g_signal_abort = 0;
+std::atomic_flag g_signal_abort = ATOMIC_FLAG_INIT;
 std::atomic<bool> g_thread_abort{false};
 volatile sig_atomic_t g_child_pgids[kFgMax] = {};
 volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
@@ -145,7 +145,7 @@ void RequestAbort() {
 
 void ClearAbort() {
   g_thread_abort.store(false, std::memory_order_relaxed);
-  g_signal_abort = 0;
+  g_signal_abort.clear(std::memory_order_relaxed);
 }
 
 void NormalizeAbortWake() {
@@ -167,7 +167,7 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
 
 void SigintHandler(int signal_number) {
   if (signal_number == SIGINT && g_streaming) {
-    g_signal_abort = 1;
+    g_signal_abort.test_and_set(std::memory_order_relaxed);
     WakeDescriptor(g_abort_wake_write);
     return;
   }

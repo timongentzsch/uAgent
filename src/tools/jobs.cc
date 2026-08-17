@@ -543,6 +543,21 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
   std::lock_guard<std::mutex> interaction(job->session->interaction);
   std::string output =
       CollectSessionOutput(supervisor, *job, wait_ms, until, context, cap);
+  if (output == "(no new output)") {
+    std::string replay;
+    {
+      std::lock_guard<std::mutex> lock(job->session->mutex);
+      if (job->session->state == ActivityState::kDelivered) {
+        replay = job->session->transcript.Snapshot();
+      }
+    }
+    if (!replay.empty()) {
+      HeadTailBuffer limited(cap > 0 ? static_cast<size_t>(cap)
+                                     : replay.size());
+      limited.Push(replay);
+      output = "[complete transcript replay]\n" + limited.Snapshot();
+    }
+  }
   return ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
                      std::to_string(ActivityId(*job)) + " · log " + job->log +
                      "]\n" + output);
@@ -684,12 +699,30 @@ std::string BgResultHeader(const BgJob& job) {
          FirstLine(job.cmd) + "`]";
 }
 
+std::string BgResultHeader(const BackgroundCompletion& completion) {
+  if (completion.kind == ActivityKind::kTask) {
+    return "[Background result: task id " +
+           std::to_string(completion.activity_id) + "]";
+  }
+  return "[" +
+         std::string(completion.kind == ActivityKind::kDetached
+                         ? "Detached"
+                         : "Background") +
+         " result: activity id " + std::to_string(completion.activity_id) +
+         " `" + FirstLine(completion.command) + "`]";
+}
+
 namespace {
+
+int64_t AutomaticResultCap() {
+  int64_t cap = ToolResultCap();
+  return cap > 0 ? std::min<int64_t>(cap, 6000) : int64_t{6000};
+}
 
 std::vector<std::string> TakeCompleted(
     ProcessSupervisor& supervisor, std::string_view kind,
-    const std::vector<int64_t>* ids = nullptr,
-    std::vector<BackgroundCompletion>* details = nullptr) {
+    const std::vector<int64_t>* ids, std::vector<BackgroundCompletion>* details,
+    int64_t output_cap) {
   std::vector<BgJob> jobs = supervisor.Snapshot();
   std::vector<std::string> notes;
   for (BgJob& candidate : jobs) {
@@ -723,11 +756,11 @@ std::vector<std::string> TakeCompleted(
     if (!job.detached) BgTrackSignal(job.pid, false);
     if (job.detached) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =
-        job.session ? DrainIncremental(job, ToolResultCap()) : std::string();
+        job.session ? DrainIncremental(job, output_cap) : std::string();
     CollectedLog collected =
         job.detached
-            ? CollectedLog{ReadLogTail(job.log, ToolResultCap()), std::nullopt}
-            : CollectCompletedLog(job.log, ToolResultCap());
+            ? CollectedLog{ReadLogTail(job.log, output_cap), std::nullopt}
+            : CollectCompletedLog(job.log, output_cap);
     if (job.detached) RemoveLog(job.log);
     std::string output;
     if (job.session) {
@@ -758,13 +791,15 @@ std::vector<std::string> TakeCompleted(
 
 std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
                                          std::string_view kind) {
-  return TakeCompleted(supervisor, kind);
+  return TakeCompleted(supervisor, kind, nullptr, nullptr,
+                       AutomaticResultCap());
 }
 
 std::vector<BackgroundCompletion> BgTakeCompletedDetails(
     ProcessSupervisor& supervisor, std::string_view kind) {
   std::vector<BackgroundCompletion> details;
-  (void)TakeCompleted(supervisor, kind, nullptr, &details);
+  (void)TakeCompleted(supervisor, kind, nullptr, &details,
+                      AutomaticResultCap());
   return details;
 }
 
@@ -810,7 +845,8 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   std::string output;
   for (;;) {
     uint64_t generation = supervisor.Generation();
-    std::vector<std::string> completed = TakeCompleted(supervisor, {}, &ids);
+    std::vector<std::string> completed =
+        TakeCompleted(supervisor, {}, &ids, nullptr, cap);
     for (std::string& note : completed) {
       if (!output.empty()) output += "\n\n";
       output += note;

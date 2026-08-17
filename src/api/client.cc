@@ -14,6 +14,7 @@
 #include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -169,28 +170,22 @@ Api::~Api() {
 
 void Api::PreserveAssistantReasoning(json& message,
                                      const ChatResult& result) const {
-  if (openrouter_compatible) {
-    if (!result.reasoning_details.empty()) {
-      message["reasoning_details"] = result.reasoning_details;
-    } else if (!result.reasoning.empty()) {
-      message["reasoning"] = result.reasoning;
-    } else if (result.reasoning_details_field) {
-      // Preserve an explicitly emitted empty array when no plaintext replay
-      // state exists; some OpenRouter routes distinguish empty from absent.
-      message["reasoning_details"] = result.reasoning_details;
-    }
-    return;
-  }
-  // DeepSeek's native OpenAI-compatible API requires reasoning_content to be
-  // echoed during tool turns. Only send the extension when the provider
-  // actually emitted it; generic OpenAI endpoints may reject unknown fields.
-  if (result.reasoning_content_field && !result.reasoning.empty()) {
+  if (!result.reasoning_details.empty()) {
+    message["reasoning_details"] = result.reasoning_details;
+  } else if (capabilities.reasoning_replay_text && result.reasoning_field &&
+             !result.reasoning.empty()) {
+    message["reasoning"] = result.reasoning;
+  } else if (result.reasoning_content_field && !result.reasoning.empty()) {
     message["reasoning_content"] = result.reasoning;
+  } else if (result.reasoning_details_field) {
+    // Preserve an explicitly emitted empty array: absent and empty can carry
+    // different continuation semantics on OpenAI-compatible routes.
+    message["reasoning_details"] = result.reasoning_details;
   }
 }
 
-std::string Api::RequestModel() const {
-  if (!openrouter_compatible || config.openrouter_variant.empty()) return model;
+std::string Api::CatalogModel() const {
+  if (!capabilities.model_variants) return model;
   std::string base = model;
   bool stripped = true;
   while (stripped) {
@@ -203,6 +198,14 @@ std::string Api::RequestModel() const {
       break;
     }
   }
+  return base;
+}
+
+std::string Api::RequestModel() const {
+  std::string base = CatalogModel();
+  if (!capabilities.model_variants || config.openrouter_variant.empty()) {
+    return base;
+  }
   return base + ":" + config.openrouter_variant;
 }
 
@@ -212,7 +215,7 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   if (web_available) *web_available = false;
   json body = {
       {"model", RequestModel()}, {"messages", messages}, {"stream", true}};
-  if (native_tools && !tool_schemas.empty()) {
+  if (capabilities.native_tools && !tool_schemas.empty()) {
     body["tools"] = tool_schemas;
     for (const json& tool : tool_schemas) {
       if (web_available && tool.is_object() && tool.contains("function") &&
@@ -221,31 +224,29 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
         *web_available = true;
       }
     }
-    if (parallel_tools) body["parallel_tool_calls"] = true;
+    if (capabilities.parallel_tools) body["parallel_tool_calls"] = true;
   }
-  // OpenRouter always includes usage in the final SSE event; its
-  // stream_options.include_usage switch is deprecated and adds no value.
-  if (include_usage && !openrouter_compatible) {
+  if (capabilities.stream_usage_option) {
     body["stream_options"] = {{"include_usage", true}};
   }
   int64_t max_tokens = MaxOutputTokens();
   if (max_tokens > 0) {
-    body[OpenaiUrl(base_url) ? "max_completion_tokens" : "max_tokens"] =
-        max_tokens;
+    body[capabilities.max_completion_tokens ? "max_completion_tokens"
+                                            : "max_tokens"] = max_tokens;
   }
   if (!reasoning_effort.empty()) {
-    if (openrouter_compatible) {
+    if (capabilities.reasoning_object) {
       body["reasoning"] = {{"effort", reasoning_effort}};
     } else {
       body["reasoning_effort"] = reasoning_effort;
     }
   }
-  if (openrouter_compatible) {
-    if (!session_id.empty()) body["session_id"] = session_id;
-    if (!config.openrouter_provider.empty()) {
-      body["provider"] = {{"order", json::array({config.openrouter_provider})},
-                          {"allow_fallbacks", config.openrouter_fallbacks}};
-    }
+  if (capabilities.session_passthrough && !session_id.empty()) {
+    body["session_id"] = session_id;
+  }
+  if (capabilities.provider_routing && !config.openrouter_provider.empty()) {
+    body["provider"] = {{"order", json::array({config.openrouter_provider})},
+                        {"allow_fallbacks", config.openrouter_fallbacks}};
   }
   return body;
 }
@@ -386,15 +387,13 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.last_byte = ctx.started;
   ctx.first_event_timeout_s = config.first_event_timeout_s;
   ctx.idle_timeout_s = config.stream_idle_timeout_s;
-  ctx.render_output = render_stream && render_output;
-  ctx.full_reasoning = full_reasoning;
   ctx.response_cap = ResponseCap();
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
   bool headers_ok = headers.Add("Content-Type: application/json") &&
                     headers.Add("Authorization: Bearer " + api_key) &&
                     headers.Add("Accept: text/event-stream");
-  if (openrouter_compatible && !session_id.empty()) {
+  if (capabilities.session_passthrough && !session_id.empty()) {
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }
   if (!headers_ok) {
@@ -418,9 +417,9 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   }
 
   std::string activity = web_available ? "working · web available" : "working";
-  TerminalSpinner spinner(ctx.render_output, SpinnerLabel(activity),
-                          turn_started);
-  ctx.spinner = &spinner;
+  ResponseObservation observation(render_stream && render_output,
+                                  full_reasoning, std::move(activity),
+                                  turn_started);
 
   CURLcode rc = CURLE_OK;
   bool cancelled =
@@ -428,13 +427,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
   ctx.Finish();
-  // Completed final SSE data may itself contain the first visible event, so
-  // drain it before stopping the transient activity row.
-  ctx.BeginOutput();
+  capabilities.Observe(res);
   if (ctx.show == StreamCtx::Show::kUndecided && !res.content.empty()) {
     ctx.OutputText(res.content);
   }
-  if (ctx.render_output) ctx.FinishOutput();
   if (!ctx.timeout_reason.empty()) {
     res.error = ctx.timeout_reason;
     res.retryable = true;
@@ -455,6 +451,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     json error_response = json::parse(ctx.error_body, nullptr, false);
     if (error_response.is_object() && error_response.contains("error")) {
       res.retryable = ApplyRemoteError(error_response["error"], res);
+    }
+    if (res.http_status == 413 &&
+        res.remote_error_kind == RemoteErrorKind::kNone) {
+      res.remote_error_kind = RemoteErrorKind::kContextLengthExceeded;
     }
     res.error = "HTTP " + std::to_string(res.http_status) + ": " +
                 JsonErrorMessage(error_response, std::move(ctx.error_body));

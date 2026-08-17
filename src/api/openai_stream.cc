@@ -98,9 +98,16 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
 
   json value = json::parse(payload, nullptr, false);
   if (value.is_discarded()) return delta;
-  if (value.contains("error")) {
-    result.retryable = ApplyRemoteError(value["error"], result);
-    result.error = JsonErrorMessage(value, "stream failed");
+  json nested;
+  const json* envelope = &value;
+  if (!value.contains("error") && value.contains("message") &&
+      value["message"].is_string()) {
+    nested = json::parse(value["message"].get<std::string>(), nullptr, false);
+    if (nested.is_object()) envelope = &nested;
+  }
+  if (envelope->contains("error")) {
+    result.retryable = ApplyRemoteError((*envelope)["error"], result);
+    result.error = JsonErrorMessage(*envelope, "stream failed");
     return delta;
   }
   if (value.contains("usage") && !value["usage"].is_null()) {
@@ -145,6 +152,7 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   }
   if (event_delta.contains("reasoning") &&
       event_delta["reasoning"].is_string()) {
+    result.reasoning_field = true;
     direct_reasoning = event_delta["reasoning"].get<std::string>();
   }
   if (direct_reasoning.empty() && event_delta.contains("reasoning_content") &&

@@ -5,6 +5,7 @@
 // The text-protocol fallback used when a server rejects native `tools`,
 // and the system prompt.
 
+#include <cctype>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -65,21 +66,65 @@ inline bool ParseTextToolResult(const std::string& content, std::string& name,
   return true;
 }
 
-// A summarizer has no tools. Reject provider-internal tool syntax if a model
-// nevertheless imitates one from the conversation instead of returning prose.
-// This is intentionally detection-only: foreign protocols must never become
-// another executable tool-call surface.
+// Reject any structured tag whose normalized tag name contains `tool` followed
+// by `call`. This is detection-only and deliberately provider-agnostic: it
+// recognizes unseen delimiter variants without turning them into executable
+// syntax. Markdown code examples are ignored.
 inline bool ContainsForeignToolCallMarkup(const std::string& content) {
-  std::string lower = AsciiLower(content);
-  bool angle_markup = lower.find('<') != std::string::npos &&
-                      lower.find('>') != std::string::npos;
-  if (!angle_markup) return false;
-  return (lower.find("dsml") != std::string::npos &&
-          lower.find("tool_call") != std::string::npos) ||
-         lower.find("<tool_call") != std::string::npos ||
-         lower.find("<|tool_call") != std::string::npos ||
-         lower.find("tool_calls_section_begin") != std::string::npos ||
-         lower.find("tool▁call") != std::string::npos;
+  bool fenced = false;
+  bool inline_code = false;
+  bool line_start = true;
+  for (size_t index = 0; index < content.size();) {
+    if (line_start) {
+      size_t first = content.find_first_not_of(" \t", index);
+      if (first == std::string::npos) return false;
+      if (content.compare(first, 3, "```") == 0 ||
+          content.compare(first, 3, "~~~") == 0) {
+        fenced = !fenced;
+      }
+      line_start = false;
+    }
+    char current = content[index];
+    if (current == '\n' || current == '\r') {
+      line_start = true;
+      inline_code = false;
+      ++index;
+      continue;
+    }
+    if (fenced) {
+      ++index;
+      continue;
+    }
+    if (current == '`') {
+      inline_code = !inline_code;
+      ++index;
+      continue;
+    }
+    if (inline_code || current != '<') {
+      ++index;
+      continue;
+    }
+    size_t close = content.find('>', index + 1);
+    if (close == std::string::npos || close - index > 256) {
+      ++index;
+      continue;
+    }
+    std::string normalized;
+    normalized.reserve(close - index);
+    for (size_t at = index + 1; at < close; ++at) {
+      unsigned char byte = static_cast<unsigned char>(content[at]);
+      if (byte < 128 && isalnum(byte)) {
+        normalized.push_back(static_cast<char>(tolower(byte)));
+      }
+    }
+    size_t tool = normalized.find("tool");
+    if (tool != std::string::npos &&
+        normalized.find("call", tool + 4) != std::string::npos) {
+      return true;
+    }
+    index = close + 1;
+  }
+  return false;
 }
 
 // A response that is usable as evidence rather than as a step: real text, and
@@ -173,10 +218,10 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
   std::string prompt;
   if (FindTool(tools, "activity_output") && FindTool(tools, "activity_wait")) {
     prompt +=
-        " Background results arrive automatically. Inspect activity output for "
-        "progress or readiness; wait only when the next step needs the result "
-        "and no useful work remains. Before starting a detached service, "
-        "inspect "
+        " Background completion is observational and does not start a model "
+        "turn. Inspect activity output for progress or readiness; wait only "
+        "when the next step needs the result and no useful work remains. "
+        "Before starting a detached service, inspect "
         "current activities; reuse a viable instance or stop a superseded one. "
         "A readiness timeout alone does not prove the service failed.";
   }

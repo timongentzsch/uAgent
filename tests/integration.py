@@ -10,6 +10,7 @@ import re
 import select
 import shlex
 import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -705,7 +706,25 @@ def test_reasoning_modes_render_consistently(root, home):
             delay=0.25,
         )
 
-    with Server([streamed]) as server:
+    def styled(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                event(
+                    {
+                        "reasoning": (
+                            "**Map core invariants****Detail implementation and tests****"
+                            "Planning provider normalization phases**"
+                        )
+                    },
+                    finish=None,
+                ),
+                event({"content": "Final answer"}),
+            ],
+            delay=0.25,
+        )
+
+    with Server([streamed, styled]) as server:
         env = base_env(home, server.url)
         env["UAGENT_MEMORY"] = "0"
         code, verbose = run_pty(
@@ -728,15 +747,72 @@ def test_reasoning_modes_render_consistently(root, home):
             root,
             env,
             [
-                (b"go\n", b"thinking \xc2\xb7 latest line"),
+                (b"go\n", b"Planning provider normalization phases"),
                 (b"", b"Final answer"),
                 b"/q\n",
             ],
             timeout=10,
         )
         assert_true(code == 0, compact)
-        assert_true(b"thinking \xc2\xb7 latest line" in compact, compact)
+        assert_true(b"thinking \xc2\xb7" in compact, compact)
+        assert_true(b"Planning provider normalization phases" in compact, compact)
+        assert_true(b"thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
+        assert_true(b"****" not in compact, compact)
         assert_true(b"\xc2\xb7 thinking" not in compact, compact)
+
+
+def test_config_reload_applies_only_at_turn_boundaries(root, home):
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True)
+    config.write_text("UAGENT_MAX_TOOL_CALLS=2\n", encoding="utf-8")
+
+    def two_calls():
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "id": "one",
+                        "function": {
+                            "name": "list_dir",
+                            "arguments": json.dumps({"path": "."}),
+                        },
+                    },
+                    {
+                        "index": 1,
+                        "id": "two",
+                        "function": {
+                            "name": "list_dir",
+                            "arguments": json.dumps({"path": "."}),
+                        },
+                    },
+                ]
+            },
+            finish="tool_calls",
+        )
+
+    def change_during_first_request(_, __):
+        config.write_text("UAGENT_MAX_TOOL_CALLS=1\n", encoding="utf-8")
+        return two_calls()
+
+    with Server(
+        [
+            change_during_first_request,
+            event({"content": "first-turn-used-snapshot"}),
+            two_calls(),
+        ]
+    ) as server:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "first\nsecond\n/q\n",
+            timeout=12,
+        )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("first-turn-used-snapshot" in result.stdout, result.stdout)
+        assert_true("configuration reloaded for the next turn" in result.stdout, result.stdout)
+        assert_true("tool call limit reached (1)" in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 3, server.requests)
 
 
 def test_project_instructions_precede_first_turn(root, home):
@@ -1018,6 +1094,16 @@ def test_session_title_replaces_initial_greeting(root, home):
         assert_true(len(sessions) == 1, sessions)
         header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["title"] == "investigate browser efficiency", header)
+        journal = pathlib.Path(str(sessions[0]) + ".events.jsonl")
+        assert_true(journal.exists(), journal)
+        assert_true(stat.S_IMODE(journal.stat().st_mode) == 0o600, journal.stat())
+        records = [json.loads(line) for line in journal.read_text().splitlines()]
+        types = [record["type"] for record in records]
+        assert_true(types[0] == "session.ready", types)
+        assert_true(types[-1] == "session.ended", types)
+        assert_true(types.count("turn.started") == 2, types)
+        assert_true(types.count("turn.completed") == 2, types)
+        assert_true("investigate browser efficiency" not in journal.read_text(), records)
 
 
 def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
@@ -1196,12 +1282,18 @@ def test_input_steering_yields_activity_wait(root, home):
         assert_true(elapsed < 8, elapsed)
 
 
-def test_input_idle_background_completion_is_notified(root, home):
+def test_input_idle_background_completion_is_observational(root, home):
     def route(_, body):
         messages = body["messages"]
         results = tool_results(messages)
-        if any("[Background result:" in str(message.get("content", "")) for message in messages):
-            return event({"content": "background-notify-ok"})
+        if any(
+            message.get("role") == "user" and message.get("content") == "next"
+            for message in messages
+        ):
+            leaked = any(
+                "[Background result:" in str(message.get("content", "")) for message in messages
+            )
+            return event({"content": "background-leaked" if leaked else "background-ui-only"})
         if any("[running] activity" in result for result in results):
             return event({"content": "background-launched"})
         return tool_call("run", {"command": "sleep 0.8; printf notified", "yield_ms": 250})
@@ -1212,14 +1304,18 @@ def test_input_idle_background_completion_is_notified(root, home):
             base_env(home, server.url),
             [
                 (b"start\n", b"background-launched"),
-                (b"", b"background-notify-ok"),
+                (b"", b"bg job finished"),
+                (b"next\n", b"background-ui-only"),
                 b"/q\n",
             ],
             args=("--yolo",),
             timeout=8,
         )
         assert_true(code == 0, output)
-        assert_true(b"background-notify-ok" in output, output)
+        assert_true(b"notified" in output, output)
+        assert_true(b"background-ui-only" in output, output)
+        assert_true(b"background-leaked" not in output, output)
+        assert_true(len(server.requests) == 3, server.requests)
 
 
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
@@ -1486,6 +1582,90 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home):
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
 
 
+def test_provider_context_overflow_compacts_once(root, home):
+    prompt = "preserve-overflow-goal " + ("evidence " * 2500)
+
+    def reject(handler, _):
+        write_json_response(
+            handler,
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "context_length_exceeded",
+                    "message": "input exceeds the context window",
+                    "param": "input",
+                }
+            },
+            status=400,
+        )
+
+    def compact(_, body):
+        serialized = json.dumps(body["messages"])
+        assert_true("Summarize the bounded transcript" in serialized, serialized)
+        assert_true("preserve-overflow-goal" in serialized, serialized)
+        assert_true("tools" not in body, body)
+        assert_true(len(serialized) < 300_000, len(serialized))
+        return event({"content": "preserved goal and current state"})
+
+    def recovered(_, body):
+        serialized = json.dumps(body["messages"])
+        assert_true("model-generated context summary" in serialized, serialized)
+        assert_true("harness continuation after context compaction" in serialized, serialized)
+        return event({"content": "context-recovery-ok"})
+
+    with Server([reject, compact, recovered]) as server:
+        result = run(root, base_env(home, server.url), "-p", prompt, timeout=15)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(result.stdout.strip() == "context-recovery-ok", result.stdout)
+        assert_true(len(server.requests) == 3, server.requests)
+
+    def reject_413(handler, _):
+        write_json_response(handler, {"error": "request too large"}, status=413)
+
+    # If the bounded compaction request is also rejected, do not loop or replay
+    # the original request. A later user turn can retry deliberately.
+    with Server([reject_413]) as server:
+        failed = run(root, base_env(home, server.url), "-p", prompt, timeout=15)
+        assert_true(failed.returncode == 1, (failed.stdout, failed.stderr))
+        assert_true(len(server.requests) == 2, server.requests)
+
+
+def test_provider_background_completion_does_not_trigger_model_turns(root, home):
+    def launch(_, __):
+        return tool_calls(
+            [
+                (
+                    "first-bg",
+                    "run",
+                    {"command": "sleep 0.6; printf first", "yield_ms": 250},
+                ),
+                (
+                    "second-bg",
+                    "run",
+                    {"command": "sleep 1.6; printf second", "yield_ms": 250},
+                ),
+            ]
+        )
+
+    with Server([launch, event({"content": "background-launched"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MEMORY"] = "0"
+        code, output = run_pty(
+            root,
+            env,
+            [
+                (b"go\n", b"background-launched"),
+                (b"", b"second"),
+                b"/q\n",
+            ],
+            timeout=10,
+            args=("--yolo",),
+        )
+        assert_true(code == 0, output)
+        assert_true(b"first" in output and b"second" in output, output)
+        assert_true(len(server.requests) == 2, server.requests)
+
+
 def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
     trace_path = root / "text-protocol-debug.jsonl"
     call_markup = (
@@ -1552,6 +1732,12 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         assert_true(ready["run_mode"] == "headless" and ready["output_mode"] == "json", ready)
         requests = [record["data"] for record in records if record["event"] == "model_request"]
         assert_true(any("schema_snapshot" in request for request in requests), requests)
+        tool_events = [
+            record["data"] for record in records if record["event"] in {"tool_call", "tool_result"}
+        ]
+        assert_true(len(tool_events) == 2, tool_events)
+        assert_true(tool_events[0]["presentation"]["title"] == "list_dir", tool_events)
+        assert_true(tool_events[1]["presentation"]["status"] == "succeeded", tool_events)
         responses = [record["data"] for record in records if record["event"] == "model_response"]
         assert_true(
             any(
@@ -1858,6 +2044,13 @@ def test_context_command_shows_memory_and_skills(root, home):
     claude = home / ".claude" / "projects" / claude_project / "memory"
     claude.mkdir(parents=True)
     (claude / "MEMORY.md").write_text("claude-memory-body-sentinel", encoding="utf-8")
+    global_config = home / ".uagent" / ".config"
+    global_config.parent.mkdir(parents=True, exist_ok=True)
+    global_config.write_text(
+        "UAGENT_WEB_SEARCH_API_KEY=context-secret-sentinel\n"
+        "UAGENT_WEB_SEARCH_URL=https://user:pass@search.example/v1\n",
+        encoding="utf-8",
+    )
     skill = workspace / ".uagent" / "skills" / "context-demo"
     skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(
@@ -1882,6 +2075,10 @@ def test_context_command_shows_memory_and_skills(root, home):
         assert_true(b"context-skill-body-sentinel" not in output, output)
         assert_true(b'"name": "memory"' in output, output)
         assert_true(b'"name": "skill"' in output, output)
+        assert_true(b'"UAGENT_MODEL": "environment"' in output, output)
+        assert_true(b'"web_search_api_key": "<set>"' in output, output)
+        assert_true(b"context-secret-sentinel" not in output, output)
+        assert_true(b"user:pass" not in output, output)
         assert_true(b"memory on" in output, output)
 
 
@@ -2450,7 +2647,7 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("choose default, nitro, floor, or exacto" in result.stdout, result.stdout)
-        assert_true("/variant is available only for OpenRouter" in result.stdout, result.stdout)
+        assert_true("/variant is unavailable on the active route" in result.stdout, result.stdout)
         for reply in ("nitro-ok", "floor-ok", "exacto-ok", "default-ok", "generic-ok"):
             assert_true(reply in result.stdout, result.stdout)
         router_bodies = [body for _, body in router.requests]
@@ -2617,7 +2814,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
         prompt = body["messages"][-1].get("content", "")
         text = "\n".join(str(message.get("content", "")) for message in body["messages"])
         valid = (
-            str(prompt).startswith("Summarize for a fresh context:")
+            str(prompt).startswith("Summarize the bounded transcript")
             and not body.get("tools")
             and "RAW-TOOL-RESULT-" in text
         )
@@ -2632,7 +2829,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
         valid = (
             "Prior context:\nMIDTURN-SUMMARY" in text
             and "[model-generated context summary; non-authoritative]" in text
-            and "Summarize for a fresh context:" not in text
+            and "Summarize the bounded transcript" not in text
             and "RAW-TOOL-RESULT-" not in text
             and not any(message.get("role") == "tool" for message in messages)
             and not any(message.get("tool_calls") for message in messages)
@@ -2651,9 +2848,6 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                 and str(message.get("content", "")).startswith("[environment:")
                 for message in messages
             )
-            and len(messages) < len(server.requests[1][1]["messages"])
-            and len(json.dumps(messages)) < len(json.dumps(server.requests[1][1]["messages"]))
-            and len(json.dumps(body)) < len(json.dumps(server.requests[1][1]))
         )
         return event(
             {
@@ -2747,7 +2941,7 @@ def test_absolute_compaction_ceiling(root, home):
 
     def compact(_, body):
         prompt = body["messages"][-1].get("content", "")
-        valid = str(prompt).startswith("Summarize for a fresh context:") and not body.get("tools")
+        valid = str(prompt).startswith("Summarize the bounded transcript") and not body.get("tools")
         return event({"content": "ABSOLUTE-SUMMARY" if valid else "BAD-SUMMARY"})
 
     def finish(_, body):

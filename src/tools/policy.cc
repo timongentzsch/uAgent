@@ -80,9 +80,9 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
       return true;
     }
     bool allowed = (tool.capabilities & ~policy.allowed) == 0;
-    bool allowlisted_run = tool.name == "run" && !policy.run_allowlist.empty();
+    bool allowlisted_run = tool.command_policy && !policy.run_allowlist.empty();
     if (!allowed && !allowlisted_run) return true;
-    if (tool.name != "run" || policy.run_allowlist.empty()) return false;
+    if (!tool.command_policy || policy.run_allowlist.empty()) return false;
 
     tool.validate = [policy](const json& args) {
       if (!ExactRunAllowed(policy, args)) {

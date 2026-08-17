@@ -6,8 +6,10 @@
 // fields live on RuntimeConfig; the env-to-field tables live in env.cc.
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "include/core/json.h"
 
@@ -99,9 +101,12 @@ int64_t McpLogDays();
 int64_t McpLogFiles();
 int64_t TerminalRecordDays();
 
-// Core request, MCP, and persistence settings, parsed once after
-// ~/.uagent/.config is loaded.
+// Core request, MCP, and persistence settings. Bootstrap builds one snapshot;
+// a validated turn-boundary reload may replace explicitly safe fields.
+std::string RuntimeConfigField(std::string_view environment);
+
 struct RuntimeConfig {
+  using Values = std::map<std::string, std::string>;
   int64_t first_event_timeout_s = 300;
   int64_t stream_idle_timeout_s = 300;
   int64_t request_timeout_s = 600;
@@ -113,7 +118,9 @@ struct RuntimeConfig {
   // Zero disables the aggregate per-turn tool-call budget. Individual tools,
   // repeated identical calls, time, and cost remain bounded.
   int64_t max_tool_calls = 0;
-  int64_t max_turn_seconds = 3600;
+  // Zero disables the aggregate wall-clock turn deadline. Request, stream,
+  // tool, repetition, cost, and user-interrupt limits remain independent.
+  int64_t max_turn_seconds = 0;
   // Zero disables the per-turn reported-cost budget. Users may opt into a
   // positive turn limit or set a separate cumulative session budget.
   double max_turn_cost = 0;
@@ -150,8 +157,11 @@ struct RuntimeConfig {
   bool memory_generate = true;
 
   static RuntimeConfig FromEnvironment();
+  static RuntimeConfig FromValues(const Values& values);
+  std::vector<std::string> ApplyTurnReload(const RuntimeConfig& next);
 
   json DiagnosticJson() const;
+  json ProvenanceJson(const json& env_sources) const;
 };
 
 }  // namespace uagent

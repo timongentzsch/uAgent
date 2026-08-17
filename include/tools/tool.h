@@ -118,6 +118,8 @@ inline ToolResult ToolTimedOut(std::string output) {
 struct ToolContext {
   std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::time_point::max();
+  bool image_input_available = true;
+  bool image_fallback_available = false;
   int64_t timeout_s = 0;
 
   bool Expired() const {
@@ -191,6 +193,14 @@ struct Tool {
   bool available_in_lean = true;    // omit implementation-only schemas in tasks
   bool retain_output = false;       // keep durable procedure/state in context
   bool dedupe_output = false;       // collapse verified recent duplicate output
+  bool verbatim_label = false;      // preserve full call label in compact UI
+  bool serial_media = false;    // suppress activity animation while rendering
+  bool replay_image = false;    // replay a successful historical local image
+  bool command_policy = false;  // receives the approved-command allowlist
+  bool delegates = false;       // contributes delegation runtime context
+  bool memory_store = false;    // retained only when memory is enabled
+  int64_t blocking_wait_default_ms =
+      -1;  // >=0: wait_ms is intentional blocking
   enum class Visibility {
     kAlways,
     kDetachedTerminal,

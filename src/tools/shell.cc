@@ -433,9 +433,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   BgTrackSignal(pid, true);
   if (is_task) {
     return {ToolSuccess("[started] task id " + std::to_string(activity_id) +
-                        "; result will be delivered automatically; inspect "
-                        "activity output for progress/readiness, or wait only "
-                        "when the next step is blocked")};
+                        "; completion is added to the next natural model call "
+                        "without starting one; inspect activity output for "
+                        "progress/readiness, or wait when the next step is "
+                        "blocked")};
   }
   std::string initial_output;
   {
@@ -445,8 +446,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   std::string output = "[running] activity " + std::to_string(activity_id) +
                        (handed_off ? " moved to background; " : "; ") +
-                       "result will be delivered automatically; use activity "
-                       "output to inspect it";
+                       "completion is observational; use activity output to "
+                       "inspect it";
   if (!initial_output.empty()) output += "\n" + initial_output;
   return {ToolSuccess(std::move(output))};
 }

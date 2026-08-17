@@ -14,7 +14,7 @@
 #include "include/app/bootstrap.h"
 #include "include/app/options.h"
 #include "include/cli.h"
-#include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
@@ -50,7 +50,7 @@ int Fail(const Options& options, const std::string& error, int exit_code) {
   json envelope = HeadlessResult("", error, json::array(), Usage{},
                                  json::object(), exit_code);
   if (options.json_stream) {
-    Events().Emit("error", std::move(envelope));
+    Emit(Event{EventId::kError, std::move(envelope)});
   } else if (options.json) {
     printf("%s\n", JsonDump(envelope).c_str());
   } else {
@@ -69,9 +69,11 @@ int Main(int argc, char** argv) {
                : 2;
   }
   InitializeProcess();
+  Observability observability;
+  SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);
   if (!parsed.Ok()) {
-    if (parsed.options.json_stream) Events().Start();
+    if (parsed.options.json_stream) observability.StartJsonStream();
     return Fail(parsed.options, parsed.error, 2);
   }
   if (parsed.action == OptionsAction::kHelp) {
@@ -84,13 +86,25 @@ int Main(int argc, char** argv) {
   }
 
   const Options reporting = parsed.options;
-  if (reporting.json_stream && !Events().Start()) {
+  observability.EnableJournal(reporting.prompt.empty());
+  if (reporting.json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;
   }
-  BootstrapResult boot = Bootstrap(std::move(parsed.options), argv[0]);
-  if (!boot.Ok()) return Fail(reporting, boot.error, boot.exit_code);
-  return RunApplication(*boot.context);
+  BootstrapResult boot =
+      Bootstrap(std::move(parsed.options), argv[0], observability);
+  if (!boot.Ok()) {
+    int code = Fail(reporting, boot.error, boot.exit_code);
+    boot.context.reset();
+    observability.Shutdown();
+    return code;
+  }
+  int code = RunApplication(*boot.context);
+  // Direct owners stop in deterministic reverse order: application/runtime,
+  // then observational sinks, then process-level signal state at exit.
+  boot.context.reset();
+  observability.Shutdown();
+  return code;
 }
 
 }  // namespace uagent

@@ -4,12 +4,14 @@
 #define UAGENT_INCLUDE_API_RETRY_H_
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <string>
 #include <string_view>
 
 #include "include/api/types.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -19,24 +21,138 @@ inline bool RetryableHttpStatus(int64_t status) {
   return status == 408 || status == 409 || status == 429 || status >= 500;
 }
 
+inline constexpr std::array<std::string_view, 18> kTransientErrors = {
+    "server_error",
+    "server_is_overloaded",
+    "slow_down",
+    "service_unavailable",
+    "service_unavailable_error",
+    "provider_unavailable",
+    "provider_overloaded",
+    "provider_returned_error",
+    "model_at_capacity",
+    "internal_error",
+    "internal_server_error",
+    "rate_limit_error",
+    "rate_limit_exceeded",
+    "too_many_requests",
+    "resource_exhausted",
+    "timeout",
+    "timeout_error",
+    "request_timeout",
+};
+
+inline constexpr std::array<std::string_view, 7> kContextErrors = {
+    "context_length_exceeded",
+    "context_window_exceeded",
+    "model_context_window_exceeded",
+    "context_overflow",
+    "prompt_too_long",
+    "request_too_large",
+    "input_too_long",
+};
+
+inline bool ErrorNameIn(std::string_view value, const auto& names) {
+  return std::find(names.begin(), names.end(), value) != names.end();
+}
+
 inline bool RetryableRemoteError(std::string_view type, std::string_view code) {
-  return type == "server_error" || type == "service_unavailable_error" ||
-         type == "rate_limit_error" || type == "timeout_error" ||
-         type == "timeout" || type == "provider_unavailable" ||
-         type == "provider_overloaded" || code == "server_error" ||
-         code == "server_is_overloaded" || code == "model_at_capacity" ||
-         code == "rate_limit_exceeded" || code == "request_timeout";
+  return ErrorNameIn(type, kTransientErrors) ||
+         ErrorNameIn(code, kTransientErrors);
+}
+
+inline bool RemoteMessageCode(std::string_view message, std::string_view code) {
+  for (size_t at = message.find(code); at != std::string_view::npos;
+       at = message.find(code, at + 1)) {
+    size_t end = at + code.size();
+    if (at > 0 && end < message.size() &&
+        ((message[at - 1] == '\'' && message[end] == '\'') ||
+         (message[at - 1] == '"' && message[end] == '"'))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Condensed port of opencode's isContextOverflow() matcher
+// (packages/llm/src/provider-error.ts): one distinctive substring per
+// provider message shape, with opencode's throttling exclusions applied
+// first. HTTP 413 is already mapped in client.cc.
+inline constexpr std::array<std::string_view, 25> kContextOverflowPhrases = {
+    "prompt is too long",
+    "request_too_large",
+    "input is too long",
+    "exceeds the context window",
+    "maximum context length",
+    "input token count",
+    "max tokens allowed",
+    "maximum prompt length",
+    "reduce the length of the messages",
+    "maximum allowed input length",
+    "is longer than the model",
+    "exceeds the limit of",
+    "exceeds the available context size",
+    "greater than the context length",
+    "context window exceeds",
+    "exceeded model token limit",
+    "context_length_exceeded",
+    "context length exceeded",
+    "request entity too large",
+    "context length is only",
+    "exceeds the context length",
+    "configured context size",
+    "model_context_window_exceeded",
+    "too many tokens",
+    "token limit exceeded",
+};
+
+inline constexpr std::array<std::string_view, 4> kContextOverflowExclusions = {
+    "throttling error",
+    "service unavailable",
+    "rate limit",
+    "too many requests",
+};
+
+inline bool SemanticContextOverflow(std::string_view message) {
+  std::string text(message);
+  for (std::string_view phrase : kContextOverflowExclusions) {
+    if (ContainsCaseInsensitive(text, std::string(phrase))) return false;
+  }
+  for (std::string_view phrase : kContextOverflowPhrases) {
+    if (ContainsCaseInsensitive(text, std::string(phrase))) return true;
+  }
+  return false;
 }
 
 inline bool RetryableRemoteMessage(std::string_view message) {
-  auto has = [&](std::string_view code) {
-    return message.find("'" + std::string(code) + "'") !=
-               std::string_view::npos ||
-           message.find("\"" + std::string(code) + "\"") !=
-               std::string_view::npos;
-  };
-  return has("server_is_overloaded") || has("model_at_capacity") ||
-         has("rate_limit_exceeded") || has("request_timeout");
+  return std::any_of(
+      kTransientErrors.begin(), kTransientErrors.end(),
+      [&](std::string_view code) { return RemoteMessageCode(message, code); });
+}
+
+inline const char* RemoteErrorKindName(RemoteErrorKind kind) {
+  switch (kind) {
+    case RemoteErrorKind::kNone:
+      return "none";
+    case RemoteErrorKind::kTransient:
+      return "transient";
+    case RemoteErrorKind::kContextLengthExceeded:
+      return "context_length_exceeded";
+  }
+  return "none";
+}
+
+inline bool ContextLengthError(std::string_view type, std::string_view code) {
+  return ErrorNameIn(type, kContextErrors) || ErrorNameIn(code, kContextErrors);
+}
+
+inline RemoteErrorKind ClassifyRemoteError(std::string_view type,
+                                           std::string_view code) {
+  if (ContextLengthError(type, code)) {
+    return RemoteErrorKind::kContextLengthExceeded;
+  }
+  return RetryableRemoteError(type, code) ? RemoteErrorKind::kTransient
+                                          : RemoteErrorKind::kNone;
 }
 
 // OpenAI-style endpoints put the type/code directly on `error`. OpenRouter's
@@ -63,15 +179,38 @@ inline std::string RemoteErrorCode(const json& error) {
 inline bool ApplyRemoteError(const json& error, ChatResult& result) {
   result.remote_error_type = RemoteErrorType(error);
   result.remote_error_code = RemoteErrorCode(error);
-  return RetryableRemoteError(result.remote_error_type,
-                              result.remote_error_code) ||
-         RetryableRemoteMessage(JsonValue(error, "message", std::string()));
+  std::string message = error.is_string()
+                            ? error.get<std::string>()
+                            : JsonValue(error, "message", std::string());
+  result.remote_error_kind =
+      ClassifyRemoteError(result.remote_error_type, result.remote_error_code);
+  if (result.remote_error_kind == RemoteErrorKind::kNone &&
+      (std::any_of(kContextErrors.begin(), kContextErrors.end(),
+                   [&](std::string_view code) {
+                     return RemoteMessageCode(message, code);
+                   }) ||
+       SemanticContextOverflow(message))) {
+    result.remote_error_kind = RemoteErrorKind::kContextLengthExceeded;
+  }
+  return result.remote_error_kind == RemoteErrorKind::kTransient ||
+         RetryableRemoteMessage(message);
+}
+
+inline bool SafeContextRecovery(const ChatResult& result) {
+  return result.remote_error_kind == RemoteErrorKind::kContextLengthExceeded &&
+         !result.interrupted && !result.semantic_progress &&
+         result.content.empty() && result.reasoning.empty() &&
+         result.reasoning_details.empty() && result.tool_calls.empty() &&
+         result.annotations.empty() &&
+         (result.usage.is_null() || result.usage.empty());
 }
 
 inline bool SafeToRetry(const ChatResult& result) {
   // Reasoning-only progress has no external side effect and is discarded with
   // a failed response. Never replay visible answer text or a completed call.
-  return result.retryable && !result.interrupted && result.content.empty() &&
+  return result.retryable &&
+         result.remote_error_kind != RemoteErrorKind::kContextLengthExceeded &&
+         !result.interrupted && result.content.empty() &&
          result.tool_calls.empty() && result.annotations.empty() &&
          result.usage.is_null() &&
          (!result.semantic_progress || !result.reasoning.empty());

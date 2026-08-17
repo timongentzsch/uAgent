@@ -229,6 +229,9 @@ void Conversation::PopBack() {
 
 void Conversation::Set(size_t index, json message, MessageKind kind) {
   NormalizeRole(message, kind);
+  // Byte-identical replacement changes nothing observable: leave the cached
+  // prefix untouched instead of rewriting message zero on every refresh.
+  if (messages_[index] == message && kinds_[index] == kind) return;
   messages_[index] = std::move(message);
   kinds_[index] = kind;
 }

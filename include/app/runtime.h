@@ -28,6 +28,7 @@ class CurlRuntime {
 
 struct AppRuntime {
   explicit AppRuntime(RuntimeConfig parsed);
+  ~AppRuntime();
 
   void Shutdown();
 

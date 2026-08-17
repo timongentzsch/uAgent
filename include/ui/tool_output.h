@@ -6,13 +6,14 @@
 // one bounded line; verbose mode uses normal terminal scrollback.
 
 #include <algorithm>
-#include <cstdio>
-#include <sstream>
 #include <string>
+#include <utility>
 
 #include "include/agent/dispatch.h"
+#include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/presentation.h"
 
 namespace uagent {
 
@@ -38,83 +39,81 @@ inline std::string ToolResultSummary(const ToolResult& result,
   return summary;
 }
 
-inline void PrintToolCall(const CallTask& task, const ToolCall& call,
-                          bool verbose) {
-  std::string prefix = "→ " + task.ordinal + TerminalSafe(call.name);
-  bool full_label = verbose || call.name == "run";
+inline PresentationRecord ToolCallPresentation(const CallTask& task,
+                                               const ToolCall& call,
+                                               bool verbose) {
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolCall;
+  record.id = call.id;
+  record.title = task.ordinal + call.name;
+  bool full_label = verbose || (task.tool && task.tool->verbatim_label);
+  record.verbatim = full_label;
   if (!task.label.empty()) {
     if (full_label && task.label.find('\n') != std::string::npos) {
-      prefix += '\n' + TerminalSafe(task.label);
+      record.detail = task.label;
+      record.multiline = true;
     } else {
-      std::string summary =
-          full_label ? TerminalSafe(task.label)
-                     : TerminalSummary(task.label, prefix.size() + 3);
-      prefix += '(' + summary + ')';
+      record.summary = Utf8Trunc(task.label, size_t{2048});
     }
   }
-  printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
+  return record;
 }
 
-inline void PrintToolDisplay(const std::string& display) {
-  std::istringstream input(display);
-  std::string line;
-  if (!std::getline(input, line)) return;
-  printf("%s•%s %s%s%s\n", DIM(), RST(), BOLD(), TerminalSafe(line).c_str(),
-         RST());
-  while (std::getline(input, line)) {
-    const char* style = DIM();
-    if (!line.empty() && line[0] == '+') style = GREEN();
-    if (!line.empty() && line[0] == '-') style = RED();
-    if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-    printf("%s    %s%s\n", style, TerminalSafe(line).c_str(), RST());
+inline PresentationRecord ToolResultPresentation(
+    const CallTask& task, const ToolCall& call, const std::string& model_output,
+    bool verbose) {
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolResult;
+  record.id = call.id;
+  record.title = task.ordinal + call.name;
+  if (task.result.status == CompletionStatus::kCancelled) {
+    record.status = PresentationStatus::kCancelled;
+  } else if (!task.result.Ok()) {
+    record.status = PresentationStatus::kFailed;
+  } else {
+    record.status = PresentationStatus::kSucceeded;
   }
-}
-
-inline void PrintToolResult(const CallTask& task, const ToolCall& call,
-                            const std::string& model_output, bool verbose) {
+  if (task.result.artifact) {
+    record.artifacts.push_back({"tool-output", task.result.artifact->path,
+                                task.result.artifact->bytes});
+  }
   if (g_tty && task.result.Ok() && !task.result.display.empty()) {
-    PrintToolDisplay(task.result.display);
-    return;
+    record.detail = task.result.display;
+    record.multiline = true;
+    record.change_display = true;
+    return record;
   }
-  const char* style = DIM();
-  if (task.result.status == CompletionStatus::kFailed ||
-      task.result.status == CompletionStatus::kTimedOut) {
-    style = RED();
-  } else if (task.result.status == CompletionStatus::kCancelled) {
-    style = YEL();
-  }
-  std::string prefix = "  ← " + task.ordinal + TerminalSafe(call.name);
+
   std::string shown = verbose
                           ? ModelResultText(task.result, ResultCharLimit(task))
                           : model_output;
   if (verbose && shown.find('\n') != std::string::npos) {
-    std::string status =
-        task.result.Ok()
-            ? ""
-            : " " + std::string(CompletionStatusName(task.result.status));
-    printf("%s%s%s%s\n%s\n", style, prefix.c_str(), status.c_str(), RST(),
-           TerminalSafe(shown).c_str());
-    return;
+    record.detail = shown;
+    record.multiline = true;
+    return record;
   }
   bool truncated = !verbose && model_output.size() < task.result.output.size();
-  std::string output;
   if (verbose && !shown.empty()) {
-    output = TerminalSafe(shown);
+    record.summary = shown;
   } else {
     std::string summary = ToolResultSummary(task.result, shown, truncated);
-    output = verbose ? TerminalSafe(summary)
-                     : TerminalSummary(summary, prefix.size() + 2);
+    std::string prefix = "  ← " + record.title;
+    record.summary = verbose ? std::move(summary)
+                             : TerminalSummary(summary, prefix.size() + 2);
   }
-  printf("%s%s: %s%s\n", style, prefix.c_str(), output.c_str(), RST());
+  return record;
 }
 
 inline void PrintStoredToolResult(const std::string& name,
                                   const std::string& output) {
-  std::string prefix = "  ← " + TerminalSafe(name.empty() ? "tool" : name);
-  std::string summary =
-      ToolResultSummary(ToolResult{}, output, /*truncated=*/false);
-  printf("%s%s: %s%s\n", DIM(), prefix.c_str(),
-         TerminalSummary(summary, prefix.size() + 2).c_str(), RST());
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolResult;
+  record.status = PresentationStatus::kSucceeded;
+  record.title = name.empty() ? "tool" : name;
+  record.summary = TerminalSummary(ToolResultSummary(ToolResult{}, output,
+                                                     /*truncated=*/false),
+                                   record.title.size() + 6);
+  PrintPresentation(record);
 }
 
 }  // namespace uagent

@@ -11,6 +11,8 @@
 #include "include/agent.h"
 #include "include/app/options.h"
 #include "include/app/runtime.h"
+#include "include/core/effective_config.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
 #include "include/providers.h"
@@ -34,10 +36,13 @@ class HeadlessOutput {
 };
 
 struct AppContext {
-  AppContext(RuntimeConfig config, Options parsed_options);
+  AppContext(RuntimeConfig config, ConfigManager config_manager,
+             Options parsed_options, Observability& observation_sink);
 
   CurlRuntime curl;
+  ConfigManager config_manager;
   AppRuntime runtime;
+  Observability& observability;
   Options options;
   ProviderSetup provider;
   ToolPolicy tool_policy;
@@ -54,7 +59,8 @@ struct BootstrapResult {
   bool Ok() const { return context != nullptr; }
 };
 
-BootstrapResult Bootstrap(Options options, const char* executable);
+BootstrapResult Bootstrap(Options options, const char* executable,
+                          Observability& observability);
 int RunApplication(AppContext& context);
 
 inline json HeadlessResult(std::string answer, std::string error, json trace,

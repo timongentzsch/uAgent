@@ -40,6 +40,7 @@ int RunTests() {
   TestPythonTool();
   TestRuntimeOwnershipHelpers();
   TestAgentConfigAllowlist();
+  TestEffectiveConfigReload();
   TestChildEnvironmentPolicy();
   TestModelPreference();
   TestProviderTemplates();
@@ -48,6 +49,7 @@ int RunTests() {
   TestProjectInstructionDiscovery();
   TestMcpContractHelpers();
   TestConversation();
+  TestObservabilityEvents();
   TestWorkspaceScopedSession();
   TestProjectTrustTracksSemanticConfig();
   TestScopedBaseAndMemory();

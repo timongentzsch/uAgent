@@ -163,6 +163,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                    return ToolShowImage(JsonValue(a, "path", ""));
                  }));
     show_image.capabilities = Capability(ToolCapability::kInspect);
+    show_image.serial_media = true;
+    show_image.replay_image = true;
   }
 
   // read_file only handles text. This puts the bytes themselves in front of
@@ -172,8 +174,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       "Add an image/document to model context when read_file cannot parse it.",
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"}},"required":["path"]})json"),
-      [](const json& a, const ToolContext&) {
-        return Attachments().Add(JsonValue(a, "path", ""));
+      [](const json& a, const ToolContext& context) {
+        return Attachments().Add(JsonValue(a, "path", ""),
+                                 context.image_input_available,
+                                 context.image_fallback_available);
       }));
   attach.parallel_safe = true;
   attach.capabilities = Capability(ToolCapability::kInspect);
@@ -225,6 +229,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
+  run.verbatim_label = true;
+  run.command_policy = true;
 
   Tool& python = AddTool(
       tools,
@@ -285,6 +291,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   activity_output.parallel_safe = true;
   activity_output.capabilities = Capability(ToolCapability::kInspect);
   activity_output.result_chars = 6000;
+  activity_output.blocking_wait_default_ms = 0;
   activity_output.visibility = Tool::Visibility::kDetachedTerminal;
   activity_output.validate = [](const json& a) {
     if (a.contains("until") && (!a.contains("id") || !a.contains("wait_ms"))) {
@@ -348,8 +355,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       tools,
       MakeTool("activity_wait",
                "Block for any/all selected command or task activities only "
-               "when their result is required for the next step. Background "
-               "results otherwise arrive automatically. Omit ids for all "
+               "when their result is required for the next step. Completion "
+               "does not start a model turn. Omit ids for all "
                "current non-detached activities.",
                schema(R"json({"type":"object","properties":{
                     "ids":{"type":"array","maxItems":20,
@@ -372,6 +379,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                }));
   activity_wait.parallel_safe = true;
   activity_wait.capabilities = Capability(ToolCapability::kInspect);
+  activity_wait.blocking_wait_default_ms = 30000;
   activity_wait.result_chars = 6000;
   activity_wait.timeout_s = 0;
   activity_wait.visibility = Tool::Visibility::kDetachedTerminal;
@@ -452,6 +460,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   memory.capabilities = Capability(ToolCapability::kInspect) |
                         Capability(ToolCapability::kMutate);
   memory.available_in_lean = false;
+  memory.memory_store = true;
   memory.retain_output = true;
   memory.summary = [](const json& a) {
     return JsonValue(a, "action", "") + " " + JsonValue(a, "key", "");

@@ -114,10 +114,6 @@ class Agent {
   // results are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
 
-  // Start a harness-origin turn after background results were delivered. This
-  // is not user intent and must not advance user-turn bookkeeping.
-  void ContinueAfterActivity();
-
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr);
 
@@ -133,7 +129,7 @@ class Agent {
     std::string status;
   };
 
-  void RunTurn(const std::string& input, json content, bool harness_origin);
+  void RunTurn(const std::string& input, json content);
 
   std::string AnalyzeImageContent(const json& content, std::string& error);
   ImageFallbackResult ApplyImageAnalysisFallback(json& messages,
@@ -162,7 +158,9 @@ class Agent {
   void ArchiveAll(const char* reason);
 
   ChatResult Chat(const char* purpose, int64_t step, const json& schemas,
-                  bool render_output = true);
+                  bool render_output = true,
+                  const json* request_messages = nullptr);
+  json CompactionMessages() const;
 
   size_t RequestContextBytes(size_t schema_bytes) const;
   int64_t SnapshotContext(size_t schema_bytes) const;

@@ -22,9 +22,9 @@ extern volatile sig_atomic_t g_terminal_resized;
 void SetExecutablePath(std::string path);
 const std::string& ExecutablePath();
 
-// Signals may only touch sig_atomic_t. Steering runs on an ordinary C++ thread
-// and therefore uses a real atomic; AbortRequested() joins the two domains.
-extern volatile sig_atomic_t g_signal_abort;
+// The signal and steering domains use lock-free atomics so worker-thread clear
+// operations cannot race signal observation.
+extern std::atomic_flag g_signal_abort;
 extern std::atomic<bool> g_thread_abort;
 inline constexpr int kFgMax = 16;  // concurrent foreground shells
 extern volatile sig_atomic_t g_child_pgids[kFgMax];
@@ -38,7 +38,8 @@ extern volatile sig_atomic_t g_bg_pids[kBgMax];
 void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add);
 
 inline bool AbortRequested() {
-  return g_signal_abort != 0 || g_thread_abort.load(std::memory_order_relaxed);
+  return g_signal_abort.test(std::memory_order_relaxed) ||
+         g_thread_abort.load(std::memory_order_relaxed);
 }
 
 void RequestAbort();

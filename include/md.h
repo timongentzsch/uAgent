@@ -3,11 +3,12 @@
 #ifndef UAGENT_INCLUDE_MD_H_
 #define UAGENT_INCLUDE_MD_H_
 // Streaming Markdown-to-ANSI state. The parser implementation is compiled once
-// in src/ui/markdown.cc; this value type stays embedded in the SSE stream.
+// in src/ui/markdown.cc; the terminal presenter owns this value type.
 
 #include <chrono>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace uagent {
@@ -16,8 +17,8 @@ class MdStream {
  public:
   MdStream();
 
-  void Feed(const std::string& text);
-  void FeedPlain(const std::string& text);
+  void Feed(std::string_view text);
+  void FeedPlain(std::string_view text);
   void Control(const char* sequence);
   void Flush();
 

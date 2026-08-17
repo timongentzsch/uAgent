@@ -75,6 +75,11 @@ void TestTextToolProtocol() {
       "<|tool_calls_section_begin|><|tool_call|>run"));
   CHECK(ContainsForeignToolCallMarkup(
       "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>run"));
+  CHECK(ContainsForeignToolCallMarkup(
+      "<action-tool.execute-call name=\"read\">"));
+  CHECK(!ContainsForeignToolCallMarkup(
+      "```xml\n<tool_call name=\"example\">\n```"));
+  CHECK(!ContainsForeignToolCallMarkup("Show `<tool_call>` as documentation."));
   CHECK(!ContainsForeignToolCallMarkup(
       "The tool calls completed and the requested file is ready."));
 }
@@ -106,6 +111,9 @@ void TestToolResults() {
   CHECK(!RetryableHttpStatus(400));
   CHECK(!RetryableHttpStatus(401));
   CHECK(RetryableRemoteError("server_error", ""));
+  CHECK(RetryableRemoteError("resource_exhausted", ""));
+  CHECK(RetryableRemoteError("", "too_many_requests"));
+  CHECK(RetryableRemoteError("", "slow_down"));
   CHECK(RetryableRemoteError("service_unavailable_error",
                              "server_is_overloaded"));
   CHECK(RetryableRemoteError("", "model_at_capacity"));
@@ -113,6 +121,67 @@ void TestToolResults() {
       "Codex response failed: {'code': 'server_is_overloaded'}"));
   CHECK(!RetryableRemoteMessage("invalid request_timeout_seconds value"));
   CHECK(!RetryableRemoteError("invalid_request_error", "invalid_value"));
+  json overflow_error = {{"type", "invalid_request_error"},
+                         {"code", "context_length_exceeded"},
+                         {"message", "input exceeds context"}};
+  ChatResult overflow;
+  CHECK(!ApplyRemoteError(overflow_error, overflow));
+  CHECK(overflow.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
+  CHECK(SafeContextRecovery(overflow));
+  ChatResult wrapped_overflow;
+  CHECK(!ApplyRemoteError(
+      "Codex response failed: {'code': 'context_length_exceeded'}",
+      wrapped_overflow));
+  CHECK(wrapped_overflow.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
+  // Structured errors with only a descriptive message must still classify
+  // as context overflow so long sessions compact instead of dying hard.
+  json semantic_overflow = {
+      {"type", "invalid_request_error"},
+      {"message", "This model's maximum context length is 16385 tokens. "
+                  "However, your messages resulted in 23886 tokens."}};
+  ChatResult semantic;
+  CHECK(!ApplyRemoteError(semantic_overflow, semantic));
+  CHECK(semantic.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
+  CHECK(SafeContextRecovery(semantic));
+  ChatResult anthropic_overflow;
+  CHECK(!ApplyRemoteError(
+      {{"type", "invalid_request_error"},
+       {"message", "prompt is too long: 300000 tokens > 200000 maximum"}},
+      anthropic_overflow));
+  CHECK(anthropic_overflow.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
+  // opencode-ported patterns (packages/llm/src/provider-error.ts).
+  ChatResult codex_style;
+  CHECK(!ApplyRemoteError(
+      {{"message", "input is too long for requested model"}}, codex_style));
+  CHECK(codex_style.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
+  ChatResult parenthesized;
+  CHECK(!ApplyRemoteError(
+      {{"message", "exceeds the model's maximum context length (200000)"}},
+      parenthesized));
+  CHECK(parenthesized.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
+  ChatResult bare_code;
+  CHECK(!ApplyRemoteError({{"message", "context_length_exceeded"}}, bare_code));
+  CHECK(bare_code.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
+  // opencode's exclusion set: throttling text wins over token phrasing.
+  ChatResult rate_limited;
+  CHECK(!ApplyRemoteError(
+      {{"message", "rate limit exceeded: too many tokens this minute"}},
+      rate_limited));
+  CHECK(rate_limited.remote_error_kind == RemoteErrorKind::kNone);
+  ChatResult unrelated_error;
+  CHECK(!ApplyRemoteError(
+      {{"type", "invalid_request_error"},
+       {"message", "unsupported parameter: temperature"}},
+      unrelated_error));
+  CHECK(unrelated_error.remote_error_kind == RemoteErrorKind::kNone);
+  CHECK(ContextLengthError("", "model_context_window_exceeded"));
+  CHECK(ContextLengthError("request_too_large", ""));
+  overflow.semantic_progress = true;
+  CHECK(!SafeContextRecovery(overflow));
+  CHECK(!SafeToRetry(overflow));
   ChatResult retryable;
   retryable.retryable = true;
   CHECK(SafeToRetry(retryable));
@@ -168,7 +237,7 @@ void TestRegistries() {
       "activity_wait", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string activity_prompt = CapabilityPrompt(capability_tools);
-  CHECK(activity_prompt.find("results arrive automatically") !=
+  CHECK(activity_prompt.find("does not start a model turn") !=
         std::string::npos);
   CHECK(activity_prompt.find("wait only when the next step needs the result") !=
         std::string::npos);
@@ -229,6 +298,9 @@ void TestRegistries() {
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
   CHECK(DisplayTrunc("abcdef", 4) == "abc…");
+  CHECK(DisplayTail("abcdef", 4) == "cdef");
+  CHECK(ActivityLabel("thinking · abcdef", 15) == "thinking · cdef");
+  CHECK(ActivityLabel("thinking · abcdef", 15).find("…") == std::string::npos);
   CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);
   CHECK(FmtCount(999) == "999");
   CHECK(FmtCount(1000) == "1.0K");

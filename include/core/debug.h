@@ -34,6 +34,8 @@ class DebugSink {
   ~DebugSink();
 
   bool Start(std::string path = "");
+  void Flush();
+  void Stop();
 
   bool Enabled() const { return file_ != nullptr; }
   const std::string& Path() const { return path_; }
@@ -50,11 +52,14 @@ class DebugSink {
   std::deque<json> queue_;
   std::thread writer_;
   bool stopping_ = false;
+  bool writing_ = false;
   std::chrono::steady_clock::time_point started_;
   std::string path_, error_;
   int64_t seq_ = 0;
 };
 
+// Compatibility accessors for low-level diagnostics. The concrete sinks are
+// owned by the active Observability instance created by main.
 DebugSink& Debug();
 
 class JsonEventStream {
@@ -62,6 +67,7 @@ class JsonEventStream {
   ~JsonEventStream();
 
   bool Start();
+  void Stop();
 
   bool Enabled() const { return file_ != nullptr; }
 
@@ -73,10 +79,7 @@ class JsonEventStream {
   int64_t seq_ = 0;
 };
 
-JsonEventStream& Events();
-
-// Compact helper that avoids constructing trace records when both sinks are
-// disabled.
+// Diagnostic-only compatibility shim. Typed semantic events use Emit(Event).
 void DebugLog(const std::string& event, json data = json::object());
 
 }  // namespace uagent

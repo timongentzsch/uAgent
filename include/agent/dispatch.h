@@ -6,6 +6,7 @@
 // result is traced, and the guarded execution itself.
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -16,6 +17,7 @@
 #include "include/api.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
@@ -31,6 +33,7 @@ struct CallTask {
   std::string trace_status;
   std::string label, ordinal;
   double duration_ms = 0;
+  int64_t completion_order = -1;
   bool execute = false;
   bool started = false;
 };
@@ -116,34 +119,57 @@ inline std::vector<std::string> ModelFacingToolResults(
   return results;
 }
 
-inline void LogToolResult(const CallTask& task, const ToolCall& call,
-                          int64_t turn, int64_t step) {
-  DebugLog(
-      "tool_result",
-      {{"turn", turn},
-       {"step", step},
-       {"id", call.id},
-       {"name", call.name},
-       {"status", task.trace_status},
-       {"completion_status", CompletionStatusName(task.result.status)},
-       {"error_code", ToolErrorCodeName(task.result.error)},
-       {"duration_ms", task.duration_ms},
-       {"result", task.result.output},
-       {"result_chars", task.result.output.size()},
-       {"artifact_path",
-        task.result.artifact ? task.result.artifact->path : std::string()},
-       {"artifact_bytes",
-        task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}});
+inline json ToolResultData(const CallTask& task, const ToolCall& call,
+                           int64_t turn, int64_t step) {
+  return {{"turn", turn},
+          {"step", step},
+          {"id", call.id},
+          {"name", call.name},
+          {"status", task.trace_status},
+          {"completion_status", CompletionStatusName(task.result.status)},
+          {"error_code", ToolErrorCodeName(task.result.error)},
+          {"duration_ms", task.duration_ms},
+          {"result", task.result.output},
+          {"result_chars", task.result.output.size()},
+          {"artifact_path",
+           task.result.artifact ? task.result.artifact->path : std::string()},
+          {"artifact_bytes",
+           task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
 }
 
-inline void LogToolCall(const ToolCall& call, int64_t turn, int64_t step,
-                        bool text_protocol) {
-  DebugLog("tool_call", {{"turn", turn},
-                         {"step", step},
-                         {"id", call.id},
-                         {"name", call.name},
-                         {"arguments", call.args},
-                         {"text_protocol", text_protocol}});
+inline PresentationRecord ToolResultObservation(const CallTask& task,
+                                                const ToolCall& call) {
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolResult;
+  record.id = call.id;
+  record.title = task.ordinal + call.name;
+  record.status = task.result.status == CompletionStatus::kCancelled
+                      ? PresentationStatus::kCancelled
+                  : task.result.Ok() ? PresentationStatus::kSucceeded
+                                     : PresentationStatus::kFailed;
+  record.summary = task.result.output.empty()
+                       ? "(empty)"
+                       : Utf8Trunc(FirstLine(task.result.output), size_t{512});
+  if (task.result.artifact) {
+    record.artifacts.push_back({"tool-output", task.result.artifact->path,
+                                task.result.artifact->bytes});
+  }
+  return record;
+}
+
+inline void EmitToolResultObservation(const CallTask& task,
+                                      const ToolCall& call, int64_t turn,
+                                      int64_t step) {
+  Event event{EventId::kToolResult, ToolResultData(task, call, turn, step)};
+  event.presentation = ToolResultObservation(task, call);
+  Emit(std::move(event));
+}
+
+inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step,
+                         bool text_protocol) {
+  return {{"turn", turn},           {"step", step},
+          {"id", call.id},          {"name", call.name},
+          {"arguments", call.args}, {"text_protocol", text_protocol}};
 }
 
 inline void CancelCall(CallTask& task) {
@@ -155,12 +181,15 @@ inline void CancelCall(CallTask& task) {
 
 inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t step, const ToolContext& context,
-                        int64_t global_timeout_s) {
+                        int64_t global_timeout_s,
+                        std::atomic<int64_t>& completion_sequence) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
   if (SteeringState().Requested() || AbortRequested()) {
     CancelCall(task);
-    LogToolResult(task, call, turn, step);
+    task.completion_order =
+        completion_sequence.fetch_add(1, std::memory_order_relaxed);
+    EmitToolResultObservation(task, call, turn, step);
     return;
   }
   DebugLog("tool_start", {{"turn", turn},
@@ -182,7 +211,9 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
     task.trace_status = task.result.Ok() ? "ok" : "error";
   }
   task.duration_ms = ElapsedMs(started);
-  LogToolResult(task, call, turn, step);
+  task.completion_order =
+      completion_sequence.fetch_add(1, std::memory_order_relaxed);
+  EmitToolResultObservation(task, call, turn, step);
 }
 
 }  // namespace uagent

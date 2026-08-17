@@ -30,7 +30,7 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "OPENROUTER_EFFORT",
     "openrouter/auto",
     OpenrouterUrl,
-    true,
+    ProviderProtocol::kOpenRouter,
 }};
 
 }  // namespace
@@ -71,7 +71,7 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
   if (api_key.empty()) return false;
   api.base_url = provider.base_url;
   api.api_key = std::move(api_key);
-  api.openrouter_compatible = provider.openrouter_compatible;
+  api.capabilities = CapabilitiesForRoute(provider.protocol, api.base_url);
   if (api.model.empty()) {
     api.model = EnvStr(provider.model_env, provider.default_model);
   }
@@ -138,10 +138,10 @@ ProviderCatalog LoadProviderCatalog() {
     base_url = StripTrailingSlashes(std::move(base_url));
     std::string api_key = JsonValue(provider, "api_key", "sk-noop");
     int64_t context = JsonValue(provider, "context", int64_t{0});
-    bool openrouter_compatible =
-        JsonValue(provider, "protocol", "openai") == "openrouter";
+    ProviderProtocol protocol =
+        ParseProviderProtocol(JsonValue(provider, "protocol", "openai"));
     catalog.providers.push_back(
-        {provider_name, base_url, api_key, context, openrouter_compatible});
+        {provider_name, base_url, api_key, context, protocol});
     if (!provider.contains("models") || !provider["models"].is_object()) {
       continue;
     }
@@ -151,7 +151,7 @@ ProviderCatalog LoadProviderCatalog() {
       route.name = provider_name + "/" + alias;
       route.base_url = base_url;
       route.api_key = api_key;
-      route.openrouter_compatible = openrouter_compatible;
+      route.protocol = protocol;
       if (spec.is_string()) {
         route.model = spec.get<std::string>();
       } else if (spec.is_object()) {
@@ -184,8 +184,7 @@ void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
       continue;
     }
     catalog.providers.push_back({provider.name, provider.base_url,
-                                 std::move(api_key), 0,
-                                 provider.openrouter_compatible});
+                                 std::move(api_key), 0, provider.protocol});
   }
 }
 
@@ -208,7 +207,7 @@ std::optional<ModelRoute> ResolveModelRoute(
                     selection.substr(slash + 1),
                     "",
                     provider->context,
-                    provider->openrouter_compatible};
+                    provider->protocol};
 }
 
 namespace {
@@ -216,9 +215,8 @@ namespace {
 // Two selections naming the same endpoint, model and protocol are the same
 // route however they were spelled; only one of them is offered.
 std::string RouteIdentity(const std::string& base_url, const std::string& model,
-                          bool openrouter) {
-  return base_url + "\n" + model + "\n" +
-         (openrouter ? "openrouter" : "openai");
+                          ProviderProtocol protocol) {
+  return base_url + "\n" + model + "\n" + ProviderProtocolName(protocol);
 }
 
 void ExportRoute(const Api& api) {
@@ -230,10 +228,8 @@ void ExportRoute(const Api& api) {
 }
 
 void ResetRouteCapabilities(Api& api) {
-  api.native_tools = true;
-  api.include_usage = true;
-  api.parallel_tools = true;
-  api.image_input = true;
+  api.capabilities =
+      CapabilitiesForRoute(api.capabilities.protocol, api.base_url);
 }
 
 }  // namespace
@@ -244,7 +240,7 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.model = route.model;
   if (!route.effort.empty()) api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
-  api.openrouter_compatible = route.openrouter_compatible;
+  api.capabilities = CapabilitiesForRoute(route.protocol, route.base_url);
 }
 
 void ActivateRoute(Api& api) {
@@ -259,8 +255,13 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
   api.ctx_window = ContextWindow();
   std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
-  api.openrouter_compatible =
-      compatible.empty() ? OpenrouterUrl(api.base_url) : compatible == "1";
+  ProviderProtocol protocol =
+      compatible.empty()
+          ? (OpenrouterUrl(api.base_url) ? ProviderProtocol::kOpenRouter
+                                         : ProviderProtocol::kOpenAi)
+          : (compatible == "1" ? ProviderProtocol::kOpenRouter
+                               : ProviderProtocol::kOpenAi);
+  api.capabilities = CapabilitiesForRoute(protocol, api.base_url);
 
   ProviderCatalog catalog = LoadProviderCatalog();
   AddAvailableProviderTemplates(catalog);
@@ -303,7 +304,8 @@ ProviderSetup ConfigureProvider(Api& api) {
 }
 
 bool CanUseRawModel(const Api& api, std::string_view name) {
-  return api.openrouter_compatible && name.find('/') != std::string_view::npos;
+  return api.capabilities.raw_slash_models &&
+         name.find('/') != std::string_view::npos;
 }
 
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
@@ -389,7 +391,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       continue;
     }
     std::string identity =
-        RouteIdentity(route.base_url, route.model, route.openrouter_compatible);
+        RouteIdentity(route.base_url, route.model, route.protocol);
     if (!selections.insert(route.name).second) continue;
     route_identities.insert(std::move(identity));
     ModelInfo info{route.model, {}, {}, route.context};
@@ -405,7 +407,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                                      });
   if (!active_is_named && !api.base_url.empty()) {
     catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window,
-                        api.openrouter_compatible});
+                        api.capabilities.protocol});
   }
 
   using CatalogModels = std::optional<std::vector<ModelInfo>>;
@@ -423,7 +425,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         Api catalog_api(api.config);
         catalog_api.base_url = source.base_url;
         catalog_api.api_key = source.api_key;
-        catalog_api.openrouter_compatible = source.openrouter_compatible;
+        catalog_api.capabilities =
+            CapabilitiesForRoute(source.protocol, source.base_url);
         responses[index] = QueryModels(catalog_api, /*abortable=*/true);
       }
     }));
@@ -441,20 +444,15 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       std::string selection =
           source.name.empty() ? info.id : source.name + "/" + info.id;
       std::string identity =
-          RouteIdentity(source.base_url, info.id, source.openrouter_compatible);
+          RouteIdentity(source.base_url, info.id, source.protocol);
       if (!ContainsCaseInsensitive(selection, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {
         continue;
       }
       int64_t context = info.context > 0 ? info.context : source.context;
-      ModelRoute route{selection,
-                       source.base_url,
-                       source.api_key,
-                       info.id,
-                       "",
-                       context,
-                       source.openrouter_compatible};
+      ModelRoute route{selection, source.base_url, source.api_key, info.id,
+                       "",        context,         source.protocol};
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});

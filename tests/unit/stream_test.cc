@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "include/api/retry.h"
+#include "include/core/term.h"
+#include "include/ui/presentation.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -91,7 +93,6 @@ void TestSseChunkPartitions() {
     StreamCtx stream;
     stream.res = &parsed.result;
     stream.status = 200;
-    stream.render_output = false;
     stream.started = std::chrono::steady_clock::now();
     if (bytewise) {
       for (char byte : wire) CHECK(stream.Feed(&byte, 1) == 1);
@@ -180,11 +181,20 @@ void TestSseChunkPartitions() {
       empty_alias, no_calls);
   CHECK(details_fallback.reasoning == "details only");
 
-  CHECK(ReasoningStatusPreview("first line\nlatest line\n") == "latest line");
-  CHECK(ReasoningStatusPreview("  padded latest  ") == "padded latest");
-  std::string long_preview = ReasoningStatusPreview(std::string(140, 'x'));
-  CHECK(long_preview.starts_with("…"));
-  CHECK(long_preview.size() <= 123);
+  CHECK(CompactReasoningPreview("first line\nlatest line\n") == "latest line");
+  CHECK(CompactReasoningPreview("  padded latest  ") == "padded latest");
+  std::string long_preview = CompactReasoningPreview(std::string(140, 'x'));
+  CHECK(!long_preview.starts_with("…"));
+  CHECK(long_preview.size() == 96);
+  std::string model_neutral = CompactReasoningPreview(
+      "**Map invariants****Detail implementation and tests****Plan provider "
+      "normalization**",
+      48);
+  CHECK(model_neutral.find('*') == std::string::npos);
+  CHECK(!model_neutral.starts_with("…"));
+  CHECK(model_neutral.ends_with("Plan provider normalization"));
+  CHECK(CompactReasoningPreview("C# and snake_case use 2*3") ==
+        "C# and snake_case use 2*3");
 
   std::string final_line =
       event({{"choices", {{{"delta", {{"content", "complete"}}}}}}});
@@ -193,27 +203,12 @@ void TestSseChunkPartitions() {
   StreamCtx stream;
   stream.res = &result;
   stream.status = 200;
-  stream.render_output = false;
   stream.started = std::chrono::steady_clock::now();
   CHECK(stream.Feed(final_line.data(), final_line.size()) == final_line.size());
   CHECK(result.content.empty());
   stream.Finish();
   CHECK(result.content == "complete");
 
-  StreamCtx compact;
-  ChatResult compact_result;
-  compact.res = &compact_result;
-  compact.render_output = true;
-  compact.full_reasoning = false;
-  compact.OutputReasoning("checking include dependencies");
-  CHECK(!compact.in_reasoning);
-  CHECK(compact.reasoning_preview == "checking include dependencies");
-  StreamCtx full_reasoning;
-  ChatResult full_result;
-  full_reasoning.res = &full_result;
-  full_reasoning.render_output = true;
-  full_reasoning.OutputReasoning("full reasoning");
-  CHECK(full_reasoning.in_reasoning);
   uint64_t activity = BeginTerminalActivity("working");
   UpdateTerminalActivity(activity, "thinking · compact preview");
   CHECK(CurrentTerminalActivity() == "thinking · compact preview");
@@ -252,6 +247,13 @@ void TestSseChunkPartitions() {
       R"({"error":{"type":"server_error","code":"server_error","message":"retry"}})",
       usage_then_error, no_tool_calls);
   CHECK(!SafeToRetry(usage_then_error));
+
+  ChatResult nested_error;
+  DecodeOpenAiStreamEvent(
+      R"({"type":"error","message":"{\"type\":\"error\",\"error\":{\"type\":\"service_unavailable_error\",\"code\":\"server_is_overloaded\",\"message\":\"busy\"}}"})",
+      nested_error, no_tool_calls);
+  CHECK(nested_error.retryable);
+  CHECK(nested_error.remote_error_kind == RemoteErrorKind::kTransient);
 }
 
 void TestSseFraming() {

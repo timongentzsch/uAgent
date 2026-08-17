@@ -29,21 +29,19 @@ std::string ImageDetail();
 
 bool InspectAttachment(std::string path, Attachment& out, std::string& error);
 
-// Files the model asked to read. Drained into the next request as user content;
-// attachment_content owns the byte limit, the tool's call budget the count.
-// Cleared when an endpoint rejects image input, so nothing keeps offering
-// pictures to a model that cannot read them. Learned rather than declared: a
-// catalogue's modality list can be wrong when a route fans out to other models.
-bool ImageInputAvailable();
-void SetImageInputAvailable(bool available);
+// Route capability is passed explicitly; attachment helpers do not maintain a
+// second process-global copy of negotiated provider state.
+std::string ImageInputError(const Attachment& attachment,
+                            bool image_input_available,
+                            bool image_fallback_available);
 
-std::string ImageInputError(const Attachment& attachment);
-
-const char* ModelImageInputInstruction();
+const char* ModelImageInputInstruction(bool image_input_available,
+                                       bool image_fallback_available);
 
 class AttachmentQueue {
  public:
-  ToolResult Add(const std::string& path);
+  ToolResult Add(const std::string& path, bool image_input_available = true,
+                 bool image_fallback_available = false);
   std::vector<Attachment> Take();
 
  private:
@@ -61,7 +59,8 @@ bool Base64Decode(std::string_view input, std::string& output,
 
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
-                       std::string& error);
+                       std::string& error, bool image_input_available = true,
+                       bool image_fallback_available = false);
 
 // Remove only image parts after an endpoint rejects them. Other attachment
 // types remain available on the retry, and the text part retains every path.

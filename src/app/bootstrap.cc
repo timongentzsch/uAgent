@@ -160,7 +160,8 @@ void PrintSkills(const std::vector<Skill>& skills) {
 }
 
 bool ProbeModel(Api& api) {
-  if (!api.model.empty() && (api.ctx_window > 0 || api.openrouter_compatible)) {
+  if (!api.model.empty() &&
+      (api.ctx_window > 0 || !api.capabilities.model_catalog_required)) {
     return true;
   }
   auto started = std::chrono::steady_clock::now();
@@ -177,7 +178,7 @@ bool ProbeModel(Api& api) {
         if (!api.model.empty()) break;
       }
     }
-    std::string base = api.model.substr(0, api.model.find(':'));
+    std::string base = api.CatalogModel();
     if (api.ctx_window == 0) {
       for (const json& model : data) {
         if (!model.is_object()) continue;
@@ -208,12 +209,10 @@ std::vector<Tool> BuildTools(AppContext& context,
       runtime.processes, workspace, inline_images,
       AdaptiveSystemEnabled() ? &runtime.adaptive_system : nullptr);
   if (!runtime.config.memory_enabled) {
-    std::erase_if(tools,
-                  [](const Tool& tool) { return tool.name == "memory"; });
+    std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
   if (EnvStr("UAGENT_TOOLSET") == "memory") {
-    std::erase_if(tools,
-                  [](const Tool& tool) { return tool.name != "memory"; });
+    std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
     return tools;
   }
   WebSearchRoute search_route =
@@ -243,16 +242,16 @@ std::vector<Tool> BuildTools(AppContext& context,
 }
 
 void LogReady(const AppContext& context) {
-  if (!Debug().Enabled()) return;
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
-  Debug().Write(
-      "session_ready",
-      {{"base_url", api.base_url},
+  Emit(Event{
+      EventId::kSessionReady,
+      {{"base_url", RedactedUrl(api.base_url)},
        {"model", api.RequestModel()},
        {"reasoning_effort", api.reasoning_effort},
        {"openrouter_variant", config.openrouter_variant},
-       {"openrouter_compatible", api.openrouter_compatible},
+       {"openrouter_compatible", api.capabilities.OpenRouter()},
+       {"capabilities", api.capabilities.DiagnosticJson()},
        {"configured_models", context.provider.routes.size()},
        {"context_window", api.ctx_window},
        {"tools", context.tools.size()},
@@ -277,7 +276,8 @@ void LogReady(const AppContext& context) {
        {"steering", SteeringEnabled()},
        {"adaptive_system", AdaptiveSystemEnabled()},
        {"max_tokens", MaxOutputTokens()},
-       {"limits", config.DiagnosticJson()}});
+       {"limits", config.DiagnosticJson()},
+       {"effective_config", context.config_manager.DiagnosticJson(config)}}});
 }
 
 }  // namespace
@@ -308,10 +308,15 @@ void HeadlessOutput::Restore() {
   saved_stdout_ = -1;
 }
 
-AppContext::AppContext(RuntimeConfig config, Options parsed_options)
-    : runtime(std::move(config)), options(std::move(parsed_options)) {}
+AppContext::AppContext(RuntimeConfig config, ConfigManager manager,
+                       Options parsed_options, Observability& observation_sink)
+    : config_manager(std::move(manager)),
+      runtime(std::move(config)),
+      observability(observation_sink),
+      options(std::move(parsed_options)) {}
 
-BootstrapResult Bootstrap(Options options, const char* executable) {
+BootstrapResult Bootstrap(Options options, const char* executable,
+                          Observability& observability) {
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical workspace is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
@@ -326,16 +331,12 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     return Failure(std::move(error), exit_code);
   }
 
-  LoadConfigFile(trusted);
+  ConfigManager config_manager =
+      ConfigManager::Capture(trusted, options.budget, options.no_memory);
+  RuntimeConfig config = config_manager.Initialize();
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
     return Failure(std::move(error), 2);
-  }
-  if (options.budget > 0) {
-    setenv("UAGENT_SESSION_BUDGET", std::to_string(options.budget).c_str(), 1);
-  }
-  if (options.no_memory) {
-    setenv("UAGENT_MEMORY", "0", 1);
   }
   MaintainArtifacts();
   if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
@@ -344,7 +345,6 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     options.debug = !options.debug_path.empty();
   }
 
-  RuntimeConfig config = RuntimeConfig::FromEnvironment();
   if (!config.web_search_effort.empty() &&
       !ValidEffort(config.web_search_effort)) {
     PrintWarning("ignoring invalid UAGENT_WEB_SEARCH_EFFORT=" +
@@ -352,11 +352,13 @@ BootstrapResult Bootstrap(Options options, const char* executable) {
     config.web_search_effort.clear();
   }
   auto context =
-      std::make_unique<AppContext>(std::move(config), std::move(options));
+      std::make_unique<AppContext>(std::move(config), std::move(config_manager),
+                                   std::move(options), observability);
   if (!context->options.prompt.empty() && !context->output.Silence()) {
     return Failure("cannot redirect headless output");
   }
-  if (context->options.debug && !Debug().Start(context->options.debug_path)) {
+  if (context->options.debug &&
+      !observability.StartDebug(context->options.debug_path)) {
     return Failure("cannot open debug log: " + Debug().Error());
   }
   if (Debug().Enabled()) {

@@ -9,8 +9,18 @@ main → Bootstrap → Application
                   ├─ Agent + Conversation
                   ├─ Tool registry + ProcessSupervisor
                   ├─ MCP runtime
-                  └─ Usage + session storage
+                  ├─ Usage + session storage
+                  └─ Observability
+                       ├─ terminal presenter
+                       ├─ uagent.event.v1 JSONL
+                       ├─ debug JSONL
+                       └─ bounded session journal
 ```
+
+Provider adapters, the tool executor, the agent loop, and the runtime emit one
+typed semantic event value. Fixed sinks observe that value; `Emit` returns
+nothing and no sink can influence agent control flow. This is deliberately not
+a service bus, service locator, or plugin system.
 
 ## Boundaries
 
@@ -38,9 +48,12 @@ Web search follows the same boundary: models always see one named function,
 while its host adapter selects the provider protocol and owns limits, citations,
 errors, and usage accounting.
 
-Every route mutation uses one activation path: reset discovered capabilities,
-export child state, then rotate the agent route identity. Provider protocol is
-explicit for custom proxies.
+Every route mutation uses one activation path: construct a centralized
+`ProviderCapabilities` contract, export its stable child-process projection,
+then rotate the agent route identity. Request serialization, model catalogues,
+reasoning replay, search protocol, and negotiated degradation read that
+contract rather than provider/model names. Successful responses add observed
+reasoning, citation, and usage facts without controlling the current turn.
 
 ## Turn
 
@@ -56,8 +69,11 @@ user input
   → archive trace, compact old bulky results in batches, atomically save
 ```
 
-Time, output, processes, memory, and context are bounded by default; model
-rounds, tool calls, and reported cost have configurable opt-in caps. Persistent commands require `run(detach=true)`. Delegated work runs in
+Network requests, idle streams, tool calls, output, processes, memory, and
+context are bounded by default. Aggregate model rounds, tool calls, wall-clock
+turn time, and reported cost have configurable opt-in caps; a zero
+`UAGENT_MAX_TURN_SECONDS` leaves the complete turn unbounded while the
+request/stream/tool deadlines remain active. Persistent commands require `run(detach=true)`. Delegated work runs in
 separate sanitized processes. One `ProcessSupervisor` owns foreground commands,
 background commands, tasks, and detached services. Session activities receive
 opaque IDs distinct from OS PIDs; persistent detached records remain PID-backed
@@ -121,6 +137,21 @@ advertises a canonical root set and answers `roots/list`; roots are
 resolved once from workspace/global/per-server policy and survive lazy starts
 and restarts with the server configuration.
 
+## Configuration snapshots
+
+Bootstrap captures process overrides before importing config files, then builds
+one immutable effective snapshot in precedence order. `/context` reports
+redacted active/configured values, provenance for every `RuntimeConfig` field,
+route details, and declared/observed provider capabilities. Secrets are shown
+only as `<set>`/`<unset>` and URL userinfo is removed.
+
+At each user or harness turn boundary, file stamps are checked synchronously.
+A changed file is parsed into a fresh snapshot; request-, budget-, and
+turn-scoped fields are atomically copied to both runtime config owners before
+the turn starts. Startup-owned fields are reported as restart-required. There
+is no watcher thread, no process-environment round trip, and no mid-turn
+mutation.
+
 ## Context and cache
 
 The stable prefix is system policy, project instructions, ordinary tool
@@ -130,9 +161,15 @@ batches after two newer user turns and a recent-output budget; durable tool
 outputs opt out through registry metadata. A byte-identical repeated source
 read gets a short receipt only while its original result remains in that recent
 window. At projected 85% context pressure, including pending input and schemas,
-one tool-free model call creates a bounded summary. History changes only after that
-summary passes validation. Automatic pre-turn and at-most-once mid-turn
-compaction use the same path as `/compact`.
+one tool-free model call summarizes a 256 KiB semantic head/tail projection—
+user and assistant prose plus summarized calls and bounded results—rather than
+bulky tool-protocol envelopes. History changes only after validation. Automatic
+pre-turn and at-most-once mid-turn compaction use the `/compact` path.
+
+Structured context-overflow codes, proxy-wrapped canonical codes, and HTTP 413
+form a separate non-retryable class. With no streamed content, usage,
+annotations, or calls, µAgent learns a conservative route bound, compacts, and
+retries the original turn once. Unsafe or repeated overflow stops the turn.
 
 When enabled, `adapt_system` owns one separately persisted free-form directive.
 The tool may replace or clear it at any step; the agent then reconstructs
@@ -178,19 +215,40 @@ and is visible through `/context`.
 
 ## Observability
 
+`EventId` and one compile-time policy table define stable debug/public names,
+durability, and public projection. Terminal, JSONL, debug, and journal sinks
+are concrete direct owners; there is no runtime sink registration. Transient
+reasoning/answer deltas are rendered but never journaled. Turn, tool,
+capability, config, and session lifecycle events append bounded metadata to a
+private sidecar journal without entering model context.
+
+The API stream layer only decodes and assembles provider traffic. A terminal
+presenter owns Markdown, composer interaction, compact/verbose reasoning, and
+ANSI restoration. Compact reasoning takes the latest line, removes generic
+lightweight decoration, collapses whitespace, and retains the latest complete
+words without a synthetic leading ellipsis; it has no provider/model syntax
+branches. Tool registry metadata produces provider-independent presentation
+records shared by live output, history, `/trace`, debug, and journal records.
+Parallel results are observed in completion order while protocol messages stay
+in call order. Background completion is observational: command output updates
+UI and retained activity state but never starts or enters a model turn. Bounded
+task completion is added once to the next naturally occurring model call
+without triggering one; multiple task completions share a 12 KiB message. Explicit `activity_output`
+can replay a retained bounded transcript.
+
 Interactive status exposes model/effort, endpoint, context, cache, cost,
 background count, queue depth, working time, and transferable foreground work.
 Reasoning is collected in every mode. Provider replay blocks are retained on
-assistant messages when the protocol requires them, while `--debug` captures
-the complete flattened reasoning text and structured OpenRouter details.
-Normally the latest bounded line updates the transient activity row; verbose
-mode sends a clearly labelled, muted italic stream into scrollback alongside
-expanded tool output.
-`--debug` records reconstructable JSONL through an ordered background writer so
-serialization and flushing stay off the request path. Model-response records
-separate request preparation and end-to-end time from DNS, connection, TLS,
-pre-transfer, start-transfer, first-semantic-event, and total request timings.
-`--json` and `--json-stream` expose stable automation formats.
+assistant messages according to emitted fields and route capability, while
+`--debug` captures complete flattened reasoning and structured details.
+Verbose mode sends a labelled, muted stream into scrollback alongside expanded
+bounded tool output.
+
+`--debug` uses an ordered background writer; deterministic shutdown drains and
+joins it before process exit. `--json` and the existing `uagent.event.v1`
+`--json-stream` schema remain stable. No OTLP SDK is linked: the bounded JSONL
+formats are the optional telemetry boundary, and an external collector can
+tail them if deployment needs justify it.
 
 ## Failure model
 
@@ -202,10 +260,12 @@ pre-transfer, start-transfer, first-semantic-event, and total request timings.
 
 ## Extending
 
-Add tools through `MakeTool`, provider quirks at request normalization,
-session-static limits through `RuntimeConfig`, and state through a versioned
-atomic store. Live environment access is limited to intentionally dynamic
-route and delegation state. Every new
+Add tools through `MakeTool`, route behavior through
+`ProviderCapabilities`, turn-static limits through `RuntimeConfig`, and state
+through a versioned atomic store. Tool behavior that affects scheduling or
+presentation belongs in tool metadata, not string comparisons against tool
+names. Live environment access is limited to intentionally dynamic route and
+delegation state. Every new
 boundary needs a focused unit test and externally visible behavior needs a
 hermetic integration test. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
 [TESTING.md](TESTING.md).

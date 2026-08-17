@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 
+#include "include/api/capabilities.h"
 #include "include/api/types.h"
 #include "include/core/env.h"
 
@@ -35,12 +36,8 @@ class Api {
  public:
   std::string base_url, api_key, model, reasoning_effort;
   int64_t ctx_window = 0;
-  bool native_tools = true;
-  bool include_usage = true;
-  bool parallel_tools = true;
+  ProviderCapabilities capabilities;
   bool render_stream = true;
-  bool image_input = true;
-  bool openrouter_compatible = false;
   double session_cost = 0;
   // Set once at the user-turn boundary. Every transient status row in that
   // turn uses the same anchor, matching Codex's TurnStarted/TurnCompleted
@@ -57,6 +54,7 @@ class Api {
   void PreserveAssistantReasoning(json& message,
                                   const ChatResult& result) const;
   std::string RequestModel() const;
+  std::string CatalogModel() const;
   json BuildChatBody(const json& messages, const json& tool_schemas,
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const;

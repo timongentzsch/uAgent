@@ -84,7 +84,8 @@ void PrintConversationHistory(const Conversation& conversation,
           std::string name = PrintToolCallSummary(call, tools);
           std::string id = JsonValue(call, "id", "");
           if (!id.empty() && !name.empty()) {
-            if (name == "show_image") image_calls[id] = &call;
+            const Tool* tool = FindTool(tools, name);
+            if (tool && tool->replay_image) image_calls[id] = &call;
             tool_names[id] = std::move(name);
           }
         }

@@ -9,9 +9,11 @@
 
 #include "include/agent.h"
 #include "include/agent/protocol.h"
+#include "include/api/retry.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -21,7 +23,7 @@
 
 namespace uagent {
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
-                       bool render_output) {
+                       bool render_output, const json* request_messages) {
   if (api_.config.session_budget > 0 &&
       session_usage_.cost >= api_.config.session_budget) {
     ChatResult result;
@@ -30,11 +32,14 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     return result;
   }
   int64_t request = ++request_id_;
+  const json& messages =
+      request_messages ? *request_messages : conversation_.Messages();
   const size_t schema_bytes = JsonEstimatedBytes(schemas);
-  const size_t message_bytes = JsonEstimatedBytes(conversation_.Messages());
+  const size_t message_bytes = JsonEstimatedBytes(messages);
   const size_t estimated_bytes =
-      api_.native_tools ? SaturatingAdd(message_bytes, schema_bytes)
-                        : message_bytes;
+      api_.capabilities.native_tools
+          ? SaturatingAdd(message_bytes, schema_bytes)
+          : message_bytes;
   context_snapshot_.store(EstimatedTokens(estimated_bytes),
                           std::memory_order_relaxed);
   if (Debug().Enabled()) {
@@ -50,11 +55,15 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"total_messages", conversation_.Size()},
         {"tool_schemas", schemas.size()},
         {"schema_chars", schema_bytes},
-        {"native_tools", api_.native_tools},
-        {"parallel_tools", api_.parallel_tools},
-        {"include_usage", api_.include_usage},
+        {"native_tools", api_.capabilities.native_tools},
+        {"parallel_tools", api_.capabilities.parallel_tools},
+        {"include_usage", api_.capabilities.stream_usage_option},
         {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
-    if (step <= 0 || logged_msgs_ > conversation_.Size()) {
+    if (request_messages) {
+      record["messages"] = messages;
+      record["message_chars"] = message_bytes;
+      record["projected_context"] = true;
+    } else if (step <= 0 || logged_msgs_ > conversation_.Size()) {
       record["messages"] = conversation_.Messages();
       record["message_chars"] = message_bytes;
     } else {
@@ -65,7 +74,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       record["new_message_chars"] = JsonEstimatedBytes(added);
       record["new_messages"] = std::move(added);
     }
-    logged_msgs_ = conversation_.Size();
+    if (!request_messages) logged_msgs_ = conversation_.Size();
     std::string serialized_schemas = JsonDump(schemas);
     if (serialized_schemas != logged_schemas_) {
       record["schema_snapshot"] = schemas;
@@ -86,48 +95,50 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
-  ChatResult result =
-      api_.Chat(conversation_.Messages(), schemas, turn_budget, session_id_,
-                render_output, estimated_bytes, verbose_);
+  ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
+                                render_output, estimated_bytes, verbose_);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {
       calls.push_back(
           {{"id", call.id}, {"name", call.name}, {"arguments", call.args}});
     }
-    Debug().Write("model_response",
-                  {{"request", request},
-                   {"turn", turn_id_},
-                   {"step", step},
-                   {"purpose", purpose},
-                   {"duration_ms", result.duration_ms},
-                   {"request_preparation_ms", result.request_preparation_ms},
-                   {"end_to_end_ms", result.end_to_end_ms},
-                   {"first_event_ms", result.first_event_ms},
-                   {"dns_ms", result.dns_ms},
-                   {"connect_ms", result.connect_ms},
-                   {"tls_ms", result.tls_ms},
-                   {"pretransfer_ms", result.pretransfer_ms},
-                   {"start_transfer_ms", result.start_transfer_ms},
-                   {"http_status", result.http_status},
-                   {"finish_reason", result.finish_reason},
-                   {"content", result.content},
-                   {"content_chars", result.content.size()},
-                   {"reasoning", result.reasoning},
-                   {"reasoning_chars", result.reasoning.size()},
-                   {"reasoning_content_field", result.reasoning_content_field},
-                   {"reasoning_details", result.reasoning_details},
-                   {"reasoning_details_field", result.reasoning_details_field},
-                   {"tool_calls", std::move(calls)},
-                   {"annotations", result.annotations},
-                   {"usage", result.usage},
-                   {"error", result.error},
-                   {"remote_error_type", result.remote_error_type},
-                   {"remote_error_code", result.remote_error_code},
-                   {"interrupted", result.interrupted},
-                   {"suppressed", result.suppressed},
-                   {"semantic_progress", result.semantic_progress},
-                   {"retryable", result.retryable}});
+    Debug().Write(
+        "model_response",
+        {{"request", request},
+         {"turn", turn_id_},
+         {"step", step},
+         {"purpose", purpose},
+         {"duration_ms", result.duration_ms},
+         {"request_preparation_ms", result.request_preparation_ms},
+         {"end_to_end_ms", result.end_to_end_ms},
+         {"first_event_ms", result.first_event_ms},
+         {"dns_ms", result.dns_ms},
+         {"connect_ms", result.connect_ms},
+         {"tls_ms", result.tls_ms},
+         {"pretransfer_ms", result.pretransfer_ms},
+         {"start_transfer_ms", result.start_transfer_ms},
+         {"http_status", result.http_status},
+         {"finish_reason", result.finish_reason},
+         {"content", result.content},
+         {"content_chars", result.content.size()},
+         {"reasoning", result.reasoning},
+         {"reasoning_chars", result.reasoning.size()},
+         {"reasoning_field", result.reasoning_field},
+         {"reasoning_content_field", result.reasoning_content_field},
+         {"reasoning_details", result.reasoning_details},
+         {"reasoning_details_field", result.reasoning_details_field},
+         {"tool_calls", std::move(calls)},
+         {"annotations", result.annotations},
+         {"usage", result.usage},
+         {"error", result.error},
+         {"remote_error_type", result.remote_error_type},
+         {"remote_error_code", result.remote_error_code},
+         {"remote_error_kind", RemoteErrorKindName(result.remote_error_kind)},
+         {"interrupted", result.interrupted},
+         {"suppressed", result.suppressed},
+         {"semantic_progress", result.semantic_progress},
+         {"retryable", result.retryable}});
   }
   return result;
 }
@@ -143,14 +154,11 @@ std::string Agent::AnalyzeImageContent(const json& content,
   vision.base_url = api_.base_url;
   vision.api_key = api_.api_key;
   vision.model = api_.config.image_model;
-  if (api_.openrouter_compatible && vision.model.starts_with("openrouter/")) {
-    vision.model.erase(0, std::string("openrouter/").size());
-  }
   vision.ctx_window = api_.ctx_window;
-  vision.openrouter_compatible = api_.openrouter_compatible;
-  vision.native_tools = false;
-  vision.parallel_tools = false;
-  vision.image_input = true;
+  vision.capabilities = api_.capabilities;
+  vision.capabilities.native_tools = false;
+  vision.capabilities.parallel_tools = false;
+  vision.capabilities.image_input = true;
   vision.render_stream = false;
 
   json messages = json::array(
@@ -182,7 +190,7 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
     json& messages, ImageFallbackCause cause) {
   ImageFallbackResult fallback;
   bool rejected = cause == ImageFallbackCause::kRejected;
-  if (!messages.is_array() || (!rejected && ImageInputAvailable()) ||
+  if (!messages.is_array() || (!rejected && api_.capabilities.image_input) ||
       (!rejected && api_.config.image_model.empty())) {
     return fallback;
   }
@@ -210,7 +218,6 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
   if (!api_.config.image_model.empty()) {
     analysis = AnalyzeImageContent(analysis_content, fallback.error);
   }
-  if (rejected) SetImageInputAvailable(false);
   fallback.rewritten = StripImageContentParts(messages);
   fallback.applied = fallback.rewritten > 0;
   if (!fallback.applied) return fallback;
@@ -365,52 +372,51 @@ void Agent::PruneOldToolResults() {
 }
 
 bool Agent::DegradeAndRetry(const ChatResult& result) {
-  std::string lowered = AsciiLower(result.error);
-  if (ImageInputAvailable() && lowered.find("image") != std::string::npos &&
-      (lowered.find("input") != std::string::npos ||
-       lowered.find("support") != std::string::npos ||
-       lowered.find("modalit") != std::string::npos)) {
+  RejectedCapability rejected =
+      RejectedRouteCapability(result, api_.capabilities);
+  if (rejected == RejectedCapability::kNone) return false;
+
+  auto changed = [&](RejectedCapability capability) {
+    Emit(Event{EventId::kCapabilityChanged,
+               {{"feature", CapabilityName(capability)},
+                {"from", true},
+                {"to", false},
+                {"reason", "provider_rejected"},
+                {"error", result.error}}});
+  };
+  if (rejected == RejectedCapability::kImageInput) {
+    api_.capabilities.image_input = false;
     ImageFallbackResult fallback = ApplyImageAnalysisFallback(
         conversation_.Messages(), ImageFallbackCause::kRejected);
     EnsureRuntimeContext();
-    DebugLog("feature_degraded", {{"feature", "image_input"},
-                                  {"error", result.error},
-                                  {"messages_rewritten", fallback.rewritten}});
+    changed(rejected);
     ReportImageFallback(fallback);
     return fallback.applied;
   }
-  if (result.http_status != 400) return false;
-  auto drop = [&](bool& flag, const char* feature) {
-    flag = false;
-    DebugLog("feature_degraded",
-             {{"feature", feature}, {"error", result.error}});
-    return true;
-  };
-  if (api_.parallel_tools &&
-      (lowered.find("parallel_tool_calls") != std::string::npos ||
-       lowered.find("parallel tool calls") != std::string::npos)) {
-    return drop(api_.parallel_tools, "parallel_tool_calls");
-  }
-  if (api_.include_usage &&
-      lowered.find("stream_options") != std::string::npos) {
-    return drop(api_.include_usage, "stream_options");
-  }
-  if (api_.native_tools && lowered.find("tool") != std::string::npos) {
-    drop(api_.native_tools, "native_tools");
-    conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-    printf(
-        "%s· server rejected native tools — falling back to text protocol%s\n",
-        DIM(), RST());
+  if (rejected == RejectedCapability::kParallelTools) {
+    api_.capabilities.parallel_tools = false;
+    changed(rejected);
     return true;
   }
-  return false;
+  if (rejected == RejectedCapability::kStreamUsage) {
+    api_.capabilities.stream_usage_option = false;
+    changed(rejected);
+    return true;
+  }
+
+  api_.capabilities.native_tools = false;
+  changed(rejected);
+  conversation_.Set(0, SysMsg(), MessageKind::kSystem);
+  printf("%s· server rejected native tools — falling back to text protocol%s\n",
+         DIM(), RST());
+  return true;
 }
 
 std::string Agent::SystemPrompt() const {
   std::string prompt = kSystemPrompt;
   prompt += CapabilityPrompt(tools_);
   prompt += TerminalImageInstruction();
-  if (!api_.native_tools) prompt += TextProtocolPrompt(tools_);
+  if (!api_.capabilities.native_tools) prompt += TextProtocolPrompt(tools_);
   if (adaptive_system_ && !adaptive_system_->instructions.empty() &&
       FindTool(tools_, "adapt_system")) {
     prompt += "\n\n[MUTABLE SELF-DIRECTIVE revision " +
@@ -445,9 +451,10 @@ void Agent::RefreshSystemMessage() {
 void Agent::EnsureRuntimeContext() {
   std::string content =
       EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
-      ModelImageInputInstruction();
+      ModelImageInputInstruction(api_.capabilities.image_input,
+                                 !api_.config.image_model.empty());
   if (std::any_of(tools_.begin(), tools_.end(),
-                  [](const Tool& tool) { return tool.name == "task"; })) {
+                  [](const Tool& tool) { return tool.delegates; })) {
     content += DelegationRuntimeContext(api_);
   }
   if (conversation_.LastText(MessageKind::kRuntimeContext) == content) return;

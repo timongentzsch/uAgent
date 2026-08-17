@@ -7,6 +7,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "include/core/signals.h"
@@ -263,7 +264,7 @@ constexpr LongOption kLongOptions[] = {
     {"UAGENT_MAX_TOOL_CALLS", "max_tool_calls", &RuntimeConfig::max_tool_calls,
      0, kAnyMax},
     {"UAGENT_MAX_TURN_SECONDS", "max_turn_seconds",
-     &RuntimeConfig::max_turn_seconds, 1, kAnyMax},
+     &RuntimeConfig::max_turn_seconds, 0, kAnyMax},
     {"UAGENT_TOOL_TIMEOUT", "tool_timeout_s", &RuntimeConfig::tool_timeout_s, 0,
      kAnyMax},
     {"UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s",
@@ -323,7 +324,42 @@ constexpr BoolOption kBoolOptions[] = {
      &RuntimeConfig::memory_generate, true},
 };
 
+void NormalizeRuntimeConfig(RuntimeConfig& config) {
+  if (!ValidOpenRouterVariant(config.openrouter_variant)) {
+    config.openrouter_variant.clear();
+  }
+  if (!OneOf(config.web_search_backend,
+             {"auto", "responses", "openrouter", "off"})) {
+    config.web_search_backend = "auto";
+  }
+  if (!OneOf(config.web_search_engine, {"auto", "native", "exa", "firecrawl",
+                                        "parallel", "perplexity"})) {
+    config.web_search_engine = "auto";
+  }
+  if (!OneOf(config.web_search_context_size, {"low", "medium", "high"})) {
+    config.web_search_context_size.clear();
+  }
+}
+
 }  // namespace
+
+std::string RuntimeConfigField(std::string_view environment) {
+  for (const LongOption& option : kLongOptions) {
+    if (environment == option.env) return option.name;
+  }
+  for (const StringOption& option : kStringOptions) {
+    if (environment == option.env) return option.name;
+  }
+  for (const BoolOption& option : kBoolOptions) {
+    if (environment == option.env) return option.name;
+  }
+  if (environment == "UAGENT_WEB_SEARCH_API_KEY") {
+    return "web_search_api_key";
+  }
+  if (environment == "UAGENT_MAX_TURN_COST") return "max_turn_cost";
+  if (environment == "UAGENT_SESSION_BUDGET") return "session_budget";
+  return "";
+}
 
 RuntimeConfig RuntimeConfig::FromEnvironment() {
   RuntimeConfig c;
@@ -341,21 +377,101 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
   }
   c.max_turn_cost = std::max(0.0, EnvDouble("UAGENT_MAX_TURN_COST", 0));
   c.session_budget = std::max(0.0, EnvDouble("UAGENT_SESSION_BUDGET", 0));
-  if (!ValidOpenRouterVariant(c.openrouter_variant)) {
-    c.openrouter_variant.clear();
-  }
-  if (!OneOf(c.web_search_backend,
-             {"auto", "responses", "openrouter", "off"})) {
-    c.web_search_backend = "auto";
-  }
-  if (!OneOf(c.web_search_engine, {"auto", "native", "exa", "firecrawl",
-                                   "parallel", "perplexity"})) {
-    c.web_search_engine = "auto";
-  }
-  if (!OneOf(c.web_search_context_size, {"low", "medium", "high"})) {
-    c.web_search_context_size.clear();
-  }
+  NormalizeRuntimeConfig(c);
   return c;
+}
+
+RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
+  RuntimeConfig config;
+  auto value = [&](const char* name) -> const std::string* {
+    auto found = values.find(name);
+    return found == values.end() ? nullptr : &found->second;
+  };
+  for (const LongOption& option : kLongOptions) {
+    int64_t parsed = config.*option.field;
+    const std::string* selected = value(option.env);
+    if (selected) ParseInt64(selected->c_str(), parsed);
+    config.*option.field = std::clamp(parsed, option.minimum, option.maximum);
+  }
+  for (const StringOption& option : kStringOptions) {
+    const std::string* selected = value(option.env);
+    config.*option.field = selected ? *selected : option.default_value;
+  }
+  if (const std::string* selected = value("UAGENT_WEB_SEARCH_API_KEY")) {
+    config.web_search_api_key = *selected;
+  }
+  for (const BoolOption& option : kBoolOptions) {
+    const std::string* selected = value(option.env);
+    config.*option.field = selected ? *selected != "0" : option.default_value;
+  }
+  if (const std::string* selected = value("UAGENT_MAX_TURN_COST")) {
+    double parsed = 0;
+    if (ParseFiniteDouble(selected->c_str(), parsed)) {
+      config.max_turn_cost = std::max(0.0, parsed);
+    }
+  }
+  if (const std::string* selected = value("UAGENT_SESSION_BUDGET")) {
+    double parsed = 0;
+    if (ParseFiniteDouble(selected->c_str(), parsed)) {
+      config.session_budget = std::max(0.0, parsed);
+    }
+  }
+  NormalizeRuntimeConfig(config);
+  return config;
+}
+
+std::vector<std::string> RuntimeConfig::ApplyTurnReload(
+    const RuntimeConfig& next) {
+  std::vector<std::string> changed;
+#define UAGENT_RELOAD(field)   \
+  if (field != next.field) {   \
+    field = next.field;        \
+    changed.push_back(#field); \
+  }
+  UAGENT_RELOAD(first_event_timeout_s)
+  UAGENT_RELOAD(stream_idle_timeout_s)
+  UAGENT_RELOAD(request_timeout_s)
+  UAGENT_RELOAD(request_bytes)
+  UAGENT_RELOAD(response_bytes)
+  UAGENT_RELOAD(max_steps)
+  UAGENT_RELOAD(max_tool_calls)
+  UAGENT_RELOAD(max_turn_seconds)
+  UAGENT_RELOAD(max_turn_cost)
+  UAGENT_RELOAD(session_budget)
+  UAGENT_RELOAD(tool_timeout_s)
+  UAGENT_RELOAD(web_search_timeout_s)
+  UAGENT_RELOAD(web_search_max_tokens)
+  UAGENT_RELOAD(web_search_calls)
+  UAGENT_RELOAD(web_search_max_results)
+  UAGENT_RELOAD(web_search_max_uses)
+  UAGENT_RELOAD(session_archive_bytes)
+  UAGENT_RELOAD(openrouter_provider)
+  UAGENT_RELOAD(openrouter_variant)
+  UAGENT_RELOAD(openrouter_fallbacks)
+  UAGENT_RELOAD(image_model)
+#undef UAGENT_RELOAD
+  return changed;
+}
+
+json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
+  json out = json::object();
+  auto source = [&](const char* env) {
+    return env_sources.is_object() ? JsonValue(env_sources, env, "default")
+                                   : std::string("default");
+  };
+  for (const LongOption& option : kLongOptions) {
+    out[option.name] = source(option.env);
+  }
+  for (const StringOption& option : kStringOptions) {
+    out[option.name] = source(option.env);
+  }
+  for (const BoolOption& option : kBoolOptions) {
+    out[option.name] = source(option.env);
+  }
+  out["web_search_api_key"] = source("UAGENT_WEB_SEARCH_API_KEY");
+  out["max_turn_cost"] = source("UAGENT_MAX_TURN_COST");
+  out["session_budget"] = source("UAGENT_SESSION_BUDGET");
+  return out;
 }
 
 json RuntimeConfig::DiagnosticJson() const {
@@ -364,12 +480,17 @@ json RuntimeConfig::DiagnosticJson() const {
     out[option.name] = this->*option.field;
   }
   for (const StringOption& option : kStringOptions) {
-    out[option.name] = this->*option.field;
+    std::string value = this->*option.field;
+    if (std::string_view(option.name).ends_with("_url")) {
+      value = RedactedUrl(std::move(value));
+    }
+    out[option.name] = std::move(value);
   }
   for (const BoolOption& option : kBoolOptions) {
     out[option.name] = this->*option.field;
   }
   out.update({
+      {"web_search_api_key", web_search_api_key.empty() ? "<unset>" : "<set>"},
       {"max_turn_cost", max_turn_cost},
       {"session_budget", session_budget},
       {"auto_compact_pct", AutoCompactPct()},

@@ -266,6 +266,47 @@ void TestActivitySessions() {
     CHECK(final.output.find("\nonce") == std::string::npos);
   }
 
+  ProcessSupervisor bounded_completion;
+  const char* prior_result_cap = getenv("UAGENT_TOOL_RESULT_CHARS");
+  std::string saved_result_cap = prior_result_cap ? prior_result_cap : "";
+  setenv("UAGENT_TOOL_RESULT_CHARS", "8000", 1);
+  CHECK(RunShellCommand(bounded_completion, context,
+                        {.command = "printf '%7000s' x",
+                         .background = true,
+                         .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> bounded_jobs = bounded_completion.Snapshot();
+  CHECK(bounded_jobs.size() == 1);
+  auto bounded_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!bounded_jobs.empty() &&
+         std::chrono::steady_clock::now() < bounded_deadline) {
+    bool drained;
+    {
+      std::lock_guard<std::mutex> lock(bounded_jobs[0].session->mutex);
+      drained = bounded_jobs[0].session->state == ActivityState::kDrained;
+    }
+    if (drained) break;
+    uint64_t generation = bounded_completion.Generation();
+    bounded_completion.WaitForChange(generation, bounded_deadline);
+  }
+  std::vector<std::string> bounded_notes = BgTakeCompleted(bounded_completion);
+  CHECK(bounded_notes.size() == 1);
+  CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 6500);
+  CHECK(!bounded_notes.empty() &&
+        bounded_notes[0].find("bytes omitted") != std::string::npos);
+  if (!bounded_jobs.empty()) {
+    ToolResult replay = ToolActivityOutput(
+        bounded_completion, ActivityId(bounded_jobs[0]), 0, {}, context, 8000);
+    CHECK(replay.output.find("complete transcript replay") !=
+          std::string::npos);
+  }
+  if (prior_result_cap) {
+    setenv("UAGENT_TOOL_RESULT_CHARS", saved_result_cap.c_str(), 1);
+  } else {
+    unsetenv("UAGENT_TOOL_RESULT_CHARS");
+  }
+
   ProcessSupervisor incremental;
   CHECK(
       RunShellCommand(incremental, context,
@@ -569,6 +610,7 @@ void TestToolExecutionPolicy() {
                           {"required", {"command"}}};
   exact_run.capabilities = Capability(ToolCapability::kExecute) |
                            Capability(ToolCapability::kMutate);
+  exact_run.command_policy = true;
   std::vector<Tool> restricted{inspect, mutate, exact_run};
   ApplyToolPolicy(restricted, {.allowed = Capability(ToolCapability::kInspect),
                                .tool_allowlist = {"inspect", "run"},
@@ -678,6 +720,11 @@ void TestToolExecutionPolicy() {
   CHECK(BgResultHeader(task_header) == "[Background result: task id 7]");
   CHECK(BgResultHeader(task_header).find("delegated prompt") ==
         std::string::npos);
+  BackgroundCompletion task_completion;
+  task_completion.activity_id = 7;
+  task_completion.kind = ActivityKind::kTask;
+  task_completion.command = "uagent -p 'very long delegated prompt'";
+  CHECK(BgResultHeader(task_completion) == "[Background result: task id 7]");
   ToolResult launched = RunShellCommand(task_processes, base,
                                         {.command = "sleep 10",
                                          .background = true,
@@ -725,7 +772,8 @@ void TestOpenRouterServerSearch() {
   RuntimeConfig config;
   Api api(config);
   api.base_url = "https://openrouter.ai/api/v1";
-  api.openrouter_compatible = true;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   api.model = "vendor/model";
   json schemas = json::array(
       {{{"type", "function"},
@@ -753,15 +801,18 @@ void TestOpenRouterServerSearch() {
     CHECK(body["tools"][0]["function"]["name"] == "web_search");
   };
   api.base_url = "http://127.0.0.1:8080/v1";
-  api.openrouter_compatible = false;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
   check_native_search();
 
   api.base_url = "http://127.0.0.1:8787/api/v1";
-  api.openrouter_compatible = true;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   check_native_search();
 
   api.base_url = "https://openrouter.ai/api/v1";
-  api.openrouter_compatible = true;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   body = api.BuildChatBody(json::array(), json::array());
   CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
 
@@ -940,17 +991,13 @@ void TestAttachmentEncoding() {
   Attachment image_attachment;
   error.clear();
   CHECK(InspectAttachment(image_path.string(), image_attachment, error));
-  CHECK(ImageInputError(image_attachment).empty());
-  SetImageInputAvailable(false);
-  CHECK(ImageInputError(image_attachment).find(image_path.string()) !=
-        std::string::npos);
-  setenv("UAGENT_IMAGE_MODEL", "vision-test", 1);
-  CHECK(ImageInputError(image_attachment).empty());
-  CHECK(std::string(ModelImageInputInstruction()).find("vision model") !=
-        std::string::npos);
-  unsetenv("UAGENT_IMAGE_MODEL");
-  CHECK(ImageInputError(attachment).empty());
-  SetImageInputAvailable(true);
+  CHECK(ImageInputError(image_attachment, true, false).empty());
+  CHECK(ImageInputError(image_attachment, false, false)
+            .find(image_path.string()) != std::string::npos);
+  CHECK(ImageInputError(image_attachment, false, true).empty());
+  CHECK(std::string(ModelImageInputInstruction(false, true))
+            .find("vision model") != std::string::npos);
+  CHECK(ImageInputError(attachment, false, false).empty());
 
   error.clear();
   json content =
@@ -965,11 +1012,9 @@ void TestAttachmentEncoding() {
   CHECK(messages[0]["content"][0]["text"].get<std::string>().find("withheld") ==
         std::string::npos);
   CHECK(messages[0]["content"][1].value("type", "") == "file");
-  SetImageInputAvailable(false);
-  CHECK(std::string(ModelImageInputInstruction())
+  CHECK(std::string(ModelImageInputInstruction(false, false))
             .find("Image input unavailable") != std::string::npos);
-  SetImageInputAvailable(true);
-  CHECK(std::string(ModelImageInputInstruction()).empty());
+  CHECK(std::string(ModelImageInputInstruction(true, false)).empty());
 
   setenv("UAGENT_IMAGE_PROTOCOL", "iterm", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kIterm);
@@ -1110,13 +1155,18 @@ void TestGrepTool() {
   auto lean_tools = BuiltinTools(supervisor, root, false);
   auto image_tools = BuiltinTools(supervisor, root, true);
   CHECK(FindTool(lean_tools, "show_image") == nullptr);
-  CHECK(FindTool(image_tools, "show_image") != nullptr);
+  const Tool* image = FindTool(image_tools, "show_image");
+  CHECK(image != nullptr);
+  CHECK(image && image->serial_media);
+  CHECK(image && image->replay_image);
   const Tool* run = FindTool(lean_tools, "run");
   CHECK(run != nullptr);
   if (run) {
     CHECK(run->parameters["properties"].contains("detach"));
     CHECK(run->parameters["properties"].contains("shell"));
     CHECK(run->timeout_s == 0);
+    CHECK(run->verbatim_label);
+    CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
     CHECK(run->validate({{"command", "cmake --build build"}}).empty());
     CHECK(run->validate({{"command", "python -c 'print(1')"}})
@@ -1169,6 +1219,7 @@ void TestGrepTool() {
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
   CHECK(FindTool(lean_tools, "activity_output") != nullptr);
   const Tool* activity = FindTool(lean_tools, "activity_output");
+  CHECK(activity && activity->blocking_wait_default_ms == 0);
   CHECK(activity && activity->parameters["properties"].contains("until"));
   CHECK(activity &&
         !activity->validate({{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}})
@@ -1178,6 +1229,7 @@ void TestGrepTool() {
                 .find("requires id and wait_ms") != std::string::npos);
   const Tool* activity_wait = FindTool(lean_tools, "activity_wait");
   CHECK(activity_wait != nullptr);
+  CHECK(activity_wait && activity_wait->blocking_wait_default_ms == 30000);
   CHECK(activity_wait &&
         activity_wait->parameters["properties"]["mode"]["enum"] ==
             json::array({"any", "all"}));

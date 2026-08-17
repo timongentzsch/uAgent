@@ -30,7 +30,7 @@ void TestRuntimeOwnershipHelpers() {
   runtime.Shutdown();
   runtime.Shutdown();
 
-  g_signal_abort = 1;
+  g_signal_abort.test_and_set(std::memory_order_relaxed);
   CHECK(RunCancellable([] {}));
   CHECK(AbortRequested());
   ClearAbort();
@@ -135,7 +135,8 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("mcp_roots", "") == config.mcp_roots);
   CHECK(diagnostics.value("tool_trace_protect_chars", int64_t{0}) == 1234);
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
-  CHECK(diagnostics.find("web_search_api_key") == diagnostics.end());
+  CHECK(diagnostics.value("web_search_api_key", "") == "<set>");
+  CHECK(JsonDump(diagnostics).find("secret-search-key") == std::string::npos);
   unsetenv("UAGENT_MAX_STEPS");
   unsetenv("UAGENT_MAX_TOOL_CALLS");
   unsetenv("UAGENT_TEST_LONG");
@@ -163,7 +164,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(defaults.max_tool_calls == 0);
   CHECK(defaults.max_turn_cost == 0);
   CHECK(AutoCompactTokens() == 0);
-  CHECK(defaults.max_turn_seconds == 3600);
+  CHECK(defaults.max_turn_seconds == 0);
   CHECK(defaults.first_event_timeout_s == 300);
   CHECK(defaults.stream_idle_timeout_s == 300);
   CHECK(defaults.request_timeout_s == 600);
@@ -173,7 +174,8 @@ void TestRuntimeOwnershipHelpers() {
   routed.openrouter_fallbacks = true;
   Api api(routed);
   api.base_url = "https://openrouter.ai/api/v1";
-  api.openrouter_compatible = true;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   api.model = "test";
   json body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("session_id", "") == "stable-session");
@@ -196,13 +198,16 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
   api.base_url = "http://127.0.0.1:8080/v1";
-  api.openrouter_compatible = false;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
   body = api.BuildChatBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:free");
   CHECK(!body.contains("session_id"));
   CHECK(!body.contains("provider"));
 
   api.base_url = "https://api.openai.com/v1";
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
   api.reasoning_effort = "high";
   body = api.BuildChatBody(json::array(), json::array());
   CHECK(body.value("reasoning_effort", "") == "high");
@@ -213,12 +218,14 @@ void TestRuntimeOwnershipHelpers() {
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;
   reasoning_result.reasoning = "reasoning state";
+  reasoning_result.reasoning_field = true;
   reasoning_result.reasoning_details =
       json::array({{{"type", "reasoning.text"},
                     {"index", 0},
                     {"text", "reasoning state"}}});
   api.base_url = "https://openrouter.ai/api/v1";
-  api.openrouter_compatible = true;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   api.PreserveAssistantReasoning(assistant, reasoning_result);
   CHECK(!assistant.contains("reasoning"));
   CHECK(assistant["reasoning_details"] == reasoning_result.reasoning_details);
@@ -240,7 +247,8 @@ void TestRuntimeOwnershipHelpers() {
   api.PreserveAssistantReasoning(local_assistant, reasoning_result);
   CHECK(local_assistant.value("reasoning", "") == "reasoning state");
   api.base_url = "https://example.com/v1";
-  api.openrouter_compatible = false;
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
   json generic_assistant = {{"role", "assistant"}, {"content", ""}};
   api.PreserveAssistantReasoning(generic_assistant, reasoning_result);
   CHECK(!generic_assistant.contains("reasoning"));
@@ -269,6 +277,27 @@ void TestRuntimeOwnershipHelpers() {
       {"metadata", {{"error_type", "timeout"}, {"provider_code", "slow"}}}};
   CHECK(RemoteErrorType(routed_error) == "timeout");
   CHECK(RemoteErrorCode(routed_error) == "slow");
+
+  ProviderCapabilities generic = CapabilitiesForRoute(
+      ProviderProtocol::kOpenAi, "http://127.0.0.1:8080/v1");
+  ProviderCapabilities router = CapabilitiesForRoute(
+      ProviderProtocol::kOpenRouter, "http://127.0.0.1:8080/v1");
+  CHECK(generic.stream_usage_option);
+  CHECK(!generic.raw_slash_models);
+  CHECK(!router.stream_usage_option);
+  CHECK(router.raw_slash_models);
+  CHECK(router.reasoning_object);
+  ChatResult rejected;
+  rejected.http_status = 400;
+  rejected.remote_error_code = "unsupported_parallel_tool_calls";
+  rejected.error = "request rejected";
+  CHECK(RejectedRouteCapability(rejected, router) ==
+        RejectedCapability::kParallelTools);
+  rejected.remote_error_code.clear();
+  rejected.error = "unsupported stream_options";
+  CHECK(RejectedRouteCapability(rejected, router) == RejectedCapability::kNone);
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kStreamUsage);
 }
 
 void TestAgentConfigAllowlist() {
@@ -299,7 +328,10 @@ void TestAgentConfigAllowlist() {
   unsetenv("OPENROUTER_API_KEY");
   unsetenv("OPENROUTER_MODEL");
   unsetenv("OPENROUTER_EFFORT");
-  LoadConfigFile(/*trust_project=*/false);
+  ConfigManager loaded = ConfigManager::Capture(
+      /*trust_project=*/false, /*cli_budget=*/-1,
+      /*cli_no_memory=*/false);
+  (void)loaded.Initialize();
   CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
   CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
   CHECK(EnvStr("OPENROUTER_EFFORT") == "high");
@@ -414,7 +446,7 @@ void TestProviderTemplates() {
       "UAGENT_TEST_PROVIDER_EFFORT",
       "default-model",
       +[](std::string url) { return url == "https://provider.test/v1"; },
-      false,
+      ProviderProtocol::kOpenAi,
   };
   const char* inherited_effort = getenv("UAGENT_REASONING_EFFORT");
   std::string prior_effort = inherited_effort ? inherited_effort : "";
@@ -475,20 +507,20 @@ void TestNamedProviders() {
   CHECK(codex && codex->base_url == "http://127.0.0.1:8787/api/v1");
   CHECK(codex && codex->api_key == "local-key");
   CHECK(codex && codex->context == 16384);
-  CHECK(codex && codex->openrouter_compatible);
+  CHECK(codex && codex->protocol == ProviderProtocol::kOpenRouter);
 
   std::optional<ModelRoute> dynamic = ResolveModelRoute(
       catalog.models, catalog.providers, "codex-local/org/model");
   CHECK(dynamic.has_value());
   CHECK(dynamic && dynamic->model == "org/model");
   CHECK(dynamic && dynamic->context == 16384);
-  CHECK(dynamic && dynamic->openrouter_compatible);
+  CHECK(dynamic && dynamic->protocol == ProviderProtocol::kOpenRouter);
   RuntimeConfig config;
   Api routed(config);
   routed.reasoning_effort = "medium";
   ApplyRoute(routed, *dynamic);
   CHECK(routed.reasoning_effort == "medium");
-  CHECK(routed.openrouter_compatible);
+  CHECK(routed.capabilities.OpenRouter());
   ModelRoute fixed_effort = *dynamic;
   fixed_effort.effort = "low";
   ApplyRoute(routed, fixed_effort);
@@ -503,16 +535,17 @@ void TestNamedProviders() {
   CHECK(NormalizeModelQuery("gpt-5.6") == "gpt-5.6");
   Api openrouter_api(config);
   openrouter_api.base_url = "https://openrouter.ai/api/v1";
-  openrouter_api.openrouter_compatible = true;
+  openrouter_api.capabilities = CapabilitiesForRoute(
+      ProviderProtocol::kOpenRouter, openrouter_api.base_url);
   openrouter_api.model = "parent-model";
-  CHECK(DefaultTaskModel(openrouter_api) == "deepseek/deepseek-v4-flash");
+  CHECK(DefaultTaskModel(openrouter_api) == "parent-model");
   CHECK(DelegationRuntimeContext(openrouter_api) ==
-        "[delegation: parent=parent-model (default); "
-        "default=deepseek/deepseek-v4-flash (default)]");
+        "[delegation: parent=parent-model (default); default=parent]");
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
-  openrouter_api.openrouter_compatible = false;
+  openrouter_api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, openrouter_api.base_url);
   CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   CHECK(DefaultTaskModel(openrouter_api) == "parent-model");
   std::optional<ModelRoute> fixed =
@@ -556,6 +589,82 @@ void TestNamedProviders() {
     } else {
       unsetenv(key);
     }
+  }
+}
+
+void TestEffectiveConfigReload() {
+  TestWorkspace workspace("effective-config");
+  const char* inherited = getenv("UAGENT_MAX_STEPS");
+  std::string prior = inherited ? inherited : "";
+  const char* inherited_model = getenv("UAGENT_MODEL");
+  std::string prior_model = inherited_model ? inherited_model : "";
+  setenv("UAGENT_MAX_STEPS", "9", 1);
+  unsetenv("UAGENT_MODEL");
+  std::string path = UagentConfigPath();
+  CHECK(ToolWriteFile(
+            path,
+            "UAGENT_MAX_STEPS=4\n"
+            "UAGENT_MAX_TOOL_CALLS=2\n"
+            "UAGENT_MCP_SERVERS=9\n"
+            "UAGENT_MODEL=initial-model\n"
+            "UAGENT_SESSION_BUDGET=1\n"
+            "UAGENT_WEB_SEARCH_URL=https://user:pass@search.example/v1\n"
+            "search_secret=private-search-key\n"
+            "UAGENT_WEB_SEARCH_API_KEY=$search_secret\n")
+            .output.starts_with("wrote "));
+  ConfigManager manager = ConfigManager::Capture(
+      /*trust_project=*/false, /*cli_budget=*/3.5,
+      /*cli_no_memory=*/true);
+  RuntimeConfig active = manager.Initialize();
+  CHECK(active.max_steps == 9);
+  CHECK(active.max_tool_calls == 2);
+  CHECK(active.mcp_servers == 9);
+  CHECK(active.session_budget == 3.5);
+  CHECK(!active.memory_enabled);
+  json diagnostic = manager.DiagnosticJson(active);
+  CHECK(diagnostic["sources"]["UAGENT_MAX_STEPS"] == "environment");
+  CHECK(diagnostic["sources"]["UAGENT_SESSION_BUDGET"] == "cli");
+  CHECK(diagnostic["provenance"]["max_steps"] == "environment");
+  CHECK(diagnostic["provenance"]["max_tool_calls"] == "global-config");
+  CHECK(diagnostic["provenance"]["request_bytes"] == "default");
+  CHECK(diagnostic["configured"]["web_search_api_key"] == "<set>");
+  std::string shown = JsonDump(diagnostic);
+  CHECK(shown.find("private-search-key") == std::string::npos);
+  CHECK(shown.find("user:pass") == std::string::npos);
+
+  CHECK(ToolWriteFile(path,
+                      "UAGENT_MAX_TOOL_CALLS=7\n"
+                      "UAGENT_MCP_SERVERS=10\n"
+                      "UAGENT_MODEL=next-model\n"
+                      "UAGENT_WEB_SEARCH_API_KEY=changed-secret\n")
+            .output.starts_with("wrote "));
+  std::optional<ConfigReload> reload = manager.Reload(active);
+  CHECK(reload.has_value());
+  if (reload) {
+    CHECK(reload->active.max_steps == 9);
+    CHECK(reload->active.max_tool_calls == 7);
+    CHECK(reload->active.mcp_servers == 9);
+    CHECK(std::find(reload->applied.begin(), reload->applied.end(),
+                    "max_tool_calls") != reload->applied.end());
+    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                    "mcp_servers") != reload->deferred.end());
+    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                    "UAGENT_MODEL") != reload->deferred.end());
+    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                    "web_search_api_key") != reload->deferred.end());
+  }
+  CHECK(JsonDump(manager.DiagnosticJson(reload ? reload->active : active))
+            .find("changed-secret") == std::string::npos);
+
+  if (inherited) {
+    setenv("UAGENT_MAX_STEPS", prior.c_str(), 1);
+  } else {
+    unsetenv("UAGENT_MAX_STEPS");
+  }
+  if (inherited_model) {
+    setenv("UAGENT_MODEL", prior_model.c_str(), 1);
+  } else {
+    unsetenv("UAGENT_MODEL");
   }
 }
 

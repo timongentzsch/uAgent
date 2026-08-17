@@ -66,9 +66,8 @@ std::string ModelPropertyDescription(
   return description;
 }
 
-bool InheritsParentRoute(const Api& api, const std::string& requested) {
-  return requested.empty() && NormalizeModelId(TaskModel()).empty() &&
-         !api.openrouter_compatible;
+bool InheritsParentRoute(const std::string& requested) {
+  return requested.empty() && NormalizeModelId(TaskModel()).empty();
 }
 
 std::string TaskProvider(const std::string& selection,
@@ -92,7 +91,7 @@ std::string TaskProvider(const std::string& selection,
 struct TaskRoute {
   std::string selection, model, base_url, api_key, effort;
   int64_t context = 0;
-  bool openrouter_compatible = false;
+  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
   bool unresolved = false;
 };
 
@@ -107,8 +106,8 @@ TaskRoute ResolveTaskRoute(const Api& api,
   resolved.api_key = api.api_key;
   resolved.effort = api.reasoning_effort;
   resolved.context = api.ctx_window;
-  resolved.openrouter_compatible = api.openrouter_compatible;
-  if (resolved.selection.empty() || InheritsParentRoute(api, requested)) {
+  resolved.protocol = api.capabilities.protocol;
+  if (resolved.selection.empty() || InheritsParentRoute(requested)) {
     return resolved;
   }
   std::optional<ModelRoute> route =
@@ -122,7 +121,7 @@ TaskRoute ResolveTaskRoute(const Api& api,
   resolved.model = route->model;
   if (!route->effort.empty()) resolved.effort = route->effort;
   resolved.context = route->context;
-  resolved.openrouter_compatible = route->openrouter_compatible;
+  resolved.protocol = route->protocol;
   return resolved;
 }
 
@@ -140,16 +139,18 @@ std::string TaskTargetLabel(const Api& api,
 std::string DefaultTaskModel(const Api& api) {
   std::string selection = NormalizeModelId(TaskModel());
   if (!selection.empty()) return selection;
-  if (api.openrouter_compatible) return "deepseek/deepseek-v4-flash";
   return api.model;
 }
 
 std::string DelegationRuntimeContext(const Api& api) {
-  return "[delegation: parent=" +
-         TerminalSafe(ModelLabel(api.model, api.reasoning_effort)) +
-         "; default=" +
-         TerminalSafe(ModelLabel(DefaultTaskModel(api), api.reasoning_effort)) +
-         "]";
+  std::string parent =
+      TerminalSafe(ModelLabel(api.model, api.reasoning_effort));
+  std::string task_model = DefaultTaskModel(api);
+  if (task_model == api.model) {
+    return "[delegation: parent=" + parent + "; default=parent]";
+  }
+  return "[delegation: parent=" + parent + "; default=" +
+         TerminalSafe(ModelLabel(task_model, api.reasoning_effort)) + "]";
 }
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
@@ -223,7 +224,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {"UAGENT_CONTEXT", std::to_string(route.context)},
             {"UAGENT_REASONING_EFFORT", std::move(route.effort)},
             {"UAGENT_OPENROUTER_COMPATIBLE",
-             route.openrouter_compatible ? "1" : "0"},
+             route.protocol == ProviderProtocol::kOpenRouter ? "1" : "0"},
             {"UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant},
             {"UAGENT_USAGE_FILE", UsageLedger()},
             {"UAGENT_TOOLSET", std::move(mode)},
@@ -247,6 +248,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       });
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
+  tool.delegates = true;
   tool.retain_output = true;
   tool.available_in_lean = false;
   tool.max_calls_per_turn = MaxBackgroundJobs();

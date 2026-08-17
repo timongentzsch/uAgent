@@ -13,6 +13,12 @@ namespace uagent {
 
 using nlohmann::json;
 
+enum class RemoteErrorKind : uint8_t {
+  kNone,
+  kTransient,
+  kContextLengthExceeded,
+};
+
 struct ToolCall {
   std::string id;
   std::string name;
@@ -22,9 +28,9 @@ struct ToolCall {
 struct ChatResult {
   std::string content;
   std::string reasoning;
-  // True when the provider used DeepSeek's `reasoning_content` extension.
-  // Direct DeepSeek-compatible routes require that field to be echoed on
-  // assistant messages while a tool turn continues.
+  bool reasoning_field = false;
+  // True when the route emitted the `reasoning_content` extension. Routes
+  // that require continuation replay receive the same observed field.
   bool reasoning_content_field = false;
   json reasoning_details = json::array();
   bool reasoning_details_field = false;
@@ -45,6 +51,7 @@ struct ChatResult {
   std::string error;
   std::string remote_error_type;
   std::string remote_error_code;
+  RemoteErrorKind remote_error_kind = RemoteErrorKind::kNone;
   bool interrupted = false;
   bool suppressed = false;
   bool semantic_progress = false;

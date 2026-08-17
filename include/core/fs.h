@@ -239,7 +239,8 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
         fs::remove(entry.path, remove_error);
         continue;
       }
-      if (max_files > 0) {
+      bool session_sidecar = entry.path.string().ends_with(".events.jsonl");
+      if (max_files > 0 && !session_sidecar) {
         kept.push(std::move(entry));
         if (kept.size() > static_cast<size_t>(max_files)) {
           std::error_code remove_error;
@@ -251,8 +252,34 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
   }
 }
 
+inline void PruneSessionJournalOrphans(const std::string& dir) {
+  namespace fs = std::filesystem;
+  constexpr std::string_view kSuffix = ".events.jsonl";
+  std::error_code ec;
+  for (fs::recursive_directory_iterator
+           it(dir, fs::directory_options::skip_permission_denied, ec),
+       end;
+       it != end; it.increment(ec)) {
+    if (ec) {
+      ec.clear();
+      continue;
+    }
+    if (!it->is_regular_file(ec)) continue;
+    std::string path = it->path().string();
+    if (!path.ends_with(kSuffix)) continue;
+    std::string session = path.substr(0, path.size() - kSuffix.size());
+    std::error_code exists_error;
+    if (!fs::exists(session, exists_error) && !exists_error) {
+      std::error_code remove_error;
+      fs::remove(path, remove_error);
+    }
+  }
+}
+
 inline void MaintainArtifacts() {
-  PruneArtifactTree(UagentDir(kHistoryDir), HistoryDays(), HistoryFiles());
+  std::string history = UagentDir(kHistoryDir);
+  PruneArtifactTree(history, HistoryDays(), HistoryFiles());
+  PruneSessionJournalOrphans(history);
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), HistoryFiles());
   PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());

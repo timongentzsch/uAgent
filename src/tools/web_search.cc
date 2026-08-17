@@ -63,8 +63,16 @@ WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers) {
   const RuntimeConfig& config = api.config;
   if (config.web_search_backend == "off") return {};
-  const NamedProvider* openai = FindNamedProvider(providers, "openai");
-  const NamedProvider* openrouter = FindNamedProvider(providers, "openrouter");
+  auto find_provider = [&](SearchProtocol protocol) -> const NamedProvider* {
+    auto found = std::find_if(
+        providers.begin(), providers.end(), [&](const NamedProvider& provider) {
+          return CapabilitiesForRoute(provider.protocol, provider.base_url)
+                     .search_protocol == protocol;
+        });
+    return found == providers.end() ? nullptr : &*found;
+  };
+  const NamedProvider* openai = find_provider(SearchProtocol::kResponses);
+  const NamedProvider* openrouter = find_provider(SearchProtocol::kOpenRouter);
   std::string openai_model = EnvStr("OPENAI_MODEL", "gpt-5.6");
   std::string openrouter_model = EnvStr("OPENROUTER_MODEL", "openrouter/auto");
 
@@ -96,7 +104,8 @@ WebSearchRoute SelectWebSearchRoute(
   // route, then independent OpenAI and OpenRouter credentials in that order.
   if (config.web_search_backend == "responses") {
     WebSearchRoute route = explicit_route(WebSearchBackend::kResponses);
-    if (!route.Valid() && OpenaiUrl(api.base_url)) {
+    if (!route.Valid() &&
+        api.capabilities.search_protocol == SearchProtocol::kResponses) {
       return active(WebSearchBackend::kResponses, api.model);
     }
     if (!route.Valid()) {
@@ -110,7 +119,7 @@ WebSearchRoute SelectWebSearchRoute(
         route.Valid()) {
       return route;
     }
-    if (api.openrouter_compatible) {
+    if (api.capabilities.search_protocol == SearchProtocol::kOpenRouter) {
       return active(WebSearchBackend::kOpenRouter, api.model);
     }
     return ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
@@ -123,10 +132,10 @@ WebSearchRoute SelectWebSearchRoute(
                                    : WebSearchBackend::kResponses;
     return explicit_route(backend);
   }
-  if (api.openrouter_compatible) {
+  if (api.capabilities.search_protocol == SearchProtocol::kOpenRouter) {
     return active(WebSearchBackend::kOpenRouter, api.model);
   }
-  if (OpenaiUrl(api.base_url)) {
+  if (api.capabilities.search_protocol == SearchProtocol::kResponses) {
     return active(WebSearchBackend::kResponses, api.model);
   }
   WebSearchRoute route = ProviderSearchRoute(WebSearchBackend::kResponses,

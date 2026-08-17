@@ -8,7 +8,7 @@ or multi-tenant service.
 | Concern | Default |
 | --- | ---: |
 | first event / stream idle | 300 / 300 s |
-| request / complete turn | 600 / 3600 s |
+| request / complete turn | 600 s / unlimited (`0`) |
 | model rounds / tool calls | unlimited / unlimited (both configurable) |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
 | reported turn cost | unlimited |
@@ -19,6 +19,7 @@ or multi-tenant service.
 | recent tool trace / prune batch | 64 / 32 KiB |
 | background jobs / safe workers | 8 / 4 |
 | per-activity incremental output buffer | 1 MiB, equal head/tail |
+| background completion context | commands: none; tasks: 6 KiB each / 12 KiB batch |
 | default public `run` yield | 10 seconds (`UAGENT_RUN_YIELD_MS`) |
 | retained delivered activity sessions | 16, LRU |
 | memory file / files | 2 KiB / 32 per scope |
@@ -37,14 +38,32 @@ their owning modules. Raise a bound only with a representative measurement.
 zero leaves it unlimited. `UAGENT_AUTO_COMPACT_TOKENS` optionally adds an
 absolute compaction threshold; zero relies on the model-relative percentage.
 `UAGENT_MAX_TURN_COST` optionally adds a reported-cost limit per turn; zero
-leaves it unlimited. `UAGENT_SESSION_BUDGET` independently limits cumulative
-reported session cost when set to a positive amount.
+leaves it unlimited. `UAGENT_MAX_TURN_SECONDS` optionally adds an aggregate
+wall-clock deadline; zero leaves complete turns unlimited while request,
+stream-idle, tool, repetition, and interrupt boundaries still apply.
+`UAGENT_SESSION_BUDGET` independently limits cumulative
+reported session cost when set to a positive amount. Canonical overload,
+rate-limit, resource-exhaustion, timeout, and unavailable type/code variants
+share the transient retry path. Context overflow never does: a clean preflight
+failure gets one 256 KiB projected compaction and one original-request retry;
+HTTP 413 follows the same policy. If compaction is also rejected, the turn
+stops; background completion remains observational.
 Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 `UAGENT_TOOL_TRACE_PROTECT_CHARS` controls the recent-output budget.
 Use `--no-memory` to remove memory recall and writes from the coordinator and
 delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
 environment setting. `/memory` shows the active policy and saved keys without
-calling a model.
+calling a model. `/context` shows active and configured runtime values, source
+provenance, restart-required changes, the redacted route, and negotiated route
+capabilities before the exact model request shape.
+
+Trusted global/project config files are stamp-checked at user and harness turn
+boundaries. Changed files are fully reparsed first, then request/turn-scoped
+fields are copied to both runtime config owners. Startup-owned registry, memory,
+and MCP shape changes are reported as restart-required. Process overrides and
+CLI settings remain dominant; secrets never appear in inspection output, and
+URL userinfo is removed. Reload creates no watcher thread and never mutates an
+in-flight turn.
 
 Set `UAGENT_ADAPT_SYSTEM=1` to expose the experimental `adapt_system` tool. It
 lets the model replace or clear a bounded free-form mutable section of message
@@ -87,6 +106,14 @@ Dollar limits are enforced between calls and require provider-reported
 may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
+The typed observational spine fans semantic lifecycle events to four fixed
+consumers: terminal presentation, backward-compatible `uagent.event.v1`, the
+sensitive debug trace, and a bounded metadata-only session journal. Events
+return no result and cannot affect agent control flow. Reasoning/answer token
+deltas are transient and never enter the journal. There is no dynamic sink
+registry and no linked OpenTelemetry dependency; deployments can consume the
+versioned JSONL externally.
+
 Debug model-response records expose `request_preparation_ms`,
 `end_to_end_ms`, `dns_ms`, `connect_ms`, `tls_ms`, `pretransfer_ms`,
 `start_transfer_ms`, `first_event_ms`, and `duration_ms`, plus structured
@@ -106,9 +133,9 @@ working directory reuses its process group.
 
 `run` waits 10 seconds by default before returning a still-running command as
 an activity; `UAGENT_RUN_YIELD_MS` changes that default. Explicit `yield_ms=0`
-waits to the turn deadline, while 250 through 30,000 select another initial
-wait. Set `tty=true` only when the process needs interactive input. A PTY
-activity retains merged output, writable input, process-group interruption, and resize support.
+waits until the command exits or an explicitly configured turn
+limit/interruption applies; 250 through 30,000 select another initial wait. Set
+`tty=true` only when the process needs interactive input. A PTY activity retains merged output, writable input, process-group interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
 interactively reattached after the harness exits. Waiting log readers use
 kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
@@ -125,14 +152,19 @@ use notifications rather than log polling. Interactions against one activity
 are serialized. Incremental output uses a 1 MiB equal head/tail buffer, while
 private logs continue to support diagnostics and large-output artifacts.
 `max_output_chars` can lower the host cap for one `run`, output, input, or wait
-interaction.
+interaction. Output already drained by those tools is not delivered again on
+completion. Completed tasks use one bounded batched context message;
+`activity_output` can explicitly replay a retained bounded transcript. Command
+completion is UI-only and never starts or enters a model turn. Task completion
+is added once to the next naturally occurring model call, capped at 6 KiB each
+and 12 KiB per batch, without triggering a turn.
 
 Use `task(background=false)` when the next step requires the child result;
 background tasks notify the agent automatically on exit. `activity_wait(ids,
 mode)` is an intentional join when no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
-group and removes its records and logs. Persistent TUI and headless runs resume
-automatically after background completion.
+group and removes its records and logs. Persistent TUI and headless runs
+publish completion without polling or starting a model turn.
 
 Configured MCP servers start once and expose their discovered tools directly.
 Their stdio and shutdown waits share pollable abort/SIGCHLD notifications, so

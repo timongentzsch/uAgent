@@ -26,6 +26,10 @@ struct ProjectInstructions {
   std::vector<std::string> sources;
   std::vector<std::string> memory_sources;
   bool truncated = false;
+  // Memory has its own byte cap, so it reports separately: a shared flag
+  // would warn about the project-document limit for a memory overflow.
+  bool memory_truncated = false;
+  size_t memory_limit = 0;
 };
 
 inline std::filesystem::path ProjectRoot(const std::filesystem::path& cwd) {

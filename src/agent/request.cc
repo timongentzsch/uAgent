@@ -150,12 +150,13 @@ std::string Agent::AnalyzeImageContent(const json& content,
     error = "UAGENT_IMAGE_MODEL is not configured";
     return "";
   }
+  ProviderCatalog catalog = SessionProviderCatalog();
+  SideRoute route = ResolveSideRoute(api_, catalog.models, catalog.providers,
+                                     api_.config.image_model);
   Api vision(api_.config);
-  vision.base_url = api_.base_url;
-  vision.api_key = api_.api_key;
-  vision.model = api_.config.image_model;
-  vision.ctx_window = api_.ctx_window;
-  vision.capabilities = api_.capabilities;
+  ApplySideRoute(vision, route);
+  // The route decides where the request goes; these three facts are true of
+  // any vision side call regardless of provider.
   vision.capabilities.native_tools = false;
   vision.capabilities.parallel_tools = false;
   vision.capabilities.image_input = true;
@@ -224,7 +225,8 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
 
   std::string note;
   if (!analysis.empty()) {
-    note = "[vision model analysis; textual evidence]\n" + analysis;
+    // Provenance, not capability: the model must not claim it saw the pixels.
+    note = "[image content; described, not seen]\n" + analysis;
   } else if (!fallback.error.empty()) {
     note = "[vision model analysis failed: " + fallback.error + "]";
   }

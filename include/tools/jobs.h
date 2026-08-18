@@ -24,6 +24,7 @@ struct CollectedLog {
 struct BackgroundCompletion {
   int64_t activity_id = 0;
   ActivityKind kind = ActivityKind::kCommand;
+  std::string kind_label;  // the spawning job_kind, e.g. subagent/advisor
   int status = 0;
   std::string command;
   std::string output;
@@ -77,7 +78,7 @@ std::vector<std::string> BgTakeCompleted(ProcessSupervisor& supervisor,
 std::vector<BackgroundCompletion> BgTakeCompletedDetails(
     ProcessSupervisor& supervisor, std::string_view kind = {});
 void BgShutdownAll(ProcessSupervisor& supervisor);
-size_t BgCancelTasks(ProcessSupervisor& supervisor);
+size_t BgCancelSubagents(ProcessSupervisor& supervisor);
 
 }  // namespace uagent
 

@@ -38,7 +38,7 @@ bool LeanToolset();
 // flailing subagent cannot spend the whole turn.
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
-std::string TaskModel();
+std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool AdaptiveSystemEnabled();
@@ -69,6 +69,8 @@ int64_t MaxMemories();
 int64_t MemoryIdleSeconds();
 int64_t MemoryExtractBytes();
 int64_t MemoryAlwaysBytes();
+int64_t AdvisorContextBytes();
+int64_t AdvisorTimeoutSeconds();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
 // bodies are sent only when a skill is opened.

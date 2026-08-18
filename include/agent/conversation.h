@@ -58,7 +58,6 @@ class Conversation {
 
   void Push(json message, MessageKind kind);
   void Upsert(json message, MessageKind kind);
-  void PopBack();
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
 

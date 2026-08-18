@@ -137,15 +137,15 @@ void TestConversation() {
   CHECK(traces.PruneOldToolResults(1500, 2500, {"skill"}).results == 0);
 
   std::string text_call = std::string(kTtOpen) +
-                          R"({"name":"list_dir","arguments":{"path":"."}})" +
+                          R"({"name":"read_path","arguments":{"path":"."}})" +
                           kTtClose;
   json text_messages = json::array(
       {{{"role", "assistant"}, {"content", text_call}},
-       {{"role", "system"}, {"content", "[tool_result list_dir]\nentry"}}});
+       {{"role", "system"}, {"content", "[tool_result read_path]\nentry"}}});
   json text_kinds = json::array({"assistant", "tool_result"});
   json text_trace = ToolTraceMessages(text_messages, text_kinds);
   CHECK(text_trace.size() == 1);
-  CHECK(text_trace[0]["name"] == "list_dir");
+  CHECK(text_trace[0]["name"] == "read_path");
   CHECK(text_trace[0]["arguments"] == json({{"path", "."}}));
   CHECK(text_trace[0]["result"] == "entry");
   CHECK(text_trace[0].value("text_protocol", false));

@@ -33,8 +33,10 @@ struct ConfigReload {
 
 class ConfigManager {
  public:
-  static ConfigManager Capture(bool trust_project, double cli_budget,
-                               bool cli_no_memory);
+  // `cli` holds UAGENT_* values named on the command line. They sit above the
+  // environment layer and are re-applied with overwrite, so a flag beats an
+  // inherited variable however the session was launched.
+  static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli);
 
   RuntimeConfig Initialize();
   std::optional<ConfigReload> Reload(const RuntimeConfig& active);
@@ -42,14 +44,13 @@ class ConfigManager {
 
  private:
   ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                double cli_budget, bool cli_no_memory);
+                RuntimeConfig::Values cli);
   EffectiveConfigSnapshot Read() const;
   bool FilesChanged() const;
 
   RuntimeConfig::Values process_;
   bool trust_project_ = false;
-  double cli_budget_ = -1;
-  bool cli_no_memory_ = false;
+  RuntimeConfig::Values cli_;
   std::string custom_path_;
   std::string global_path_;
   std::string project_path_;

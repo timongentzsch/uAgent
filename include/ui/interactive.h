@@ -214,7 +214,10 @@ class RawComposer {
         last_submitted_rows_ = drawn_rows_;
         MoveToTop();
         EraseDrawnRows();
-        output_.Write("\r" + prompt_ + TerminalSafe(line) + "\n");
+        // Echo exactly what was drawn: DisplayText maps newlines to ↵, so a
+        // pasted multi-line prompt occupies the rows the caller will move back
+        // over. Echoing the raw text would print real newlines and desync it.
+        output_.Write("\r" + prompt_ + DisplayText(line) + "\n");
         Detach();
         return {InteractiveInputKind::kLine, std::move(line)};
       }

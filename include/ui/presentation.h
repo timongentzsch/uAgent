@@ -11,10 +11,10 @@
 
 namespace uagent {
 
-// Generic plain-text activity normalization: collapse whitespace and common
-// lightweight formatting punctuation, then retain the newest complete words.
-// It never branches on provider, model, or inferred reasoning syntax.
-std::string CompactReasoningPreview(const std::string& text, size_t cap = 96);
+// Generic plain-text activity normalization: collapse whitespace and drop
+// common lightweight formatting punctuation. It never branches on provider,
+// model, or inferred reasoning syntax.
+std::string StripDisplayMarkdown(const std::string& text);
 
 class TerminalPresenter {
  public:

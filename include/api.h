@@ -64,7 +64,8 @@ class Api {
                   bool full_reasoning = true);
   JsonResponse Post(const std::string& path, const json& body,
                     int64_t timeout_s = 120);
-  json Get(const std::string& path, bool abortable = false);
+  json Get(const std::string& path, bool abortable = false,
+           int64_t timeout_s = 15);
 
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,

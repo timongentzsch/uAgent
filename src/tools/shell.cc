@@ -422,7 +422,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
 
-  bool is_task = session->kind == ActivityKind::kTask;
+  bool is_subagent = session->kind == ActivityKind::kSubagent;
+  std::string subagent_label =
+      spec.job_kind.empty() ? "subagent" : spec.job_kind;
   std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
   if (!moved) {
     SignalShellGroup(pid, SIGKILL);
@@ -431,8 +433,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                         "error: foreground activity ownership was lost")};
   }
   BgTrackSignal(pid, true);
-  if (is_task) {
-    return {ToolSuccess("[started] task id " + std::to_string(activity_id) +
+  if (is_subagent) {
+    return {ToolSuccess("[started] " + subagent_label + " id " +
+                        std::to_string(activity_id) +
                         "; completion is added to the next natural model call "
                         "without starting one; inspect activity output for "
                         "progress/readiness, or wait when the next step is "
@@ -487,7 +490,7 @@ std::string RunCommandPolicyError(const std::string& command) {
     if (StartsWithShellWord(command, executable)) {
       return "error: do not invoke bare Python or pip through run. For project "
              "Python use its existing runner (for example uv run or pytest); "
-             "for one-off computation use run_python with dependencies in the "
+             "for one-off computation use scratch with dependencies in the "
              "scratch script's PEP 723 header.";
     }
   }

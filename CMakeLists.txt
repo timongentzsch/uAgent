@@ -11,6 +11,8 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
+set(_IS_GCC_CLANG CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -19,11 +21,11 @@ target_include_directories(uagent_options INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
 target_compile_features(uagent_options INTERFACE cxx_std_20)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(_IS_GCC_CLANG)
   target_compile_options(uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic)
 endif()
 option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
-if(UAGENT_WARNINGS_AS_ERRORS AND CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(UAGENT_WARNINGS_AS_ERRORS AND _IS_GCC_CLANG)
   target_compile_options(uagent_options INTERFACE -Werror)
 endif()
 option(UAGENT_ENABLE_ASAN "Enable AddressSanitizer" OFF)
@@ -37,21 +39,23 @@ endif()
 if(UAGENT_ENABLE_TSAN AND UAGENT_BUILD_FUZZERS)
   message(FATAL_ERROR "ThreadSanitizer cannot be combined with fuzzing")
 endif()
-if((UAGENT_ENABLE_ASAN OR UAGENT_ENABLE_UBSAN OR UAGENT_ENABLE_TSAN) AND
-   NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if((UAGENT_ENABLE_ASAN OR UAGENT_ENABLE_UBSAN OR UAGENT_ENABLE_TSAN) AND NOT _IS_GCC_CLANG)
   message(FATAL_ERROR "Sanitizers require Clang or GCC")
 endif()
+set(_sans)
 if(UAGENT_ENABLE_ASAN)
-  target_compile_options(uagent_options INTERFACE -fsanitize=address -fno-omit-frame-pointer)
-  target_link_options(uagent_options INTERFACE -fsanitize=address)
+  list(APPEND _sans address)
 endif()
 if(UAGENT_ENABLE_UBSAN)
-  target_compile_options(uagent_options INTERFACE -fsanitize=undefined -fno-omit-frame-pointer)
-  target_link_options(uagent_options INTERFACE -fsanitize=undefined)
+  list(APPEND _sans undefined)
 endif()
 if(UAGENT_ENABLE_TSAN)
-  target_compile_options(uagent_options INTERFACE -fsanitize=thread -fno-omit-frame-pointer)
-  target_link_options(uagent_options INTERFACE -fsanitize=thread)
+  list(APPEND _sans thread)
+endif()
+if(_sans)
+  string(JOIN "," _sans_flags ${_sans})
+  target_compile_options(uagent_options INTERFACE -fsanitize=${_sans_flags} -fno-omit-frame-pointer)
+  target_link_options(uagent_options INTERFACE -fsanitize=${_sans_flags})
 endif()
 if(UAGENT_ENABLE_COVERAGE)
   target_compile_options(uagent_options INTERFACE --coverage -O0 -g)
@@ -91,9 +95,12 @@ add_library(
   src/core/signals.cc
   src/core/steering.cc
   src/core/strings.cc
+  src/core/term.cc
   src/media/attachments.cc
   src/providers.cc
   src/tools/adapt_system.cc
+  src/tools/advisor.cc
+  src/tools/child_agent.cc
   src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
@@ -158,6 +165,11 @@ option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)
 if(UAGENT_BUILD_BENCHMARKS)
   add_executable(uagent_bench benchmarks/bench_core.cc)
   target_link_libraries(uagent_bench PRIVATE uagent_core)
+  # Registered so the benchmark cannot silently stop compiling or running.
+  if(BUILD_TESTING)
+    add_test(NAME benchmarks COMMAND uagent_bench)
+    set_tests_properties(benchmarks PROPERTIES TIMEOUT 180)
+  endif()
 endif()
 
 if(UAGENT_BUILD_FUZZERS)

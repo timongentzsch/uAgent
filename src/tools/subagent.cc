@@ -9,11 +9,11 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/shell.h"
 
@@ -66,98 +66,49 @@ std::string ModelPropertyDescription(
   return description;
 }
 
-bool InheritsParentRoute(const std::string& requested) {
-  return requested.empty() && NormalizeModelId(TaskModel()).empty();
+// A delegated child runs on the parent's route unless the request or
+// UAGENT_SUBAGENT_MODEL names one; an empty selection tells the shared
+// resolver to inherit.
+SideRoute ResolveSubagentRoute(const Api& api,
+                               const std::vector<ModelRoute>& routes,
+                               const std::vector<NamedProvider>& providers,
+                               const std::string& requested) {
+  return ResolveSideRoute(
+      api, routes, providers,
+      requested.empty() ? NormalizeModelId(SubagentModel()) : requested);
 }
 
-std::string TaskProvider(const std::string& selection,
-                         const std::string& base_url,
-                         const std::vector<NamedProvider>& providers) {
-  size_t slash = selection.find('/');
-  if (slash != std::string::npos &&
-      FindNamedProvider(providers, selection.substr(0, slash))) {
-    return selection.substr(0, slash);
-  }
-  for (const NamedProvider& provider : providers) {
-    if (provider.base_url == base_url) return provider.name;
-  }
-  const ProviderTemplate* provider = FindProviderTemplateForUrl(base_url);
-  return provider ? provider->name : "custom";
-}
-
-// Where a delegated task would run: the parent's route unless the request (or
-// UAGENT_TASK_MODEL) names one that resolves. `unresolved` marks a named route
-// that matched nothing, which only the execution path treats as an error.
-struct TaskRoute {
-  std::string selection, model, base_url, api_key, effort;
-  int64_t context = 0;
-  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
-  bool unresolved = false;
-};
-
-TaskRoute ResolveTaskRoute(const Api& api,
-                           const std::vector<ModelRoute>& routes,
-                           const std::vector<NamedProvider>& providers,
-                           const std::string& requested) {
-  TaskRoute resolved;
-  resolved.selection = requested.empty() ? DefaultTaskModel(api) : requested;
-  resolved.model = resolved.selection.empty() ? api.model : resolved.selection;
-  resolved.base_url = api.base_url;
-  resolved.api_key = api.api_key;
-  resolved.effort = api.reasoning_effort;
-  resolved.context = api.ctx_window;
-  resolved.protocol = api.capabilities.protocol;
-  if (resolved.selection.empty() || InheritsParentRoute(requested)) {
-    return resolved;
-  }
-  std::optional<ModelRoute> route =
-      ResolveModelRoute(routes, providers, resolved.selection);
-  if (!route) {
-    resolved.unresolved = true;
-    return resolved;
-  }
-  resolved.base_url = route->base_url;
-  resolved.api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
-  resolved.model = route->model;
-  if (!route->effort.empty()) resolved.effort = route->effort;
-  resolved.context = route->context;
-  resolved.protocol = route->protocol;
-  return resolved;
-}
-
-std::string TaskTargetLabel(const Api& api,
-                            const std::vector<ModelRoute>& routes,
-                            const std::vector<NamedProvider>& providers,
-                            const std::string& requested) {
-  TaskRoute route = ResolveTaskRoute(api, routes, providers, requested);
-  return ModelLabel(route.model, route.effort) + " @ " +
-         TaskProvider(route.selection, route.base_url, providers);
+std::string SubagentTargetLabel(const Api& api,
+                                const std::vector<ModelRoute>& routes,
+                                const std::vector<NamedProvider>& providers,
+                                const std::string& requested) {
+  return RouteSelection(ResolveSubagentRoute(api, routes, providers, requested),
+                        providers);
 }
 
 }  // namespace
 
-std::string DefaultTaskModel(const Api& api) {
-  std::string selection = NormalizeModelId(TaskModel());
+std::string DefaultSubagentModel(const Api& api) {
+  std::string selection = NormalizeModelId(SubagentModel());
   if (!selection.empty()) return selection;
   return api.model;
 }
 
 std::string DelegationRuntimeContext(const Api& api) {
-  std::string parent =
-      TerminalSafe(ModelLabel(api.model, api.reasoning_effort));
-  std::string task_model = DefaultTaskModel(api);
-  if (task_model == api.model) {
+  // No provider list reaches here; the built-in templates still scope the
+  // common routes, and a custom endpoint degrades to a bare model id.
+  std::string parent = TerminalSafe(RouteSelection(api, {}));
+  std::string child_model = DefaultSubagentModel(api);
+  if (child_model == api.model) {
     return "[delegation: parent=" + parent + "; default=parent]";
   }
-  return "[delegation: parent=" + parent + "; default=" +
-         TerminalSafe(ModelLabel(task_model, api.reasoning_effort)) + "]";
+  return "[delegation: parent=" + parent +
+         "; default=" + TerminalSafe(child_model) + "]";
 }
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,
                   const std::vector<NamedProvider>& providers, bool debug) {
-  const std::string& self = ExecutablePath();
-  std::string child_depth = std::to_string(AgentDepth() + 1);
   json properties = {
       {"prompt",
        {{"type", "string"}, {"description", "complete standalone brief"}}},
@@ -173,11 +124,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"description", ModelPropertyDescription(routes, providers)}}}};
   Tool tool = MakeTool(
-      "task",
-      "Delegate an isolated subtask only when its compact result avoids "
-      "multiple parent rounds. The child has no conversation; include every "
-      "required path, constraint, and success condition. Independent tasks "
-      "may select different model routes and should be issued together. Keep "
+      "subagent",
+      "Delegate an isolated subtask whose compact result avoids multiple "
+      "parent rounds; for a broad request with orthogonal parts, issue one "
+      "task per part in a single batch. The child has no conversation; "
+      "include every required path, constraint, and success condition. "
+      "Independent tasks may select different model routes. Keep "
       "background=true when useful parent work can continue; set it false "
       "when the next step requires the result immediately. Web-research "
       "briefs must state focused questions and require source URLs in the "
@@ -185,7 +137,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       {{"type", "object"},
        {"properties", std::move(properties)},
        {"required", json::array({"prompt"})}},
-      [self, child_depth, &api, &routes, &providers, debug, &processes](
+      [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
         std::string mode = JsonValue(arguments, "mode", "lean");
         if (mode != "lean" && mode != "full") {
@@ -194,7 +146,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         const std::string requested =
             NormalizeModelId(JsonValue(arguments, "model", ""));
-        TaskRoute route = ResolveTaskRoute(api, routes, providers, requested);
+        SideRoute route =
+            ResolveSubagentRoute(api, routes, providers, requested);
         if (route.unresolved &&
             route.selection.find('/') != std::string::npos &&
             !CanUseRawModel(api, route.selection)) {
@@ -202,47 +155,31 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               ToolErrorCode::kInvalidArguments,
               "error: unknown model route: " + TerminalSafe(route.selection));
         }
-        double remaining_budget = api.config.session_budget - api.session_cost;
-        if (api.config.session_budget > 0) {
-          if (remaining_budget <= 0) {
-            return ToolFailure(ToolErrorCode::kLimitExceeded,
-                               "error: session cost limit reached");
-          }
-          if (processes.JoinableCount() > 0) {
-            return ToolFailure(
-                ToolErrorCode::kLimitExceeded,
-                "error: budgeted task already running; wait for its result");
-          }
+        double remaining_budget = 0;
+        if (std::optional<ToolResult> blocked =
+                ChildAgentBudgetBlock(api, processes, remaining_budget)) {
+          return *blocked;
         }
-        EnvironmentOverrides environment = {
-            {"UAGENT_DEPTH", child_depth},
-            {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
-            {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
-            {"UAGENT_BASE_URL", std::move(route.base_url)},
-            {"UAGENT_API_KEY", std::move(route.api_key)},
-            {"UAGENT_MODEL", std::move(route.model)},
-            {"UAGENT_CONTEXT", std::to_string(route.context)},
-            {"UAGENT_REASONING_EFFORT", std::move(route.effort)},
-            {"UAGENT_OPENROUTER_COMPATIBLE",
-             route.protocol == ProviderProtocol::kOpenRouter ? "1" : "0"},
-            {"UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant},
-            {"UAGENT_USAGE_FILE", UsageLedger()},
-            {"UAGENT_TOOLSET", std::move(mode)},
-            {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"},
-        };
+        EnvironmentOverrides environment =
+            ChildAgentEnvironment(std::move(route));
+        environment.insert(
+            environment.end(),
+            {{"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
+             {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
+             {"UAGENT_TOOLSET", std::move(mode)},
+             {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"}});
         if (api.config.session_budget > 0) {
           environment.emplace_back("UAGENT_SESSION_BUDGET",
                                    std::to_string(remaining_budget));
         }
         bool background = JsonValue(arguments, "background", true);
-        std::string command = ShellQuote(self) + " --yolo" +
-                              (debug ? " --debug" : "") + " -p " +
-                              ShellQuote(JsonValue(arguments, "prompt", ""));
+        std::string command =
+            ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
         return RunShellCommand(processes, context,
                                {.command = std::move(command),
                                 .background = background,
                                 .immediate = background,
-                                .job_kind = "task",
+                                .job_kind = "subagent",
                                 .environment = std::move(environment)})
             .result;
       });
@@ -256,7 +193,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string label =
-        TaskTargetLabel(api, routes, providers,
+        SubagentTargetLabel(api, routes, providers,
                         NormalizeModelId(JsonValue(arguments, "model", "")));
     if (mode == "full") label += " · full";
     if (!JsonValue(arguments, "background", true)) label += " · foreground";

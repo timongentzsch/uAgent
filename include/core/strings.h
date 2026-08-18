@@ -5,11 +5,10 @@
 // String, UTF-8, and display-width helpers, plus the terminal-safe and
 // human-readable formatters shared by the REPL and the tool trace.
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
-
-#include "include/core/json.h"
 
 namespace uagent {
 
@@ -57,12 +56,17 @@ std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);
 
+// Window of up to `columns` display columns starting at display column `start`
+// (left edge), never splitting a UTF-8 codepoint. Short text is returned
+// left-aligned. Used by the rolling reasoning ticker.
+std::string DisplayWindow(const std::string& text, size_t start,
+                          size_t columns);
+
 // Wrap ANSI-free display text into rows each bounded by `columns` display
 // columns, never splitting a UTF-8 codepoint. Used for line-wrapping terminal
 // input/output where DisplayTrunc (ellipsis truncation) is not wanted.
 std::vector<std::string> WrapLines(const std::string& s, size_t columns);
 
-size_t JsonEstimatedBytes(const json& value);
 int64_t EstimatedTokens(size_t bytes);
 
 std::string StripTrailingSlashes(std::string s);
@@ -103,8 +107,6 @@ std::string HashHex(const std::string& data);
 
 std::string UrlHost(std::string url);
 std::string RedactedUrl(std::string url);
-
-std::string ModelLabel(const std::string& model, const std::string& effort);
 
 std::string RouteKey(const std::string& base_url, const std::string& provider,
                      const std::string& model, const std::string& effort);

@@ -181,19 +181,15 @@ void TestSseChunkPartitions() {
       empty_alias, no_calls);
   CHECK(details_fallback.reasoning == "details only");
 
-  CHECK(CompactReasoningPreview("first line\nlatest line\n") == "latest line");
-  CHECK(CompactReasoningPreview("  padded latest  ") == "padded latest");
-  std::string long_preview = CompactReasoningPreview(std::string(140, 'x'));
-  CHECK(!long_preview.starts_with("…"));
-  CHECK(long_preview.size() == 96);
-  std::string model_neutral = CompactReasoningPreview(
-      "**Map invariants****Detail implementation and tests****Plan provider "
-      "normalization**",
-      48);
-  CHECK(model_neutral.find('*') == std::string::npos);
-  CHECK(!model_neutral.starts_with("…"));
-  CHECK(model_neutral.ends_with("Plan provider normalization"));
-  CHECK(CompactReasoningPreview("C# and snake_case use 2*3") ==
+  // Display normalization for the reasoning ticker: decoration and line
+  // structure collapse, but text that only looks like markup is preserved.
+  CHECK(StripDisplayMarkdown("first line\nlatest line\n") ==
+        "first line latest line");
+  CHECK(StripDisplayMarkdown("  padded latest  ") == "padded latest");
+  CHECK(StripDisplayMarkdown(
+            "**Map invariants****Detail implementation****Plan provider**") ==
+        "Map invariants Detail implementation Plan provider");
+  CHECK(StripDisplayMarkdown("C# and snake_case use 2*3") ==
         "C# and snake_case use 2*3");
 
   std::string final_line =
@@ -223,7 +219,7 @@ void TestSseChunkPartitions() {
 
   std::map<int, ToolCall> duplicate_ids = {
       {0, ToolCall{"same", "read_file", R"({"path":"x"})"}},
-      {1, ToolCall{"same", "list_dir", R"({"path":"."})"}}};
+      {1, ToolCall{"same", "read_path", R"({"path":"."})"}}};
   normalized = {};
   CHECK(CollectToolCalls(duplicate_ids, normalized));
   CHECK(normalized.tool_calls.size() == 2);
@@ -329,7 +325,7 @@ void TestBackgroundValidation() {
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
   for (const char* name :
-       {"read_file", "list_dir", "grep", "run", "activity_output"}) {
+       {"read_path", "grep", "run", "activity"}) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parallel_safe);
     if (tool) {

@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/checked.h"
 #include "third_party/json.hpp"
 
 namespace uagent {
@@ -103,6 +104,25 @@ inline constexpr char kVersion[] = "dev";
 // which plain dump() throws on; substitute U+FFFD instead.
 inline std::string JsonDump(const json& value, int indent = -1) {
   return value.dump(indent, ' ', false, json::error_handler_t::replace);
+}
+
+// Rough serialized size, used for context accounting rather than exactness.
+inline size_t JsonEstimatedBytes(const json& value) {
+  if (value.is_string()) {
+    return SaturatingAdd(value.get_ref<const std::string&>().size(), 2);
+  }
+  size_t total = 16;
+  if (value.is_array()) {
+    for (const json& item : value) {
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
+    }
+  } else if (value.is_object()) {
+    for (const auto& [key, item] : value.items()) {
+      total = SaturatingAdd(total, key.size());
+      total = SaturatingAdd(total, JsonEstimatedBytes(item));
+    }
+  }
+  return total;
 }
 
 }  // namespace uagent

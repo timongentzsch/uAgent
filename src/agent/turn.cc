@@ -554,7 +554,7 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
     }
     bool foreground_interrupted = SteeringState().Requested() || cancelled;
     bool steering_applied = apply_queued_steering();
-    if (cancelled) BgCancelTasks(processes_);
+    if (cancelled) BgCancelSubagents(processes_);
     if (foreground_interrupted) {
       if (steering_applied) continue;
       state.outcome = "interrupted";
@@ -629,7 +629,9 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   // One write: the interactive composer repaints on every chunk it observes,
   // so a footer split across writes would redraw the input line mid-line.
   std::ostringstream footer;
-  footer << (state.line_open ? "\n" : "") << RST() << BLUE()
+  // Chrome, not an agent action: dim like the status row, leaving cyan as the
+  // single accent for things the agent did.
+  footer << (state.line_open ? "\n" : "") << RST() << DIM()
          << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
   std::cout << footer.str();
   Emit(Event{EventId::kTurnCompleted,

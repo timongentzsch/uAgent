@@ -136,6 +136,7 @@ json MemoryEventJson(const MemoryEvent& event) {
           {"action", event.action},
           {"key", event.key},
           {"preview", event.preview},
+          {"previous", event.previous},
           {"source_session", event.source_session},
           {"workspace", event.workspace},
           {"timestamp", event.timestamp},
@@ -147,6 +148,7 @@ bool ParseMemoryEvent(const json& value, MemoryEvent& event) {
   event.action = JsonValue(value, "action", "");
   event.key = JsonValue(value, "key", "");
   event.preview = JsonValue(value, "preview", "");
+  event.previous = JsonValue(value, "previous", "");
   event.source_session = JsonValue(value, "source_session", "");
   event.workspace = JsonValue(value, "workspace", "");
   event.timestamp = JsonValue(value, "timestamp", "");
@@ -361,6 +363,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   MemoryEvent event{action,
                     scope + "/" + SafeFileComponent(name),
                     MemoryPreview(*content),
+                    action == "updated" ? MemoryPreview(previous) : "",
                     source.empty() ? "" : WorkspaceId(source),
                     std::move(workspace),
                     UtcStamp(),
@@ -566,30 +569,44 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
 // UAGENT_MEMORY_ALWAYS_BYTES. Global scope is the applies-everywhere bucket, so
 // these are exactly the standing preferences/corrections the agent should not
 // have to remember to go look up.
+//
+// Newest first, and every entry is admitted whole or skipped: a lesson cut
+// mid-sentence is worse than an absent one, and when the cap binds the freshest
+// standing preferences are the ones worth keeping.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes) {
-  MemoryIndex index;
-  size_t used = 0;
+  namespace fs = std::filesystem;
+  std::vector<std::pair<fs::file_time_type, MemoryEntry>> globals;
   for (const MemoryEntry& memory : ListMemories(cwd)) {
     if (!memory.key.starts_with("global/")) continue;
+    std::error_code error;
+    fs::file_time_type modified = fs::last_write_time(memory.path, error);
+    globals.emplace_back(error ? fs::file_time_type{} : modified, memory);
+  }
+  std::stable_sort(globals.begin(), globals.end(),
+                   [](const auto& left, const auto& right) {
+                     return left.first > right.first;
+                   });
+
+  MemoryIndex index;
+  size_t used = 0;
+  size_t body_cap = static_cast<size_t>(MemoryBytes());
+  for (const auto& [modified, memory] : globals) {
     std::ifstream input(memory.path, std::ios::binary);
     if (!input) continue;
-    // Reserve the block header/footer overhead so the admission test below
-    // never fails solely because the body consumed the whole budget.
-    size_t overhead = 5 + memory.key.size();  // "# " + key + "\n" + "\n\n"
-    if (used >= max_bytes || overhead >= max_bytes - used) {
-      index.truncated = true;
-      break;
-    }
-    size_t body_cap = max_bytes - used - overhead;
     std::string body;
-    if (ReadBounded(input, body_cap, body)) index.truncated = true;
+    if (ReadBounded(input, body_cap, body)) {
+      // Larger than a single memory is allowed to be: it belongs in the index
+      // for an explicit get, not in every request.
+      index.truncated = true;
+      continue;
+    }
     body = RedactMemorySecrets(std::move(body));
     if (Trim(body).empty()) continue;
     std::string block = "# " + memory.key + "\n" + body + "\n\n";
     std::optional<size_t> total = CheckedAdd(used, block.size());
     if (!total || *total > max_bytes) {
-      // Skip oversized entries rather than starving the rest of the list.
+      // Skip what no longer fits rather than starving the rest of the list.
       index.truncated = true;
       continue;
     }

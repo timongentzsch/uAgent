@@ -69,8 +69,8 @@ std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
 
 }  // namespace
 
-ConfigManager ConfigManager::Capture(bool trust_project, double cli_budget,
-                                     bool cli_no_memory) {
+ConfigManager ConfigManager::Capture(bool trust_project,
+                                     RuntimeConfig::Values cli) {
   RuntimeConfig::Values process;
   for (char** entry = environ; entry && *entry; ++entry) {
     std::string value(*entry);
@@ -78,16 +78,14 @@ ConfigManager ConfigManager::Capture(bool trust_project, double cli_budget,
     if (equal == std::string::npos || equal == 0) continue;
     process[value.substr(0, equal)] = value.substr(equal + 1);
   }
-  return ConfigManager(std::move(process), trust_project, cli_budget,
-                       cli_no_memory);
+  return ConfigManager(std::move(process), trust_project, std::move(cli));
 }
 
 ConfigManager::ConfigManager(RuntimeConfig::Values process, bool trust_project,
-                             double cli_budget, bool cli_no_memory)
+                             RuntimeConfig::Values cli)
     : process_(std::move(process)),
       trust_project_(trust_project),
-      cli_budget_(cli_budget),
-      cli_no_memory_(cli_no_memory) {
+      cli_(std::move(cli)) {
   auto custom = process_.find("UAGENT_CONFIG_FILE");
   if (custom != process_.end()) custom_path_ = custom->second;
   global_path_ = UagentConfigPath();
@@ -118,13 +116,9 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
     origins[key] = "environment";
   }
 
-  if (cli_budget_ > 0) {
-    effective["UAGENT_SESSION_BUDGET"] = std::to_string(cli_budget_);
-    origins["UAGENT_SESSION_BUDGET"] = "cli";
-  }
-  if (cli_no_memory_) {
-    effective["UAGENT_MEMORY"] = "0";
-    origins["UAGENT_MEMORY"] = "cli";
+  for (const auto& [key, value] : cli_) {
+    effective[key] = value;
+    origins[key] = "cli";
   }
   snapshot.config = RuntimeConfig::FromValues(effective);
   snapshot.values = effective;
@@ -136,9 +130,7 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
 RuntimeConfig ConfigManager::Initialize() {
   current_ = Read();
   for (const auto& [key, value] : current_.values) {
-    bool cli_override = (cli_budget_ > 0 && key == "UAGENT_SESSION_BUDGET") ||
-                        (cli_no_memory_ && key == "UAGENT_MEMORY");
-    setenv(key.c_str(), value.c_str(), cli_override ? 1 : 0);
+    setenv(key.c_str(), value.c_str(), cli_.contains(key) ? 1 : 0);
   }
   initialized_ = true;
   return current_.config;

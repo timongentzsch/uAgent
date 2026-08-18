@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/term.h"
 
@@ -191,24 +190,6 @@ std::string DisplayTrunc(std::string s, size_t columns) {
   return s.substr(0, offset) + "…";
 }
 
-size_t JsonEstimatedBytes(const json& value) {
-  if (value.is_string()) {
-    return SaturatingAdd(value.get_ref<const std::string&>().size(), 2);
-  }
-  size_t total = 16;
-  if (value.is_array()) {
-    for (const json& item : value) {
-      total = SaturatingAdd(total, JsonEstimatedBytes(item));
-    }
-  } else if (value.is_object()) {
-    for (const auto& [key, item] : value.items()) {
-      total = SaturatingAdd(total, key.size());
-      total = SaturatingAdd(total, JsonEstimatedBytes(item));
-    }
-  }
-  return total;
-}
-
 int64_t EstimatedTokens(size_t bytes) {
   size_t tokens = bytes / 4;
   size_t cap = static_cast<size_t>(std::numeric_limits<int64_t>::max());
@@ -335,6 +316,32 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   return prefix + tail;
 }
 
+std::string DisplayWindow(const std::string& text, size_t start,
+                          size_t columns) {
+  if (columns == 0 || text.empty()) return "";
+  std::mbstate_t state{};
+  size_t offset = 0;
+  size_t width = 0;
+  size_t begin = 0;
+  // Walk to the codepoint that begins at or just before `start` columns.
+  while (offset < text.size()) {
+    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
+    if (width + glyph.width > start) break;
+    width += glyph.width;
+    offset += glyph.bytes;
+    begin = offset;
+  }
+  // Extend to at most `columns` display columns.
+  size_t max_width = width + columns;
+  while (offset < text.size()) {
+    Glyph glyph = NextGlyph(text, offset, state, /*skip_ansi=*/true);
+    if (width + glyph.width > max_width) break;
+    width += glyph.width;
+    offset += glyph.bytes;
+  }
+  return text.substr(begin, offset - begin);
+}
+
 std::string SpinnerLabel(const std::string& label) {
   return ActivityLabel(label, TerminalWidth(12));
 }
@@ -398,10 +405,6 @@ bool OpenrouterUrl(std::string url) {
 
 bool OpenaiUrl(std::string url) {
   return UrlHost(std::move(url)) == "api.openai.com";
-}
-
-std::string ModelLabel(const std::string& model, const std::string& effort) {
-  return model + " (" + (effort.empty() ? "default" : effort) + ")";
 }
 
 std::string RouteKey(const std::string& base_url, const std::string& provider,

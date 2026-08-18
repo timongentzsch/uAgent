@@ -107,15 +107,15 @@ std::string ImageInputError(const Attachment& attachment,
          "vision-capable model";
 }
 
+// Whether images arrive natively or through a configured vision route is a
+// host detail, not something the model should plan around: with either one in
+// place the prompt says nothing at all, and only a session that can do neither
+// is told to expect file paths.
 const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available) {
-  if (image_input_available) return "";
-  return !image_fallback_available
-             ? " Image input unavailable; image attachments are provided "
-               "only as file paths."
-             : " Direct image input unavailable; attached images are "
-               "analyzed by the configured vision model and delivered as "
-               "textual evidence.";
+  if (image_input_available || image_fallback_available) return "";
+  return " Image input unavailable; image attachments are provided only as "
+         "file paths.";
 }
 
 std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,

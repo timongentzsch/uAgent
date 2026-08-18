@@ -31,7 +31,7 @@ def integration_group(name):
     """Keep integration domains isolated without duplicating shared fixtures."""
     groups = (
         ("mcp", ("mcp",)),
-        ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
+        ("delegation", ("subagent", "delegated_session", "parallel_subagents", "advisor")),
         (
             "providers",
             (
@@ -57,6 +57,7 @@ def integration_group(name):
                 "reconnect_",
                 "narrow_terminal",
                 "reasoning_",
+                "resize_",
             ),
         ),
         (
@@ -501,7 +502,7 @@ def midturn_compaction_env(home, url):
 def test_plain_turn(root, home):
     def reply(_, body):
         names = function_names(body)
-        assert_true("activity_output" not in names, names)
+        assert_true("activity" not in names, names)
         return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
 
     with Server([reply]) as server:
@@ -607,7 +608,7 @@ def test_empty_response_after_tools_recovers_once(root, home):
 
     with Server(
         [
-            tool_call("list_dir", {"path": "."}),
+            tool_call("read_path", {"path": "."}),
             event(),
             recovered,
         ]
@@ -637,7 +638,7 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
 
     with Server(
         [
-            tool_call("list_dir", {"path": "."}),
+            tool_call("read_path", {"path": "."}),
             event(),
             event(),
         ]
@@ -774,7 +775,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home):
                         "index": 0,
                         "id": "one",
                         "function": {
-                            "name": "list_dir",
+                            "name": "read_path",
                             "arguments": json.dumps({"path": "."}),
                         },
                     },
@@ -782,7 +783,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home):
                         "index": 1,
                         "id": "two",
                         "function": {
-                            "name": "list_dir",
+                            "name": "read_path",
                             "arguments": json.dumps({"path": "."}),
                         },
                     },
@@ -926,7 +927,7 @@ def test_full_run_and_python_terminal_trace(root, home):
         [
             tool_call("run", {"command": shell_command, "shell": "/bin/sh"}),
             tool_call(
-                "run_python",
+                "scratch",
                 {"path": "trace.py", "code": python_code, "packages": []},
             ),
             event({"content": "trace-ok"}),
@@ -947,13 +948,13 @@ def test_full_run_and_python_terminal_trace(root, home):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "run_python(write/replace trace.py → execute)",
+            "scratch(write/replace trace.py → execute)",
             "[script: .uagent/scratch/trace.py · wrote · executed]",
             "python-one",
             "python-two",
             "latest trace · turn 1 · 2 tools",
             "→ [1] run",
-            "← [2] run_python",
+            "← [2] scratch",
             "trace-ok",
         ):
             assert_true(expected in result.stdout, result.stdout)
@@ -1204,7 +1205,9 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
             [
                 (b"go\n", b"allow run?"),
                 (b"y\n", b"approval-done"),
-                (b"", b"test (default)"),  # wait for the idle status
+                # The idle status carries the route in schema form and the
+                # context window beside what is used.
+                (b"", b"test @ 127.0.0.1 \xc2\xb7 ctx"),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -1214,6 +1217,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
         )
         assert_true(code == 0, output)
         assert_true(b"approval-history-ok" in output, output)
+        assert_true(b"/16.4K" in output, output)  # used/window, not used alone
         assert_true(len(server.requests) == 3, server.requests)
 
 
@@ -1259,7 +1263,7 @@ def test_input_steering_yields_activity_wait(root, home):
                 }
             )
         if any("[running] activity" in result for result in results):
-            return tool_call("activity_wait", {"wait_ms": 30000})
+            return tool_call("activity", {"wait_ms": 30000})
         return tool_call("run", {"command": "sleep 30", "yield_ms": 250})
 
     with Server([route]) as server:
@@ -1268,7 +1272,7 @@ def test_input_steering_yields_activity_wait(root, home):
             root,
             base_env(home, server.url),
             [
-                (b"start\n", b"activity_wait"),
+                (b"start\n", b"activity"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
             ],
@@ -1375,10 +1379,51 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_resize_replaces_the_status_row_instead_of_appending(root, home):
+    """Repeated resizes must not stack status rows down the scrollback.
+
+    A resize repaints the pinned region, and the status row sits *above* the
+    cursor. Erasing only downward leaves it on screen, so every repaint adds
+    another copy — the failure this pins. The rule the stream can prove is:
+    no status row is ever written without erasing the previous region first.
+    """
+
+    def answer(_, __):
+        return event({"content": "RESIZE-MARKER"})
+
+    with Server([answer]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"first\n", b"RESIZE-MARKER"),
+                (b"", b"", 40),
+                (b"", b"", 80),
+                (b"", b"", 40),
+                b"/q\n",
+            ],
+            columns=80,
+            timeout=15,
+        )
+        text = output.decode(errors="replace")
+        assert_true(code == 0, text)
+        assert_true(b"RESIZE-MARKER" in output, text)
+        # The region is erased only after walking up to its top row. Erasing
+        # downward from the cursor (`\r\x1b[J`) leaves the status row above it
+        # on screen, so each repaint would append another copy — the failure
+        # this pins. Every resize must produce a walk-up-then-erase.
+        assert_true(b"\r\x1b[J" not in output, output[-200:])
+        walks = re.findall(rb"\x1b\[\d+A\x1b\[J", output)
+        assert_true(len(walks) >= 1, len(walks))
+        # Resizes arriving inside the settle window coalesce, so the repaint
+        # count is bounded by the number of resizes rather than equal to it.
+        assert_true(len(walks) <= 8, len(walks))
+
+
 def test_run_rejects_python_and_sudo_before_execution(root, home):
     def after_python(_, body):
         results = tool_results(body["messages"])
-        assert_true(any("use run_python" in value for value in results), results)
+        assert_true(any("use scratch" in value for value in results), results)
         return tool_call("run", {"command": "sudo true"})
 
     def after_sudo(_, body):
@@ -1566,7 +1611,7 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home):
                     "index": 0,
                     "id": "reasoning-call",
                     "function": {
-                        "name": "list_dir",
+                        "name": "read_path",
                         "arguments": json.dumps({"path": "."}),
                     },
                 }
@@ -1670,7 +1715,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
     trace_path = root / "text-protocol-debug.jsonl"
     call_markup = (
         "[uagent_tool_call]"
-        + json.dumps({"name": "list_dir", "arguments": {"path": "."}})
+        + json.dumps({"name": "read_path", "arguments": {"path": "."}})
         + "[/uagent_tool_call]"
     )
 
@@ -1700,7 +1745,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
             str(message.get("content", ""))
             for message in body["messages"]
             if message.get("role") == "system"
-            and str(message.get("content", "")).startswith("[tool_result list_dir]")
+            and str(message.get("content", "")).startswith("[tool_result read_path]")
         ]
         return event({"content": "text-provider-ok" if results else "text-provider-bad"})
 
@@ -1716,12 +1761,19 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("debug trace:" in result.stderr, result.stderr)
-        assert_true(str(trace_path.resolve()) in result.stderr, result.stderr)
+        # The binary prints the absolute path it opened, not a canonical one,
+        # so on macOS a symlinked TMPDIR makes `/var` and `/private/var`
+        # both correct spellings of the same file.
+        assert_true(
+            str(trace_path) in result.stderr
+            or str(trace_path.resolve()) in result.stderr,
+            result.stderr,
+        )
         envelope = json.loads(result.stdout)
         assert_true(envelope["answer"] == "text-provider-ok", envelope)
         assert_true(len(envelope["trace"]) == 1, envelope)
         call = envelope["trace"][0]
-        assert_true(call["name"] == "list_dir", call)
+        assert_true(call["name"] == "read_path", call)
         assert_true(call["arguments"] == {"path": "."}, call)
         assert_true(call["text_protocol"], call)
         assert_true(" entries " in call["result"], call)
@@ -1736,7 +1788,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
             record["data"] for record in records if record["event"] in {"tool_call", "tool_result"}
         ]
         assert_true(len(tool_events) == 2, tool_events)
-        assert_true(tool_events[0]["presentation"]["title"] == "list_dir", tool_events)
+        assert_true(tool_events[0]["presentation"]["title"] == "read_path", tool_events)
         assert_true(tool_events[1]["presentation"]["status"] == "succeeded", tool_events)
         responses = [record["data"] for record in records if record["event"] == "model_response"]
         assert_true(
@@ -1796,7 +1848,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
 def test_headless_json_stream_emits_lifecycle_events(root, home):
     with Server(
         [
-            tool_call("list_dir", {"path": "."}),
+            tool_call("read_path", {"path": "."}),
             event(
                 {"content": "stream-answer"},
                 usage={"prompt_tokens": 4, "completion_tokens": 2, "cost": 0.01},
@@ -1825,7 +1877,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
 
 
 def test_session_budget_stops_before_the_next_call(root, home):
-    expensive = tool_call("list_dir", {"path": "."})
+    expensive = tool_call("read_path", {"path": "."})
     expensive["usage"] = {
         "prompt_tokens": 10,
         "completion_tokens": 2,
@@ -1849,7 +1901,7 @@ def test_session_budget_stops_before_the_next_call(root, home):
 
 
 def test_turn_cost_is_unlimited_by_default(root, home):
-    expensive = tool_call("list_dir", {"path": "."})
+    expensive = tool_call("read_path", {"path": "."})
     expensive["usage"] = {
         "prompt_tokens": 10,
         "completion_tokens": 2,
@@ -1867,7 +1919,7 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
 
     def request_forbidden(_, body):
         names = function_names(body)
-        if names != {"grep", "read_file", "list_dir", "run"}:
+        if names != {"grep", "read_path", "run"}:
             return event({"content": f"bad-schema:{sorted(names)}"})
         return tool_call("run", {"command": f"touch {marker}"})
 
@@ -1881,7 +1933,7 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
         env.update(
             {
                 "UAGENT_TOOL_CAPABILITIES": "inspect",
-                "UAGENT_TOOL_ALLOWLIST": json.dumps(["grep", "read_file", "list_dir", "run"]),
+                "UAGENT_TOOL_ALLOWLIST": json.dumps(["grep", "read_path", "run"]),
                 "UAGENT_TOOL_RUN_ALLOWLIST": json.dumps(["python3 slow_analysis.py"]),
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
@@ -2804,7 +2856,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
     output = root / "midturn-output.txt"
 
     first = tool_call(
-        "read_file",
+        "read_path",
         {"path": str(source)},
         call_id="midturn-call",
         usage={"prompt_tokens": 2000, "completion_tokens": 10},
@@ -2856,7 +2908,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                         "index": 0,
                         "id": "write-after-compact",
                         "function": {
-                            "name": "write_file",
+                            "name": "edit_file",
                             "arguments": json.dumps(
                                 {
                                     "path": str(output),
@@ -2975,7 +3027,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
     source.write_text("\n".join(str(i) for i in range(8)), encoding="utf-8")
     with Server(
         [
-            tool_call("read_file", {"path": str(source), "offset": i, "limit": 1})
+            tool_call("read_path", {"path": str(source), "offset": i, "limit": 1})
             for i in range(1, 9)
         ]
         + [event({"content": "rounds-finished"})]
@@ -2989,7 +3041,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         records = [json.loads(line) for line in trace.read_text().splitlines()]
         signals = [r for r in records if r["event"] == "repeated_tool_rounds"]
         assert_true(len(signals) == 1, signals)
-        assert_true(signals[0]["data"]["tool"] == "read_file", signals)
+        assert_true(signals[0]["data"]["tool"] == "read_path", signals)
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
 
 
@@ -2997,7 +3049,7 @@ def test_tool_call_budget_is_unlimited_by_default(root, home):
     source = root / "many-lines.txt"
     source.write_text("\n".join(str(i) for i in range(101)), encoding="utf-8")
     calls = [
-        (f"read-{i}", "read_file", {"path": str(source), "offset": i + 1, "limit": 1})
+        (f"read-{i}", "read_path", {"path": str(source), "offset": i + 1, "limit": 1})
         for i in range(101)
     ]
 
@@ -3025,9 +3077,9 @@ def test_subagent_auto_join_continues_turn(root, home):
         )
         if has_result:
             return event({"content": "late-task-ok"})
-        if any("[started] task id " in str(message.get("content", "")) for message in messages):
-            return tool_call("activity_wait", {"wait_ms": 30000})
-        return tool_call("task", {"prompt": "child"})
+        if any("[started] subagent id " in str(message.get("content", "")) for message in messages):
+            return tool_call("activity", {"wait_ms": 30000})
+        return tool_call("subagent", {"prompt": "child"})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
@@ -3054,13 +3106,13 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
             return event({"content": "foreground-child-result"})
         results = tool_results(messages)
         if any("foreground-child-result" in result for result in results):
-            direct = all("[started] task id " not in result for result in results)
+            direct = all("[started] subagent id " not in result for result in results)
             return event({"content": "foreground-task-ok" if direct else "foreground-task-bad"})
-        task = function_tool(body, "task")
+        task = function_tool(body, "subagent")
         background = task["parameters"]["properties"]["background"]
         assert_true(background["type"] == "boolean", background)
         assert_true("final result directly" in background["description"], background)
-        return tool_call("task", {"prompt": "child", "background": False})
+        return tool_call("subagent", {"prompt": "child", "background": False})
 
     with Server([route]) as server:
         env = base_env(home, server.url)
@@ -3108,8 +3160,8 @@ def test_parallel_subagents_auto_join(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in messages)
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
-        if "[started] task id " in combined:
-            return tool_call("activity_wait", {"wait_ms": 30000})
+        if "[started] subagent id " in combined:
+            return tool_call("activity", {"wait_ms": 30000})
         return event(
             {
                 "tool_calls": [
@@ -3117,7 +3169,7 @@ def test_parallel_subagents_auto_join(root, home):
                         "index": index,
                         "id": f"task-{index}",
                         "function": {
-                            "name": "task",
+                            "name": "subagent",
                             "arguments": json.dumps({"prompt": child_prompt}),
                         },
                     }
@@ -3152,9 +3204,9 @@ def test_parallel_subagents_auto_join(root, home):
         assert_true(3 <= len(parent_requests) <= 4, len(parent_requests))
         for request in parent_requests:
             names = function_names(request)
-            assert_true("task" in names, names)
+            assert_true("subagent" in names, names)
             assert_true(not names.intersection(lifecycle), names)
-            task_schema = function_tool(request, "task")
+            task_schema = function_tool(request, "subagent")
             assert_true(
                 {"prompt", "model"}.issubset(task_schema["parameters"]["properties"]),
                 task_schema,
@@ -3170,7 +3222,7 @@ def test_subagent_interrupt_reaps_child(root, home):
                     "index": 0,
                     "id": "call-task",
                     "function": {
-                        "name": "task",
+                        "name": "subagent",
                         "arguments": json.dumps({"prompt": "slow-child"}),
                     },
                 },
@@ -3229,8 +3281,8 @@ def test_subagent_interrupt_reaps_child(root, home):
                     result = data.get("result", "")
                     if (
                         event_data.get("event") == "tool_result"
-                        and data.get("name") == "task"
-                        and result.startswith("[started] task id ")
+                        and data.get("name") == "subagent"
+                        and result.startswith("[started] subagent id ")
                     ):
                         task_started = True
                         processes = subprocess.check_output(
@@ -3303,9 +3355,9 @@ def test_subagent_uses_selected_model_route(root, home):
         assert_true(body.get("model") == "child-model", body.get("model"))
         assert_true("reasoning" in body and "stream_options" not in body, body)
         names = function_names(body)
-        assert_true({"write_file", "edit_file", "memory"} <= names, names)
+        assert_true({"edit_file", "memory"} <= names, names)
         return tool_call(
-            "write_file",
+            "edit_file",
             {"path": str(child_output), "content": "delegated"},
         )
 
@@ -3319,7 +3371,7 @@ def test_subagent_uses_selected_model_route(root, home):
     child = Server([child_action, child_reply])
 
     def delegate(_, body):
-        task = function_tool(body, "task")
+        task = function_tool(body, "subagent")
         assert_true("provider" not in task["parameters"]["properties"], task)
         description = task["parameters"]["properties"]["model"]["description"]
         assert_true("codex-local/MODEL" in description, description)
@@ -3330,7 +3382,7 @@ def test_subagent_uses_selected_model_route(root, home):
         )
         assert_true("[delegation: parent=" in runtime, runtime)
         return tool_call(
-            "task",
+            "subagent",
             {
                 "prompt": "child",
                 "mode": "full",
@@ -3342,7 +3394,7 @@ def test_subagent_uses_selected_model_route(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
         return event({"content": "route-ok" if "child-route-ok" in combined else "route-bad"})
 
-    parent = Server([delegate, lambda *_: tool_call("activity_wait", {"wait_ms": 30000}), finish])
+    parent = Server([delegate, lambda *_: tool_call("activity", {"wait_ms": 30000}), finish])
     try:
         env = base_env(home, parent.url)
         env["UAGENT_CONTEXT"] = "32768"
@@ -3374,11 +3426,182 @@ def test_subagent_uses_selected_model_route(root, home):
         child.close()
 
 
+def test_image_fallback_reaches_another_provider(root, home):
+    """A vision route on a different provider stands in for native image input."""
+    picture = root / "shot.png"
+    picture.write_bytes(SMALL_PNG)
+
+    def describe(_, body):
+        assert_true(body.get("model") == "vision-model", body.get("model"))
+        assert_true("tools" not in body, body)
+        serialized = json.dumps(body["messages"])
+        assert_true("image_url" in serialized, serialized[:200])
+        return event({"content": "a terminal showing a stack trace"})
+
+    vision = Server([describe])
+
+    def reject_image(handler, _):
+        write_json_response(
+            handler,
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "unsupported_value",
+                    "message": "this model does not support image input",
+                }
+            },
+            status=400,
+        )
+
+    def after_fallback(_, body):
+        serialized = json.dumps(body["messages"])
+        assert_true("image_url" not in serialized, serialized[:200])
+        assert_true("described, not seen" in serialized, serialized[:400])
+        assert_true("stack trace" in serialized, serialized[:400])
+        # The conversation model is never told which way images arrived.
+        system = "\n".join(
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+        )
+        assert_true("vision model" not in system, system)
+        assert_true("Image input unavailable" not in system, system)
+        return event({"content": "saw-it"})
+
+    parent = Server([reject_image, after_fallback])
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {"eyes": {"base_url": vision.url, "api_key": "eyes-key"}}
+        )
+        env["UAGENT_IMAGE_MODEL"] = "eyes/vision-model"
+        result = run(
+            root, env, "--yolo", "--attach", str(picture), "-p", "what is this",
+            timeout=20,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "saw-it", result.stdout)
+        assert_true(len(vision.requests) == 1, len(vision.requests))
+    finally:
+        parent.close()
+        vision.close()
+
+
+def test_advisor_consults_a_second_model(root, home):
+    """The advisor answers from a different route, with no tools and no memory."""
+
+    def advise(_, body):
+        assert_true(body.get("model") == "advisor-model", body.get("model"))
+        # A reasoner, not an agent: no tool schema reaches the advisor at all.
+        assert_true("tools" not in body, body)
+        prompt = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        assert_true("independent advisor" in prompt, prompt)
+        assert_true("<question>" in prompt and "pacing model" in prompt, prompt)
+        assert_true("<evidence>" in prompt and "roll_cursor" in prompt, prompt)
+        return event({"content": "advice: anchor to the live edge"})
+
+    advisor = Server([advise])
+
+    def ask(_, body):
+        names = function_names(body)
+        assert_true("advisor" in names, names)
+        return tool_call(
+            "advisor",
+            {"question": "is the pacing model right?", "context": "roll_cursor += step"},
+        )
+
+    def finish(_, body):
+        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        return event({"content": "advised" if "live edge" in combined else "no-advice"})
+
+    parent = Server([ask, finish])
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {
+                "aux": {
+                    "base_url": advisor.url,
+                    "api_key": "aux-key",
+                    "models": {"reviewer": {"id": "advisor-model", "effort": "high"}},
+                }
+            }
+        )
+        env["UAGENT_ADVISOR_MODEL"] = "aux/reviewer"
+        result = run(root, env, "--yolo", "-p", "check my reasoning", timeout=20)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "advised", result.stdout)
+        assert_true(len(advisor.requests) == 1, len(advisor.requests))
+    finally:
+        parent.close()
+        advisor.close()
+
+
+def test_advisor_background_joins_the_turn(root, home):
+    """background=true keeps the parent working; the answer joins a later round."""
+
+    def advise(_, __):
+        time.sleep(2)
+        return event({"content": "advice: measure first"})
+
+    advisor = Server([advise])
+
+    def ask(_, body):
+        return tool_call(
+            "advisor", {"question": "which first?", "background": True}
+        )
+
+    def wait_for_it(_, body):
+        assert_true(
+            any("[started] advisor id " in str(m.get("content", "")) for m in body["messages"]),
+            [str(m.get("content", ""))[:60] for m in body["messages"]],
+        )
+        return tool_call("activity", {"wait_ms": 30000})
+
+    def finish(_, body):
+        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        return event({"content": "joined" if "measure first" in combined else "lost"})
+
+    parent = Server([ask, wait_for_it, finish])
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "6"
+        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "6"
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {"aux": {"base_url": advisor.url, "api_key": "aux-key"}}
+        )
+        env["UAGENT_ADVISOR_MODEL"] = "aux/advisor-model"
+        result = run(root, env, "--yolo", "-p", "think it over", timeout=20)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "joined", result.stdout)
+    finally:
+        parent.close()
+        advisor.close()
+
+
+def test_advisor_absent_without_a_route(root, home):
+    """An unconfigured advisor costs no schema tokens."""
+
+    def only_turn(_, body):
+        assert_true("advisor" not in function_names(body), function_names(body))
+        system = "\n".join(
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "system"
+        )
+        assert_true("advisor=unavailable" in system, system)
+        return event({"content": "no-advisor"})
+
+    with Server([only_turn]) as server:
+        result = run(root, base_env(home, server.url), "-p", "hello", timeout=10)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "no-advisor", result.stdout)
+
+
 def test_subagent_recursion_is_depth_bounded(root, home):
     """Full agents honor depth; lean workers never expose recursive delegation."""
 
     def has_task(body):
-        return "task" in function_names(body)
+        return "subagent" in function_names(body)
 
     for depth, cap, expected in (
         ("0", "2", True),
@@ -3534,7 +3757,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "",
             )
             assert_true(f"activity {pid} " in listing, listing)
-            return tool_call("activity_output", {"id": pid})
+            return tool_call("activity", {"id": pid})
 
         def verify_output(_, body):
             results = tool_results(body["messages"])
@@ -3546,8 +3769,8 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 
         def offer_output(_, body):
             names = function_names(body)
-            assert_true("activity_output" in names, names)
-            return tool_call("activity_output", {})
+            assert_true("activity" in names, names)
+            return tool_call("activity", {})
 
         with Server([offer_output, request_output, verify_output]) as server:
             inspect_env = base_env(home, server.url)
@@ -3621,7 +3844,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         return tool_call("run", {"command": f"kill -KILL {state['pid']}"})
 
     def inspect_group(_, body):
-        return tool_call("activity_output", {"id": state["pid"]})
+        return tool_call("activity", {"id": state["pid"]})
 
     def stop_group(_, body):
         result = tool_results(body["messages"])[-1]

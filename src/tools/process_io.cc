@@ -38,15 +38,15 @@ void CloseFd(int& fd) {
 
 ActivityKind ParseActivityKind(const std::string& kind, bool detached) {
   if (detached) return ActivityKind::kDetached;
-  if (kind == "task") return ActivityKind::kTask;
+  if (kind == "subagent" || kind == "advisor") return ActivityKind::kSubagent;
   if (kind == "memory") return ActivityKind::kMemory;
   return ActivityKind::kCommand;
 }
 
 std::string ActivityKindName(ActivityKind kind) {
   switch (kind) {
-    case ActivityKind::kTask:
-      return "task";
+    case ActivityKind::kSubagent:
+      return "subagent";
     case ActivityKind::kMemory:
       return "memory";
     case ActivityKind::kDetached:
@@ -321,7 +321,7 @@ size_t ProcessSupervisor::JoinableCount() const {
   return static_cast<size_t>(
       std::count_if(jobs_.begin(), jobs_.end(), [](const BgJob& job) {
         return !job.detached && job.session &&
-               job.session->kind == ActivityKind::kTask;
+               job.session->kind == ActivityKind::kSubagent;
       }));
 }
 

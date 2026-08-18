@@ -77,11 +77,14 @@ restatement of the existing workflow; the tool's `reason` records both the
 observation and the resulting strategic delta.
 
 The always-on slice inlines behavioral (global-scope) memory into the startup
-context; set `UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
+context, newest first and whole entries only, so a memory is never cut
+mid-sentence; startup warns when the cap drops one. Set
+`UAGENT_MEMORY_ALWAYS_BYTES=0` to disable it entirely.
 Set `UAGENT_MEMORY_GENERATE=0` to retain recall while disabling background
 extraction. Each interactive startup claims at most one eligible session;
 `UAGENT_MEMORY_IDLE_SECONDS` and `UAGENT_MEMORY_EXTRACT_BYTES` tune its bounded
-input. Codex top-level memories and the current Claude project memory directory
+input, and `UAGENT_MEMORY_MODEL` runs it on a cheaper or local model route than
+the conversation. Codex top-level memories and the current Claude project memory directory
 are indexed read-only.
 
 Automatic extraction appears as a semantic `[memory]` activity rather than its
@@ -141,26 +144,28 @@ interactively reattached after the harness exits. Waiting log readers use
 kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
 bounded polling fallback.
 
-`activity_output(id)` drains bounded new output without cancelling ownership;
+`activity(id)` drains bounded new output without cancelling ownership;
 `wait_ms` optionally blocks for output or exit and `until` waits for fixed
-readiness text. `activity_input(id, chars)` writes raw PTY bytes; empty input
+readiness text. `activity(id, chars)` writes raw PTY bytes; empty input
 polls, `\u0003` interrupts the process group, and `rows` plus `cols` resize the
 PTY. Ordinary writes to non-TTY activities are rejected. Ordinary and PTY
 activities share one event-driven output/reap thread, so
-`activity_output`, `activity_input`, foreground yielding, and `activity_wait`
+`activity`, foreground yielding, and blocking waits
 use notifications rather than log polling. Interactions against one activity
 are serialized. Incremental output uses a 1 MiB equal head/tail buffer, while
 private logs continue to support diagnostics and large-output artifacts.
 `max_output_chars` can lower the host cap for one `run`, output, input, or wait
 interaction. Output already drained by those tools is not delivered again on
 completion. Completed tasks use one bounded batched context message;
-`activity_output` can explicitly replay a retained bounded transcript. Command
-completion is UI-only and never starts or enters a model turn. Task completion
+`activity` can explicitly replay a retained bounded transcript. Command
+completion is UI-only and never starts or enters a model turn. Subagent and advisor completion
 is added once to the next naturally occurring model call, capped at 6 KiB each
 and 12 KiB per batch, without triggering a turn.
 
-Use `task(background=false)` when the next step requires the child result;
-background tasks notify the agent automatically on exit. `activity_wait(ids,
+Use `subagent(background=false)` when the next step requires the child result;
+background children notify the agent automatically on exit. The `advisor`
+tool is the same mechanism with no tools and no memory: it asks a second
+model for an independent opinion and defaults to foreground. `activity(wait_ms,
 mode)` is an intentional join when no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
 group and removes its records and logs. Persistent TUI and headless runs
@@ -188,8 +193,7 @@ outside model context. Install it once with
 user-owned Chrome session; otherwise use an isolated `open` session.
 
 The interactive composer owns stdin for the whole session. Enter during work
-queues guidance into the active turn. Passive `activity_wait` and waiting
-`activity_output` calls are notified and yield immediately without cancelling
+queues guidance into the active turn. Passive and waiting `activity` calls are notified and yield immediately without cancelling
 the supervised activity, so guidance reaches the next model/tool boundary.
 While a foreground command is running, Ctrl+B transfers the complete foreground
 tool batch to background supervision without signaling or restarting it, so

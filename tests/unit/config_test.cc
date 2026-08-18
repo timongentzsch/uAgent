@@ -89,6 +89,21 @@ void TestProjectInstructionDiscovery() {
   MemoryIndex capped_memory = LoadAlwaysOnMemory(child, 24);
   CHECK(capped_memory.truncated);
   CHECK(capped_memory.text.size() <= 24);
+
+  // Under the cap the newest global memory wins, and an entry that no longer
+  // fits is dropped whole rather than cut mid-sentence.
+  CHECK(ToolWriteFile((home / ".uagent/memory/global/newer.md").string(),
+                      "newer-evidence-body")
+            .output.starts_with("wrote "));
+  fs::last_write_time(home / ".uagent/memory/global/lesson.md",
+                      fs::file_time_type::clock::now() -
+                          std::chrono::hours(24));
+  MemoryIndex newest_first = LoadAlwaysOnMemory(child, 64);
+  CHECK(newest_first.truncated);
+  CHECK(newest_first.sources.size() == 1);
+  CHECK(newest_first.text.find("newer-evidence-body") != std::string::npos);
+  CHECK(newest_first.text.find("remembered-evidence") == std::string::npos);
+  CHECK(fs::remove(home / ".uagent/memory/global/newer.md"));
   CHECK(loaded.text.find("ignored-agent") == std::string::npos);
   // CLAUDE.md is a fallback, so it must not load beside an AGENTS file
   CHECK(loaded.text.find("root-claude") == std::string::npos);

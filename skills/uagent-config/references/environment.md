@@ -17,6 +17,28 @@ changes an in-flight turn.
 
 Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 
+Every model-valued setting — `UAGENT_MODEL`, `UAGENT_SUBAGENT_MODEL`,
+`UAGENT_ADVISOR_MODEL`, `UAGENT_IMAGE_MODEL`, `UAGENT_MEMORY_MODEL`,
+`UAGENT_WEB_SEARCH_MODEL`, the matching `--flags`, `/model` and the `subagent`
+tool's `model` argument — shares one selection schema:
+
+```
+[provider/]model[:variant][:effort]
+
+openrouter/opus:xhigh              a configured route at a stated effort
+local/qwen-vl                      a route, effort from its own definition
+openrouter/deepseek-v4:nitro:high  plus an OpenRouter routing variant
+deepseek/deepseek-chat:free        `:free` is part of the model id, not a suffix
+gpt-5.6                            a bare id on the current provider
+```
+
+The provider scope names a provider or alias from `UAGENT_PROVIDERS`, and
+supplies its base URL, key, protocol and context. Suffixes are read right to
+left and matched against the closed effort set (`none`, `minimal`, `low`,
+`medium`, `high`, `xhigh`, `max`) and the routing-variant set (`nitro`, `floor`,
+`exacto`); the first unrecognized suffix and everything left of it stay in the
+model id. A suffix outranks both the route's own effort and the session default.
+
 ## Provider and session
 
 | Variable | Default | Purpose |
@@ -96,7 +118,10 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SUBAGENT_DEPTH` | 2 | maximum delegation depth |
 | `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 60 | tool calls per delegated child |
-| `UAGENT_TASK_MODEL` | current route | default delegated model/route |
+| `UAGENT_SUBAGENT_MODEL` | current route | default delegated model route |
+| `UAGENT_ADVISOR_MODEL` | empty | model route for the `advisor` tool; empty hides it |
+| `UAGENT_ADVISOR_CONTEXT_BYTES` | 32768 | evidence accepted per advisor call |
+| `UAGENT_ADVISOR_TIMEOUT` | 300 | advisor seconds; a reasoning model runs far longer than a command |
 | `UAGENT_DEPTH` | internal `0` | current supervised child depth |
 
 ## Skills and memory
@@ -115,6 +140,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MEMORY_EXTRACT_BYTES` | 32768 | filtered transcript sent to the extractor |
 | `UAGENT_MEMORY_FILES` | 32 | memories per scope |
 | `UAGENT_MEMORY_IDLE_SECONDS` | 21600 | minimum saved-session idle time |
+| `UAGENT_MEMORY_MODEL` | inherited | model route the background extractor runs on |
 
 ## Search, MCP, and media
 

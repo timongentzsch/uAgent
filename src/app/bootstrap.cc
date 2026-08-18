@@ -31,6 +31,7 @@
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools/memory.h"
+#include "include/tools/advisor.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
@@ -146,6 +147,45 @@ void PrintProjectContext(const ProjectInstructions& instructions,
     PrintWarning("project instructions truncated at " +
                  std::to_string(byte_limit) + " bytes");
   }
+  if (instructions.memory_truncated) {
+    PrintWarning("memory context truncated at " +
+                 std::to_string(instructions.memory_limit) +
+                 " bytes; consolidate or shorten global memories");
+  }
+}
+
+void PrintTools(const std::vector<Tool>& tools) {
+  if (tools.empty()) return;
+  std::string list;
+  for (const Tool& tool : tools) {
+    if (!list.empty()) list += ", ";
+    list += tool.name;
+  }
+  PrintStartupRow("Tools", std::to_string(tools.size()) + " available",
+                  {std::move(list)});
+}
+
+// Only the side models that are actually configured: the row exists to answer
+// "what will delegation, vision and consultation use", not to list defaults.
+void PrintRoutes(const RuntimeConfig& config) {
+  std::vector<std::pair<const char*, std::string>> routes = {
+      {"subagent", SubagentModel()},
+      {"advisor", AdvisorModel()},
+      {"image", config.image_model},
+      {"memory", EnvStr("UAGENT_MEMORY_MODEL")},
+      {"search", config.web_search_model},
+  };
+  std::string list;
+  size_t count = 0;
+  for (const auto& [name, selection] : routes) {
+    if (Trim(selection).empty()) continue;
+    if (!list.empty()) list += ", ";
+    list += std::string(name) + " → " + TerminalSafe(Trim(selection));
+    ++count;
+  }
+  if (!count) return;
+  PrintStartupRow("Routes", std::to_string(count) + " configured",
+                  {std::move(list)});
 }
 
 void PrintSkills(const std::vector<Skill>& skills) {
@@ -160,12 +200,16 @@ void PrintSkills(const std::vector<Skill>& skills) {
 }
 
 bool ProbeModel(Api& api) {
-  if (!api.model.empty() &&
-      (api.ctx_window > 0 || !api.capabilities.model_catalog_required)) {
-    return true;
-  }
+  if (!api.model.empty() && api.ctx_window > 0) return true;
+  // A known model with an unknown window still needs the catalog: the window
+  // is what context headroom and the compaction budget are measured against,
+  // and providers that do not need the catalog to *choose* a model still
+  // publish it there. That probe is a courtesy, so it gets a shorter deadline
+  // and a failure leaves the session usable — unlike discovering a model,
+  // without which there is nothing to run.
+  bool window_only = !api.model.empty();
   auto started = std::chrono::steady_clock::now();
-  json models = api.Get("/models");
+  json models = api.Get("/models", /*abortable=*/false, window_only ? 8 : 15);
   size_t offered = 0;
   if (models.is_object() && models.contains("data") &&
       models["data"].is_array()) {
@@ -215,6 +259,8 @@ std::vector<Tool> BuildTools(AppContext& context,
     std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
     return tools;
   }
+  // The advisor child reasons without acting, so it gets no tools at all.
+  if (EnvStr("UAGENT_TOOLSET") == "none") return {};
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   if (search_route.Valid()) {
@@ -226,6 +272,11 @@ std::vector<Tool> BuildTools(AppContext& context,
     tools.push_back(
         SubagentTool(api, runtime.processes, context.provider.routes,
                      context.provider.providers, context.options.debug));
+    if (!AdvisorModel().empty()) {
+      tools.push_back(
+          AdvisorTool(api, runtime.processes, context.provider.routes,
+                      context.provider.providers, context.options.debug));
+    }
   }
   if (LeanToolset()) KeepLeanTools(tools);
   ApplyToolPolicy(tools, context.tool_policy);
@@ -238,6 +289,8 @@ std::vector<Tool> BuildTools(AppContext& context,
       tools.push_back(std::move(skill_tool.front()));
     }
   }
+  PrintTools(tools);
+  PrintRoutes(runtime.config);
   return tools;
 }
 
@@ -332,7 +385,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
 
   ConfigManager config_manager =
-      ConfigManager::Capture(trusted, options.budget, options.no_memory);
+      ConfigManager::Capture(trusted, options.overrides);
   RuntimeConfig config = config_manager.Initialize();
   if (memory_child && !BuildMemoryExtractionPrompt(memory_source, workspace,
                                                    options.prompt, error)) {
@@ -340,6 +393,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   MaintainArtifacts();
   if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
+  // One resolved source of truth for the approval mode, so the prompt and the
+  // approver cannot disagree however the session was launched.
+  setenv("UAGENT_APPROVAL", options.yolo ? "yolo" : "prompt", 1);
   if (!options.debug) {
     options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
     options.debug = !options.debug_path.empty();
@@ -390,7 +446,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
     instructions.memory_index = std::move(memories.text);
     instructions.memory_sources = std::move(memories.sources);
-    instructions.truncated |= memories.truncated;
+    instructions.memory_truncated |= memories.truncated;
+    instructions.memory_limit = remaining;
 
     size_t always_bytes =
         static_cast<size_t>(std::max(int64_t{0}, MemoryAlwaysBytes()));
@@ -404,7 +461,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
           instructions.memory_sources.push_back(source);
         }
       }
-      instructions.truncated |= always.truncated;
+      if (always.truncated) {
+        instructions.memory_truncated = true;
+        instructions.memory_limit = always_bytes;
+      }
     }
   }
   printf("%s%sµAgent%s\n", RST(), BOLD(), RST());

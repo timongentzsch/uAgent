@@ -90,7 +90,7 @@ void TestRuntimeOwnershipHelpers() {
   setenv("UAGENT_TEST_LONG", "999999999999999999999999999999", 1);
   setenv("UAGENT_SESSION_BUDGET", "2.5", 1);
   setenv("UAGENT_MAX_TURN_COST", "nan", 1);
-  setenv("UAGENT_TASK_MODEL", "fast/model", 1);
+  setenv("UAGENT_SUBAGENT_MODEL", "fast/model", 1);
   setenv("UAGENT_TOOL_TRACE_PROTECT_CHARS", "1234", 1);
   setenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", "5678", 1);
   setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
@@ -111,7 +111,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
   CHECK(config.max_turn_cost == 0);
-  CHECK(TaskModel() == "fast/model");
+  CHECK(SubagentModel() == "fast/model");
   CHECK(ToolTraceProtectChars() == 1234);
   CHECK(ToolTracePruneMinChars() == 5678);
   CHECK(config.session_archive_bytes == 0);
@@ -142,7 +142,7 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_TEST_LONG");
   unsetenv("UAGENT_SESSION_BUDGET");
   unsetenv("UAGENT_MAX_TURN_COST");
-  unsetenv("UAGENT_TASK_MODEL");
+  unsetenv("UAGENT_SUBAGENT_MODEL");
   unsetenv("UAGENT_TOOL_TRACE_PROTECT_CHARS");
   unsetenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS");
   unsetenv("UAGENT_MCP_ROOTS");
@@ -328,9 +328,7 @@ void TestAgentConfigAllowlist() {
   unsetenv("OPENROUTER_API_KEY");
   unsetenv("OPENROUTER_MODEL");
   unsetenv("OPENROUTER_EFFORT");
-  ConfigManager loaded = ConfigManager::Capture(
-      /*trust_project=*/false, /*cli_budget=*/-1,
-      /*cli_no_memory=*/false);
+  ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)loaded.Initialize();
   CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
   CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
@@ -509,6 +507,35 @@ void TestNamedProviders() {
   CHECK(codex && codex->context == 16384);
   CHECK(codex && codex->protocol == ProviderProtocol::kOpenRouter);
 
+  // [provider/]model[:variant][:effort] — suffixes peel from the right
+  // against two closed sets and stop at the first unrecognized one.
+  ModelSelection plain = ParseModelSelection("gpt-5.5");
+  CHECK(plain.base == "gpt-5.5");
+  CHECK(plain.variant.empty() && plain.effort.empty());
+  ModelSelection scoped = ParseModelSelection("openrouter/deepseek/v4:xhigh");
+  CHECK(scoped.base == "openrouter/deepseek/v4");
+  CHECK(scoped.effort == "xhigh");
+  CHECK(scoped.variant.empty());
+  ModelSelection both = ParseModelSelection("openrouter/v4:nitro:xhigh");
+  ModelSelection swapped = ParseModelSelection("openrouter/v4:xhigh:nitro");
+  CHECK(both.base == "openrouter/v4" && swapped.base == "openrouter/v4");
+  CHECK(both.variant == "nitro" && swapped.variant == "nitro");
+  CHECK(both.effort == "xhigh" && swapped.effort == "xhigh");
+  // An OpenRouter id suffix is not an effort, and it stops the peel.
+  ModelSelection free_id = ParseModelSelection("openrouter/deepseek-chat:free");
+  CHECK(free_id.base == "openrouter/deepseek-chat:free");
+  CHECK(free_id.effort.empty() && free_id.variant.empty());
+  ModelSelection free_effort =
+      ParseModelSelection("openrouter/deepseek-chat:free:high");
+  CHECK(free_effort.base == "openrouter/deepseek-chat:free");
+  CHECK(free_effort.effort == "high");
+  // A second effort is not consumed twice, and a bare colon is left alone.
+  ModelSelection repeated = ParseModelSelection("model:low:high");
+  CHECK(repeated.base == "model:low" && repeated.effort == "high");
+  ModelSelection trailing = ParseModelSelection("model:");
+  CHECK(trailing.base == "model:" && trailing.effort.empty());
+  CHECK(ParseModelSelection("  spaced/model:high  ").base == "spaced/model");
+
   std::optional<ModelRoute> dynamic = ResolveModelRoute(
       catalog.models, catalog.providers, "codex-local/org/model");
   CHECK(dynamic.has_value());
@@ -538,16 +565,21 @@ void TestNamedProviders() {
   openrouter_api.capabilities = CapabilitiesForRoute(
       ProviderProtocol::kOpenRouter, openrouter_api.base_url);
   openrouter_api.model = "parent-model";
-  CHECK(DefaultTaskModel(openrouter_api) == "parent-model");
+  CHECK(DefaultSubagentModel(openrouter_api) == "parent-model");
+  // The runtime context names the parent in schema form, so the child can be
+  // asked for a route in the same spelling the user would type.
   CHECK(DelegationRuntimeContext(openrouter_api) ==
-        "[delegation: parent=parent-model (default); default=parent]");
+        "[delegation: parent=openrouter/parent-model; default=parent]");
+  openrouter_api.reasoning_effort = "high";
+  CHECK(RouteSelection(openrouter_api, {}) == "openrouter/parent-model:high");
+  openrouter_api.reasoning_effort.clear();
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.base_url = "http://127.0.0.1:8787/api/v1";
   CHECK(CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
   openrouter_api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, openrouter_api.base_url);
   CHECK(!CanUseRawModel(openrouter_api, "stepfun/step-3.7-flash"));
-  CHECK(DefaultTaskModel(openrouter_api) == "parent-model");
+  CHECK(DefaultSubagentModel(openrouter_api) == "parent-model");
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   CHECK(fixed.has_value());
@@ -612,9 +644,10 @@ void TestEffectiveConfigReload() {
             "search_secret=private-search-key\n"
             "UAGENT_WEB_SEARCH_API_KEY=$search_secret\n")
             .output.starts_with("wrote "));
+  // The CLI layer outranks the environment and both config files.
   ConfigManager manager = ConfigManager::Capture(
-      /*trust_project=*/false, /*cli_budget=*/3.5,
-      /*cli_no_memory=*/true);
+      /*trust_project=*/false,
+      {{"UAGENT_SESSION_BUDGET", "3.5"}, {"UAGENT_MEMORY", "0"}});
   RuntimeConfig active = manager.Initialize();
   CHECK(active.max_steps == 9);
   CHECK(active.max_tool_calls == 2);

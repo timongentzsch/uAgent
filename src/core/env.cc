@@ -91,7 +91,7 @@ int64_t SubagentMaxToolCalls() {
   return EnvLong("UAGENT_SUBAGENT_MAX_TOOL_CALLS", 60);
 }
 
-std::string TaskModel() { return EnvStr("UAGENT_TASK_MODEL"); }
+std::string SubagentModel() { return EnvStr("UAGENT_SUBAGENT_MODEL"); }
 
 int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", 16000); }
 
@@ -140,6 +140,17 @@ int64_t MemoryIdleSeconds() {
 
 int64_t MemoryExtractBytes() {
   return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", 32 * 1024, 4096, 256 * 1024);
+}
+
+// A reasoning advisor at high effort routinely runs minutes, not the seconds a
+// shell command is given, so it carries its own deadline.
+int64_t AdvisorTimeoutSeconds() {
+  return EnvBounded("UAGENT_ADVISOR_TIMEOUT", 300, 30, 1800);
+}
+
+int64_t AdvisorContextBytes() {
+  return EnvBounded("UAGENT_ADVISOR_CONTEXT_BYTES", 32 * 1024, 1024,
+                    256 * 1024);
 }
 
 int64_t MemoryAlwaysBytes() {

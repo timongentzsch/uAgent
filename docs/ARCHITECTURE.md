@@ -93,10 +93,10 @@ supervisor control pipe, so child reaping does not require a fixed-frequency
 timer; only the bounded trailing-output grace creates a real deadline. The thread feeds the private log, an incremental 1 MiB head/tail
 buffer, and an aggregate bounded transcript, and it is the sole owner of
 process reaping and I/O-FD closure. The buffer preserves the oldest and newest bytes
-and reports an omitted middle. `activity_output` drains new output or waits for
-output, exit, a readiness marker, or queued steering; `activity_input`
+and reports an omitted middle. `activity` drains new output or waits for
+output, exit, a readiness marker, or queued steering; writing chars
 serializes PTY writes, polling, interruption, and resize for one activity.
-`activity_wait` optionally joins blocked work and yields on queued steering
+an id-less wait optionally joins blocked work and yields on queued steering
 without cancelling it, while `activity_stop` terminates the complete process
 group.
 An exact live detached command and working-directory match returns the existing
@@ -110,10 +110,15 @@ on one worker thread. Agent output is marshalled back above the two-line
 composer, preserving native scrollback. A stateful decoder retains fragmented
 CSI and bracketed-paste sequences across reads; the composer owns history and
 paste bounds.
+One helper paints the pinned region — erase, optional transcript text, status
+row, composer — so its geometry is computed in a single place. SIGWINCH only
+records a deadline: the repaint waits until resizes stop arriving, and the
+status refresh stays silent until then, because a row formatted for one width
+wraps if the terminal has already become narrower.
 The application event loop blocks on stdin, captured output, worker requests,
 activity notifications, and idle MCP stdout together. Its timeout is the
-nearest real Escape-decoder or 10 Hz status-animation deadline rather than a
-background-completion tick. MCP request waits and curl multi transfers include
+nearest real Escape-decoder, resize-settle, or 10 Hz status-animation deadline
+rather than a background-completion tick. MCP request waits and curl multi transfers include
 the pollable abort descriptor, while SIGCHLD-driven shutdown waits use child
 notifications. Persistent detached logs use kqueue on macOS or inotify on
 Linux, with bounded polling only as an unsupported-platform fallback.
@@ -233,7 +238,7 @@ Parallel results are observed in completion order while protocol messages stay
 in call order. Background completion is observational: command output updates
 UI and retained activity state but never starts or enters a model turn. Bounded
 task completion is added once to the next naturally occurring model call
-without triggering one; multiple task completions share a 12 KiB message. Explicit `activity_output`
+without triggering one; multiple task completions share a 12 KiB message. Explicit `activity`
 can replay a retained bounded transcript.
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,

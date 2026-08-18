@@ -221,12 +221,6 @@ void Conversation::Upsert(json message, MessageKind kind) {
   Push(std::move(message), kind);
 }
 
-void Conversation::PopBack() {
-  if (messages_.empty()) return;
-  messages_.erase(messages_.end() - 1);
-  kinds_.pop_back();
-}
-
 void Conversation::Set(size_t index, json message, MessageKind kind) {
   NormalizeRole(message, kind);
   // Byte-identical replacement changes nothing observable: leave the cached

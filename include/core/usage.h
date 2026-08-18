@@ -27,6 +27,13 @@ struct Usage {
 
   int64_t GeneratedTokens() const { return output + reasoning; }
 
+  // `input` excludes the cached part, so the two together are the whole
+  // prompt. Zero when nothing has been counted yet.
+  int64_t CacheHitPercent() const {
+    int64_t prompt = input + cache_read;
+    return prompt > 0 ? 100 * cache_read / prompt : 0;
+  }
+
   void Merge(const Usage& other) {
     input += other.input;
     output += other.output;
@@ -41,34 +48,51 @@ struct Usage {
   // OpenAI convention: input excludes cached tokens, output excludes reasoning.
   void Add(const json& value) {
     if (!value.is_object()) return;
-    auto detail = [&](const char* key, const char* field) {
-      return value.contains(key) && value[key].is_object()
-                 ? JsonValue(value[key], field, int64_t{0})
-                 : int64_t{0};
+    // OpenAI-compatible endpoints spell the same counts several ways. Each
+    // field lists its spellings in order and takes the first one present,
+    // rather than growing another chain of fallbacks per field.
+    struct Alias {
+      const char* parent;  // nullptr for a top-level field
+      const char* field;
     };
-    int64_t cache = detail("prompt_tokens_details", "cached_tokens");
-    if (!cache) cache = detail("input_tokens_details", "cached_tokens");
+    auto first = [&](std::initializer_list<Alias> candidates) {
+      for (const Alias& alias : candidates) {
+        int64_t found =
+            alias.parent ? (value.contains(alias.parent) &&
+                                    value[alias.parent].is_object()
+                                ? JsonValue(value[alias.parent], alias.field,
+                                            int64_t{0})
+                                : int64_t{0})
+                         : JsonValue(value, alias.field, int64_t{0});
+        if (found) return found;
+      }
+      return int64_t{0};
+    };
+
+    int64_t input_tokens =
+        first({{nullptr, "prompt_tokens"}, {nullptr, "input_tokens"}});
+    int64_t output_tokens =
+        first({{nullptr, "completion_tokens"}, {nullptr, "output_tokens"}});
+    int64_t reason = first({{"completion_tokens_details", "reasoning_tokens"},
+                            {"output_tokens_details", "reasoning_tokens"}});
+    // Chat Completions and Responses report cached tokens *inside* the prompt
+    // total, so they must be subtracted out. Anthropic-style usage reports
+    // them beside an input count that already excludes them — subtracting
+    // there would under-report the fresh tokens.
+    int64_t nested_cache = first({{"prompt_tokens_details", "cached_tokens"},
+                                  {"input_tokens_details", "cached_tokens"}});
+    int64_t cache =
+        nested_cache ? nested_cache
+                     : JsonValue(value, "cache_read_input_tokens", int64_t{0});
     int64_t cache_write_tokens =
-        detail("prompt_tokens_details", "cache_write_tokens");
-    if (!cache_write_tokens) {
-      cache_write_tokens = detail("cache_details", "cache_write_tokens");
-    }
-    if (!cache_write_tokens) {
-      cache_write_tokens = JsonValue(value, "cache_write_tokens", int64_t{0});
-    }
-    int64_t reason = detail("completion_tokens_details", "reasoning_tokens");
-    if (!reason) reason = detail("output_tokens_details", "reasoning_tokens");
-    int64_t input_tokens = JsonValue(value, "prompt_tokens", int64_t{0});
-    if (!input_tokens) {
-      input_tokens = JsonValue(value, "input_tokens", int64_t{0});
-    }
-    int64_t output_tokens = JsonValue(value, "completion_tokens", int64_t{0});
-    if (!output_tokens) {
-      output_tokens = JsonValue(value, "output_tokens", int64_t{0});
-    }
+        first({{"prompt_tokens_details", "cache_write_tokens"},
+               {"cache_details", "cache_write_tokens"},
+               {nullptr, "cache_write_tokens"},
+               {nullptr, "cache_creation_input_tokens"}});
     // Compatibility providers occasionally report detail counts larger than
     // their parent totals. Never surface impossible negative token counts.
-    input += std::max(int64_t{0}, input_tokens - cache);
+    input += nested_cache ? std::max(int64_t{0}, input_tokens - nested_cache)
+                          : input_tokens;
     output += std::max(int64_t{0}, output_tokens - reason);
     cache_read += cache;
     cache_write += cache_write_tokens;

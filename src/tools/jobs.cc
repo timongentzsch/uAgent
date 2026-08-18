@@ -321,7 +321,9 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
 std::string SupervisedJobLabel(const BgJob& job) {
   ActivityKind kind = job.session ? job.session->kind
                                   : ParseActivityKind(job.kind, job.detached);
-  if (kind == ActivityKind::kTask) return "task";
+  if (kind == ActivityKind::kSubagent) {
+    return job.kind.empty() ? "subagent" : job.kind;
+  }
   if (kind == ActivityKind::kMemory) return "memory";
   return job.detached ? "detached" : "background";
 }
@@ -460,9 +462,23 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
     if (job->session) {
       interaction = std::unique_lock<std::mutex>(job->session->interaction);
     }
+    // Whether it is still running is the first thing the reader needs, so it
+    // rides in the header: an exit code means finished, its absence means the
+    // id is still worth writing to.
+    std::string state;
+    if (job->session) {
+      std::lock_guard<std::mutex> lock(job->session->mutex);
+      if (job->session->wait_status) {
+        state = " · exit " + std::to_string(WIFEXITED(*job->session->wait_status)
+                                                ? WEXITSTATUS(
+                                                      *job->session->wait_status)
+                                                : -1);
+      }
+    }
     return ToolSuccess(
         "[" + SupervisedJobLabel(*job) + " · activity " +
-        std::to_string(ActivityId(*job)) + " · log " + job->log + "]\n" +
+        std::to_string(ActivityId(*job)) + state + " · log " + job->log +
+        "]\n" +
         CollectSessionOutput(supervisor, *job, 0, {}, {}, ToolResultCap()));
   }
 
@@ -690,9 +706,9 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
 std::string BgResultHeader(const BgJob& job) {
   ActivityKind kind = job.session ? job.session->kind
                                   : ParseActivityKind(job.kind, job.detached);
-  if (kind == ActivityKind::kTask) {
-    return "[Background result: task id " + std::to_string(ActivityId(job)) +
-           "]";
+  if (kind == ActivityKind::kSubagent) {
+    return "[Background result: " + (job.kind.empty() ? "subagent" : job.kind) +
+           " id " + std::to_string(ActivityId(job)) + "]";
   }
   return "[" + std::string(job.detached ? "Detached" : "Background") +
          " result: activity id " + std::to_string(ActivityId(job)) + " `" +
@@ -700,8 +716,10 @@ std::string BgResultHeader(const BgJob& job) {
 }
 
 std::string BgResultHeader(const BackgroundCompletion& completion) {
-  if (completion.kind == ActivityKind::kTask) {
-    return "[Background result: task id " +
+  if (completion.kind == ActivityKind::kSubagent) {
+    const std::string& label =
+        completion.kind_label.empty() ? "subagent" : completion.kind_label;
+    return "[Background result: " + label + " id " +
            std::to_string(completion.activity_id) + "]";
   }
   return "[" +
@@ -778,8 +796,8 @@ std::vector<std::string> TakeCompleted(
       ActivityKind activity_kind =
           job.session ? job.session->kind
                       : ParseActivityKind(job.kind, job.detached);
-      details->push_back({ActivityId(job), activity_kind, status, job.cmd,
-                          std::move(output), job.display_label,
+      details->push_back({ActivityId(job), activity_kind, job.kind, status,
+                          job.cmd, std::move(output), job.display_label,
                           job.receipt_path, job.source_id});
     }
     if (!job.detached) supervisor.Retain(std::move(job));
@@ -808,17 +826,34 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                             std::string_view mode, int64_t wait_ms,
                             const ToolContext& context,
                             int64_t max_output_chars) {
+  // Waiting consumes the completion it observes. Memory extraction is drained
+  // by the harness into the memory audit instead, so a wait that scooped one
+  // up would silently lose that record; it is no more waitable than a detached
+  // activity.
+  auto waitable = [](const BgJob& job) {
+    ActivityKind kind = job.session
+                            ? job.session->kind
+                            : ParseActivityKind(job.kind, job.detached);
+    return !job.detached && kind != ActivityKind::kMemory;
+  };
   std::vector<int64_t> ids;
   if (requested.empty()) {
     for (const BgJob& job : supervisor.Snapshot()) {
-      if (!job.detached) ids.push_back(ActivityId(job));
+      if (waitable(job)) ids.push_back(ActivityId(job));
     }
   } else {
     for (int64_t requested_id : requested) {
-      if (requested_id <= 0 || !supervisor.Find(requested_id)) {
+      std::optional<BgJob> job =
+          requested_id > 0 ? supervisor.Find(requested_id) : std::nullopt;
+      if (!job) {
         return ToolFailure(ToolErrorCode::kNotFound,
                            "error: activity " + std::to_string(requested_id) +
                                " is not running in this session");
+      }
+      if (!waitable(*job)) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: activity " + std::to_string(requested_id) +
+                               " is harness maintenance and is not waitable");
       }
       if (std::find(ids.begin(), ids.end(), requested_id) == ids.end()) {
         ids.push_back(requested_id);
@@ -907,11 +942,11 @@ void BgShutdownAll(ProcessSupervisor& supervisor) {
   supervisor.Wake();
 }
 
-size_t BgCancelTasks(ProcessSupervisor& supervisor) {
+size_t BgCancelSubagents(ProcessSupervisor& supervisor) {
   size_t cancelled = 0;
   for (const BgJob& candidate : supervisor.Snapshot()) {
     if (candidate.detached || !candidate.session ||
-        candidate.session->kind != ActivityKind::kTask) {
+        candidate.session->kind != ActivityKind::kSubagent) {
       continue;
     }
     std::optional<BgJob> job = supervisor.Take(ActivityId(candidate));

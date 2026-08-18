@@ -94,7 +94,7 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
             "error: evaluator-authorized commands use foreground bash");
       }
       // The exact allowlist is stronger authority than the general shell
-      // heuristic (which normally redirects Python to run_python).
+      // heuristic (which normally redirects Python to scratch).
       return std::string();
     };
     tool.description +=

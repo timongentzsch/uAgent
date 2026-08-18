@@ -19,6 +19,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/tools/adapt_system.h"
+#include "include/ui/display.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
 #include "include/tools/shell.h"
@@ -363,6 +364,17 @@ void TestActivitySessions() {
   CHECK(memory_jobs.size() == 1);
   CHECK(ToolActivityList(memory_activity).output.find("[memory] activity") !=
         std::string::npos);
+  // A wait consumes the completion it observes, so extraction must stay out of
+  // reach: the harness drains it into the memory audit instead. It is still
+  // listed, just not waitable.
+  CHECK(ToolActivityWait(memory_activity, {}, "any", 0, context)
+            .output.find("no waitable activities") != std::string::npos);
+  if (!memory_jobs.empty()) {
+    ToolResult named = ToolActivityWait(
+        memory_activity, {ActivityId(memory_jobs[0])}, "all", 0, context);
+    CHECK(!named.Ok());
+    CHECK(named.output.find("not waitable") != std::string::npos);
+  }
   CHECK(ToolActivityList(memory_activity)
             .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
@@ -716,28 +728,35 @@ void TestToolExecutionPolicy() {
 
   ProcessSupervisor task_processes;
   BgJob task_header{7, "", "uagent -p 'very long delegated prompt'", false,
-                    "task"};
-  CHECK(BgResultHeader(task_header) == "[Background result: task id 7]");
+                    "subagent"};
+  CHECK(BgResultHeader(task_header) == "[Background result: subagent id 7]");
   CHECK(BgResultHeader(task_header).find("delegated prompt") ==
         std::string::npos);
   BackgroundCompletion task_completion;
   task_completion.activity_id = 7;
-  task_completion.kind = ActivityKind::kTask;
+  task_completion.kind = ActivityKind::kSubagent;
+  task_completion.kind_label = "subagent";
   task_completion.command = "uagent -p 'very long delegated prompt'";
-  CHECK(BgResultHeader(task_completion) == "[Background result: task id 7]");
+  CHECK(BgResultHeader(task_completion) == "[Background result: subagent id 7]");
+  // An advisor is the same class of activity but keeps its own label.
+  BackgroundCompletion advice;
+  advice.activity_id = 8;
+  advice.kind = ActivityKind::kSubagent;
+  advice.kind_label = "advisor";
+  CHECK(BgResultHeader(advice) == "[Background result: advisor id 8]");
   ToolResult launched = RunShellCommand(task_processes, base,
                                         {.command = "sleep 10",
                                          .background = true,
                                          .immediate = true,
-                                         .job_kind = "task"})
+                                         .job_kind = "subagent"})
                             .result;
-  CHECK(launched.output.starts_with("[started] task id "));
+  CHECK(launched.output.starts_with("[started] subagent id "));
   CHECK(task_processes.JoinableCount() == 1);
   std::vector<BgJob> tasks = task_processes.Snapshot();
   CHECK(tasks.size() == 1);
   std::vector<pid_t> task_ids;
   for (const BgJob& job : tasks) task_ids.push_back(job.pid);
-  CHECK(BgCancelTasks(task_processes) == 1);
+  CHECK(BgCancelSubagents(task_processes) == 1);
   CHECK(!task_processes.PendingCount());
   if (!task_ids.empty()) CHECK(!ProcessGroupAlive(task_ids[0]));
 
@@ -847,6 +866,58 @@ void TestOpenRouterServerSearch() {
   CHECK(responses_usage.cache_read == 3);
   CHECK(responses_usage.output == 5);
   CHECK(responses_usage.reasoning == 2);
+
+  // Every OpenAI-compatible spelling must land on the same invariant: `input`
+  // excludes the cached part, so input + cache_read is the whole prompt.
+  // Chat Completions and Responses report cached tokens inside the prompt
+  // total; Anthropic-style reports them beside an input count that already
+  // excludes them, and subtracting there would under-report fresh tokens.
+  Usage anthropic_usage;
+  anthropic_usage.Add({{"input_tokens", 8},
+                       {"output_tokens", 5},
+                       {"cache_read_input_tokens", 3},
+                       {"cache_creation_input_tokens", 7}});
+  CHECK(anthropic_usage.input == 8);
+  CHECK(anthropic_usage.cache_read == 3);
+  CHECK(anthropic_usage.cache_write == 7);
+  CHECK(anthropic_usage.output == 5);
+  CHECK(anthropic_usage.input + anthropic_usage.cache_read == 11);
+  CHECK(responses_usage.input + responses_usage.cache_read == 11);
+  // The cached share of the prompt, undefined only before anything is counted.
+  CHECK(Usage{}.CacheHitPercent() == 0);
+  CHECK(anthropic_usage.CacheHitPercent() == 27);
+  Usage all_cached;
+  all_cached.Add({{"prompt_tokens", 10},
+                  {"prompt_tokens_details", {{"cached_tokens", 10}}}});
+  CHECK(all_cached.input == 0 && all_cached.CacheHitPercent() == 100);
+
+  // The status row is one ordered list: everything fits when there is room,
+  // and the least valuable segments go first when there is not.
+  RuntimeConfig status_config;
+  Api status_api(status_config);
+  status_api.base_url = "https://openrouter.ai/api/v1";
+  status_api.model = "vendor/model";
+  status_api.ctx_window = 1000000;
+  Usage status_usage;
+  status_usage.input = 1200000;
+  status_usage.output = 45300;
+  status_usage.cache_read = 3100000;
+  status_usage.cost = 0.31;
+  StatusView status_view{.context_used = 4700,
+                         .model = "openrouter/vendor/model:high",
+                         .yolo = true};
+  setenv("COLUMNS", "200", 1);
+  std::string wide = StatusBar(status_api, status_usage, status_view);
+  CHECK(wide.find("ctx 4.7K/1.0M") != std::string::npos);
+  CHECK(wide.find("1.2M in · 45.3K out") != std::string::npos);
+  CHECK(wide.find("cache 72%") != std::string::npos);
+  CHECK(wide.find("openrouter/vendor/model:high") != std::string::npos);
+  CHECK(wide.find("YOLO") != std::string::npos);
+  // An unknown context window degrades to the used figure alone.
+  status_api.ctx_window = 0;
+  CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7K ") !=
+        std::string::npos);
+  unsetenv("COLUMNS");
   CHECK(responses_usage.GeneratedTokens() == 7);
 
   RuntimeConfig responses_config;
@@ -862,6 +933,38 @@ void TestOpenRouterServerSearch() {
   CHECK(route.base_url == "https://search.example/v1");
   CHECK(route.api_key == "search-key");
   CHECK(route.model == "search-model");
+  // A provider-scoped selection is a route of its own: endpoint, key and model
+  // all come from it, and the :effort suffix beats the session default.
+  setenv("UAGENT_PROVIDERS",
+         R"json({"seeker":{"base_url":"https://seek.example/v1",
+                            "api_key":"seek-key"}})json",
+         1);
+  RuntimeConfig scoped_config = responses_config;
+  scoped_config.web_search_url.clear();
+  scoped_config.web_search_api_key.clear();
+  scoped_config.web_search_model = "seeker/finder-model:high";
+  scoped_config.web_search_effort = "low";
+  Api scoped_api(scoped_config);
+  scoped_api.base_url = "https://inference.example/v1";
+  scoped_api.api_key = "inference-key";
+  WebSearchRoute scoped = SelectWebSearchRoute(scoped_api, {});
+  CHECK(scoped.base_url == "https://seek.example/v1");
+  CHECK(scoped.api_key == "seek-key");
+  CHECK(scoped.model == "finder-model");
+  CHECK(scoped.effort == "high");
+  CHECK(WebSearchRequest(scoped, scoped_config, "q")["reasoning"]["effort"] ==
+        "high");
+  // A bare id still only renames the model on the winning candidate.
+  RuntimeConfig bare_config = responses_config;
+  bare_config.web_search_model = "plain-model";
+  Api bare_api(bare_config);
+  bare_api.base_url = "https://inference.example/v1";
+  bare_api.api_key = "inference-key";
+  WebSearchRoute bare = SelectWebSearchRoute(bare_api, {});
+  CHECK(bare.base_url == "https://search.example/v1");
+  CHECK(bare.model == "plain-model");
+  unsetenv("UAGENT_PROVIDERS");
+
   json search_body =
       WebSearchRequest(route, responses_config, "current information");
   CHECK(search_body["tools"][0]["type"] == "web_search");
@@ -874,7 +977,7 @@ void TestOpenRouterServerSearch() {
   openrouter_config.web_search_context_size = "high";
   WebSearchRoute openrouter_route{WebSearchBackend::kOpenRouter,
                                   "https://openrouter.ai/api/v1", "key",
-                                  "vendor/search-model"};
+                                  "vendor/search-model", ""};
   json openrouter_body =
       WebSearchRequest(openrouter_route, openrouter_config, "current facts");
   CHECK(openrouter_body["model"] == "vendor/search-model");
@@ -995,8 +1098,9 @@ void TestAttachmentEncoding() {
   CHECK(ImageInputError(image_attachment, false, false)
             .find(image_path.string()) != std::string::npos);
   CHECK(ImageInputError(image_attachment, false, true).empty());
-  CHECK(std::string(ModelImageInputInstruction(false, true))
-            .find("vision model") != std::string::npos);
+  // A configured vision route reads like native vision: the prompt is silent
+  // either way, so the model never plans around the difference.
+  CHECK(std::string(ModelImageInputInstruction(false, true)).empty());
   CHECK(ImageInputError(attachment, false, false).empty());
 
   error.clear();
@@ -1170,9 +1274,9 @@ void TestGrepTool() {
     CHECK(static_cast<bool>(run->validate));
     CHECK(run->validate({{"command", "cmake --build build"}}).empty());
     CHECK(run->validate({{"command", "python -c 'print(1')"}})
-              .find("run_python") != std::string::npos);
+              .find("scratch") != std::string::npos);
     CHECK(
-        run->validate({{"command", "python3 script.py"}}).find("run_python") !=
+        run->validate({{"command", "python3 script.py"}}).find("scratch") !=
         std::string::npos);
     CHECK(
         run->validate({{"command", "pip install reportlab"}}).find("PEP 723") !=
@@ -1183,17 +1287,17 @@ void TestGrepTool() {
   auto evaluator_tools = BuiltinTools(supervisor, root, false);
   ApplyToolPolicy(evaluator_tools,
                   {.allowed = Capability(ToolCapability::kInspect),
-                   .tool_allowlist = {"grep", "read_file", "list_dir", "run"},
+                   .tool_allowlist = {"grep", "read_path", "run"},
                    .run_allowlist = {"python3 slow_analysis.py"},
                    .error = ""});
   const Tool* evaluator_run = FindTool(evaluator_tools, "run");
   CHECK(evaluator_run &&
         evaluator_run->validate({{"command", "python3 slow_analysis.py"}})
             .empty());
-  const Tool* python = FindTool(lean_tools, "run_python");
+  const Tool* python = FindTool(lean_tools, "scratch");
   CHECK(python != nullptr);
-  CHECK(python &&
-        ToolDescription(*python).find("Never use this") != std::string::npos);
+  CHECK(python && ToolDescription(*python).find("never for requested project") !=
+                      std::string::npos);
   CHECK(python &&
         python->parameters.value("additionalProperties", true) == false);
   CHECK(python && python->parameters["required"] ==
@@ -1217,25 +1321,29 @@ void TestGrepTool() {
   CHECK(python && python->timeout_s == 0);
   CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
-  CHECK(FindTool(lean_tools, "activity_output") != nullptr);
-  const Tool* activity = FindTool(lean_tools, "activity_output");
+  // One tool covers list, drain, write and wait; the mode is the argument set.
+  const Tool* activity = FindTool(lean_tools, "activity");
+  CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
   CHECK(activity && activity->parameters["properties"].contains("until"));
+  CHECK(activity &&
+        activity->parameters["properties"]["mode"]["enum"] ==
+            json::array({"any", "all"}));
   CHECK(activity &&
         !activity->validate({{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}})
              .size());
   CHECK(activity &&
         activity->validate({{"until", "ready"}})
                 .find("requires id and wait_ms") != std::string::npos);
-  const Tool* activity_wait = FindTool(lean_tools, "activity_wait");
-  CHECK(activity_wait != nullptr);
-  CHECK(activity_wait && activity_wait->blocking_wait_default_ms == 30000);
-  CHECK(activity_wait &&
-        activity_wait->parameters["properties"]["mode"]["enum"] ==
-            json::array({"any", "all"}));
-  CHECK(activity_wait &&
-        InvalidToolArgument(*activity_wait, {{"ids", {1, "bad"}}}) ==
-            "`ids[1]` must be integer");
+  CHECK(activity && activity->validate({{"chars", "x"}}).find(
+                        "writing requires id") != std::string::npos);
+  CHECK(activity && activity->validate({{"id", 1}, {"rows", 40}}).find(
+                        "supplied together") != std::string::npos);
+  // Reading needs no approval; writing does.
+  CHECK(activity && !activity->mutates({{"id", 1}}));
+  CHECK(activity && activity->mutates({{"id", 1}, {"chars", "y"}}));
+  CHECK(activity && InvalidToolArgument(*activity, {{"id", "bad"}}) ==
+                        "`id` must be integer");
   CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==
@@ -1354,7 +1462,7 @@ void TestPythonTool() {
     unsetenv("PATH");
   }
   auto tools = BuiltinTools(supervisor, root, false);
-  CHECK(FindTool(tools, "run_python") != nullptr);
+  CHECK(FindTool(tools, "scratch") != nullptr);
 
   std::error_code ec;
   fs::remove_all(root, ec);

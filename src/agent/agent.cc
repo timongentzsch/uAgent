@@ -497,7 +497,7 @@ bool Agent::DrainBackground() {
   if (!completions.empty()) {
     constexpr size_t kAutomaticBatchBytes = 12 * 1024;
     std::string batch = "[completed background tasks; bounded]\n";
-    size_t task_count = 0;
+    size_t child_count = 0;
     size_t reduced = 0;
     bool first = true;
     for (const BackgroundCompletion& completion : completions) {
@@ -513,7 +513,9 @@ bool Agent::DrainBackground() {
               ? PresentationStatus::kSucceeded
               : PresentationStatus::kFailed;
       record.title =
-          (completion.kind == ActivityKind::kTask ? "task " : "activity ") +
+          (completion.kind == ActivityKind::kSubagent
+               ? completion.kind_label + " "
+               : std::string("activity ")) +
           std::to_string(completion.activity_id);
       record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
       Event display{
@@ -527,8 +529,8 @@ bool Agent::DrainBackground() {
       display.render = api_.render_stream;
       Emit(std::move(display));
 
-      if (completion.kind != ActivityKind::kTask) continue;
-      ++task_count;
+      if (completion.kind != ActivityKind::kSubagent) continue;
+      ++child_count;
       std::string note = header + "\n" + completion.output +
                          FmtExit(completion.status, /*show_ok=*/true);
       size_t separator = first ? 0 : 2;
@@ -536,7 +538,7 @@ bool Agent::DrainBackground() {
         HeadTailBuffer excerpt(512);
         excerpt.Push(completion.output);
         note = header + "\n" + excerpt.Snapshot() +
-               "\n[completion reduced; use activity_output for the retained "
+               "\n[completion reduced; use activity for the retained "
                "transcript]" +
                FmtExit(completion.status, /*show_ok=*/true);
         ++reduced;
@@ -545,13 +547,13 @@ bool Agent::DrainBackground() {
       first = false;
       batch += std::move(note);
     }
-    if (task_count > 0) {
+    if (child_count > 0) {
       conversation_.Push(HarnessMessage(std::move(batch)),
                          MessageKind::kInternal);
     }
     DebugLog("background_results_delivered",
              {{"count", completions.size()},
-              {"model_visible_tasks", task_count},
+              {"model_visible_children", child_count},
               {"reduced", reduced}});
     changed = true;
   }

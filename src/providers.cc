@@ -117,6 +117,25 @@ bool SaveModelPreference(const ModelPreference& preference,
                          /*preserve_mode=*/false, error);
 }
 
+ModelSelection ParseModelSelection(std::string selection) {
+  ModelSelection parsed;
+  parsed.base = Trim(std::move(selection));
+  for (;;) {
+    size_t colon = parsed.base.rfind(':');
+    if (colon == std::string::npos || colon + 1 == parsed.base.size()) break;
+    std::string suffix = parsed.base.substr(colon + 1);
+    if (parsed.effort.empty() && ValidEffort(suffix)) {
+      parsed.effort = std::move(suffix);
+    } else if (parsed.variant.empty() && ValidOpenRouterVariant(suffix)) {
+      parsed.variant = std::move(suffix);
+    } else {
+      break;
+    }
+    parsed.base.resize(colon);
+  }
+  return parsed;
+}
+
 bool ValidEffort(const std::string& effort) {
   return effort.empty() ||
          std::find(std::begin(kReasoningEfforts), std::end(kReasoningEfforts),
@@ -188,6 +207,12 @@ void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
   }
 }
 
+ProviderCatalog SessionProviderCatalog() {
+  ProviderCatalog catalog = LoadProviderCatalog();
+  AddAvailableProviderTemplates(catalog);
+  return catalog;
+}
+
 std::optional<ModelRoute> ResolveModelRoute(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers, const std::string& selection) {
@@ -234,6 +259,42 @@ void ResetRouteCapabilities(Api& api) {
 
 }  // namespace
 
+SideRoute ResolveSideRoute(const Api& api,
+                           const std::vector<ModelRoute>& routes,
+                           const std::vector<NamedProvider>& providers,
+                           const std::string& requested) {
+  ModelSelection parsed = ParseModelSelection(requested);
+  SideRoute resolved;
+  resolved.selection = parsed.base.empty() ? api.model : requested;
+  resolved.model = parsed.base.empty() ? api.model : parsed.base;
+  resolved.base_url = api.base_url;
+  resolved.api_key = api.api_key;
+  resolved.effort = api.reasoning_effort;
+  resolved.variant = api.config.openrouter_variant;
+  resolved.context = api.ctx_window;
+  resolved.protocol = api.capabilities.protocol;
+  if (!parsed.base.empty()) {
+    if (std::optional<ModelRoute> route =
+            ResolveModelRoute(routes, providers, parsed.base)) {
+      resolved.base_url = route->base_url;
+      resolved.api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
+      resolved.model = route->model;
+      if (!route->effort.empty()) resolved.effort = route->effort;
+      resolved.context = route->context;
+      resolved.protocol = route->protocol;
+    } else {
+      // A bare model id on the parent's provider also lands here; only the
+      // execution paths decide whether that is usable.
+      resolved.unresolved = true;
+    }
+  }
+  // A suffix is the most specific statement of intent, so it wins over both the
+  // route's configured value and the session default.
+  if (!parsed.variant.empty()) resolved.variant = parsed.variant;
+  if (!parsed.effort.empty()) resolved.effort = parsed.effort;
+  return resolved;
+}
+
 void ApplyRoute(Api& api, const ModelRoute& route) {
   api.base_url = route.base_url;
   api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
@@ -241,6 +302,59 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   if (!route.effort.empty()) api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
   api.capabilities = CapabilitiesForRoute(route.protocol, route.base_url);
+}
+
+namespace {
+
+// The configured provider serving a base URL, else the built-in template that
+// matches it, else nothing — a custom endpoint has no name to scope with.
+std::string ProviderScope(const std::string& base_url,
+                          const std::vector<NamedProvider>& providers) {
+  for (const NamedProvider& provider : providers) {
+    if (provider.base_url == base_url) return provider.name;
+  }
+  const ProviderTemplate* provider = FindProviderTemplateForUrl(base_url);
+  return provider ? provider->name : std::string();
+}
+
+std::string ComposeSelection(const std::string& scope, const std::string& model,
+                             const std::string& variant,
+                             const std::string& effort) {
+  std::string selection = scope.empty() ? "" : scope + "/";
+  selection += model;
+  if (!variant.empty()) selection += ":" + variant;
+  if (!effort.empty()) selection += ":" + effort;
+  return selection;
+}
+
+}  // namespace
+
+std::string RouteSelection(const Api& api,
+                           const std::vector<NamedProvider>& providers) {
+  // CatalogModel strips a routing variant the request appends, so the suffixes
+  // are added once and in schema order.
+  return ComposeSelection(ProviderScope(api.base_url, providers),
+                          api.CatalogModel(),
+                          api.capabilities.model_variants
+                              ? api.config.openrouter_variant
+                              : std::string(),
+                          api.reasoning_effort);
+}
+
+std::string RouteSelection(const SideRoute& route,
+                           const std::vector<NamedProvider>& providers) {
+  return ComposeSelection(ProviderScope(route.base_url, providers), route.model,
+                          route.variant, route.effort);
+}
+
+void ApplySideRoute(Api& api, const SideRoute& route) {
+  api.base_url = route.base_url;
+  api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
+  api.model = route.model;
+  api.reasoning_effort = route.effort;
+  api.ctx_window = route.context;
+  api.capabilities = CapabilitiesForRoute(route.protocol, route.base_url);
+  api.config.openrouter_variant = route.variant;
 }
 
 void ActivateRoute(Api& api) {

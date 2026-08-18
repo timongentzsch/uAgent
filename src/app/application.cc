@@ -344,6 +344,9 @@ class Application {
       case SlashCommandId::kMemory:
         HandleMemory();
         break;
+      case SlashCommandId::kTools:
+        HandleTools();
+        break;
       case SlashCommandId::kAttach:
         HandleAttach(command.argument);
         break;
@@ -381,6 +384,21 @@ class Application {
     SaveSelectedModel(selected->selection);
   }
 
+  // The route in schema form; the host only earns a segment when no provider
+  // scope was resolvable, since `openrouter/...` already names the provider.
+  StatusView SessionStatusView() const {
+    StatusView view{.context_used = agent_.ContextUsed(),
+                    .model = RouteSelection(api_, context_.provider.providers),
+                    .verbose = agent_.Verbose(),
+                    .yolo = context_.options.yolo,
+                    .attachments = attachments_.size(),
+                    .background = runtime_.processes.Count()};
+    if (view.model.find('/') == std::string::npos) {
+      view.host = UrlHost(api_.base_url);
+    }
+    return view;
+  }
+
   void HandleCost() const {
     json routes = agent_.RouteUsageJson();
     if (routes.empty()) {
@@ -391,17 +409,39 @@ class Application {
       std::string cost = JsonValue(usage, "cost_reported", false)
                              ? FmtCost(JsonValue(usage, "cost", 0.0))
                              : "cost unavailable";
-      printf("%s· %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
-             cost.c_str(), RST());
+      // Tokens beside the cost say *why* a route is expensive — a large
+      // evidence block reads very differently from many small turns.
+      Usage spent;
+      spent.input = JsonValue(usage, "input", int64_t{0});
+      spent.output = JsonValue(usage, "output", int64_t{0});
+      spent.cache_read = JsonValue(usage, "cache_read", int64_t{0});
+      std::string tokens = TokenSummary(spent);
+      std::string cache = CacheSummary(spent);
+      if (!cache.empty()) tokens += " · " + cache;
+      printf("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
+             tokens.c_str(), cost.c_str(), RST());
     }
-    printf("%s· total %s", DIM(),
-           agent_.SessionUsage().cost_reported
-               ? FmtCost(agent_.SessionUsage().cost).c_str()
-               : "cost unavailable");
+    const Usage& session = agent_.SessionUsage();
+    std::string totals = TokenSummary(session);
+    std::string session_cache = CacheSummary(session);
+    if (!session_cache.empty()) totals += " · " + session_cache;
+    printf("%s· total · %s · %s", DIM(), totals.c_str(),
+           session.cost_reported ? FmtCost(session.cost).c_str()
+                                 : "cost unavailable");
     if (api_.config.session_budget > 0) {
       printf(" / %s", FmtCost(api_.config.session_budget).c_str());
     }
     printf("%s\n", RST());
+  }
+
+  // The startup row is a snapshot; MCP refresh and config reloads change the
+  // set mid-session, so this is the live view.
+  void HandleTools() const {
+    const std::vector<Tool>& tools = context_.tools;
+    printf("%s· %zu tools%s\n", DIM(), tools.size(), RST());
+    for (const Tool& tool : tools) {
+      printf("%s· %s%s\n", DIM(), TerminalSafe(tool.name).c_str(), RST());
+    }
   }
 
   void HandleMemory() const {
@@ -448,6 +488,10 @@ class Application {
       if (!event.preview.empty()) {
         printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
       }
+      if (!event.previous.empty()) {
+        printf("%s  replaced: %s%s\n", DIM(),
+               TerminalSafe(event.previous).c_str(), RST());
+      }
     }
   }
 
@@ -480,7 +524,7 @@ class Application {
                                {"effort", api_.reasoning_effort},
                                {"preference_saved", saved}});
     printf("%s· model %s%s\n", DIM(),
-           ModelLabel(selected, api_.reasoning_effort).c_str(), RST());
+           RouteSelection(api_, context_.provider.providers).c_str(), RST());
     if (!saved) {
       printf("%s· model changed but preference was not saved: %s%s\n", YEL(),
              TerminalSafe(error).c_str(), RST());
@@ -656,12 +700,7 @@ class Application {
 
     auto status = [&] {
       if (!working) {
-        return StatusBar(api_, agent_.SessionUsage(),
-                         {.context_used = agent_.ContextUsed(),
-                          .verbose = agent_.Verbose(),
-                          .yolo = context_.options.yolo,
-                          .attachments = attachments_.size(),
-                          .background = runtime_.processes.Count()});
+        return StatusBar(api_, agent_.SessionUsage(), SessionStatusView());
       }
       auto now = std::chrono::steady_clock::now();
       double elapsed = std::chrono::duration<double>(now - started).count();
@@ -697,15 +736,31 @@ class Application {
       size_t width = TerminalWidth(1);
       if (SteeringEnabled()) {
         std::string hint = " · Esc interrupt";
-        size_t desired = std::min<size_t>(DisplayWidth(state), 64);
+        // A rolling ticker always holds more text than fits, so it asks for
+        // the full cap instead of the width of its idle fallback label.
+        size_t desired = std::min<size_t>(
+            CurrentTerminalActivityRolling() ? 64 : DisplayWidth(state), 64);
         size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
                            DisplayWidth(hint) + desired;
         if (with_hint <= width) suffix += hint;
       }
       size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
       size_t activity_width = width > reserved ? width - reserved : 0;
+      if (CurrentTerminalActivityRolling()) {
+        // Rolling ticker: render a sliding window of the reasoning instead of
+        // the static fallback label so it animates with the status frame.
+        // ActivityLabel is a no-op while the window fits; on a terminal too
+        // narrow even for the ticker label it bounds the row as usual.
+        return prefix +
+               ActivityLabel(RenderCurrentTerminalActivity(activity_width),
+                             activity_width) +
+               suffix;
+      }
       return prefix + ActivityLabel(state, activity_width) + suffix;
     };
+
+    constexpr auto kResizeSettle = std::chrono::milliseconds(80);
+    std::optional<std::chrono::steady_clock::time_point> resize_settled;
 
     auto rendered_status = [&] { return StatusBarLine(status()); };
 
@@ -724,31 +779,59 @@ class Application {
       composer.Detach();
     };
 
+    // The one place the pinned region is painted: erase what is there, emit any
+    // transcript text above it, then the status row and the composer. Every
+    // caller differs only in the text it contributes and whether the composer
+    // keeps its buffer, so geometry can only be wrong here.
+    auto paint = [&](std::string text, const std::string* prompt,
+                     const std::string& initial, bool keep_history) {
+      unmount();
+      if (!text.empty()) {
+        if (text.back() != '\n') text += '\n';
+        output.Write(text);
+      }
+      output.Write(rendered_status() + "\n");
+      if (prompt) {
+        composer.Mount(*prompt, initial, keep_history);
+      } else {
+        composer.Remount();
+      }
+    };
+
     auto mount = [&](const std::string& prompt = InputPrompt(),
                      const std::string& initial = std::string(),
                      bool keep_history = true) {
-      unmount();
-      output.Write(rendered_status() + "\n");
-      composer.Mount(prompt, initial, keep_history);
+      paint({}, &prompt, initial, keep_history);
     };
 
     auto insert = [&](std::string text) {
       if (text.empty()) return;
-      if (text.back() != '\n') text += '\n';
-      unmount();
-      output.Write(text);
-      output.Write(rendered_status() + "\n");
-      composer.Remount();
+      paint(std::move(text), nullptr, {}, true);
     };
 
-    auto redraw = [&] {
-      unmount();
-      output.Write(rendered_status() + "\n");
-      composer.Remount();
+    // A resize must *replace* the pinned region, not add to it: erasing only
+    // downward leaves the status row that sits above the cursor, so every
+    // repaint would append another one. Walk up to the status row first, the
+    // way every other paint does.
+    //
+    // CaretRow() is exact when the block did not reflow — an empty or short
+    // draft, or any widening, since the rows are separate lines. Narrowing
+    // with a draft long enough to soft-wrap can leave one stale fragment
+    // above; the next mount clears it. Pinning that down needs a cursor
+    // position report, which is deliberately not in this change.
+    auto resync = [&] {
+      if (!composer.Drawn()) return;
+      paint({}, nullptr, {}, true);
     };
 
     auto refresh_status = [&] {
       if (!composer.Drawn()) return;
+      // Stay silent while a drag is still in flight. The width is read per
+      // write, so a status row formatted for one width can land in a terminal
+      // that has already become narrower — it wraps, the cursor is no longer
+      // where the caller believes, and the next write starts mid-line. The
+      // settle repaint restores the row once the size stops moving.
+      if (resize_settled) return;
       // The status is always the one row immediately above the mounted
       // composer; update it without repainting the editor's footprint.
       size_t rows_up = composer.CaretRow() + 1;
@@ -810,6 +893,11 @@ class Application {
                             ? std::min(*wake_deadline, status_deadline)
                             : status_deadline;
       }
+      if (resize_settled) {
+        wake_deadline = wake_deadline
+                            ? std::min(*wake_deadline, *resize_settled)
+                            : *resize_settled;
+      }
       int timeout_ms = -1;
       if (wake_deadline) {
         auto now = std::chrono::steady_clock::now();
@@ -824,7 +912,16 @@ class Application {
       if (ready < 0 && errno != EINTR) break;
       if (g_terminal_resized) {
         g_terminal_resized = 0;
-        redraw();
+        // Dragging an edge emits a burst of SIGWINCH. The flag already
+        // coalesces everything that arrives before this wake; the settle
+        // window collapses the rest into one repaint instead of flickering
+        // through every intermediate width.
+        resize_settled = std::chrono::steady_clock::now() + kResizeSettle;
+      }
+      if (resize_settled &&
+          std::chrono::steady_clock::now() >= *resize_settled) {
+        resize_settled.reset();
+        resync();
         last_redraw = std::chrono::steady_clock::now();
         last_state = status_state();
       }
@@ -987,11 +1084,7 @@ class Application {
       SaveSession();
       agent_.DrainBackground();
       PrintStatusBar(StatusBar(api_, agent_.SessionUsage(),
-                               {.context_used = agent_.ContextUsed(),
-                                .verbose = agent_.Verbose(),
-                                .yolo = context_.options.yolo,
-                                .attachments = attachments_.size(),
-                                .background = runtime_.processes.Count()}));
+                               SessionStatusView()));
       bool eof = false;
       std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {

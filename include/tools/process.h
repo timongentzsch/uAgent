@@ -19,7 +19,9 @@
 
 namespace uagent {
 
-enum class ActivityKind : uint8_t { kCommand, kTask, kMemory, kDetached };
+// A subagent activity is any delegated child agent — a subagent or an
+// advisor — whose result joins the parent conversation when it finishes.
+enum class ActivityKind : uint8_t { kCommand, kSubagent, kMemory, kDetached };
 enum class ActivityState : uint8_t {
   kStarting,
   kRunning,

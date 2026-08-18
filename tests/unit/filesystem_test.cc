@@ -170,21 +170,23 @@ void TestFileTools() {
             .output.starts_with("wrote "));
   ProcessSupervisor supervisor;
   std::vector<Tool> tools = BuiltinTools(supervisor, root);
-  const Tool* read_tool = FindTool(tools, "read_file");
+  const Tool* read_tool = FindTool(tools, "read_path");
   CHECK(read_tool != nullptr);
   CHECK(read_tool && read_tool->result_chars == ReadFileResultChars());
   CHECK(read_tool &&
         read_tool->parameters["properties"]["limit"]["description"] ==
-            "line count (default 1000)");
+            "lines or entries (default 1000)");
   fs::path external =
       root.parent_path() / ("uagent-external-list-" + std::to_string(getpid()));
   fs::create_directories(external);
   CHECK(ToolWriteFile((external / "outside.cc").string(), "OUTSIDE_BODY\n")
             .output.starts_with("wrote "));
-  const Tool* list_tool = FindTool(tools, "list_dir");
-  CHECK(list_tool != nullptr);
-  CHECK(list_tool && list_tool->run({{"path", external.string()}}, {})
+  // A directory path lists instead of reading, and an outside directory still
+  // previews nothing.
+  CHECK(read_tool && read_tool->run({{"path", external.string()}}, {})
                              .output.find("OUTSIDE_BODY") == std::string::npos);
+  CHECK(read_tool && read_tool->run({{"path", root.string()}}, {})
+                             .output.find("outside.cc") == std::string::npos);
   const Tool* edit_tool = FindTool(tools, "edit_file");
   CHECK(edit_tool != nullptr);
   if (edit_tool) {

@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "include/core/env.h"
+
 namespace uagent {
 
 enum class OptionsAction {
@@ -27,6 +29,9 @@ struct Options {
   std::string prompt;
   double budget = -1;
   std::vector<std::string> attach_paths;
+  // UAGENT_* values named on the command line; they outrank the environment
+  // and both config files. --budget and --no-memory land here too.
+  RuntimeConfig::Values overrides;
 };
 
 struct ParsedOptions {

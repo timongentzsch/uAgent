@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <sstream>
@@ -17,14 +18,10 @@
 
 namespace uagent {
 
-std::string CompactReasoningPreview(const std::string& text, size_t cap) {
-  size_t end = text.find_last_not_of(" \t\r\n");
-  if (end == std::string::npos) return "";
-  size_t newline = text.find_last_of("\r\n", end);
-  size_t begin = newline == std::string::npos ? 0 : newline + 1;
-  std::string safe = TerminalSafe(text.substr(begin, end - begin + 1));
+std::string StripDisplayMarkdown(const std::string& text) {
+  std::string safe = TerminalSafe(text);
   std::string plain;
-  plain.reserve(std::min(safe.size(), cap * 2));
+  plain.reserve(safe.size());
   bool separator = false;
   for (size_t index = 0; index < safe.size(); ++index) {
     unsigned char c = static_cast<unsigned char>(safe[index]);
@@ -48,11 +45,21 @@ std::string CompactReasoningPreview(const std::string& text, size_t cap) {
   while (plain.starts_with("- ") || plain.starts_with("> ")) {
     plain = Trim(plain.substr(2));
   }
-  if (plain.size() <= cap) return plain;
-  size_t start = Utf8BoundaryAfter(plain, plain.size() - cap);
-  size_t word = plain.find(' ', start);
-  if (word != std::string::npos && word + 1 < plain.size()) start = word + 1;
-  return Trim(plain.substr(start));
+  return plain;
+}
+
+// Bounded single-line rolling buffer for the live reasoning ticker: collapse
+// newlines to spaces so the status row never wraps, keep UTF-8 boundaries.
+void AppendRolling(std::string& buffer, std::string_view value) {
+  for (char c : value) {
+    if (c == '\r' || c == '\n') c = ' ';
+    buffer.push_back(c);
+  }
+  constexpr size_t kRollingBytes = 512;
+  if (buffer.size() > kRollingBytes) {
+    size_t start = Utf8BoundaryAfter(buffer, buffer.size() - kRollingBytes);
+    buffer.erase(0, start);
+  }
 }
 
 struct TerminalPresenter::State {
@@ -108,17 +115,11 @@ struct TerminalPresenter::State {
   void Reasoning(std::string_view value) {
     if (!render) return;
     if (!full_reasoning) {
-      reasoning_tail += value;
-      constexpr size_t kTailBytes = 512;
-      if (reasoning_tail.size() > kTailBytes) {
-        size_t start = Utf8BoundaryAfter(reasoning_tail,
-                                         reasoning_tail.size() - kTailBytes);
-        reasoning_tail.erase(0, start);
-      }
-      std::string preview = CompactReasoningPreview(reasoning_tail);
-      if (spinner && !preview.empty()) {
-        spinner->SetLabel(SpinnerLabel("thinking · " + preview));
-      }
+      if (!spinner) return;
+      AppendRolling(reasoning_tail, value);
+      // Strip on the whole buffer, not per delta: decoration detection needs
+      // the neighbouring characters, which a chunk boundary would split.
+      spinner->SetRolling("thinking · ", StripDisplayMarkdown(reasoning_tail));
       return;
     }
 

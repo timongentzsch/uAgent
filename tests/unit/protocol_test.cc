@@ -58,7 +58,7 @@ void TestTextToolProtocol() {
   CHECK(calls[0].name == "read_file");
   std::string spaced_call =
       std::string(kTtOpen) +
-      R"({"name": "list_dir", "arguments": {"path": "."}})" + kTtClose;
+      R"({"name": "read_path", "arguments": {"path": "."}})" + kTtClose;
   CHECK(ParseTextToolCalls(spaced_call).size() == 1);
   std::string result_name;
   std::string result_text;
@@ -209,13 +209,18 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Do not reread unchanged inputs") !=
         std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("save multiple parent rounds") !=
+  CHECK(std::string(kSystemPrompt).find("one parallel batch") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("delegate them concurrently") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Commit or push only when asked") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("terminal_columns") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("never use \\begin environments") !=
+        std::string::npos);
+  // The terminal renders math as Unicode glyphs, which bounds what is usable.
+  CHECK(std::string(kSystemPrompt).find("renders to Unicode") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("Inquiries do not authorize") !=
         std::string::npos);
@@ -225,16 +230,22 @@ void TestRegistries() {
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("cross-cutting or high-risk") !=
         std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("never imitate a tool call") !=
+  CHECK(std::string(kSystemPrompt).find("never imitate a call in prose") !=
         std::string::npos);
   CHECK(std::string(kSystemPrompt).find("empty placeholders") !=
         std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("Cite code as path:line") !=
+        std::string::npos);
+  // Sections are the point of the layout; the budget keeps them from becoming
+  // an excuse for a longer prompt.
+  for (const char* section : {"## Evidence", "## Tools", "## Changes",
+                              "## Delegation", "## Answer"}) {
+    CHECK(std::string(kSystemPrompt).find(section) != std::string::npos);
+  }
+  CHECK(std::string(kSystemPrompt).size() < 2200);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
-      "activity_output", "", json::object(),
-      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
-  capability_tools.push_back(MakeTool(
-      "activity_wait", "", json::object(),
+      "activity", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string activity_prompt = CapabilityPrompt(capability_tools);
   CHECK(activity_prompt.find("does not start a model turn") !=
@@ -243,7 +254,7 @@ void TestRegistries() {
         std::string::npos);
   CHECK(activity_prompt.find("reuse a viable instance") != std::string::npos);
   capability_tools.push_back(MakeTool(
-      "task", "", json::object(),
+      "subagent", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   CHECK(CapabilityPrompt(capability_tools).find("background research") ==
         std::string::npos);
@@ -259,18 +270,20 @@ void TestRegistries() {
       "adapt_system", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string adaptive_prompt = CapabilityPrompt(capability_tools);
-  CHECK(adaptive_prompt.find("mutable portion") != std::string::npos);
+  CHECK(adaptive_prompt.find("mutable part") != std::string::npos);
   CHECK(adaptive_prompt.find("exception, not a planning ritual") !=
         std::string::npos);
-  CHECK(adaptive_prompt.find("concrete task-specific observation") !=
-        std::string::npos);
+  CHECK(adaptive_prompt.find("concrete observation") != std::string::npos);
   CHECK(adaptive_prompt.find("materially different behavior") !=
         std::string::npos);
-  CHECK(adaptive_prompt.find("evidence standards") != std::string::npos);
+  // Capability guidance is its own section, not a tail of the answer rules.
+  CHECK(adaptive_prompt.starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());
   std::string host_prompt = HostCapabilityPrompt(capability_tools);
   CHECK(host_prompt.find("web_search=available") != std::string::npos);
-  CHECK(host_prompt.find("task=available") != std::string::npos);
+  CHECK(host_prompt.find("subagent=available") != std::string::npos);
+  CHECK(host_prompt.find("advisor=unavailable") != std::string::npos);
+  CHECK(host_prompt.find("approval=") != std::string::npos);
   CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
   CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
         std::string::npos);
@@ -417,11 +430,28 @@ void TestOptions() {
                               json_stream};
   CHECK(!ParseOptions(5, conflicting_json).Ok());
 
+  // Model-valued flags become config overrides, which outrank the environment.
+  char advisor_flag[] = "--advisor";
+  char advisor_route[] = "openrouter/opus:xhigh";
+  char* routed[] = {executable, advisor_flag, advisor_route, budget,
+                    two_dollars, no_memory};
+  ParsedOptions overrides = ParseOptions(6, routed);
+  CHECK(overrides.Ok());
+  CHECK(overrides.options.overrides["UAGENT_ADVISOR_MODEL"] ==
+        "openrouter/opus:xhigh");
+  CHECK(overrides.options.overrides["UAGENT_MEMORY"] == "0");
+  CHECK(overrides.options.overrides.contains("UAGENT_SESSION_BUDGET"));
+  char* advisor_without_value[] = {executable, advisor_flag};
+  CHECK(!ParseOptions(2, advisor_without_value).Ok());
+
   std::string usage = UsageText();
   CHECK(usage.find("--debug[=PATH]") != std::string::npos);
   CHECK(usage.find("sensitive reconstructable JSONL trace") !=
         std::string::npos);
   CHECK(usage.find("--yolo") != std::string::npos);
+  // The table drives both, so every accepted flag is documented.
+  CHECK(usage.find("--advisor SELECTION") != std::string::npos);
+  CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }
 
 void TestLineNumberStripping() {

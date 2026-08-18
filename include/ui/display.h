@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_UI_DISPLAY_H_
 // Terminal rendering for the REPL: model/route listings and the status line.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -21,13 +22,13 @@
 namespace uagent {
 
 inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
-  std::string current = ModelLabel(api.model, api.reasoning_effort);
+  std::string current = RouteSelection(api, {});
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
     bool active = candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
     if (active) {
-      current = ModelLabel(candidate.selection, api.reasoning_effort);
+      current = candidate.selection;  // already a selection the user can type
       if (candidate.info.context > 0) {
         api.ctx_window = candidate.info.context;
         setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
@@ -78,47 +79,85 @@ inline std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   return std::move(search.matches[static_cast<size_t>(selected - 1)]);
 }
 
+// Token counts as the status row and /cost both spell them. Cache is separate
+// so the status row can drop it independently when the terminal is narrow.
+inline std::string TokenSummary(const Usage& usage) {
+  return FmtCount(usage.input) + " in · " + FmtCount(usage.output) + " out";
+}
+
+inline std::string CacheSummary(const Usage& usage) {
+  return usage.cache_read
+             ? "cache " + std::to_string(usage.CacheHitPercent()) + "%"
+             : std::string();
+}
+
 // Compact session metadata for the persistent composer. Keep the stable
 // identity first; transient work state gets its own line while a turn runs.
 struct StatusView {
   int64_t context_used = 0;
+  // The active route in schema form, [provider/]model[:variant][:effort], so
+  // the row shows a selection the user could paste back into --model.
+  std::string model;
+  // Only set when no provider scope was resolvable, where the bare model id
+  // alone would not say where the request goes.
+  std::string host;
   bool verbose = false;
   bool yolo = false;
   size_t attachments = 0;
   size_t background = 0;
 };
 
+// One ordered list of segments, rendered in place and dropped by priority when
+// the terminal is too narrow. A second hand-maintained "cramped" spelling of
+// the same row is how the two copies used to drift.
 inline std::string StatusBar(const Api& api, const Usage& usage,
                              const StatusView& view) {
-  std::string host = UrlHost(api.base_url);
-  std::string s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " @ " +
-                  host + " · ctx " + FmtCount(view.context_used);
-  if (usage.cache_read) {
-    s += " · cache " + FmtCount(usage.cache_read) + " total";
-  }
-  if (usage.cost > 0) s += " · spent " + FmtCost(usage.cost);
-  if (view.background) s += " · bg:" + std::to_string(view.background);
-  if (view.verbose) s += " · verbose";
-  if (view.yolo) s += " · YOLO";
+  struct Segment {
+    int priority;  // higher is dropped first
+    std::string text;
+  };
+  std::vector<Segment> segments;
+  auto add = [&segments](int priority, std::string text) {
+    if (!text.empty()) segments.push_back({priority, std::move(text)});
+  };
+
+  add(0, view.host.empty() ? view.model : view.model + " @ " + view.host);
+  std::string context = "ctx " + FmtCount(view.context_used);
+  if (api.ctx_window > 0) context += "/" + FmtCount(api.ctx_window);
+  add(1, std::move(context));
+  if (usage.input || usage.output) add(4, TokenSummary(usage));
+  add(5, CacheSummary(usage));
+  if (usage.cost > 0) add(2, FmtCost(usage.cost));
+  if (view.background) add(3, "bg:" + std::to_string(view.background));
   if (view.attachments) {
-    s += " · " + std::to_string(view.attachments) + " attached";
+    add(3, std::to_string(view.attachments) + " attached");
   }
-  if (g_tty && DisplayWidth(s) > TerminalWidth(1)) {
-    // On a cramped terminal keep live state ahead of long path/route labels.
-    // PrintStatusBar performs the final UTF-8-safe clipping.
-    s = ModelLabel(api.RequestModel(), api.reasoning_effort) + " · ctx " +
-        FmtCount(view.context_used);
-    if (usage.cost > 0) s += " · " + FmtCost(usage.cost);
-    if (view.yolo) s += " · YOLO";
-    if (view.attachments) {
-      s += " · " + std::to_string(view.attachments) + " attached";
+  if (view.verbose) add(6, "verbose");
+  add(2, view.yolo ? "YOLO" : std::string());
+
+  auto join = [&segments] {
+    std::string line;
+    for (const Segment& segment : segments) {
+      if (!line.empty()) line += " · ";
+      line += segment.text;
     }
-    if (view.background) {
-      s += " · bg:" + std::to_string(view.background);
-    }
-    if (view.verbose) s += " · verbose";
+    return line;
+  };
+  std::string line = join();
+  if (!g_tty) return line;
+  // Drop the least valuable segment until the row fits; PrintStatusBar still
+  // performs the final UTF-8-safe clipping.
+  while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
+    auto victim = std::max_element(
+        segments.begin(), segments.end(),
+        [](const Segment& a, const Segment& b) {
+          return a.priority < b.priority;
+        });
+    if (victim->priority == 0) break;
+    segments.erase(victim);
+    line = join();
   }
-  return s;
+  return line;
 }
 
 // The pinned status row: dim, clipped to the terminal, and cleared to the

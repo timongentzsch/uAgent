@@ -76,6 +76,39 @@ struct ProviderSetup {
 inline constexpr const char* kReasoningEfforts[] = {
     "none", "minimal", "low", "medium", "high", "xhigh", "max"};
 
+// One selection grammar for every model-valued setting:
+//
+//   [provider/]model[:variant][:effort]
+//
+// Suffixes are peeled from the right and classified against two closed sets —
+// kReasoningEfforts and kOpenRouterVariants — so their order does not matter.
+// Peeling stops at the first unrecognized suffix, which stays in the model id:
+// that is what keeps OpenRouter ids like `deepseek-chat:free` intact without an
+// escape syntax. `base` is what the route resolvers still see, unchanged.
+struct ModelSelection {
+  std::string base;
+  std::string variant;
+  std::string effort;
+};
+
+ModelSelection ParseModelSelection(std::string selection);
+
+// Where a side model runs: the parent's route unless the selection names one
+// that resolves. `unresolved` marks a named route that matched nothing, which
+// only the execution paths treat as an error. Shared by the subagent, advisor,
+// vision and memory-extraction paths so one selection means one thing.
+struct SideRoute {
+  std::string selection, model, base_url, api_key, effort, variant;
+  int64_t context = 0;
+  ProviderProtocol protocol = ProviderProtocol::kOpenAi;
+  bool unresolved = false;
+};
+
+SideRoute ResolveSideRoute(const Api& api,
+                           const std::vector<ModelRoute>& routes,
+                           const std::vector<NamedProvider>& providers,
+                           const std::string& requested);
+
 std::string NormalizeModelId(std::string model);
 const ProviderTemplate* FindProviderTemplate(const std::string& name);
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
@@ -86,13 +119,28 @@ ModelPreference LoadModelPreference();
 bool SaveModelPreference(const ModelPreference& preference, std::string& error);
 bool ValidEffort(const std::string& effort);
 ProviderCatalog LoadProviderCatalog();
+// The catalog a side model should resolve against: configured providers plus
+// the built-in templates whose API key is present, so `openrouter/<id>` means
+// the same thing to every consumer of the selection schema.
+ProviderCatalog SessionProviderCatalog();
 const NamedProvider* FindNamedProvider(
     const std::vector<NamedProvider>& providers, const std::string& name);
 void AddAvailableProviderTemplates(ProviderCatalog& catalog);
 std::optional<ModelRoute> ResolveModelRoute(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers, const std::string& selection);
+// The selection that would reproduce the active route in the shared schema,
+// [provider/]model[:variant][:effort] — the same string the user could pass
+// to --model. The provider scope is omitted when no configured provider or
+// template serves this base URL.
+std::string RouteSelection(const Api& api,
+                           const std::vector<NamedProvider>& providers);
+std::string RouteSelection(const SideRoute& route,
+                           const std::vector<NamedProvider>& providers);
 void ApplyRoute(Api& api, const ModelRoute& route);
+// The in-process counterpart for side models: same fields as ApplyRoute
+// plus the routing variant the selection asked for.
+void ApplySideRoute(Api& api, const SideRoute& route);
 void ActivateRoute(Api& api);
 ProviderSetup ConfigureProvider(Api& api);
 bool CanUseRawModel(const Api& api, std::string_view name);

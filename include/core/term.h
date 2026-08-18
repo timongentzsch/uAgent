@@ -5,7 +5,6 @@
 // Terminal colors and the blocking-call spinner. Every accessor returns an
 // empty string when stdout is not a TTY, so callers need no conditionals.
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -16,7 +15,8 @@
 #include <string>
 #include <thread>
 #include <utility>
-#include <vector>
+
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -55,48 +55,25 @@ inline void TerminalClearToEnd() {
 }
 // Wraps pasted text in \e[200~ … \e[201~ so a multi-line paste arrives as one
 // unit.
-struct TerminalActivityState {
-  std::mutex mutex;
-  uint64_t next = 0;
-  std::vector<std::pair<uint64_t, std::string>> active;
-};
+// The transient activity registry: the label (or rolling reasoning ticker)
+// shown in the status row while a call is in flight. The state itself is
+// implementation-owned; see src/core/term.cc.
+uint64_t BeginTerminalActivity(std::string label);
+void UpdateTerminalActivity(uint64_t id, std::string label);
 
-inline TerminalActivityState& TerminalActivities() {
-  static TerminalActivityState state;
-  return state;
-}
+// Switch an activity to rolling-ticker mode: `text` is the bounded,
+// newline-collapsed reasoning buffer, kept behind the caller's static
+// `prefix`. Each status frame renders the prefix plus a window of the buffer.
+void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
+                                const std::string& text);
+void EndTerminalActivity(uint64_t id);
 
-inline uint64_t BeginTerminalActivity(std::string label) {
-  TerminalActivityState& state = TerminalActivities();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  uint64_t id = ++state.next;
-  state.active.emplace_back(id, std::move(label));
-  return id;
-}
+// The newest activity's static label, and whether it is in rolling mode.
+std::string CurrentTerminalActivity();
+bool CurrentTerminalActivityRolling();
 
-inline void UpdateTerminalActivity(uint64_t id, std::string label) {
-  TerminalActivityState& state = TerminalActivities();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  for (auto& entry : state.active) {
-    if (entry.first == id) {
-      entry.second = std::move(label);
-      return;
-    }
-  }
-}
-
-inline void EndTerminalActivity(uint64_t id) {
-  TerminalActivityState& state = TerminalActivities();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  std::erase_if(state.active,
-                [id](const auto& entry) { return entry.first == id; });
-}
-
-inline std::string CurrentTerminalActivity() {
-  TerminalActivityState& state = TerminalActivities();
-  std::lock_guard<std::mutex> lock(state.mutex);
-  return state.active.empty() ? std::string() : state.active.back().second;
-}
+// Render the newest activity for one animation frame, bounded to `columns`.
+std::string RenderCurrentTerminalActivity(size_t columns);
 
 // Animates while a call blocks with nothing to print. stop() is idempotent and
 // wakes the thread immediately — it runs on the first-streamed-byte path.
@@ -124,7 +101,10 @@ class TerminalSpinner {
         double elapsed = std::chrono::duration<double>(
                              std::chrono::steady_clock::now() - started_)
                              .count();
-        printf("\r%s%c %s · %.1fs%s", DIM(), "|/-\\"[frame_], label_.c_str(),
+        const std::string shown =
+            rolling_ ? RenderCurrentTerminalActivity(TerminalWidth(14))
+                     : label_;
+        printf("\r%s%c %s · %.1fs%s", DIM(), "|/-\\"[frame_], shown.c_str(),
                elapsed, RST());
         fflush(stdout);
         frame_ = (frame_ + 1) & 3;
@@ -139,11 +119,21 @@ class TerminalSpinner {
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
   void SetLabel(std::string label) {
+    rolling_ = false;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      label_ = label;
+      label_ = std::move(label);
     }
-    UpdateTerminalActivity(activity_id_, std::move(label));
+    UpdateTerminalActivity(activity_id_, label_.c_str());
+    wake_.notify_one();
+  }
+
+  // Switch to rolling-ticker mode: `text` is the bounded, newline-collapsed
+  // reasoning buffer, kept behind the caller's static `prefix`. Each status
+  // frame renders the prefix plus a sliding window of the buffer.
+  void SetRolling(const std::string& prefix, const std::string& text) {
+    rolling_ = true;
+    SetTerminalActivityRolling(activity_id_, prefix, text);
     wake_.notify_one();
   }
 
@@ -171,6 +161,7 @@ class TerminalSpinner {
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_;
   std::string label_;
+  bool rolling_ = false;
   std::thread thread_;
 };
 

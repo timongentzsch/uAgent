@@ -15,7 +15,7 @@
 
 namespace uagent {
 
-std::string DefaultTaskModel(const Api& api);
+std::string DefaultSubagentModel(const Api& api);
 std::string DelegationRuntimeContext(const Api& api);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,

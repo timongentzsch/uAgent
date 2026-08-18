@@ -24,6 +24,9 @@ struct MemoryEvent {
   std::string action;
   std::string key;
   std::string preview;
+  // What an overwrite replaced. A set on an existing key is the one path that
+  // destroys memory without a forget, so the audit record keeps a preview.
+  std::string previous;
   std::string source_session;
   std::string workspace;
   std::string timestamp;

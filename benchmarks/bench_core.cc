@@ -12,6 +12,7 @@
 #include "include/agent.h"
 #include "include/agent/protocol.h"
 #include "include/api/stream.h"
+#include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/registry.h"
@@ -47,8 +48,11 @@ void BenchmarkStream(bool tty, bool render = true) {
   StreamCtx stream;
   stream.res = &result;
   stream.status = 200;
-  stream.render_output = render;
   stream.started = std::chrono::steady_clock::now();
+  // Rendering is no longer a StreamCtx flag: the stream emits observation
+  // events and the terminal presenter owned by Observability draws them.
+  Observability observability;
+  SetObservability(&observability);
   const std::string event =
       "data: {\"choices\":[{\"delta\":{\"content\":"
       "\"stream benchmark payload \"},\"finish_reason\":null}]}\n\n";
@@ -65,11 +69,16 @@ void BenchmarkStream(bool tty, bool render = true) {
     return;
   }
   close(null);
-  double milliseconds = Measure(kEvents, [&] {
-    return stream.Feed(event.data(), event.size()) == event.size() ? size_t{1}
-                                                                   : size_t{0};
-  });
-  if (render) stream.md.Flush();
+  double milliseconds = 0;
+  {
+    ResponseObservation response(render, /*verbose=*/false, "benchmark");
+    milliseconds = Measure(kEvents, [&] {
+      size_t fed = stream.Feed(event.data(), event.size());
+      return fed == event.size() ? size_t{1} : size_t{0};
+    });
+  }
+  observability.Shutdown();
+  SetObservability(nullptr);
   fflush(stdout);
   if (dup2(saved, STDOUT_FILENO) < 0) {
     close(saved);
@@ -120,17 +129,17 @@ int RunBenchmarks() {
     std::erase_if(tools, [&](const Tool& tool) { return tool.name == name; });
     return tools;
   };
-  auto no_python_tools = without(lean_tools, "run_python");
+  auto no_scratch_tools = without(lean_tools, "scratch");
   auto no_edit_tools = without(lean_tools, "edit_file");
-  auto base_tools = without(no_python_tools, "grep");
+  auto base_tools = without(no_scratch_tools, "grep");
   size_t base_schema = ToolSchemas(base_tools).dump().size();
-  size_t grep_schema = ToolSchemas(no_python_tools).dump().size();
+  size_t grep_schema = ToolSchemas(no_scratch_tools).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
   size_t image_schema = ToolSchemas(image_tools).dump().size();
   std::cout << "built-in schema              " << lean_schema << " bytes (~"
             << lean_schema / 4 << " tokens); grep adds "
-            << grep_schema - base_schema << " bytes; Python adds "
+            << grep_schema - base_schema << " bytes; scratch adds "
             << lean_schema - grep_schema << " bytes; edit adds "
             << lean_schema - no_edit_schema << " bytes; inline image adds "
             << image_schema - lean_schema << " bytes\n";

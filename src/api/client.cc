@@ -367,8 +367,8 @@ JsonResponse Api::Post(const std::string& path, const json& body,
   return Fetch(path, &payload, timeout_s, /*abortable=*/true);
 }
 
-json Api::Get(const std::string& path, bool abortable) {
-  return Fetch(path, nullptr, 15, abortable).body;
+json Api::Get(const std::string& path, bool abortable, int64_t timeout_s) {
+  return Fetch(path, nullptr, timeout_s, abortable).body;
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,

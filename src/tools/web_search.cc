@@ -17,20 +17,6 @@
 namespace uagent {
 namespace {
 
-std::string SelectedWebSearchModel(const RuntimeConfig& config,
-                                   const std::string& fallback) {
-  return config.web_search_model.empty() ? fallback : config.web_search_model;
-}
-
-WebSearchRoute ProviderSearchRoute(WebSearchBackend backend,
-                                   const NamedProvider* provider,
-                                   const RuntimeConfig& config,
-                                   std::string default_model) {
-  if (!provider) return {};
-  return {backend, provider->base_url, provider->api_key,
-          SelectedWebSearchModel(config, default_model)};
-}
-
 WebSearchResult ParseOpenRouterSearch(const json& response) {
   WebSearchResult result;
   if (!response.is_object() || !response.contains("choices") ||
@@ -63,6 +49,19 @@ WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers) {
   const RuntimeConfig& config = api.config;
   if (config.web_search_backend == "off") return {};
+
+  std::optional<WebSearchBackend> wanted;
+  if (config.web_search_backend == "responses") {
+    wanted = WebSearchBackend::kResponses;
+  } else if (config.web_search_backend == "openrouter") {
+    wanted = WebSearchBackend::kOpenRouter;
+  }
+  auto backend_for = [](ProviderProtocol protocol, const std::string& url) {
+    return CapabilitiesForRoute(protocol, url).search_protocol ==
+                   SearchProtocol::kOpenRouter
+               ? WebSearchBackend::kOpenRouter
+               : WebSearchBackend::kResponses;
+  };
   auto find_provider = [&](SearchProtocol protocol) -> const NamedProvider* {
     auto found = std::find_if(
         providers.begin(), providers.end(), [&](const NamedProvider& provider) {
@@ -71,80 +70,77 @@ WebSearchRoute SelectWebSearchRoute(
         });
     return found == providers.end() ? nullptr : &*found;
   };
-  const NamedProvider* openai = find_provider(SearchProtocol::kResponses);
-  const NamedProvider* openrouter = find_provider(SearchProtocol::kOpenRouter);
-  std::string openai_model = EnvStr("OPENAI_MODEL", "gpt-5.6");
-  std::string openrouter_model = EnvStr("OPENROUTER_MODEL", "openrouter/auto");
 
-  auto active = [&](WebSearchBackend backend, std::string model) {
-    if (api.base_url.empty() || api.api_key.empty()) return WebSearchRoute{};
-    return WebSearchRoute{backend, api.base_url, api.api_key,
-                          SelectedWebSearchModel(config, model)};
-  };
-  auto explicit_route = [&](WebSearchBackend backend) {
-    if (config.web_search_url.empty() || config.web_search_api_key.empty()) {
-      return WebSearchRoute{};
-    }
-    std::string model = backend == WebSearchBackend::kOpenRouter
-                            ? openrouter_model
-                            : openai_model;
-    return WebSearchRoute{backend, StripTrailingSlashes(config.web_search_url),
-                          config.web_search_api_key,
-                          SelectedWebSearchModel(config, model)};
-  };
-  auto environment_openai = [&] {
-    std::string key = EnvStr("OPENAI_API_KEY");
-    if (key.empty()) return WebSearchRoute{};
-    return WebSearchRoute{WebSearchBackend::kResponses,
-                          "https://api.openai.com/v1", std::move(key),
-                          SelectedWebSearchModel(config, openai_model)};
-  };
-
-  // Explicit search configuration wins. Otherwise prefer a compatible active
-  // route, then independent OpenAI and OpenRouter credentials in that order.
-  if (config.web_search_backend == "responses") {
-    WebSearchRoute route = explicit_route(WebSearchBackend::kResponses);
-    if (!route.Valid() &&
-        api.capabilities.search_protocol == SearchProtocol::kResponses) {
-      return active(WebSearchBackend::kResponses, api.model);
-    }
-    if (!route.Valid()) {
-      route = ProviderSearchRoute(WebSearchBackend::kResponses, openai, config,
-                                  openai_model);
-    }
-    return route.Valid() ? route : environment_openai();
+  // UAGENT_WEB_SEARCH_MODEL follows the shared selection schema. A provider
+  // scope makes it a route of its own; a bare id only renames the model on
+  // whichever candidate wins, which is how it behaved before the schema.
+  ModelSelection selection = ParseModelSelection(config.web_search_model);
+  std::optional<ModelRoute> selected;
+  if (selection.base.find('/') != std::string::npos) {
+    ProviderCatalog catalog = SessionProviderCatalog();
+    selected = ResolveModelRoute(catalog.models, catalog.providers,
+                                 selection.base);
   }
-  if (config.web_search_backend == "openrouter") {
-    if (WebSearchRoute route = explicit_route(WebSearchBackend::kOpenRouter);
-        route.Valid()) {
-      return route;
-    }
-    if (api.capabilities.search_protocol == SearchProtocol::kOpenRouter) {
-      return active(WebSearchBackend::kOpenRouter, api.model);
-    }
-    return ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
-                               config, openrouter_model);
-  }
+  auto with_model = [&](WebSearchRoute route) {
+    if (!selection.base.empty() && !selected) route.model = selection.base;
+    route.effort = selection.effort;
+    return route;
+  };
 
+  // Most explicit first. The first valid candidate that matches an explicitly
+  // requested backend wins; with none requested, the first valid one wins.
+  std::vector<WebSearchRoute> candidates;
+  if (selected) {
+    candidates.push_back(
+        {backend_for(selected->protocol, selected->base_url),
+         selected->base_url,
+         selected->api_key.empty() ? "sk-noop" : selected->api_key,
+         selected->model, selection.effort});
+  }
   if (!config.web_search_url.empty() && !config.web_search_api_key.empty()) {
-    WebSearchBackend backend = OpenrouterUrl(config.web_search_url)
-                                   ? WebSearchBackend::kOpenRouter
-                                   : WebSearchBackend::kResponses;
-    return explicit_route(backend);
+    std::string url = StripTrailingSlashes(config.web_search_url);
+    WebSearchBackend backend =
+        wanted.value_or(OpenrouterUrl(url) ? WebSearchBackend::kOpenRouter
+                                           : WebSearchBackend::kResponses);
+    std::string model = backend == WebSearchBackend::kOpenRouter
+                            ? EnvStr("OPENROUTER_MODEL", "openrouter/auto")
+                            : EnvStr("OPENAI_MODEL", "gpt-5.6");
+    candidates.push_back(with_model({backend, std::move(url),
+                                     config.web_search_api_key,
+                                     std::move(model), std::string()}));
   }
-  if (api.capabilities.search_protocol == SearchProtocol::kOpenRouter) {
-    return active(WebSearchBackend::kOpenRouter, api.model);
+  if (!api.base_url.empty() && !api.api_key.empty() &&
+      api.capabilities.search_protocol != SearchProtocol::kNone) {
+    candidates.push_back(with_model(
+        {backend_for(api.capabilities.protocol, api.base_url), api.base_url,
+         api.api_key, api.model, std::string()}));
   }
-  if (api.capabilities.search_protocol == SearchProtocol::kResponses) {
-    return active(WebSearchBackend::kResponses, api.model);
+  for (SearchProtocol protocol :
+       {SearchProtocol::kResponses, SearchProtocol::kOpenRouter}) {
+    const NamedProvider* provider = find_provider(protocol);
+    if (!provider) continue;
+    candidates.push_back(with_model(
+        {backend_for(provider->protocol, provider->base_url),
+         provider->base_url, provider->api_key,
+         protocol == SearchProtocol::kOpenRouter
+             ? EnvStr("OPENROUTER_MODEL", "openrouter/auto")
+             : EnvStr("OPENAI_MODEL", "gpt-5.6"),
+         std::string()}));
   }
-  WebSearchRoute route = ProviderSearchRoute(WebSearchBackend::kResponses,
-                                             openai, config, openai_model);
-  if (!route.Valid()) {
-    route = ProviderSearchRoute(WebSearchBackend::kOpenRouter, openrouter,
-                                config, openrouter_model);
+  if (std::string key = EnvStr("OPENAI_API_KEY"); !key.empty()) {
+    candidates.push_back(with_model({WebSearchBackend::kResponses,
+                                     "https://api.openai.com/v1",
+                                     std::move(key),
+                                     EnvStr("OPENAI_MODEL", "gpt-5.6"),
+                                     std::string()}));
   }
-  return route.Valid() ? route : environment_openai();
+
+  for (WebSearchRoute& candidate : candidates) {
+    if (!candidate.Valid()) continue;
+    if (wanted && candidate.backend != *wanted) continue;
+    return std::move(candidate);
+  }
+  return {};
 }
 
 WebSearchResult ParseResponsesSearch(const json& response) {
@@ -183,6 +179,10 @@ WebSearchResult ParseResponsesSearch(const json& response) {
 
 json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
                       const std::string& prompt) {
+  // A `:effort` suffix on the selection is more specific than the session-wide
+  // UAGENT_WEB_SEARCH_EFFORT default.
+  const std::string& effort =
+      route.effort.empty() ? config.web_search_effort : route.effort;
   if (route.backend == WebSearchBackend::kResponses) {
     json tool = {{"type", "web_search"}};
     if (!config.web_search_context_size.empty()) {
@@ -196,9 +196,7 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
                  {"max_output_tokens", config.web_search_max_tokens},
                  {"max_tool_calls", config.web_search_max_uses},
                  {"store", false}};
-    if (!config.web_search_effort.empty()) {
-      body["reasoning"] = {{"effort", config.web_search_effort}};
-    }
+    if (!effort.empty()) body["reasoning"] = {{"effort", effort}};
     return body;
   }
   json parameters = {{"engine", config.web_search_engine},
@@ -218,9 +216,7 @@ json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
       {"tools", json::array({{{"type", "openrouter:web_search"},
                               {"parameters", std::move(parameters)}}})},
       {"messages", json::array({{{"role", "user"}, {"content", prompt}}})}};
-  if (!config.web_search_effort.empty()) {
-    body["reasoning"] = {{"effort", config.web_search_effort}};
-  }
+  if (!effort.empty()) body["reasoning"] = {{"effort", effort}};
   return body;
 }
 
@@ -323,8 +319,11 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                     {"reported", normalized.web_searches}});
         }
         if (response.body.is_object()) {
+          const std::string& effort = active.effort.empty()
+                                          ? api.config.web_search_effort
+                                          : active.effort;
           usage.Add(RouteKey(active.base_url, "web_search", active.model,
-                             api.config.web_search_effort),
+                             effort),
                     normalized);
         }
         if (!result.text.empty()) {

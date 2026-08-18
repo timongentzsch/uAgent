@@ -31,7 +31,7 @@ endpoint and every MCP server as trusted infrastructure.
   receive a centralized secret-deny environment; only class-specific
   credentials are deliberately re-added. Approved `run` commands can opt in
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
-  MCP servers, delegated agents, or `run_python`.
+  MCP servers, delegated agents, or `scratch`.
 - A `run(tty=true)` activity retains a writable PTY for the lifetime of the
   harness. `activity_input` sends raw bytes with the permissions of the original
   process, so treat every write, interrupt, and resize as process control.

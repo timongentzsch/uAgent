@@ -24,6 +24,7 @@ enum class SlashCommandId {
   kQuit,
   kReset,
   kSessions,
+  kTools,
   kTrace,
   kVariant,
   kVerbose,

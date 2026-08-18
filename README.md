@@ -64,7 +64,7 @@ uagent --yolo
   request/turn settings reloaded only between turns.
 - Semantic context-overflow recovery: one bounded compaction and at most one
   safe retry. Command completion stays in UI/retained activity state; bounded
-  task completion joins the next naturally occurring model call without
+  subagent completion joins the next naturally occurring model call without
   starting one.
 - Explicit limits for time, output, processes, context, persistence, and
   provider-reported spend.
@@ -75,12 +75,12 @@ The core registry includes:
 
 | Area | Tools |
 | --- | --- |
-| inspect | `read_file`, `list_dir`, `grep` |
-| mutate | `write_file`, `edit_file` |
-| execute | `run`, `run_python` |
-| activities | `activity_output`, `activity_input`, `activity_wait`, `activity_stop` |
+| inspect | `read_path`, `grep` |
+| mutate | `edit_file` |
+| execute | `run`, `scratch` |
+| activities | `activity`, `activity_stop` |
 | evidence and state | `attach`, `show_image`, `memory` |
-| conditional | `web_search`, `task`, `skill`, `adapt_system`, MCP tools |
+| conditional | `web_search`, `subagent`, `advisor`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
 the active schemas. In the interactive UI, compact reasoning updates only the

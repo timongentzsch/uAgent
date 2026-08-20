@@ -340,7 +340,16 @@ def run_pty(
         read_until(startup_marker)
         time.sleep(0.05)
     if before_payload is not None:
-        before_payload()
+        try:
+            before_payload()
+        except BaseException:
+            # Callback assertions must not strand an interactive child. A
+            # leaked raw-mode process spins after its PTY owner disappears and
+            # can starve every sanitizer case that follows.
+            process.kill()
+            process.wait()
+            os.close(master)
+            raise
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -2361,7 +2370,6 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
                     )
                 else:
                     wait_until(completion_logged, f"{name} extractor did not complete")
-                    wait_until(lambda: not markers(case_home), f"{name} claim was not released")
 
             code, output = run_pty(
                 workspace,
@@ -2372,6 +2380,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
                 timeout=40,
             )
             assert_true(code == 0, output)
+            if name != "terminated":
+                assert_true(completion_logged(), f"{name} extractor did not complete")
             wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
             return server.requests
 

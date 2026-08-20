@@ -476,9 +476,14 @@ void Agent::MergeSessionUsage(const Usage& usage) {
 
 bool Agent::DrainBackground() {
   bool changed = false;
+  // Take one snapshot. A memory child can become drainable at any instant; two
+  // separate takes let the generic pass steal a child that completed just
+  // after the memory-only pass, bypassing its receipt and audit handling.
+  std::vector<BackgroundCompletion> completions =
+      BgTakeCompletedDetails(processes_);
   // Extraction is maintenance, not a new conversation event.
-  for (BackgroundCompletion& completion :
-       BgTakeCompletedDetails(processes_, "memory")) {
+  for (BackgroundCompletion& completion : completions) {
+    if (completion.kind != ActivityKind::kMemory) continue;
     bool success =
         WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
     MemoryEvent event;
@@ -544,15 +549,18 @@ bool Agent::DrainBackground() {
               {"source_session", event.source_session},
               {"receipt_error", receipt_error}});
   }
-  std::vector<BackgroundCompletion> completions =
-      BgTakeCompletedDetails(processes_);
-  if (!completions.empty()) {
+  size_t delivered = static_cast<size_t>(std::count_if(
+      completions.begin(), completions.end(), [](const auto& completion) {
+        return completion.kind != ActivityKind::kMemory;
+      }));
+  if (delivered > 0) {
     constexpr size_t kAutomaticBatchBytes = 12 * 1024;
     std::string batch = "[completed background tasks; bounded]\n";
     size_t child_count = 0;
     size_t reduced = 0;
     bool first = true;
     for (const BackgroundCompletion& completion : completions) {
+      if (completion.kind == ActivityKind::kMemory) continue;
       size_t running = processes_.Count();
       std::string header = BgResultHeader(completion);
       Emit(NoticeEvent(PresentationStatus::kNeutral,
@@ -604,7 +612,7 @@ bool Agent::DrainBackground() {
                          MessageKind::kInternal);
     }
     DebugLog("background_results_delivered",
-             {{"count", completions.size()},
+             {{"count", delivered},
               {"model_visible_children", child_count},
               {"reduced", reduced}});
     changed = true;

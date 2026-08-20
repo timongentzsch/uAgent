@@ -40,18 +40,25 @@ enum class EventId : uint16_t {
   kReasoningDelta,
   kAnswerDelta,
   kResponseFinished,
+  kNotice,
   kPresentation,
 };
 
 enum class EventDurability : uint8_t { kTransient, kDurable };
 enum class EventRedaction : uint8_t { kNone, kPublicProjection };
 
-enum class PresentationKind : uint8_t { kNone, kToolCall, kToolResult };
+enum class PresentationKind : uint8_t {
+  kNone,
+  kToolCall,
+  kToolResult,
+  kNotice,
+};
 enum class PresentationStatus : uint8_t {
   kNeutral,
   kSucceeded,
   kFailed,
   kCancelled,
+  kWarned,
 };
 
 struct PresentationArtifact {
@@ -72,8 +79,17 @@ struct PresentationRecord {
   bool multiline = false;
   bool verbatim = false;
   bool change_display = false;
+  // Opening a skill changes how the whole turn proceeds, so it is marked in
+  // the scrollback rather than reading as one more tool row.
+  bool skill = false;
   std::vector<PresentationArtifact> artifacts;
 };
+
+// A user-facing notice — one line the person should see. It rides the same
+// spine as everything else so it reaches the journal and the JSONL, not only a
+// terminal that may not be attached. Severity picks the color, nothing else.
+struct Event;
+Event NoticeEvent(PresentationStatus status, std::string text);
 
 struct Event {
   explicit Event(EventId event_id) : id(event_id) {}

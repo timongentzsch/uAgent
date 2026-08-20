@@ -4,7 +4,6 @@
 #include <cctype>
 #include <cstdio>
 #include <iomanip>
-#include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -67,7 +66,7 @@ struct Agent::TurnState {
 void Agent::FailBudget(TurnState& state, std::string message) {
   last_error_ = std::move(message);
   state.outcome = "budget_exceeded";
-  printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+  Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
 }
 
 bool Agent::TurnDeadlineExceeded(TurnState& state,
@@ -99,10 +98,9 @@ void Agent::RecordModelResponse(
   if (state.session_budget > 0 && response.usage.is_object() &&
       !response_usage.cost_reported && !cost_warning_shown_) {
     cost_warning_shown_ = true;
-    printf(
-        "%s· provider does not report cost; dollar budget is not "
-        "enforceable%s\n",
-        YEL(), RST());
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "· provider does not report cost; dollar budget is not "
+                     "enforceable"));
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }
   // Hidden reasoning predates the first visible stream event.
@@ -185,13 +183,13 @@ std::vector<std::string> Agent::ExplicitSkillContext(
     if (!named) continue;
     SkillReadResult result = ReadSkillBody(skill);
     if (!result.ok) {
-      printf("%s· skill %s unavailable: %s%s\n", YEL(),
-             TerminalSafe(skill.name).c_str(),
-             TerminalSafe(result.output).c_str(), RST());
+      Emit(NoticeEvent(
+          PresentationStatus::kWarned,
+          "· skill " + skill.name + " unavailable: " + result.output));
       continue;
     }
-    printf("%s· using skill %s%s\n", DIM(), TerminalSafe(skill.name).c_str(),
-           RST());
+    Emit(NoticeEvent(PresentationStatus::kNeutral,
+                     "· using skill " + skill.name));
     selected.push_back(std::move(result.output));
   }
   return selected;
@@ -340,8 +338,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
     json available_schemas =
         AvailableToolSchemas(tools_, schemas_, tool_counts, availability);
     if (step > 0 && midturn_compaction_enabled) {
-      MidturnCompact compacted = MaybeCompactDuringTurn(
-          available_schemas, user_input, state.usage, state.start);
+      MidturnCompact compacted =
+          MaybeCompactDuringTurn(available_schemas, state.usage, state.start);
       if (compacted != MidturnCompact::kNotNeeded) {
         midturn_compaction_enabled = false;
         // A successful compaction rebuilt the history, so a recorded note
@@ -362,7 +360,8 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
       state.line_open = false;
       state.outcome = "interrupted";
       last_error_ = state.outcome;
-      printf("\n%s· interrupted%s\n", YEL(), RST());
+      printf("\n");
+      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
       conversation_.Push(
           HarnessMessage("(response interrupted; partial output was "
                          "discarded)"),
@@ -395,19 +394,11 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
                   {"rejected_tokens", rejected_tokens},
                   {"learned_context", api_.ctx_window},
                   {"messages", conversation_.Size()}});
-        printf("%s· provider context limit reached — compacting once%s\n",
-               DIM(), RST());
+        Emit(NoticeEvent(PresentationStatus::kNeutral,
+                         "· provider context limit reached — compacting once"));
         midturn_compaction_enabled = false;
         if (Compact(true, &state.usage)) {
-          EnsureRuntimeContext();
           state.start = conversation_.Size();
-          conversation_.Push(
-              {{"role", "user"},
-               {"content",
-                "[harness continuation after context compaction] Continue "
-                "the current task from the summary without repeating "
-                "completed work."}},
-              MessageKind::kInternal);
           --step;
           continue;
         }
@@ -429,18 +420,21 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
       }
       state.outcome = "error";
       last_error_ = r.error;
-      printf("%s%s%s\n", RED(), TerminalSafe(r.error).c_str(), RST());
+      Emit(NoticeEvent(PresentationStatus::kFailed, r.error));
       break;
     }
 
     RecordModelResponse(r, state, tool_counts);
     if (TurnCostExceeded(state)) break;
     std::vector<ToolCall> calls = std::move(r.tool_calls);
-    bool text_mode =
-        calls.empty() && !(calls = ParseTextToolCalls(r.content)).empty();
+    std::vector<ToolCall> text_calls;
+    if (calls.empty()) text_calls = ParseTextToolCalls(r.content);
+    bool text_mode = !api_.capabilities.native_tools && !text_calls.empty();
+    if (text_mode) calls = std::move(text_calls);
 
     if (calls.empty() &&
-        (ContainsForeignToolCallMarkup(r.content) || r.suppressed)) {
+        (!text_calls.empty() || ContainsForeignToolCallMarkup(r.content) ||
+         r.suppressed)) {
       if (!empty_response_recovered) {
         empty_response_recovered = true;
         conversation_.Push(
@@ -489,12 +483,13 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
         pending_note = conversation_.Size() - 1;
         DebugLog("empty_response_recovery",
                  {{"turn", turn_id_}, {"step", step}});
-        printf("%s· recovering empty response%s\n", DIM(), RST());
+        Emit(NoticeEvent(PresentationStatus::kNeutral,
+                         "· recovering empty response"));
         continue;
       }
       state.outcome = "error";
       last_error_ = "model returned an empty response";
-      printf("%s%s%s\n", RED(), last_error_.c_str(), RST());
+      Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
       break;
     }
 
@@ -508,6 +503,9 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
              {"function", {{"name", c.name}, {"arguments", c.args}}}});
       }
       amsg["tool_calls"] = std::move(tcs);
+      // Tool-only turns carry no prose; store null so strict backends
+      // (e.g. Anthropic) don't reject an empty text block on replay.
+      if (r.content.empty()) amsg["content"] = nullptr;
     }
     // Preserve the replay fields the active route actually emitted while any
     // tool protocol continues; completed prose does not burden later turns.
@@ -558,7 +556,9 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
     if (foreground_interrupted) {
       if (steering_applied) continue;
       state.outcome = "interrupted";
-      if (cancelled) printf("%s· interrupted%s\n", YEL(), RST());
+      if (cancelled) {
+        Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+      }
       break;
     }
     // Do not start a network request with only curl's one-second granularity
@@ -599,10 +599,9 @@ std::string Agent::TurnStatsLine(const TurnState& state, double seconds,
           << " tok/s";
   }
   if (state.ttt_ms >= 0) {
-    stats << " · first " << std::fixed << std::setprecision(2)
-          << state.ttt_ms / 1000.0 << 's';
+    stats << " · first " << FmtDuration(state.ttt_ms / 1000.0);
   }
-  stats << " · " << std::fixed << std::setprecision(1) << seconds << 's';
+  stats << " · " << FmtDuration(seconds);
   return stats.str();
 }
 
@@ -610,8 +609,8 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   if (state.max_steps > 0 && step >= state.max_steps) {
     last_error_ =
         "step limit (" + std::to_string(state.max_steps) + ") reached";
-    std::cout << RED() << "step limit (" << state.max_steps
-              << ") reached — stopping this turn" << RST() << '\n';
+    Emit(NoticeEvent(PresentationStatus::kFailed,
+                     last_error_ + " — stopping this turn"));
   }
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
@@ -633,7 +632,9 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   // single accent for things the agent did.
   footer << (state.line_open ? "\n" : "") << RST() << DIM()
          << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
-  std::cout << footer.str();
+  // One write, as above: fputs of the assembled string, never a stream of
+  // pieces the composer could repaint between.
+  fputs(footer.str().c_str(), stdout);
   Emit(Event{EventId::kTurnCompleted,
              {{"turn", turn_id_},
               {"outcome", state.outcome},

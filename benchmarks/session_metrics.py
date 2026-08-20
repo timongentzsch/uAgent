@@ -21,7 +21,7 @@ import os
 import pathlib
 import sys
 
-DELEGATION_TOOLS = {"subagent", "task", "advisor"}
+DELEGATION_TOOLS = {"subagent", "task"}
 
 
 def journal_metrics(path):

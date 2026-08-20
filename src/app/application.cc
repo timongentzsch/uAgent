@@ -387,16 +387,16 @@ class Application {
   // The route in schema form; the host only earns a segment when no provider
   // scope was resolvable, since `openrouter/...` already names the provider.
   StatusView SessionStatusView() const {
-    StatusView view{.context_used = agent_.ContextUsed(),
-                    .model = RouteSelection(api_, context_.provider.providers),
-                    .verbose = agent_.Verbose(),
-                    .yolo = context_.options.yolo,
-                    .attachments = attachments_.size(),
-                    .background = runtime_.processes.Count()};
-    if (view.model.find('/') == std::string::npos) {
-      view.host = UrlHost(api_.base_url);
-    }
-    return view;
+    std::string model = RouteSelection(api_, context_.provider.providers);
+    std::string host =
+        model.find('/') == std::string::npos ? UrlHost(api_.base_url) : "";
+    return StatusView{.context_used = agent_.ContextUsed(),
+                      .model = std::move(model),
+                      .host = std::move(host),
+                      .verbose = agent_.Verbose(),
+                      .yolo = context_.options.yolo,
+                      .attachments = attachments_.size(),
+                      .background = runtime_.processes.Count()};
   }
 
   void HandleCost() const {
@@ -511,9 +511,11 @@ class Application {
   }
 
   void SaveSelectedModel(const std::string& selected) {
-    bool named_route = ResolveModelRoute(context_.provider.routes,
-                                         context_.provider.providers, selected)
-                           .has_value();
+    ModelSelection selection = ParseModelSelection(selected);
+    bool named_route =
+        ResolveModelRoute(context_.provider.routes, context_.provider.providers,
+                          selection.base)
+            .has_value();
     ActivateCurrentRoute();
     std::string error;
     bool saved =
@@ -685,7 +687,7 @@ class Application {
                                         const std::string& initial) {
       return broker.Read(prompt, eof, keep_history, initial);
     });
-    g_persistent_composer = true;
+    SetPersistentComposer(true);
 
     std::thread worker;
     std::atomic<bool> working{false};
@@ -702,67 +704,28 @@ class Application {
       if (!working) {
         return StatusBar(api_, agent_.SessionUsage(), SessionStatusView());
       }
-      auto now = std::chrono::steady_clock::now();
-      double elapsed = std::chrono::duration<double>(now - started).count();
-      size_t background = runtime_.processes.Count();
-      char seconds[32];
-      snprintf(seconds, sizeof seconds, "%.1fs", elapsed);
-      std::string activity = CurrentTerminalActivity();
-      static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
-      static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
-                                                "⠴", "⠦", "⠧", "⠇", "⠏"};
-      auto ticks =
-          std::chrono::duration_cast<std::chrono::milliseconds>(now - started) /
-          kSpinnerInterval;
-      std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
-      prefix += " ";
-      std::string state = interrupting
-                              ? "interrupting"
-                              : (activity.empty() ? "working" : activity);
-      std::string suffix = " · " + std::string(seconds);
-      suffix += " · ctx " + FmtCount(agent_.ContextSnapshot());
-      if (background > 0) suffix += " · bg:" + std::to_string(background);
-      size_t foreground = runtime_.processes.ForegroundCount();
-      if (foreground > 0) {
-        suffix += " · Ctrl+B background";
-        if (foreground > 1) {
-          suffix += " " + std::to_string(foreground) + " commands";
-        }
-      }
-      size_t queued = SteeringState().QueuedCount();
-      if (queued > 0) {
-        suffix += " · steer:" + std::to_string(queued);
-      }
-      size_t width = TerminalWidth(1);
-      if (SteeringEnabled()) {
-        std::string hint = " · Esc interrupt";
-        // A rolling ticker always holds more text than fits, so it asks for
-        // the full cap instead of the width of its idle fallback label.
-        size_t desired = std::min<size_t>(
-            CurrentTerminalActivityRolling() ? 64 : DisplayWidth(state), 64);
-        size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
-                           DisplayWidth(hint) + desired;
-        if (with_hint <= width) suffix += hint;
-      }
-      size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
-      size_t activity_width = width > reserved ? width - reserved : 0;
-      if (CurrentTerminalActivityRolling()) {
-        // Rolling ticker: render a sliding window of the reasoning instead of
-        // the static fallback label so it animates with the status frame.
-        // ActivityLabel is a no-op while the window fits; on a terminal too
-        // narrow even for the ticker label it bounds the row as usual.
-        return prefix +
-               ActivityLabel(RenderCurrentTerminalActivity(activity_width),
-                             activity_width) +
-               suffix;
-      }
-      return prefix + ActivityLabel(state, activity_width) + suffix;
+      ActivityView view;
+      view.elapsed = std::chrono::steady_clock::now() - started;
+      view.context_used = agent_.ContextSnapshot();
+      view.context_window = api_.ctx_window;
+      view.background = runtime_.processes.Count();
+      view.foreground = runtime_.processes.ForegroundCount();
+      view.queued = SteeringState().QueuedCount();
+      view.interrupting = interrupting;
+      return ActivityBar(view);
     };
 
     constexpr auto kResizeSettle = std::chrono::milliseconds(80);
     std::optional<std::chrono::steady_clock::time_point> resize_settled;
 
-    auto rendered_status = [&] { return StatusBarLine(status()); };
+    // The width the pinned status row occupies on screen. iTerm2 and every
+    // other terminal that rewraps on resize turns a row written at a wider
+    // terminal into several physical rows, and the erase below has to walk
+    // over all of them.
+    size_t status_columns = 0;
+    auto rendered_status = [&] {
+      return StatusBarLine(status(), &status_columns);
+    };
 
     auto status_state = [&] {
       return std::string(interrupting ? "interrupting|" : "working|") +
@@ -772,10 +735,15 @@ class Application {
              std::to_string(runtime_.processes.ForegroundCount());
     };
 
+    // Erase from the top of the pinned region, which after a narrowing resize
+    // starts above the status row: a terminal that rewraps has turned the row
+    // written at the old width into several, and erasing from the last one
+    // would leave the rest on screen for every later repaint to add to.
     auto unmount = [&] {
       if (!composer.Drawn()) return;
-      output.Write("\r\033[" + std::to_string(composer.CaretRow() + 1) +
-                   "A\033[J");
+      size_t rows_up = composer.CaretRow() + 1 +
+                       StatusOverflowRows(status_columns, TerminalWidth());
+      output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
       composer.Detach();
     };
 
@@ -814,11 +782,12 @@ class Application {
     // repaint would append another one. Walk up to the status row first, the
     // way every other paint does.
     //
-    // CaretRow() is exact when the block did not reflow — an empty or short
-    // draft, or any widening, since the rows are separate lines. Narrowing
-    // with a draft long enough to soft-wrap can leave one stale fragment
-    // above; the next mount clears it. Pinning that down needs a cursor
-    // position report, which is deliberately not in this change.
+    // The status row's own rewrap is accounted for by status_overflow_rows().
+    // CaretRow() covers the rest exactly when the composer did not reflow — an
+    // empty or short draft, or any widening. Narrowing with a draft long
+    // enough to soft-wrap can still leave one stale fragment above; the next
+    // mount clears it. Pinning that down needs a cursor position report, which
+    // is deliberately not in this change.
     auto resync = [&] {
       if (!composer.Drawn()) return;
       paint({}, nullptr, {}, true);
@@ -952,8 +921,9 @@ class Application {
             // scrollback above steering or ordinary user input.
             size_t rows_up = composer.LastSubmittedRows() + 1;
             output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
-            output.Write("\r" + composer.Prompt() + TerminalSafe(event.text) +
-                         "\n");
+            output.Write(
+                UserEchoRow(composer.Prompt(), TerminalSafe(event.text)) +
+                "\n");
           }
           if (event.kind == InteractiveInputKind::kBackground) {
             if (!working || !runtime_.processes.RequestForegroundBackground()) {
@@ -1052,7 +1022,7 @@ class Application {
     runtime_.processes.SetNotifyFd(-1);
     SetTerminalWakeFd(-1);
     broker.Shutdown();
-    g_persistent_composer = false;
+    SetPersistentComposer(false);
     output.Stop();
     return 0;
   }
@@ -1083,8 +1053,8 @@ class Application {
     for (;;) {
       SaveSession();
       agent_.DrainBackground();
-      PrintStatusBar(StatusBar(api_, agent_.SessionUsage(),
-                               SessionStatusView()));
+      PrintStatusBar(
+          StatusBar(api_, agent_.SessionUsage(), SessionStatusView()));
       bool eof = false;
       std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {

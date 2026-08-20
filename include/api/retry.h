@@ -16,6 +16,8 @@
 namespace uagent {
 
 inline constexpr int kChatAttempts = 3;
+// Non-streaming side requests reuse the conversation's attempt budget.
+inline constexpr int kSideAttempts = 3;
 
 inline bool RetryableHttpStatus(int64_t status) {
   return status == 408 || status == 409 || status == 429 || status >= 500;
@@ -214,6 +216,25 @@ inline bool SafeToRetry(const ChatResult& result) {
          result.tool_calls.empty() && result.annotations.empty() &&
          result.usage.is_null() &&
          (!result.semantic_progress || !result.reasoning.empty());
+}
+
+// Side requests (web search, and any other non-streaming JSON call) get the
+// same bounded recovery as the conversation, minus the replay concerns: a
+// JSON call either landed or it did not, so there is no partial output to
+// protect. A transport failure leaves no status behind; an aborted deadline is
+// the caller's business, not this predicate's.
+inline bool SafeToRetry(const JsonResponse& response) {
+  if (response.error.empty()) return false;
+  if (response.http_status == 0) return true;  // connection reset or timeout
+  return RetryableHttpStatus(response.http_status) ||
+         RetryableRemoteMessage(response.error);
+}
+
+// The clock is the only entropy this needs: two attempts never coincide, and
+// nothing here has to be reproducible.
+inline uint64_t JitterSeed() {
+  return static_cast<uint64_t>(
+      std::chrono::steady_clock::now().time_since_epoch().count());
 }
 
 inline std::chrono::milliseconds RetryDelay(int failed_attempt,

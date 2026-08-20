@@ -116,8 +116,9 @@
     {
       "name": "sanitize",
       "configurePreset": "sanitize",
+      "description": "LeakSanitizer is left at its default: on for ASan on Linux, absent on macOS, where forcing detect_leaks aborts every test binary before it runs.",
       "environment": {
-        "ASAN_OPTIONS": "detect_leaks=1:strict_string_checks=1",
+        "ASAN_OPTIONS": "strict_string_checks=1",
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
       },
       "output": {

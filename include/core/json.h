@@ -71,6 +71,14 @@ inline std::string JsonValue(const json& object, const char* key,
                                                      : fallback;
 }
 
+inline const std::string* JsonStringRef(const json& object, const char* key) {
+  if (!object.is_object()) return nullptr;
+  auto value = object.find(key);
+  return value != object.end() && value->is_string()
+             ? &value->get_ref<const std::string&>()
+             : nullptr;
+}
+
 // OpenAI-compatible APIs use either {"error":"..."} or
 // {"error":{"message":"..."}} for HTTP and streamed failures.
 inline std::string JsonErrorMessage(const json& object,

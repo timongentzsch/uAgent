@@ -18,6 +18,7 @@ next request.
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `scratch` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
+| `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
 Filesystem and external-read approval follows the active path policy. Mutating
 and process tools require approval unless yolo mode is active. Child processes
@@ -54,10 +55,15 @@ file notifications where available.
 | --- | --- |
 | `web_search` | a supported server or configured search route is available |
 | `subagent` | delegation is enabled and the current depth is below its limit |
-| `advisor` | a model route is set with `--advisor` or `UAGENT_ADVISOR_MODEL` |
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
+
+`web_fetch` needs no hosted route, so it does not follow `web_search`'s
+availability. It returns text only: it decodes markup, JSON, XML and plain
+text, and refuses anything else rather than handing over bytes. A page behind a
+login or assembled by scripting belongs to the browser skill. Bodies larger
+than `UAGENT_WEB_FETCH_BYTES` are read up to the cap and marked partial.
 
 `web_search` is always one named model-facing function. Its host implementation
 selects OpenAI Responses or OpenRouter server search, so models, yolo mode, and

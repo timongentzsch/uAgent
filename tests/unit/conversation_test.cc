@@ -53,10 +53,57 @@ void TestConversation() {
   CHECK(conversation.FirstUserText() == "Prior context: this is user text");
   CHECK(conversation.UserTurns() == 1);
   CHECK(conversation.LastAssistantText() == "answer");
-  CHECK(conversation.At(2).value("role", "") == "system");
+  CHECK(conversation.At(2).value("role", "") == "user");
   CHECK(conversation.LastText(MessageKind::kRuntimeContext) ==
         "[runtime advisory updated]");
-  CHECK(conversation.At(3).value("role", "") == "system");
+  CHECK(conversation.At(3).value("role", "") == "user");
+  // The wire format keeps exactly one system message, at index zero.
+  json wire = conversation.Messages();
+  CHECK(wire[0].value("role", "") == "system");
+  for (size_t i = 1; i < wire.size(); ++i) {
+    CHECK(wire[i].value("role", "") != "system");
+  }
+
+  // UpsertTail keeps a stable historical prefix by relocating changed runtime
+  // context to the end instead of rewriting it in place.
+  Conversation tailed;
+  tailed.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+               {MessageKind::kSystem});
+  tailed.Push({{"role", "user"}, {"content", "history"}}, MessageKind::kUser);
+  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=80]"}},
+                    MessageKind::kRuntimeContext);
+  CHECK(tailed.At(1).value("content", "") == "history");
+  CHECK(tailed.At(2).value("content", "") == "[environment: cols=80]");
+  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=80]"}},
+                    MessageKind::kRuntimeContext);
+  CHECK(tailed.Size() == 3);
+  tailed.Push({{"role", "assistant"}, {"content", "answer"}},
+              MessageKind::kAssistant);
+  tailed.Push({{"role", "user"}, {"content", "next turn"}}, MessageKind::kUser);
+  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
+                    MessageKind::kRuntimeContext);
+  CHECK(tailed.LastText(MessageKind::kRuntimeContext) ==
+        "[environment: cols=120]");
+  CHECK(tailed.At(3).value("content", "") == "next turn");
+  CHECK(tailed.At(4).value("content", "") == "[environment: cols=120]");
+  for (size_t i = 1; i < tailed.Size(); ++i) {
+    CHECK(tailed.At(i).value("role", "") != "system");
+  }
+  // UpsertTail has no caller-level LastText guard: a byte-identical entry that
+  // is not at the tail is still relocated there. EnsureRuntimeContext keeps
+  // the unchanged entry in place; UpsertTail's contract is only "no churn when
+  // the tail already matches".
+  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
+                    MessageKind::kRuntimeContext);
+  CHECK(tailed.Size() == 5);
+  CHECK(tailed.At(4).value("content", "") == "[environment: cols=120]");
+  tailed.Push({{"role", "assistant"}, {"content", "follow-up"}},
+              MessageKind::kAssistant);
+  tailed.UpsertTail({{"role", "user"}, {"content", "[environment: cols=120]"}},
+                    MessageKind::kRuntimeContext);
+  CHECK(tailed.Size() == 6);
+  CHECK(tailed.At(4).value("content", "") == "follow-up");
+  CHECK(tailed.At(5).value("content", "") == "[environment: cols=120]");
   MessageKind environment_kind = MessageKind::kInternal;
   CHECK(!ParseMessageKind("environment", environment_kind));
 
@@ -200,8 +247,7 @@ void TestConversation() {
                    {{"role", "system"}, {"content", "old memory index"}},
                    {{"role", "user"}, {"content", "continue"}}}),
       {MessageKind::kSystem, MessageKind::kMemory, MessageKind::kUser});
-  resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}},
-                          nullptr, nullptr);
+  resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}});
   CHECK(resumed.Size() == 2);
   CHECK(!resumed.HasKind(MessageKind::kMemory));
   CHECK(resumed.At(1).value("content", "") == "continue");

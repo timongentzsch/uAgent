@@ -112,8 +112,8 @@ bool Agent::RunCalls(
       reject(task, ToolErrorCode::kLimitExceeded,
              "error: " + call.name + " reached its per-turn call limit (" +
                  std::to_string(tool->max_calls_per_turn) +
-                 "); answer from the results you have or delegate the "
-                 "rest with task — do not reimplement it with run",
+                 "); continue from the results you have — do not "
+                 "reimplement it with run",
              "call_limit");
     } else {
       task.label = ToolSummary(*tool, arguments);

@@ -19,8 +19,8 @@
 
 namespace uagent {
 
-// A subagent activity is any delegated child agent — a subagent or an
-// advisor — whose result joins the parent conversation when it finishes.
+// A subagent activity is a delegated child whose result joins the parent
+// conversation when it finishes.
 enum class ActivityKind : uint8_t { kCommand, kSubagent, kMemory, kDetached };
 enum class ActivityState : uint8_t {
   kStarting,
@@ -155,6 +155,7 @@ class ProcessSupervisor {
   friend class ActivityReservation;
   std::optional<int64_t> CommitReservation(BgJob job);
   void ReleaseReservation();
+  std::optional<BgJob> TakeForegroundLocked(pid_t pid);
   void AssignId(BgJob& job);
   size_t IndexOfLocked(int64_t id) const;
   size_t RetainedIndexOfLocked(int64_t id) const;

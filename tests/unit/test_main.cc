@@ -24,9 +24,11 @@ int RunTests() {
   TestRegistries();
   TestOptions();
   TestLineNumberStripping();
+  TestMarkdownBlankLines();
   TestMarkdownMath();
   TestCapsAndEscaping();
   TestFileTools();
+  TestActivityBar();
   TestTerminalSafety();
   TestTerminalInputDecoder();
   TestSseChunkPartitions();

@@ -202,6 +202,22 @@ inline std::string UagentDir(const char* sub) {
   return MakePrivateDir(GlobalBase(), sub);
 }
 
+template <typename Visit>
+inline void ForEachTreeEntry(const std::string& dir, Visit&& visit) {
+  namespace fs = std::filesystem;
+  std::error_code ec;
+  for (fs::recursive_directory_iterator
+           it(dir, fs::directory_options::skip_permission_denied, ec),
+       end;
+       it != end; it.increment(ec)) {
+    if (ec) {
+      ec.clear();
+      continue;
+    }
+    visit(*it);
+  }
+}
+
 inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
                               int64_t max_files) {
   namespace fs = std::filesystem;
@@ -215,33 +231,26 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
     }
   };
   std::priority_queue<Entry, std::vector<Entry>, NewerFirst> kept;
-  std::error_code ec;
   auto cutoff = fs::file_time_type::clock::now() -
                 std::chrono::hours(24 * std::max(int64_t{1}, max_age_days));
-  for (fs::recursive_directory_iterator
-           it(dir, fs::directory_options::skip_permission_denied, ec),
-       end;
-       it != end; it.increment(ec)) {
-    if (ec) {
-      ec.clear();
-      continue;
-    }
-    if (it->is_symlink(ec)) continue;
-    if (it->is_directory(ec)) {
-      chmod(it->path().c_str(), 0700);
-    } else if (it->is_regular_file(ec)) {
-      chmod(it->path().c_str(), 0600);
+  ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
+    std::error_code ec;
+    if (entry.is_symlink(ec)) return;
+    if (entry.is_directory(ec)) {
+      chmod(entry.path().c_str(), 0700);
+    } else if (entry.is_regular_file(ec)) {
+      chmod(entry.path().c_str(), 0600);
       std::error_code time_error;
-      Entry entry{it->path(), it->last_write_time(time_error)};
-      if (time_error) continue;
-      if (entry.modified < cutoff) {
+      Entry artifact{entry.path(), entry.last_write_time(time_error)};
+      if (time_error) return;
+      if (artifact.modified < cutoff) {
         std::error_code remove_error;
-        fs::remove(entry.path, remove_error);
-        continue;
+        fs::remove(artifact.path, remove_error);
+        return;
       }
-      bool session_sidecar = entry.path.string().ends_with(".events.jsonl");
+      bool session_sidecar = artifact.path.string().ends_with(".events.jsonl");
       if (max_files > 0 && !session_sidecar) {
-        kept.push(std::move(entry));
+        kept.push(std::move(artifact));
         if (kept.size() > static_cast<size_t>(max_files)) {
           std::error_code remove_error;
           fs::remove(kept.top().path, remove_error);
@@ -249,31 +258,24 @@ inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
         }
       }
     }
-  }
+  });
 }
 
 inline void PruneSessionJournalOrphans(const std::string& dir) {
   namespace fs = std::filesystem;
   constexpr std::string_view kSuffix = ".events.jsonl";
-  std::error_code ec;
-  for (fs::recursive_directory_iterator
-           it(dir, fs::directory_options::skip_permission_denied, ec),
-       end;
-       it != end; it.increment(ec)) {
-    if (ec) {
-      ec.clear();
-      continue;
-    }
-    if (!it->is_regular_file(ec)) continue;
-    std::string path = it->path().string();
-    if (!path.ends_with(kSuffix)) continue;
+  ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
+    std::error_code ec;
+    if (!entry.is_regular_file(ec)) return;
+    std::string path = entry.path().string();
+    if (!path.ends_with(kSuffix)) return;
     std::string session = path.substr(0, path.size() - kSuffix.size());
     std::error_code exists_error;
     if (!fs::exists(session, exists_error) && !exists_error) {
       std::error_code remove_error;
       fs::remove(path, remove_error);
     }
-  }
+  });
 }
 
 inline void MaintainArtifacts() {

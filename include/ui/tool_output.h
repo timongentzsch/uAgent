@@ -46,6 +46,7 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   record.kind = PresentationKind::kToolCall;
   record.id = call.id;
   record.title = task.ordinal + call.name;
+  record.skill = task.tool && task.tool->name == "skill";
   bool full_label = verbose || (task.tool && task.tool->verbatim_label);
   record.verbatim = full_label;
   if (!task.label.empty()) {

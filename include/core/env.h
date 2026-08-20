@@ -68,14 +68,14 @@ int64_t MemoryBytes();
 int64_t MaxMemories();
 int64_t MemoryIdleSeconds();
 int64_t MemoryExtractBytes();
-int64_t MemoryAlwaysBytes();
-int64_t AdvisorContextBytes();
-int64_t AdvisorTimeoutSeconds();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
 // bodies are sent only when a skill is opened.
 int64_t SkillDescriptionBytes();
 int64_t MaxSkills();
+// The download cap for one web_fetch. Pages beyond it are read as far as the
+// cap and marked partial rather than failed.
+int64_t WebFetchBytes();
 int64_t GrepResults();
 int64_t GrepBytes();
 int64_t BashLogBytes();
@@ -141,6 +141,7 @@ struct RuntimeConfig {
   int64_t mcp_response_bytes = 16 * 1024 * 1024;
   int64_t mcp_schema_bytes = 256 * 1024;
   int64_t mcp_log_bytes = 16 * 1024 * 1024;
+  int64_t memory_always_bytes = 2048;
   int64_t project_doc_bytes = 32 * 1024;
   int64_t session_archive_bytes = 16 * 1024 * 1024;
   std::string openrouter_provider;

@@ -620,7 +620,7 @@ def test_empty_response_after_tools_recovers_once(root, home):
 
 
 def test_foreign_tool_markup_recovers_as_prose(root, home):
-    markup = '<｜DSML｜tool_calls><｜DSML｜invoke name="web_search">'
+    markup = '<｜DSML｜tool_calls:\n    edit_file:\n      path: path="test.cc"'
 
     def recovered(_, body):
         notes = [

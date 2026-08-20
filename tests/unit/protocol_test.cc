@@ -75,6 +75,8 @@ void TestTextToolProtocol() {
   CHECK(ContainsForeignToolCallMarkup(
       "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
   CHECK(ContainsForeignToolCallMarkup(
+      "<｜DSML｜tool_calls:\n    edit_file:\n      path: path=\"test.cc\""));
+  CHECK(ContainsForeignToolCallMarkup(
       "<|tool_calls_section_begin|><|tool_call|>run"));
   CHECK(ContainsForeignToolCallMarkup(
       "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>run"));

@@ -66,10 +66,10 @@ inline bool ParseTextToolResult(const std::string& content, std::string& name,
   return true;
 }
 
-// Reject any structured tag whose normalized tag name contains `tool` followed
-// by `call`. This is detection-only and deliberately provider-agnostic: it
-// recognizes unseen delimiter variants without turning them into executable
-// syntax. Markdown code examples are ignored.
+// Reject any structured marker whose normalized opener contains `tool`
+// followed by `call`. This is detection-only and deliberately provider-
+// agnostic: it recognizes unseen delimiter variants without turning them into
+// executable syntax. Markdown code examples are ignored.
 inline bool ContainsForeignToolCallMarkup(const std::string& content) {
   bool fenced = false;
   bool inline_code = false;
@@ -104,7 +104,7 @@ inline bool ContainsForeignToolCallMarkup(const std::string& content) {
       ++index;
       continue;
     }
-    size_t close = content.find('>', index + 1);
+    size_t close = content.find_first_of(">:\r\n", index + 1);
     if (close == std::string::npos || close - index > 256) {
       ++index;
       continue;

@@ -329,6 +329,19 @@ def run_case(
         else:
             env.pop("UAGENT_TOOLSET", None)
         if mock is not None:
+            # Keep the hermetic loopback transport independent of runner-level
+            # proxy configuration (notably macOS system libcurl behavior).
+            for name in (
+                "ALL_PROXY",
+                "HTTP_PROXY",
+                "HTTPS_PROXY",
+                "all_proxy",
+                "http_proxy",
+                "https_proxy",
+            ):
+                env.pop(name, None)
+            env["NO_PROXY"] = "127.0.0.1,localhost"
+            env["no_proxy"] = env["NO_PROXY"]
             env.update(
                 {
                     "UAGENT_BASE_URL": mock.url,

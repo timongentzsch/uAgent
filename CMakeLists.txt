@@ -164,8 +164,10 @@ if(BUILD_TESTING)
   add_test(NAME efficiency_smoke
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/agent_efficiency.py
-                   $<TARGET_FILE:uagent>)
-  set_tests_properties(efficiency_smoke PROPERTIES TIMEOUT 30)
+                   $<TARGET_FILE:uagent> --timeout 30)
+  # The harness enforces its own 45-second subprocess deadline. Leave enough
+  # wrapper headroom for loaded hosted macOS runners to report that diagnostic.
+  set_tests_properties(efficiency_smoke PROPERTIES TIMEOUT 60)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

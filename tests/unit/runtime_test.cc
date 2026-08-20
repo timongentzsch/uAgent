@@ -211,8 +211,15 @@ void TestRuntimeOwnershipHelpers() {
   api.reasoning_effort = "high";
   body = api.BuildChatBody(json::array(), json::array());
   CHECK(body.value("reasoning_effort", "") == "high");
-  CHECK(body.contains("max_completion_tokens"));
+  // Uncapped by default: neither spelling is sent, so the provider's own
+  // maximum applies and never clamps a derived thinking budget.
+  CHECK(!body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
+  setenv("UAGENT_MAX_TOKENS", "4096", 1);
+  body = api.BuildChatBody(json::array(), json::array());
+  CHECK(body.value("max_completion_tokens", int64_t{0}) == 4096);
+  CHECK(!body.contains("max_tokens"));
+  unsetenv("UAGENT_MAX_TOKENS");
   CHECK(body["stream_options"].value("include_usage", false));
 
   json assistant = {{"role", "assistant"}, {"content", ""}};

@@ -93,7 +93,9 @@ int64_t SubagentMaxToolCalls() {
 
 std::string SubagentModel() { return EnvStr("UAGENT_SUBAGENT_MODEL"); }
 
-int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", 16000); }
+// -1 omits the cap so the provider applies its own maximum; a fixed cap would
+// also clamp any thinking budget derived from it.
+int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", -1); }
 
 bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
 

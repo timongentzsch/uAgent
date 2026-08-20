@@ -21,18 +21,36 @@
 namespace uagent {
 
 namespace {
-std::unordered_map<int64_t, std::chrono::steady_clock::time_point>&
-PollAnchors() {
-  static std::unordered_map<int64_t, std::chrono::steady_clock::time_point>
-      anchors;
+
+struct PollAnchor {
+  std::chrono::steady_clock::time_point started;
+  std::chrono::steady_clock::time_point seen;
+};
+
+// An activity can also vanish without a final poll, by completing in the
+// background or being stopped, so anchors expire instead of relying on every
+// such path to announce itself.
+constexpr std::chrono::hours kPollAnchorTtl{1};
+
+std::unordered_map<int64_t, PollAnchor>& PollAnchors() {
+  static std::unordered_map<int64_t, PollAnchor> anchors;
   return anchors;
 }
+
 }  // namespace
 
 std::chrono::steady_clock::duration PollElapsed(int64_t activity_id) {
   auto now = std::chrono::steady_clock::now();
-  auto [it, inserted] = PollAnchors().try_emplace(activity_id, now);
-  return now - it->second;
+  auto& anchors = PollAnchors();
+  auto [it, inserted] = anchors.try_emplace(activity_id, PollAnchor{now, now});
+  it->second.seen = now;
+  auto elapsed = now - it->second.started;
+  if (inserted) {
+    std::erase_if(anchors, [now](const auto& entry) {
+      return entry.second.seen + kPollAnchorTtl < now;
+    });
+  }
+  return elapsed;
 }
 
 void ClearPollAnchor(int64_t activity_id) { PollAnchors().erase(activity_id); }

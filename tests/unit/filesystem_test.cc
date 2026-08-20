@@ -86,6 +86,34 @@ void TestFileTools() {
   CHECK(first_edit.display.find("@line 2") != std::string::npos);
   CHECK(first_edit.display.find("-two") != std::string::npos);
   CHECK(first_edit.display.find("+three") != std::string::npos);
+  fs::path created = root / "created.txt";
+  ToolResult create_result =
+      ToolWriteFileWithDisplay(created.string(), "one\ntwo\n");
+  CHECK(create_result.Ok());
+  CHECK(create_result.display.find("Created " + created.string() +
+                                   " (+2 -0)") != std::string::npos);
+  CHECK(create_result.display.find("+one") != std::string::npos);
+  CHECK(create_result.display.find("+two") != std::string::npos);
+
+  ToolResult replace_result =
+      ToolWriteFileWithDisplay(created.string(), "one\nthree\n");
+  CHECK(replace_result.Ok());
+  CHECK(replace_result.display.find("Replaced " + created.string() +
+                                    " (+1 -1)") != std::string::npos);
+  CHECK(replace_result.display.find("-two") != std::string::npos);
+  CHECK(replace_result.display.find("+three") != std::string::npos);
+
+  ToolResult identical_result =
+      ToolWriteFileWithDisplay(created.string(), "one\nthree\n");
+  CHECK(identical_result.Ok());
+  CHECK(identical_result.display.empty());
+
+  fs::path binary_target = root / "created.bin";
+  ToolResult binary_result = ToolWriteFileWithDisplay(
+      binary_target.string(), std::string("text\0binary", 11));
+  CHECK(binary_result.Ok());
+  CHECK(binary_result.display.empty());
+
   ToolResult missing_edit =
       ToolEditFile(file.string(), "missing", "replacement");
   CHECK(!missing_edit.Ok());

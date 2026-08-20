@@ -14,6 +14,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -67,6 +68,47 @@ void AppendDisplayLine(EditDisplay& display, char marker,
   ++display.lines;
 }
 
+struct LineDiff {
+  size_t prefix, old_end, new_end;
+};
+
+// Common-prefix/suffix trim, not a minimal (LCS) diff; good enough for a
+// human-scanned receipt and shared by every whole- or partial-file display.
+LineDiff TrimCommonLines(const std::vector<std::string>& old_lines,
+                         const std::vector<std::string>& new_lines) {
+  size_t prefix = 0;
+  while (prefix < old_lines.size() && prefix < new_lines.size() &&
+         old_lines[prefix] == new_lines[prefix]) {
+    ++prefix;
+  }
+  size_t suffix = 0;
+  while (suffix < old_lines.size() - prefix &&
+         suffix < new_lines.size() - prefix &&
+         old_lines[old_lines.size() - suffix - 1] ==
+             new_lines[new_lines.size() - suffix - 1]) {
+    ++suffix;
+  }
+  return {prefix, old_lines.size() - suffix, new_lines.size() - suffix};
+}
+
+void AppendLineDiff(EditDisplay& display,
+                    const std::vector<std::string>& old_lines,
+                    const std::vector<std::string>& new_lines,
+                    const LineDiff& diff) {
+  if (diff.prefix > 0) {
+    AppendDisplayLine(display, ' ', old_lines[diff.prefix - 1]);
+  }
+  for (size_t i = diff.prefix; i < diff.old_end; ++i) {
+    AppendDisplayLine(display, '-', old_lines[i]);
+  }
+  for (size_t i = diff.prefix; i < diff.new_end; ++i) {
+    AppendDisplayLine(display, '+', new_lines[i]);
+  }
+  if (diff.old_end < old_lines.size()) {
+    AppendDisplayLine(display, ' ', old_lines[diff.old_end]);
+  }
+}
+
 void AppendEditDisplay(EditDisplay& display, const std::string& data,
                        size_t match, const std::string& old_text,
                        const std::string& new_text, int64_t applied) {
@@ -88,36 +130,16 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
   after.replace(match - block_start, old_text.size(), new_text);
   std::vector<std::string> old_lines = DiffLines(before);
   std::vector<std::string> new_lines = DiffLines(after);
-  size_t prefix = 0;
-  while (prefix < old_lines.size() && prefix < new_lines.size() &&
-         old_lines[prefix] == new_lines[prefix]) {
-    ++prefix;
-  }
-  size_t suffix = 0;
-  while (suffix < old_lines.size() - prefix &&
-         suffix < new_lines.size() - prefix &&
-         old_lines[old_lines.size() - suffix - 1] ==
-             new_lines[new_lines.size() - suffix - 1]) {
-    ++suffix;
-  }
-  size_t old_end = old_lines.size() - suffix;
-  size_t new_end = new_lines.size() - suffix;
-  display.removed += static_cast<int64_t>(old_end - prefix) * applied;
-  display.added += static_cast<int64_t>(new_end - prefix) * applied;
+  LineDiff diff = TrimCommonLines(old_lines, new_lines);
+  display.removed += static_cast<int64_t>(diff.old_end - diff.prefix) * applied;
+  display.added += static_cast<int64_t>(diff.new_end - diff.prefix) * applied;
 
   int64_t line = 1 + static_cast<int64_t>(
                          std::count(data.begin(), data.begin() + match, '\n'));
   std::string location = "line " + std::to_string(line);
   if (applied > 1) location += " · " + std::to_string(applied) + " matches";
   AppendDisplayLine(display, '@', location);
-  if (prefix > 0) AppendDisplayLine(display, ' ', old_lines[prefix - 1]);
-  for (size_t i = prefix; i < old_end; ++i) {
-    AppendDisplayLine(display, '-', old_lines[i]);
-  }
-  for (size_t i = prefix; i < new_end; ++i) {
-    AppendDisplayLine(display, '+', new_lines[i]);
-  }
-  if (suffix > 0) AppendDisplayLine(display, ' ', old_lines[old_end]);
+  AppendLineDiff(display, old_lines, new_lines, diff);
 }
 
 ToolResult FileOpenFailure(const std::string& path) {
@@ -510,6 +532,15 @@ ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
 
 namespace {
 
+bool LikelyTextSample(std::string_view sample) {
+  for (unsigned char value : sample) {
+    if (value == 0 || value < 0x09 || (value > 0x0d && value < 0x20)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool LikelyTextFile(const std::filesystem::path& path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) return false;
@@ -517,13 +548,7 @@ bool LikelyTextFile(const std::filesystem::path& path) {
   input.read(sample, sizeof sample);
   std::streamsize size = input.gcount();
   if (!input && !input.eof()) return false;
-  for (std::streamsize i = 0; i < size; ++i) {
-    unsigned char value = static_cast<unsigned char>(sample[i]);
-    if (value == 0 || value < 0x09 || (value > 0x0d && value < 0x20)) {
-      return false;
-    }
-  }
-  return true;
+  return LikelyTextSample(std::string_view(sample, static_cast<size_t>(size)));
 }
 
 // The whole contents of a tiny directory, when every entry is a small text
@@ -562,6 +587,56 @@ std::optional<std::string> SmallDirectoryPreview(
 }
 
 }  // namespace
+
+// Prior contents when a +/- receipt is worth rendering; nullopt for binary,
+// oversized, or unreadable files, which are written without a display.
+std::optional<std::string> DiffableContents(const std::string& path) {
+  std::error_code ec;
+  auto bytes = std::filesystem::file_size(path, ec);
+  int64_t max_bytes = EditFileBytes();
+  if (ec || (max_bytes > 0 && bytes > static_cast<uintmax_t>(max_bytes))) {
+    return std::nullopt;
+  }
+  if (!LikelyTextFile(path)) return std::nullopt;
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return std::nullopt;
+  return std::string(std::istreambuf_iterator<char>(input),
+                     std::istreambuf_iterator<char>());
+}
+
+ToolResult ToolWriteFileWithDisplay(const std::string& path,
+                                    const std::string& content) {
+  std::error_code ec;
+  bool existed = std::filesystem::is_regular_file(path, ec);
+  std::optional<std::string> previous;
+  if (existed) {
+    previous = DiffableContents(path);
+  } else if (LikelyTextSample(std::string_view(content).substr(0, 4096))) {
+    previous.emplace();
+  }
+  ToolResult result = ToolWriteFile(path, content);
+  if (!result.Ok() || !previous) return result;
+  result.display = WholeFileDiffDisplay(path, *previous, content, existed);
+  return result;
+}
+
+std::string WholeFileDiffDisplay(const std::string& path,
+                                 const std::string& previous,
+                                 const std::string& content, bool existed) {
+  std::vector<std::string> old_lines = DiffLines(previous);
+  std::vector<std::string> new_lines = DiffLines(content);
+  LineDiff diff = TrimCommonLines(old_lines, new_lines);
+  if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) return "";
+
+  EditDisplay display;
+  AppendLineDiff(display, old_lines, new_lines, diff);
+  std::string out = (existed ? "Replaced " : "Created ") + DisplayPath(path) +
+                    " (+" + std::to_string(diff.new_end - diff.prefix) + " -" +
+                    std::to_string(diff.old_end - diff.prefix) + ")\n" +
+                    display.body;
+  if (display.truncated) out += " … diff truncated\n";
+  return out;
+}
 
 ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
                        bool include_small_files) {

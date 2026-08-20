@@ -455,6 +455,32 @@ def signal_process_group(pid, signal_number=signal.SIGTERM):
         pass
 
 
+def live_process_states(pids):
+    """Return process states for PIDs that still represent live processes."""
+    states = {}
+    for pid in pids:
+        result = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        state = result.stdout.strip()
+        if result.returncode == 0 and state and not state.startswith("Z"):
+            states[pid] = state
+    return states
+
+
+def wait_for_processes_stopped(pids, timeout=2):
+    """Allow process-group teardown and orphan reaping to settle."""
+    deadline = time.monotonic() + timeout
+    states = live_process_states(pids)
+    while states and time.monotonic() < deadline:
+        time.sleep(0.02)
+        states = live_process_states(states)
+    return states
+
+
 def function_tools(body):
     return [tool["function"] for tool in body.get("tools", []) if tool.get("type") == "function"]
 
@@ -3342,13 +3368,8 @@ def test_subagent_interrupt_reaps_child(root, home):
         assert_true(child_pids, "delegated child pid was not observable")
         process.send_signal(signal.SIGINT)
         process.communicate(timeout=8)
-        for child_pid in child_pids:
-            try:
-                os.kill(child_pid, 0)
-            except ProcessLookupError:
-                pass
-            else:
-                raise AssertionError(f"delegated child process {child_pid} survived interrupt")
+        survivors = wait_for_processes_stopped(child_pids)
+        assert_true(not survivors, f"delegated child processes survived: {survivors}")
     finally:
         if process is not None and process.poll() is None:
             process.kill()

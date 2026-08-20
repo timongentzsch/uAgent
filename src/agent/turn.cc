@@ -95,6 +95,9 @@ void Agent::RecordModelResponse(
     ChatResult& response, TurnState& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
   Usage response_usage = AccountModelUsage(response.usage);
+  if (state.ttt_ms < 0 && response.first_event_ms >= 0) {
+    state.ttt_ms = response.first_event_ms;
+  }
   if (state.session_budget > 0 && response.usage.is_object() &&
       !response_usage.cost_reported && !cost_warning_shown_) {
     cost_warning_shown_ = true;
@@ -103,13 +106,11 @@ void Agent::RecordModelResponse(
                      "enforceable"));
     DebugLog("cost_unavailable", {{"route", ActiveRoute()}});
   }
-  // Hidden reasoning predates the first visible stream event.
-  double generation_ms = response_usage.reasoning > 0
-                             ? response.duration_ms
-                             : response.duration_ms - response.first_event_ms;
-  if (response.first_event_ms >= 0 && generation_ms > 0 &&
-      response_usage.GeneratedTokens() > 0) {
-    state.model_generation_ms += generation_ms;
+  // Tokens are routinely generated before the first visible event (hidden
+  // thinking, tool-call deliberation) and providers do not always report them
+  // as reasoning, so only the full call duration cannot overstate the rate.
+  if (response.duration_ms > 0 && response_usage.GeneratedTokens() > 0) {
+    state.model_generation_ms += response.duration_ms;
     state.model_generated_tokens += response_usage.GeneratedTokens();
   }
   state.usage.Merge(response_usage);
@@ -513,7 +514,6 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
     conversation_.Push(std::move(amsg), MessageKind::kAssistant);
 
     if (calls.empty()) {
-      state.ttt_ms = r.first_event_ms;
       // content that looked like a tool call was held back from the
       // stream; if it didn't parse into one, it's prose — show it now
       if (r.suppressed) {

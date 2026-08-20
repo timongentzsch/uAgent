@@ -2376,7 +2376,9 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
             return server.requests
 
     def fail_request(handler, _):
-        write_json_response(handler, {"error": {"message": "extract failed"}}, status=500)
+        # This case owns claim cleanup, not transient-retry timing. A terminal
+        # model error keeps the completion bound deterministic under ASan.
+        write_json_response(handler, {"error": {"message": "extract failed"}}, status=400)
 
     failed_requests = run_cleanup_case("model-failure", fail_request, wait_for_request=True)
     assert_true(failed_requests, "model failure did not reach the provider")

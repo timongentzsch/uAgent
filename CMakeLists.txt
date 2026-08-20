@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 0.4.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 0.5.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -110,6 +110,7 @@ add_library(
   src/tools/registry.cc
   src/tools/shell.cc
   src/tools/subagent.cc
+  src/tools/web_fetch.cc
   src/tools/web_search.cc
   src/transport/sse.cc
   src/ui/conversation.cc
@@ -141,6 +142,7 @@ if(BUILD_TESTING)
     tests/unit/filesystem_test.cc
     tests/unit/input_decoder_test.cc
     tests/unit/mcp_session_test.cc
+    tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
     tests/unit/runtime_test.cc
     tests/unit/skills_test.cc
@@ -159,6 +161,11 @@ if(BUILD_TESTING)
                      $<TARGET_FILE:uagent> --group ${group})
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
   endforeach()
+  add_test(NAME efficiency_smoke
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/agent_efficiency.py
+                   $<TARGET_FILE:uagent>)
+  set_tests_properties(efficiency_smoke PROPERTIES TIMEOUT 30)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

@@ -15,19 +15,21 @@
 namespace uagent {
 namespace {
 
-// The advisor answers from the question and the evidence pasted with it, so
-// the caller decides what matters instead of the child re-reading the tree.
+// The question and evidence focus the advisor; read-only tools let it verify
+// those claims against the workspace instead of relying on pasted excerpts.
 constexpr size_t kQuestionBytes = 4 * 1024;
 
 std::string AdvisorPrompt(const std::string& question,
                           const std::string& context) {
   std::string prompt =
-      "You are an independent advisor to another coding agent. Reason only "
-      "from the question and the evidence below; you have no tools and cannot "
-      "inspect the workspace. Say plainly what you would do and why, name the "
-      "strongest objection to it, and state what you are uncertain about or "
-      "what evidence would change your answer. Do not invent file contents or "
-      "results. Answer in prose, briefly.\n\n<question>\n" +
+      "You are an independent advisor to another coding agent. Use your "
+      "read-only tools to inspect the workspace or external evidence when it "
+      "would materially improve the answer. You do not have the parent's "
+      "conversation, so treat the question and evidence below as the complete "
+      "brief. Say plainly what you would do and why, name the strongest "
+      "objection, and state what remains uncertain or what evidence would "
+      "change your answer. Do not invent file contents or results. Answer in "
+      "prose, briefly.\n\n<question>\n" +
       Utf8Trunc(question, kQuestionBytes) + "\n</question>";
   if (!context.empty()) {
     prompt += "\n\n<evidence>\n" +
@@ -40,9 +42,8 @@ std::string AdvisorPrompt(const std::string& question,
 std::string AdvisorTargetLabel(const Api& api,
                                const std::vector<ModelRoute>& routes,
                                const std::vector<NamedProvider>& providers) {
-  return RouteSelection(ResolveSideRoute(api, routes, providers,
-                                         AdvisorModel()),
-                        providers);
+  return RouteSelection(
+      ResolveSideRoute(api, routes, providers, AdvisorModel()), providers);
 }
 
 }  // namespace
@@ -56,9 +57,11 @@ Tool AdvisorTool(const Api& api, ProcessSupervisor& processes,
       "advisor",
       "Ask a different model for an independent second opinion when a "
       "decision is hard to reverse, a diagnosis resists a genuine attempt, or "
-      "two approaches are close. The advisor has no tools and no view of this "
-      "conversation: state the question in full and paste the evidence it "
-      "needs. Treat the answer as advice to weigh, not instruction.",
+      "two approaches are close. The advisor can inspect the workspace with "
+      "read-only tools but has no view of this conversation: state the "
+      "question "
+      "in full and provide any evidence that focuses the review. Treat the "
+      "answer as advice to weigh, not instruction.",
       json::parse(R"json({"type":"object","properties":{
           "question":{"type":"string",
             "description":"self-contained question and what you tried"},
@@ -88,19 +91,21 @@ Tool AdvisorTool(const Api& api, ProcessSupervisor& processes,
                 ChildAgentBudgetBlock(api, processes, remaining_budget)) {
           return *blocked;
         }
-        // No tools and no memory: the advisor is a reasoner, not an agent, and
-        // must not write to this session's state. It also carries its own
-        // deadline, since a reasoning model runs far longer than a command.
+        // The dedicated toolset can inspect but neither modify nor delegate.
+        // Memory remains disabled so this independent review cannot read or
+        // write session state. It also carries its own longer deadline.
         std::string deadline = std::to_string(AdvisorTimeoutSeconds());
         EnvironmentOverrides environment =
             ChildAgentEnvironment(std::move(route));
-        environment.insert(environment.end(),
-                           {{"UAGENT_MAX_TURN_SECONDS", deadline},
-                            {"UAGENT_REQUEST_TIMEOUT", deadline},
-                            {"UAGENT_TOOLSET", "none"},
-                            {"UAGENT_MEMORY", "0"},
-                            {"UAGENT_MAX_STEPS", "1"},
-                            {"UAGENT_MAX_TOOL_CALLS", "0"}});
+        environment.insert(
+            environment.end(),
+            {{"UAGENT_MAX_TURN_SECONDS", deadline},
+             {"UAGENT_REQUEST_TIMEOUT", deadline},
+             {"UAGENT_TOOLSET", "advisor"},
+             {"UAGENT_MEMORY", "0"},
+             {"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
+             {"UAGENT_MAX_TOOL_CALLS",
+              std::to_string(SubagentMaxToolCalls())}});
         if (api.config.session_budget > 0) {
           environment.emplace_back("UAGENT_SESSION_BUDGET",
                                    std::to_string(remaining_budget));

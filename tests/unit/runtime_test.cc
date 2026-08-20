@@ -507,6 +507,26 @@ void TestNamedProviders() {
   CHECK(codex && codex->context == 16384);
   CHECK(codex && codex->protocol == ProviderProtocol::kOpenRouter);
 
+  // Startup consumes the same selection grammar as interactive and side
+  // routes. Suffixes configure policy and never leak into the provider model
+  // identifier.
+  setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:nitro:low", 1);
+  unsetenv("UAGENT_BASE_URL");
+  unsetenv("UAGENT_REASONING_EFFORT");
+  RuntimeConfig startup_config;
+  Api startup(startup_config);
+  ConfigureProvider(startup);
+  CHECK(startup.base_url == "http://127.0.0.1:8787/api/v1");
+  CHECK(startup.api_key == "local-key");
+  CHECK(startup.model == "gpt-5.6-luna");
+  CHECK(startup.reasoning_effort == "low");
+  CHECK(startup.config.openrouter_variant == "nitro");
+  CHECK(SelectModel(startup, catalog.models, catalog.providers,
+                    "codex-local/gpt-5.6-sol:high") ==
+        "codex-local/gpt-5.6-sol:high");
+  CHECK(startup.model == "gpt-5.6-sol");
+  CHECK(startup.reasoning_effort == "high");
+
   // [provider/]model[:variant][:effort] — suffixes peel from the right
   // against two closed sets and stop at the first unrecognized one.
   ModelSelection plain = ParseModelSelection("gpt-5.5");

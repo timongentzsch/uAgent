@@ -7,16 +7,17 @@
 // header, read here for the listing, and the full payload.
 
 #include <algorithm>
+#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/session_store.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -32,6 +33,7 @@ namespace uagent {
 struct SessionInfo {
   std::string path, cwd, title;
   int64_t turns = 0;
+  int64_t bytes = 0;
   std::filesystem::file_time_type mtime;
 };
 
@@ -56,9 +58,11 @@ inline std::vector<SessionInfo> ListSessions() {
       SessionInfo s;
       s.path = e.path().string();
       s.mtime = e.last_write_time(ec);
-      s.cwd = JsonValue(h, "cwd", "");
-      s.turns = JsonValue(h, "turns", int64_t{0});
-      s.title = JsonValue(h, "title", "(untitled)");
+      s.cwd = JsonValue(h, kSessionHeaderCwd, "");
+      s.turns = JsonValue(h, kSessionHeaderTurns, int64_t{0});
+      s.title = JsonValue(h, kSessionHeaderTitle, "(untitled)");
+      std::error_code size_error;
+      s.bytes = static_cast<int64_t>(fs::file_size(e.path(), size_error));
       out.push_back(std::move(s));
     }
   }
@@ -84,10 +88,10 @@ inline std::string PickSession() {
         std::chrono::duration_cast<std::chrono::seconds>(now - s.mtime).count();
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
     std::string safe_title = TerminalSafe(FirstLine(s.title));
-    std::cout << CYAN() << '[' << i + 1 << ']' << RST() << ' ' << FmtAgo(secs)
-              << " · " << s.turns << " turn" << (s.turns == 1 ? "" : "s")
-              << " · " << DIM() << safe_cwd << " · \"" << safe_title << '"'
-              << RST() << '\n';
+    printf("%s[%zu]%s %s · %s · %" PRId64 " turn%s · %s%s · \"%s\"%s\n", CYAN(),
+           i + 1, RST(), FmtAgo(secs).c_str(), FmtBytes(s.bytes).c_str(),
+           s.turns, s.turns == 1 ? "" : "s", DIM(), safe_cwd.c_str(),
+           safe_title.c_str(), RST());
   }
   bool eof = false;
   std::string ans =

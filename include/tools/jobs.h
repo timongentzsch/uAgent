@@ -16,6 +16,11 @@
 
 namespace uagent {
 
+// The activity tool's slice of the global result cap, shared by the tool's own
+// budget and by the automatic background-completion text. Background output is
+// observational, so it stays well under what a foreground read gets.
+inline constexpr int64_t kActivityResultChars = 6000;
+
 struct CollectedLog {
   std::string output;
   std::optional<ToolArtifact> artifact;

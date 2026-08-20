@@ -153,10 +153,6 @@ int64_t AdvisorContextBytes() {
                     256 * 1024);
 }
 
-int64_t MemoryAlwaysBytes() {
-  return EnvBounded("UAGENT_MEMORY_ALWAYS_BYTES", 2048, 0, 64 * 1024);
-}
-
 int64_t SkillBodyBytes() {
   return EnvBounded("UAGENT_SKILL_BYTES", 512 * 1024, 1024, 1024 * 1024);
 }
@@ -166,6 +162,10 @@ int64_t SkillDescriptionBytes() {
 }
 
 int64_t MaxSkills() { return EnvBounded("UAGENT_SKILLS", 64, 1); }
+
+int64_t WebFetchBytes() {
+  return EnvBounded("UAGENT_WEB_FETCH_BYTES", 2 * 1024 * 1024, 1024);
+}
 
 int64_t GrepResults() {
   return EnvBounded("UAGENT_GREP_RESULTS", 200, 1, kMaxMinusOne);
@@ -302,6 +302,8 @@ constexpr LongOption kLongOptions[] = {
      &RuntimeConfig::mcp_schema_bytes, 1024, kAnyMax},
     {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes,
      1024, kAnyMax},
+    {"UAGENT_MEMORY_ALWAYS_BYTES", "memory_always_bytes",
+     &RuntimeConfig::memory_always_bytes, 0, 64 * 1024},
     {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
      &RuntimeConfig::project_doc_bytes, 0, kAnyMax},
     {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",

@@ -257,6 +257,13 @@ void ResetRouteCapabilities(Api& api) {
       CapabilitiesForRoute(api.capabilities.protocol, api.base_url);
 }
 
+void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
+  if (!selection.variant.empty()) {
+    api.config.openrouter_variant = selection.variant;
+  }
+  if (!selection.effort.empty()) api.reasoning_effort = selection.effort;
+}
+
 }  // namespace
 
 SideRoute ResolveSideRoute(const Api& api,
@@ -333,12 +340,11 @@ std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers) {
   // CatalogModel strips a routing variant the request appends, so the suffixes
   // are added once and in schema order.
-  return ComposeSelection(ProviderScope(api.base_url, providers),
-                          api.CatalogModel(),
-                          api.capabilities.model_variants
-                              ? api.config.openrouter_variant
-                              : std::string(),
-                          api.reasoning_effort);
+  return ComposeSelection(
+      ProviderScope(api.base_url, providers), api.CatalogModel(),
+      api.capabilities.model_variants ? api.config.openrouter_variant
+                                      : std::string(),
+      api.reasoning_effort);
 }
 
 std::string RouteSelection(const SideRoute& route,
@@ -365,7 +371,8 @@ void ActivateRoute(Api& api) {
 ProviderSetup ConfigureProvider(Api& api) {
   api.base_url = StripTrailingSlashes(EnvStr("UAGENT_BASE_URL"));
   api.api_key = EnvStr("UAGENT_API_KEY", "sk-noop");
-  api.model = EnvStr("UAGENT_MODEL");
+  ModelSelection requested = ParseModelSelection(EnvStr("UAGENT_MODEL"));
+  api.model = requested.base;
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
   api.ctx_window = ContextWindow();
   std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
@@ -386,10 +393,12 @@ ProviderSetup ConfigureProvider(Api& api) {
     ApplyRoute(api, *route);
   } else if (api.model.empty()) {  // no explicit model: restore the last /model
     ModelPreference preference = LoadModelPreference();
+    ModelSelection preferred = ParseModelSelection(preference.selection);
     if (preference.route) {
       if (std::optional<ModelRoute> route = ResolveModelRoute(
-              setup.routes, setup.providers, preference.selection)) {
+              setup.routes, setup.providers, preferred.base)) {
         ApplyRoute(api, *route);
+        ApplySelectionPolicy(api, preferred);
       }
     } else if (!preference.selection.empty()) {
       bool same_provider = api.base_url == preference.base_url;
@@ -398,9 +407,16 @@ ProviderSetup ConfigureProvider(Api& api) {
             FindProviderTemplateForUrl(preference.base_url);
         same_provider = provider && !EnvStr(provider->api_key_env).empty();
       }
-      if (same_provider) api.model = preference.selection;
+      if (same_provider) {
+        api.model = preferred.base;
+        ApplySelectionPolicy(api, preferred);
+      }
     }
   }
+  // Command-line/config suffixes are the most specific route policy. Apply
+  // them after a named route so they override its defaults without becoming
+  // part of the model ID sent to an OpenAI-compatible endpoint.
+  ApplySelectionPolicy(api, requested);
   if (api.base_url.empty()) {
     for (const ProviderTemplate& provider : kProviderTemplates) {
       if (ApplyProviderTemplate(api, provider)) {
@@ -425,17 +441,22 @@ bool CanUseRawModel(const Api& api, std::string_view name) {
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                         const std::vector<NamedProvider>& providers,
                         const std::string& name) {
+  ModelSelection selection = ParseModelSelection(name);
+  std::string selected = selection.base;
   if (std::optional<ModelRoute> route =
-          ResolveModelRoute(routes, providers, name)) {
+          ResolveModelRoute(routes, providers, selection.base)) {
     ApplyRoute(api, *route);
-    return route->name;
+    selected = route->name;
+  } else if (CanUseRawModel(api, selection.base)) {
+    if (api.model != selection.base) {
+      api.model = selection.base;
+      api.ctx_window = 0;
+    }
+  } else {
+    return "";
   }
-  if (!CanUseRawModel(api, name)) return "";
-  if (api.model != name) {
-    api.model = name;
-    api.ctx_window = 0;
-  }
-  return api.model;
+  ApplySelectionPolicy(api, selection);
+  return ComposeSelection("", selected, selection.variant, selection.effort);
 }
 
 int64_t CatalogContextLength(const json& model) {

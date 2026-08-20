@@ -58,6 +58,10 @@ using InteractiveReadHandler = std::function<std::string(
 void SetInteractiveReadHandler(InteractiveReadHandler handler);
 
 std::string InputPrompt(const char* label = "");
+// One echoed user turn, banded to the right edge. `text` is already display-
+// ready: callers differ in how they sanitize it, and the composer's mapping of
+// newlines to a glyph is what keeps the echo on the rows it drew.
+std::string UserEchoRow(const std::string& prompt, const std::string& text);
 std::string ReadInputLine(const std::string& prompt, bool* eof,
                           bool keep_history = true,
                           const std::string& initial = "");

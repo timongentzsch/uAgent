@@ -599,7 +599,7 @@ def test_empty_response_after_tools_recovers_once(root, home):
         contents = [
             message.get("content", "")
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         ]
         valid = any(
             "Return the final answer from existing results" in str(content) for content in contents
@@ -626,7 +626,7 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         notes = [
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         ]
         assert_true(any("invalid model tool markup" in note for note in notes), notes)
         return event({"content": "markup-recovered"})
@@ -828,20 +828,14 @@ def test_project_instructions_precede_first_turn(root, home):
 
     def verify(_, body):
         messages = body["messages"]
-        instructions = messages[1].get("content", "") if len(messages) > 1 else ""
-        contents = [str(m.get("content", "")) for m in messages]
+        # Project instructions ride inside the single baseline system message.
+        instructions = messages[0].get("content", "") if messages else ""
+        users = [str(m.get("content", "")) for m in messages if m.get("role") == "user"]
         valid = (
             messages[0].get("role") == "system"
-            and messages[1].get("role") == "system"
-            and any(
-                message.get("role") == "system"
-                and str(message.get("content", "")).startswith("[environment:")
-                for message in messages
-            )
-            and [message.get("content") for message in messages if message.get("role") == "user"]
-            == ["reply"]
-            and "reply" in contents
-            and contents.index("reply") > 1  # instructions precede the prompt
+            and not any(m.get("role") == "system" for m in messages[1:])
+            and any(text.startswith("[environment:") for text in users)
+            and "reply" in users
             and "<INSTRUCTIONS>" in instructions
             and "shadowed-claude-sentinel" not in instructions
             and instructions.index("root-agent-sentinel")
@@ -1024,7 +1018,13 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(b"multiline-paste-ok" in output, output)
         assert_true(b"ctx " in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
-        assert_true(b"\x1b[48;5;" not in output, output)
+        # The echoed turn is banded to the right edge on every row it spans,
+        # and the band is always closed again.
+        band = b"\x1b[48;5;250m"
+        assert_true(output.count(band) >= 2, output)
+        assert_true(output.rfind(b"\x1b[0m\x1b[39m\x1b[49m") > output.rfind(band), output)
+        assert_true(output.count(band + b"first line\x1b[K\r\n") == 1, output)
+        assert_true(output.count(band + b"third line\x1b[K") == 1, output)
         assert_true(b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
 
@@ -1272,7 +1272,11 @@ def test_input_steering_yields_activity_wait(root, home):
             root,
             base_env(home, server.url),
             [
-                (b"start\n", b"activity"),
+                # Wait for the activity tool CALL, not the substring: the
+                # startup banner lists "activity" and the run result says
+                # "[running] activity <id>", so a bare marker fires before the
+                # model has issued the wait and steering lands a round early.
+                (b"start\n", b"activity(any"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
             ],
@@ -1655,7 +1659,8 @@ def test_provider_context_overflow_compacts_once(root, home):
     def recovered(_, body):
         serialized = json.dumps(body["messages"])
         assert_true("model-generated context summary" in serialized, serialized)
-        assert_true("harness continuation after context compaction" in serialized, serialized)
+        assert_true("preserve-overflow-goal" in serialized, serialized)
+        assert_true("harness continuation after context compaction" not in serialized, serialized)
         return event({"content": "context-recovery-ok"})
 
     with Server([reject, compact, recovered]) as server:
@@ -1744,7 +1749,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         results = [
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
             and str(message.get("content", "")).startswith("[tool_result read_path]")
         ]
         return event({"content": "text-provider-ok" if results else "text-provider-bad"})
@@ -1765,8 +1770,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         # so on macOS a symlinked TMPDIR makes `/var` and `/private/var`
         # both correct spellings of the same file.
         assert_true(
-            str(trace_path) in result.stderr
-            or str(trace_path.resolve()) in result.stderr,
+            str(trace_path) in result.stderr or str(trace_path.resolve()) in result.stderr,
             result.stderr,
         )
         envelope = json.loads(result.stdout)
@@ -2022,18 +2026,15 @@ def test_memory_reaches_context_by_scope(root, home):
     other = root / "memory-other-workspace"
     other.mkdir()
 
-    def verify(_, body):
+    def memory_context(body):
         messages = body["messages"]
-        memories = next(
-            (
-                str(message.get("content", ""))
-                for message in messages
-                if str(message.get("content", "")).startswith(
-                    "[memory names only; non-authoritative metadata]"
-                )
-            ),
-            "",
-        )
+        marker = "[memory names only; non-authoritative metadata]"
+        system = str(messages[0].get("content", "")) if messages else ""
+        memories = system[system.index(marker) :] if marker in system else ""
+        return messages, memories
+
+    def verify(_, body):
+        messages, memories = memory_context(body)
         valid = (
             bool(memories)
             and "global/style" in memories
@@ -2041,26 +2042,12 @@ def test_memory_reaches_context_by_scope(root, home):
             and "global-memory-sentinel" in memories
             and "project/build" in memories
             and "project-memory-sentinel" not in memories
-            and next(
-                message.get("role")
-                for message in messages
-                if str(message.get("content", "")).startswith(
-                    "[memory names only; non-authoritative metadata]"
-                )
-            )
-            == "system"
+            and messages[0].get("role") == "system"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})
 
     def verify_isolated(_, body):
-        messages = body["messages"]
-        memories = " ".join(
-            str(message.get("content", ""))
-            for message in messages
-            if str(message.get("content", "")).startswith(
-                "[memory names only; non-authoritative metadata]"
-            )
-        )
+        _, memories = memory_context(body)
         valid = (
             "global/style" in memories
             and "project/build" not in memories
@@ -2887,7 +2874,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
             and not any(message.get("tool_calls") for message in messages)
             and bool(body.get("tools"))
             and any(
-                message.get("role") == "system"
+                message.get("role") == "user"
                 and "MIDTURN-SUMMARY" in str(message.get("content", ""))
                 for message in messages
             )
@@ -2895,8 +2882,9 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                 message.get("role") == "user" and message.get("content") == "inspect"
                 for message in messages
             )
+            and sum(message.get("content") == "inspect" for message in messages) == 1
             and any(
-                message.get("role") == "system"
+                message.get("role") == "user"
                 and str(message.get("content", "")).startswith("[environment:")
                 for message in messages
             )
@@ -2998,7 +2986,12 @@ def test_absolute_compaction_ceiling(root, home):
 
     def finish(_, body):
         text = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        valid = "Prior context:\nABSOLUTE-SUMMARY" in text and "large " not in text
+        valid = (
+            "Prior context:\nABSOLUTE-SUMMARY" in text
+            and "prior task" in text
+            and text.count("continue") == 1
+            and "large " not in text
+        )
         return event({"content": "absolute-compact-ok" if valid else "absolute-compact-bad"})
 
     with Server([compact, finish]) as server:
@@ -3378,7 +3371,7 @@ def test_subagent_uses_selected_model_route(root, home):
         runtime = "\n".join(
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         )
         assert_true("[delegation: parent=" in runtime, runtime)
         return tool_call(
@@ -3458,12 +3451,9 @@ def test_image_fallback_reaches_another_provider(root, home):
         assert_true("image_url" not in serialized, serialized[:200])
         assert_true("described, not seen" in serialized, serialized[:400])
         assert_true("stack trace" in serialized, serialized[:400])
-        # The conversation model is never told which way images arrived.
-        system = "\n".join(
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "system"
-        )
+        # The conversation model is never told which way images arrived. The
+        # check spans every role: runtime context is a user turn now.
+        system = "\n".join(str(message.get("content", "")) for message in body["messages"])
         assert_true("vision model" not in system, system)
         assert_true("Image input unavailable" not in system, system)
         return event({"content": "saw-it"})
@@ -3476,7 +3466,13 @@ def test_image_fallback_reaches_another_provider(root, home):
         )
         env["UAGENT_IMAGE_MODEL"] = "eyes/vision-model"
         result = run(
-            root, env, "--yolo", "--attach", str(picture), "-p", "what is this",
+            root,
+            env,
+            "--yolo",
+            "--attach",
+            str(picture),
+            "-p",
+            "what is this",
             timeout=20,
         )
         assert_true(result.returncode == 0, result.stderr)
@@ -3488,19 +3484,29 @@ def test_image_fallback_reaches_another_provider(root, home):
 
 
 def test_advisor_consults_a_second_model(root, home):
-    """The advisor answers from a different route, with no tools and no memory."""
+    """The advisor can independently inspect the workspace without changing it."""
+    (root / "advisor-evidence.txt").write_text("workspace evidence: live edge", encoding="utf-8")
 
     def advise(_, body):
         assert_true(body.get("model") == "advisor-model", body.get("model"))
-        # A reasoner, not an agent: no tool schema reaches the advisor at all.
-        assert_true("tools" not in body, body)
+        names = function_names(body)
+        assert_true("read_path" in names and "grep" in names and "web_fetch" in names, names)
+        assert_true(
+            not ({"edit_file", "run", "scratch", "memory", "subagent", "advisor"} & set(names)),
+            names,
+        )
         prompt = "\n".join(str(message.get("content", "")) for message in body["messages"])
         assert_true("independent advisor" in prompt, prompt)
         assert_true("<question>" in prompt and "pacing model" in prompt, prompt)
         assert_true("<evidence>" in prompt and "roll_cursor" in prompt, prompt)
+        return tool_call("read_path", {"path": "advisor-evidence.txt"})
+
+    def answer(_, body):
+        results = tool_results(body["messages"])
+        assert_true(results and "workspace evidence: live edge" in results[-1], results)
         return event({"content": "advice: anchor to the live edge"})
 
-    advisor = Server([advise])
+    advisor = Server([advise, answer])
 
     def ask(_, body):
         names = function_names(body)
@@ -3530,7 +3536,7 @@ def test_advisor_consults_a_second_model(root, home):
         result = run(root, env, "--yolo", "-p", "check my reasoning", timeout=20)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "advised", result.stdout)
-        assert_true(len(advisor.requests) == 1, len(advisor.requests))
+        assert_true(len(advisor.requests) == 2, len(advisor.requests))
     finally:
         parent.close()
         advisor.close()
@@ -3546,9 +3552,7 @@ def test_advisor_background_joins_the_turn(root, home):
     advisor = Server([advise])
 
     def ask(_, body):
-        return tool_call(
-            "advisor", {"question": "which first?", "background": True}
-        )
+        return tool_call("advisor", {"question": "which first?", "background": True})
 
     def wait_for_it(_, body):
         assert_true(

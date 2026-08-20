@@ -2,9 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_ADVISOR_H_
 #define UAGENT_INCLUDE_TOOLS_ADVISOR_H_
-// A second opinion from a different model. The advisor is a subagent with no
-// tools and no memory: it reasons only about the question and the evidence the
-// caller hands it, so its answer is independent of this session's state.
+// A second opinion from a different model. The advisor has read-only workspace
+// and external tools but no conversation or memory, so it can verify the
+// question without changing the project or inheriting this session's state.
 
 #include <string>
 #include <vector>

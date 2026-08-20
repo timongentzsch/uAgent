@@ -155,6 +155,7 @@ class ProcessSupervisor {
   friend class ActivityReservation;
   std::optional<int64_t> CommitReservation(BgJob job);
   void ReleaseReservation();
+  std::optional<BgJob> TakeForegroundLocked(pid_t pid);
   void AssignId(BgJob& job);
   size_t IndexOfLocked(int64_t id) const;
   size_t RetainedIndexOfLocked(int64_t id) const;

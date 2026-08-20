@@ -171,8 +171,8 @@ jobs:
         with:
           version: "0.11.28"
           enable-cache: true
-      - run: uv run --frozen ruff check tests
-      - run: uv run --frozen ruff format --check tests
+      - run: uv run --frozen ruff check tests benchmarks
+      - run: uv run --frozen ruff format --check tests benchmarks
 
   cpp-style:
     runs-on: ubuntu-24.04

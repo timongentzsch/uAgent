@@ -301,7 +301,11 @@ json Agent::CompactionMessages() const {
       continue;
     }
     if (kind == MessageKind::kInternal) {
-      append("HARNESS: ", std::move(content), kEvidenceBytes);
+      constexpr std::string_view kPriorSummary =
+          "[model-generated context summary; non-authoritative]";
+      bool prior_summary = content.starts_with(kPriorSummary);
+      append(prior_summary ? "PRIOR SUMMARY: " : "HARNESS: ",
+             std::move(content), prior_summary ? kProseBytes : kEvidenceBytes);
     }
   }
 
@@ -319,19 +323,60 @@ json Agent::CompactionMessages() const {
   return messages;
 }
 
+json Agent::CompactionUserMessages() const {
+  // A summary is lossy by definition. Keep recent real user instructions as
+  // an independent source of truth, while bounding them to a small fraction
+  // of the next context. Codex uses the same summary-plus-user-message shape.
+  size_t cap = 80 * 1024;
+  if (api_.ctx_window > 0) {
+    size_t route_cap = static_cast<size_t>(api_.ctx_window) / 2;
+    cap = std::min(cap, std::max(size_t{4 * 1024}, route_cap));
+  }
+
+  std::vector<std::string> newest_first;
+  size_t remaining = cap;
+  for (size_t index = conversation_.Size(); index > BaselineSize(); --index) {
+    if (conversation_.KindAt(index - 1) != MessageKind::kUser) continue;
+    const json& message = conversation_.At(index - 1);
+    const std::string* content = JsonStringRef(message, "content");
+    if (!content) continue;
+    if (content->size() <= remaining) {
+      newest_first.push_back(*content);
+      remaining -= content->size();
+      continue;
+    }
+    if (newest_first.empty() && remaining > 0) {
+      HeadTailBuffer bounded(remaining);
+      bounded.Push(*content);
+      newest_first.push_back(bounded.Snapshot());
+    }
+    break;
+  }
+
+  json retained = json::array();
+  for (auto message = newest_first.rbegin(); message != newest_first.rend();
+       ++message) {
+    retained.push_back({{"role", "user"}, {"content", *message}});
+  }
+  return retained;
+}
+
 bool Agent::Compact(bool automatic, Usage* turn_usage) {
   if (MessageCount() < 2) {
     DebugLog("compact_skip", {{"reason", "empty"}, {"automatic", automatic}});
-    printf("%s· nothing to compact%s\n", DIM(), RST());
+    Emit(NoticeEvent(PresentationStatus::kNeutral, "· nothing to compact"));
     return false;
   }
   DebugLog("compact_start", {{"automatic", automatic},
                              {"messages", conversation_.Size()},
                              {"context_tokens", ContextUsed()}});
-  printf("%s· %scompacting…%s\n", DIM(), automatic ? "auto-" : "", RST());
+  Emit(NoticeEvent(
+      PresentationStatus::kNeutral,
+      std::string("· ") + (automatic ? "auto-" : "") + "compacting…"));
   size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
   size_t baseline_bytes = JsonEstimatedBytes(BaselineMessages());
   json compact_messages = CompactionMessages();
+  json retained_users = CompactionUserMessages();
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
   ChatResult r = Chat("compact", -1, json::array(), false, &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
@@ -351,15 +396,21 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
                              {"error", r.error},
                              {"projected_bytes", projected_bytes}});
     if (!r.error.empty()) {
-      printf("%s%s%s\n", RED(), TerminalSafe(r.error).c_str(), RST());
+      Emit(NoticeEvent(PresentationStatus::kFailed, r.error));
     } else {
-      printf("%s· compaction rejected; context unchanged%s\n", DIM(), RST());
+      Emit(NoticeEvent(PresentationStatus::kNeutral,
+                       "· compaction rejected; context unchanged"));
     }
     return false;
   }
   PruneAttachments(BaselineSize());
   ArchiveAll(automatic ? "auto_compact" : "manual_compact");
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
+  conversation_.Push(HarnessMessage(RuntimeContextText()),
+                     MessageKind::kRuntimeContext);
+  for (json& message : retained_users) {
+    conversation_.Push(std::move(message), MessageKind::kUser);
+  }
   conversation_.Push(
       {{"role", "assistant"},
        {"content",
@@ -371,8 +422,10 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},
                            {"projected_bytes", projected_bytes},
+                           {"retained_user_messages", retained_users.size()},
                            {"summary_chars", r.content.size()}});
-  printf("\n%s· compacted%s\n", DIM(), RST());
+  printf("\n");
+  Emit(NoticeEvent(PresentationStatus::kNeutral, "· compacted"));
   return true;
 }
 
@@ -475,14 +528,13 @@ bool Agent::DrainBackground() {
       } else if (event.action == "receipt_unavailable") {
         label = "extraction complete · receipt unavailable";
       }
-      printf("%s%s memory %s", warning ? RED() : DIM(), mark,
-             TerminalSafe(label).c_str());
-      if (!event.key.empty()) {
-        printf(" · %s", TerminalSafe(event.key).c_str());
-      }
-      printf("%s\n", RST());
+      std::string line = std::string(mark) + " memory " + label;
+      if (!event.key.empty()) line += " · " + event.key;
+      Emit(NoticeEvent(
+          warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
+          std::move(line)));
       if (!event.preview.empty()) {
-        printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
+        Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview));
       }
     }
     DebugLog("memory_extract_finished",
@@ -503,8 +555,9 @@ bool Agent::DrainBackground() {
     for (const BackgroundCompletion& completion : completions) {
       size_t running = processes_.Count();
       std::string header = BgResultHeader(completion);
-      printf("%s· bg job finished %s · %zu still running%s\n", DIM(),
-             TerminalSafe(header).c_str(), running, RST());
+      Emit(NoticeEvent(PresentationStatus::kNeutral,
+                       "· bg job finished " + header + " · " +
+                           std::to_string(running) + " still running"));
 
       PresentationRecord record;
       record.kind = PresentationKind::kToolResult;
@@ -512,11 +565,10 @@ bool Agent::DrainBackground() {
           WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0
               ? PresentationStatus::kSucceeded
               : PresentationStatus::kFailed;
-      record.title =
-          (completion.kind == ActivityKind::kSubagent
-               ? completion.kind_label + " "
-               : std::string("activity ")) +
-          std::to_string(completion.activity_id);
+      record.title = (completion.kind == ActivityKind::kSubagent
+                          ? completion.kind_label + " "
+                          : std::string("activity ")) +
+                     std::to_string(completion.activity_id);
       record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
       Event display{
           EventId::kActivityCompleted,

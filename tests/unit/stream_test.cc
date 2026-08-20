@@ -324,8 +324,7 @@ void TestBackgroundValidation() {
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
-  for (const char* name :
-       {"read_path", "grep", "run", "activity"}) {
+  for (const char* name : {"read_path", "grep", "run", "activity"}) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parallel_safe);
     if (tool) {

@@ -164,8 +164,9 @@ and 12 KiB per batch, without triggering a turn.
 
 Use `subagent(background=false)` when the next step requires the child result;
 background children notify the agent automatically on exit. The `advisor`
-tool is the same mechanism with no tools and no memory: it asks a second
-model for an independent opinion and defaults to foreground. `activity(wait_ms,
+tool is the same mechanism with no memory and a read-only inspection/external
+toolset: it asks a second model for an independently verified opinion and
+defaults to foreground. `activity(wait_ms,
 mode)` is an intentional join when no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
 group and removes its records and logs. Persistent TUI and headless runs

@@ -4,11 +4,13 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/api/citations.h"
+#include "include/api/retry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/signals.h"
@@ -78,8 +80,8 @@ WebSearchRoute SelectWebSearchRoute(
   std::optional<ModelRoute> selected;
   if (selection.base.find('/') != std::string::npos) {
     ProviderCatalog catalog = SessionProviderCatalog();
-    selected = ResolveModelRoute(catalog.models, catalog.providers,
-                                 selection.base);
+    selected =
+        ResolveModelRoute(catalog.models, catalog.providers, selection.base);
   }
   auto with_model = [&](WebSearchRoute route) {
     if (!selection.base.empty() && !selected) route.model = selection.base;
@@ -105,34 +107,32 @@ WebSearchRoute SelectWebSearchRoute(
     std::string model = backend == WebSearchBackend::kOpenRouter
                             ? EnvStr("OPENROUTER_MODEL", "openrouter/auto")
                             : EnvStr("OPENAI_MODEL", "gpt-5.6");
-    candidates.push_back(with_model({backend, std::move(url),
-                                     config.web_search_api_key,
-                                     std::move(model), std::string()}));
+    candidates.push_back(
+        with_model({backend, std::move(url), config.web_search_api_key,
+                    std::move(model), std::string()}));
   }
   if (!api.base_url.empty() && !api.api_key.empty() &&
       api.capabilities.search_protocol != SearchProtocol::kNone) {
-    candidates.push_back(with_model(
-        {backend_for(api.capabilities.protocol, api.base_url), api.base_url,
-         api.api_key, api.model, std::string()}));
+    candidates.push_back(
+        with_model({backend_for(api.capabilities.protocol, api.base_url),
+                    api.base_url, api.api_key, api.model, std::string()}));
   }
   for (SearchProtocol protocol :
        {SearchProtocol::kResponses, SearchProtocol::kOpenRouter}) {
     const NamedProvider* provider = find_provider(protocol);
     if (!provider) continue;
-    candidates.push_back(with_model(
-        {backend_for(provider->protocol, provider->base_url),
-         provider->base_url, provider->api_key,
-         protocol == SearchProtocol::kOpenRouter
-             ? EnvStr("OPENROUTER_MODEL", "openrouter/auto")
-             : EnvStr("OPENAI_MODEL", "gpt-5.6"),
-         std::string()}));
+    candidates.push_back(
+        with_model({backend_for(provider->protocol, provider->base_url),
+                    provider->base_url, provider->api_key,
+                    protocol == SearchProtocol::kOpenRouter
+                        ? EnvStr("OPENROUTER_MODEL", "openrouter/auto")
+                        : EnvStr("OPENAI_MODEL", "gpt-5.6"),
+                    std::string()}));
   }
   if (std::string key = EnvStr("OPENAI_API_KEY"); !key.empty()) {
-    candidates.push_back(with_model({WebSearchBackend::kResponses,
-                                     "https://api.openai.com/v1",
-                                     std::move(key),
-                                     EnvStr("OPENAI_MODEL", "gpt-5.6"),
-                                     std::string()}));
+    candidates.push_back(with_model(
+        {WebSearchBackend::kResponses, "https://api.openai.com/v1",
+         std::move(key), EnvStr("OPENAI_MODEL", "gpt-5.6"), std::string()}));
   }
 
   for (WebSearchRoute& candidate : candidates) {
@@ -289,7 +289,7 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
         Api side(api.config);
         side.base_url = active.base_url;
         side.api_key = active.api_key;
-        JsonResponse response = side.Post(path, body, timeout);
+        JsonResponse response = side.Post(path, body, timeout, kSideAttempts);
         DebugLog("side_response",
                  {{"kind", "web_search"},
                   {"duration_ms", ElapsedMs(started)},
@@ -322,9 +322,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
           const std::string& effort = active.effort.empty()
                                           ? api.config.web_search_effort
                                           : active.effort;
-          usage.Add(RouteKey(active.base_url, "web_search", active.model,
-                             effort),
-                    normalized);
+          usage.Add(
+              RouteKey(active.base_url, "web_search", active.model, effort),
+              normalized);
         }
         if (!result.text.empty()) {
           std::string evidence = CitationEvidence(result.annotations);
@@ -380,7 +380,12 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
   t.parallel_safe = true;
   t.parameters["properties"]["queries"]["maxItems"] =
       std::min<int64_t>(4, api.config.web_search_max_uses);
-  t.timeout_s = api.config.web_search_timeout_s;
+  // The configured budget is per attempt (see Api::Post); the tool deadline
+  // has to cover the retries or it would cancel the call mid-recovery.
+  int64_t budget = api.config.web_search_timeout_s;
+  t.timeout_s = budget > std::numeric_limits<int64_t>::max() / kSideAttempts
+                    ? std::numeric_limits<int64_t>::max()
+                    : budget * kSideAttempts;
   t.max_calls_per_turn = api.config.web_search_calls;
   return t;
 }

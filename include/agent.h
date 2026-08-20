@@ -161,6 +161,7 @@ class Agent {
                   bool render_output = true,
                   const json* request_messages = nullptr);
   json CompactionMessages() const;
+  json CompactionUserMessages() const;
 
   size_t RequestContextBytes(size_t schema_bytes) const;
   int64_t SnapshotContext(size_t schema_bytes) const;
@@ -177,7 +178,6 @@ class Agent {
   };
 
   MidturnCompact MaybeCompactDuringTurn(const json& available_schemas,
-                                        const std::string& active_prompt,
                                         Usage& usage, size_t& turn_start);
 
   // Encoded attachment bytes are never durable conversation state, including
@@ -199,6 +199,7 @@ class Agent {
 
   std::string SystemPrompt() const;
   void RefreshSystemMessage();
+  std::string RuntimeContextText() const;
 
   // Message 0 is the one place the system shape is defined. Always rebuilt
   // rather than restored, so it tracks the current tools/protocol (see load()).
@@ -208,8 +209,8 @@ class Agent {
   // Append environment state only when it changes. This preserves every prior
   // request byte for provider caching without repeating cwd metadata each turn.
 
-  json ProjectInstructionMsg() const;
-  json MemoryMsg() const;
+  std::string ProjectInstructionText() const;
+  std::string MemoryText() const;
 
   size_t BaselineSize() const;
 

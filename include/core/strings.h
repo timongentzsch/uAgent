@@ -84,6 +84,13 @@ std::string TerminalSafe(std::string_view s);
 std::string FmtCount(int64_t n);
 std::string FmtCost(double cost);
 
+// Elapsed time in whatever unit keeps it readable at that magnitude:
+// "840ms", "2.4s", "41m 1s", "1h 12m", "2d 3h".
+std::string FmtDuration(double seconds);
+
+// Byte count with a binary unit: "512 B", "1.4 KB", "2.3 MB".
+std::string FmtBytes(int64_t bytes);
+
 // coarse "how long ago", for the session picker
 std::string FmtAgo(int64_t seconds);
 int64_t TerminalColumns();

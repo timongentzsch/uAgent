@@ -19,8 +19,6 @@
 namespace uagent {
 namespace {
 
-constexpr int64_t kSessionFormat = 3;
-
 SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
 }
@@ -50,18 +48,25 @@ bool ValidState(const json& value) {
 }
 
 bool ValidHeader(const json& header) {
-  return header.is_object() && header.contains("cwd") &&
-         header["cwd"].is_string() && header.contains("model") &&
-         header["model"].is_string() && header.contains("session_id") &&
-         header["session_id"].is_string() && header.contains("turns") &&
-         header["turns"].is_number_integer() && header.contains("title") &&
-         header["title"].is_string();
+  return header.is_object() && header.contains(kSessionHeaderCwd) &&
+         header[kSessionHeaderCwd].is_string() &&
+         header.contains(kSessionHeaderModel) &&
+         header[kSessionHeaderModel].is_string() &&
+         header.contains(kSessionHeaderSessionId) &&
+         header[kSessionHeaderSessionId].is_string() &&
+         header.contains(kSessionHeaderTurns) &&
+         header[kSessionHeaderTurns].is_number_integer() &&
+         header.contains(kSessionHeaderTitle) &&
+         header[kSessionHeaderTitle].is_string();
 }
 
 json HeaderJson(const SessionMetadata& metadata) {
-  return {{"format", kSessionFormat}, {"cwd", metadata.cwd},
-          {"model", metadata.model},  {"session_id", metadata.session_id},
-          {"turns", metadata.turns},  {"title", metadata.title}};
+  return {{"format", kSessionFormat},
+          {kSessionHeaderCwd, metadata.cwd},
+          {kSessionHeaderModel, metadata.model},
+          {kSessionHeaderSessionId, metadata.session_id},
+          {kSessionHeaderTurns, metadata.turns},
+          {kSessionHeaderTitle, metadata.title}};
 }
 
 json StateJson(const SessionState& state) {
@@ -130,7 +135,7 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   std::error_code saved_error;
   std::error_code expected_error;
   std::filesystem::path saved = std::filesystem::weakly_canonical(
-      header["cwd"].get<std::string>(), saved_error);
+      header[kSessionHeaderCwd].get<std::string>(), saved_error);
   std::filesystem::path expected =
       std::filesystem::weakly_canonical(expected_cwd, expected_error);
   if (saved_error || expected_error) {
@@ -160,11 +165,12 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   }
 
   SessionRecord record;
-  record.metadata.cwd = header["cwd"].get<std::string>();
-  record.metadata.model = header["model"].get<std::string>();
-  record.metadata.session_id = header["session_id"].get<std::string>();
-  record.metadata.turns = header["turns"].get<int64_t>();
-  record.metadata.title = header["title"].get<std::string>();
+  record.metadata.cwd = header[kSessionHeaderCwd].get<std::string>();
+  record.metadata.model = header[kSessionHeaderModel].get<std::string>();
+  record.metadata.session_id =
+      header[kSessionHeaderSessionId].get<std::string>();
+  record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
+  record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);

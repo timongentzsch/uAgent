@@ -16,11 +16,11 @@ namespace {
 // One table drives both parsing and `--help`, so a flag cannot be accepted
 // without being documented or documented without being accepted.
 enum class FlagKind {
-  kToggle,   // sets a bool on Options
-  kConfig,   // takes a value, forwarded to the config layer as `key`
-  kBudget,   // takes a validated dollar amount
-  kPrompt,   // takes the headless prompt
-  kAttach,   // takes a path, repeatable
+  kToggle,  // sets a bool on Options
+  kConfig,  // takes a value, forwarded to the config layer as `key`
+  kBudget,  // takes a validated dollar amount
+  kPrompt,  // takes the headless prompt
+  kAttach,  // takes a path, repeatable
   kVersion,
   kHelp,
 };
@@ -78,9 +78,9 @@ constexpr FlagSpec kFlags[] = {
 };
 
 const FlagSpec* FindFlag(std::string_view argument) {
-  auto found = std::find_if(
-      std::begin(kFlags), std::end(kFlags),
-      [&](const FlagSpec& spec) { return spec.flag == argument; });
+  auto found =
+      std::find_if(std::begin(kFlags), std::end(kFlags),
+                   [&](const FlagSpec& spec) { return spec.flag == argument; });
   return found == std::end(kFlags) ? nullptr : &*found;
 }
 

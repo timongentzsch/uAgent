@@ -5,6 +5,7 @@
 // Terminal rendering for the REPL: model/route listings and the status line.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -14,6 +15,7 @@
 
 #include "include/api.h"
 #include "include/cli.h"
+#include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
@@ -148,11 +150,10 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   // Drop the least valuable segment until the row fits; PrintStatusBar still
   // performs the final UTF-8-safe clipping.
   while (DisplayWidth(line) > TerminalWidth(1) && segments.size() > 1) {
-    auto victim = std::max_element(
-        segments.begin(), segments.end(),
-        [](const Segment& a, const Segment& b) {
-          return a.priority < b.priority;
-        });
+    auto victim = std::max_element(segments.begin(), segments.end(),
+                                   [](const Segment& a, const Segment& b) {
+                                     return a.priority < b.priority;
+                                   });
     if (victim->priority == 0) break;
     segments.erase(victim);
     line = join();
@@ -160,12 +161,88 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   return line;
 }
 
+// Transient work state for the pinned row while a turn runs. StatusBar owns
+// the idle row; this one animates, so it is handed the frame clock instead of
+// reading it — which is also what lets a test drive a frame without a turn.
+struct ActivityView {
+  std::chrono::steady_clock::duration elapsed{};
+  int64_t context_used = 0;
+  size_t background = 0;
+  size_t foreground = 0;
+  size_t queued = 0;
+  bool interrupting = false;
+};
+
+// The working row: spinner frame, activity label, and the same "drop what does
+// not fit" discipline as StatusBar, except here the label is what gets cut
+// because the counters on the right are the part that changes.
+inline std::string ActivityBar(const ActivityView& view) {
+  std::string seconds =
+      FmtDuration(std::chrono::duration<double>(view.elapsed).count());
+  std::string activity = CurrentTerminalActivity();
+  static constexpr auto kSpinnerInterval = std::chrono::milliseconds(100);
+  static constexpr const char* kFrames[] = {"⠋", "⠙", "⠹", "⠸", "⠼",
+                                            "⠴", "⠦", "⠧", "⠇", "⠏"};
+  auto ticks =
+      std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed) /
+      kSpinnerInterval;
+  std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
+  prefix += " ";
+  std::string state = view.interrupting
+                          ? "interrupting"
+                          : (activity.empty() ? "working" : activity);
+  std::string suffix = " · " + seconds;
+  suffix += " · ctx " + FmtCount(view.context_used);
+  if (view.background > 0) suffix += " · bg:" + std::to_string(view.background);
+  if (view.foreground > 0) {
+    suffix += " · Ctrl+B background";
+    if (view.foreground > 1) {
+      suffix += " " + std::to_string(view.foreground) + " commands";
+    }
+  }
+  if (view.queued > 0) suffix += " · steer:" + std::to_string(view.queued);
+  size_t width = TerminalWidth(1);
+  if (SteeringEnabled()) {
+    std::string hint = " · Esc interrupt";
+    // A rolling ticker always holds more text than fits, so it asks for
+    // the full cap instead of the width of its idle fallback label.
+    size_t desired = std::min<size_t>(
+        CurrentTerminalActivityRolling() ? 64 : DisplayWidth(state), 64);
+    size_t with_hint = DisplayWidth(prefix) + DisplayWidth(suffix) +
+                       DisplayWidth(hint) + desired;
+    if (with_hint <= width) suffix += hint;
+  }
+  size_t reserved = DisplayWidth(prefix) + DisplayWidth(suffix);
+  size_t activity_width = width > reserved ? width - reserved : 0;
+  if (CurrentTerminalActivityRolling()) {
+    // Rolling ticker: render a sliding window of the reasoning instead of
+    // the static fallback label so it animates with the status frame.
+    // ActivityLabel is a no-op while the window fits; on a terminal too
+    // narrow even for the ticker label it bounds the row as usual.
+    return prefix +
+           ActivityLabel(RenderCurrentTerminalActivity(activity_width),
+                         activity_width) +
+           suffix;
+  }
+  return prefix + ActivityLabel(state, activity_width) + suffix;
+}
+
 // The pinned status row: dim, clipped to the terminal, and cleared to the
 // right so a shorter line never leaves stale text behind.
-inline std::string StatusBarLine(const std::string& status) {
-  return std::string(RST()) + DIM() +
-         DisplayTrunc(TerminalSafe(status), TerminalWidth(1)) + "\033[K" +
-         RST();
+// Continuation rows a status row of `columns` display columns has been
+// rewrapped into by a terminal now `width` columns wide. Zero unless the
+// terminal has narrowed since the row was written.
+inline size_t StatusOverflowRows(size_t columns, size_t width) {
+  return columns > 0 && width > 0 ? (columns - 1) / width : 0;
+}
+
+// `columns` reports the width the row actually occupies, which the caller
+// needs to erase it again after a terminal that rewraps has resized.
+inline std::string StatusBarLine(const std::string& status,
+                                 size_t* columns = nullptr) {
+  std::string text = DisplayTrunc(TerminalSafe(status), TerminalWidth(1));
+  if (columns) *columns = DisplayWidth(text);
+  return std::string(RST()) + DIM() + text + "\033[K" + RST();
 }
 
 inline void PrintStatusBar(const std::string& status) {

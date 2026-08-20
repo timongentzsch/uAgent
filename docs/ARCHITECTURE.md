@@ -35,7 +35,13 @@ a service bus, service locator, or plugin system.
 | `include/core/` | configuration, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
-`Conversation` owns model-visible messages and the bounded archive. `Agent`
+`Conversation` owns model-visible messages and the bounded archive. It emits
+the OpenAI-standard role shape: exactly one `system` message, at index zero,
+carrying the system prompt plus project instructions and the memory index;
+every later harness injection (runtime context, advisories, text-protocol tool
+results) rides as a `user` turn, and native tool results keep `tool`. Strict
+chat templates reject a second `system` message outright, so `NormalizeRole` is
+the single place that decides this. `Agent`
 compares estimated/reported context against one threshold; providers and tools
 do not own conversation state. `ProcessSupervisor`,
 `McpRuntime`, and `UsageAccumulator` each own one class of external resource.
@@ -169,7 +175,13 @@ window. At projected 85% context pressure, including pending input and schemas,
 one tool-free model call summarizes a 256 KiB semantic head/tail projection—
 user and assistant prose plus summarized calls and bounded results—rather than
 bulky tool-protocol envelopes. History changes only after validation. Automatic
-pre-turn and at-most-once mid-turn compaction use the `/compact` path.
+pre-turn and at-most-once mid-turn compaction use the `/compact` path. The
+replacement context keeps recent real user messages independently of the
+model-generated summary (up to 80 KiB, reduced for small context windows),
+keeps a prior summary at prose rather than tool-evidence size, and reinjects
+current runtime context before the retained goal. This makes continuation less
+dependent on a perfect summary while staying well below the next compaction
+threshold.
 
 Structured context-overflow codes, proxy-wrapped canonical codes, and HTTP 413
 form a separate non-retryable class. With no streamed content, usage,
@@ -224,8 +236,13 @@ and is visible through `/context`.
 durability, and public projection. Terminal, JSONL, debug, and journal sinks
 are concrete direct owners; there is no runtime sink registration. Transient
 reasoning/answer deltas are rendered but never journaled. Turn, tool,
-capability, config, and session lifecycle events append bounded metadata to a
-private sidecar journal without entering model context.
+capability, config, notice, and session lifecycle events append bounded
+metadata to a private sidecar journal without entering model context.
+
+User-facing notices — interruptions, budget failures, compaction, degraded
+capability — are events, not prints. The agent loop owns no terminal: severity
+selects a color in the presenter and nothing else, so the same notice reaches
+the journal and the JSONL whether or not a terminal is attached.
 
 The API stream layer only decodes and assembles provider traffic. A terminal
 presenter owns Markdown, composer interaction, compact/verbose reasoning, and

@@ -445,6 +445,44 @@ std::string FmtCost(double cost) {
   return output.str();
 }
 
+std::string FmtDuration(double seconds) {
+  // Below a minute the decimal carries the signal; above it, a second unit
+  // reads better than a long float ("41m 1s", not "2461.0s").
+  if (!(seconds > 0)) return "0ms";
+  int64_t milliseconds = static_cast<int64_t>(seconds * 1000.0 + 0.5);
+  if (milliseconds < 1000) return std::to_string(milliseconds) + "ms";
+  if (seconds < 60.0) {
+    std::ostringstream output;
+    output << std::fixed << std::setprecision(1) << seconds << 's';
+    return output.str();
+  }
+  int64_t whole = static_cast<int64_t>(
+      std::min(seconds, static_cast<double>(int64_t{1} << 50)));
+  auto pair = [](int64_t major, const char* major_unit, int64_t minor,
+                 const char* minor_unit) {
+    std::string text = std::to_string(major) + major_unit;
+    if (minor > 0) text += ' ' + std::to_string(minor) + minor_unit;
+    return text;
+  };
+  if (whole >= 86400) return pair(whole / 86400, "d", whole / 3600 % 24, "h");
+  if (whole >= 3600) return pair(whole / 3600, "h", whole / 60 % 60, "m");
+  return pair(whole / 60, "m", whole % 60, "s");
+}
+
+std::string FmtBytes(int64_t bytes) {
+  if (bytes < 1024) return std::to_string(bytes) + " B";
+  static constexpr const char* kUnits[] = {"KB", "MB", "GB", "TB", "PB"};
+  size_t unit = 0;
+  double value = static_cast<double>(bytes) / 1024.0;
+  while (value >= 1024.0 && unit + 1 < std::size(kUnits)) {
+    value /= 1024.0;
+    ++unit;
+  }
+  std::ostringstream output;
+  output << std::fixed << std::setprecision(1) << value << ' ' << kUnits[unit];
+  return output.str();
+}
+
 std::string FmtAgo(int64_t seconds) {
   if (seconds < 60) return "just now";
   int64_t minutes = seconds / 60;

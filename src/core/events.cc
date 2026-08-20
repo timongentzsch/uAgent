@@ -9,6 +9,7 @@
 #include <iterator>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/core/fs.h"
 #include "include/core/strings.h"
@@ -54,6 +55,8 @@ constexpr EventPolicy kPolicies[] = {
      EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kResponseFinished, nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kNotice, "notice", "notice", "notice", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
     {EventId::kPresentation, nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
 };
@@ -92,8 +95,21 @@ const char* PresentationStatusName(PresentationStatus status) {
       return "failed";
     case PresentationStatus::kCancelled:
       return "cancelled";
+    case PresentationStatus::kWarned:
+      return "warned";
   }
   return "neutral";
+}
+
+void AddArtifacts(json& value,
+                  const std::vector<PresentationArtifact>& artifacts) {
+  if (artifacts.empty()) return;
+  value["artifacts"] = json::array();
+  for (const PresentationArtifact& artifact : artifacts) {
+    value["artifacts"].push_back({{"kind", artifact.kind},
+                                  {"path", artifact.path},
+                                  {"bytes", artifact.bytes}});
+  }
 }
 
 json PresentationJson(const PresentationRecord& record) {
@@ -104,14 +120,7 @@ json PresentationJson(const PresentationRecord& record) {
   if (!record.detail.empty()) {
     value["detail"] = Utf8Trunc(record.detail, size_t{4096});
   }
-  if (!record.artifacts.empty()) {
-    value["artifacts"] = json::array();
-    for (const PresentationArtifact& artifact : record.artifacts) {
-      value["artifacts"].push_back({{"kind", artifact.kind},
-                                    {"path", artifact.path},
-                                    {"bytes", artifact.bytes}});
-    }
-  }
+  AddArtifacts(value, record.artifacts);
   return value;
 }
 
@@ -119,14 +128,7 @@ json JournalPresentationJson(const PresentationRecord& record) {
   json value = {{"id", record.id},
                 {"title", record.title},
                 {"status", PresentationStatusName(record.status)}};
-  if (!record.artifacts.empty()) {
-    value["artifacts"] = json::array();
-    for (const PresentationArtifact& artifact : record.artifacts) {
-      value["artifacts"].push_back({{"kind", artifact.kind},
-                                    {"path", artifact.path},
-                                    {"bytes", artifact.bytes}});
-    }
-  }
+  AddArtifacts(value, record.artifacts);
   return value;
 }
 
@@ -315,6 +317,18 @@ bool Observability::StartDebug(const std::string& path) {
 bool Observability::StartJsonStream() {
   std::lock_guard<std::mutex> lock(mutex_);
   return json_.Start();
+}
+
+Event NoticeEvent(PresentationStatus status, std::string text) {
+  Event event{EventId::kNotice};
+  event.presentation = PresentationRecord{};
+  event.presentation->kind = PresentationKind::kNotice;
+  event.presentation->status = status;
+  event.presentation->title = text;
+  event.data = json{{"text", std::move(text)}};
+  // Notices printed unconditionally before this existed, including headless.
+  event.render = true;
+  return event;
 }
 
 void Observability::Emit(Event event) noexcept {

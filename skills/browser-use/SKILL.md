@@ -1,6 +1,6 @@
 ---
 name: browser-use
-description: Use token-efficient Playwright CLI browser automation for navigation, forms, screenshots, debugging, or repeatable web workflows.
+description: Use token-efficient Playwright CLI browser automation for navigation, forms, screenshots, debugging, or repeatable web workflows, and to read or verify a page web_search could not confirm (X, LinkedIn, logged-in or JS-rendered pages).
 requires-tools: run, attach
 ---
 
@@ -19,13 +19,32 @@ playwright-cli fill e22 "hello" --submit
 
 - Refs such as `e14` come from the latest snapshot. Refresh with `find` or a
   new snapshot after navigation, tab changes, or substantial DOM updates; never
-  reuse stale refs. Prefer `find` over capturing a whole page.
+  reuse stale refs — a stale one costs a five-second timeout, not an error.
+
+## Reading the page
+
+The CLI narrows the page for you. Capturing the whole tree and cutting it up
+with `grep`, `head` or `sed` costs many times the tokens and goes stale the
+moment the page moves — reach for these instead:
+
+```sh
+playwright-cli find "Add to cart"        # matching nodes, with context
+playwright-cli find --regex "/sign (in|up)/i"
+playwright-cli snapshot "#main"          # one subtree, by CSS selector
+playwright-cli snapshot e34              # one subtree, by ref
+playwright-cli snapshot --depth=4        # shallow map first, then descend
+playwright-cli eval "el => el.getAttribute('data-testid')" e5
+```
+
+Add `--raw` to any command to drop the page-status and generated-code wrapper
+and return the value alone — that, not a shell pipeline, is how to keep output
+small enough to reason about.
 
 ## Seeing the page
 
-A snapshot describes structure, not appearance. Take a screenshot **and open
-it** whenever any of these is true — this is normal practice, not a last
-resort:
+A snapshot describes structure, not appearance, and is far cheaper than an
+image. Take a screenshot **and open it** when structure genuinely cannot
+answer the question:
 
 - the snapshot is mostly `generic`, `banner` or unnamed nodes, so it says
   nothing about the page (common on dashboards, canvas and SPA apps);
@@ -62,6 +81,13 @@ mobile pages are lighter, so both snapshots and screenshots cost less.
 
 - Keep the daemon alive across related actions. Verify the state an action was
   meant to change rather than re-snapshotting everything.
+- Playwright waits for an element to be actionable on its own, so `sleep`
+  before a command buys nothing. When a page settles asynchronously, confirm it
+  with `find` for the text that should now exist instead of guessing a delay.
+- A page dialog blocks every later command until it is answered:
+  `playwright-cli dialog-accept` (optionally with text) or `dialog-dismiss`.
+- `attach` is capped per turn. Mark up one screenshot with `highlight` rather
+  than sending several near-identical ones.
 - Use `attach --cdp=chrome` (or `--cdp=URL`) when the user requests their
   running Chrome, then navigate with `goto`; `open` would launch a separate
   managed browser. `detach` afterwards so their browser stays open. Otherwise
@@ -89,5 +115,8 @@ mobile pages are lighter, so both snapshots and screenshots cost less.
   operations. Do not upload local files or expose cookies or storage unless the
   task explicitly requires it.
 
-If `playwright-cli` is unavailable, report the one-time official install:
-`npm install -g @playwright/cli@latest`.
+If `playwright-cli` is unavailable, do not abandon the task: tell the user it is
+a one-time install, recommend it, and — once they agree — run
+`npm install -g @playwright/cli@latest` yourself through `run`, then continue.
+No sudo; npm's own prefix is correct. If the CLI then reports a missing
+browser, follow the install command it prints rather than guessing one.

@@ -149,11 +149,12 @@ UAGENT_MODEL=local/fast
 | `UAGENT_WEB_SEARCH_BACKEND` | `auto` | search backend selection |
 | `UAGENT_WEB_SEARCH_URL` | empty | custom search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
+| `UAGENT_WEB_FETCH_BYTES` | 2 MiB | `web_fetch` download cap; a larger page is read to the cap and marked partial |
 | `UAGENT_WEB_SEARCH_MODEL` | empty | search model override |
 | `UAGENT_WEB_SEARCH_EFFORT` | empty | search reasoning effort |
 | `UAGENT_WEB_SEARCH_ENGINE` | `auto` | engine selection |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | empty | provider search context size |
-| `UAGENT_WEB_SEARCH_TIMEOUT` | 60 | search seconds |
+| `UAGENT_WEB_SEARCH_TIMEOUT` | 60 | seconds per search attempt; a transient failure is retried up to 3 times |
 | `UAGENT_WEB_SEARCH_MAX_TOKENS` | 1200 | search response tokens |
 | `UAGENT_WEB_SEARCH_CALLS` | 4 | `web_search` calls per turn |
 | `UAGENT_WEB_SEARCH_MAX_RESULTS` | 5 | results per search call, maximum 25 |

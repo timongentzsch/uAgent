@@ -232,17 +232,25 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
   if (FindTool(tools, "advisor")) {
     add("Consult the advisor, a different model, for a hard-to-reverse "
         "choice, a diagnosis that resisted a real attempt, or two genuinely "
-        "close approaches — not routine steps. It sees neither this "
-        "conversation nor the workspace: state the question in full, paste "
-        "the evidence, and weigh its answer against what you verified.");
+        "close approaches — not routine steps. It does not see this "
+        "conversation, but can inspect the workspace with read-only tools: "
+        "state the question in full, provide focusing evidence, and weigh its "
+        "answer against what you verified.");
   }
   if (FindTool(tools, "web_search")) {
     add("Use web_search directly for current or external facts; do not scrape "
-        "result pages with run.");
+        "result pages with run. When it cannot confirm a specific page, "
+        "escalate to an installed browser skill rather than reporting the "
+        "fact as unverifiable.");
     if (FindTool(tools, "subagent")) {
       add("Delegate research only for independent multi-step synthesis, not a "
           "single search, and require source-cited findings.");
     }
+  }
+  if (FindTool(tools, "web_fetch")) {
+    add("Read a named page with web_fetch instead of relying on someone's "
+        "summary of it. It returns text only, so a page behind a login or "
+        "built by scripting is the browser skill's job.");
   }
   if (FindTool(tools, "adapt_system")) {
     add("adapt_system revises the mutable part of this message — an "
@@ -263,6 +271,8 @@ inline std::string HostCapabilityPrompt(const std::vector<Tool>& tools) {
       "\n\n[HOST CAPABILITIES]\nThe current registry is authoritative: "
       "web_search=";
   prompt += FindTool(tools, "web_search") ? "available" : "unavailable";
+  prompt += "; web_fetch=";
+  prompt += FindTool(tools, "web_fetch") ? "available" : "unavailable";
   prompt += "; subagent=";
   prompt += FindTool(tools, "subagent") ? "available" : "unavailable";
   prompt += "; advisor=";

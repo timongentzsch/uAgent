@@ -514,8 +514,7 @@ void TestScopedBaseAndMemory() {
   // Untrusted, the project file is skipped entirely.
   unsetenv("UAGENT_MODEL");
   unsetenv("UAGENT_API_KEY");
-  ConfigManager untrusted =
-      ConfigManager::Capture(/*trust_project=*/false, {});
+  ConfigManager untrusted = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)untrusted.Initialize();
   CHECK(EnvStr("UAGENT_MODEL") == "global/model");
 

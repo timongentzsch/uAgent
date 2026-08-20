@@ -185,8 +185,10 @@ void TestFileTools() {
   // previews nothing.
   CHECK(read_tool && read_tool->run({{"path", external.string()}}, {})
                              .output.find("OUTSIDE_BODY") == std::string::npos);
-  CHECK(read_tool && read_tool->run({{"path", root.string()}}, {})
-                             .output.find("outside.cc") == std::string::npos);
+  CHECK(
+      read_tool &&
+      read_tool->run({{"path", root.string()}}, {}).output.find("outside.cc") ==
+          std::string::npos);
   const Tool* edit_tool = FindTool(tools, "edit_file");
   CHECK(edit_tool != nullptr);
   if (edit_tool) {

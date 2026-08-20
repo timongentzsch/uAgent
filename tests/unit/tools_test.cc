@@ -14,16 +14,18 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/core/file_watch.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/tools/adapt_system.h"
-#include "include/ui/display.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
 #include "include/tools/shell.h"
+#include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
+#include "include/ui/display.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -615,6 +617,15 @@ void TestToolExecutionPolicy() {
   Tool mutate = unbounded;
   mutate.name = "mutate";
   mutate.capabilities = Capability(ToolCapability::kMutate);
+  Tool external_inspect = unbounded;
+  external_inspect.name = "external_inspect";
+  external_inspect.capabilities = Capability(ToolCapability::kInspect) |
+                                  Capability(ToolCapability::kExternal);
+  std::vector<Tool> advisor_tools{unbounded, inspect, mutate, external_inspect};
+  KeepAdvisorTools(advisor_tools);
+  CHECK(advisor_tools.size() == 2);
+  CHECK(FindTool(advisor_tools, "inspect") != nullptr);
+  CHECK(FindTool(advisor_tools, "external_inspect") != nullptr);
   Tool exact_run = unbounded;
   exact_run.name = "run";
   exact_run.parameters = {{"type", "object"},
@@ -737,7 +748,8 @@ void TestToolExecutionPolicy() {
   task_completion.kind = ActivityKind::kSubagent;
   task_completion.kind_label = "subagent";
   task_completion.command = "uagent -p 'very long delegated prompt'";
-  CHECK(BgResultHeader(task_completion) == "[Background result: subagent id 7]");
+  CHECK(BgResultHeader(task_completion) ==
+        "[Background result: subagent id 7]");
   // An advisor is the same class of activity but keeps its own label.
   BackgroundCompletion advice;
   advice.activity_id = 8;
@@ -883,6 +895,15 @@ void TestOpenRouterServerSearch() {
   CHECK(anthropic_usage.output == 5);
   CHECK(anthropic_usage.input + anthropic_usage.cache_read == 11);
   CHECK(responses_usage.input + responses_usage.cache_read == 11);
+  Usage translated_anthropic_usage;
+  translated_anthropic_usage.Add(
+      {{"prompt_tokens", 18},
+       {"prompt_tokens_details",
+        {{"cached_tokens", 3}, {"cache_creation_tokens", 7}}},
+       {"completion_tokens", 5}});
+  CHECK(translated_anthropic_usage.input == 15);
+  CHECK(translated_anthropic_usage.cache_read == 3);
+  CHECK(translated_anthropic_usage.cache_write == 7);
   // The cached share of the prompt, undefined only before anything is counted.
   CHECK(Usage{}.CacheHitPercent() == 0);
   CHECK(anthropic_usage.CacheHitPercent() == 27);
@@ -992,7 +1013,9 @@ void TestOpenRouterServerSearch() {
   CHECK(openrouter_body["max_tool_calls"] == 3);
   UsageAccumulator side_usage;
   Tool search_tool = WebSearchTool(api, side_usage, {});
-  CHECK(search_tool.timeout_s == config.web_search_timeout_s);
+  // The configured budget bounds one attempt; the tool deadline covers all of
+  // them, or a retry would be cancelled before it ran.
+  CHECK(search_tool.timeout_s == config.web_search_timeout_s * kSideAttempts);
   CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
   CHECK(!search_tool.mutating);
   CHECK(search_tool.needs_approval &&
@@ -1018,6 +1041,30 @@ void TestOpenRouterServerSearch() {
   CHECK(normalized.text == "grounded answer");
   CHECK(normalized.searches == 1);
   CHECK(CitationEntries(normalized.annotations).size() == 1);
+
+  Tool fetch_tool = WebFetchTool(api);
+  CHECK(!fetch_tool.mutating);
+  CHECK(fetch_tool.needs_approval && fetch_tool.needs_approval(json::object()));
+  ToolContext fetch_context;
+  CHECK(fetch_tool.run({{"url", "file:///etc/passwd"}}, fetch_context).error ==
+        ToolErrorCode::kInvalidArguments);
+  CHECK(fetch_tool.run({{"url", "example.com"}}, fetch_context).error ==
+        ToolErrorCode::kInvalidArguments);
+
+  // Markup out, reading order in: dropped elements take their content with
+  // them, block edges become line breaks, and inline tags do not split words.
+  CHECK(HtmlToText("<p>one</p><p>two</p>") == "one\n\ntwo");
+  CHECK(HtmlToText("<style>p{color:red}</style><p>kept</p>") == "kept");
+  CHECK(HtmlToText("<script>if (a < b) doc('</p>')</script>text") == "text");
+  CHECK(HtmlToText("<!-- note --><b>bo</b>ld") == "bold");
+  CHECK(HtmlToText("a &amp; b &lt;c&gt; &#39;d&#39;") == "a & b <c> 'd'");
+  // Source layout adds nothing: a block break is one blank line at most,
+  // however many newlines and tags produced it.
+  CHECK(HtmlToText("<p>a</p>\n\n\n\n<p>b</p>") == "a\n\nb");
+  CHECK(HtmlToText("  spaced   \t out  ") == "spaced out");
+  // An unterminated tag ends the document rather than leaking markup.
+  CHECK(HtmlToText("visible<div class=") == "visible");
+  CHECK(HtmlToText("<style>only</style>").empty());
 
   ChatResult result;
   StreamCtx stream;
@@ -1273,11 +1320,11 @@ void TestGrepTool() {
     CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
     CHECK(run->validate({{"command", "cmake --build build"}}).empty());
-    CHECK(run->validate({{"command", "python -c 'print(1')"}})
-              .find("scratch") != std::string::npos);
     CHECK(
-        run->validate({{"command", "python3 script.py"}}).find("scratch") !=
+        run->validate({{"command", "python -c 'print(1')"}}).find("scratch") !=
         std::string::npos);
+    CHECK(run->validate({{"command", "python3 script.py"}}).find("scratch") !=
+          std::string::npos);
     CHECK(
         run->validate({{"command", "pip install reportlab"}}).find("PEP 723") !=
         std::string::npos);
@@ -1296,8 +1343,8 @@ void TestGrepTool() {
             .empty());
   const Tool* python = FindTool(lean_tools, "scratch");
   CHECK(python != nullptr);
-  CHECK(python && ToolDescription(*python).find("never for requested project") !=
-                      std::string::npos);
+  CHECK(python && ToolDescription(*python).find(
+                      "never for requested project") != std::string::npos);
   CHECK(python &&
         python->parameters.value("additionalProperties", true) == false);
   CHECK(python && python->parameters["required"] ==
@@ -1326,19 +1373,21 @@ void TestGrepTool() {
   CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
   CHECK(activity && activity->parameters["properties"].contains("until"));
-  CHECK(activity &&
-        activity->parameters["properties"]["mode"]["enum"] ==
-            json::array({"any", "all"}));
+  CHECK(activity && activity->parameters["properties"]["mode"]["enum"] ==
+                        json::array({"any", "all"}));
   CHECK(activity &&
         !activity->validate({{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}})
              .size());
   CHECK(activity &&
         activity->validate({{"until", "ready"}})
                 .find("requires id and wait_ms") != std::string::npos);
-  CHECK(activity && activity->validate({{"chars", "x"}}).find(
-                        "writing requires id") != std::string::npos);
-  CHECK(activity && activity->validate({{"id", 1}, {"rows", 40}}).find(
-                        "supplied together") != std::string::npos);
+  CHECK(activity &&
+        activity->validate({{"chars", "x"}}).find("writing requires id") !=
+            std::string::npos);
+  CHECK(
+      activity &&
+      activity->validate({{"id", 1}, {"rows", 40}}).find("supplied together") !=
+          std::string::npos);
   // Reading needs no approval; writing does.
   CHECK(activity && !activity->mutates({{"id", 1}}));
   CHECK(activity && activity->mutates({{"id", 1}, {"chars", "y"}}));

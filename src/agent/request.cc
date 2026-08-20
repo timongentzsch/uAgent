@@ -268,8 +268,9 @@ Agent::ImageFallbackResult Agent::ApplyImageFallbackToUserContent(
 
 void Agent::ReportImageFallback(const ImageFallbackResult& result) {
   if (!result.applied || result.status.empty()) return;
-  printf("%s· %s%s\n", result.warning ? YEL() : DIM(), result.status.c_str(),
-         RST());
+  Emit(NoticeEvent(result.warning ? PresentationStatus::kWarned
+                                  : PresentationStatus::kNeutral,
+                   "· " + result.status));
 }
 
 int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
@@ -307,8 +308,7 @@ bool Agent::ContextNeedsCompaction(size_t pending_bytes, size_t schema_bytes,
 }
 
 Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
-    const json& available_schemas, const std::string& active_prompt,
-    Usage& usage, size_t& turn_start) {
+    const json& available_schemas, Usage& usage, size_t& turn_start) {
   // Encoded parts must reach the model once. They are pruned at the turn
   // boundary and must never be fed to the summarizer instead.
   if (conversation_.HasKind(MessageKind::kAttachment)) {
@@ -326,10 +326,7 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
                                {"projected_tokens", projected_tokens},
                                {"messages", conversation_.Size()}});
   if (!Compact(true, &usage)) return MidturnCompact::kFailed;
-  EnsureRuntimeContext();
   turn_start = conversation_.Size();
-  conversation_.Push({{"role", "user"}, {"content", active_prompt}},
-                     MessageKind::kUser);
   return MidturnCompact::kSucceeded;
 }
 
@@ -409,8 +406,9 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
   api_.capabilities.native_tools = false;
   changed(rejected);
   conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-  printf("%s· server rejected native tools — falling back to text protocol%s\n",
-         DIM(), RST());
+  Emit(NoticeEvent(
+      PresentationStatus::kNeutral,
+      "· server rejected native tools — falling back to text protocol"));
   return true;
 }
 
@@ -432,8 +430,25 @@ std::string Agent::SystemPrompt() const {
   return prompt;
 }
 
+// True when any memory content (index names or the always-on slice) is present
+// and should be injected into the baseline.
+static bool HasMemoryContent(const ProjectInstructions& p) {
+  return !p.memory_index.empty() || !p.memory_always.empty();
+}
+
+// One system message carries every static baseline fact. The OpenAI convention
+// allows a single system message and only at index zero; strict chat templates
+// reject a second one outright, so project instructions and the memory index
+// are folded in here instead of riding as separate messages.
 json Agent::SysMsg() const {
-  return {{"role", "system"}, {"content", SystemPrompt()}};
+  std::string content = SystemPrompt();
+  if (!project_instructions_.text.empty()) {
+    content += "\n\n" + ProjectInstructionText();
+  }
+  if (HasMemoryContent(project_instructions_)) {
+    content += "\n\n" + MemoryText();
+  }
+  return {{"role", "system"}, {"content", std::move(content)}};
 }
 
 void Agent::RefreshSystemMessage() {
@@ -450,7 +465,7 @@ void Agent::RefreshSystemMessage() {
              adaptive_system_ ? adaptive_system_->instructions.size() : 0}});
 }
 
-void Agent::EnsureRuntimeContext() {
+std::string Agent::RuntimeContextText() const {
   std::string content =
       EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
@@ -459,18 +474,23 @@ void Agent::EnsureRuntimeContext() {
                   [](const Tool& tool) { return tool.delegates; })) {
     content += DelegationRuntimeContext(api_);
   }
+  return content;
+}
+
+void Agent::EnsureRuntimeContext() {
+  std::string content = RuntimeContextText();
   if (conversation_.LastText(MessageKind::kRuntimeContext) == content) return;
-  conversation_.Upsert(HarnessMessage(std::move(content)),
-                       MessageKind::kRuntimeContext);
+  conversation_.UpsertTail(HarnessMessage(std::move(content)),
+                           MessageKind::kRuntimeContext);
 }
 
-json Agent::ProjectInstructionMsg() const {
-  return HarnessMessage("# AGENTS.md instructions for " + CanonicalCwd() +
-                        "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
-                        "\n</INSTRUCTIONS>");
+std::string Agent::ProjectInstructionText() const {
+  return "# AGENTS.md instructions for " + CanonicalCwd() +
+         "\n\n<INSTRUCTIONS>\n" + project_instructions_.text +
+         "\n</INSTRUCTIONS>";
 }
 
-json Agent::MemoryMsg() const {
+std::string Agent::MemoryText() const {
   std::string body =
       "[memory names only; non-authoritative metadata]\n"
       "Use memory(action=get, key=...) only when a listed topic is relevant. "
@@ -484,45 +504,17 @@ json Agent::MemoryMsg() const {
         "inlined here rather than left to lookup:\n" +
         project_instructions_.memory_always;
   }
-  return HarnessMessage(body);
-}
-
-// True when any memory content (index names or the always-on slice) is present
-// and should be injected into the baseline.
-static bool HasMemoryContent(const ProjectInstructions& p) {
-  return !p.memory_index.empty() || !p.memory_always.empty();
+  return body;
 }
 
 size_t Agent::BaselineSize() const { return BaselineKinds().size(); }
 
-json Agent::BaselineMessages() const {
-  json messages = json::array({SysMsg()});
-  if (!project_instructions_.text.empty()) {
-    messages.push_back(ProjectInstructionMsg());
-  }
-  if (HasMemoryContent(project_instructions_)) {
-    messages.push_back(MemoryMsg());
-  }
-  return messages;
-}
+json Agent::BaselineMessages() const { return json::array({SysMsg()}); }
 
 std::vector<MessageKind> Agent::BaselineKinds() const {
-  std::vector<MessageKind> kinds = {MessageKind::kSystem};
-  if (!project_instructions_.text.empty()) {
-    kinds.push_back(MessageKind::kProjectInstructions);
-  }
-  if (HasMemoryContent(project_instructions_)) {
-    kinds.push_back(MessageKind::kMemory);
-  }
-  return kinds;
+  return {MessageKind::kSystem};
 }
 
-void Agent::RefreshBaseline() {
-  json project = ProjectInstructionMsg();
-  json memories = MemoryMsg();
-  conversation_.RefreshBaseline(
-      SysMsg(), project_instructions_.text.empty() ? nullptr : &project,
-      HasMemoryContent(project_instructions_) ? &memories : nullptr);
-}
+void Agent::RefreshBaseline() { conversation_.RefreshBaseline(SysMsg()); }
 
 }  // namespace uagent

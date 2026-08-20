@@ -30,6 +30,10 @@ class MdStream {
   std::string math_text;
   int star = 0;
   bool linestart = true;
+  // Blank lines are withheld until text follows: a run of them collapses to
+  // one, and a run at the end of the stream disappears. Models routinely end
+  // a message with several, and each one is a wasted terminal row.
+  size_t blank_held = 0;
   std::string pre;
   bool heading = false;
   bool fence = false;
@@ -58,6 +62,7 @@ class MdStream {
   void FinishMath();
   void ReplayMath();
   void EndLine();
+  void ReleaseBlanks();
   // prev_raw and prev_rows describe the same line and are always reset
   // together.
   void ForgetPreviousLine();

@@ -95,9 +95,9 @@ void TestProjectInstructionDiscovery() {
   CHECK(ToolWriteFile((home / ".uagent/memory/global/newer.md").string(),
                       "newer-evidence-body")
             .output.starts_with("wrote "));
-  fs::last_write_time(home / ".uagent/memory/global/lesson.md",
-                      fs::file_time_type::clock::now() -
-                          std::chrono::hours(24));
+  fs::last_write_time(
+      home / ".uagent/memory/global/lesson.md",
+      fs::file_time_type::clock::now() - std::chrono::hours(24));
   MemoryIndex newest_first = LoadAlwaysOnMemory(child, 64);
   CHECK(newest_first.truncated);
   CHECK(newest_first.sources.size() == 1);

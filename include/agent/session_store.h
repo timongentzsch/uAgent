@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/agent/conversation.h"
@@ -13,6 +14,16 @@
 #include "include/core/usage.h"
 
 namespace uagent {
+
+// Session-file header field names (written and validated by SessionStore in
+// session_store.cc; ui/sessions.h reads a lenient subset of the same fields
+// for the resume picker). Shared here so the two views cannot drift.
+inline constexpr const char* kSessionHeaderCwd = "cwd";
+inline constexpr const char* kSessionHeaderModel = "model";
+inline constexpr const char* kSessionHeaderSessionId = "session_id";
+inline constexpr const char* kSessionHeaderTurns = "turns";
+inline constexpr const char* kSessionHeaderTitle = "title";
+inline constexpr int64_t kSessionFormat = 3;
 
 enum class SessionStoreError {
   kNone,

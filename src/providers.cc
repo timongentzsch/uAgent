@@ -119,7 +119,7 @@ bool SaveModelPreference(const ModelPreference& preference,
 
 ModelSelection ParseModelSelection(std::string selection) {
   ModelSelection parsed;
-  parsed.base = Trim(std::move(selection));
+  parsed.base = Trim(selection);
   for (;;) {
     size_t colon = parsed.base.rfind(':');
     if (colon == std::string::npos || colon + 1 == parsed.base.size()) break;

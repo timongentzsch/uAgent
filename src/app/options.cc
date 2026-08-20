@@ -155,7 +155,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
 }
 
 const char* UsageText() {
-  static const std::string text = [] {
+  static const std::string kText = [] {
     auto invocation_of = [](const FlagSpec& spec) {
       // --debug is spelled with its optional value in both places.
       if (spec.flag == "--debug") return std::string("--debug[=PATH]");
@@ -183,7 +183,7 @@ const char* UsageText() {
            "process UAGENT_* variables override both, and the flags above "
            "override all three\n";
   }();
-  return text.c_str();
+  return kText.c_str();
 }
 
 }  // namespace uagent

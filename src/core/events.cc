@@ -62,8 +62,9 @@ constexpr EventPolicy kPolicies[] = {
 };
 
 constexpr bool ValidPolicies() {
-  if (std::size(kPolicies) != static_cast<size_t>(EventId::kPresentation) + 1)
+  if (std::size(kPolicies) != static_cast<size_t>(EventId::kPresentation) + 1) {
     return false;
+  }
   for (size_t index = 0; index < std::size(kPolicies); ++index) {
     if (static_cast<size_t>(kPolicies[index].id) != index) return false;
   }

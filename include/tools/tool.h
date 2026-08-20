@@ -247,10 +247,10 @@ inline void KeepLeanTools(std::vector<Tool>& tools) {
 }
 
 inline void KeepAdvisorTools(std::vector<Tool>& tools) {
-  constexpr uint32_t allowed = Capability(ToolCapability::kInspect) |
-                               Capability(ToolCapability::kExternal);
+  constexpr uint32_t kAllowed = Capability(ToolCapability::kInspect) |
+                                Capability(ToolCapability::kExternal);
   std::erase_if(tools, [](const Tool& tool) {
-    return tool.capabilities == 0 || (tool.capabilities & ~allowed) != 0;
+    return tool.capabilities == 0 || (tool.capabilities & ~kAllowed) != 0;
   });
 }
 

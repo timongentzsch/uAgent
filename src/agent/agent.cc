@@ -597,7 +597,7 @@ bool Agent::DrainBackground() {
       }
       if (!first) batch += "\n\n";
       first = false;
-      batch += std::move(note);
+      batch += note;
     }
     if (child_count > 0) {
       conversation_.Push(HarnessMessage(std::move(batch)),

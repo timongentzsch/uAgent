@@ -167,8 +167,9 @@ inline Tool SkillTool(std::vector<Skill> skills,
           // The advertised names are what the model actually saw, so they
           // make the better suggestion when both lists have a near match.
           std::string suggestion = SkillNameSuggestion(skills, want);
-          if (suggestion.empty())
+          if (suggestion.empty()) {
             suggestion = SkillNameSuggestion(current, want);
+          }
           std::string error =
               "error: no such installed skill: " + TerminalSafe(want);
           if (!suggestion.empty()) {

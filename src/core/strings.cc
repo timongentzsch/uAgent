@@ -300,8 +300,9 @@ std::string ActivityLabel(const std::string& label, size_t columns) {
   if (DisplayWidth(safe) <= columns) return safe;
   constexpr std::string_view kSeparator = " · ";
   size_t separator = safe.find(kSeparator);
-  if (separator == std::string::npos)
+  if (separator == std::string::npos) {
     return DisplayTail(std::move(safe), columns);
+  }
   std::string prefix = safe.substr(0, separator + kSeparator.size());
   size_t prefix_width = DisplayWidth(prefix);
   if (prefix_width >= columns) return DisplayTrunc(std::move(prefix), columns);

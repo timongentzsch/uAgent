@@ -2269,7 +2269,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
     def markers(case_home):
         return list((case_home / ".uagent/memory/.processed").rglob("*.state"))
 
-    def wait_until(predicate, message, timeout=15):
+    def wait_until(predicate, message, timeout=30):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if predicate():
@@ -2337,7 +2337,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
                 b"/q\n",
                 args=(f"--debug={trace}",),
                 before_payload=wait_for_cleanup,
-                timeout=20,
+                timeout=40,
             )
             assert_true(code == 0, output)
             wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")

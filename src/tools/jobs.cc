@@ -36,6 +36,9 @@
 #include "include/tools/files.h"
 
 namespace uagent {
+
+constexpr std::string_view kNoNewOutput = "(no new output)";
+
 namespace {
 
 bool SignalProcessGroup(pid_t leader, int signal_number) {
@@ -373,19 +376,29 @@ std::string DrainIncremental(const BgJob& job, int64_t cap) {
     raw = job.session->pending_output.Drain();
     job.session->last_used = std::chrono::steady_clock::now();
   }
-  if (raw.empty()) return "(no new output)";
+  if (raw.empty()) return std::string(kNoNewOutput);
   if (cap <= 0 || raw.size() <= static_cast<size_t>(cap)) return raw;
   HeadTailBuffer limited(static_cast<size_t>(cap));
   limited.Push(raw);
   return limited.Snapshot();
 }
 
+// fresh reports whether the returned text is captured output rather than a
+// status sentinel, so callers never have to compare against those strings.
 std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
                                  const BgJob& job, int64_t wait_ms,
                                  std::string_view until,
                                  const ToolContext& context, int64_t cap,
-                                 bool settle = false) {
-  if (!job.session) return ReadLogTail(job.log, cap);
+                                 bool settle = false, bool* fresh = nullptr) {
+  auto done = [fresh](std::string text, bool captured) {
+    if (fresh) *fresh = captured;
+    return text;
+  };
+  if (!job.session) {
+    std::string tail = ReadLogTail(job.log, cap);
+    bool captured = !tail.empty();
+    return done(std::move(tail), captured);
+  }
   auto deadline =
       std::min(context.deadline, std::chrono::steady_clock::now() +
                                      std::chrono::milliseconds(wait_ms));
@@ -398,7 +411,7 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
   for (;;) {
     uint64_t generation = supervisor.Generation();
     std::string chunk = DrainIncremental(job, cap);
-    if (chunk != "(no new output)") {
+    if (chunk != kNoNewOutput) {
       collected.Push(chunk);
       if (settle) {
         quiet_deadline =
@@ -421,19 +434,26 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
          std::chrono::steady_clock::now() >= *quiet_deadline) ||
         wait_ms <= 0) {
       std::string output = collected.Snapshot();
-      return output.empty() ? "(no new output)" : output;
+      bool captured = !output.empty();
+      return done(captured ? std::move(output) : std::string(kNoNewOutput),
+                  captured);
     }
-    if (AbortRequested()) return "[wait interrupted; process still running]";
+    if (AbortRequested()) {
+      return done("[wait interrupted; process still running]", false);
+    }
     if (SteeringYieldRequested()) {
       std::string output = collected.Snapshot();
-      if (!output.empty()) output += "\n";
-      return output +
-             "[wait yielded for queued steering; process still running]";
+      bool captured = !output.empty();
+      if (captured) output += "\n";
+      return done(
+          output + "[wait yielded for queued steering; process still running]",
+          captured);
     }
     if (std::chrono::steady_clock::now() >= deadline) {
       std::string output = collected.Snapshot();
-      if (!output.empty()) output += "\n";
-      return output + "[wait timed out; process still running]";
+      bool captured = !output.empty();
+      if (captured) output += "\n";
+      return done(output + "[wait timed out; process still running]", captured);
     }
     auto wait_deadline =
         quiet_deadline ? std::min(deadline, *quiet_deadline) : deadline;
@@ -469,11 +489,15 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
                                    : -1);
       }
     }
-    return ToolSuccess(
-        "[" + SupervisedJobLabel(*job) + " · activity " +
-        std::to_string(ActivityId(*job)) + state + " · log " + job->log +
-        "]\n" +
-        CollectSessionOutput(supervisor, *job, 0, {}, {}, ToolResultCap()));
+    bool fresh = false;
+    std::string output = CollectSessionOutput(supervisor, *job, 0, {}, {},
+                                              ToolResultCap(), false, &fresh);
+    ToolResult result =
+        ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
+                    std::to_string(ActivityId(*job)) + state + " · log " +
+                    job->log + "]\n" + output);
+    result.no_change = !fresh;
+    return result;
   }
 
   std::optional<json> detached = FindDetachedRecord(pid);
@@ -523,12 +547,15 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
       if ((!until.empty() && accumulated.find(until) != std::string::npos) ||
           std::chrono::steady_clock::now() >= deadline || AbortRequested() ||
           steering_yield) {
+        bool no_change = accumulated == current.output && !steering_yield;
         if (steering_yield) {
           if (!accumulated.empty()) accumulated += "\n";
           accumulated +=
               "[wait yielded for queued steering; process still running]";
         }
-        return limit_result(ToolSuccess(std::move(accumulated)));
+        ToolResult result = ToolSuccess(std::move(accumulated));
+        result.no_change = no_change;
+        return limit_result(std::move(result));
       }
       FileStamp observed = SnapshotFile(watch_path);
       ToolResult next = ToolActivityOutput(supervisor, id);
@@ -551,9 +578,11 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
     }
   }
   std::lock_guard<std::mutex> interaction(job->session->interaction);
-  std::string output =
-      CollectSessionOutput(supervisor, *job, wait_ms, until, context, cap);
-  if (output == "(no new output)") {
+  bool fresh = false;
+  std::string output = CollectSessionOutput(supervisor, *job, wait_ms, until,
+                                            context, cap, false, &fresh);
+  bool no_change = !fresh;
+  if (output == kNoNewOutput) {
     std::string replay;
     {
       std::lock_guard<std::mutex> lock(job->session->mutex);
@@ -566,11 +595,14 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
                                      : replay.size());
       limited.Push(replay);
       output = "[complete transcript replay]\n" + limited.Snapshot();
+      no_change = false;
     }
   }
-  return ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
-                     std::to_string(ActivityId(*job)) + " · log " + job->log +
-                     "]\n" + output);
+  ToolResult result = ToolSuccess(
+      "[" + SupervisedJobLabel(*job) + " · activity " +
+      std::to_string(ActivityId(*job)) + " · log " + job->log + "]\n" + output);
+  result.no_change = no_change;
+  return result;
 }
 
 ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
@@ -777,8 +809,8 @@ std::vector<std::string> TakeCompleted(
     if (job.detached) RemoveLog(job.log);
     std::string output;
     if (job.session) {
-      output = incremental.empty() || incremental == "(no new output)"
-                   ? "(no new output)"
+      output = incremental.empty() || incremental == kNoNewOutput
+                   ? std::string(kNoNewOutput)
                    : std::move(incremental);
     } else {
       output = std::move(collected.output);

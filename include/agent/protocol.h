@@ -216,9 +216,11 @@ inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {
   if (FindTool(tools, "activity")) {
     add("Background completion is observational and does not start a model "
         "turn. Inspect activity output for progress; wait only when the next "
-        "step needs the result. Before starting a detached service, list "
-        "activities and reuse a viable instance or stop a superseded one. A "
-        "readiness timeout alone does not prove failure.");
+        "step needs the result. To wait on several pending activities, omit "
+        "id and use mode=any/all in one call instead of polling each id "
+        "separately. Before starting a detached service, list activities and "
+        "reuse a viable instance or stop a superseded one. A readiness "
+        "timeout alone does not prove failure.");
   }
   if (FindTool(tools, "web_search")) {
     add("Use web_search directly for current or external facts; do not scrape "

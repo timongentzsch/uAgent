@@ -82,6 +82,7 @@ struct PresentationRecord {
   // Opening a skill changes how the whole turn proceeds, so it is marked in
   // the scrollback rather than reading as one more tool row.
   bool skill = false;
+  bool poll = false;  // bare activity-tool check, no interaction sent
   std::vector<PresentationArtifact> artifacts;
 };
 

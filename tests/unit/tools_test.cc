@@ -158,6 +158,7 @@ void TestActivitySessions() {
     CHECK(started.result.output.find("tty=yes") != std::string::npos);
     ToolResult initial = ToolActivityOutput(pty_processes, id);
     CHECK(initial.output.find("(no new output)") != std::string::npos);
+    CHECK(initial.no_change);
     CHECK(ToolActivityInput(pty_processes, id, "", 0, context, 30, 100).Ok());
     ToolResult input =
         ToolActivityInput(pty_processes, id, "hello\n", 2000, context);
@@ -328,6 +329,7 @@ void TestActivitySessions() {
     CHECK(marker.output.find("Server ready") != std::string::npos);
     ToolResult no_duplicate = ToolActivityOutput(incremental, id);
     CHECK(no_duplicate.output.find("Server ready") == std::string::npos);
+    CHECK(no_duplicate.no_change);
     ToolResult final =
         ToolActivityWait(incremental, {id}, "all", 2000, context);
     CHECK(final.Ok());

@@ -37,27 +37,12 @@
 namespace uagent {
 namespace {
 
-// Spawn `shell -c command` with stdin at /dev/null, both output streams on the
-// log, default signal dispositions, and its own process group (or session, for
-// a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
-int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
-                     bool detach, char* const* environment, pid_t& pid) {
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
-                                   O_RDONLY, 0);
-  posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
-  posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, log_fd);
-  posix_spawnattr_t attributes;
-  posix_spawnattr_init(&attributes);
-  // POSIX specifies `short` for posix_spawnattr_setflags; fixed-width types
-  // are not guaranteed to have that ABI.
-  using PosixSpawnFlags = short;  // NOLINT: required by the POSIX ABI.
-  PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
-#ifdef POSIX_SPAWN_SETSID
-  if (detach) group_flag = POSIX_SPAWN_SETSID;
-#endif
+// POSIX specifies `short` for posix_spawnattr_setflags; fixed-width types are
+// not guaranteed to have that ABI.
+using PosixSpawnFlags = short;  // NOLINT: required by the POSIX ABI.
+
+void ConfigureShellSpawn(posix_spawnattr_t& attributes,
+                         PosixSpawnFlags group_flag) {
   if (group_flag == POSIX_SPAWN_SETPGROUP) {
     posix_spawnattr_setpgroup(&attributes, 0);
   }
@@ -72,6 +57,12 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
   posix_spawnattr_setflags(&attributes, static_cast<PosixSpawnFlags>(
                                             group_flag | POSIX_SPAWN_SETSIGDEF |
                                             POSIX_SPAWN_SETSIGMASK));
+}
+
+int SpawnShellWithFallback(const std::string& shell, std::string& command,
+                           const posix_spawn_file_actions_t& actions,
+                           const posix_spawnattr_t& attributes,
+                           char* const* environment, pid_t& pid) {
   auto spawn = [&](const std::string& executable) {
     char* const argv[] = {const_cast<char*>(executable.c_str()),
                           const_cast<char*>("-c"), command.data(), nullptr};
@@ -83,6 +74,30 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
   // paths before giving up on a PATH that does not have it.
   if (error != 0 && shell == "bash") error = spawn("/bin/bash");
   if (error != 0 && shell == "bash") error = spawn("/bin/sh");
+  return error;
+}
+
+// Spawn `shell -c command` with stdin at /dev/null, both output streams on the
+// log, default signal dispositions, and its own process group (or session, for
+// a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
+int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
+                     bool detach, char* const* environment, pid_t& pid) {
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
+                                   O_RDONLY, 0);
+  posix_spawn_file_actions_adddup2(&actions, log_fd, STDOUT_FILENO);
+  posix_spawn_file_actions_adddup2(&actions, log_fd, STDERR_FILENO);
+  posix_spawn_file_actions_addclose(&actions, log_fd);
+  posix_spawnattr_t attributes;
+  posix_spawnattr_init(&attributes);
+  PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
+#ifdef POSIX_SPAWN_SETSID
+  if (detach) group_flag = POSIX_SPAWN_SETSID;
+#endif
+  ConfigureShellSpawn(attributes, group_flag);
+  int error = SpawnShellWithFallback(shell, command, actions, attributes,
+                                     environment, pid);
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
   return error;
@@ -120,33 +135,13 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   posix_spawn_file_actions_addclose(&actions, master_fd);
   posix_spawnattr_t attributes;
   posix_spawnattr_init(&attributes);
-  using PosixSpawnFlags = int16_t;
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
 #ifdef POSIX_SPAWN_SETSID
   group_flag = POSIX_SPAWN_SETSID;
-#else
-  posix_spawnattr_setpgroup(&attributes, 0);
 #endif
-  sigset_t defaults, mask;
-  sigemptyset(&defaults);
-  for (int signal_number : {SIGINT, SIGTERM, SIGHUP, SIGPIPE}) {
-    sigaddset(&defaults, signal_number);
-  }
-  sigemptyset(&mask);
-  posix_spawnattr_setsigdefault(&attributes, &defaults);
-  posix_spawnattr_setsigmask(&attributes, &mask);
-  posix_spawnattr_setflags(&attributes, static_cast<PosixSpawnFlags>(
-                                            group_flag | POSIX_SPAWN_SETSIGDEF |
-                                            POSIX_SPAWN_SETSIGMASK));
-  auto spawn = [&](const std::string& executable) {
-    char* const argv[] = {const_cast<char*>(executable.c_str()),
-                          const_cast<char*>("-c"), command.data(), nullptr};
-    return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
-                        environment);
-  };
-  int error = spawn(shell);
-  if (error != 0 && shell == "bash") error = spawn("/bin/bash");
-  if (error != 0 && shell == "bash") error = spawn("/bin/sh");
+  ConfigureShellSpawn(attributes, group_flag);
+  int error = SpawnShellWithFallback(shell, command, actions, attributes,
+                                     environment, pid);
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
   if (error != 0) {
@@ -166,6 +161,20 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
 
 void SignalShellGroup(pid_t pid, int signal_number) {
   if (kill(-pid, signal_number) != 0) (void)kill(pid, signal_number);
+}
+
+bool WaitForTerminal(ProcessSupervisor& supervisor,
+                     const std::shared_ptr<ActivitySession>& session,
+                     std::chrono::steady_clock::time_point deadline) {
+  for (;;) {
+    uint64_t generation = supervisor.Generation();
+    {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      if (ActivityTerminal(session->state)) return true;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    supervisor.WaitForChange(generation, deadline);
+  }
 }
 
 }  // namespace
@@ -360,15 +369,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (cancelled) {
     auto stop_deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    auto terminal = [&] {
-      std::lock_guard<std::mutex> lock(session->mutex);
-      return ActivityTerminal(session->state);
-    };
-    while (!terminal() && std::chrono::steady_clock::now() < stop_deadline) {
-      uint64_t generation = supervisor.Generation();
-      supervisor.WaitForChange(generation, stop_deadline);
-    }
-    exited = terminal();
+    exited = WaitForTerminal(supervisor, session, stop_deadline);
   }
   TrackPid(g_child_pgids, kFgMax, pid, false);
 
@@ -404,17 +405,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     SignalShellGroup(pid, SIGKILL);
     auto stop_deadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    auto terminal = [&] {
-      std::lock_guard<std::mutex> lock(session->mutex);
-      return ActivityTerminal(session->state);
-    };
-    for (;;) {
-      uint64_t generation = supervisor.Generation();
-      if (terminal() || std::chrono::steady_clock::now() >= stop_deadline) {
-        break;
-      }
-      supervisor.WaitForChange(generation, stop_deadline);
-    }
+    WaitForTerminal(supervisor, session, stop_deadline);
     return finish([](std::string output, int) {
       if (!output.empty() && output.back() != '\n') output += '\n';
       output += "error: command exceeded its execution deadline";

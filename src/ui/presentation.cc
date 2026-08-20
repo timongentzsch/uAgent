@@ -193,7 +193,21 @@ void TerminalPresenter::Finish() noexcept {
 }
 
 void PrintPresentation(const PresentationRecord& record) noexcept {
+  if (record.kind == PresentationKind::kNotice) {
+    const char* color = record.status == PresentationStatus::kFailed   ? RED()
+                        : record.status == PresentationStatus::kWarned ? YEL()
+                                                                       : DIM();
+    printf("%s%s%s\n", color, TerminalSafe(record.title).c_str(), RST());
+    return;
+  }
   if (record.kind == PresentationKind::kToolCall) {
+    // A skill is a procedure the rest of the turn follows, so it is worth
+    // finding in the scrollback later; ◆ already marks that class of event.
+    if (record.skill && !record.summary.empty()) {
+      printf("%s%s◆ skill %s%s\n", BOLD(), BLUE(),
+             TerminalSafe(record.summary).c_str(), RST());
+      return;
+    }
     std::string prefix = "→ " + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       prefix += '\n' + TerminalSafe(record.detail);

@@ -4,6 +4,8 @@
 #define UAGENT_INCLUDE_TOOLS_FILES_H_
 // Bounded file inspection and atomic editing declarations.
 
+#include <sys/types.h>
+
 #include <cstdint>
 #include <string>
 #include <system_error>
@@ -14,6 +16,8 @@
 namespace uagent {
 
 ToolErrorCode FileToolError(const std::error_code& error);
+ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
+                           mode_t create_mode, bool preserve_mode);
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit);
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
 ToolResult ToolWritePrivateFile(const std::string& path,

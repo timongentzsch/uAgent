@@ -367,6 +367,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   if (bold || ital || code || math || heading || fence || fencehead) {
     fputs(RST(), stdout);
   }
+  blank_held = 0;  // trailing blank lines never reach the terminal
   bold = ital = code = heading = fence = fencehead = false;
   math = 0;
   math_text.clear();
@@ -388,12 +389,21 @@ void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
   }
 }
 
+void MdStream::ReleaseBlanks() {
+  if (!blank_held) return;
+  blank_held = 0;
+  putchar('\n');
+}
+
 void MdStream::Pv(const std::string& s) {
+  if (s.empty()) return;  // an empty write is not output, and must not release
+  ReleaseBlanks();
   fputs(s.c_str(), stdout);
   vis_line += DisplayWidth(s);
 }
 
 void MdStream::Pc(char c) {
+  ReleaseBlanks();
   putchar(c);
   if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) vis_line++;
 }
@@ -597,8 +607,10 @@ void MdStream::Classify(char c) {
   InlineChar(c);
 }
 
-void MdStream::FenceClassify(
-    char c) {  // inside a fence only "```" is structural
+// Inside a fence only "```" is structural. The marker line is written here
+// directly rather than through Pc/Pv, so held blanks are released by hand.
+void MdStream::FenceClassify(char c) {
+  ReleaseBlanks();
   std::string mk = Marker();
   if (mk.size() >= 3) {  // "```" held: it only closes if the line ends here
     if (c == ' ') {
@@ -812,7 +824,13 @@ void MdStream::EndLine() {  // inline styles never span lines
     fputs(RST(), stdout);
     bold = ital = code = heading = false;
   }
-  putchar('\n');
+  // Nothing visible reached this line, so hold its newline rather than print
+  // it: ReleaseBlanks emits one if text follows, and Flush drops the rest.
+  if (vis_line == 0) {
+    ++blank_held;
+  } else {
+    putchar('\n');
+  }
   prev_raw = cur_raw;
   size_t columns = TerminalWidth();
   prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;

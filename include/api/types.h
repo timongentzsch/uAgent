@@ -19,6 +19,24 @@ enum class RemoteErrorKind : uint8_t {
   kContextLengthExceeded,
 };
 
+// A non-streaming JSON call: the parsed body, the HTTP status, and a
+// transport- or provider-level error message when the call did not land.
+struct JsonResponse {
+  json body = json(json::value_t::discarded);
+  int64_t http_status = 0;
+  std::string error;
+};
+
+// A retrieved web resource: the bytes as received and the type the origin
+// declared. Nothing in the client interprets either.
+struct WebResponse {
+  std::string body;
+  std::string content_type;
+  int64_t http_status = 0;
+  bool truncated = false;  // the byte cap stopped the transfer
+  std::string error;
+};
+
 struct ToolCall {
   std::string id;
   std::string name;

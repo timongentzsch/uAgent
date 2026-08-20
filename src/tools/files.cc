@@ -133,13 +133,7 @@ ToolResult ToolWriteFileMode(const std::string& path,
   if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
     return std::move(*invalid);
   }
-  std::string error;
-  if (!AtomicWriteFile(path, content, create_mode, /*preserve_mode=*/true,
-                       error)) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
-  }
-  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
-                     path);
+  return ToolAtomicWrite(path, content, create_mode, /*preserve_mode=*/true);
 }
 
 }  // namespace
@@ -154,6 +148,16 @@ ToolErrorCode FileToolError(const std::error_code& error) {
     return ToolErrorCode::kPermissionDenied;
   }
   return ToolErrorCode::kInternal;
+}
+
+ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
+                           mode_t create_mode, bool preserve_mode) {
+  std::string error;
+  if (!AtomicWriteFile(path, content, create_mode, preserve_mode, error)) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
+  }
+  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
+                     path);
 }
 
 ToolResult ToolReadFile(const std::string& path, int64_t offset,

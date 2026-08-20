@@ -45,6 +45,26 @@ class CurlHeaders {
   curl_slist* list_ = nullptr;
 };
 
+// The write target for both non-streaming transfers: append until the cap,
+// then stop the transfer rather than truncate silently.
+struct SizedBuffer {
+  std::string data;
+  size_t cap = 0;
+  bool exceeded = false;
+
+  static size_t Write(char* d, size_t s, size_t n, void* user) {
+    auto* out = static_cast<SizedBuffer*>(user);
+    std::optional<size_t> bytes = CheckedMul(s, n);
+    if (!bytes ||
+        (out->cap > 0 && AdditionExceeds(out->data.size(), *bytes, out->cap))) {
+      out->exceeded = true;
+      return 0;
+    }
+    out->data.append(d, *bytes);
+    return *bytes;
+  }
+};
+
 // libcurl's CURLOPT_TIMEOUT ABI requires long rather than a fixed-width type.
 long CurlTimeout(int64_t seconds) {  // NOLINT: libcurl ABI
   return static_cast<long>(          // NOLINT: libcurl ABI
@@ -328,9 +348,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     res.end_to_end_ms = ElapsedMs(overall_started);
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
 
-    uint64_t jitter_seed = static_cast<uint64_t>(
-        std::chrono::steady_clock::now().time_since_epoch().count());
-    std::chrono::milliseconds delay = RetryDelay(attempt, jitter_seed);
+    std::chrono::milliseconds delay = RetryDelay(attempt, JitterSeed());
     if (request_timeout > 0 &&
         std::chrono::steady_clock::now() + delay >= deadline) {
       res.end_to_end_ms = ElapsedMs(overall_started);
@@ -346,9 +364,9 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
       std::string reason = res.error.starts_with("model ")
                                ? res.error
                                : "transient provider failure";
-      printf("%s· %s — retry %d/%d in %.1fs%s\n", DIM(),
+      printf("%s· %s — retry %d/%d in %s%s\n", DIM(),
              TerminalSafe(reason).c_str(), attempt, kChatAttempts - 1,
-             delay.count() / 1000.0, RST());
+             FmtDuration(delay.count() / 1000.0).c_str(), RST());
     }
     if (!WaitForRetry(delay, render_output)) {
       res.error.clear();
@@ -362,13 +380,82 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
 }
 
 JsonResponse Api::Post(const std::string& path, const json& body,
-                       int64_t timeout_s) {
+                       int64_t timeout_s, int attempts) {
   std::string payload = JsonDump(body);
-  return Fetch(path, &payload, timeout_s, /*abortable=*/true);
+  // timeout_s caps one attempt, as UAGENT_REQUEST_TIMEOUT does for the
+  // conversation: a side request that timed out is exactly the case a retry
+  // exists for, so the budget cannot also be the whole call's.
+  JsonResponse response;
+  for (int attempt = 1; attempt <= attempts; ++attempt) {
+    response = Fetch(path, &payload, timeout_s, /*abortable=*/true);
+    if (attempt == attempts || AbortRequested() || !SafeToRetry(response)) {
+      return response;
+    }
+    std::chrono::milliseconds delay = RetryDelay(attempt, JitterSeed());
+    DebugLog("side_retry", {{"path", path},
+                            {"attempt", attempt},
+                            {"max_attempts", attempts},
+                            {"delay_ms", delay.count()},
+                            {"http_status", response.http_status},
+                            {"error", response.error}});
+    // A silent backoff reads as a stalled turn. The notice is durable, so the
+    // session log explains the gap afterwards too.
+    std::string seconds = FmtDuration(delay.count() / 1000.0);
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "· " + TerminalSafe(response.error) + " — retry " +
+                         std::to_string(attempt) + "/" +
+                         std::to_string(attempts - 1) + " in " + seconds));
+    if (!WaitForRetry(delay, /*render_output=*/false)) return response;
+  }
+  return response;
 }
 
 json Api::Get(const std::string& path, bool abortable, int64_t timeout_s) {
   return Fetch(path, nullptr, timeout_s, abortable).body;
+}
+
+WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
+  WebResponse result;
+  CURL* h = Prepare(url);
+  if (!h) {
+    result.error = "curl init failed";
+    return result;
+  }
+  SizedBuffer out;
+  out.cap = cap;
+  CurlHeaders headers;
+  // Identify honestly; many origins reject libcurl's default agent outright.
+  if (!headers.Add(std::string("User-Agent: uagent/") + kVersion)) {
+    result.error = "failed to allocate HTTP headers";
+    return result;
+  }
+  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
+  SetAbortable(h);
+  curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
+  curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING, "");
+  // Unlike an API call, this request carries no credential to leak, and a
+  // canonical URL is usually a redirect away.
+  curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
+  curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
+  CURLcode rc = PerformWithAbortWake(multi_, h);
+  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &result.http_status);
+  char* type = nullptr;
+  if (curl_easy_getinfo(h, CURLINFO_CONTENT_TYPE, &type) == CURLE_OK && type) {
+    result.content_type = AsciiLower(type);
+  }
+  result.body = std::move(out.data);
+  result.truncated = out.exceeded;
+  // Hitting the cap aborts the transfer, so libcurl reports a write error.
+  // A capped page still usually answers the question, so the bytes stand and
+  // the tool says it is partial; a real HTTP failure still wins.
+  if (rc != CURLE_OK && !out.exceeded) {
+    result.error = std::string("connection error: ") + curl_easy_strerror(rc);
+  } else if (result.http_status >= 400) {
+    result.error = "HTTP " + std::to_string(result.http_status);
+  }
+  return result;
 }
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
@@ -495,11 +582,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
     result.error = "curl init failed";
     return result;
   }
-  struct FetchBuffer {
-    std::string data;
-    size_t cap = 0;
-    bool exceeded = false;
-  } out;
+  SizedBuffer out;
   out.cap = ResponseCap();
   CurlHeaders headers;
   bool headers_ok = headers.Add("Authorization: Bearer " + api_key);
@@ -514,19 +597,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
     return result;
   }
   curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
-  curl_easy_setopt(
-      h, CURLOPT_WRITEFUNCTION,
-      +[](char* d, size_t s, size_t n, void* u) -> size_t {
-        auto* out = static_cast<FetchBuffer*>(u);
-        std::optional<size_t> bytes = CheckedMul(s, n);
-        if (!bytes || (out->cap > 0 &&
-                       AdditionExceeds(out->data.size(), *bytes, out->cap))) {
-          out->exceeded = true;
-          return 0;
-        }
-        out->data.append(d, *bytes);
-        return *bytes;
-      });
+  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
   curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
   if (abortable) SetAbortable(h);
   curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));

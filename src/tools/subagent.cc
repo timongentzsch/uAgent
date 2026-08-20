@@ -192,9 +192,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.summary = [&api, &routes, &providers](const json& arguments) {
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");
-    std::string label =
-        SubagentTargetLabel(api, routes, providers,
-                        NormalizeModelId(JsonValue(arguments, "model", "")));
+    std::string label = SubagentTargetLabel(
+        api, routes, providers,
+        NormalizeModelId(JsonValue(arguments, "model", "")));
     if (mode == "full") label += " · full";
     if (!JsonValue(arguments, "background", true)) label += " · foreground";
     return "[" + label + "] " + prompt;

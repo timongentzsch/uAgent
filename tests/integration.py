@@ -31,7 +31,7 @@ def integration_group(name):
     """Keep integration domains isolated without duplicating shared fixtures."""
     groups = (
         ("mcp", ("mcp",)),
-        ("delegation", ("subagent", "delegated_session", "parallel_subagents", "advisor")),
+        ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
         (
             "providers",
             (
@@ -599,7 +599,7 @@ def test_empty_response_after_tools_recovers_once(root, home):
         contents = [
             message.get("content", "")
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         ]
         valid = any(
             "Return the final answer from existing results" in str(content) for content in contents
@@ -620,13 +620,13 @@ def test_empty_response_after_tools_recovers_once(root, home):
 
 
 def test_foreign_tool_markup_recovers_as_prose(root, home):
-    markup = '<｜DSML｜tool_calls><｜DSML｜invoke name="web_search">'
+    markup = '<｜DSML｜tool_calls:\n    edit_file:\n      path: path="test.cc"'
 
     def recovered(_, body):
         notes = [
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         ]
         assert_true(any("invalid model tool markup" in note for note in notes), notes)
         return event({"content": "markup-recovered"})
@@ -635,6 +635,38 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         result = run(root, base_env(home, server.url), "--yolo", "-p", "answer")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "markup-recovered", result.stdout)
+
+    with Server([event({"content": markup}), event({"content": markup})]) as repeated:
+        result = run(root, base_env(home, repeated.url), "--yolo", "-p", "answer")
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
+        assert_true(len(repeated.requests) == 2, len(repeated.requests))
+
+    # The compatibility text protocol is executable only after this route has
+    # explicitly rejected native tools. In native mode it is malformed prose,
+    # even if its arguments would otherwise be valid and auto-approved.
+    marker = home / "native-text-protocol-must-not-run"
+    own_markup = (
+        "[uagent_tool_call]"
+        + json.dumps({"name": "run", "arguments": {"command": f"touch {marker}"}})
+        + "[/uagent_tool_call]"
+    )
+
+    def native_recovered(_, body):
+        assert_true("tools" in body, body)
+        notes = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "user"
+        ]
+        assert_true(any("invalid model tool markup" in note for note in notes), notes)
+        return event({"content": "native-markup-recovered"})
+
+    with Server([event({"content": own_markup}), native_recovered]) as native:
+        result = run(root, base_env(home, native.url), "--yolo", "-p", "answer")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "native-markup-recovered", result.stdout)
+        assert_true(not marker.exists(), marker)
 
     with Server(
         [
@@ -828,20 +860,14 @@ def test_project_instructions_precede_first_turn(root, home):
 
     def verify(_, body):
         messages = body["messages"]
-        instructions = messages[1].get("content", "") if len(messages) > 1 else ""
-        contents = [str(m.get("content", "")) for m in messages]
+        # Project instructions ride inside the single baseline system message.
+        instructions = messages[0].get("content", "") if messages else ""
+        users = [str(m.get("content", "")) for m in messages if m.get("role") == "user"]
         valid = (
             messages[0].get("role") == "system"
-            and messages[1].get("role") == "system"
-            and any(
-                message.get("role") == "system"
-                and str(message.get("content", "")).startswith("[environment:")
-                for message in messages
-            )
-            and [message.get("content") for message in messages if message.get("role") == "user"]
-            == ["reply"]
-            and "reply" in contents
-            and contents.index("reply") > 1  # instructions precede the prompt
+            and not any(m.get("role") == "system" for m in messages[1:])
+            and any(text.startswith("[environment:") for text in users)
+            and "reply" in users
             and "<INSTRUCTIONS>" in instructions
             and "shadowed-claude-sentinel" not in instructions
             and instructions.index("root-agent-sentinel")
@@ -1024,7 +1050,13 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(b"multiline-paste-ok" in output, output)
         assert_true(b"ctx " in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
-        assert_true(b"\x1b[48;5;" not in output, output)
+        # The echoed turn is banded to the right edge on every row it spans,
+        # and the band is always closed again.
+        band = b"\x1b[48;5;250m"
+        assert_true(output.count(band) >= 2, output)
+        assert_true(output.rfind(b"\x1b[0m\x1b[39m\x1b[49m") > output.rfind(band), output)
+        assert_true(output.count(band + b"first line\x1b[K\r\n") == 1, output)
+        assert_true(output.count(band + b"third line\x1b[K") == 1, output)
         assert_true(b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
 
@@ -1272,7 +1304,11 @@ def test_input_steering_yields_activity_wait(root, home):
             root,
             base_env(home, server.url),
             [
-                (b"start\n", b"activity"),
+                # Wait for the activity tool CALL, not the substring: the
+                # startup banner lists "activity" and the run result says
+                # "[running] activity <id>", so a bare marker fires before the
+                # model has issued the wait and steering lands a round early.
+                (b"start\n", b"activity(any"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
             ],
@@ -1655,7 +1691,8 @@ def test_provider_context_overflow_compacts_once(root, home):
     def recovered(_, body):
         serialized = json.dumps(body["messages"])
         assert_true("model-generated context summary" in serialized, serialized)
-        assert_true("harness continuation after context compaction" in serialized, serialized)
+        assert_true("preserve-overflow-goal" in serialized, serialized)
+        assert_true("harness continuation after context compaction" not in serialized, serialized)
         return event({"content": "context-recovery-ok"})
 
     with Server([reject, compact, recovered]) as server:
@@ -1744,7 +1781,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         results = [
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
             and str(message.get("content", "")).startswith("[tool_result read_path]")
         ]
         return event({"content": "text-provider-ok" if results else "text-provider-bad"})
@@ -1765,8 +1802,7 @@ def test_provider_text_protocol_preserves_reasoning_and_trace(root, home):
         # so on macOS a symlinked TMPDIR makes `/var` and `/private/var`
         # both correct spellings of the same file.
         assert_true(
-            str(trace_path) in result.stderr
-            or str(trace_path.resolve()) in result.stderr,
+            str(trace_path) in result.stderr or str(trace_path.resolve()) in result.stderr,
             result.stderr,
         )
         envelope = json.loads(result.stdout)
@@ -2022,18 +2058,15 @@ def test_memory_reaches_context_by_scope(root, home):
     other = root / "memory-other-workspace"
     other.mkdir()
 
-    def verify(_, body):
+    def memory_context(body):
         messages = body["messages"]
-        memories = next(
-            (
-                str(message.get("content", ""))
-                for message in messages
-                if str(message.get("content", "")).startswith(
-                    "[memory names only; non-authoritative metadata]"
-                )
-            ),
-            "",
-        )
+        marker = "[memory names only; non-authoritative metadata]"
+        system = str(messages[0].get("content", "")) if messages else ""
+        memories = system[system.index(marker) :] if marker in system else ""
+        return messages, memories
+
+    def verify(_, body):
+        messages, memories = memory_context(body)
         valid = (
             bool(memories)
             and "global/style" in memories
@@ -2041,26 +2074,12 @@ def test_memory_reaches_context_by_scope(root, home):
             and "global-memory-sentinel" in memories
             and "project/build" in memories
             and "project-memory-sentinel" not in memories
-            and next(
-                message.get("role")
-                for message in messages
-                if str(message.get("content", "")).startswith(
-                    "[memory names only; non-authoritative metadata]"
-                )
-            )
-            == "system"
+            and messages[0].get("role") == "system"
         )
         return event({"content": "memory-ok" if valid else "memory-bad"})
 
     def verify_isolated(_, body):
-        messages = body["messages"]
-        memories = " ".join(
-            str(message.get("content", ""))
-            for message in messages
-            if str(message.get("content", "")).startswith(
-                "[memory names only; non-authoritative metadata]"
-            )
-        )
+        _, memories = memory_context(body)
         valid = (
             "global/style" in memories
             and "project/build" not in memories
@@ -2282,7 +2301,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
     def markers(case_home):
         return list((case_home / ".uagent/memory/.processed").rglob("*.state"))
 
-    def wait_until(predicate, message, timeout=15):
+    def wait_until(predicate, message, timeout=30):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if predicate():
@@ -2350,14 +2369,16 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
                 b"/q\n",
                 args=(f"--debug={trace}",),
                 before_payload=wait_for_cleanup,
-                timeout=20,
+                timeout=40,
             )
             assert_true(code == 0, output)
             wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
             return server.requests
 
     def fail_request(handler, _):
-        write_json_response(handler, {"error": {"message": "extract failed"}}, status=500)
+        # This case owns claim cleanup, not transient-retry timing. A terminal
+        # model error keeps the completion bound deterministic under ASan.
+        write_json_response(handler, {"error": {"message": "extract failed"}}, status=400)
 
     failed_requests = run_cleanup_case("model-failure", fail_request, wait_for_request=True)
     assert_true(failed_requests, "model failure did not reach the provider")
@@ -2887,7 +2908,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
             and not any(message.get("tool_calls") for message in messages)
             and bool(body.get("tools"))
             and any(
-                message.get("role") == "system"
+                message.get("role") == "user"
                 and "MIDTURN-SUMMARY" in str(message.get("content", ""))
                 for message in messages
             )
@@ -2895,8 +2916,9 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                 message.get("role") == "user" and message.get("content") == "inspect"
                 for message in messages
             )
+            and sum(message.get("content") == "inspect" for message in messages) == 1
             and any(
-                message.get("role") == "system"
+                message.get("role") == "user"
                 and str(message.get("content", "")).startswith("[environment:")
                 for message in messages
             )
@@ -2998,7 +3020,12 @@ def test_absolute_compaction_ceiling(root, home):
 
     def finish(_, body):
         text = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        valid = "Prior context:\nABSOLUTE-SUMMARY" in text and "large " not in text
+        valid = (
+            "Prior context:\nABSOLUTE-SUMMARY" in text
+            and "prior task" in text
+            and text.count("continue") == 1
+            and "large " not in text
+        )
         return event({"content": "absolute-compact-ok" if valid else "absolute-compact-bad"})
 
     with Server([compact, finish]) as server:
@@ -3378,7 +3405,7 @@ def test_subagent_uses_selected_model_route(root, home):
         runtime = "\n".join(
             str(message.get("content", ""))
             for message in body["messages"]
-            if message.get("role") == "system"
+            if message.get("role") == "user"
         )
         assert_true("[delegation: parent=" in runtime, runtime)
         return tool_call(
@@ -3458,12 +3485,9 @@ def test_image_fallback_reaches_another_provider(root, home):
         assert_true("image_url" not in serialized, serialized[:200])
         assert_true("described, not seen" in serialized, serialized[:400])
         assert_true("stack trace" in serialized, serialized[:400])
-        # The conversation model is never told which way images arrived.
-        system = "\n".join(
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "system"
-        )
+        # The conversation model is never told which way images arrived. The
+        # check spans every role: runtime context is a user turn now.
+        system = "\n".join(str(message.get("content", "")) for message in body["messages"])
         assert_true("vision model" not in system, system)
         assert_true("Image input unavailable" not in system, system)
         return event({"content": "saw-it"})
@@ -3476,7 +3500,13 @@ def test_image_fallback_reaches_another_provider(root, home):
         )
         env["UAGENT_IMAGE_MODEL"] = "eyes/vision-model"
         result = run(
-            root, env, "--yolo", "--attach", str(picture), "-p", "what is this",
+            root,
+            env,
+            "--yolo",
+            "--attach",
+            str(picture),
+            "-p",
+            "what is this",
             timeout=20,
         )
         assert_true(result.returncode == 0, result.stderr)
@@ -3485,116 +3515,6 @@ def test_image_fallback_reaches_another_provider(root, home):
     finally:
         parent.close()
         vision.close()
-
-
-def test_advisor_consults_a_second_model(root, home):
-    """The advisor answers from a different route, with no tools and no memory."""
-
-    def advise(_, body):
-        assert_true(body.get("model") == "advisor-model", body.get("model"))
-        # A reasoner, not an agent: no tool schema reaches the advisor at all.
-        assert_true("tools" not in body, body)
-        prompt = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        assert_true("independent advisor" in prompt, prompt)
-        assert_true("<question>" in prompt and "pacing model" in prompt, prompt)
-        assert_true("<evidence>" in prompt and "roll_cursor" in prompt, prompt)
-        return event({"content": "advice: anchor to the live edge"})
-
-    advisor = Server([advise])
-
-    def ask(_, body):
-        names = function_names(body)
-        assert_true("advisor" in names, names)
-        return tool_call(
-            "advisor",
-            {"question": "is the pacing model right?", "context": "roll_cursor += step"},
-        )
-
-    def finish(_, body):
-        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        return event({"content": "advised" if "live edge" in combined else "no-advice"})
-
-    parent = Server([ask, finish])
-    try:
-        env = base_env(home, parent.url)
-        env["UAGENT_PROVIDERS"] = json.dumps(
-            {
-                "aux": {
-                    "base_url": advisor.url,
-                    "api_key": "aux-key",
-                    "models": {"reviewer": {"id": "advisor-model", "effort": "high"}},
-                }
-            }
-        )
-        env["UAGENT_ADVISOR_MODEL"] = "aux/reviewer"
-        result = run(root, env, "--yolo", "-p", "check my reasoning", timeout=20)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "advised", result.stdout)
-        assert_true(len(advisor.requests) == 1, len(advisor.requests))
-    finally:
-        parent.close()
-        advisor.close()
-
-
-def test_advisor_background_joins_the_turn(root, home):
-    """background=true keeps the parent working; the answer joins a later round."""
-
-    def advise(_, __):
-        time.sleep(2)
-        return event({"content": "advice: measure first"})
-
-    advisor = Server([advise])
-
-    def ask(_, body):
-        return tool_call(
-            "advisor", {"question": "which first?", "background": True}
-        )
-
-    def wait_for_it(_, body):
-        assert_true(
-            any("[started] advisor id " in str(m.get("content", "")) for m in body["messages"]),
-            [str(m.get("content", ""))[:60] for m in body["messages"]],
-        )
-        return tool_call("activity", {"wait_ms": 30000})
-
-    def finish(_, body):
-        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        return event({"content": "joined" if "measure first" in combined else "lost"})
-
-    parent = Server([ask, wait_for_it, finish])
-    try:
-        env = base_env(home, parent.url)
-        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "6"
-        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "6"
-        env["UAGENT_PROVIDERS"] = json.dumps(
-            {"aux": {"base_url": advisor.url, "api_key": "aux-key"}}
-        )
-        env["UAGENT_ADVISOR_MODEL"] = "aux/advisor-model"
-        result = run(root, env, "--yolo", "-p", "think it over", timeout=20)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "joined", result.stdout)
-    finally:
-        parent.close()
-        advisor.close()
-
-
-def test_advisor_absent_without_a_route(root, home):
-    """An unconfigured advisor costs no schema tokens."""
-
-    def only_turn(_, body):
-        assert_true("advisor" not in function_names(body), function_names(body))
-        system = "\n".join(
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "system"
-        )
-        assert_true("advisor=unavailable" in system, system)
-        return event({"content": "no-advisor"})
-
-    with Server([only_turn]) as server:
-        result = run(root, base_env(home, server.url), "-p", "hello", timeout=10)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "no-advisor", result.stdout)
 
 
 def test_subagent_recursion_is_depth_bounded(root, home):
@@ -3832,6 +3752,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
     state = {"pid": None, "child": None}
     child_file = root / "detached-child-pid"
+    child_tmp = root / "detached-child-pid.tmp"
 
     def kill_wrapper(_, body):
         state["pid"] = detached_pid(body)
@@ -3873,7 +3794,11 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
             tool_call(
                 "run",
                 {
-                    "command": f"sleep 20 & child=$!; printf '%s\\n' \"$child\" > {shlex.quote(str(child_file))}; wait",
+                    "command": (
+                        "sleep 20 & child=$!; "
+                        f"printf '%s\\n' \"$child\" > {shlex.quote(str(child_tmp))} && "
+                        f"mv {shlex.quote(str(child_tmp))} {shlex.quote(str(child_file))}; wait"
+                    ),
                     "detach": True,
                 },
             ),

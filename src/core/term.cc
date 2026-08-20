@@ -3,6 +3,7 @@
 #include "include/core/term.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <string>
@@ -12,6 +13,18 @@
 #include "include/core/strings.h"
 
 namespace uagent {
+
+namespace {
+std::atomic<bool>& PersistentComposerFlag() {
+  static std::atomic<bool> active{false};
+  return active;
+}
+}  // namespace
+
+void SetPersistentComposer(bool active) { PersistentComposerFlag() = active; }
+
+bool PersistentComposer() { return PersistentComposerFlag(); }
+
 namespace {
 
 struct TerminalActivityState {
@@ -19,11 +32,11 @@ struct TerminalActivityState {
   uint64_t next = 0;
   struct Entry {
     uint64_t id = 0;
-    std::string label;          // static fallback label
-    std::string roll_prefix;    // caller-owned label kept ahead of the window
-    std::string roll;           // bounded rolling ticker text
-    double roll_cursor = 0;     // fractional display-column cursor
-    double roll_edge = 0;       // last frame's live edge, to measure arrival
+    std::string label;        // static fallback label
+    std::string roll_prefix;  // caller-owned label kept ahead of the window
+    std::string roll;         // bounded rolling ticker text
+    double roll_cursor = 0;   // fractional display-column cursor
+    double roll_edge = 0;     // last frame's live edge, to measure arrival
     std::chrono::steady_clock::time_point roll_last{};  // last advance tick
     bool rolling = false;
   };
@@ -68,7 +81,7 @@ void UpdateTerminalActivity(uint64_t id, std::string label) {
 // end is clamped to the newest text on the next frame); afterwards the buffer
 // grows with each streamed delta and the window scrolls to follow it.
 void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
-                                       const std::string& text) {
+                                const std::string& text) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
   for (auto& entry : state.active) {
@@ -89,10 +102,9 @@ void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
 void EndTerminalActivity(uint64_t id) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
-  std::erase_if(state.active,
-                [id](const TerminalActivityState::Entry& entry) {
-                  return entry.id == id;
-                });
+  std::erase_if(state.active, [id](const TerminalActivityState::Entry& entry) {
+    return entry.id == id;
+  });
 }
 
 std::string CurrentTerminalActivity() {

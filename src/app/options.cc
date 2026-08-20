@@ -16,11 +16,11 @@ namespace {
 // One table drives both parsing and `--help`, so a flag cannot be accepted
 // without being documented or documented without being accepted.
 enum class FlagKind {
-  kToggle,   // sets a bool on Options
-  kConfig,   // takes a value, forwarded to the config layer as `key`
-  kBudget,   // takes a validated dollar amount
-  kPrompt,   // takes the headless prompt
-  kAttach,   // takes a path, repeatable
+  kToggle,  // sets a bool on Options
+  kConfig,  // takes a value, forwarded to the config layer as `key`
+  kBudget,  // takes a validated dollar amount
+  kPrompt,  // takes the headless prompt
+  kAttach,  // takes a path, repeatable
   kVersion,
   kHelp,
 };
@@ -49,8 +49,6 @@ constexpr FlagSpec kFlags[] = {
      "disable memory recall and writes for this session"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:variant][:effort]"},
-    {"--advisor", FlagKind::kConfig, nullptr, "UAGENT_ADVISOR_MODEL",
-     "SELECTION", "enable the advisor tool on this model route"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
      "SELECTION", "read attached images with this model route"},
     {"--subagent-model", FlagKind::kConfig, nullptr, "UAGENT_SUBAGENT_MODEL",
@@ -78,9 +76,9 @@ constexpr FlagSpec kFlags[] = {
 };
 
 const FlagSpec* FindFlag(std::string_view argument) {
-  auto found = std::find_if(
-      std::begin(kFlags), std::end(kFlags),
-      [&](const FlagSpec& spec) { return spec.flag == argument; });
+  auto found =
+      std::find_if(std::begin(kFlags), std::end(kFlags),
+                   [&](const FlagSpec& spec) { return spec.flag == argument; });
   return found == std::end(kFlags) ? nullptr : &*found;
 }
 
@@ -155,7 +153,7 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
 }
 
 const char* UsageText() {
-  static const std::string text = [] {
+  static const std::string kText = [] {
     auto invocation_of = [](const FlagSpec& spec) {
       // --debug is spelled with its optional value in both places.
       if (spec.flag == "--debug") return std::string("--debug[=PATH]");
@@ -183,7 +181,7 @@ const char* UsageText() {
            "process UAGENT_* variables override both, and the flags above "
            "override all three\n";
   }();
-  return text.c_str();
+  return kText.c_str();
 }
 
 }  // namespace uagent

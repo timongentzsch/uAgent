@@ -118,6 +118,25 @@ std::string InputPrompt(const char* label) {
          (label && *label ? std::string(label) + "> " : "> ") + RST();
 }
 
+std::string UserEchoRow(const std::string& prompt, const std::string& text) {
+  // InputPrompt ends in RST(), which clears the background, so the band is
+  // re-armed after it. A row the text wraps onto fills itself; one it ends
+  // with a real newline does not, so each newline closes and reopens the band.
+  // The composer echoes a glyph instead of a newline, so that loop only does
+  // anything on the reprint path, where the raw text is passed through.
+  std::string row = "\r" + std::string(InputBg()) + prompt + InputBg();
+  for (size_t at = 0; at < text.size(); ++at) {
+    if (text[at] == '\n') {
+      row += EraseToEol();
+      row += '\n';
+      row += InputBg();
+    } else {
+      row += text[at];
+    }
+  }
+  return row + EraseToEol() + RST();
+}
+
 std::string ReadInputLine(const std::string& prompt, bool* eof,
                           bool keep_history, const std::string& initial) {
   *eof = false;

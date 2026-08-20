@@ -71,6 +71,18 @@ FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
          nullptr);
   EV_SET(&changes[2], SteeringWakeFd(), EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0,
          nullptr);
+  // Register before sampling the stamp, as inotify already does on Linux;
+  // otherwise a write between check and registration is never reported.
+  timespec immediately = {0, 0};
+  int registered;
+  do {
+    registered = kevent(kqueue_fd, changes, 3, nullptr, 0, &immediately);
+  } while (registered < 0 && errno == EINTR);
+  if (registered < 0) {
+    close(kqueue_fd);
+    close(file);
+    return WaitFallback(deadline);
+  }
   if (SnapshotFile(path) != observed) {
     close(kqueue_fd);
     close(file);
@@ -81,7 +93,7 @@ FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
   struct kevent event{};
   int ready;
   do {
-    ready = kevent(kqueue_fd, changes, 3, &event, 1, &timeout);
+    ready = kevent(kqueue_fd, nullptr, 0, &event, 1, &timeout);
   } while (ready < 0 && errno == EINTR);
   close(kqueue_fd);
   close(file);

@@ -205,6 +205,31 @@ void TestSseChunkPartitions() {
   stream.Finish();
   CHECK(result.content == "complete");
 
+  // Provider-specific tool syntax is held across arbitrary SSE chunking. It
+  // is classified as invalid by the turn loop and never flashes as an answer.
+  const std::string foreign =
+      "  <｜DSML｜tool_calls:\n    edit_file:\n      path: x";
+  for (size_t split = 0; split <= foreign.size(); ++split) {
+    ChatResult guarded;
+    StreamCtx guarded_stream;
+    guarded_stream.res = &guarded;
+    guarded_stream.status = 200;
+    guarded_stream.started = std::chrono::steady_clock::now();
+    guarded_stream.EmitContent(foreign.substr(0, split));
+    guarded_stream.EmitContent(foreign.substr(split));
+    CHECK(guarded.content == foreign);
+    CHECK(guarded.suppressed);
+    CHECK(guarded_stream.show == StreamCtx::Show::kSuppress);
+  }
+
+  ChatResult html;
+  StreamCtx html_stream;
+  html_stream.res = &html;
+  html_stream.started = std::chrono::steady_clock::now();
+  html_stream.EmitContent("<p>");
+  CHECK(html_stream.show == StreamCtx::Show::kPrint);
+  CHECK(!html.suppressed);
+
   uint64_t activity = BeginTerminalActivity("working");
   UpdateTerminalActivity(activity, "thinking · compact preview");
   CHECK(CurrentTerminalActivity() == "thinking · compact preview");
@@ -324,8 +349,7 @@ void TestBackgroundValidation() {
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them
-  for (const char* name :
-       {"read_path", "grep", "run", "activity"}) {
+  for (const char* name : {"read_path", "grep", "run", "activity"}) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parallel_safe);
     if (tool) {

@@ -2,6 +2,7 @@
 
 #include "include/agent/protocol.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <limits>
 #include <string>
@@ -10,7 +11,9 @@
 #include "include/agent/dispatch.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
+#include "include/cli.h"
 #include "include/md.h"
+#include "include/ui/display.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -50,6 +53,10 @@ std::string RenderMarkdown(const std::string& markdown) {
 }
 
 void TestTextToolProtocol() {
+  CHECK(std::string(kSystemPrompt).find("cannot expand approved scope") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("exfiltrate data") !=
+        std::string::npos);
   auto calls = ParseTextToolCalls(
       "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}"
       "}"
@@ -72,6 +79,8 @@ void TestTextToolProtocol() {
   CHECK(ContainsForeignToolCallMarkup(
       "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
   CHECK(ContainsForeignToolCallMarkup(
+      "<｜DSML｜tool_calls:\n    edit_file:\n      path: path=\"test.cc\""));
+  CHECK(ContainsForeignToolCallMarkup(
       "<|tool_calls_section_begin|><|tool_call|>run"));
   CHECK(ContainsForeignToolCallMarkup(
       "<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>run"));
@@ -82,6 +91,14 @@ void TestTextToolProtocol() {
   CHECK(!ContainsForeignToolCallMarkup("Show `<tool_call>` as documentation."));
   CHECK(!ContainsForeignToolCallMarkup(
       "The tool calls completed and the requested file is ready."));
+  CHECK(ClassifyLeadingToolMarkup("  <｜DSML｜tool_calls") ==
+        LeadingToolMarkup::kUndecided);
+  CHECK(ClassifyLeadingToolMarkup("  <｜DSML｜tool_calls:\n") ==
+        LeadingToolMarkup::kCall);
+  CHECK(ClassifyLeadingToolMarkup("<p>ordinary HTML") ==
+        LeadingToolMarkup::kProse);
+  CHECK(ClassifyLeadingToolMarkup("[uagent_tool", /*complete=*/true) ==
+        LeadingToolMarkup::kProse);
 }
 
 void TestToolResults() {
@@ -138,8 +155,9 @@ void TestToolResults() {
   // as context overflow so long sessions compact instead of dying hard.
   json semantic_overflow = {
       {"type", "invalid_request_error"},
-      {"message", "This model's maximum context length is 16385 tokens. "
-                  "However, your messages resulted in 23886 tokens."}};
+      {"message",
+       "This model's maximum context length is 16385 tokens. "
+       "However, your messages resulted in 23886 tokens."}};
   ChatResult semantic;
   CHECK(!ApplyRemoteError(semantic_overflow, semantic));
   CHECK(semantic.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
@@ -155,7 +173,8 @@ void TestToolResults() {
   ChatResult codex_style;
   CHECK(!ApplyRemoteError(
       {{"message", "input is too long for requested model"}}, codex_style));
-  CHECK(codex_style.remote_error_kind == RemoteErrorKind::kContextLengthExceeded);
+  CHECK(codex_style.remote_error_kind ==
+        RemoteErrorKind::kContextLengthExceeded);
   ChatResult parenthesized;
   CHECK(!ApplyRemoteError(
       {{"message", "exceeds the model's maximum context length (200000)"}},
@@ -172,10 +191,9 @@ void TestToolResults() {
       rate_limited));
   CHECK(rate_limited.remote_error_kind == RemoteErrorKind::kNone);
   ChatResult unrelated_error;
-  CHECK(!ApplyRemoteError(
-      {{"type", "invalid_request_error"},
-       {"message", "unsupported parameter: temperature"}},
-      unrelated_error));
+  CHECK(!ApplyRemoteError({{"type", "invalid_request_error"},
+                           {"message", "unsupported parameter: temperature"}},
+                          unrelated_error));
   CHECK(unrelated_error.remote_error_kind == RemoteErrorKind::kNone);
   CHECK(ContextLengthError("", "model_context_window_exceeded"));
   CHECK(ContextLengthError("request_too_large", ""));
@@ -188,6 +206,29 @@ void TestToolResults() {
   retryable.semantic_progress = true;
   CHECK(!SafeToRetry(retryable));
   CHECK(RetryDelay(2, 42) == RetryDelay(1, 42) * 2);
+
+  // Side requests: a transport failure carries no status, transient statuses
+  // are worth another attempt, and a rejected request is not.
+  JsonResponse timed_out;
+  timed_out.error = "connection error: Timeout was reached";
+  CHECK(SafeToRetry(timed_out));
+  JsonResponse throttled;
+  throttled.error = "HTTP 429";
+  throttled.http_status = 429;
+  CHECK(SafeToRetry(throttled));
+  JsonResponse unavailable;
+  unavailable.error = "HTTP 503";
+  unavailable.http_status = 503;
+  CHECK(SafeToRetry(unavailable));
+  JsonResponse rejected;
+  rejected.error = "HTTP 400";
+  rejected.http_status = 400;
+  CHECK(!SafeToRetry(rejected));
+  JsonResponse oversized;
+  oversized.error = "response exceeds configured byte limit";
+  oversized.http_status = 200;
+  CHECK(!SafeToRetry(oversized));
+  CHECK(!SafeToRetry(JsonResponse{}));
 
   json annotations = json::array({{{"url_citation",
                                     {{"url", "https://example.com/source"},
@@ -267,6 +308,13 @@ void TestRegistries() {
   CHECK(research_prompt.find("single search") != std::string::npos);
   CHECK(research_prompt.find("source-cited findings") != std::string::npos);
   capability_tools.push_back(MakeTool(
+      "web_fetch", "", json::object(),
+      [](const json&, const ToolContext&) { return ToolSuccess(""); }));
+  std::string fetch_prompt = CapabilityPrompt(capability_tools);
+  CHECK(fetch_prompt.find("Read a named page with web_fetch") !=
+        std::string::npos);
+  CHECK(fetch_prompt.find("browser skill's job") != std::string::npos);
+  capability_tools.push_back(MakeTool(
       "adapt_system", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string adaptive_prompt = CapabilityPrompt(capability_tools);
@@ -281,8 +329,8 @@ void TestRegistries() {
   CHECK(CapabilityPrompt({}).empty());
   std::string host_prompt = HostCapabilityPrompt(capability_tools);
   CHECK(host_prompt.find("web_search=available") != std::string::npos);
+  CHECK(host_prompt.find("web_fetch=available") != std::string::npos);
   CHECK(host_prompt.find("subagent=available") != std::string::npos);
-  CHECK(host_prompt.find("advisor=unavailable") != std::string::npos);
   CHECK(host_prompt.find("approval=") != std::string::npos);
   CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
   CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
@@ -320,6 +368,19 @@ void TestRegistries() {
   CHECK(FmtCount(1'000'000) == "1.0M");
   CHECK(FmtCount(1'250'000) == "1.2M");
   CHECK(FmtCount(1'000'000'000) == "1.0B");
+  CHECK(FmtDuration(0.0) == "0ms");
+  CHECK(FmtDuration(0.84) == "840ms");
+  CHECK(FmtDuration(2.44) == "2.4s");
+  CHECK(FmtDuration(59.9) == "59.9s");
+  CHECK(FmtDuration(60.0) == "1m");
+  CHECK(FmtDuration(2461.0) == "41m 1s");
+  CHECK(FmtDuration(4320.0) == "1h 12m");
+  CHECK(FmtDuration(183600.0) == "2d 3h");
+  CHECK(FmtBytes(512) == "512 B");
+  CHECK(FmtBytes(1024) == "1.0 KB");
+  CHECK(FmtBytes(1434) == "1.4 KB");
+  CHECK(FmtBytes(2411724) == "2.3 MB");
+  CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.0 GB");
   const char* prior_path_value = getenv("PATH");
   std::string prior_path = prior_path_value ? prior_path_value : "";
   setenv("PATH", "/uagent-no-executables", 1);
@@ -431,18 +492,18 @@ void TestOptions() {
   CHECK(!ParseOptions(5, conflicting_json).Ok());
 
   // Model-valued flags become config overrides, which outrank the environment.
-  char advisor_flag[] = "--advisor";
-  char advisor_route[] = "openrouter/opus:xhigh";
-  char* routed[] = {executable, advisor_flag, advisor_route, budget,
-                    two_dollars, no_memory};
+  char subagent_flag[] = "--subagent-model";
+  char subagent_route[] = "openrouter/opus:xhigh";
+  char* routed[] = {executable, subagent_flag, subagent_route,
+                    budget,     two_dollars,   no_memory};
   ParsedOptions overrides = ParseOptions(6, routed);
   CHECK(overrides.Ok());
-  CHECK(overrides.options.overrides["UAGENT_ADVISOR_MODEL"] ==
+  CHECK(overrides.options.overrides["UAGENT_SUBAGENT_MODEL"] ==
         "openrouter/opus:xhigh");
   CHECK(overrides.options.overrides["UAGENT_MEMORY"] == "0");
   CHECK(overrides.options.overrides.contains("UAGENT_SESSION_BUDGET"));
-  char* advisor_without_value[] = {executable, advisor_flag};
-  CHECK(!ParseOptions(2, advisor_without_value).Ok());
+  char* subagent_without_value[] = {executable, subagent_flag};
+  CHECK(!ParseOptions(2, subagent_without_value).Ok());
 
   std::string usage = UsageText();
   CHECK(usage.find("--debug[=PATH]") != std::string::npos);
@@ -450,13 +511,28 @@ void TestOptions() {
         std::string::npos);
   CHECK(usage.find("--yolo") != std::string::npos);
   // The table drives both, so every accepted flag is documented.
-  CHECK(usage.find("--advisor SELECTION") != std::string::npos);
+  CHECK(usage.find("--subagent-model SELECTION") != std::string::npos);
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }
 
 void TestLineNumberStripping() {
   CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
   CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
+}
+
+void TestMarkdownBlankLines() {
+  // Models routinely end a message with a run of newlines. Each one is a
+  // wasted terminal row, and the run before a tool row is the visible cost.
+  CHECK(RenderMarkdownChunks({"a\n\n\n\n\nb\n"}) == "a\n\nb\n");
+  CHECK(RenderMarkdownChunks({"a\n\n\n\n\n"}) == "a\n");
+  CHECK(RenderMarkdownChunks({"a\n\nb\n"}) == "a\n\nb\n");
+  CHECK(RenderMarkdownChunks({"a\nb\n"}) == "a\nb\n");
+  // Held blanks survive chunk boundaries, since a stream splits anywhere.
+  CHECK(RenderMarkdownChunks({"a\n\n", "\n\nb\n"}) == "a\n\nb\n");
+  // A blank line inside a fence is content, not spacing: all six rows of
+  // ``` / x / blank / blank / y / ``` survive, colour codes and all.
+  std::string fenced = RenderMarkdownChunks({"```\nx\n\n\ny\n```\n"});
+  CHECK(std::count(fenced.begin(), fenced.end(), '\n') == 6);
 }
 
 void TestMarkdownMath() {
@@ -547,6 +623,10 @@ void TestCapsAndEscaping() {
   std::string escaped = EscapeToolTags(text);
   CHECK(escaped.find(kTtOpen) == std::string::npos);
   CHECK(escaped.find(kTtClose) == std::string::npos);
+  ToolResult injected = ToolFailure(ToolErrorCode::kNotFound, text);
+  std::string model_result = ModelResultText(injected, 1000);
+  CHECK(model_result.find(kTtOpen) == std::string::npos);
+  CHECK(model_result.find(kTtClose) == std::string::npos);
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
   std::string capped = CapResult("éééééé");
   CHECK(capped.size() <= 8);
@@ -566,6 +646,29 @@ void TestCapsAndEscaping() {
   CHECK(head_tail.ends_with("-é-tail"));
   CHECK(head_tail.find("bytes truncated") != std::string::npos);
   CHECK(JsonDump(json(head_tail)).find("\xEF\xBF\xBD") == std::string::npos);
+
+  // The echoed user turn is one row banded to the right edge: no newline of
+  // its own, and nothing but the text when stdout is not a terminal.
+  // A status row rewraps only when the terminal has narrowed below the width
+  // it was written at, and then by one row per width it overruns.
+  CHECK(StatusOverflowRows(79, 80) == 0);
+  CHECK(StatusOverflowRows(80, 80) == 0);
+  CHECK(StatusOverflowRows(81, 80) == 1);
+  CHECK(StatusOverflowRows(119, 60) == 1);
+  CHECK(StatusOverflowRows(119, 40) == 2);
+  CHECK(StatusOverflowRows(0, 80) == 0);
+  CHECK(StatusOverflowRows(80, 0) == 0);
+
+  bool prior_tty = g_tty;
+  g_tty = true;
+  std::string banded = UserEchoRow(InputPrompt(), "hello");
+  CHECK(banded.starts_with("\r"));
+  CHECK(banded.find(InputBg()) != std::string::npos);
+  CHECK(banded.find("hello\033[K") != std::string::npos);
+  CHECK(banded.find('\n') == std::string::npos);
+  g_tty = false;
+  CHECK(UserEchoRow(InputPrompt(), "hello") == "\r> hello");
+  g_tty = prior_tty;
 
   std::vector<CallTask> tasks(3);
   tasks[0].result = ToolFailure(ToolErrorCode::kRemoteError, "short");

@@ -33,15 +33,22 @@ void NormalizeRole(json& message, MessageKind kind) {
       // Native results keep their tool_call_id and role. Text-protocol results
       // have no native call to reference, so they are harness-owned context.
       if (JsonValue(message, "role", "") != "tool") {
-        message["role"] = "system";
+        message["role"] = "user";
       }
       return;
     case MessageKind::kSystem:
+      message["role"] = "system";
+      return;
+    // Harness-injected context. Only the baseline at index zero may be
+    // `system`: the OpenAI convention expects a single leading system message,
+    // and strict chat templates reject a later one outright. Project
+    // instructions and memory appear here only when resuming a session saved
+    // before the baseline was consolidated.
     case MessageKind::kProjectInstructions:
     case MessageKind::kMemory:
     case MessageKind::kRuntimeContext:
     case MessageKind::kInternal:
-      message["role"] = "system";
+      message["role"] = "user";
       return;
   }
 }
@@ -179,29 +186,20 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   kinds_ = std::move(kinds);
 }
 
-void Conversation::RefreshBaseline(json system,
-                                   const json* project_instructions,
-                                   const json* memories) {
+void Conversation::RefreshBaseline(json system) {
   if (messages_.empty()) {
     messages_ = json::array({std::move(system)});
     kinds_ = {MessageKind::kSystem};
   } else {
     Set(0, std::move(system), MessageKind::kSystem);
   }
+  // Sessions saved before the baseline was consolidated still carry separate
+  // project-instruction and memory messages. Their content is already folded
+  // into the system message above, so drop the stale copies.
   while (messages_.size() > 1 &&
          (kinds_[1] == MessageKind::kProjectInstructions ||
           kinds_[1] == MessageKind::kMemory)) {
     Erase(1, 2);
-  }
-  size_t insert = 1;
-  if (project_instructions) {
-    messages_.insert(messages_.begin() + insert, *project_instructions);
-    kinds_.insert(kinds_.begin() + insert, MessageKind::kProjectInstructions);
-    ++insert;
-  }
-  if (memories) {
-    messages_.insert(messages_.begin() + insert, *memories);
-    kinds_.insert(kinds_.begin() + insert, MessageKind::kMemory);
   }
 }
 
@@ -216,6 +214,21 @@ void Conversation::Upsert(json message, MessageKind kind) {
     if (kinds_[index - 1] == kind) {
       Set(index - 1, std::move(message), kind);
       return;
+    }
+  }
+  Push(std::move(message), kind);
+}
+
+// Refresh volatile harness context at the tail so a change (terminal width,
+// date) never invalidates the cacheable prefix of the history.
+void Conversation::UpsertTail(json message, MessageKind kind) {
+  NormalizeRole(message, kind);
+  if (!kinds_.empty() && kinds_.back() == kind && messages_.back() == message) {
+    return;
+  }
+  for (size_t index = kinds_.size(); index > 0; --index) {
+    if (kinds_[index - 1] == kind) {
+      Erase(index - 1, index);
     }
   }
   Push(std::move(message), kind);
@@ -343,21 +356,17 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
       continue;
     }
     json& message = messages_[current];
-    if (!message.contains("content") || !message["content"].is_string()) {
-      continue;
-    }
-    const std::string& content =
-        message["content"].get_ref<const std::string&>();
-    if (content.size() < kMinimumPrunableResultChars ||
-        content.starts_with(kCompactedToolOutput) ||
+    const std::string* content = JsonStringRef(message, "content");
+    if (!content || content->size() < kMinimumPrunableResultChars ||
+        content->starts_with(kCompactedToolOutput) ||
         retained.contains(ToolResultName(messages_, kinds_, current))) {
       continue;
     }
-    protected_chars = SaturatingAdd(protected_chars, content.size());
+    protected_chars = SaturatingAdd(protected_chars, content->size());
     if (protected_chars <= protect_chars) continue;
-    std::string replacement = CompactedResult(content);
-    if (replacement.size() >= content.size()) continue;
-    size_t reclaimed = content.size() - replacement.size();
+    std::string replacement = CompactedResult(*content);
+    if (replacement.size() >= content->size()) continue;
+    size_t reclaimed = content->size() - replacement.size();
     reclaimable_chars = SaturatingAdd(reclaimable_chars, reclaimed);
     candidates.push_back({current, std::move(replacement)});
   }

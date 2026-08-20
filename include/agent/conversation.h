@@ -53,11 +53,11 @@ class Conversation {
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
                int64_t dropped_segments);
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
-  void RefreshBaseline(json system, const json* project_instructions,
-                       const json* memories);
+  void RefreshBaseline(json system);
 
   void Push(json message, MessageKind kind);
   void Upsert(json message, MessageKind kind);
+  void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
 

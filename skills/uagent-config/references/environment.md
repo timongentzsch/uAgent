@@ -18,7 +18,7 @@ changes an in-flight turn.
 Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 
 Every model-valued setting — `UAGENT_MODEL`, `UAGENT_SUBAGENT_MODEL`,
-`UAGENT_ADVISOR_MODEL`, `UAGENT_IMAGE_MODEL`, `UAGENT_MEMORY_MODEL`,
+`UAGENT_IMAGE_MODEL`, `UAGENT_MEMORY_MODEL`,
 `UAGENT_WEB_SEARCH_MODEL`, the matching `--flags`, `/model` and the `subagent`
 tool's `model` argument — shares one selection schema:
 
@@ -119,9 +119,6 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 60 | tool calls per delegated child |
 | `UAGENT_SUBAGENT_MODEL` | current route | default delegated model route |
-| `UAGENT_ADVISOR_MODEL` | empty | model route for the `advisor` tool; empty hides it |
-| `UAGENT_ADVISOR_CONTEXT_BYTES` | 32768 | evidence accepted per advisor call |
-| `UAGENT_ADVISOR_TIMEOUT` | 300 | advisor seconds; a reasoning model runs far longer than a command |
 | `UAGENT_DEPTH` | internal `0` | current supervised child depth |
 
 ## Skills and memory
@@ -149,11 +146,12 @@ UAGENT_MODEL=local/fast
 | `UAGENT_WEB_SEARCH_BACKEND` | `auto` | search backend selection |
 | `UAGENT_WEB_SEARCH_URL` | empty | custom search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
+| `UAGENT_WEB_FETCH_BYTES` | 2 MiB | `web_fetch` download cap; a larger page is read to the cap and marked partial |
 | `UAGENT_WEB_SEARCH_MODEL` | empty | search model override |
 | `UAGENT_WEB_SEARCH_EFFORT` | empty | search reasoning effort |
 | `UAGENT_WEB_SEARCH_ENGINE` | `auto` | engine selection |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | empty | provider search context size |
-| `UAGENT_WEB_SEARCH_TIMEOUT` | 60 | search seconds |
+| `UAGENT_WEB_SEARCH_TIMEOUT` | 60 | seconds per search attempt; a transient failure is retried up to 3 times |
 | `UAGENT_WEB_SEARCH_MAX_TOKENS` | 1200 | search response tokens |
 | `UAGENT_WEB_SEARCH_CALLS` | 4 | `web_search` calls per turn |
 | `UAGENT_WEB_SEARCH_MAX_RESULTS` | 5 | results per search call, maximum 25 |

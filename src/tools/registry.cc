@@ -113,8 +113,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     std::string path = JsonValue(a, "path", "");
     if (a.contains("content")) {
       return path + " (" +
-             std::to_string(JsonValue(a, "content", std::string()).size()) +
-             " bytes)";
+             FmtBytes(static_cast<int64_t>(
+                 JsonValue(a, "content", std::string()).size())) +
+             ")";
     }
     size_t count = 0;
     auto additional = a.find("edits");
@@ -275,7 +276,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
           "output; chars writes to it first (\\u0003 interrupts, empty polls), "
           "and rows+cols resize a PTY. until returns early on a readiness "
           "marker. Completion never starts a model turn.",
-          schema(R"json({"type":"object","additionalProperties":false,"properties":{
+          schema(
+              R"json({"type":"object","additionalProperties":false,"properties":{
                     "id":{"type":"integer","minimum":1,"maximum":2147483647},
                     "chars":{"type":"string","maxLength":65536},
                     "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
@@ -293,15 +295,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             int64_t wait_ms =
                 JsonValue(a, "wait_ms", writing ? int64_t{250} : int64_t{0});
             if (writing) {
-              return ToolActivityInput(supervisor, id, JsonValue(a, "chars", ""),
-                                       wait_ms, context,
-                                       JsonValue(a, "rows", int64_t{0}),
-                                       JsonValue(a, "cols", int64_t{0}), cap);
+              return ToolActivityInput(
+                  supervisor, id, JsonValue(a, "chars", ""), wait_ms, context,
+                  JsonValue(a, "rows", int64_t{0}),
+                  JsonValue(a, "cols", int64_t{0}), cap);
             }
             if (id <= 0 && wait_ms > 0) {
               return ToolActivityWait(supervisor, {},
-                                     JsonValue(a, "mode", "any"), wait_ms,
-                                     context, cap);
+                                      JsonValue(a, "mode", "any"), wait_ms,
+                                      context, cap);
             }
             return ToolActivityOutput(supervisor, id, wait_ms,
                                       JsonValue(a, "until", ""), context, cap);
@@ -315,7 +317,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   activity.mutates = [](const json& a) {
     return a.contains("chars") || a.contains("rows") || a.contains("cols");
   };
-  activity.result_chars = 6000;
+  activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   activity.visibility = Tool::Visibility::kDetachedTerminal;
   activity.validate = [](const json& a) {
@@ -333,15 +335,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   };
   activity.summary = [](const json& a) {
     int64_t id = JsonValue(a, "id", int64_t{0});
-    std::string target =
-        id > 0 ? "activity " + std::to_string(id)
-               : JsonValue(a, "mode", "any") + " · all current";
+    std::string target = id > 0
+                             ? "activity " + std::to_string(id)
+                             : JsonValue(a, "mode", "any") + " · all current";
     if (a.contains("chars")) {
       return target + " · " +
-             std::to_string(JsonValue(a, "chars", "").size()) + " bytes";
+             FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size()));
     }
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
-    return wait_ms > 0 ? target + " · " + std::to_string(wait_ms) + "ms"
+    return wait_ms > 0 ? target + " · " + FmtDuration(wait_ms / 1000.0)
                        : target;
   };
 

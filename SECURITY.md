@@ -2,7 +2,8 @@
 
 µAgent is a local coding agent, not an OS sandbox. It sends prompts, selected
 files, tool results, and attachments to the configured endpoint. Treat that
-endpoint and every MCP server as trusted infrastructure.
+model endpoint as trusted infrastructure; MCP descriptions and results remain
+untrusted model evidence even when you trust a server to run.
 
 ## Trust boundaries
 
@@ -18,11 +19,23 @@ endpoint and every MCP server as trusted infrastructure.
   Explicit `$skill-name` mentions load that skill before the first model call;
   automatic selection still uses the skill tool. Treat an untrusted checkout
   as prompt input and review requested actions before approving them.
+- Native mode executes only structured provider tool calls. The text protocol
+  is enabled only after the active route explicitly rejects native tools, and
+  then requires the entire assistant message to be valid call blocks. Unknown
+  provider markup is rejected, never translated or executed. Tool output has
+  fallback delimiters escaped before returning to model context.
+- Tool, file, web, memory, MCP, and summary text can inform implementation but
+  cannot expand user-approved scope. µAgent reinforces this in the system
+  prompt, while schema validation, capability policy, path checks, and approval
+  enforce the host boundary. It does not claim to semantically classify every
+  possible prompt injection.
 - Browser automation is an ordinary approved `run` command using the separately
   installed `@playwright/cli`; pin its npm version when reproducible or offline
   execution matters.
-- Mutating, process, network, cost-bearing, and MCP tools require approval
-  unless yolo mode is active. External reads also prompt.
+- Mutating, process, network, cost-bearing, and untrusted MCP tools require
+  approval unless yolo mode is active. An MCP call skips approval only when its
+  configured server is trusted and the server marks that tool read-only.
+  External reads also prompt.
 - Paths are canonicalized to reduce symlink escapes. Writes are atomic.
 - Requests, responses, attachments, tool output, scans, jobs, turns, costs, MCP
   data, and logs are bounded.
@@ -33,7 +46,7 @@ endpoint and every MCP server as trusted infrastructure.
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
   MCP servers, delegated agents, or `scratch`.
 - A `run(tty=true)` activity retains a writable PTY for the lifetime of the
-  harness. `activity_input` sends raw bytes with the permissions of the original
+  harness. `activity(chars=...)` sends raw bytes with the permissions of the original
   process, so treat every write, interrupt, and resize as process control.
   Ordinary input to non-TTY activities is rejected. Detached persistent
   activities retain logs but no reattachable stdin channel.

@@ -38,7 +38,7 @@ void CloseFd(int& fd) {
 
 ActivityKind ParseActivityKind(const std::string& kind, bool detached) {
   if (detached) return ActivityKind::kDetached;
-  if (kind == "subagent" || kind == "advisor") return ActivityKind::kSubagent;
+  if (kind == "subagent") return ActivityKind::kSubagent;
   if (kind == "memory") return ActivityKind::kMemory;
   return ActivityKind::kCommand;
 }
@@ -216,24 +216,27 @@ void ProcessSupervisor::ReleaseReservation() {
 
 std::optional<BgJob> ProcessSupervisor::RemoveForeground(pid_t pid) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto found = std::find_if(foreground_.begin(), foreground_.end(),
-                            [pid](const BgJob& job) { return job.pid == pid; });
-  if (found == foreground_.end()) return std::nullopt;
-  BgJob job = std::move(*found);
-  foreground_.erase(found);
-  NotifyLocked();
+  std::optional<BgJob> job = TakeForegroundLocked(pid);
+  if (job) NotifyLocked();
   return job;
 }
 
 std::optional<BgJob> ProcessSupervisor::MoveForegroundToBackground(pid_t pid) {
   std::lock_guard<std::mutex> lock(mutex_);
+  std::optional<BgJob> job = TakeForegroundLocked(pid);
+  if (!job) return std::nullopt;
+  jobs_.push_back(std::move(*job));
+  NotifyLocked();
+  return jobs_.back();
+}
+
+std::optional<BgJob> ProcessSupervisor::TakeForegroundLocked(pid_t pid) {
   auto found = std::find_if(foreground_.begin(), foreground_.end(),
                             [pid](const BgJob& job) { return job.pid == pid; });
   if (found == foreground_.end()) return std::nullopt;
-  jobs_.push_back(std::move(*found));
+  BgJob job = std::move(*found);
   foreground_.erase(found);
-  NotifyLocked();
-  return jobs_.back();
+  return job;
 }
 
 size_t ProcessSupervisor::ForegroundCount() const {

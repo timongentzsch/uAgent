@@ -5,7 +5,6 @@
 // Terminal colors and the blocking-call spinner. Every accessor returns an
 // empty string when stdout is not a TTY, so callers need no conditionals.
 
-#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -22,7 +21,11 @@ namespace uagent {
 
 extern bool g_tty;
 extern volatile sig_atomic_t g_signal_tty;
-inline std::atomic<bool> g_persistent_composer{false};
+// True while the REPL owns a pinned composer, which paints its own status row
+// and must not be raced by the spinner thread. State-free header: the flag
+// itself lives in src/core/term.cc, like the activity registry below.
+void SetPersistentComposer(bool active);
+bool PersistentComposer();
 inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
@@ -36,6 +39,11 @@ inline const char* YEL() { return g_tty ? "\033[33m" : ""; }
 inline const char* RED() { return g_tty ? "\033[31m" : ""; }
 inline const char* GREEN() { return g_tty ? "\033[32m" : ""; }
 inline const char* BOLD() { return g_tty ? "\033[1m" : ""; }
+// The band behind an echoed user turn, so a prompt is findable in scrollback.
+inline const char* InputBg() { return g_tty ? "\033[48;5;250m" : ""; }
+// Erase to end of line. With background-colour-erase this extends the current
+// background to the right edge, which is what turns the echo into a band.
+inline const char* EraseToEol() { return g_tty ? "\033[K" : ""; }
 inline const char* BoldOff() { return g_tty ? "\033[22m" : ""; }
 inline const char* ITAL() { return g_tty ? "\033[3m" : ""; }
 inline const char* ItalOff() { return g_tty ? "\033[23m" : ""; }
@@ -93,7 +101,7 @@ class TerminalSpinner {
     if (active_ || !enabled || !g_tty) return;
     active_ = true;
     activity_id_ = BeginTerminalActivity(label_);
-    if (g_persistent_composer) return;
+    if (PersistentComposer()) return;
     done_ = false;
     thread_ = std::thread([this] {
       std::unique_lock<std::mutex> lock(mutex_);
@@ -104,8 +112,8 @@ class TerminalSpinner {
         const std::string shown =
             rolling_ ? RenderCurrentTerminalActivity(TerminalWidth(14))
                      : label_;
-        printf("\r%s%c %s · %.1fs%s", DIM(), "|/-\\"[frame_], shown.c_str(),
-               elapsed, RST());
+        printf("\r%s%c %s · %s%s%s", DIM(), "|/-\\"[frame_], shown.c_str(),
+               FmtDuration(elapsed).c_str(), EraseToEol(), RST());
         fflush(stdout);
         frame_ = (frame_ + 1) & 3;
         wake_.wait_for(lock, std::chrono::milliseconds(100),

@@ -33,6 +33,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/tools/files.h"
 
 namespace uagent {
 namespace {
@@ -42,13 +43,11 @@ bool SignalProcessGroup(pid_t leader, int signal_number) {
   return errno == ESRCH;
 }
 
-pid_t PollProcess(pid_t pid, int* status) {
-  return WaitPid(pid, status, WNOHANG);
-}
-
+// The leader's own exit status is not the group's, and nothing reads it: this
+// only stops it lingering as a zombie while the group finishes.
 void ReapLeader(pid_t leader) {
   int status = 0;
-  PollProcess(leader, &status);
+  WaitPid(leader, &status, WNOHANG);
 }
 
 bool WaitForProcessGroupExit(ProcessSupervisor& supervisor, pid_t leader,
@@ -309,13 +308,8 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                  {"cwd", ec ? "" : cwd},
                  {"started_at", UtcStamp()}};
   std::string content = JsonDump(record, 2) + "\n";
-  std::string error;
   std::string path = DetachedRecordPath(pid);
-  if (!AtomicWriteFile(path, content, 0600, /*preserve_mode=*/true, error)) {
-    return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
-  }
-  return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
-                     path);
+  return ToolAtomicWrite(path, content, 0600, /*preserve_mode=*/true);
 }
 
 std::string SupervisedJobLabel(const BgJob& job) {
@@ -469,10 +463,10 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
     if (job->session) {
       std::lock_guard<std::mutex> lock(job->session->mutex);
       if (job->session->wait_status) {
-        state = " · exit " + std::to_string(WIFEXITED(*job->session->wait_status)
-                                                ? WEXITSTATUS(
-                                                      *job->session->wait_status)
-                                                : -1);
+        state = " · exit " +
+                std::to_string(WIFEXITED(*job->session->wait_status)
+                                   ? WEXITSTATUS(*job->session->wait_status)
+                                   : -1);
       }
     }
     return ToolSuccess(
@@ -734,7 +728,8 @@ namespace {
 
 int64_t AutomaticResultCap() {
   int64_t cap = ToolResultCap();
-  return cap > 0 ? std::min<int64_t>(cap, 6000) : int64_t{6000};
+  return cap > 0 ? std::min<int64_t>(cap, kActivityResultChars)
+                 : kActivityResultChars;
 }
 
 std::vector<std::string> TakeCompleted(
@@ -758,7 +753,7 @@ std::vector<std::string> TakeCompleted(
     int status = 0;
     bool completed = false;
     if (candidate.detached) {
-      pid_t waited = PollProcess(candidate.pid, &status);
+      pid_t waited = WaitPid(candidate.pid, &status, WNOHANG);
       completed = waited == candidate.pid && !ProcessGroupAlive(candidate.pid);
       if (!completed) continue;
     } else if (candidate.session) {
@@ -831,9 +826,8 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   // up would silently lose that record; it is no more waitable than a detached
   // activity.
   auto waitable = [](const BgJob& job) {
-    ActivityKind kind = job.session
-                            ? job.session->kind
-                            : ParseActivityKind(job.kind, job.detached);
+    ActivityKind kind = job.session ? job.session->kind
+                                    : ParseActivityKind(job.kind, job.detached);
     return !job.detached && kind != ActivityKind::kMemory;
   };
   std::vector<int64_t> ids;

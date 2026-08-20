@@ -41,10 +41,10 @@ struct StreamCtx {
   std::string timeout_reason;
   SseParser sse;
 
-  // Hold content back while it could still be a text-protocol tool call, so
-  // raw [uagent_tool_call] blocks never flash on screen. UNDECIDED until the
-  // first non-whitespace bytes either match TT_OPEN (SUPPRESS) or don't
-  // (PRINT).
+  // Hold leading content back while it could still be any tool protocol, so
+  // neither our fallback blocks nor malformed provider markup flashes as an
+  // answer. Classification lives beside the protocol constants and is shared
+  // with the final response validator.
   enum class Show { kUndecided, kPrint, kSuppress } show = Show::kUndecided;
 
   void MarkEvent() {
@@ -71,22 +71,14 @@ struct StreamCtx {
       return;
     }
     if (show == Show::kSuppress) return;
-    const std::string& full = res->content;
-    size_t start = full.find_first_not_of(" \t\r\n");
-    if (start == std::string::npos) return;  // only whitespace so far
-    std::string_view vis(full.data() + start, full.size() - start);
-    std::string_view open(kTtOpen);
-    if (vis.size() >= open.size()) {
-      show = vis.starts_with(open) ? Show::kSuppress : Show::kPrint;
-      if (show == Show::kPrint) {
-        OutputText(full);
-      } else {
-        res->suppressed = true;
-      }
-    } else if (!open.starts_with(vis)) {
+    LeadingToolMarkup classification = ClassifyLeadingToolMarkup(res->content);
+    if (classification == LeadingToolMarkup::kProse) {
       show = Show::kPrint;
-      OutputText(full);
-    }  // else: still a prefix of the tag — keep holding
+      OutputText(res->content);
+    } else if (classification == LeadingToolMarkup::kCall) {
+      show = Show::kSuppress;
+      res->suppressed = true;
+    }  // else: still a possible marker prefix — keep holding
   }
 
   // This runs inside a libcurl callback, so malformed server JSON is validated
@@ -123,7 +115,18 @@ struct StreamCtx {
     return len;
   }
 
-  void Finish() { Drain(sse.Finish()); }
+  void Finish() {
+    Drain(sse.Finish());
+    if (show != Show::kUndecided || res->content.empty()) return;
+    if (ClassifyLeadingToolMarkup(res->content, /*complete=*/true) ==
+        LeadingToolMarkup::kCall) {
+      show = Show::kSuppress;
+      res->suppressed = true;
+      return;
+    }
+    show = Show::kPrint;
+    OutputText(res->content);
+  }
 
   // Surface a parser failure, else hand every completed event to the decoder.
   bool Drain(bool parsed) {

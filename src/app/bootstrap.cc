@@ -31,10 +31,10 @@
 #include "include/media.h"
 #include "include/providers.h"
 #include "include/tools/memory.h"
-#include "include/tools/advisor.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
+#include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "include/ui/display.h"
 
@@ -166,11 +166,10 @@ void PrintTools(const std::vector<Tool>& tools) {
 }
 
 // Only the side models that are actually configured: the row exists to answer
-// "what will delegation, vision and consultation use", not to list defaults.
+// "what will delegation and side analysis use", not to list defaults.
 void PrintRoutes(const RuntimeConfig& config) {
   std::vector<std::pair<const char*, std::string>> routes = {
       {"subagent", SubagentModel()},
-      {"advisor", AdvisorModel()},
       {"image", config.image_model},
       {"memory", EnvStr("UAGENT_MEMORY_MODEL")},
       {"search", config.web_search_model},
@@ -259,7 +258,7 @@ std::vector<Tool> BuildTools(AppContext& context,
     std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
     return tools;
   }
-  // The advisor child reasons without acting, so it gets no tools at all.
+  // A tool-less child remains useful for constrained internal tasks.
   if (EnvStr("UAGENT_TOOLSET") == "none") return {};
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
@@ -267,22 +266,23 @@ std::vector<Tool> BuildTools(AppContext& context,
     tools.push_back(
         WebSearchTool(api, runtime.side_usage, context.provider.providers));
   }
+  // Reading a named URL needs no hosted route, so it does not follow search's
+  // availability.
+  tools.push_back(WebFetchTool(api));
   McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
   if (CanDelegate()) {
     tools.push_back(
         SubagentTool(api, runtime.processes, context.provider.routes,
                      context.provider.providers, context.options.debug));
-    if (!AdvisorModel().empty()) {
-      tools.push_back(
-          AdvisorTool(api, runtime.processes, context.provider.routes,
-                      context.provider.providers, context.options.debug));
-    }
   }
-  if (LeanToolset()) KeepLeanTools(tools);
+  if (LeanToolset()) {
+    KeepLeanTools(tools);
+  }
   ApplyToolPolicy(tools, context.tool_policy);
-  KeepSupportedSkills(skills, tools);
+  std::vector<std::string> tool_names = ToolNames(tools);
+  KeepSupportedSkills(skills, tool_names);
   if (!skills.empty()) {
-    std::vector<Tool> skill_tool{SkillTool(skills)};
+    std::vector<Tool> skill_tool{SkillTool(skills, tool_names)};
     ApplyToolPolicy(skill_tool, context.tool_policy);
     if (!skill_tool.empty()) {
       PrintSkills(skills);
@@ -449,8 +449,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     instructions.memory_truncated |= memories.truncated;
     instructions.memory_limit = remaining;
 
-    size_t always_bytes =
-        static_cast<size_t>(std::max(int64_t{0}, MemoryAlwaysBytes()));
+    size_t always_bytes = static_cast<size_t>(
+        std::max(int64_t{0}, context->runtime.config.memory_always_bytes));
     if (always_bytes > 0) {
       MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
       instructions.memory_always = std::move(always.text);

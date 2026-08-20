@@ -106,10 +106,10 @@ void TestSkillDiscovery() {
       MakeTool(
           "vendor-tool", "", json::object(),
           [](const json&, const ToolContext&) { return ToolSuccess(""); })};
-  KeepSupportedSkills(skills, available_tools);
+  KeepSupportedSkills(skills, ToolNames(available_tools));
   CHECK(skills.size() == 3);
   available_tools.pop_back();
-  KeepSupportedSkills(skills, available_tools);
+  KeepSupportedSkills(skills, ToolNames(available_tools));
   CHECK(std::none_of(skills.begin(), skills.end(), [](const Skill& skill) {
     return skill.name == "vendor-only";
   }));
@@ -156,7 +156,7 @@ void TestSkillDiscovery() {
   // Like Codex and OpenCode, the model sees bounded metadata up front while
   // exact selection still defers the full body.
   skills = LoadSkills(workspace);
-  Tool tool = SkillTool(skills);
+  Tool tool = SkillTool(skills, {});
   CHECK(tool.name == "skill");
   CHECK(tool.description.find("full workflow supports the requested outcome") !=
         std::string::npos);
@@ -189,7 +189,26 @@ void TestSkillDiscovery() {
   CHECK(misspelled.output.find("did you mean vendor-only?") !=
         std::string::npos);
 
-  Tool crowded = SkillTool(catalogue_skills);
+  // A skill written during the session is not in the catalogue the request
+  // advertises, which stays fixed to keep the prompt prefix cacheable. Asking
+  // for it by name still has to work, or authoring one would need a restart.
+  setenv("UAGENT_SKILL_PATH", (home / ".claude/skills").c_str(), 1);
+  Tool frozen = SkillTool(LoadSkills(workspace), {"run"});
+  CHECK(!frozen.run({{"name", "just-written"}}, {}).Ok());
+  write_skill(home / ".claude/skills/just-written",
+              "---\ndescription: authored mid-session\n"
+              "requires-tools: run\n---\n\nFresh body.\n");
+  ToolResult fresh = frozen.run({{"name", "just-written"}}, {});
+  CHECK(fresh.Ok());
+  CHECK(fresh.output.find("Fresh body.") != std::string::npos);
+  // The rescan honours the same tool requirement as the catalogue did.
+  write_skill(home / ".claude/skills/needs-vendor",
+              "---\ndescription: authored mid-session\n"
+              "requires-tools: vendor-tool\n---\n\nUnusable body.\n");
+  CHECK(!frozen.run({{"name", "needs-vendor"}}, {}).Ok());
+  unsetenv("UAGENT_SKILL_PATH");
+
+  Tool crowded = SkillTool(catalogue_skills, {});
   CHECK(crowded.description.size() <= 8000);
   CHECK(crowded.description.find("skill-63") != std::string::npos);
 }

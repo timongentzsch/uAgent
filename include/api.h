@@ -23,12 +23,6 @@ using nlohmann::json;
 
 struct StreamCtx;
 
-struct JsonResponse {
-  json body = json(json::value_t::discarded);
-  int64_t http_status = 0;
-  std::string error;
-};
-
 // Single-owner client. Calls are intentionally serialized so one easy handle
 // can retain libcurl's connection cache between requests; Api is not reentrant
 // or thread-safe.
@@ -62,10 +56,16 @@ class Api {
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   bool render_output = true, size_t estimated_bytes = 0,
                   bool full_reasoning = true);
+  // timeout_s bounds one attempt; attempts>1 adds the same bounded backoff
+  // the conversation gets, for transport failures and transient statuses.
   JsonResponse Post(const std::string& path, const json& body,
-                    int64_t timeout_s = 120);
+                    int64_t timeout_s = 120, int attempts = 1);
   json Get(const std::string& path, bool abortable = false,
            int64_t timeout_s = 15);
+  // A plain GET of an absolute URL: no credentials, redirects followed. For
+  // content this client does not interpret, so the bytes come back as they
+  // arrived.
+  WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,

@@ -58,12 +58,12 @@ struct Usage {
     auto first = [&](std::initializer_list<Alias> candidates) {
       for (const Alias& alias : candidates) {
         int64_t found =
-            alias.parent ? (value.contains(alias.parent) &&
-                                    value[alias.parent].is_object()
-                                ? JsonValue(value[alias.parent], alias.field,
-                                            int64_t{0})
-                                : int64_t{0})
-                         : JsonValue(value, alias.field, int64_t{0});
+            alias.parent
+                ? (value.contains(alias.parent) &&
+                           value[alias.parent].is_object()
+                       ? JsonValue(value[alias.parent], alias.field, int64_t{0})
+                       : int64_t{0})
+                : JsonValue(value, alias.field, int64_t{0});
         if (found) return found;
       }
       return int64_t{0};
@@ -86,6 +86,7 @@ struct Usage {
                      : JsonValue(value, "cache_read_input_tokens", int64_t{0});
     int64_t cache_write_tokens =
         first({{"prompt_tokens_details", "cache_write_tokens"},
+               {"prompt_tokens_details", "cache_creation_tokens"},
                {"cache_details", "cache_write_tokens"},
                {nullptr, "cache_write_tokens"},
                {nullptr, "cache_creation_input_tokens"}});

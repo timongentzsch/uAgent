@@ -3,11 +3,51 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a lean C++20 coding-agent harness for exploring model tool use,
-provider behavior, and custom workflows. It provides direct HTTP streaming,
-bounded tools, optional MCP integrations, resumable sessions, and structured
-traces without a language runtime or application framework. Linux and macOS are
-supported.
+µAgent is a coding agent that ships as one native binary. No language runtime,
+no application framework, no plugin system. It drives any OpenAI-compatible
+endpoint over direct HTTP streaming, supervises its own child processes, and
+emits every action as a typed event you can log, replay, and assert on.
+
+A release build is a 1.8 MB executable linking `libcurl`, `libc++`, and
+`libSystem`. The only vendored source dependency is a single `json.hpp`.
+Linux and macOS.
+
+## Why µAgent
+
+**Nothing to install underneath it.** Most coding agents are a Node or Python
+application that happens to call a model, so the agent inherits a package
+manager, a dependency tree, and a runtime you have to keep alive. µAgent is a
+C++20 binary built with CMake and `-fno-exceptions`. Optional tools reach for
+`uv` or Playwright when you use them; the agent itself never does.
+
+**Provider neutrality is an invariant, not a setting.** Route capabilities are
+negotiated once into a central contract, and request serialization, reasoning
+replay, search protocol, and degradation all read that contract. No code path
+branches on a provider or model name, so a new endpoint is configuration rather
+than a patch.
+
+**Every limit is explicit, bounded, and inspectable.** Requests, idle streams,
+tool output, processes, memory, context, and reported spend are bounded by
+default. Settings resolve from file, environment, and flags with visible
+provenance, validate against declared bounds, and reload only between turns —
+never underneath a running one. `/context` prints the effective configuration,
+where each value came from, and the exact next request.
+
+**Processes are first-class, not fire-and-forget.** Commands run under a real
+supervisor with opaque activity IDs: optional PTYs, writable stdin, resize,
+wait, stop, background handoff mid-run with Ctrl+B, and log-only detach that
+outlives the turn. Nothing leaks on exit.
+
+**One observational spine, deliberately not a plugin system.** Every semantic
+event fans out to four fixed sinks — terminal, versioned `uagent.event.v1`
+JSONL, a sensitive debug trace, and a bounded metadata-only session journal.
+Emitters cannot read sink state or receive a result, so telemetry and rendering
+can never steer agent control flow. There is no runtime sink registration and
+no OpenTelemetry dependency; consume the JSONL externally instead.
+
+That set of choices makes µAgent a good harness for studying how models
+actually behave — tool use, provider quirks, degradation, cost — because the
+evidence is structured and the machinery between you and the model is thin.
 
 ## Quick start
 
@@ -80,7 +120,8 @@ The core registry includes:
 | execute | `run`, `scratch` |
 | activities | `activity`, `activity_stop` |
 | evidence and state | `attach`, `show_image`, `memory` |
-| conditional | `web_search`, `subagent`, `advisor`, `skill`, `adapt_system`, MCP tools |
+| web | `web_fetch` |
+| conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
 the active schemas. In the interactive UI, compact reasoning updates only the
@@ -100,7 +141,7 @@ to inspect the exact registry for the next request.
 | `/models`, `/model` | Search or change model route |
 | `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |
 | `/attach` | Queue or clear an attachment |
-| `/context`, `/trace`, `/cost`, `/ps` | Inspect active state |
+| `/context`, `/trace`, `/cost`, `/ps`, `/tools` | Inspect active state |
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
 | `/memory` | Show saved memory action, time, source, and redacted preview |
 | `/verbose` | Toggle full reasoning and expanded bounded tool output |

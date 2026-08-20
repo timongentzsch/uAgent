@@ -25,12 +25,22 @@ inline bool SkillMatches(const Skill& skill, std::string_view query) {
          AsciiLower(skill.description).find(needle) != std::string::npos;
 }
 
+// Names rather than tools, so the same rule can be applied later by a rescan
+// that has no access to the registry.
+inline std::vector<std::string> ToolNames(const std::vector<Tool>& tools) {
+  std::vector<std::string> names;
+  names.reserve(tools.size());
+  for (const Tool& tool : tools) names.push_back(tool.name);
+  return names;
+}
+
 inline void KeepSupportedSkills(std::vector<Skill>& skills,
-                                const std::vector<Tool>& tools) {
+                                const std::vector<std::string>& tool_names) {
   std::erase_if(skills, [&](const Skill& skill) {
     return std::any_of(skill.required_tools.begin(), skill.required_tools.end(),
                        [&](const std::string& name) {
-                         return FindTool(tools, name) == nullptr;
+                         return std::find(tool_names.begin(), tool_names.end(),
+                                          name) == tool_names.end();
                        });
   });
 }
@@ -116,7 +126,8 @@ inline std::string SkillNameSuggestion(const std::vector<Skill>& skills,
   return "";
 }
 
-inline Tool SkillTool(std::vector<Skill> skills) {
+inline Tool SkillTool(std::vector<Skill> skills,
+                      std::vector<std::string> tool_names) {
   std::string description = SkillToolDescription(skills);
   json parameters = {
       {"type", "object"},
@@ -135,15 +146,30 @@ inline Tool SkillTool(std::vector<Skill> skills) {
       {"additionalProperties", false}};
   Tool t = MakeTool(
       "skill", std::move(description), std::move(parameters),
-      [skills = std::move(skills)](const json& a,
-                                   const ToolContext&) -> ToolResult {
+      [skills = std::move(skills), tool_names = std::move(tool_names)](
+          const json& a, const ToolContext&) -> ToolResult {
         std::string want = JsonValue(a, "name", "");
         std::string arguments = JsonValue(a, "arguments", "");
         if (!want.empty()) {
           for (const Skill& skill : skills) {
             if (skill.name == want) return OpenSkill(skill, arguments);
           }
+          // A skill written during this session is absent from the catalogue
+          // the request advertises, which is fixed for the whole process to
+          // keep the prompt prefix cacheable. Look again on disk before
+          // refusing a name, so authoring a skill and using it does not need
+          // a restart.
+          std::vector<Skill> current = LoadSkills(CanonicalCwd());
+          KeepSupportedSkills(current, tool_names);
+          for (const Skill& skill : current) {
+            if (skill.name == want) return OpenSkill(skill, arguments);
+          }
+          // The advertised names are what the model actually saw, so they
+          // make the better suggestion when both lists have a near match.
           std::string suggestion = SkillNameSuggestion(skills, want);
+          if (suggestion.empty()) {
+            suggestion = SkillNameSuggestion(current, want);
+          }
           std::string error =
               "error: no such installed skill: " + TerminalSafe(want);
           if (!suggestion.empty()) {

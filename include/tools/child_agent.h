@@ -3,8 +3,8 @@
 #ifndef UAGENT_INCLUDE_TOOLS_CHILD_AGENT_H_
 #define UAGENT_INCLUDE_TOOLS_CHILD_AGENT_H_
 // What every delegated child shares: the route it runs on, the ledger it
-// reports usage to, and how it is invoked. The subagent, advisor and memory
-// extractor differ only in the policy they append — toolset, limits,
+// reports usage to, and how it is invoked. The subagent and memory extractor
+// differ only in the policy they append — toolset, limits,
 // memory — so keeping the common half here is what stops one of them from
 // quietly missing a field the others gained.
 

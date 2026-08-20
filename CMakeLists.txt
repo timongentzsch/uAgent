@@ -99,7 +99,6 @@ add_library(
   src/media/attachments.cc
   src/providers.cc
   src/tools/adapt_system.cc
-  src/tools/advisor.cc
   src/tools/child_agent.cc
   src/tools/files.cc
   src/tools/jobs.cc

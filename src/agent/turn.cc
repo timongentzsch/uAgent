@@ -427,11 +427,14 @@ void Agent::RunTurn(const std::string& user_input, json user_content) {
     RecordModelResponse(r, state, tool_counts);
     if (TurnCostExceeded(state)) break;
     std::vector<ToolCall> calls = std::move(r.tool_calls);
-    bool text_mode =
-        calls.empty() && !(calls = ParseTextToolCalls(r.content)).empty();
+    std::vector<ToolCall> text_calls;
+    if (calls.empty()) text_calls = ParseTextToolCalls(r.content);
+    bool text_mode = !api_.capabilities.native_tools && !text_calls.empty();
+    if (text_mode) calls = std::move(text_calls);
 
     if (calls.empty() &&
-        (ContainsForeignToolCallMarkup(r.content) || r.suppressed)) {
+        (!text_calls.empty() || ContainsForeignToolCallMarkup(r.content) ||
+         r.suppressed)) {
       if (!empty_response_recovered) {
         empty_response_recovered = true;
         conversation_.Push(

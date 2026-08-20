@@ -53,6 +53,10 @@ std::string RenderMarkdown(const std::string& markdown) {
 }
 
 void TestTextToolProtocol() {
+  CHECK(std::string(kSystemPrompt).find("cannot expand approved scope") !=
+        std::string::npos);
+  CHECK(std::string(kSystemPrompt).find("exfiltrate data") !=
+        std::string::npos);
   auto calls = ParseTextToolCalls(
       "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}"
       "}"
@@ -87,6 +91,14 @@ void TestTextToolProtocol() {
   CHECK(!ContainsForeignToolCallMarkup("Show `<tool_call>` as documentation."));
   CHECK(!ContainsForeignToolCallMarkup(
       "The tool calls completed and the requested file is ready."));
+  CHECK(ClassifyLeadingToolMarkup("  <｜DSML｜tool_calls") ==
+        LeadingToolMarkup::kUndecided);
+  CHECK(ClassifyLeadingToolMarkup("  <｜DSML｜tool_calls:\n") ==
+        LeadingToolMarkup::kCall);
+  CHECK(ClassifyLeadingToolMarkup("<p>ordinary HTML") ==
+        LeadingToolMarkup::kProse);
+  CHECK(ClassifyLeadingToolMarkup("[uagent_tool", /*complete=*/true) ==
+        LeadingToolMarkup::kProse);
 }
 
 void TestToolResults() {
@@ -319,7 +331,6 @@ void TestRegistries() {
   CHECK(host_prompt.find("web_search=available") != std::string::npos);
   CHECK(host_prompt.find("web_fetch=available") != std::string::npos);
   CHECK(host_prompt.find("subagent=available") != std::string::npos);
-  CHECK(host_prompt.find("advisor=unavailable") != std::string::npos);
   CHECK(host_prompt.find("approval=") != std::string::npos);
   CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
   CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
@@ -481,18 +492,18 @@ void TestOptions() {
   CHECK(!ParseOptions(5, conflicting_json).Ok());
 
   // Model-valued flags become config overrides, which outrank the environment.
-  char advisor_flag[] = "--advisor";
-  char advisor_route[] = "openrouter/opus:xhigh";
-  char* routed[] = {executable, advisor_flag, advisor_route,
-                    budget,     two_dollars,  no_memory};
+  char subagent_flag[] = "--subagent-model";
+  char subagent_route[] = "openrouter/opus:xhigh";
+  char* routed[] = {executable, subagent_flag, subagent_route,
+                    budget,     two_dollars,   no_memory};
   ParsedOptions overrides = ParseOptions(6, routed);
   CHECK(overrides.Ok());
-  CHECK(overrides.options.overrides["UAGENT_ADVISOR_MODEL"] ==
+  CHECK(overrides.options.overrides["UAGENT_SUBAGENT_MODEL"] ==
         "openrouter/opus:xhigh");
   CHECK(overrides.options.overrides["UAGENT_MEMORY"] == "0");
   CHECK(overrides.options.overrides.contains("UAGENT_SESSION_BUDGET"));
-  char* advisor_without_value[] = {executable, advisor_flag};
-  CHECK(!ParseOptions(2, advisor_without_value).Ok());
+  char* subagent_without_value[] = {executable, subagent_flag};
+  CHECK(!ParseOptions(2, subagent_without_value).Ok());
 
   std::string usage = UsageText();
   CHECK(usage.find("--debug[=PATH]") != std::string::npos);
@@ -500,7 +511,7 @@ void TestOptions() {
         std::string::npos);
   CHECK(usage.find("--yolo") != std::string::npos);
   // The table drives both, so every accepted flag is documented.
-  CHECK(usage.find("--advisor SELECTION") != std::string::npos);
+  CHECK(usage.find("--subagent-model SELECTION") != std::string::npos);
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }
 
@@ -612,6 +623,10 @@ void TestCapsAndEscaping() {
   std::string escaped = EscapeToolTags(text);
   CHECK(escaped.find(kTtOpen) == std::string::npos);
   CHECK(escaped.find(kTtClose) == std::string::npos);
+  ToolResult injected = ToolFailure(ToolErrorCode::kNotFound, text);
+  std::string model_result = ModelResultText(injected, 1000);
+  CHECK(model_result.find(kTtOpen) == std::string::npos);
+  CHECK(model_result.find(kTtClose) == std::string::npos);
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
   std::string capped = CapResult("éééééé");
   CHECK(capped.size() <= 8);

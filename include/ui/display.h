@@ -93,6 +93,12 @@ inline std::string CacheSummary(const Usage& usage) {
              : std::string();
 }
 
+inline std::string ContextSummary(int64_t used, int64_t window = 0) {
+  std::string context = "ctx " + FmtCount(used);
+  if (window > 0) context += "/" + FmtCount(window);
+  return context;
+}
+
 // Compact session metadata for the persistent composer. Keep the stable
 // identity first; transient work state gets its own line while a turn runs.
 struct StatusView {
@@ -124,9 +130,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   };
 
   add(0, view.host.empty() ? view.model : view.model + " @ " + view.host);
-  std::string context = "ctx " + FmtCount(view.context_used);
-  if (api.ctx_window > 0) context += "/" + FmtCount(api.ctx_window);
-  add(1, std::move(context));
+  add(1, ContextSummary(view.context_used, api.ctx_window));
   if (usage.input || usage.output) add(4, TokenSummary(usage));
   add(5, CacheSummary(usage));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
@@ -167,6 +171,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
 struct ActivityView {
   std::chrono::steady_clock::duration elapsed{};
   int64_t context_used = 0;
+  int64_t context_window = 0;
   size_t background = 0;
   size_t foreground = 0;
   size_t queued = 0;
@@ -192,7 +197,7 @@ inline std::string ActivityBar(const ActivityView& view) {
                           ? "interrupting"
                           : (activity.empty() ? "working" : activity);
   std::string suffix = " · " + seconds;
-  suffix += " · ctx " + FmtCount(view.context_used);
+  suffix += " · " + ContextSummary(view.context_used, view.context_window);
   if (view.background > 0) suffix += " · bg:" + std::to_string(view.background);
   if (view.foreground > 0) {
     suffix += " · Ctrl+B background";

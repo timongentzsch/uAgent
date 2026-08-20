@@ -617,15 +617,6 @@ void TestToolExecutionPolicy() {
   Tool mutate = unbounded;
   mutate.name = "mutate";
   mutate.capabilities = Capability(ToolCapability::kMutate);
-  Tool external_inspect = unbounded;
-  external_inspect.name = "external_inspect";
-  external_inspect.capabilities = Capability(ToolCapability::kInspect) |
-                                  Capability(ToolCapability::kExternal);
-  std::vector<Tool> advisor_tools{unbounded, inspect, mutate, external_inspect};
-  KeepAdvisorTools(advisor_tools);
-  CHECK(advisor_tools.size() == 2);
-  CHECK(FindTool(advisor_tools, "inspect") != nullptr);
-  CHECK(FindTool(advisor_tools, "external_inspect") != nullptr);
   Tool exact_run = unbounded;
   exact_run.name = "run";
   exact_run.parameters = {{"type", "object"},
@@ -750,12 +741,6 @@ void TestToolExecutionPolicy() {
   task_completion.command = "uagent -p 'very long delegated prompt'";
   CHECK(BgResultHeader(task_completion) ==
         "[Background result: subagent id 7]");
-  // An advisor is the same class of activity but keeps its own label.
-  BackgroundCompletion advice;
-  advice.activity_id = 8;
-  advice.kind = ActivityKind::kSubagent;
-  advice.kind_label = "advisor";
-  CHECK(BgResultHeader(advice) == "[Background result: advisor id 8]");
   ToolResult launched = RunShellCommand(task_processes, base,
                                         {.command = "sleep 10",
                                          .background = true,

@@ -31,7 +31,7 @@ def integration_group(name):
     """Keep integration domains isolated without duplicating shared fixtures."""
     groups = (
         ("mcp", ("mcp",)),
-        ("delegation", ("subagent", "delegated_session", "parallel_subagents", "advisor")),
+        ("delegation", ("subagent", "delegated_session", "parallel_subagents")),
         (
             "providers",
             (
@@ -635,6 +635,38 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         result = run(root, base_env(home, server.url), "--yolo", "-p", "answer")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "markup-recovered", result.stdout)
+
+    with Server([event({"content": markup}), event({"content": markup})]) as repeated:
+        result = run(root, base_env(home, repeated.url), "--yolo", "-p", "answer")
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
+        assert_true(len(repeated.requests) == 2, len(repeated.requests))
+
+    # The compatibility text protocol is executable only after this route has
+    # explicitly rejected native tools. In native mode it is malformed prose,
+    # even if its arguments would otherwise be valid and auto-approved.
+    marker = home / "native-text-protocol-must-not-run"
+    own_markup = (
+        "[uagent_tool_call]"
+        + json.dumps({"name": "run", "arguments": {"command": f"touch {marker}"}})
+        + "[/uagent_tool_call]"
+    )
+
+    def native_recovered(_, body):
+        assert_true("tools" in body, body)
+        notes = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "user"
+        ]
+        assert_true(any("invalid model tool markup" in note for note in notes), notes)
+        return event({"content": "native-markup-recovered"})
+
+    with Server([event({"content": own_markup}), native_recovered]) as native:
+        result = run(root, base_env(home, native.url), "--yolo", "-p", "answer")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "native-markup-recovered", result.stdout)
+        assert_true(not marker.exists(), marker)
 
     with Server(
         [
@@ -3483,124 +3515,6 @@ def test_image_fallback_reaches_another_provider(root, home):
         vision.close()
 
 
-def test_advisor_consults_a_second_model(root, home):
-    """The advisor can independently inspect the workspace without changing it."""
-    (root / "advisor-evidence.txt").write_text("workspace evidence: live edge", encoding="utf-8")
-
-    def advise(_, body):
-        assert_true(body.get("model") == "advisor-model", body.get("model"))
-        names = function_names(body)
-        assert_true("read_path" in names and "grep" in names and "web_fetch" in names, names)
-        assert_true(
-            not ({"edit_file", "run", "scratch", "memory", "subagent", "advisor"} & set(names)),
-            names,
-        )
-        prompt = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        assert_true("independent advisor" in prompt, prompt)
-        assert_true("<question>" in prompt and "pacing model" in prompt, prompt)
-        assert_true("<evidence>" in prompt and "roll_cursor" in prompt, prompt)
-        return tool_call("read_path", {"path": "advisor-evidence.txt"})
-
-    def answer(_, body):
-        results = tool_results(body["messages"])
-        assert_true(results and "workspace evidence: live edge" in results[-1], results)
-        return event({"content": "advice: anchor to the live edge"})
-
-    advisor = Server([advise, answer])
-
-    def ask(_, body):
-        names = function_names(body)
-        assert_true("advisor" in names, names)
-        return tool_call(
-            "advisor",
-            {"question": "is the pacing model right?", "context": "roll_cursor += step"},
-        )
-
-    def finish(_, body):
-        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        return event({"content": "advised" if "live edge" in combined else "no-advice"})
-
-    parent = Server([ask, finish])
-    try:
-        env = base_env(home, parent.url)
-        env["UAGENT_PROVIDERS"] = json.dumps(
-            {
-                "aux": {
-                    "base_url": advisor.url,
-                    "api_key": "aux-key",
-                    "models": {"reviewer": {"id": "advisor-model", "effort": "high"}},
-                }
-            }
-        )
-        env["UAGENT_ADVISOR_MODEL"] = "aux/reviewer"
-        result = run(root, env, "--yolo", "-p", "check my reasoning", timeout=20)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "advised", result.stdout)
-        assert_true(len(advisor.requests) == 2, len(advisor.requests))
-    finally:
-        parent.close()
-        advisor.close()
-
-
-def test_advisor_background_joins_the_turn(root, home):
-    """background=true keeps the parent working; the answer joins a later round."""
-
-    def advise(_, __):
-        time.sleep(2)
-        return event({"content": "advice: measure first"})
-
-    advisor = Server([advise])
-
-    def ask(_, body):
-        return tool_call("advisor", {"question": "which first?", "background": True})
-
-    def wait_for_it(_, body):
-        assert_true(
-            any("[started] advisor id " in str(m.get("content", "")) for m in body["messages"]),
-            [str(m.get("content", ""))[:60] for m in body["messages"]],
-        )
-        return tool_call("activity", {"wait_ms": 30000})
-
-    def finish(_, body):
-        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
-        return event({"content": "joined" if "measure first" in combined else "lost"})
-
-    parent = Server([ask, wait_for_it, finish])
-    try:
-        env = base_env(home, parent.url)
-        env["UAGENT_FIRST_EVENT_TIMEOUT"] = "6"
-        env["UAGENT_STREAM_IDLE_TIMEOUT"] = "6"
-        env["UAGENT_PROVIDERS"] = json.dumps(
-            {"aux": {"base_url": advisor.url, "api_key": "aux-key"}}
-        )
-        env["UAGENT_ADVISOR_MODEL"] = "aux/advisor-model"
-        result = run(root, env, "--yolo", "-p", "think it over", timeout=20)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "joined", result.stdout)
-    finally:
-        parent.close()
-        advisor.close()
-
-
-def test_advisor_absent_without_a_route(root, home):
-    """An unconfigured advisor costs no schema tokens."""
-
-    def only_turn(_, body):
-        assert_true("advisor" not in function_names(body), function_names(body))
-        system = "\n".join(
-            str(message.get("content", ""))
-            for message in body["messages"]
-            if message.get("role") == "system"
-        )
-        assert_true("advisor=unavailable" in system, system)
-        return event({"content": "no-advisor"})
-
-    with Server([only_turn]) as server:
-        result = run(root, base_env(home, server.url), "-p", "hello", timeout=10)
-        assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip() == "no-advisor", result.stdout)
-
-
 def test_subagent_recursion_is_depth_bounded(root, home):
     """Full agents honor depth; lean workers never expose recursive delegation."""
 
@@ -3836,6 +3750,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
 def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
     state = {"pid": None, "child": None}
     child_file = root / "detached-child-pid"
+    child_tmp = root / "detached-child-pid.tmp"
 
     def kill_wrapper(_, body):
         state["pid"] = detached_pid(body)
@@ -3877,7 +3792,11 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
             tool_call(
                 "run",
                 {
-                    "command": f"sleep 20 & child=$!; printf '%s\\n' \"$child\" > {shlex.quote(str(child_file))}; wait",
+                    "command": (
+                        "sleep 20 & child=$!; "
+                        f"printf '%s\\n' \"$child\" > {shlex.quote(str(child_tmp))} && "
+                        f"mv {shlex.quote(str(child_tmp))} {shlex.quote(str(child_file))}; wait"
+                    ),
                     "detach": True,
                 },
             ),

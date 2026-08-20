@@ -13,6 +13,7 @@ ActivityView Working(std::chrono::milliseconds elapsed) {
   ActivityView view;
   view.elapsed = elapsed;
   view.context_used = 12000;
+  view.context_window = 1300000;
   return view;
 }
 
@@ -37,7 +38,13 @@ void TestActivityBar() {
   // Elapsed renders at one decimal; context always shows.
   CHECK(ActivityBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=
         std::string::npos);
-  CHECK(first.find("ctx 12.0K") != std::string::npos);
+  CHECK(first.find("ctx 12.0K/1.3M") != std::string::npos);
+
+  ActivityView unknown = Working(std::chrono::milliseconds(0));
+  unknown.context_window = 0;
+  std::string unknown_bar = ActivityBar(unknown);
+  CHECK(unknown_bar.find("ctx 12.0K") != std::string::npos);
+  CHECK(unknown_bar.find("ctx 12.0K/") == std::string::npos);
 
   // Counters are omitted at zero rather than rendered as "bg:0".
   CHECK(first.find("bg:") == std::string::npos);

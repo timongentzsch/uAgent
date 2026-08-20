@@ -18,7 +18,7 @@ changes an in-flight turn.
 Sizes are bytes unless stated otherwise. Empty means unset or inferred.
 
 Every model-valued setting — `UAGENT_MODEL`, `UAGENT_SUBAGENT_MODEL`,
-`UAGENT_ADVISOR_MODEL`, `UAGENT_IMAGE_MODEL`, `UAGENT_MEMORY_MODEL`,
+`UAGENT_IMAGE_MODEL`, `UAGENT_MEMORY_MODEL`,
 `UAGENT_WEB_SEARCH_MODEL`, the matching `--flags`, `/model` and the `subagent`
 tool's `model` argument — shares one selection schema:
 
@@ -119,9 +119,6 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 60 | tool calls per delegated child |
 | `UAGENT_SUBAGENT_MODEL` | current route | default delegated model route |
-| `UAGENT_ADVISOR_MODEL` | empty | model route for the `advisor` tool; empty hides it |
-| `UAGENT_ADVISOR_CONTEXT_BYTES` | 32768 | evidence accepted per advisor call |
-| `UAGENT_ADVISOR_TIMEOUT` | 300 | advisor seconds; a reasoning model runs far longer than a command |
 | `UAGENT_DEPTH` | internal `0` | current supervised child depth |
 
 ## Skills and memory

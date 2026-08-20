@@ -142,17 +142,6 @@ int64_t MemoryExtractBytes() {
   return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", 32 * 1024, 4096, 256 * 1024);
 }
 
-// A reasoning advisor at high effort routinely runs minutes, not the seconds a
-// shell command is given, so it carries its own deadline.
-int64_t AdvisorTimeoutSeconds() {
-  return EnvBounded("UAGENT_ADVISOR_TIMEOUT", 300, 30, 1800);
-}
-
-int64_t AdvisorContextBytes() {
-  return EnvBounded("UAGENT_ADVISOR_CONTEXT_BYTES", 32 * 1024, 1024,
-                    256 * 1024);
-}
-
 int64_t SkillBodyBytes() {
   return EnvBounded("UAGENT_SKILL_BYTES", 512 * 1024, 1024, 1024 * 1024);
 }

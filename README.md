@@ -121,7 +121,7 @@ The core registry includes:
 | activities | `activity`, `activity_stop` |
 | evidence and state | `attach`, `show_image`, `memory` |
 | web | `web_fetch` |
-| conditional | `web_search`, `subagent`, `advisor`, `skill`, `adapt_system`, MCP tools |
+| conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
 the active schemas. In the interactive UI, compact reasoning updates only the

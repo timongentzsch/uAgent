@@ -49,8 +49,6 @@ constexpr FlagSpec kFlags[] = {
      "disable memory recall and writes for this session"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:variant][:effort]"},
-    {"--advisor", FlagKind::kConfig, nullptr, "UAGENT_ADVISOR_MODEL",
-     "SELECTION", "enable the advisor tool on this model route"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
      "SELECTION", "read attached images with this model route"},
     {"--subagent-model", FlagKind::kConfig, nullptr, "UAGENT_SUBAGENT_MODEL",

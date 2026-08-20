@@ -30,7 +30,6 @@
 #include "include/mcp/register.h"
 #include "include/media.h"
 #include "include/providers.h"
-#include "include/tools/advisor.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
@@ -167,11 +166,10 @@ void PrintTools(const std::vector<Tool>& tools) {
 }
 
 // Only the side models that are actually configured: the row exists to answer
-// "what will delegation, vision and consultation use", not to list defaults.
+// "what will delegation and side analysis use", not to list defaults.
 void PrintRoutes(const RuntimeConfig& config) {
   std::vector<std::pair<const char*, std::string>> routes = {
       {"subagent", SubagentModel()},
-      {"advisor", AdvisorModel()},
       {"image", config.image_model},
       {"memory", EnvStr("UAGENT_MEMORY_MODEL")},
       {"search", config.web_search_model},
@@ -276,15 +274,8 @@ std::vector<Tool> BuildTools(AppContext& context,
     tools.push_back(
         SubagentTool(api, runtime.processes, context.provider.routes,
                      context.provider.providers, context.options.debug));
-    if (!AdvisorModel().empty()) {
-      tools.push_back(
-          AdvisorTool(api, runtime.processes, context.provider.routes,
-                      context.provider.providers, context.options.debug));
-    }
   }
-  if (EnvStr("UAGENT_TOOLSET") == "advisor") {
-    KeepAdvisorTools(tools);
-  } else if (LeanToolset()) {
+  if (LeanToolset()) {
     KeepLeanTools(tools);
   }
   ApplyToolPolicy(tools, context.tool_policy);

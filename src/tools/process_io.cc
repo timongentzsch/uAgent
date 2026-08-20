@@ -38,7 +38,7 @@ void CloseFd(int& fd) {
 
 ActivityKind ParseActivityKind(const std::string& kind, bool detached) {
   if (detached) return ActivityKind::kDetached;
-  if (kind == "subagent" || kind == "advisor") return ActivityKind::kSubagent;
+  if (kind == "subagent") return ActivityKind::kSubagent;
   if (kind == "memory") return ActivityKind::kMemory;
   return ActivityKind::kCommand;
 }

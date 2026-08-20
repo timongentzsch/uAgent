@@ -47,13 +47,14 @@ inline int64_t ResultCharLimit(const CallTask& task) {
 // The artifact itself stays out of context; only this small locator rides with
 // the result.
 inline std::string ModelResultText(const ToolResult& result, int64_t cap) {
-  if (!result.artifact) return CapResult(result.output, cap);
+  std::string output = EscapeToolTags(result.output);
+  if (!result.artifact) return CapResult(std::move(output), cap);
   if (cap < 0) cap = ToolResultCap();
   std::string hint = ArtifactHint(*result.artifact);
-  if (cap <= 0) return result.output + hint;
+  if (cap <= 0) return output + hint;
   size_t limit = static_cast<size_t>(cap);
   if (hint.size() >= limit) return Utf8Prefix(std::move(hint), limit);
-  return CapResult(result.output, cap - static_cast<int64_t>(hint.size())) +
+  return CapResult(std::move(output), cap - static_cast<int64_t>(hint.size())) +
          hint;
 }
 
@@ -201,8 +202,7 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
       task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
   ToolContext call_context = context.WithTimeout(timeout);
   task.result = task.tool->run(task.args, call_context);
-  task.result.output =
-      CapResult(EscapeToolTags(task.result.output), ResultCharLimit(task));
+  task.result.output = CapResult(task.result.output, ResultCharLimit(task));
   if (SteeringState().Requested()) {
     task.result.status = CompletionStatus::kCancelled;
     task.result.error = ToolErrorCode::kNone;

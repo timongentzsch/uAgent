@@ -68,8 +68,6 @@ int64_t MemoryBytes();
 int64_t MaxMemories();
 int64_t MemoryIdleSeconds();
 int64_t MemoryExtractBytes();
-int64_t AdvisorContextBytes();
-int64_t AdvisorTimeoutSeconds();
 int64_t SkillBodyBytes();
 // Descriptions stay bounded because discovery may return several at once;
 // bodies are sent only when a skill is opened.

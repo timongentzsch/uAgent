@@ -246,14 +246,6 @@ inline void KeepLeanTools(std::vector<Tool>& tools) {
                 [](const Tool& tool) { return !tool.available_in_lean; });
 }
 
-inline void KeepAdvisorTools(std::vector<Tool>& tools) {
-  constexpr uint32_t kAllowed = Capability(ToolCapability::kInspect) |
-                                Capability(ToolCapability::kExternal);
-  std::erase_if(tools, [](const Tool& tool) {
-    return tool.capabilities == 0 || (tool.capabilities & ~kAllowed) != 0;
-  });
-}
-
 inline std::string ToolDescription(const Tool& tool) {
   std::string s = tool.description;
   // Mark tools that actually overlap, so the base prompt's batching rule is

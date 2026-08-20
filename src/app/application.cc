@@ -707,6 +707,7 @@ class Application {
       ActivityView view;
       view.elapsed = std::chrono::steady_clock::now() - started;
       view.context_used = agent_.ContextSnapshot();
+      view.context_window = api_.ctx_window;
       view.background = runtime_.processes.Count();
       view.foreground = runtime_.processes.ForegroundCount();
       view.queued = SteeringState().QueuedCount();

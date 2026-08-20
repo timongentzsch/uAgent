@@ -50,6 +50,25 @@ Shared policy stays centralized: `MakeTool` defines tool metadata,
 `RuntimeConfig` defines limits, `RouteKey` defines route identity, and
 `HeadlessResult` defines machine output.
 
+### Protocol and authority
+
+Model text is never a native tool call. While native tools are enabled, only a
+provider `tool_calls` object with a known name and valid object arguments can
+reach dispatch. If a route explicitly rejects native tools, µAgent downgrades
+that route and enables one compatibility syntax; a compatibility call must
+occupy the entire assistant message. Unknown provider markup is detected only
+to suppress and recover from a malformed response—it is never translated into
+an executable call. This keeps detection broader than execution.
+
+Conversation roles preserve provenance: native results remain `tool`, fallback
+results are harness-owned context, and tool output has compatibility delimiters
+escaped before it returns to the model. Files, tools, web pages, memories, MCP
+responses, and model-authored summaries are untrusted evidence. They may inform
+an authorized task but cannot grant authority or expand its scope. This is not
+implemented as a semantic “prompt injection regex”; the enforceable boundary is
+the typed protocol plus schema validation, tool policy, path checks, approval,
+and process ownership. Prompt wording is defense in depth.
+
 Web search follows the same boundary: models always see one named function,
 while its host adapter selects the provider protocol and owns limits, citations,
 errors, and usage accounting.

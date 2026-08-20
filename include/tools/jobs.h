@@ -29,7 +29,7 @@ struct CollectedLog {
 struct BackgroundCompletion {
   int64_t activity_id = 0;
   ActivityKind kind = ActivityKind::kCommand;
-  std::string kind_label;  // the spawning job_kind, e.g. subagent/advisor
+  std::string kind_label;  // the spawning job_kind, e.g. subagent
   int status = 0;
   std::string command;
   std::string output;

@@ -55,13 +55,9 @@ file notifications where available.
 | --- | --- |
 | `web_search` | a supported server or configured search route is available |
 | `subagent` | delegation is enabled and the current depth is below its limit |
-| `advisor` | a model route is set with `--advisor` or `UAGENT_ADVISOR_MODEL` |
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
-
-The advisor receives workspace inspection and read-only external tools. It
-cannot edit files, execute commands, use memory, or delegate another child.
 
 `web_fetch` needs no hosted route, so it does not follow `web_search`'s
 availability. It returns text only: it decodes markup, JSON, XML and plain

@@ -32,6 +32,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
+#include "include/tools/files.h"
 #include "include/tools/jobs.h"
 
 namespace uagent {
@@ -562,6 +563,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
   bool create = code.is_string();
   bool replaced = false;
   std::string source;
+  std::string prior;
   if (create != packages.is_array() || (!create && !packages.is_null())) {
     return ToolFailure(
         ToolErrorCode::kInvalidArguments,
@@ -606,8 +608,8 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
     if (source.back() != '\n') source += '\n';
     if (exists) {
       std::ifstream prior_input(script);
-      std::string prior{std::istreambuf_iterator<char>(prior_input),
-                        std::istreambuf_iterator<char>()};
+      prior.assign(std::istreambuf_iterator<char>(prior_input),
+                   std::istreambuf_iterator<char>());
       if (prior == source) {
         return ToolFailure(ToolErrorCode::kInvalidArguments,
                            "error: code is identical to .uagent/scratch/" +
@@ -653,6 +655,10 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
             : "";
     result.result.output =
         "error: Python execution failed." + hint + "\n" + result.result.output;
+  }
+  if (create) {
+    result.result.display =
+        WholeFileDiffDisplay(script.string(), prior, source, replaced);
   }
   std::string lifecycle =
       create ? (replaced ? " · overwrote" : " · wrote") : "";

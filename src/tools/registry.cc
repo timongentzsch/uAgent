@@ -88,7 +88,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       [](const json& a, const ToolContext&) {
         std::string path = JsonValue(a, "path", "");
         if (a.contains("content")) {
-          return ToolWriteFile(path, JsonValue(a, "content", ""));
+          return ToolWriteFileWithDisplay(path, JsonValue(a, "content", ""));
         }
         std::vector<FileEdit> edits;
         for (const json& item : a["edits"]) {

@@ -20,6 +20,12 @@ ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
                            mode_t create_mode, bool preserve_mode);
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit);
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
+ToolResult ToolWriteFileWithDisplay(const std::string& path,
+                                    const std::string& content);
+// +/- receipt for a whole-file write; empty when the content is unchanged.
+std::string WholeFileDiffDisplay(const std::string& path,
+                                 const std::string& previous,
+                                 const std::string& content, bool existed);
 ToolResult ToolWritePrivateFile(const std::string& path,
                                 const std::string& content);
 std::string StripLineNumbers(const std::string& text);

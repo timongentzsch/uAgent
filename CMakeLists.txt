@@ -82,6 +82,7 @@ add_library(
   src/api/openai_stream.cc
   src/app/application.cc
   src/app/bootstrap.cc
+  src/app/commands.cc
   src/app/options.cc
   src/app/runtime.cc
   src/cli.cc

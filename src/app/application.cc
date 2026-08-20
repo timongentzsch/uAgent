@@ -21,6 +21,7 @@
 
 #include "include/agent.h"
 #include "include/app/bootstrap.h"
+#include "include/app/commands.h"
 #include "include/cli.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -52,6 +53,10 @@ class Application {
         api_(runtime_.api),
         agent_(*context.agent),
         saved_revision_(agent_.Revision()) {}
+
+  AppSession Session() {
+    return AppSession{context_, attachments_, session_file_, saved_revision_};
+  }
 
   int Run() {
     int attachment_status = LoadInitialAttachments();
@@ -194,18 +199,6 @@ class Application {
     return FinishHeadless(std::move(answer), "", 0);
   }
 
-  void LoadSessionJournal(const std::string& previous_path) {
-    if (session_file_.empty() || session_file_ == previous_path) return;
-    std::string error;
-    if (!context_.observability.Journal().Load(session_file_ + ".events.jsonl",
-                                               error)) {
-      fprintf(stderr, "cannot load session journal: %s\n", error.c_str());
-    }
-    Emit(Event{
-        EventId::kSessionResumed,
-        {{"model", api_.RequestModel()}, {"messages", agent_.MessageCount()}}});
-  }
-
   void ResumeAtStartup() {
     std::string previous_path = session_file_;
     if (context_.options.resume_pick) {
@@ -218,7 +211,8 @@ class Application {
         ResumeInto(agent_, sessions.front().path, session_file_);
       }
     }
-    LoadSessionJournal(previous_path);
+    AppSession session = Session();
+    LoadSessionJournal(session, previous_path);
     saved_revision_ = agent_.Revision();
   }
 
@@ -250,399 +244,6 @@ class Application {
     saved_revision_ = agent_.Revision();
   }
 
-  bool HandleCommand(const ParsedSlashCommand& command) {
-    switch (command.spec->id) {
-      case SlashCommandId::kQuit:
-        exit_reason_ = "command";
-        return true;
-      case SlashCommandId::kReset:
-        agent_.Reset();
-        context_.observability.Journal().Clear();
-        attachments_.clear();
-        session_file_.clear();
-        saved_revision_ = agent_.Revision();
-        printf("%s· fresh session%s\n", DIM(), RST());
-        break;
-      case SlashCommandId::kSessions: {
-        std::string chosen = PickSession();
-        if (!chosen.empty()) {
-          std::string previous_path = session_file_;
-          ResumeInto(agent_, chosen, session_file_);
-          LoadSessionJournal(previous_path);
-          attachments_.clear();
-          saved_revision_ = agent_.Revision();
-        }
-        break;
-      }
-      case SlashCommandId::kTrace:
-        agent_.PrintTrace();
-        break;
-      case SlashCommandId::kVariant:
-        HandleVariant(command.argument);
-        break;
-      case SlashCommandId::kVerbose:
-        agent_.SetVerbose(!agent_.Verbose());
-        printf("%s· verbose %s%s\n", DIM(),
-               agent_.Verbose()
-                   ? "ON — full reasoning and expanded bounded tool output"
-                   : "off — compact reasoning and compact tool output",
-               RST());
-        break;
-      case SlashCommandId::kHelp:
-        PrintCommandHelp();
-        break;
-      case SlashCommandId::kModels:
-        HandleModels(command.argument);
-        break;
-      case SlashCommandId::kModel:
-        HandleModel(command.argument);
-        break;
-      case SlashCommandId::kEffort:
-        HandleEffort(command.argument);
-        break;
-      case SlashCommandId::kYolo:
-        context_.options.yolo = !context_.options.yolo;
-        printf("%s· yolo %s%s\n", DIM(),
-               context_.options.yolo ? "ON — auto-approving everything" : "off",
-               RST());
-        break;
-      case SlashCommandId::kCompact:
-        HandleCompact();
-        break;
-      case SlashCommandId::kContext: {
-        json effective =
-            context_.config_manager.DiagnosticJson(runtime_.config);
-        effective["capabilities"] = api_.capabilities.DiagnosticJson();
-        const json& sources = effective["sources"];
-        auto source = [&](const char* key, std::string fallback = "runtime") {
-          return sources.is_object() ? JsonValue(sources, key, fallback)
-                                     : fallback;
-        };
-        std::string model_source =
-            source("UAGENT_MODEL", source("OPENROUTER_MODEL"));
-        std::string credential_source =
-            source("UAGENT_API_KEY", source("OPENROUTER_API_KEY"));
-        effective["route"] = {
-            {"base_url", RedactedUrl(api_.base_url)},
-            {"base_url_source", source("UAGENT_BASE_URL")},
-            {"model", api_.RequestModel()},
-            {"model_source", std::move(model_source)},
-            {"credentials", api_.api_key.empty() || api_.api_key == "sk-noop"
-                                ? "<unset>"
-                                : "<set>"},
-            {"credential_source", std::move(credential_source)},
-            {"context_window", api_.ctx_window}};
-        printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
-               TerminalSafe(JsonDump(effective, 2)).c_str());
-        printf("%smodel request%s\n", BOLD(), RST());
-        agent_.PrintContext();
-        break;
-      }
-      case SlashCommandId::kCost:
-        HandleCost();
-        break;
-      case SlashCommandId::kMemory:
-        HandleMemory();
-        break;
-      case SlashCommandId::kTools:
-        HandleTools();
-        break;
-      case SlashCommandId::kAttach:
-        HandleAttach(command.argument);
-        break;
-      case SlashCommandId::kProcesses:
-        HandleProcesses();
-        break;
-    }
-    return false;
-  }
-
-  void HandleModels(const std::string& argument) {
-    if (argument.empty()) {
-      printf(
-          "%s· use /models QUERY to search every provider, or /models all "
-          "for the full catalog%s\n",
-          DIM(), RST());
-      return;
-    }
-    std::string suffix =
-        argument == "all" ? "" : " for " + TerminalSafe(argument);
-    printf("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
-           RST());
-    TerminalSpinner spinner(true, SpinnerLabel("searching model catalogs"));
-    ModelSearch search = SearchModels(api_, context_.provider.routes,
-                                      context_.provider.providers, argument);
-    spinner.Stop();
-    if (AbortRequested()) {
-      ClearAbort();
-      printf("%s· model search cancelled%s\n", YEL(), RST());
-      return;
-    }
-    std::optional<ModelCandidate> selected = PickModel(search, api_);
-    if (!selected) return;
-    ApplyRoute(api_, selected->route);
-    SaveSelectedModel(selected->selection);
-  }
-
-  // The route in schema form; the host only earns a segment when no provider
-  // scope was resolvable, since `openrouter/...` already names the provider.
-  StatusView SessionStatusView() const {
-    std::string model = RouteSelection(api_, context_.provider.providers);
-    std::string host =
-        model.find('/') == std::string::npos ? UrlHost(api_.base_url) : "";
-    return StatusView{.context_used = agent_.ContextUsed(),
-                      .model = std::move(model),
-                      .host = std::move(host),
-                      .verbose = agent_.Verbose(),
-                      .yolo = context_.options.yolo,
-                      .attachments = attachments_.size(),
-                      .background = runtime_.processes.Count()};
-  }
-
-  void HandleCost() const {
-    json routes = agent_.RouteUsageJson();
-    if (routes.empty()) {
-      printf("%s· no session spend yet%s\n", DIM(), RST());
-      return;
-    }
-    for (const auto& [route, usage] : routes.items()) {
-      std::string cost = JsonValue(usage, "cost_reported", false)
-                             ? FmtCost(JsonValue(usage, "cost", 0.0))
-                             : "cost unavailable";
-      // Tokens beside the cost say *why* a route is expensive — a large
-      // evidence block reads very differently from many small turns.
-      Usage spent;
-      spent.input = JsonValue(usage, "input", int64_t{0});
-      spent.output = JsonValue(usage, "output", int64_t{0});
-      spent.cache_read = JsonValue(usage, "cache_read", int64_t{0});
-      std::string tokens = TokenSummary(spent);
-      std::string cache = CacheSummary(spent);
-      if (!cache.empty()) tokens += " · " + cache;
-      printf("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
-             tokens.c_str(), cost.c_str(), RST());
-    }
-    const Usage& session = agent_.SessionUsage();
-    std::string totals = TokenSummary(session);
-    std::string session_cache = CacheSummary(session);
-    if (!session_cache.empty()) totals += " · " + session_cache;
-    printf("%s· total · %s · %s", DIM(), totals.c_str(),
-           session.cost_reported ? FmtCost(session.cost).c_str()
-                                 : "cost unavailable");
-    if (api_.config.session_budget > 0) {
-      printf(" / %s", FmtCost(api_.config.session_budget).c_str());
-    }
-    printf("%s\n", RST());
-  }
-
-  // The startup row is a snapshot; MCP refresh and config reloads change the
-  // set mid-session, so this is the live view.
-  void HandleTools() const {
-    const std::vector<Tool>& tools = context_.tools;
-    printf("%s· %zu tools%s\n", DIM(), tools.size(), RST());
-    for (const Tool& tool : tools) {
-      printf("%s· %s%s\n", DIM(), TerminalSafe(tool.name).c_str(), RST());
-    }
-  }
-
-  void HandleMemory() const {
-    printf("%s· memory %s%s\n", DIM(),
-           api_.config.memory_enabled ? "on" : "off", RST());
-    if (!api_.config.memory_enabled) return;
-    std::vector<MemoryEntry> entries = ListMemories();
-    if (entries.empty()) {
-      printf("%s· no saved memories%s\n", DIM(), RST());
-      return;
-    }
-    std::map<std::string, MemoryEvent> latest;
-    for (MemoryEvent& event : LoadMemoryEvents()) {
-      if (!event.key.empty()) {
-        latest[event.key + "\n" + event.workspace] = std::move(event);
-      }
-    }
-    for (const MemoryEntry& entry : entries) {
-      std::string workspace = entry.key.starts_with("project/")
-                                  ? std::filesystem::path(entry.path)
-                                        .parent_path()
-                                        .filename()
-                                        .string()
-                                  : "";
-      auto found = latest.find(entry.key + "\n" + workspace);
-      if (found == latest.end()) {
-        printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
-               TerminalSafe(Tilde(entry.path)).c_str(), RST());
-        continue;
-      }
-      const MemoryEvent& event = found->second;
-      printf("%s· %s · %s · %s", DIM(), TerminalSafe(entry.key).c_str(),
-             TerminalSafe(event.action).c_str(),
-             TerminalSafe(event.timestamp).c_str());
-      if (event.automatic) {
-        printf(" · automatic");
-        if (!event.source_session.empty()) {
-          printf(" · source %s", TerminalSafe(event.source_session).c_str());
-        }
-      } else {
-        printf(" · explicit");
-      }
-      printf("%s\n", RST());
-      if (!event.preview.empty()) {
-        printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
-      }
-      if (!event.previous.empty()) {
-        printf("%s  replaced: %s%s\n", DIM(),
-               TerminalSafe(event.previous).c_str(), RST());
-      }
-    }
-  }
-
-  void HandleModel(const std::string& argument) {
-    if (argument.empty()) {
-      HandleModels("");
-      return;
-    }
-    std::string selected = SelectModel(api_, context_.provider.routes,
-                                       context_.provider.providers, argument);
-    if (selected.empty()) {
-      printf("%s· unknown model %s; use /models%s\n", RED(),
-             TerminalSafe(argument).c_str(), RST());
-      return;
-    }
-    SaveSelectedModel(selected);
-  }
-
-  void SaveSelectedModel(const std::string& selected) {
-    ModelSelection selection = ParseModelSelection(selected);
-    bool named_route =
-        ResolveModelRoute(context_.provider.routes, context_.provider.providers,
-                          selection.base)
-            .has_value();
-    ActivateCurrentRoute();
-    std::string error;
-    bool saved =
-        SaveModelPreference({selected, api_.base_url, named_route}, error);
-    DebugLog("route_changed", {{"route", selected},
-                               {"model", api_.model},
-                               {"base_url", api_.base_url},
-                               {"effort", api_.reasoning_effort},
-                               {"preference_saved", saved}});
-    printf("%s· model %s%s\n", DIM(),
-           RouteSelection(api_, context_.provider.providers).c_str(), RST());
-    if (!saved) {
-      printf("%s· model changed but preference was not saved: %s%s\n", YEL(),
-             TerminalSafe(error).c_str(), RST());
-    }
-  }
-
-  void ActivateCurrentRoute() {
-    ActivateRoute(api_);
-    agent_.RouteChanged();
-  }
-
-  void HandleEffort(const std::string& argument) {
-    if (argument.empty()) {
-      printf("%s· effort %s%s\n", DIM(),
-             api_.reasoning_effort.empty() ? "default"
-                                           : api_.reasoning_effort.c_str(),
-             RST());
-    } else if (argument == "default") {
-      api_.reasoning_effort.clear();
-      ActivateCurrentRoute();
-      printf("%s· effort provider default%s\n", DIM(), RST());
-    } else if (!ValidEffort(argument)) {
-      printf(
-          "%s· effort must be none, minimal, low, medium, high, xhigh, or "
-          "max; use default to defer to the provider%s\n",
-          RED(), RST());
-    } else {
-      api_.reasoning_effort = argument;
-      ActivateCurrentRoute();
-      printf("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
-    }
-  }
-
-  void HandleVariant(const std::string& argument) {
-    if (!api_.capabilities.model_variants) {
-      printf("%s· /variant is unavailable on the active route%s\n", RED(),
-             RST());
-      return;
-    }
-    std::string variant = argument;
-    if (variant.starts_with(':')) variant.erase(0, 1);
-    if (variant.empty()) {
-      std::string label = api_.config.openrouter_variant.empty()
-                              ? "default"
-                              : ":" + api_.config.openrouter_variant;
-      printf("%s· variant %s · choose default, nitro, floor, or exacto%s\n",
-             DIM(), label.c_str(), RST());
-      return;
-    }
-    if (variant == "default") variant.clear();
-    if (!ValidOpenRouterVariant(variant)) {
-      printf("%s· variant must be default, nitro, floor, or exacto%s\n", RED(),
-             RST());
-      return;
-    }
-    api_.config.openrouter_variant = variant;
-    runtime_.config.openrouter_variant = variant;
-    setenv("UAGENT_OPENROUTER_VARIANT", variant.c_str(), 1);
-    ActivateCurrentRoute();
-    const char* detail = "provider default";
-    if (variant == "nitro") detail = "highest throughput";
-    if (variant == "floor") detail = "lowest price";
-    if (variant == "exacto") detail = "quality-first tool reliability";
-    DebugLog("variant_changed",
-             {{"variant", variant}, {"model", api_.RequestModel()}});
-    std::string label = variant.empty() ? "default" : ":" + variant;
-    printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
-  }
-
-  void HandleCompact() {
-    agent_.Compact();
-    SteeringState().Take();
-  }
-
-  void HandleAttach(const std::string& argument) {
-    if (argument.empty()) {
-      if (attachments_.empty()) {
-        printf("%s· no pending attachments%s\n", DIM(), RST());
-      } else {
-        for (const Attachment& attachment : attachments_) {
-          printf("%s· %s (%s)%s\n", DIM(),
-                 TerminalSafe(attachment.path).c_str(), attachment.mime.c_str(),
-                 RST());
-        }
-      }
-      return;
-    }
-    if (argument == "clear") {
-      attachments_.clear();
-      printf("%s· attachments cleared%s\n", DIM(), RST());
-      return;
-    }
-    Attachment attachment;
-    std::string error;
-    if (!InspectAttachment(argument, attachment, error) ||
-        !(error = ImageInputError(attachment, api_.capabilities.image_input,
-                                  !api_.config.image_model.empty()))
-             .empty()) {
-      printf("%s%s%s\n", RED(), error.c_str(), RST());
-      return;
-    }
-    attachments_.push_back(std::move(attachment));
-    printf("%s· attached %s for the next message%s\n", DIM(),
-           attachments_.back().name.c_str(), RST());
-  }
-
-  void HandleProcesses() const {
-    ToolResult activities = ToolActivityList(runtime_.processes);
-    if (activities.output.starts_with('(')) {
-      printf("%s· %s%s\n", DIM(), activities.output.c_str(), RST());
-      return;
-    }
-    printf("%sbackground work%s\n%s%s%s", BOLD(), RST(), DIM(),
-           TerminalSafe(activities.output).c_str(), RST());
-  }
-
   void RunPrompt(std::string input) {
     json content;
     if (!attachments_.empty()) {
@@ -664,7 +265,12 @@ class Application {
     if (input.empty()) return false;
     if (input[0] == '/') DebugLog("command", {{"command", input}});
     ParsedSlashCommand command = ParseSlashCommand(input);
-    if (command.spec) return HandleCommand(command);
+    if (command.spec) {
+      AppSession session = Session();
+      if (!RunSlashCommand(session, command)) return false;
+      exit_reason_ = "command";
+      return true;
+    }
     if (input[0] == '/') {
       printf("%s· unknown command %s; use /help%s\n", RED(),
              TerminalSafe(input).c_str(), RST());
@@ -702,7 +308,8 @@ class Application {
 
     auto status = [&] {
       if (!working) {
-        return StatusBar(api_, agent_.SessionUsage(), SessionStatusView());
+        return StatusBar(api_, agent_.SessionUsage(),
+                         SessionStatusView(Session()));
       }
       ActivityView view;
       view.elapsed = std::chrono::steady_clock::now() - started;
@@ -1054,7 +661,7 @@ class Application {
       SaveSession();
       agent_.DrainBackground();
       PrintStatusBar(
-          StatusBar(api_, agent_.SessionUsage(), SessionStatusView()));
+          StatusBar(api_, agent_.SessionUsage(), SessionStatusView(Session())));
       bool eof = false;
       std::string line = ReadInputLine(InputPrompt(), &eof);
       if (eof) {

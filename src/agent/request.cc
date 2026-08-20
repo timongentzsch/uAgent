@@ -279,8 +279,10 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
   int64_t used = EstimatedTokens(bytes);
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
-    int64_t reserve =
-        std::clamp(MaxOutputTokens(), int64_t{0}, api_.ctx_window / 4);
+    // An uncapped response can still only be budgeted by the ceiling.
+    int64_t ceiling = api_.ctx_window / 4;
+    int64_t configured = MaxOutputTokens();
+    int64_t reserve = configured > 0 ? std::min(configured, ceiling) : ceiling;
     int64_t tokens = used + pending + reserve;
     if (projected_tokens) *projected_tokens = tokens;
     double projected = static_cast<double>(tokens);

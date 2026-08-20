@@ -59,7 +59,7 @@ model id. A suffix outranks both the route's own effort and the session default.
 | `UAGENT_APPROVAL` | prompt | set `yolo` for non-interactive tool approval |
 | `UAGENT_SESSION_BUDGET` | `0` | reported-cost session limit in USD; `0` disables |
 | `UAGENT_MAX_TURN_COST` | `0` | reported-cost limit per turn in USD; `0` disables |
-| `UAGENT_MAX_TOKENS` | `16000` | maximum response tokens |
+| `UAGENT_MAX_TOKENS` | `-1` | maximum response tokens; `-1` sends no cap so the provider's own maximum applies |
 | `UAGENT_STEERING` | `1` | enable Escape foreground interruption |
 | `UAGENT_ADAPT_SYSTEM` | `0` | expose experimental free-form mutable system-directive tool |
 | `UAGENT_MARKDOWN` | `1` | render terminal Markdown |

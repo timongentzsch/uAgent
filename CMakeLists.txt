@@ -114,6 +114,7 @@ add_library(
   src/transport/sse.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
+  src/ui/interactive.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)

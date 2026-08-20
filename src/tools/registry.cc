@@ -343,7 +343,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
              FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size()));
     }
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
-    return wait_ms > 0 ? target + " · " + FmtDuration(wait_ms / 1000.0)
+    return wait_ms > 0 ? target + " · wait≤" + FmtDuration(wait_ms / 1000.0)
                        : target;
   };
 

@@ -5,11 +5,13 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 
 #include "include/core/strings.h"
@@ -17,6 +19,23 @@
 #include "include/md.h"
 
 namespace uagent {
+
+namespace {
+std::unordered_map<int64_t, std::chrono::steady_clock::time_point>&
+PollAnchors() {
+  static std::unordered_map<int64_t, std::chrono::steady_clock::time_point>
+      anchors;
+  return anchors;
+}
+}  // namespace
+
+std::chrono::steady_clock::duration PollElapsed(int64_t activity_id) {
+  auto now = std::chrono::steady_clock::now();
+  auto [it, inserted] = PollAnchors().try_emplace(activity_id, now);
+  return now - it->second;
+}
+
+void ClearPollAnchor(int64_t activity_id) { PollAnchors().erase(activity_id); }
 
 std::string StripDisplayMarkdown(const std::string& text) {
   std::string safe = TerminalSafe(text);
@@ -208,6 +227,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
              TerminalSafe(record.summary).c_str(), RST());
       return;
     }
+    if (record.poll) return;  // rendered once, at result time
     std::string prefix = "→ " + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       prefix += '\n' + TerminalSafe(record.detail);
@@ -222,6 +242,17 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;
+
+  if (record.poll) {
+    const char* style = DIM();
+    if (record.status == PresentationStatus::kFailed) {
+      style = RED();
+    } else if (record.status == PresentationStatus::kCancelled) {
+      style = YEL();
+    }
+    printf("%s• %s%s\n", style, TerminalSafe(record.summary).c_str(), RST());
+    return;
+  }
 
   if (record.change_display && !record.detail.empty()) {
     std::istringstream input(record.detail);

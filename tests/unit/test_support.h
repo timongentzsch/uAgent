@@ -105,6 +105,7 @@ void TestMarkdownMath();
 void TestCapsAndEscaping();
 void TestFileTools();
 void TestActivityBar();
+void TestPollCollapse();
 void TestTerminalSafety();
 void TestTerminalInputDecoder();
 void TestSseChunkPartitions();

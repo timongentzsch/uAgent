@@ -4,6 +4,7 @@
 #include <string>
 
 #include "include/ui/display.h"
+#include "include/ui/tool_output.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -17,7 +18,74 @@ ActivityView Working(std::chrono::milliseconds elapsed) {
   return view;
 }
 
+Tool PollingActivityTool() {
+  Tool tool;
+  tool.name = "activity";
+  tool.mutates = [](const json& args) {
+    return args.contains("chars") || args.contains("rows");
+  };
+  return tool;
+}
+
 }  // namespace
+
+// A poll costs exactly one scrollback line: "•" when nothing changed, the
+// ordinary result line when it did. These pin that split and the elapsed
+// clock, which only advances while an id stays quiet.
+void TestPollCollapse() {
+  Tool tool = PollingActivityTool();
+  ToolCall call;
+  call.id = "call-1";
+  call.name = "activity";
+
+  CallTask quiet;
+  quiet.tool = &tool;
+  quiet.args = {{"id", 4242}};
+  quiet.ordinal = "[1] ";
+  quiet.result = ToolSuccess("(no new output)");
+  quiet.result.no_change = true;
+
+  CHECK(IsActivityPoll(quiet));
+  ClearPollAnchor(4242);
+
+  // The call line is withheld; the outcome is unknown until the result.
+  PresentationRecord call_record = ToolCallPresentation(quiet, call, false);
+  CHECK(call_record.poll);
+
+  PresentationRecord first = ToolResultPresentation(quiet, call, "", false);
+  CHECK(first.poll);
+  CHECK(first.summary.find("waited on activity 4242") != std::string::npos);
+  CHECK(first.detail.empty());
+
+  // A second quiet poll keeps the original anchor, so elapsed only grows.
+  auto before = PollElapsed(4242);
+  PresentationRecord second = ToolResultPresentation(quiet, call, "", false);
+  CHECK(second.poll);
+  CHECK(PollElapsed(4242) >= before);
+
+  // Real output ends the quiet spell and renders as an ordinary result.
+  CallTask productive = quiet;
+  productive.result = ToolSuccess("server ready");
+  PresentationRecord shown =
+      ToolResultPresentation(productive, call, "", false);
+  CHECK(!shown.poll);
+  CHECK(shown.summary.find("waited on activity") == std::string::npos);
+
+  // Sending input steers the activity, so it is never treated as a poll.
+  CallTask steering = quiet;
+  steering.args = {{"id", 4242}, {"chars", "y\n"}};
+  CHECK(!IsActivityPoll(steering));
+  CHECK(!ToolResultPresentation(steering, call, "", false).poll);
+
+  // A failed poll still collapses, but is not styled as success.
+  CallTask failed = quiet;
+  failed.result = ToolFailure(ToolErrorCode::kNotFound, "gone");
+  PresentationRecord failure = ToolResultPresentation(failed, call, "", false);
+  CHECK(!failure.poll);
+  CHECK(failure.status == PresentationStatus::kFailed);
+
+  ClearPollAnchor(4242);
+}
 
 // The working row used to be assembled inside the REPL loop, where nothing
 // could reach it. These pin the parts that are pure arithmetic on the view:

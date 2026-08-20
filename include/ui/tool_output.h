@@ -6,6 +6,8 @@
 // one bounded line; verbose mode uses normal terminal scrollback.
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <string>
 #include <utility>
 
@@ -16,6 +18,12 @@
 #include "include/ui/presentation.h"
 
 namespace uagent {
+
+inline bool IsActivityPoll(const CallTask& task) {
+  return task.tool && task.tool->name == "activity" &&
+         !(task.tool->mutates && task.tool->mutates(task.args)) &&
+         JsonValue(task.args, "id", int64_t{0}) > 0;
+}
 
 inline size_t TextLines(const std::string& text) {
   if (text.empty()) return 0;
@@ -47,6 +55,8 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   record.id = call.id;
   record.title = task.ordinal + call.name;
   record.skill = task.tool && task.tool->name == "skill";
+  record.poll =
+      IsActivityPoll(task);  // outcome unknown until result; see below
   bool full_label = verbose || (task.tool && task.tool->verbatim_label);
   record.verbatim = full_label;
   if (!task.label.empty()) {
@@ -77,6 +87,18 @@ inline PresentationRecord ToolResultPresentation(
   if (task.result.artifact) {
     record.artifacts.push_back({"tool-output", task.result.artifact->path,
                                 task.result.artifact->bytes});
+  }
+  if (IsActivityPoll(task)) {
+    int64_t activity_id = JsonValue(task.args, "id", int64_t{0});
+    if (task.result.Ok() && task.result.no_change) {
+      double elapsed_s =
+          std::chrono::duration<double>(PollElapsed(activity_id)).count();
+      record.poll = true;
+      record.summary = "waited on activity " + std::to_string(activity_id) +
+                       " · " + FmtDuration(elapsed_s);
+      return record;
+    }
+    ClearPollAnchor(activity_id);
   }
   if (g_tty && task.result.Ok() && !task.result.display.empty()) {
     record.detail = task.result.display;

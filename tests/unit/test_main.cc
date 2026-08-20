@@ -29,6 +29,7 @@ int RunTests() {
   TestCapsAndEscaping();
   TestFileTools();
   TestActivityBar();
+  TestPollCollapse();
   TestTerminalSafety();
   TestTerminalInputDecoder();
   TestSseChunkPartitions();

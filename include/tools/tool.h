@@ -81,7 +81,8 @@ struct ToolResult {
   // Optional model-facing override for this call. Most tools inherit their
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
-  std::string display;  // optional terminal-only receipt
+  std::string display;     // optional terminal-only receipt
+  bool no_change = false;  // activity poll found nothing new
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };

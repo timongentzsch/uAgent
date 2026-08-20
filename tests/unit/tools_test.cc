@@ -926,6 +926,7 @@ void TestOpenRouterServerSearch() {
   status_usage.cost = 0.31;
   StatusView status_view{.context_used = 4700,
                          .model = "openrouter/vendor/model:high",
+                         .host = {},
                          .yolo = true};
   setenv("COLUMNS", "200", 1);
   std::string wide = StatusBar(status_api, status_usage, status_view);

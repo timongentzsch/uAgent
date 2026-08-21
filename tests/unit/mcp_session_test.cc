@@ -263,6 +263,39 @@ void TestWorkspaceScopedSession() {
   CHECK(std::string(std::istreambuf_iterator<char>(preserved),
                     std::istreambuf_iterator<char>()) == corrupt);
 
+  // A session written before message kinds were recorded still loads: the
+  // kinds come back from the roles, so an old transcript stays resumable and
+  // stays available to memory extraction instead of being discarded.
+  json legacy_header = {{"format", 2},     {"cwd", CanonicalCwd()},
+                        {"model", "test"}, {"session_id", "legacy"},
+                        {"turns", 1},      {"title", "legacy"}};
+  json legacy_state = {
+      {"messages",
+       json::array({{{"role", "system"}, {"content", "baseline"}},
+                    {{"role", "user"}, {"content", "[environment: date x]"}},
+                    {{"role", "user"}, {"content", "question"}},
+                    {{"role", "assistant"}, {"content", "answer"}},
+                    {{"role", "tool"}, {"content", "result"}}})},
+      {"archive", json::array()},
+      {"archive_dropped_segments", 0},
+      {"context_tokens", 12},
+      {"usage", json::object()}};
+  CHECK(ToolWritePrivateFile(session.string(),
+                             legacy_header.dump() + "\n" + legacy_state.dump())
+            .Ok());
+  SessionLoadResult legacy =
+      SessionStore::Load(session.string(), CanonicalCwd());
+  CHECK(legacy.status.Ok());
+  CHECK(legacy.record.has_value());
+  const std::vector<MessageKind>& recovered =
+      legacy.record->state.message_kinds;
+  CHECK(recovered.size() == 5);
+  CHECK(recovered[0] == MessageKind::kSystem);
+  CHECK(recovered[1] == MessageKind::kRuntimeContext);
+  CHECK(recovered[2] == MessageKind::kUser);
+  CHECK(recovered[3] == MessageKind::kAssistant);
+  CHECK(recovered[4] == MessageKind::kToolResult);
+
   std::error_code ec;
   fs::remove_all(root, ec);
 }

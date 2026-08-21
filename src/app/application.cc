@@ -161,7 +161,8 @@ class Application {
       std::string error;
       content = AttachmentContent(context_.options.prompt, attachments_, error,
                                   api_.capabilities.image_input,
-                                  !api_.config.image_model.empty());
+                                  !api_.config.image_model.empty(),
+                                  api_.capabilities.file_input);
       if (!error.empty()) {
         context_.output.Restore();
         return FinishHeadless("", std::move(error), 2);
@@ -251,9 +252,9 @@ class Application {
     json content;
     if (!attachments_.empty()) {
       std::string error;
-      content = AttachmentContent(input, attachments_, error,
-                                  api_.capabilities.image_input,
-                                  !api_.config.image_model.empty());
+      content = AttachmentContent(
+          input, attachments_, error, api_.capabilities.image_input,
+          !api_.config.image_model.empty(), api_.capabilities.file_input);
       if (!error.empty()) {
         printf("%s%s%s\n", RED(), error.c_str(), RST());
         fflush(stdout);

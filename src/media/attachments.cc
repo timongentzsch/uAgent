@@ -236,7 +236,8 @@ bool Base64Decode(std::string_view input, std::string& output,
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
                        std::string& error, bool image_input_available,
-                       bool image_fallback_available) {
+                       bool image_fallback_available,
+                       bool file_input_available) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
     error = ImageInputError(attachment, image_input_available,
@@ -268,6 +269,9 @@ json AttachmentContent(const std::string& prompt,
   }
   json content = json::array({{{"type", "text"}, {"text", text}}});
   for (const Attachment& attachment : attachments) {
+    // Encoding a document this route will refuse would cost a read and a
+    // base64 of the whole file to produce a part that gets stripped again.
+    if (!attachment.image && !file_input_available) continue;
     std::string data = Base64File(attachment, limit, error,
                                   "data:" + attachment.mime + ";base64,");
     if (!error.empty()) return nullptr;

@@ -1172,6 +1172,24 @@ void TestAttachmentEncoding() {
   json messages =
       json::array({{{"role", "user"}, {"content", std::move(content)}}});
   CHECK(StripContentParts(messages, "image_url") == 1);
+
+  // A route that will not read documents never gets one encoded for it: the
+  // part is not built, so a large file is not read or base64'd to be stripped
+  // again. The text part still names the path, which is what the model needs
+  // to reach it another way.
+  error.clear();
+  json refused = AttachmentContent("read it", {attachment}, error,
+                                   /*image_input_available=*/true,
+                                   /*image_fallback_available=*/false,
+                                   /*file_input_available=*/false);
+  CHECK(error.empty());
+  CHECK(refused.size() == 1);
+  CHECK(JsonValue(refused[0], "type", "") == "text");
+  CHECK(refused[0]["text"].get<std::string>().find(file.string()) !=
+        std::string::npos);
+  json accepted = AttachmentContent("read it", {attachment}, error);
+  CHECK(accepted.size() == 2);
+  CHECK(JsonValue(accepted[1], "type", "") == "file");
   CHECK(messages[0]["content"].size() == 2);
   CHECK(messages[0]["content"][0]["text"].get<std::string>().find("withheld") ==
         std::string::npos);

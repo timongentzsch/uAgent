@@ -53,6 +53,18 @@ std::chrono::steady_clock::duration PollElapsed(int64_t activity_id) {
   return elapsed;
 }
 
+namespace {
+
+// Shared by the poll and plain tool-result ladders. The notice ladder above
+// maps kWarned instead of kCancelled and stays separate on purpose.
+const char* ResultStyle(PresentationStatus status) {
+  if (status == PresentationStatus::kFailed) return RED();
+  if (status == PresentationStatus::kCancelled) return YEL();
+  return DIM();
+}
+
+}  // namespace
+
 void ClearPollAnchor(int64_t activity_id) { PollAnchors().erase(activity_id); }
 
 std::string StripDisplayMarkdown(const std::string& text) {
@@ -125,9 +137,13 @@ struct TerminalPresenter::State {
       content_started = true;
     }
     markdown.Feed(value);
-    if (!value.empty()) {
-      line_open = value.back() != '\n' && value.back() != '\r';
-    }
+    SetLineOpen(value);
+  }
+
+  // A trailing newline closes the row; anything else leaves it open.
+  void SetLineOpen(std::string_view value) {
+    if (value.empty()) return;
+    line_open = value.back() != '\n' && value.back() != '\r';
   }
 
   void FeedReasoning(std::string_view value, const std::string& style) {
@@ -172,9 +188,7 @@ struct TerminalPresenter::State {
     }
     markdown.Control(style.c_str());
     FeedReasoning(value, style);
-    if (!value.empty()) {
-      line_open = value.back() != '\n' && value.back() != '\r';
-    }
+    SetLineOpen(value);
   }
 
   void Finish() {
@@ -250,11 +264,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     if (record.multiline && !record.detail.empty()) {
       prefix += '\n' + TerminalSafe(record.detail);
     } else if (!record.summary.empty()) {
-      std::string shown =
-          record.verbatim
-              ? TerminalSafe(record.summary)
-              : TerminalSummary(record.summary, DisplayWidth(prefix) + 3);
-      prefix += '(' + shown + ')';
+      prefix += '(' + TerminalSafe(record.summary) + ')';
     }
     printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
     return;
@@ -262,12 +272,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
   if (record.kind != PresentationKind::kToolResult) return;
 
   if (record.poll) {
-    const char* style = DIM();
-    if (record.status == PresentationStatus::kFailed) {
-      style = RED();
-    } else if (record.status == PresentationStatus::kCancelled) {
-      style = YEL();
-    }
+    const char* style = ResultStyle(record.status);
     printf("%s• %s%s\n", style, TerminalSafe(record.summary).c_str(), RST());
     return;
   }
@@ -288,12 +293,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     return;
   }
 
-  const char* style = DIM();
-  if (record.status == PresentationStatus::kFailed) {
-    style = RED();
-  } else if (record.status == PresentationStatus::kCancelled) {
-    style = YEL();
-  }
+  const char* style = ResultStyle(record.status);
   std::string prefix = "  ← " + TerminalSafe(record.title);
   if (record.multiline && !record.detail.empty()) {
     printf("%s%s%s\n%s\n", style, prefix.c_str(), RST(),

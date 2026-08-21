@@ -19,44 +19,12 @@ void Check(bool condition, const char* expression, int line) {
 int RunTests() {
   std::setlocale(LC_CTYPE, "");
   curl_global_init(CURL_GLOBAL_DEFAULT);
-  TestTextToolProtocol();
-  TestToolResults();
-  TestRegistries();
-  TestOptions();
-  TestLineNumberStripping();
-  TestMarkdownBlankLines();
-  TestMarkdownMath();
-  TestCapsAndEscaping();
-  TestFileTools();
-  TestActivityBar();
-  TestPollCollapse();
-  TestTerminalSafety();
-  TestTerminalInputDecoder();
-  TestSseChunkPartitions();
-  TestSseFraming();
-  TestBackgroundValidation();
-  TestActivitySessions();
-  TestToolExecutionPolicy();
-  TestOpenRouterServerSearch();
-  TestAttachmentEncoding();
-  TestGrepTool();
-  TestPythonTool();
-  TestRuntimeOwnershipHelpers();
-  TestAgentConfigAllowlist();
-  TestEffectiveConfigReload();
-  TestChildEnvironmentPolicy();
-  TestModelPreference();
-  TestProviderTemplates();
-  TestNamedProviders();
-  TestSafeJsonValues();
-  TestProjectInstructionDiscovery();
-  TestMcpContractHelpers();
-  TestConversation();
-  TestObservabilityEvents();
-  TestWorkspaceScopedSession();
-  TestProjectTrustTracksSemanticConfig();
-  TestScopedBaseAndMemory();
-  TestSkillDiscovery();
+  // The name precedes the run, so a failing CHECK names its test.
+#define UAGENT_RUN_TEST(name)                 \
+  std::cerr << "[ run ] " #name << std::endl; \
+  name();
+  UAGENT_TESTS(UAGENT_RUN_TEST)
+#undef UAGENT_RUN_TEST
   curl_global_cleanup();
   if (failures) {
     std::cerr << failures << " test(s) failed\n";

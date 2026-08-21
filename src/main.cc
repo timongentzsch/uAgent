@@ -46,12 +46,13 @@ void InitializeProcess() {
 
 // Report a startup failure in whichever shape the caller asked for. Emit is a
 // no-op when the event stream never started, so no extra guard is needed.
-int Fail(const Options& options, const std::string& error, int exit_code) {
+int Fail(bool json_stream, bool json_envelope, const std::string& error,
+         int exit_code) {
   json envelope = HeadlessResult("", error, json::array(), Usage{},
                                  json::object(), exit_code);
-  if (options.json_stream) {
+  if (json_stream) {
     Emit(Event{EventId::kError, std::move(envelope)});
-  } else if (options.json) {
+  } else if (json_envelope) {
     printf("%s\n", JsonDump(envelope).c_str());
   } else {
     fprintf(stderr, "%s\n", error.c_str());
@@ -74,7 +75,8 @@ int Main(int argc, char** argv) {
   ParsedOptions parsed = ParseOptions(argc, argv);
   if (!parsed.Ok()) {
     if (parsed.options.json_stream) observability.StartJsonStream();
-    return Fail(parsed.options, parsed.error, 2);
+    return Fail(parsed.options.json_stream, parsed.options.json, parsed.error,
+                2);
   }
   if (parsed.action == OptionsAction::kHelp) {
     printf("%s", UsageText());
@@ -85,16 +87,17 @@ int Main(int argc, char** argv) {
     return 0;
   }
 
-  const Options reporting = parsed.options;
-  observability.EnableJournal(reporting.prompt.empty());
-  if (reporting.json_stream && !observability.StartJsonStream()) {
+  const bool json_stream = parsed.options.json_stream;
+  const bool json_envelope = parsed.options.json;
+  observability.EnableJournal(parsed.options.prompt.empty());
+  if (json_stream && !observability.StartJsonStream()) {
     fprintf(stderr, "cannot initialize JSON event stream\n");
     return 1;
   }
   BootstrapResult boot =
       Bootstrap(std::move(parsed.options), argv[0], observability);
   if (!boot.Ok()) {
-    int code = Fail(reporting, boot.error, boot.exit_code);
+    int code = Fail(json_stream, json_envelope, boot.error, boot.exit_code);
     boot.context.reset();
     observability.Shutdown();
     return code;

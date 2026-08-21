@@ -110,7 +110,6 @@ SideRoute ResolveSideRoute(const Api& api,
                            const std::string& requested);
 
 std::string NormalizeModelId(std::string model);
-const ProviderTemplate* FindProviderTemplate(const std::string& name);
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
 std::string ModelPreferencePath();

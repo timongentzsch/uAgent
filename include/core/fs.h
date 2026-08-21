@@ -12,7 +12,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <cerrno>
 #include <chrono>
@@ -21,13 +20,13 @@
 #include <cstring>
 #include <filesystem>
 #include <istream>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/checked.h"
 #include "include/core/env.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
 
@@ -189,9 +188,9 @@ inline std::string MakePrivateDir(const std::string& base, const char* sub) {
   std::string dir = base + "/" + sub;
   std::error_code ec;
   std::filesystem::create_directories(base, ec);
-  chmod(base.c_str(), 0700);
+  chmod(base.c_str(), kPrivateDirMode);
   std::filesystem::create_directories(dir, ec);
-  chmod(dir.c_str(), 0700);
+  chmod(dir.c_str(), kPrivateDirMode);
   return dir;
 }
 
@@ -202,93 +201,14 @@ inline std::string UagentDir(const char* sub) {
   return MakePrivateDir(GlobalBase(), sub);
 }
 
-template <typename Visit>
-inline void ForEachTreeEntry(const std::string& dir, Visit&& visit) {
-  namespace fs = std::filesystem;
-  std::error_code ec;
-  for (fs::recursive_directory_iterator
-           it(dir, fs::directory_options::skip_permission_denied, ec),
-       end;
-       it != end; it.increment(ec)) {
-    if (ec) {
-      ec.clear();
-      continue;
-    }
-    visit(*it);
-  }
-}
+// Artifact pruning walks whole directory trees; it lives in src/core/fs.cc so
+// that every includer of this header stops compiling the walk.
 
-inline void PruneArtifactTree(const std::string& dir, int64_t max_age_days,
-                              int64_t max_files) {
-  namespace fs = std::filesystem;
-  struct Entry {
-    fs::path path;
-    fs::file_time_type modified;
-  };
-  struct NewerFirst {
-    bool operator()(const Entry& a, const Entry& b) const {
-      return a.modified > b.modified;  // oldest entry at the top
-    }
-  };
-  std::priority_queue<Entry, std::vector<Entry>, NewerFirst> kept;
-  auto cutoff = fs::file_time_type::clock::now() -
-                std::chrono::hours(24 * std::max(int64_t{1}, max_age_days));
-  ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
-    std::error_code ec;
-    if (entry.is_symlink(ec)) return;
-    if (entry.is_directory(ec)) {
-      chmod(entry.path().c_str(), 0700);
-    } else if (entry.is_regular_file(ec)) {
-      chmod(entry.path().c_str(), 0600);
-      std::error_code time_error;
-      Entry artifact{entry.path(), entry.last_write_time(time_error)};
-      if (time_error) return;
-      if (artifact.modified < cutoff) {
-        std::error_code remove_error;
-        fs::remove(artifact.path, remove_error);
-        return;
-      }
-      bool session_sidecar = artifact.path.string().ends_with(".events.jsonl");
-      if (max_files > 0 && !session_sidecar) {
-        kept.push(std::move(artifact));
-        if (kept.size() > static_cast<size_t>(max_files)) {
-          std::error_code remove_error;
-          fs::remove(kept.top().path, remove_error);
-          kept.pop();
-        }
-      }
-    }
-  });
-}
+// Delete `<session>.events.jsonl` journals whose session file is gone.
+void PruneSessionJournalOrphans(const std::string& dir);
 
-inline void PruneSessionJournalOrphans(const std::string& dir) {
-  namespace fs = std::filesystem;
-  constexpr std::string_view kSuffix = ".events.jsonl";
-  ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
-    std::error_code ec;
-    if (!entry.is_regular_file(ec)) return;
-    std::string path = entry.path().string();
-    if (!path.ends_with(kSuffix)) return;
-    std::string session = path.substr(0, path.size() - kSuffix.size());
-    std::error_code exists_error;
-    if (!fs::exists(session, exists_error) && !exists_error) {
-      std::error_code remove_error;
-      fs::remove(path, remove_error);
-    }
-  });
-}
-
-inline void MaintainArtifacts() {
-  std::string history = UagentDir(kHistoryDir);
-  PruneArtifactTree(history, HistoryDays(), HistoryFiles());
-  PruneSessionJournalOrphans(history);
-  PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
-                    HistoryDays(), HistoryFiles());
-  PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
-  PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
-  PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());
-  PruneArtifactTree(UagentDir(kMcpDir), McpLogDays(), McpLogFiles());
-}
+// Age- and count-bound every directory the agent writes to.
+void MaintainArtifacts();
 
 // Restrict to [A-Za-z0-9_-] and cap the length. The cap differs by consumer:
 // file components and protocol-visible tool names have different limits.
@@ -314,15 +234,9 @@ inline std::string CanonicalCwd() {
   return ec ? std::filesystem::current_path().string() : path.string();
 }
 
-inline std::string MakeSessionId() {
-  static std::atomic<uint64_t> sequence{0};
-  return "uagent-" +
-         HashHex(
-             CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
-             std::to_string(
-                 std::chrono::steady_clock::now().time_since_epoch().count()) +
-             ":" + std::to_string(++sequence));
-}
+// Unique per process and per call. The counter it needs is process-wide
+// mutable state, so the definition lives in src/core/fs.cc.
+std::string MakeSessionId();
 
 inline std::string WorkspaceId(const std::string& root) {
   return HashHex(root);
@@ -338,12 +252,12 @@ inline bool LockFileExclusive(int fd) {
 
 inline bool AppendPrivateLine(const std::string& path, const std::string& line,
                               std::string& error) {
-  int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0600);
+  int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode);
   if (fd < 0) {
     error = strerror(errno);
     return false;
   }
-  fchmod(fd, 0600);
+  fchmod(fd, kPrivateFileMode);
   if (!LockFileExclusive(fd)) {
     error = strerror(errno);
     close(fd);

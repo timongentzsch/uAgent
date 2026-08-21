@@ -53,7 +53,7 @@ void PrintConversationHistory(const Conversation& conversation,
         message.contains("content") ? message["content"] : kEmpty;
     if (kind == MessageKind::kSystem) continue;
     if (kind == MessageKind::kToolResult && content.is_string()) {
-      std::string stored = content.get<std::string>();
+      const std::string& stored = content.get_ref<const std::string&>();
       std::string text_name;
       std::string text_result;
       if (ParseTextToolResult(stored, text_name, text_result)) {
@@ -72,12 +72,12 @@ void PrintConversationHistory(const Conversation& conversation,
     } else if (kind == MessageKind::kAssistant) {
       std::vector<ToolCall> text_calls;
       if (content.is_string()) {
-        text_calls = ParseTextToolCalls(content.get<std::string>());
-      }
-      if (content.is_string() && !content.get<std::string>().empty() &&
-          text_calls.empty()) {
-        MdPrint(content.get<std::string>());
-        printf("\n");
+        const std::string& text = content.get_ref<const std::string&>();
+        text_calls = ParseTextToolCalls(text);
+        if (!text.empty() && text_calls.empty()) {
+          MdPrint(text);
+          printf("\n");
+        }
       }
       if (message.contains("tool_calls")) {
         for (const json& call : message["tool_calls"]) {
@@ -98,13 +98,14 @@ void PrintConversationHistory(const Conversation& conversation,
         }
       }
     } else if (kind == MessageKind::kUser && content.is_string()) {
-      std::string safe = TerminalSafe(content.get<std::string>());
+      std::string safe = TerminalSafe(content.get_ref<const std::string&>());
       printf("%s>%s %s\n", CYAN(), RST(), safe.c_str());
     } else if (kind == MessageKind::kAttachment) {
       printf("%s>%s [attachment]\n", CYAN(), RST());
     } else if (content.is_string()) {
       printf("%s  ← %s%s\n", DIM(),
-             TerminalSafe(FirstLine(content.get<std::string>())).c_str(),
+             TerminalSafe(FirstLine(content.get_ref<const std::string&>()))
+                 .c_str(),
              RST());
     }
   }

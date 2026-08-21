@@ -16,6 +16,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -50,13 +51,6 @@ std::string NormalizeModelId(std::string model) {
     normalized += static_cast<char>(value);
   }
   return normalized;
-}
-
-const ProviderTemplate* FindProviderTemplate(const std::string& name) {
-  for (const ProviderTemplate& provider : kProviderTemplates) {
-    if (provider.name == name) return &provider;
-  }
-  return nullptr;
 }
 
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url) {
@@ -113,7 +107,8 @@ bool SaveModelPreference(const ModelPreference& preference,
                 {"selection", preference.selection},
                 {"base_url", preference.base_url},
                 {"route", preference.route}};
-  return AtomicWriteFile(ModelPreferencePath(), JsonDump(saved, 2) + "\n", 0600,
+  return AtomicWriteFile(ModelPreferencePath(), JsonDump(saved, 2) + "\n",
+                         kPrivateFileMode,
                          /*preserve_mode=*/false, error);
 }
 
@@ -384,8 +379,7 @@ ProviderSetup ConfigureProvider(Api& api) {
                                : ProviderProtocol::kOpenAi);
   api.capabilities = CapabilitiesForRoute(protocol, api.base_url);
 
-  ProviderCatalog catalog = LoadProviderCatalog();
-  AddAvailableProviderTemplates(catalog);
+  ProviderCatalog catalog = SessionProviderCatalog();
   ProviderSetup setup{
       std::move(catalog.models), std::move(catalog.providers), {}};
   if (std::optional<ModelRoute> route =
@@ -417,13 +411,7 @@ ProviderSetup ConfigureProvider(Api& api) {
   // them after a named route so they override its defaults without becoming
   // part of the model ID sent to an OpenAI-compatible endpoint.
   ApplySelectionPolicy(api, requested);
-  if (api.base_url.empty()) {
-    for (const ProviderTemplate& provider : kProviderTemplates) {
-      if (ApplyProviderTemplate(api, provider)) {
-        break;
-      }
-    }
-  }
+  if (api.base_url.empty()) ApplyProviderTemplate(api, kProviderTemplates[0]);
   if (!ValidEffort(api.reasoning_effort)) {
     setup.warning =
         "ignoring invalid reasoning effort: " + api.reasoning_effort;

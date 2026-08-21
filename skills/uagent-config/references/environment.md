@@ -50,7 +50,7 @@ model id. A suffix outranks both the route's own effort and the session default.
 | `UAGENT_CONTEXT` | provider/profile | context-window tokens |
 | `UAGENT_PROVIDERS` | empty | JSON object defining named endpoints and model aliases |
 | `UAGENT_OPENROUTER_COMPATIBLE` | URL-derived | force OpenRouter-compatible request behavior with `1` or `0` |
-| `OPENROUTER_API_KEY` | empty | selects built-in OpenRouter route |
+| `OPENROUTER_API_KEY` | empty | selects built-in OpenRouter route, and the fallback `web_search` route |
 | `OPENROUTER_MODEL` | `openrouter/auto` | OpenRouter model when `UAGENT_MODEL` is absent |
 | `OPENROUTER_EFFORT` | empty | OpenRouter effort when the UAGENT effort is absent |
 | `UAGENT_OPENROUTER_PROVIDER` | empty | OpenRouter provider-routing preference |
@@ -116,6 +116,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MAX_BACKGROUND_JOBS` | 8 | supervised live-activity slots |
 | `UAGENT_SHELL_ENV_ALLOW` | empty | comma list of sensitive vars forwarded only to approved shell commands |
 | `UAGENT_SUBAGENT_DEPTH` | 2 | maximum delegation depth |
+| `UAGENT_SUBAGENT_CALLS_PER_TURN` | 32 | cumulative `subagent` launches per turn; concurrency stays bounded by `UAGENT_MAX_BACKGROUND_JOBS` |
 | `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 60 | tool calls per delegated child |
 | `UAGENT_SUBAGENT_MODEL` | current route | default delegated model route |
@@ -136,6 +137,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_MEMORY_ALWAYS_BYTES` | 2048 | global-memory content inlined into startup context; `0` disables |
 | `UAGENT_MEMORY_EXTRACT_BYTES` | 32768 | filtered transcript sent to the extractor |
 | `UAGENT_MEMORY_FILES` | 32 | memories per scope |
+| `UAGENT_MEMORY_REDACT_KEYWORDS` | empty | comma list of extra assignment keywords whose value is redacted; matched literally, additive to the built-ins, max 32 |
 | `UAGENT_MEMORY_IDLE_SECONDS` | 21600 | minimum saved-session idle time |
 | `UAGENT_MEMORY_MODEL` | inherited | model route the background extractor runs on |
 
@@ -143,8 +145,8 @@ UAGENT_MODEL=local/fast
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `UAGENT_WEB_SEARCH_BACKEND` | `auto` | search backend selection |
-| `UAGENT_WEB_SEARCH_URL` | empty | custom search endpoint |
+| `UAGENT_WEB_SEARCH_BACKEND` | `auto` | `auto`/`openrouter` select the hosted OpenRouter search route; `off` withholds the tool |
+| `UAGENT_WEB_SEARCH_URL` | empty | custom OpenRouter-compatible search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
 | `UAGENT_WEB_FETCH_BYTES` | 2 MiB | `web_fetch` download cap; a larger page is read to the cap and marked partial |
 | `UAGENT_WEB_SEARCH_MODEL` | empty | search model override |

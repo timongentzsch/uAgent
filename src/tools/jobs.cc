@@ -29,6 +29,7 @@
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
@@ -67,15 +68,27 @@ bool WaitForProcessGroupExit(ProcessSupervisor& supervisor, pid_t leader,
   return !ProcessGroupAlive(leader);
 }
 
+// TERM, then KILL if the group outlives the grace period. False only when the
+// group is still alive after the escalation.
+bool TerminateGroup(ProcessSupervisor& supervisor, pid_t leader,
+                    std::chrono::milliseconds grace, bool reap_leader) {
+  if (!SignalProcessGroup(leader, SIGTERM)) return false;
+  if (WaitForProcessGroupExit(supervisor, leader, grace, reap_leader)) {
+    return true;
+  }
+  if (!SignalProcessGroup(leader, SIGKILL)) return false;
+  return WaitForProcessGroupExit(supervisor, leader, grace, reap_leader);
+}
+
 }  // namespace
 
 void BgTrackSignal(pid_t pid, bool add) {
   TrackPid(g_bg_pids, kBgMax, pid, add);
 }
 
-void KillProcess(pid_t pid, int* status) {
+void KillProcess(pid_t pid) {
   SignalProcessGroup(pid, SIGKILL);
-  WaitPid(pid, status);
+  WaitPid(pid, nullptr);
 }
 
 // "[exit code N]" / "[killed by signal N]" suffix; "" for a clean exit unless
@@ -97,6 +110,26 @@ ToolResult ProcessResult(std::string output, int status) {
     return ToolSuccess(std::move(output));
   }
   return ToolFailure(ToolErrorCode::kProcessFailed, std::move(output));
+}
+
+// A caller-requested budget never exceeds the global tool-result cap; 0 means
+// "whatever the global cap allows".
+int64_t ActivityOutputCap(int64_t requested) {
+  return requested > 0 ? std::min(requested, ToolResultCap()) : ToolResultCap();
+}
+
+// Over-cap text keeps its head and its tail: the middle is what a reader can
+// most afford to lose.
+std::string LimitOutput(std::string text, int64_t cap) {
+  if (cap <= 0 || text.size() <= static_cast<size_t>(cap)) return text;
+  HeadTailBuffer limited(static_cast<size_t>(cap));
+  limited.Push(text);
+  return limited.Snapshot();
+}
+
+ToolResult LimitOutput(ToolResult result, int64_t cap) {
+  result.output = LimitOutput(std::move(result.output), cap);
+  return result;
 }
 
 std::string ReadLogTail(const std::string& path, int64_t cap) {
@@ -146,10 +179,10 @@ ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
   std::string target;
   int fd = CreateTempFile(UagentDir(kArtifactsDir) + "/output-XXXXXX", target);
   if (fd >= 0) {
-    fchmod(fd, 0600);
+    fchmod(fd, kPrivateFileMode);
     close(fd);
     if (rename(path.c_str(), target.c_str()) == 0) {
-      chmod(target.c_str(), 0600);
+      chmod(target.c_str(), kPrivateFileMode);
       return {target, bytes};
     }
     int rename_error = errno;
@@ -185,7 +218,7 @@ CollectedLog CollectCompletedLog(const std::string& path, int64_t cap) {
 // server logs bounded without sending SIGXFSZ/SIGPIPE to the server itself.
 int ToolLogPump(const std::string& path, int64_t max_bytes) {
   int64_t segment = std::max(int64_t{512}, max_bytes / 2);
-  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode);
   if (fd < 0) return 1;
   std::array<char, 64 * 1024> buffer{};
   int64_t written = 0;
@@ -199,7 +232,7 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
         close(fd);
         unlink((path + ".1").c_str());
         rename(path.c_str(), (path + ".1").c_str());
-        fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode);
         if (fd < 0) return 1;
         written = 0;
       }
@@ -229,32 +262,51 @@ std::string DetachedRecordPath(pid_t pid) {
   return UagentDir(kTerminalsDir) + "/" + std::to_string(pid) + ".json";
 }
 
+namespace {
+
+std::filesystem::file_time_type DetachedRecordCutoff() {
+  return std::filesystem::file_time_type::clock::now() -
+         std::chrono::hours(24 * TerminalRecordDays());
+}
+
+// Reads one terminal record, annotating liveness. Corrupt records and expired
+// dead ones are removed with their logs and reported as absent.
+std::optional<json> LoadDetachedRecord(const std::filesystem::path& path,
+                                       std::filesystem::file_time_type cutoff) {
+  namespace fs = std::filesystem;
+  std::ifstream input(path);
+  if (!input) return std::nullopt;
+  json record = json::parse(input, nullptr, false);
+  std::error_code ec;
+  if (record.is_discarded()) {
+    fs::remove(path, ec);
+    return std::nullopt;
+  }
+  bool alive = ProcessGroupAlive(JsonValue(record, "pid", 0));
+  record["_alive"] = alive;
+  auto modified = fs::last_write_time(path, ec);
+  if (!alive && !ec && modified < cutoff) {
+    RemoveLog(JsonValue(record, "log", ""));
+    std::error_code remove_error;
+    fs::remove(path, remove_error);
+    return std::nullopt;
+  }
+  return record;
+}
+
+}  // namespace
+
 std::vector<json> DetachedRecords() {
   namespace fs = std::filesystem;
   std::vector<json> records;
-  auto cutoff = fs::file_time_type::clock::now() -
-                std::chrono::hours(24 * TerminalRecordDays());
+  auto cutoff = DetachedRecordCutoff();
   std::error_code ec;
   for (fs::directory_iterator it(UagentDir(kTerminalsDir), ec), end;
        !ec && it != end; it.increment(ec)) {
     if (it->path().extension() != ".json") continue;
-    std::ifstream input(it->path());
-    json record = json::parse(input, nullptr, false);
-    if (record.is_discarded()) {
-      fs::remove(it->path(), ec);
-      continue;
+    if (std::optional<json> record = LoadDetachedRecord(it->path(), cutoff)) {
+      records.push_back(std::move(*record));
     }
-    bool alive = ProcessGroupAlive(JsonValue(record, "pid", 0));
-    record["_alive"] = alive;
-    std::error_code time_error;
-    auto modified = fs::last_write_time(it->path(), time_error);
-    if (!alive && !time_error && modified < cutoff) {
-      RemoveLog(JsonValue(record, "log", ""));
-      std::error_code remove_error;
-      fs::remove(it->path(), remove_error);
-      continue;
-    }
-    records.push_back(std::move(record));
   }
   std::sort(records.begin(), records.end(), [](const json& a, const json& b) {
     return JsonValue(a, "started_at", "") > JsonValue(b, "started_at", "");
@@ -283,14 +335,12 @@ std::optional<DetachedActivity> FindRunningDetachedActivity(
 
 namespace {
 
+// Records are named after their pid, so one lookup beats scanning, parsing and
+// sorting every record — this runs inside wait loops.
 std::optional<json> FindDetachedRecord(int64_t pid) {
-  std::vector<json> records = DetachedRecords();
-  auto found =
-      std::find_if(records.begin(), records.end(), [pid](const json& record) {
-        return JsonValue(record, "pid", int64_t{0}) == pid;
-      });
-  return found == records.end() ? std::nullopt
-                                : std::optional<json>(std::move(*found));
+  if (pid <= 0 || pid > std::numeric_limits<pid_t>::max()) return std::nullopt;
+  return LoadDetachedRecord(DetachedRecordPath(static_cast<pid_t>(pid)),
+                            DetachedRecordCutoff());
 }
 
 ToolResult ActivityNotFound(int64_t pid) {
@@ -312,7 +362,8 @@ ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,
                  {"started_at", UtcStamp()}};
   std::string content = JsonDump(record, 2) + "\n";
   std::string path = DetachedRecordPath(pid);
-  return ToolAtomicWrite(path, content, 0600, /*preserve_mode=*/true);
+  return ToolAtomicWrite(path, content, kPrivateFileMode,
+                         /*preserve_mode=*/true);
 }
 
 std::string SupervisedJobLabel(const BgJob& job) {
@@ -324,6 +375,18 @@ std::string SupervisedJobLabel(const BgJob& job) {
   if (kind == ActivityKind::kMemory) return "memory";
   return job.detached ? "detached" : "background";
 }
+
+namespace {
+
+// The banner every activity read carries: who it is, whether it is still worth
+// writing to, and where the full log lives.
+std::string ActivityHeader(const BgJob& job, std::string_view state = {}) {
+  return "[" + SupervisedJobLabel(job) + " · activity " +
+         std::to_string(ActivityId(job)) + std::string(state) + " · log " +
+         job.log + "]\n";
+}
+
+}  // namespace
 
 static ToolResult FormatActivityList(const std::vector<BgJob>& supervised,
                                      const std::vector<json>& records,
@@ -377,10 +440,7 @@ std::string DrainIncremental(const BgJob& job, int64_t cap) {
     job.session->last_used = std::chrono::steady_clock::now();
   }
   if (raw.empty()) return std::string(kNoNewOutput);
-  if (cap <= 0 || raw.size() <= static_cast<size_t>(cap)) return raw;
-  HeadTailBuffer limited(static_cast<size_t>(cap));
-  limited.Push(raw);
-  return limited.Snapshot();
+  return LimitOutput(std::move(raw), cap);
 }
 
 // fresh reports whether the returned text is captured output rather than a
@@ -418,42 +478,48 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
             std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
       }
     }
+    // Materialising the buffer is not free, so every exit test below shares one
+    // snapshot per iteration.
+    std::string snapshot = collected.Snapshot();
     bool terminal = false;
     bool matched = false;
     {
       std::lock_guard<std::mutex> lock(job.session->mutex);
       terminal = ActivityTerminal(job.session->state);
-      std::string snapshot = collected.Snapshot();
       matched = !until.empty() &&
                 (snapshot.find(until) != std::string::npos ||
                  job.session->until_window.find(until) != std::string::npos);
     }
+    // keep=false is the abort case: an interrupted wait reports only that,
+    // leaving the captured bytes for the next read.
+    auto finish = [&](std::string_view note, bool keep = true) {
+      bool captured = keep && !snapshot.empty();
+      std::string output = keep ? std::move(snapshot) : std::string();
+      if (note.empty()) {
+        return done(captured ? std::move(output) : std::string(kNoNewOutput),
+                    captured);
+      }
+      if (captured) output += "\n";
+      output.append(note);
+      return done(std::move(output), captured);
+    };
     if (matched || terminal ||
-        (until.empty() && !settle && !collected.Snapshot().empty()) ||
+        (until.empty() && !settle && !snapshot.empty()) ||
         (quiet_deadline &&
          std::chrono::steady_clock::now() >= *quiet_deadline) ||
         wait_ms <= 0) {
-      std::string output = collected.Snapshot();
-      bool captured = !output.empty();
-      return done(captured ? std::move(output) : std::string(kNoNewOutput),
-                  captured);
+      return finish({});
     }
     if (AbortRequested()) {
-      return done("[wait interrupted; process still running]", false);
+      return finish("[wait interrupted; process still running]",
+                    /*keep=*/false);
     }
     if (SteeringYieldRequested()) {
-      std::string output = collected.Snapshot();
-      bool captured = !output.empty();
-      if (captured) output += "\n";
-      return done(
-          output + "[wait yielded for queued steering; process still running]",
-          captured);
+      return finish(
+          "[wait yielded for queued steering; process still running]");
     }
     if (std::chrono::steady_clock::now() >= deadline) {
-      std::string output = collected.Snapshot();
-      bool captured = !output.empty();
-      if (captured) output += "\n";
-      return done(output + "[wait timed out; process still running]", captured);
+      return finish("[wait timed out; process still running]");
     }
     auto wait_deadline =
         quiet_deadline ? std::min(deadline, *quiet_deadline) : deadline;
@@ -465,9 +531,9 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
 
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
                               int64_t pid) {
-  std::vector<BgJob> supervised = supervisor.Snapshot();
   if (pid <= 0) {
-    return FormatActivityList(supervised, DetachedRecords(),
+    // Only the listing needs every job copied out of the supervisor.
+    return FormatActivityList(supervisor.Snapshot(), DetachedRecords(),
                               "(no supervised activities)");
   }
 
@@ -492,10 +558,7 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
     bool fresh = false;
     std::string output = CollectSessionOutput(supervisor, *job, 0, {}, {},
                                               ToolResultCap(), false, &fresh);
-    ToolResult result =
-        ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
-                    std::to_string(ActivityId(*job)) + state + " · log " +
-                    job->log + "]\n" + output);
+    ToolResult result = ToolSuccess(ActivityHeader(*job, state) + output);
     result.no_change = !fresh;
     return result;
   }
@@ -515,56 +578,65 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
                               int64_t wait_ms, std::string_view until,
                               const ToolContext& context,
                               int64_t max_output_chars) {
-  int64_t cap = max_output_chars > 0
-                    ? std::min(max_output_chars, ToolResultCap())
-                    : ToolResultCap();
-  auto limit_result = [cap](ToolResult result) {
-    if (cap > 0 && result.output.size() > static_cast<size_t>(cap)) {
-      HeadTailBuffer limited(static_cast<size_t>(cap));
-      limited.Push(result.output);
-      result.output = limited.Snapshot();
-    }
-    return result;
-  };
-  if (id <= 0) return limit_result(ToolActivityOutput(supervisor, id));
+  int64_t cap = ActivityOutputCap(max_output_chars);
+  if (id <= 0) return LimitOutput(ToolActivityOutput(supervisor, id), cap);
   std::optional<BgJob> job = supervisor.Find(id);
   if (!job || !job->session) {
     // Persistent detached activities intentionally remain rotating-log based.
-    ToolResult current = ToolActivityOutput(supervisor, id);
-    if (!current.Ok() || wait_ms <= 0) return limit_result(std::move(current));
+    // The job or record is resolved once here: re-deriving it per iteration
+    // would re-parse every terminal record for the length of the wait.
+    std::string watch_path;
+    std::string record_cwd;
+    if (job) {
+      watch_path = job->log;
+    } else {
+      std::optional<json> record = FindDetachedRecord(id);
+      if (!record) return ActivityNotFound(id);
+      watch_path = JsonValue(*record, "log", "");
+      record_cwd = JsonValue(*record, "cwd", "");
+    }
+    // Only liveness can change while waiting, so the banner is formatted once
+    // the wait is over rather than on every poll.
+    auto reply = [&](std::string body, bool no_change) {
+      std::string header =
+          job ? ActivityHeader(*job)
+              : "[" +
+                    std::string(ProcessGroupAlive(static_cast<pid_t>(id))
+                                    ? "running"
+                                    : "exited") +
+                    " · activity " + std::to_string(id) + " · " + record_cwd +
+                    " · log " + watch_path + "]\n";
+      ToolResult result = ToolSuccess(header + std::move(body));
+      result.no_change = no_change;
+      return LimitOutput(std::move(result), cap);
+    };
+    // Read at the global cap, not the caller's: reply() applies the head/tail
+    // limiter, so a lowered max_output_chars still keeps the window's head.
+    const int64_t read_cap = ToolResultCap();
+    std::string current = ReadLogTail(watch_path, read_cap);
+    if (wait_ms <= 0) return reply(std::move(current), false);
     auto deadline =
         std::min(context.deadline, std::chrono::steady_clock::now() +
                                        std::chrono::milliseconds(wait_ms));
-    std::string watch_path;
-    if (job) {
-      watch_path = job->log;
-    } else if (std::optional<json> record = FindDetachedRecord(id)) {
-      watch_path = JsonValue(*record, "log", "");
-    }
-    std::string accumulated = current.output;
+    std::string accumulated = current;
     for (;;) {
       bool steering_yield = SteeringYieldRequested();
       if ((!until.empty() && accumulated.find(until) != std::string::npos) ||
           std::chrono::steady_clock::now() >= deadline || AbortRequested() ||
           steering_yield) {
-        bool no_change = accumulated == current.output && !steering_yield;
+        bool no_change = accumulated == current && !steering_yield;
         if (steering_yield) {
           if (!accumulated.empty()) accumulated += "\n";
           accumulated +=
               "[wait yielded for queued steering; process still running]";
         }
-        ToolResult result = ToolSuccess(std::move(accumulated));
-        result.no_change = no_change;
-        return limit_result(std::move(result));
+        return reply(std::move(accumulated), no_change);
       }
       FileStamp observed = SnapshotFile(watch_path);
-      ToolResult next = ToolActivityOutput(supervisor, id);
-      if (!next.Ok()) return next;
-      if (next.output != current.output) {
-        accumulated = next.output;
-        if (until.empty()) {
-          return limit_result(ToolSuccess(std::move(accumulated)));
-        }
+      std::string next = ReadLogTail(watch_path, read_cap);
+      if (next != current) {
+        accumulated = next;
+        if (until.empty()) return reply(std::move(accumulated), false);
         current = std::move(next);
         continue;
       }
@@ -591,16 +663,12 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
       }
     }
     if (!replay.empty()) {
-      HeadTailBuffer limited(cap > 0 ? static_cast<size_t>(cap)
-                                     : replay.size());
-      limited.Push(replay);
-      output = "[complete transcript replay]\n" + limited.Snapshot();
+      output = "[complete transcript replay]\n" +
+               LimitOutput(std::move(replay), cap);
       no_change = false;
     }
   }
-  ToolResult result = ToolSuccess(
-      "[" + SupervisedJobLabel(*job) + " · activity " +
-      std::to_string(ActivityId(*job)) + " · log " + job->log + "]\n" + output);
+  ToolResult result = ToolSuccess(ActivityHeader(*job) + output);
   result.no_change = no_change;
   return result;
 }
@@ -664,14 +732,10 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
     }
   }
   if (input_fd >= 0) close(input_fd);
-  int64_t cap = max_output_chars > 0
-                    ? std::min(max_output_chars, ToolResultCap())
-                    : ToolResultCap();
+  int64_t cap = ActivityOutputCap(max_output_chars);
   std::string output = CollectSessionOutput(supervisor, *job, wait_ms, {},
                                             context, cap, !chars.empty());
-  return ToolSuccess("[" + SupervisedJobLabel(*job) + " · activity " +
-                     std::to_string(ActivityId(*job)) + " · log " + job->log +
-                     "]\n" + output);
+  return ToolSuccess(ActivityHeader(*job) + output);
 }
 
 ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
@@ -699,12 +763,8 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   bool was_alive = ProcessGroupAlive(pid);
   bool reap_leader = !supervised || !supervised->session;
   if (was_alive) {
-    if (!SignalProcessGroup(pid, SIGTERM) ||
-        (!WaitForProcessGroupExit(supervisor, pid, std::chrono::seconds(1),
-                                  reap_leader) &&
-         (!SignalProcessGroup(pid, SIGKILL) ||
-          !WaitForProcessGroupExit(supervisor, pid, std::chrono::seconds(1),
-                                   reap_leader)))) {
+    if (!TerminateGroup(supervisor, pid, std::chrono::seconds(1),
+                        reap_leader)) {
       return ToolFailure(
           ToolErrorCode::kProcessFailed,
           "error: could not stop process group " + std::to_string(pid));
@@ -729,31 +789,34 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
 
 // Drain finished activities exactly once after the process-I/O owner has
 // recorded status and drained trailing output.
+namespace {
+
+// A subagent is named by its kind because its command line is harness plumbing;
+// every other activity is identified by what it was asked to run.
+std::string ResultHeader(ActivityKind kind, const std::string& label,
+                         int64_t id, const std::string& command) {
+  if (kind == ActivityKind::kSubagent) {
+    return "[Background result: " + (label.empty() ? "subagent" : label) +
+           " id " + std::to_string(id) + "]";
+  }
+  return "[" +
+         std::string(kind == ActivityKind::kDetached ? "Detached"
+                                                     : "Background") +
+         " result: activity id " + std::to_string(id) + " `" +
+         FirstLine(command) + "`]";
+}
+
+}  // namespace
+
 std::string BgResultHeader(const BgJob& job) {
   ActivityKind kind = job.session ? job.session->kind
                                   : ParseActivityKind(job.kind, job.detached);
-  if (kind == ActivityKind::kSubagent) {
-    return "[Background result: " + (job.kind.empty() ? "subagent" : job.kind) +
-           " id " + std::to_string(ActivityId(job)) + "]";
-  }
-  return "[" + std::string(job.detached ? "Detached" : "Background") +
-         " result: activity id " + std::to_string(ActivityId(job)) + " `" +
-         FirstLine(job.cmd) + "`]";
+  return ResultHeader(kind, job.kind, ActivityId(job), job.cmd);
 }
 
 std::string BgResultHeader(const BackgroundCompletion& completion) {
-  if (completion.kind == ActivityKind::kSubagent) {
-    const std::string& label =
-        completion.kind_label.empty() ? "subagent" : completion.kind_label;
-    return "[Background result: " + label + " id " +
-           std::to_string(completion.activity_id) + "]";
-  }
-  return "[" +
-         std::string(completion.kind == ActivityKind::kDetached
-                         ? "Detached"
-                         : "Background") +
-         " result: activity id " + std::to_string(completion.activity_id) +
-         " `" + FirstLine(completion.command) + "`]";
+  return ResultHeader(completion.kind, completion.kind_label,
+                      completion.activity_id, completion.command);
 }
 
 namespace {
@@ -888,17 +951,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   }
   if (ids.empty()) return ToolSuccess("(no waitable activities running)");
 
-  int64_t cap = max_output_chars > 0
-                    ? std::min(max_output_chars, ToolResultCap())
-                    : ToolResultCap();
-  auto limit_output = [cap](std::string result) {
-    if (cap > 0 && result.size() > static_cast<size_t>(cap)) {
-      HeadTailBuffer limited(static_cast<size_t>(cap));
-      limited.Push(result);
-      return limited.Snapshot();
-    }
-    return result;
-  };
+  int64_t cap = ActivityOutputCap(max_output_chars);
 
   auto deadline =
       std::min(context.deadline, std::chrono::steady_clock::now() +
@@ -918,7 +971,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
     if ((mode == "any" && !completed.empty()) || running == 0) {
       std::string result =
           output.empty() ? "(activities already complete)" : std::move(output);
-      return ToolSuccess(limit_output(std::move(result)));
+      return ToolSuccess(LimitOutput(std::move(result), cap));
     }
     if (AbortRequested()) {
       return ToolCancelled("wait interrupted; " + std::to_string(running) +
@@ -928,13 +981,13 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
       if (!output.empty()) output += "\n\n";
       output += "[wait yielded for queued steering; " +
                 std::to_string(running) + " activity(s) still running]";
-      return ToolSuccess(limit_output(std::move(output)));
+      return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     if (std::chrono::steady_clock::now() >= deadline) {
       if (!output.empty()) output += "\n\n";
       output += "[wait timed out; " + std::to_string(running) +
                 " activity(s) still running]";
-      return ToolSuccess(limit_output(std::move(output)));
+      return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     // Process state changes, Escape, and queued steering all pair with Wake(),
     // so this predicate wait needs no periodic abort polling.
@@ -978,13 +1031,8 @@ size_t BgCancelSubagents(ProcessSupervisor& supervisor) {
     std::optional<BgJob> job = supervisor.Take(ActivityId(candidate));
     if (!job) continue;
     ++cancelled;
-    SignalProcessGroup(job->pid, SIGTERM);
-    if (!WaitForProcessGroupExit(supervisor, job->pid,
-                                 std::chrono::milliseconds(500))) {
-      SignalProcessGroup(job->pid, SIGKILL);
-      (void)WaitForProcessGroupExit(supervisor, job->pid,
-                                    std::chrono::milliseconds(500));
-    }
+    (void)TerminateGroup(supervisor, job->pid, std::chrono::milliseconds(500),
+                         /*reap_leader=*/false);
     BgTrackSignal(job->pid, false);
     RemoveLog(job->log);
   }

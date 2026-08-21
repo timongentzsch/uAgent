@@ -28,6 +28,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -178,6 +179,78 @@ bool WaitForTerminal(ProcessSupervisor& supervisor,
   }
 }
 
+ToolResult JobLimitError(int64_t max_jobs) {
+  return ToolFailure(
+      ToolErrorCode::kLimitExceeded,
+      "error: background job limit reached (" + std::to_string(max_jobs) + ")");
+}
+
+// A detached terminal outlives the turn that starts it: its output goes to a
+// rotating log through a pump child, it has no session, no pipe and no
+// deadline, and an identical live command is reused rather than started twice.
+ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
+                                      ShellCommand& spec) {
+  const std::string& cmd = spec.command;
+  if (std::optional<DetachedActivity> existing =
+          FindRunningDetachedActivity(cmd)) {
+    return {ToolSuccess("[detached] pid " + std::to_string(existing->pid) +
+                        ", log: " + existing->log +
+                        " — reused existing live activity id " +
+                        std::to_string(existing->pid) +
+                        "; verify readiness with activity output")};
+  }
+  int64_t max_jobs = MaxBackgroundJobs();
+  std::string log;
+  int lfd = CreateTempFile(UagentDir(kTerminalsDir) + "/pending-" +
+                               std::to_string(getpid()) + "-XXXXXX",
+                           log);
+  if (lfd < 0) {
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: cannot create log file " + log)};
+  }
+  fchmod(lfd, kPrivateFileMode);
+  std::string bounded_cmd =
+      "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
+      " --log-pump " + ShellQuote(log) + " " + std::to_string(BashLogBytes());
+  pid_t pid = -1;
+  ChildEnvironment child_environment(spec.environment, spec.environment_policy);
+  int spawn_error =
+      SpawnLoggedShell(spec.shell, bounded_cmd, lfd,
+                       /*detach=*/true, child_environment.Data(), pid);
+  close(lfd);
+  if (spawn_error != 0) {
+    unlink(log.c_str());
+    return {ToolFailure(
+        ToolErrorCode::kUnavailable,
+        "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
+  }
+  // Past the spawn this call owns a live child: no failure may leave it
+  // running without a record to find it by.
+  auto fail_and_reap = [&](ToolResult error) {
+    KillProcess(pid);
+    RemoveLog(log);
+    return ShellCommandResult{std::move(error)};
+  };
+  ToolResult saved = SaveDetachedRecord(pid, log, cmd);
+  if (!saved.Ok()) return fail_and_reap(std::move(saved));
+  BgJob job{pid,
+            log,
+            cmd,
+            true,
+            spec.job_kind,
+            pid,
+            nullptr,
+            std::move(spec.activity_label),
+            std::move(spec.receipt_path),
+            std::move(spec.source_id)};
+  if (!supervisor.TryAdd(std::move(job), max_jobs)) {
+    return fail_and_reap(JobLimitError(max_jobs));
+  }
+  return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
+                      log + " — activity id " + std::to_string(pid) +
+                      "; verify readiness with activity output")};
+}
+
 }  // namespace
 
 ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
@@ -185,87 +258,52 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                                    ShellCommand spec) {
   const std::string& cmd = spec.command;
   const std::string& shell = spec.shell;
-  const bool detach = spec.detach;
   if (spec.yield_ms > 0) {
-    spec.yield_ms = std::clamp(spec.yield_ms, int64_t{250}, int64_t{30000});
+    spec.yield_ms = std::clamp(spec.yield_ms, kMinYieldMs, kMaxYieldMs);
   }
   if (shell.empty() || shell.find('\0') != std::string::npos) {
     return {ToolFailure(
         ToolErrorCode::kInvalidArguments,
         "error: shell must be a non-empty executable name or path")};
   }
-  if (detach) {
-    if (std::optional<DetachedActivity> existing =
-            FindRunningDetachedActivity(cmd)) {
-      return {ToolSuccess("[detached] pid " + std::to_string(existing->pid) +
-                          ", log: " + existing->log +
-                          " — reused existing live activity id " +
-                          std::to_string(existing->pid) +
-                          "; verify readiness with activity output")};
-    }
-  }
+  if (spec.detach) return StartDetachedShell(supervisor, spec);
+
+  // Everything below is the supervised foreground lifecycle.
   int64_t max_jobs = MaxBackgroundJobs();
-  auto job_limit_error = [max_jobs] {
-    return ToolFailure(ToolErrorCode::kLimitExceeded,
-                       "error: background job limit reached (" +
-                           std::to_string(max_jobs) + ")");
-  };
-  std::optional<ActivityReservation> reservation;
-  if (!detach) {
-    reservation = supervisor.ReserveActivity(max_jobs);
-    if (!reservation) return {job_limit_error()};
-  }
-  int64_t window = (detach || spec.immediate)
-                       ? 0
-                       : context.RemainingSeconds(int64_t{1} << 30);
-  const char* log_kind = detach ? kTerminalsDir : kBgDir;
+  std::optional<ActivityReservation> reservation =
+      supervisor.ReserveActivity(max_jobs);
+  if (!reservation) return {JobLimitError(max_jobs)};
+  int64_t window =
+      spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
   std::string log;
   int lfd = CreateTempFile(
-      UagentDir(log_kind) + "/pending-" + std::to_string(getpid()) + "-XXXXXX",
+      UagentDir(kBgDir) + "/pending-" + std::to_string(getpid()) + "-XXXXXX",
       log);
   if (lfd < 0) {
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create log file " + log)};
   }
-  fchmod(lfd, 0600);
+  fchmod(lfd, kPrivateFileMode);
   int64_t log_bytes = BashLogBytes();
-  int64_t interaction_cap =
-      spec.max_output_chars > 0
-          ? std::min(spec.max_output_chars, ToolResultCap())
-          : ToolResultCap();
-  auto limit_output = [interaction_cap](std::string output) {
-    if (interaction_cap <= 0 ||
-        output.size() <= static_cast<size_t>(interaction_cap)) {
-      return output;
-    }
-    HeadTailBuffer limited(static_cast<size_t>(interaction_cap));
-    limited.Push(output);
-    return limited.Snapshot();
-  };
-  std::string bounded_cmd = detach ? "set -o pipefail; (" + cmd + ") 2>&1 | " +
-                                         ShellQuote(ExecutablePath()) +
-                                         " --log-pump " + ShellQuote(log) +
-                                         " " + std::to_string(log_bytes)
-                                   : cmd;
+  int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
+  std::string bounded_cmd = cmd;
   pid_t pid = -1;
   int master_fd = -1;
   int pipe_fds[2] = {-1, -1};
-  bool tty = spec.tty && !detach;
-  if (!tty && !detach && pipe(pipe_fds) != 0) {
+  bool tty = spec.tty;
+  if (!tty && pipe(pipe_fds) != 0) {
     close(lfd);
     unlink(log.c_str());
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create process output pipe")};
   }
-  auto session = detach ? std::shared_ptr<ActivitySession>()
-                        : std::make_shared<ActivitySession>();
-  if (session) session->tty = tty;
+  auto session = std::make_shared<ActivitySession>();
+  session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
-  int child_output = detach ? lfd : pipe_fds[1];
   int spawn_error =
       tty ? SpawnPtyShell(shell, bounded_cmd, child_environment.Data(), pid,
                           master_fd)
-          : SpawnLoggedShell(shell, bounded_cmd, child_output, detach,
+          : SpawnLoggedShell(shell, bounded_cmd, pipe_fds[1], /*detach=*/false,
                              child_environment.Data(), pid);
   if (pipe_fds[1] >= 0) close(pipe_fds[1]);
   if (spawn_error != 0) {
@@ -276,43 +314,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         ToolErrorCode::kUnavailable,
         "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
-  if (detach) close(lfd);
-  if (!detach) {
-    std::string named =
-        UagentDir(log_kind) + "/" + std::to_string(pid) + ".log";
-    if (rename(log.c_str(), named.c_str()) == 0) {
-      log = named;  // child's fd stays valid
-    }
-  }
-  if (detach) {
-    ToolResult saved = SaveDetachedRecord(pid, log, cmd);
-    if (!saved.Ok()) {
-      KillProcess(pid);
-      RemoveLog(log);
-      return {std::move(saved)};
-    }
-  }
-
-  if (detach) {
-    BgJob job{pid,
-              log,
-              cmd,
-              true,
-              spec.job_kind,
-              std::nullopt,
-              pid,
-              nullptr,
-              std::move(spec.activity_label),
-              std::move(spec.receipt_path),
-              std::move(spec.source_id)};
-    if (!supervisor.TryAdd(std::move(job), max_jobs)) {
-      KillProcess(pid);
-      RemoveLog(log);
-      return {job_limit_error()};
-    }
-    return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
-                        log + " — activity id " + std::to_string(pid) +
-                        "; verify readiness with activity output")};
+  std::string named = UagentDir(kBgDir) + "/" + std::to_string(pid) + ".log";
+  if (rename(log.c_str(), named.c_str()) == 0) {
+    log = named;  // child's fd stays valid
   }
 
   BgJob foreground{pid,
@@ -320,7 +324,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                    cmd,
                    false,
                    spec.job_kind,
-                   std::nullopt,
                    0,
                    session,
                    std::move(spec.activity_label),
@@ -333,7 +336,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     if (master_fd >= 0) close(master_fd);
     if (pipe_fds[0] >= 0) close(pipe_fds[0]);
     RemoveLog(log);
-    return {job_limit_error()};
+    return {JobLimitError(max_jobs)};
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master_fd : pipe_fds[0];
@@ -380,7 +383,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     {
       std::lock_guard<std::mutex> lock(session->mutex);
       status = session->wait_status.value_or(0);
-      output = limit_output(session->transcript.Snapshot());
+      output = LimitOutput(session->transcript.Snapshot(), interaction_cap);
     }
     CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
     if (collected.artifact) output = std::move(collected.output);
@@ -436,7 +439,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   std::string initial_output;
   {
     std::lock_guard<std::mutex> lock(session->mutex);
-    initial_output = limit_output(session->pending_output.Drain());
+    initial_output =
+        LimitOutput(session->pending_output.Drain(), interaction_cap);
     session->last_used = std::chrono::steady_clock::now();
   }
   std::string output = "[running] activity " + std::to_string(activity_id) +
@@ -555,7 +559,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
   std::string write_error;
   fs::path ignore = scratch / ".gitignore";
   if (!fs::exists(ignore, ec) &&
-      !AtomicWriteFile(ignore.string(), "*\n", 0644,
+      !AtomicWriteFile(ignore.string(), "*\n", kSharedFileMode,
                        /*preserve_mode=*/false, write_error)) {
     return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
   }
@@ -618,7 +622,7 @@ ToolResult ToolRunPython(ProcessSupervisor& supervisor,
       }
       replaced = true;
     }
-    if (!AtomicWriteFile(script.string(), source, 0644,
+    if (!AtomicWriteFile(script.string(), source, kSharedFileMode,
                          /*preserve_mode=*/true, write_error)) {
       return ToolFailure(ToolErrorCode::kInternal, "error: " + write_error);
     }

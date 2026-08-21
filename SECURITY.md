@@ -40,6 +40,10 @@ untrusted model evidence even when you trust a server to run.
 - Requests, responses, attachments, tool output, scans, jobs, turns, costs, MCP
   data, and logs are bounded.
 - API redirects are rejected and bearer-auth transfers use HTTP(S) only.
+- `web_fetch` makes credential-free direct HTTP(S) connections only to public
+  IPv4 or IPv6 destinations. The actual resolved address is checked before
+  every connection, including redirects; proxy environment variables are
+  ignored so they cannot bypass that check.
 - Shell commands and subagents run in managed process groups. Child processes
   receive a centralized secret-deny environment; only class-specific
   credentials are deliberately re-added. Approved `run` commands can opt in
@@ -58,9 +62,12 @@ untrusted model evidence even when you trust a server to run.
   `~/.uagent/memory/events.jsonl` audit stores only action/key/time/source and a
   redacted 160-character preview, never the complete memory body. Transcript
   fields are filtered and known credential forms are redacted before the model
-  request and again before any memory write. Codex and Claude memories are
-  exposed read-only and remain untrusted evidence. This is defense in depth,
-  not a guarantee that arbitrary secrets can always be recognized.
+  request and again before any memory write. `UAGENT_MEMORY_REDACT_KEYWORDS`
+  adds site-specific assignment keywords; entries are matched literally and only
+  ever extend the built-in set, so a configuration mistake cannot switch
+  redaction off. Codex and Claude memories are exposed read-only and remain
+  untrusted evidence. This is defense in depth, not a guarantee that arbitrary
+  secrets can always be recognized.
 - Model, MCP, and tool text is terminal-sanitized.
 
 Approval grants the current user's filesystem and network permissions. Use a

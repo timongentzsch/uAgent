@@ -31,7 +31,7 @@ a service bus, service locator, or plugin system.
 | `src/api/`, `include/api/` | OpenAI-compatible requests and streaming |
 | `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
 | `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
-| `include/mcp/` | bounded stdio JSON-RPC integrations |
+| `src/mcp/`, `include/mcp/` | bounded stdio JSON-RPC integrations |
 | `include/core/` | configuration, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
@@ -70,13 +70,13 @@ the typed protocol plus schema validation, tool policy, path checks, approval,
 and process ownership. Prompt wording is defense in depth.
 
 Web search follows the same boundary: models always see one named function,
-while its host adapter selects the provider protocol and owns limits, citations,
-errors, and usage accounting.
+while its host adapter selects the OpenRouter search route and owns limits,
+citations, errors, and usage accounting.
 
 Every route mutation uses one activation path: construct a centralized
 `ProviderCapabilities` contract, export its stable child-process projection,
 then rotate the agent route identity. Request serialization, model catalogues,
-reasoning replay, search protocol, and negotiated degradation read that
+reasoning replay, search availability, and negotiated degradation read that
 contract rather than provider/model names. Successful responses add observed
 reasoning, citation, and usage facts without controlling the current turn.
 

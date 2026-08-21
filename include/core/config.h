@@ -18,6 +18,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -203,7 +204,8 @@ inline bool TrustProjectConfig(std::string& error,
       {"format", 3}, {"mcp", snapshot["mcp"]}, {"config", snapshot["config"]}};
   std::string path = TrustStorePath();
   std::string data = JsonDump(store, 2) + "\n";
-  if (!AtomicWriteFile(path, data, 0600, /*preserve_mode=*/false, error)) {
+  if (!AtomicWriteFile(path, data, kPrivateFileMode, /*preserve_mode=*/false,
+                       error)) {
     return false;
   }
   if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);

@@ -14,7 +14,6 @@
 namespace uagent {
 
 enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter };
-enum class SearchProtocol : uint8_t { kNone, kResponses, kOpenRouter };
 enum class RejectedCapability : uint8_t {
   kNone,
   kImageInput,
@@ -24,7 +23,6 @@ enum class RejectedCapability : uint8_t {
 };
 
 const char* ProviderProtocolName(ProviderProtocol protocol);
-const char* SearchProtocolName(SearchProtocol protocol);
 ProviderProtocol ParseProviderProtocol(const std::string& protocol);
 
 struct ProviderCapabilities {
@@ -45,7 +43,6 @@ struct ProviderCapabilities {
   bool provider_routing = false;
   bool session_passthrough = false;
   bool model_variants = false;
-  SearchProtocol search_protocol = SearchProtocol::kNone;
 
   // Features observed in successful responses. They are diagnostic facts, not
   // prerequisites and never drive the current turn.

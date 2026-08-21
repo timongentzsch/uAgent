@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "include/api/capabilities.h"
 #include "include/api/types.h"
@@ -18,8 +19,6 @@ typedef void CURL;
 typedef void CURLM;
 
 namespace uagent {
-
-using nlohmann::json;
 
 struct StreamCtx;
 
@@ -52,6 +51,12 @@ class Api {
   json BuildChatBody(const json& messages, const json& tool_schemas,
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const;
+  // BuildChatBody dumped, reusing the serialized messages of the previous
+  // request for the unchanged prefix. Public so the byte-stability test in
+  // tests/unit/runtime_test.cc can compare it against a whole-body dump.
+  std::string ChatPayload(const json& messages, const json& tool_schemas,
+                          const std::string& session_id = "",
+                          bool* web_available = nullptr);
   ChatResult Chat(const json& messages, const json& tool_schemas,
                   int64_t timeout_s = 0, const std::string& session_id = "",
                   bool render_output = true, size_t estimated_bytes = 0,
@@ -62,12 +67,29 @@ class Api {
                     int64_t timeout_s = 120, int attempts = 1);
   json Get(const std::string& path, bool abortable = false,
            int64_t timeout_s = 15);
-  // A plain GET of an absolute URL: no credentials, redirects followed. For
+  // A direct GET of an absolute public URL: no credentials or environment
+  // proxy, and every resolved address across redirects must be public. For
   // content this client does not interpret, so the bytes come back as they
   // arrived.
   WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:
+  // Incremental serialization of the messages array. An array dump is the
+  // element dumps joined by commas, so reusing a prefix of them is
+  // byte-identical to dumping the array whole - which provider-side prefix
+  // caching depends on. Reuse is *verified* against the previous request
+  // element by element rather than announced by callers: no mutation of the
+  // history, wherever it happens, can leave a stale prefix behind.
+  class MessageCache {
+   public:
+    const std::string& Serialize(const json& messages);
+
+   private:
+    json sent_ = json::array();
+    std::vector<size_t> ends_;  // end offset of each element inside dump_
+    std::string dump_ = "[]";
+  };
+
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
                          bool render_output, bool full_reasoning);
@@ -85,6 +107,7 @@ class Api {
 
   CURL* handle_;
   CURLM* multi_;
+  MessageCache messages_;
 };
 
 }  // namespace uagent

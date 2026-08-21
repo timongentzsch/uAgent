@@ -16,6 +16,7 @@
 
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 
 namespace uagent {
 namespace {
@@ -83,12 +84,13 @@ bool DebugSink::Start(std::string path) {
     error_ = error.message();
     return false;
   }
-  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+                kPrivateFileMode);
   if (fd < 0) {
     error_ = strerror(errno);
     return false;
   }
-  if (fchmod(fd, 0600) != 0) {
+  if (fchmod(fd, kPrivateFileMode) != 0) {
     error_ = strerror(errno);
     close(fd);
     return false;

@@ -16,6 +16,7 @@
 #include <optional>
 #include <regex>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -25,6 +26,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
@@ -44,6 +46,65 @@ std::optional<std::string> FirstLine(const std::filesystem::path& path) {
   std::string line;
   return std::getline(input, line) ? std::optional<std::string>(Trim(line))
                                    : std::nullopt;
+}
+
+// Assignment keywords whose value is redacted. UAGENT_MEMORY_REDACT_KEYWORDS
+// appends to this list; it can never shorten it, so a typo cannot disable
+// redaction. Keywords are matched literally (escaped before they reach the
+// pattern) because this input is user configuration, not a trusted regex:
+// -fno-exceptions makes a malformed std::regex fatal, and an arbitrary pattern
+// invites catastrophic backtracking over every memory body.
+const std::vector<std::string>& RedactKeywords() {
+  static const std::vector<std::string> keywords = [] {
+    std::vector<std::string> all = {
+        "api_key",      "api-key",     "apikey",     "access_token",
+        "access-token", "accesstoken", "auth_token", "auth-token",
+        "authtoken",    "password",    "passwd",     "secret",
+        "authorization"};
+    constexpr size_t kMaxExtra = 32;
+    constexpr size_t kMaxKeywordBytes = 64;
+    std::string configured = EnvStr("UAGENT_MEMORY_REDACT_KEYWORDS");
+    size_t added = 0;
+    for (size_t begin = 0; begin <= configured.size() && added < kMaxExtra;) {
+      size_t end = configured.find(',', begin);
+      std::string keyword = Trim(configured.substr(
+          begin, end == std::string::npos ? std::string::npos : end - begin));
+      // An empty alternative would match everywhere and redact the whole text.
+      if (!keyword.empty() && keyword.size() <= kMaxKeywordBytes) {
+        all.push_back(std::move(keyword));
+        ++added;
+      }
+      if (end == std::string::npos) break;
+      begin = end + 1;
+    }
+    return all;
+  }();
+  return keywords;
+}
+
+// Cheap gate for the redactor: text that mentions no credential at all is the
+// common case and needs none of the three regex passes. The keyword markers
+// are derived from RedactKeywords() rather than restated, so a keyword can no
+// longer be gated out of existence -- `passwd` was missed that way once.
+bool MentionsSecret(std::string_view text) {
+  static const std::vector<std::string> markers = [] {
+    std::vector<std::string> all;
+    for (const std::string& keyword : RedactKeywords()) {
+      all.push_back(AsciiLower(keyword));
+    }
+    for (const char* fixed : {"bearer", "sk-", "-----begin", "gh"}) {
+      all.emplace_back(fixed);
+    }
+    return all;
+  }();
+  return std::any_of(
+      markers.begin(), markers.end(), [&](const std::string& marker) {
+        return std::search(text.begin(), text.end(), marker.begin(),
+                           marker.end(), [](char left, char right) {
+                             return std::tolower(static_cast<unsigned char>(
+                                        left)) == right;
+                           }) != text.end();
+      });
 }
 
 std::filesystem::path RepositoryIdentity(const std::filesystem::path& cwd) {
@@ -74,15 +135,24 @@ std::filesystem::path RepositoryLabel(const std::filesystem::path& cwd,
                                        : ProjectRoot(cwd);
 }
 
+struct RepositoryPaths {
+  std::filesystem::path identity;
+  std::filesystem::path label;
+};
+
+RepositoryPaths Repository(const std::filesystem::path& cwd) {
+  std::filesystem::path identity = RepositoryIdentity(cwd);
+  std::filesystem::path label = RepositoryLabel(cwd, identity);
+  return {std::move(identity), std::move(label)};
+}
+
 std::filesystem::path MemoryDirectory(const std::string& scope,
-                                      const std::filesystem::path& cwd) {
+                                      const RepositoryPaths& repo) {
   namespace fs = std::filesystem;
   fs::path base = fs::path(GlobalBase()) / kMemoryDir;
   if (scope == "global") return base / "global";
-  fs::path identity = RepositoryIdentity(cwd);
-  fs::path label = RepositoryLabel(cwd, identity);
-  std::string name = SafeFileComponent(label.filename().string()) + "-" +
-                     WorkspaceId(identity.string());
+  std::string name = SafeFileComponent(repo.label.filename().string()) + "-" +
+                     WorkspaceId(repo.identity.string());
   return base / "projects" / name;
 }
 
@@ -106,9 +176,8 @@ void AddMarkdownMemories(std::vector<MemoryEntry>& entries,
   }
 }
 
-std::filesystem::path ClaudeMemoryDirectory(const std::filesystem::path& cwd) {
-  std::string slug =
-      CanonicalOrSelf(RepositoryLabel(cwd, RepositoryIdentity(cwd))).string();
+std::filesystem::path ClaudeMemoryDirectory(const RepositoryPaths& repo) {
+  std::string slug = CanonicalOrSelf(repo.label).string();
   for (char& byte : slug) {
     if (!std::isalnum(static_cast<unsigned char>(byte))) byte = '-';
   }
@@ -162,7 +231,8 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
     return false;
   }
   std::string path = MemoryEventsPath();
-  int fd = open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC, 0600);
+  int fd = open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
+                kPrivateFileMode);
   if (fd < 0) {
     error = strerror(errno);
     return false;
@@ -303,7 +373,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
         "error: cannot resolve the workspace: " + workspace_error);
   }
   std::string filename = SafeFileComponent(name) + ".md";
-  fs::path path = MemoryDirectory(scope, *cwd) / filename;
+  fs::path path = MemoryDirectory(scope, Repository(*cwd)) / filename;
 
   if (forget) {
     std::error_code error;
@@ -385,8 +455,9 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
   bool appended = AppendBoundedMemoryEvent(serialized, error);
   if (receipt_path.empty()) return appended;
   std::string receipt_error;
-  bool receipt = AtomicWriteFile(receipt_path, serialized + "\n", 0600,
-                                 /*preserve_mode=*/false, receipt_error);
+  bool receipt =
+      AtomicWriteFile(receipt_path, serialized + "\n", kPrivateFileMode,
+                      /*preserve_mode=*/false, receipt_error);
   if (!receipt) {
     if (!error.empty()) error += "; ";
     error += "receipt: " + receipt_error;
@@ -490,10 +561,29 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
           (action == "set" ? " requires content" : " does not accept content"));
 }
 
+// Escapes every ECMAScript metacharacter so a configured keyword is matched as
+// a literal: no user input reaches the pattern as syntax.
+std::string RegexLiteral(std::string_view keyword) {
+  std::string escaped;
+  escaped.reserve(keyword.size() * 2);
+  for (char value : keyword) {
+    if (std::strchr(R"(^$\.*+?()[]{}|/)", value) != nullptr) escaped += '\\';
+    escaped += value;
+  }
+  return escaped;
+}
+
 std::string RedactMemorySecrets(std::string text) {
+  if (!MentionsSecret(text)) return text;
   static const std::regex kAssignment(
-      R"((api[_-]?key|access[_-]?token|auth[_-]?token|password|passwd|secret|)"
-      R"(authorization)([ \t]*[:=][ \t]*[\"']?)([^\"'\s,;}]+))",
+      [] {
+        std::string alternation;
+        for (const std::string& keyword : RedactKeywords()) {
+          if (!alternation.empty()) alternation += '|';
+          alternation += RegexLiteral(keyword);
+        }
+        return "(" + alternation + R"()([ \t]*[:=][ \t]*[\"']?)([^\"'\s,;}]+))";
+      }(),
       std::regex_constants::icase);
   static const std::regex kBearer(R"((Bearer[ \t]+)[A-Za-z0-9._~+/=-]{12,})",
                                   std::regex_constants::icase);
@@ -528,15 +618,16 @@ std::vector<MemoryEntry> ListMemories() {
 std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
+  RepositoryPaths repo = Repository(cwd);
   for (const char* scope : {"global", "project"}) {
-    AddMarkdownMemories(entries, MemoryDirectory(scope, cwd), scope,
+    AddMarkdownMemories(entries, MemoryDirectory(scope, repo), scope,
                         static_cast<size_t>(MaxMemories()));
   }
   std::string home = UserHome();
   if (!home.empty()) {
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
                         "codex", static_cast<size_t>(MaxMemories()));
-    AddMarkdownMemories(entries, ClaudeMemoryDirectory(cwd), "claude",
+    AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude",
                         static_cast<size_t>(MaxMemories()));
   }
   std::sort(entries.begin(), entries.end(),

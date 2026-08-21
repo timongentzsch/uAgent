@@ -1,9 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <netinet/in.h>
 #include <poll.h>
+#include <sys/socket.h>
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <optional>
@@ -24,6 +28,93 @@
 namespace uagent {
 
 namespace {
+
+constexpr char kMessagesSlot[] = "\x01uagent-messages\x01";
+
+struct Ipv4Network {
+  uint32_t address;
+  uint32_t mask;
+};
+
+// IANA special-purpose ranges that are not ordinary public destinations.
+constexpr std::array<Ipv4Network, 15> kNonPublicIpv4 = {{
+    {0x00000000U, 0xff000000U},  // 0.0.0.0/8
+    {0x0a000000U, 0xff000000U},  // 10.0.0.0/8
+    {0x64400000U, 0xffc00000U},  // 100.64.0.0/10
+    {0x7f000000U, 0xff000000U},  // 127.0.0.0/8
+    {0xa9fe0000U, 0xffff0000U},  // 169.254.0.0/16
+    {0xac100000U, 0xfff00000U},  // 172.16.0.0/12
+    {0xc0000000U, 0xffffff00U},  // 192.0.0.0/24
+    {0xc0000200U, 0xffffff00U},  // 192.0.2.0/24
+    {0xc0586300U, 0xffffff00U},  // 192.88.99.0/24
+    {0xc0a80000U, 0xffff0000U},  // 192.168.0.0/16
+    {0xc6120000U, 0xfffe0000U},  // 198.18.0.0/15
+    {0xc6336400U, 0xffffff00U},  // 198.51.100.0/24
+    {0xcb007100U, 0xffffff00U},  // 203.0.113.0/24
+    {0xe0000000U, 0xf0000000U},  // 224.0.0.0/4
+    {0xf0000000U, 0xf0000000U},  // 240.0.0.0/4
+}};
+
+bool PublicIpv4(const unsigned char* bytes) {
+  uint32_t address = (static_cast<uint32_t>(bytes[0]) << 24) |
+                     (static_cast<uint32_t>(bytes[1]) << 16) |
+                     (static_cast<uint32_t>(bytes[2]) << 8) | bytes[3];
+  return std::none_of(kNonPublicIpv4.begin(), kNonPublicIpv4.end(),
+                      [address](const Ipv4Network& range) {
+                        return (address & range.mask) == range.address;
+                      });
+}
+
+bool PublicIpv6(const unsigned char* bytes) {
+  bool mapped = std::all_of(bytes, bytes + 10,
+                            [](unsigned char byte) { return byte == 0; }) &&
+                bytes[10] == 0xff && bytes[11] == 0xff;
+  // The well-known NAT64 prefix embeds an IPv4 destination in the final four
+  // bytes. Classify that destination rather than allowing an IPv6 spelling to
+  // bypass the IPv4 policy.
+  bool nat64 = bytes[0] == 0 && bytes[1] == 0x64 && bytes[2] == 0xff &&
+               bytes[3] == 0x9b &&
+               std::all_of(bytes + 4, bytes + 12,
+                           [](unsigned char byte) { return byte == 0; });
+  if (mapped || nat64) return PublicIpv4(bytes + 12);
+
+  // Only currently allocated global unicast space (2000::/3), minus the two
+  // prefixes that tunnel an IPv4 destination inside it: 2001::/23 (Teredo and
+  // neighbours) and 2002::/16 (6to4).
+  if ((bytes[0] & 0xe0) != 0x20) return false;
+  return !(bytes[0] == 0x20 &&
+           ((bytes[1] == 0x01 && bytes[2] < 0x02) || bytes[1] == 0x02));
+}
+
+bool PublicSocketAddress(const curl_sockaddr& address) {
+  if (address.family == AF_INET && address.addrlen >= sizeof(sockaddr_in)) {
+    const auto* socket_address =
+        reinterpret_cast<const sockaddr_in*>(&address.addr);
+    return PublicIpv4(
+        reinterpret_cast<const unsigned char*>(&socket_address->sin_addr));
+  }
+  if (address.family == AF_INET6 && address.addrlen >= sizeof(sockaddr_in6)) {
+    const auto* socket_address =
+        reinterpret_cast<const sockaddr_in6*>(&address.addr);
+    return PublicIpv6(
+        reinterpret_cast<const unsigned char*>(&socket_address->sin6_addr));
+  }
+  return false;
+}
+
+struct PublicSocketPolicy {
+  bool denied = false;
+};
+
+curl_socket_t OpenPublicSocket(void* user, curlsocktype purpose,
+                               curl_sockaddr* address) {
+  auto* policy = static_cast<PublicSocketPolicy*>(user);
+  if (purpose != CURLSOCKTYPE_IPCXN || !PublicSocketAddress(*address)) {
+    policy->denied = true;
+    return CURL_SOCKET_BAD;
+  }
+  return socket(address->family, address->socktype, address->protocol);
+}
 
 class CurlHeaders {
  public:
@@ -176,6 +267,23 @@ CURLcode PerformWithAbortWake(CURLM* multi, CURL* easy,
   return result;
 }
 
+// The transfer both non-streaming readers share; they differ only in how the
+// outcome is mapped afterwards.
+CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
+                     SizedBuffer& out, int64_t timeout_s, bool abortable,
+                     int64_t& status) {
+  curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
+  curl_easy_setopt(handle, CURLOPT_WRITEDATA, &out);
+  curl_easy_setopt(handle, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
+  curl_easy_setopt(handle, CURLOPT_ACCEPT_ENCODING,
+                   "");  // 531 KB -> 63 KB on /models
+  CURLcode rc = abortable ? PerformWithAbortWake(multi, handle)
+                          : curl_easy_perform(handle);
+  curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &status);
+  return rc;
+}
+
 }  // namespace
 
 Api::Api(RuntimeConfig config)
@@ -271,6 +379,45 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   return body;
 }
 
+const std::string& Api::MessageCache::Serialize(const json& messages) {
+  size_t match = 0;
+  while (match < ends_.size() && match < messages.size() &&
+         sent_[match] == messages[match]) {
+    ++match;
+  }
+  dump_.resize(match > 0 ? ends_[match - 1] : 1);
+  ends_.resize(match);
+  sent_.erase(sent_.begin() + static_cast<json::difference_type>(match),
+              sent_.end());
+  for (size_t index = match; index < messages.size(); ++index) {
+    if (index > 0) dump_ += ',';
+    dump_ += JsonDump(messages[index]);
+    ends_.push_back(dump_.size());
+    sent_.push_back(messages[index]);
+  }
+  dump_ += ']';
+  return dump_;
+}
+
+std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
+                             const std::string& session_id,
+                             bool* web_available) {
+  // A placeholder no model name, schema or session id can contain: the cached
+  // array is spliced in where the body dump put its escaped form. If it is not
+  // there exactly once, the assumption failed and the whole body is dumped.
+  const std::string slot = JsonDump(json(kMessagesSlot));
+  std::string payload = JsonDump(
+      BuildChatBody(kMessagesSlot, tool_schemas, session_id, web_available));
+  size_t at = messages.is_array() ? payload.find(slot) : std::string::npos;
+  if (at == std::string::npos ||
+      payload.find(slot, at + 1) != std::string::npos) {
+    return JsonDump(
+        BuildChatBody(messages, tool_schemas, session_id, web_available));
+  }
+  payload.replace(at, slot.size(), messages_.Serialize(messages));
+  return payload;
+}
+
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
                      bool render_output, size_t estimated_bytes,
@@ -290,8 +437,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     return res;
   }
   bool web_available = false;
-  json body = BuildChatBody(messages, tool_schemas, session_id, &web_available);
-  std::string payload = JsonDump(body);
+  std::string payload =
+      ChatPayload(messages, tool_schemas, session_id, &web_available);
   if (config.request_bytes > 0 &&
       payload.size() > static_cast<size_t>(config.request_bytes)) {
     res.error = "serialized request exceeds " +
@@ -338,7 +485,6 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
                       render_output, full_reasoning);
     res.request_preparation_ms = preparation_ms;
-    res.end_to_end_ms = ElapsedMs(overall_started);
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
@@ -429,18 +575,22 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
     result.error = "failed to allocate HTTP headers";
     return result;
   }
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
   SetAbortable(h);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
-  curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING, "");
+  // Validate the address libcurl is actually about to connect to. The callback
+  // runs again for every new redirect connection, so DNS rebinding and private
+  // redirect targets cannot bypass the URL's public-network boundary. Proxy
+  // environment variables are disabled because a proxy could resolve and
+  // connect to a destination this process never gets to inspect.
+  PublicSocketPolicy socket_policy;
+  curl_easy_setopt(h, CURLOPT_PROXY, "");
+  curl_easy_setopt(h, CURLOPT_OPENSOCKETFUNCTION, OpenPublicSocket);
+  curl_easy_setopt(h, CURLOPT_OPENSOCKETDATA, &socket_policy);
   // Unlike an API call, this request carries no credential to leak, and a
   // canonical URL is usually a redirect away.
   curl_easy_setopt(h, CURLOPT_FOLLOWLOCATION, 1L);
   curl_easy_setopt(h, CURLOPT_MAXREDIRS, 5L);
-  CURLcode rc = PerformWithAbortWake(multi_, h);
-  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &result.http_status);
+  CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s,
+                            /*abortable=*/true, result.http_status);
   char* type = nullptr;
   if (curl_easy_getinfo(h, CURLINFO_CONTENT_TYPE, &type) == CURLE_OK && type) {
     result.content_type = AsciiLower(type);
@@ -450,7 +600,9 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   // Hitting the cap aborts the transfer, so libcurl reports a write error.
   // A capped page still usually answers the question, so the bytes stand and
   // the tool says it is partial; a real HTTP failure still wins.
-  if (rc != CURLE_OK && !out.exceeded) {
+  if (rc != CURLE_OK && socket_policy.denied) {
+    result.error = "refused non-public network destination";
+  } else if (rc != CURLE_OK && !out.exceeded) {
     result.error = std::string("connection error: ") + curl_easy_strerror(rc);
   } else if (result.http_status >= 400) {
     result.error = "HTTP " + std::to_string(result.http_status);
@@ -596,16 +748,9 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
     result.error = "failed to allocate HTTP headers";
     return result;
   }
-  curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
-  curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &SizedBuffer::Write);
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &out);
   if (abortable) SetAbortable(h);
-  curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
-  curl_easy_setopt(h, CURLOPT_ACCEPT_ENCODING,
-                   "");  // 531 KB -> 63 KB on /models
-  CURLcode rc =
-      abortable ? PerformWithAbortWake(multi_, h) : curl_easy_perform(h);
-  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &result.http_status);
+  CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s, abortable,
+                            result.http_status);
   if (out.exceeded) {
     result.error = "response exceeds configured byte limit";
     return result;
@@ -645,8 +790,11 @@ CURL* Api::Prepare(const std::string& url) {
   curl_easy_setopt(handle_, CURLOPT_FOLLOWLOCATION, 0L);
 #if LIBCURL_VERSION_NUM >= 0x075500
   curl_easy_setopt(handle_, CURLOPT_PROTOCOLS_STR, "http,https");
+  curl_easy_setopt(handle_, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
 #else
   curl_easy_setopt(handle_, CURLOPT_PROTOCOLS,
+                   CURLPROTO_HTTP | CURLPROTO_HTTPS);
+  curl_easy_setopt(handle_, CURLOPT_REDIR_PROTOCOLS,
                    CURLPROTO_HTTP | CURLPROTO_HTTPS);
 #endif
   return handle_;

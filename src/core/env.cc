@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
@@ -171,7 +172,7 @@ int64_t BashLogBytes() {
 }
 
 int64_t RunDefaultYieldMs() {
-  return EnvBounded("UAGENT_RUN_YIELD_MS", 10000, 0, 30000);
+  return EnvBounded("UAGENT_RUN_YIELD_MS", 10000, 0, kMaxYieldMs);
 }
 
 int64_t MaxBackgroundJobs() {
@@ -231,109 +232,139 @@ namespace {
 constexpr int64_t kAnyMin = std::numeric_limits<int64_t>::min();
 constexpr int64_t kAnyMax = std::numeric_limits<int64_t>::max();
 
+// These tables are the single source of truth for the RuntimeConfig option
+// set: environment name, field name, target member, clamp/default, whether a
+// turn-boundary reload may replace the field, and whether the value must be
+// redacted in diagnostics. Adding an option means adding one row.
 struct LongOption {
   const char* env;
   const char* name;
   int64_t RuntimeConfig::* field;
   int64_t minimum;
   int64_t maximum;
+  bool reloadable;
+};
+struct DoubleOption {
+  const char* env;
+  const char* name;
+  double RuntimeConfig::* field;
+  double minimum;
+  bool reloadable;
 };
 struct StringOption {
   const char* env;
   const char* name;
   std::string RuntimeConfig::* field;
   const char* default_value;
+  bool reloadable;
+  bool redact;
 };
 struct BoolOption {
   const char* env;
   const char* name;
   bool RuntimeConfig::* field;
   bool default_value;
+  bool reloadable;
 };
 
 constexpr LongOption kLongOptions[] = {
     {"UAGENT_FIRST_EVENT_TIMEOUT", "first_event_timeout_s",
-     &RuntimeConfig::first_event_timeout_s, kAnyMin, kAnyMax},
+     &RuntimeConfig::first_event_timeout_s, kAnyMin, kAnyMax, true},
     {"UAGENT_STREAM_IDLE_TIMEOUT", "stream_idle_timeout_s",
-     &RuntimeConfig::stream_idle_timeout_s, kAnyMin, kAnyMax},
+     &RuntimeConfig::stream_idle_timeout_s, kAnyMin, kAnyMax, true},
     {"UAGENT_REQUEST_TIMEOUT", "request_timeout_s",
-     &RuntimeConfig::request_timeout_s, kAnyMin, kAnyMax},
+     &RuntimeConfig::request_timeout_s, kAnyMin, kAnyMax, true},
     {"UAGENT_REQUEST_BYTES", "request_bytes", &RuntimeConfig::request_bytes,
-     1024, kAnyMax},
+     1024, kAnyMax, true},
     {"UAGENT_RESPONSE_BYTES", "response_bytes", &RuntimeConfig::response_bytes,
-     kAnyMin, kAnyMax},
-    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 0, kAnyMax},
+     kAnyMin, kAnyMax, true},
+    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 0, kAnyMax,
+     true},
     {"UAGENT_MAX_TOOL_CALLS", "max_tool_calls", &RuntimeConfig::max_tool_calls,
-     0, kAnyMax},
+     0, kAnyMax, true},
     {"UAGENT_MAX_TURN_SECONDS", "max_turn_seconds",
-     &RuntimeConfig::max_turn_seconds, 0, kAnyMax},
+     &RuntimeConfig::max_turn_seconds, 0, kAnyMax, true},
     {"UAGENT_TOOL_TIMEOUT", "tool_timeout_s", &RuntimeConfig::tool_timeout_s, 0,
-     kAnyMax},
+     kAnyMax, true},
     {"UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s",
-     &RuntimeConfig::web_search_timeout_s, 1, kAnyMax},
+     &RuntimeConfig::web_search_timeout_s, 1, kAnyMax, true},
     {"UAGENT_WEB_SEARCH_MAX_TOKENS", "web_search_max_tokens",
-     &RuntimeConfig::web_search_max_tokens, 128, kAnyMax},
+     &RuntimeConfig::web_search_max_tokens, 128, kAnyMax, true},
     {"UAGENT_WEB_SEARCH_CALLS", "web_search_calls",
-     &RuntimeConfig::web_search_calls, 1, kAnyMax},
+     &RuntimeConfig::web_search_calls, 1, kAnyMax, true},
     {"UAGENT_WEB_SEARCH_MAX_RESULTS", "web_search_max_results",
-     &RuntimeConfig::web_search_max_results, 1, 25},
+     &RuntimeConfig::web_search_max_results, 1, 25, true},
     {"UAGENT_WEB_SEARCH_MAX_USES", "web_search_max_uses",
-     &RuntimeConfig::web_search_max_uses, 1, 30},
+     &RuntimeConfig::web_search_max_uses, 1, 30, true},
     {"UAGENT_MCP_TIMEOUT", "mcp_timeout_s", &RuntimeConfig::mcp_timeout_s, 1,
-     kAnyMax},
+     kAnyMax, false},
     {"UAGENT_MCP_SERVERS", "mcp_servers", &RuntimeConfig::mcp_servers, 1,
-     kMcpMax},
-    {"UAGENT_MCP_PAGES", "mcp_pages", &RuntimeConfig::mcp_pages, 1, kAnyMax},
-    {"UAGENT_MCP_TOOLS", "mcp_tools", &RuntimeConfig::mcp_tools, 1, kAnyMax},
+     kMcpMax, false},
+    {"UAGENT_MCP_PAGES", "mcp_pages", &RuntimeConfig::mcp_pages, 1, kAnyMax,
+     false},
+    {"UAGENT_MCP_TOOLS", "mcp_tools", &RuntimeConfig::mcp_tools, 1, kAnyMax,
+     false},
     {"UAGENT_MCP_CONFIG_BYTES", "mcp_config_bytes",
-     &RuntimeConfig::mcp_config_bytes, 1024, kAnyMax},
+     &RuntimeConfig::mcp_config_bytes, 1024, kAnyMax, false},
     {"UAGENT_MCP_RESPONSE_BYTES", "mcp_response_bytes",
-     &RuntimeConfig::mcp_response_bytes, 1024, kAnyMax},
+     &RuntimeConfig::mcp_response_bytes, 1024, kAnyMax, false},
     {"UAGENT_MCP_SCHEMA_BYTES", "mcp_schema_bytes",
-     &RuntimeConfig::mcp_schema_bytes, 1024, kAnyMax},
+     &RuntimeConfig::mcp_schema_bytes, 1024, kAnyMax, false},
     {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes,
-     1024, kAnyMax},
+     1024, kAnyMax, false},
     {"UAGENT_MEMORY_ALWAYS_BYTES", "memory_always_bytes",
-     &RuntimeConfig::memory_always_bytes, 0, 64 * 1024},
+     &RuntimeConfig::memory_always_bytes, 0, 64 * 1024, false},
     {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
-     &RuntimeConfig::project_doc_bytes, 0, kAnyMax},
+     &RuntimeConfig::project_doc_bytes, 0, kAnyMax, false},
     {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",
-     &RuntimeConfig::session_archive_bytes, 0, kAnyMax},
+     &RuntimeConfig::session_archive_bytes, 0, kAnyMax, true},
+};
+constexpr DoubleOption kDoubleOptions[] = {
+    {"UAGENT_MAX_TURN_COST", "max_turn_cost", &RuntimeConfig::max_turn_cost,
+     0.0, true},
+    {"UAGENT_SESSION_BUDGET", "session_budget", &RuntimeConfig::session_budget,
+     0.0, true},
 };
 constexpr StringOption kStringOptions[] = {
     {"UAGENT_OPENROUTER_PROVIDER", "openrouter_provider",
-     &RuntimeConfig::openrouter_provider, ""},
+     &RuntimeConfig::openrouter_provider, "", true, false},
     {"UAGENT_OPENROUTER_VARIANT", "openrouter_variant",
-     &RuntimeConfig::openrouter_variant, ""},
+     &RuntimeConfig::openrouter_variant, "", true, false},
     {"UAGENT_WEB_SEARCH_BACKEND", "web_search_backend",
-     &RuntimeConfig::web_search_backend, "auto"},
+     &RuntimeConfig::web_search_backend, "auto", false, false},
     {"UAGENT_WEB_SEARCH_URL", "web_search_url", &RuntimeConfig::web_search_url,
-     ""},
+     "", false, false},
+    // A secret: reloading it mid-session is deferred, and diagnostics only
+    // report whether it is set.
+    {"UAGENT_WEB_SEARCH_API_KEY", "web_search_api_key",
+     &RuntimeConfig::web_search_api_key, "", false, true},
     {"UAGENT_WEB_SEARCH_EFFORT", "web_search_effort",
-     &RuntimeConfig::web_search_effort, ""},
+     &RuntimeConfig::web_search_effort, "", false, false},
     {"UAGENT_WEB_SEARCH_MODEL", "web_search_model",
-     &RuntimeConfig::web_search_model, ""},
+     &RuntimeConfig::web_search_model, "", false, false},
     {"UAGENT_WEB_SEARCH_ENGINE", "web_search_engine",
-     &RuntimeConfig::web_search_engine, "auto"},
+     &RuntimeConfig::web_search_engine, "auto", false, false},
     {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
-     &RuntimeConfig::web_search_context_size, ""},
-    {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, ""},
-    {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, ""},
+     &RuntimeConfig::web_search_context_size, "", false, false},
+    {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, "", true,
+     false},
+    {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, "", false,
+     false},
 };
 constexpr BoolOption kBoolOptions[] = {
     {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
-     &RuntimeConfig::openrouter_fallbacks, true},
-    {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true},
+     &RuntimeConfig::openrouter_fallbacks, true, true},
+    {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true,
+     false},
     {"UAGENT_MEMORY_GENERATE", "memory_generate",
-     &RuntimeConfig::memory_generate, true},
+     &RuntimeConfig::memory_generate, true, false},
 };
 
 void NormalizeRuntimeConfig(RuntimeConfig& config) {
   if (!ValidOpenRouterVariant(config.openrouter_variant)) {
     config.openrouter_variant.clear();
   }
-  if (!OneOf(config.web_search_backend,
-             {"auto", "responses", "openrouter", "off"})) {
+  if (!OneOf(config.web_search_backend, {"auto", "openrouter", "off"})) {
     config.web_search_backend = "auto";
   }
   if (!OneOf(config.web_search_engine, {"auto", "native", "exa", "firecrawl",
@@ -357,11 +388,9 @@ std::string RuntimeConfigField(std::string_view environment) {
   for (const BoolOption& option : kBoolOptions) {
     if (environment == option.env) return option.name;
   }
-  if (environment == "UAGENT_WEB_SEARCH_API_KEY") {
-    return "web_search_api_key";
+  for (const DoubleOption& option : kDoubleOptions) {
+    if (environment == option.env) return option.name;
   }
-  if (environment == "UAGENT_MAX_TURN_COST") return "max_turn_cost";
-  if (environment == "UAGENT_SESSION_BUDGET") return "session_budget";
   return "";
 }
 
@@ -374,13 +403,14 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
   for (const StringOption& option : kStringOptions) {
     c.*option.field = EnvStr(option.env, option.default_value);
   }
-  c.web_search_api_key = EnvStr("UAGENT_WEB_SEARCH_API_KEY");
   for (const BoolOption& option : kBoolOptions) {
     c.*option.field =
         EnvStr(option.env, option.default_value ? "1" : "0") != "0";
   }
-  c.max_turn_cost = std::max(0.0, EnvDouble("UAGENT_MAX_TURN_COST", 0));
-  c.session_budget = std::max(0.0, EnvDouble("UAGENT_SESSION_BUDGET", 0));
+  for (const DoubleOption& option : kDoubleOptions) {
+    c.*option.field =
+        std::max(option.minimum, EnvDouble(option.env, c.*option.field));
+  }
   NormalizeRuntimeConfig(c);
   return c;
 }
@@ -401,23 +431,15 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
     const std::string* selected = value(option.env);
     config.*option.field = selected ? *selected : option.default_value;
   }
-  if (const std::string* selected = value("UAGENT_WEB_SEARCH_API_KEY")) {
-    config.web_search_api_key = *selected;
-  }
   for (const BoolOption& option : kBoolOptions) {
     const std::string* selected = value(option.env);
     config.*option.field = selected ? *selected != "0" : option.default_value;
   }
-  if (const std::string* selected = value("UAGENT_MAX_TURN_COST")) {
+  for (const DoubleOption& option : kDoubleOptions) {
+    const std::string* selected = value(option.env);
     double parsed = 0;
-    if (ParseFiniteDouble(selected->c_str(), parsed)) {
-      config.max_turn_cost = std::max(0.0, parsed);
-    }
-  }
-  if (const std::string* selected = value("UAGENT_SESSION_BUDGET")) {
-    double parsed = 0;
-    if (ParseFiniteDouble(selected->c_str(), parsed)) {
-      config.session_budget = std::max(0.0, parsed);
+    if (selected && ParseFiniteDouble(selected->c_str(), parsed)) {
+      config.*option.field = std::max(option.minimum, parsed);
     }
   }
   NormalizeRuntimeConfig(config);
@@ -427,33 +449,21 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
 std::vector<std::string> RuntimeConfig::ApplyTurnReload(
     const RuntimeConfig& next) {
   std::vector<std::string> changed;
-#define UAGENT_RELOAD(field)   \
-  if (field != next.field) {   \
-    field = next.field;        \
-    changed.push_back(#field); \
-  }
-  UAGENT_RELOAD(first_event_timeout_s)
-  UAGENT_RELOAD(stream_idle_timeout_s)
-  UAGENT_RELOAD(request_timeout_s)
-  UAGENT_RELOAD(request_bytes)
-  UAGENT_RELOAD(response_bytes)
-  UAGENT_RELOAD(max_steps)
-  UAGENT_RELOAD(max_tool_calls)
-  UAGENT_RELOAD(max_turn_seconds)
-  UAGENT_RELOAD(max_turn_cost)
-  UAGENT_RELOAD(session_budget)
-  UAGENT_RELOAD(tool_timeout_s)
-  UAGENT_RELOAD(web_search_timeout_s)
-  UAGENT_RELOAD(web_search_max_tokens)
-  UAGENT_RELOAD(web_search_calls)
-  UAGENT_RELOAD(web_search_max_results)
-  UAGENT_RELOAD(web_search_max_uses)
-  UAGENT_RELOAD(session_archive_bytes)
-  UAGENT_RELOAD(openrouter_provider)
-  UAGENT_RELOAD(openrouter_variant)
-  UAGENT_RELOAD(openrouter_fallbacks)
-  UAGENT_RELOAD(image_model)
-#undef UAGENT_RELOAD
+  // The tables carry the reloadable flag, so the applied set cannot drift from
+  // the option set the same tables define.
+  auto reload = [&](const auto& options) {
+    for (const auto& option : options) {
+      if (!option.reloadable || this->*option.field == next.*option.field) {
+        continue;
+      }
+      this->*option.field = next.*option.field;
+      changed.push_back(option.name);
+    }
+  };
+  reload(kLongOptions);
+  reload(kDoubleOptions);
+  reload(kStringOptions);
+  reload(kBoolOptions);
   return changed;
 }
 
@@ -472,9 +482,9 @@ json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
   for (const BoolOption& option : kBoolOptions) {
     out[option.name] = source(option.env);
   }
-  out["web_search_api_key"] = source("UAGENT_WEB_SEARCH_API_KEY");
-  out["max_turn_cost"] = source("UAGENT_MAX_TURN_COST");
-  out["session_budget"] = source("UAGENT_SESSION_BUDGET");
+  for (const DoubleOption& option : kDoubleOptions) {
+    out[option.name] = source(option.env);
+  }
   return out;
 }
 
@@ -485,7 +495,9 @@ json RuntimeConfig::DiagnosticJson() const {
   }
   for (const StringOption& option : kStringOptions) {
     std::string value = this->*option.field;
-    if (std::string_view(option.name).ends_with("_url")) {
+    if (option.redact) {
+      value = value.empty() ? "<unset>" : "<set>";
+    } else if (std::string_view(option.name).ends_with("_url")) {
       value = RedactedUrl(std::move(value));
     }
     out[option.name] = std::move(value);
@@ -493,10 +505,10 @@ json RuntimeConfig::DiagnosticJson() const {
   for (const BoolOption& option : kBoolOptions) {
     out[option.name] = this->*option.field;
   }
+  for (const DoubleOption& option : kDoubleOptions) {
+    out[option.name] = this->*option.field;
+  }
   out.update({
-      {"web_search_api_key", web_search_api_key.empty() ? "<unset>" : "<set>"},
-      {"max_turn_cost", max_turn_cost},
-      {"session_budget", session_budget},
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_trace_protect_chars", ToolTraceProtectChars()},

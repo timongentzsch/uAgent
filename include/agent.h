@@ -129,8 +129,6 @@ class Agent {
     std::string status;
   };
 
-  void RunTurn(const std::string& input, json content);
-
   std::string AnalyzeImageContent(const json& content, std::string& error);
   ImageFallbackResult ApplyImageAnalysisFallback(json& messages,
                                                  ImageFallbackCause cause);
@@ -163,7 +161,8 @@ class Agent {
   json CompactionMessages() const;
   json CompactionUserMessages() const;
 
-  size_t RequestContextBytes(size_t schema_bytes) const;
+  size_t RequestContextBytes(size_t schema_bytes,
+                             const json* messages = nullptr) const;
   int64_t SnapshotContext(size_t schema_bytes) const;
   int64_t ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
                              int64_t* projected_tokens = nullptr) const;

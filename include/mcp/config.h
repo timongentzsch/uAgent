@@ -5,12 +5,14 @@
 // Server configuration: validation of anything a config file asks to
 // spawn, then the merge of user and trusted project sources.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <set>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -21,6 +23,12 @@
 #include "include/mcp/server.h"
 
 namespace uagent {
+
+// Config fields the loader understands; anything else is reported and
+// ignored. A constexpr table keeps this out of per-TU dynamic init.
+inline constexpr std::string_view kKnown[] = {
+    "type",  "command", "args",  "env",      "cwd",
+    "tools", "roots",   "trust", "disabled", "__uagent_config_dir"};
 
 inline bool McpValidateServerConfig(const std::string& name, const json& conf,
                                     std::string& error) {
@@ -78,12 +86,10 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
                        true)) {
     return false;
   }
-  static const std::set<std::string> kNown = {
-      "type",  "command", "args",  "env",      "cwd",
-      "tools", "roots",   "trust", "disabled", "__uagent_config_dir"};
   for (const auto& [field, ignored] : conf.items()) {
     (void)ignored;
-    if (!kNown.contains(field)) {
+    if (std::find(std::begin(kKnown), std::end(kKnown), field) ==
+        std::end(kKnown)) {
       McpNote(name, "unknown config field `" + field + "` ignored");
     }
   }

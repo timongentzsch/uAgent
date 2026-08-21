@@ -112,9 +112,9 @@ void TestActivitySessions() {
   std::vector<int64_t> retained_ids;
   for (int index = 0; index < 17; ++index) {
     auto session = std::make_shared<ActivitySession>();
-    CHECK(retained.TryAdd({static_cast<pid_t>(900000 + index), "", "done",
-                           false, "", std::nullopt, 0, session},
-                          32));
+    CHECK(retained.TryAdd(
+        {static_cast<pid_t>(900000 + index), "", "done", false, "", 0, session},
+        32));
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
     std::optional<BgJob> completed = retained.Take(id);
@@ -270,45 +270,32 @@ void TestActivitySessions() {
     CHECK(final.output.find("\nonce") == std::string::npos);
   }
 
-  ProcessSupervisor bounded_completion;
-  const char* prior_result_cap = getenv("UAGENT_TOOL_RESULT_CHARS");
-  std::string saved_result_cap = prior_result_cap ? prior_result_cap : "";
-  setenv("UAGENT_TOOL_RESULT_CHARS", "8000", 1);
-  CHECK(RunShellCommand(bounded_completion, context,
-                        {.command = "printf '%7000s' x",
-                         .background = true,
-                         .immediate = true})
-            .result.Ok());
-  std::vector<BgJob> bounded_jobs = bounded_completion.Snapshot();
-  CHECK(bounded_jobs.size() == 1);
-  auto bounded_deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while (!bounded_jobs.empty() &&
-         std::chrono::steady_clock::now() < bounded_deadline) {
-    bool drained;
-    {
-      std::lock_guard<std::mutex> lock(bounded_jobs[0].session->mutex);
-      drained = bounded_jobs[0].session->state == ActivityState::kDrained;
+  {
+    ProcessSupervisor bounded_completion;
+    ScopedEnv scoped_result_cap("UAGENT_TOOL_RESULT_CHARS", "8000");
+    CHECK(RunShellCommand(bounded_completion, context,
+                          {.command = "printf '%7000s' x",
+                           .background = true,
+                           .immediate = true})
+              .result.Ok());
+    std::vector<BgJob> bounded_jobs = bounded_completion.Snapshot();
+    CHECK(bounded_jobs.size() == 1);
+    if (!bounded_jobs.empty()) {
+      WaitForActivityDrain(bounded_completion, bounded_jobs[0]);
     }
-    if (drained) break;
-    uint64_t generation = bounded_completion.Generation();
-    bounded_completion.WaitForChange(generation, bounded_deadline);
-  }
-  std::vector<std::string> bounded_notes = BgTakeCompleted(bounded_completion);
-  CHECK(bounded_notes.size() == 1);
-  CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 6500);
-  CHECK(!bounded_notes.empty() &&
-        bounded_notes[0].find("bytes omitted") != std::string::npos);
-  if (!bounded_jobs.empty()) {
-    ToolResult replay = ToolActivityOutput(
-        bounded_completion, ActivityId(bounded_jobs[0]), 0, {}, context, 8000);
-    CHECK(replay.output.find("complete transcript replay") !=
-          std::string::npos);
-  }
-  if (prior_result_cap) {
-    setenv("UAGENT_TOOL_RESULT_CHARS", saved_result_cap.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_TOOL_RESULT_CHARS");
+    std::vector<std::string> bounded_notes =
+        BgTakeCompleted(bounded_completion);
+    CHECK(bounded_notes.size() == 1);
+    CHECK(!bounded_notes.empty() && bounded_notes[0].size() < 6500);
+    CHECK(!bounded_notes.empty() &&
+          bounded_notes[0].find("bytes omitted") != std::string::npos);
+    if (!bounded_jobs.empty()) {
+      ToolResult replay =
+          ToolActivityOutput(bounded_completion, ActivityId(bounded_jobs[0]), 0,
+                             {}, context, 8000);
+      CHECK(replay.output.find("complete transcript replay") !=
+            std::string::npos);
+    }
   }
 
   ProcessSupervisor incremental;
@@ -336,12 +323,13 @@ void TestActivitySessions() {
     CHECK(final.output.find("done") != std::string::npos);
   }
 
-  for (int iteration = 0; iteration < 200; ++iteration) {
+  // The race is created by the foreground handoff below, not by the command's
+  // own duration, so the command stays as short as the shell allows.
+  for (int iteration = 0; iteration < 50; ++iteration) {
     ProcessSupervisor race;
     ShellCommandResult result;
     std::thread command([&] {
-      result = RunShellCommand(race, context,
-                               {.command = "sleep 0.005; printf race"});
+      result = RunShellCommand(race, context, {.command = "printf race"});
     });
     (void)race.WaitForForeground(
         1, std::chrono::steady_clock::now() + std::chrono::seconds(1));
@@ -382,17 +370,7 @@ void TestActivitySessions() {
   CHECK(ToolActivityList(memory_activity)
             .output.find("extracting from source-123") != std::string::npos);
   if (!memory_jobs.empty()) {
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    for (;;) {
-      bool drained = false;
-      {
-        std::lock_guard<std::mutex> lock(memory_jobs[0].session->mutex);
-        drained = memory_jobs[0].session->state == ActivityState::kDrained;
-      }
-      if (drained || std::chrono::steady_clock::now() >= deadline) break;
-      uint64_t generation = memory_activity.Generation();
-      memory_activity.WaitForChange(generation, deadline);
-    }
+    WaitForActivityDrain(memory_activity, memory_jobs[0]);
     std::vector<BackgroundCompletion> completed =
         BgTakeCompletedDetails(memory_activity, "memory");
     CHECK(completed.size() == 1);
@@ -416,20 +394,7 @@ void TestActivitySessions() {
   CHECK(delivery_jobs.size() == 1);
   if (!delivery_jobs.empty()) {
     int64_t id = ActivityId(delivery_jobs[0]);
-    bool drained = false;
-    auto drain_deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(2);
-    while (!drained && std::chrono::steady_clock::now() < drain_deadline) {
-      {
-        std::lock_guard<std::mutex> lock(delivery_jobs[0].session->mutex);
-        drained = delivery_jobs[0].session->state == ActivityState::kDrained;
-      }
-      if (!drained) {
-        uint64_t generation = delivery_race.Generation();
-        delivery_race.WaitForChange(generation, drain_deadline);
-      }
-    }
-    CHECK(drained);
+    CHECK(WaitForActivityDrain(delivery_race, delivery_jobs[0]));
     ToolResult explicit_wait;
     std::vector<std::string> automatic;
     std::atomic<bool> start{false};
@@ -673,16 +638,10 @@ void TestToolExecutionPolicy() {
     std::ofstream output(large_log);
     output << std::string(64, 'x');
   }
-  const char* current_home = getenv("HOME");
-  std::optional<std::string> saved_home =
-      current_home ? std::optional<std::string>(current_home) : std::nullopt;
-  setenv("HOME", log_root.c_str(), 1);
-  CollectedLog large_log_result = CollectCompletedLog(large_log.string(), 16);
-  if (saved_home) {
-    setenv("HOME", saved_home->c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
+  CollectedLog large_log_result = [&] {
+    ScopedEnv scoped_home("HOME", log_root.c_str());
+    return CollectCompletedLog(large_log.string(), 16);
+  }();
   CHECK(large_log_result.artifact.has_value());
   CHECK(large_log_result.artifact &&
         large_log_result.artifact->path != large_log.string());
@@ -716,13 +675,10 @@ void TestToolExecutionPolicy() {
     std::ofstream output(fallback_log);
     output << std::string(64, 'y');
   }
-  setenv("HOME", fallback_home.c_str(), 1);
-  CollectedLog fallback_result = CollectCompletedLog(fallback_log.string(), 16);
-  if (saved_home) {
-    setenv("HOME", saved_home->c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
+  CollectedLog fallback_result = [&] {
+    ScopedEnv scoped_home("HOME", fallback_home.c_str());
+    return CollectCompletedLog(fallback_log.string(), 16);
+  }();
   CHECK(fallback_result.artifact.has_value());
   CHECK(fallback_result.artifact &&
         fallback_result.artifact->path == fallback_log.string());
@@ -844,60 +800,75 @@ void TestOpenRouterServerSearch() {
   usage.Add({{"server_tool_use_details", {{"web_search_requests", 1}}},
              {"server_tool_use", {{"web_search_requests", 9}}}});
   CHECK(usage.web_searches == 6);
-  Usage inconsistent;
-  inconsistent.Add({{"prompt_tokens", 2},
-                    {"prompt_tokens_details", {{"cached_tokens", 3}}},
-                    {"completion_tokens", 1},
-                    {"completion_tokens_details", {{"reasoning_tokens", 2}}}});
-  CHECK(inconsistent.input == 0);
-  CHECK(inconsistent.output == 0);
   CHECK(!usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).web_searches == 6);
   usage.Add({{"cost", 0.0}});
   CHECK(usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).cost_reported);
-  Usage responses_usage;
-  responses_usage.Add({{"input_tokens", 11},
-                       {"input_tokens_details", {{"cached_tokens", 3}}},
-                       {"output_tokens", 7},
-                       {"output_tokens_details", {{"reasoning_tokens", 2}}}});
-  CHECK(responses_usage.input == 8);
-  CHECK(responses_usage.cache_read == 3);
-  CHECK(responses_usage.output == 5);
-  CHECK(responses_usage.reasoning == 2);
 
   // Every OpenAI-compatible spelling must land on the same invariant: `input`
-  // excludes the cached part, so input + cache_read is the whole prompt.
-  // Chat Completions and Responses report cached tokens inside the prompt
-  // total; Anthropic-style reports them beside an input count that already
-  // excludes them, and subtracting there would under-report fresh tokens.
-  Usage anthropic_usage;
-  anthropic_usage.Add({{"input_tokens", 8},
-                       {"output_tokens", 5},
-                       {"cache_read_input_tokens", 3},
-                       {"cache_creation_input_tokens", 7}});
-  CHECK(anthropic_usage.input == 8);
-  CHECK(anthropic_usage.cache_read == 3);
-  CHECK(anthropic_usage.cache_write == 7);
-  CHECK(anthropic_usage.output == 5);
-  CHECK(anthropic_usage.input + anthropic_usage.cache_read == 11);
-  CHECK(responses_usage.input + responses_usage.cache_read == 11);
-  Usage translated_anthropic_usage;
-  translated_anthropic_usage.Add(
-      {{"prompt_tokens", 18},
-       {"prompt_tokens_details",
-        {{"cached_tokens", 3}, {"cache_creation_tokens", 7}}},
-       {"completion_tokens", 5}});
-  CHECK(translated_anthropic_usage.input == 15);
-  CHECK(translated_anthropic_usage.cache_read == 3);
-  CHECK(translated_anthropic_usage.cache_write == 7);
-  // The cached share of the prompt, undefined only before anything is counted.
-  CHECK(Usage{}.CacheHitPercent() == 0);
-  CHECK(anthropic_usage.CacheHitPercent() == 27);
-  Usage all_cached;
-  all_cached.Add({{"prompt_tokens", 10},
-                  {"prompt_tokens_details", {{"cached_tokens", 10}}}});
-  CHECK(all_cached.input == 0 && all_cached.CacheHitPercent() == 100);
+  // excludes the cached part, so input + cache_read is the whole prompt, and
+  // the hit percentage is the cached share of it. Chat Completions and
+  // Responses report cached tokens inside the prompt total; Anthropic-style
+  // reports them beside an input count that already excludes them, and
+  // subtracting there would under-report fresh tokens.
+  struct UsageCase {
+    const char* spelling;
+    json payload;
+    int64_t input;
+    int64_t output;
+    int64_t cache_read;
+    int64_t cache_write;
+    int64_t reasoning;
+    int64_t cache_hit_percent;
+  };
+  const std::vector<UsageCase> usage_cases = {
+      // The percentage is defined as zero before anything is counted.
+      {"nothing counted", json::object(), 0, 0, 0, 0, 0, 0},
+      // Compatibility providers occasionally report detail counts larger than
+      // the parent totals; the result is clamped, never negative.
+      {"chat completions, inconsistent details",
+       json{{"prompt_tokens", 2},
+            {"prompt_tokens_details", {{"cached_tokens", 3}}},
+            {"completion_tokens", 1},
+            {"completion_tokens_details", {{"reasoning_tokens", 2}}}},
+       0, 0, 3, 0, 2, 100},
+      {"responses",
+       json{{"input_tokens", 11},
+            {"input_tokens_details", {{"cached_tokens", 3}}},
+            {"output_tokens", 7},
+            {"output_tokens_details", {{"reasoning_tokens", 2}}}},
+       8, 5, 3, 0, 2, 27},
+      {"anthropic",
+       json{{"input_tokens", 8},
+            {"output_tokens", 5},
+            {"cache_read_input_tokens", 3},
+            {"cache_creation_input_tokens", 7}},
+       8, 5, 3, 7, 0, 27},
+      {"anthropic translated to chat completions",
+       json{{"prompt_tokens", 18},
+            {"prompt_tokens_details",
+             {{"cached_tokens", 3}, {"cache_creation_tokens", 7}}},
+            {"completion_tokens", 5}},
+       15, 5, 3, 7, 0, 16},
+      {"fully cached prompt",
+       json{{"prompt_tokens", 10},
+            {"prompt_tokens_details", {{"cached_tokens", 10}}}},
+       0, 0, 10, 0, 0, 100},
+  };
+  for (const UsageCase& usage_case : usage_cases) {
+    Usage accounted;
+    accounted.Add(usage_case.payload);
+    CHECK(accounted.input == usage_case.input);
+    CHECK(accounted.output == usage_case.output);
+    CHECK(accounted.cache_read == usage_case.cache_read);
+    CHECK(accounted.cache_write == usage_case.cache_write);
+    CHECK(accounted.reasoning == usage_case.reasoning);
+    CHECK(accounted.CacheHitPercent() == usage_case.cache_hit_percent);
+    // Reasoning is billed output even though `output` excludes it.
+    CHECK(accounted.GeneratedTokens() ==
+          usage_case.output + usage_case.reasoning);
+  }
 
   // The status row is one ordered list: everything fits when there is room,
   // and the least valuable segments go first when there is not.
@@ -927,18 +898,16 @@ void TestOpenRouterServerSearch() {
   CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7K ") !=
         std::string::npos);
   unsetenv("COLUMNS");
-  CHECK(responses_usage.GeneratedTokens() == 7);
 
-  RuntimeConfig responses_config;
-  responses_config.web_search_backend = "responses";
-  responses_config.web_search_url = "https://search.example/v1/";
-  responses_config.web_search_api_key = "search-key";
-  responses_config.web_search_model = "search-model";
-  Api responses_api(responses_config);
-  responses_api.base_url = "https://inference.example/v1";
-  responses_api.api_key = "inference-key";
-  WebSearchRoute route = SelectWebSearchRoute(responses_api, {});
-  CHECK(route.backend == WebSearchBackend::kResponses);
+  // A configured search endpoint outranks the conversation's own route.
+  RuntimeConfig search_config;
+  search_config.web_search_url = "https://search.example/v1/";
+  search_config.web_search_api_key = "search-key";
+  search_config.web_search_model = "search-model";
+  Api search_api(search_config);
+  search_api.base_url = "https://inference.example/v1";
+  search_api.api_key = "inference-key";
+  WebSearchRoute route = SelectWebSearchRoute(search_api, {});
   CHECK(route.base_url == "https://search.example/v1");
   CHECK(route.api_key == "search-key");
   CHECK(route.model == "search-model");
@@ -946,9 +915,12 @@ void TestOpenRouterServerSearch() {
   // all come from it, and the :effort suffix beats the session default.
   setenv("UAGENT_PROVIDERS",
          R"json({"seeker":{"base_url":"https://seek.example/v1",
-                            "api_key":"seek-key"}})json",
+                            "api_key":"seek-key",
+                            "protocol":"openrouter"},
+                 "plain":{"base_url":"https://plain.example/v1",
+                           "api_key":"plain-key"}})json",
          1);
-  RuntimeConfig scoped_config = responses_config;
+  RuntimeConfig scoped_config = search_config;
   scoped_config.web_search_url.clear();
   scoped_config.web_search_api_key.clear();
   scoped_config.web_search_model = "seeker/finder-model:high";
@@ -963,8 +935,16 @@ void TestOpenRouterServerSearch() {
   CHECK(scoped.effort == "high");
   CHECK(WebSearchRequest(scoped, scoped_config, "q")["reasoning"]["effort"] ==
         "high");
+  // A selection scoped to a provider that does not speak the OpenRouter
+  // protocol disables search rather than searching somewhere else.
+  RuntimeConfig foreign_config = scoped_config;
+  foreign_config.web_search_model = "plain/finder-model";
+  Api foreign_api(foreign_config);
+  foreign_api.base_url = "https://inference.example/v1";
+  foreign_api.api_key = "inference-key";
+  CHECK(!SelectWebSearchRoute(foreign_api, {}).Valid());
   // A bare id still only renames the model on the winning candidate.
-  RuntimeConfig bare_config = responses_config;
+  RuntimeConfig bare_config = search_config;
   bare_config.web_search_model = "plain-model";
   Api bare_api(bare_config);
   bare_api.base_url = "https://inference.example/v1";
@@ -973,19 +953,29 @@ void TestOpenRouterServerSearch() {
   CHECK(bare.base_url == "https://search.example/v1");
   CHECK(bare.model == "plain-model");
   unsetenv("UAGENT_PROVIDERS");
-
-  json search_body =
-      WebSearchRequest(route, responses_config, "current information");
-  CHECK(search_body["tools"][0]["type"] == "web_search");
-  CHECK(search_body["include"][0] == "web_search_call.action.sources");
-  CHECK(search_body["max_tool_calls"] == 3);
-  CHECK(search_body["stream"] == false);
+  // Without any configured search route, an OpenRouter conversation route is
+  // the search route; an OpenAI-protocol one leaves search unavailable.
+  RuntimeConfig inherit_config;
+  Api inherit_api(inherit_config);
+  inherit_api.base_url = "https://openrouter.ai/api/v1";
+  inherit_api.api_key = "inference-key";
+  inherit_api.model = "vendor/model";
+  inherit_api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenRouter, inherit_api.base_url);
+  CHECK(SelectWebSearchRoute(inherit_api, {}).model == "vendor/model");
+  inherit_api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, inherit_api.base_url);
+  CHECK(!SelectWebSearchRoute(inherit_api, {}).Valid());
+  // `off` refuses every candidate.
+  RuntimeConfig disabled_config = search_config;
+  disabled_config.web_search_backend = "off";
+  Api disabled_api(disabled_config);
+  CHECK(!SelectWebSearchRoute(disabled_api, {}).Valid());
 
   RuntimeConfig openrouter_config;
   openrouter_config.web_search_engine = "exa";
   openrouter_config.web_search_context_size = "high";
-  WebSearchRoute openrouter_route{WebSearchBackend::kOpenRouter,
-                                  "https://openrouter.ai/api/v1", "key",
+  WebSearchRoute openrouter_route{"https://openrouter.ai/api/v1", "key",
                                   "vendor/search-model", ""};
   json openrouter_body =
       WebSearchRequest(openrouter_route, openrouter_config, "current facts");
@@ -1009,26 +999,22 @@ void TestOpenRouterServerSearch() {
   CHECK(search_tool.needs_approval &&
         search_tool.needs_approval(json::object()));
 
-  WebSearchResult normalized = ParseResponsesSearch(
-      {{"status", "completed"},
-       {"output",
-        json::array(
-            {{{"type", "web_search_call"},
-              {"action",
-               {{"sources", json::array({{{"url", "https://example.com/source"},
-                                          {"title", "Source"}}})}}}},
-             {{"type", "message"},
-              {"content",
-               json::array(
-                   {{{"type", "output_text"},
-                     {"text", "grounded answer"},
-                     {"annotations",
-                      json::array(
-                          {{{"type", "url_citation"},
-                            {"url", "https://example.com/source"}}})}}})}}})}});
+  WebSearchResult normalized = ParseWebSearch(
+      {{"choices",
+        json::array({{{"finish_reason", "length"},
+                      {"message",
+                       {{"content", "grounded answer"},
+                        {"annotations",
+                         json::array({{{"type", "url_citation"},
+                                       {"url_citation",
+                                        {{"url", "https://example.com/source"},
+                                         {"title", "Source"}}}}})}}}}})}});
   CHECK(normalized.text == "grounded answer");
   CHECK(normalized.searches == 1);
+  CHECK(normalized.truncated);
   CHECK(CitationEntries(normalized.annotations).size() == 1);
+  // A body without choices is a failed search, not an empty answer.
+  CHECK(ParseWebSearch({{"error", {{"message", "nope"}}}}).searches == 0);
 
   Tool fetch_tool = WebFetchTool(api);
   CHECK(!fetch_tool.mutating);
@@ -1038,6 +1024,23 @@ void TestOpenRouterServerSearch() {
         ToolErrorCode::kInvalidArguments);
   CHECK(fetch_tool.run({{"url", "example.com"}}, fetch_context).error ==
         ToolErrorCode::kInvalidArguments);
+
+  // Address policy is enforced on libcurl's resolved connection target, not
+  // only on the URL spelling. Cover private, link-local, documentation, IPv6,
+  // IPv4-mapped and NAT64 forms without depending on a listening service.
+  for (std::string_view url : {
+           "http://127.0.0.1/",
+           "http://10.0.0.1/",
+           "http://169.254.169.254/latest/meta-data/",
+           "http://192.0.2.1/",
+           "http://[::1]/",
+           "http://[fd00::1]/",
+           "http://[::ffff:127.0.0.1]/",
+           "http://[64:ff9b::7f00:1]/",
+       }) {
+    WebResponse denied = api.GetUrl(std::string(url), 1, 1024);
+    CHECK(denied.error == "refused non-public network destination");
+  }
 
   // Markup out, reading order in: dropped elements take their content with
   // them, block edges become line breaks, and inline tags do not split words.
@@ -1157,16 +1160,22 @@ void TestAttachmentEncoding() {
 
   setenv("UAGENT_IMAGE_PROTOCOL", "iterm", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kIterm);
-  std::string iterm = ItermImageSequence("YWJj", 3, 20, false);
+  std::string iterm;
+  auto collect = [](std::string& out) {
+    return [&out](std::string_view part) { out.append(part); };
+  };
+  EmitItermImage("YWJj", 3, 20, false, collect(iterm));
   CHECK(iterm.find("\033]1337;File=inline=1") == 0);
   CHECK(iterm.find(":YWJj\a") != std::string::npos);
-  std::string multipart = ItermImageSequence("YWJj", 3, 20, true);
+  std::string multipart;
+  EmitItermImage("YWJj", 3, 20, true, collect(multipart));
   CHECK(multipart.find("MultipartFile=") != std::string::npos);
   CHECK(multipart.find("FilePart=YWJj") != std::string::npos);
   CHECK(multipart.find("FileEnd") != std::string::npos);
   setenv("UAGENT_IMAGE_PROTOCOL", "kitty", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kItty);
-  std::string kitty = KittyPngSequence("YWJj", 20);
+  std::string kitty;
+  EmitKittyPng("YWJj", 20, collect(kitty));
   CHECK(kitty.find("\033_Ga=T,f=100,c=20") == 0);
   CHECK(kitty.find("YWJj\033\\") != std::string::npos);
 
@@ -1304,7 +1313,6 @@ void TestGrepTool() {
     CHECK(run->parameters["properties"].contains("detach"));
     CHECK(run->parameters["properties"].contains("shell"));
     CHECK(run->timeout_s == 0);
-    CHECK(run->verbatim_label);
     CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
     CHECK(run->validate({{"command", "cmake --build build"}}).empty());

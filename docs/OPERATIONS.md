@@ -11,6 +11,7 @@ or multi-tenant service.
 | request / complete turn | 600 s / unlimited (`0`) |
 | model rounds / tool calls | unlimited / unlimited (both configurable) |
 | subagent depth / rounds / calls | 2 / 25 / 60 |
+| subagent launches per turn | 32 (concurrency bounded by background jobs) |
 | reported turn cost | unlimited |
 | request / response | 64 / 32 MiB |
 | source read / grep | 32 KiB / 200 matches |

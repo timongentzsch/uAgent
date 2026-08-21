@@ -121,7 +121,7 @@ bool Agent::RunCalls(
     }
     Event call_event{EventId::kToolCall,
                      ToolCallData(call, turn_id_, step, text_mode)};
-    call_event.presentation = ToolCallPresentation(task, call, verbose_);
+    call_event.presentation = ToolCallPresentation(task, call);
     call_event.render = api_.render_stream;
     Emit(std::move(call_event));
     if (valid) {
@@ -225,21 +225,23 @@ bool Agent::RunCalls(
   bool cancelled = AbortRequested() && !SteeringState().Requested();
   if (!SteeringState().Requested()) ClearAbort();
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
-  std::vector<size_t> result_order(tasks.size());
-  std::iota(result_order.begin(), result_order.end(), size_t{0});
-  std::stable_sort(
-      result_order.begin(), result_order.end(), [&](size_t left, size_t right) {
-        return tasks[left].completion_order < tasks[right].completion_order;
-      });
-  for (size_t index : result_order) {
-    if (!api_.render_stream) break;
-    const ToolCall& call = calls[index];
-    CallTask& task = tasks[index];
-    Event result_event{EventId::kPresentation};
-    result_event.presentation =
-        ToolResultPresentation(task, call, model_results[index], verbose_);
-    result_event.render = api_.render_stream;
-    Emit(std::move(result_event));
+  if (api_.render_stream) {
+    std::vector<size_t> result_order(tasks.size());
+    std::iota(result_order.begin(), result_order.end(), size_t{0});
+    std::stable_sort(result_order.begin(), result_order.end(),
+                     [&](size_t left, size_t right) {
+                       return tasks[left].completion_order <
+                              tasks[right].completion_order;
+                     });
+    for (size_t index : result_order) {
+      const ToolCall& call = calls[index];
+      CallTask& task = tasks[index];
+      Event result_event{EventId::kPresentation};
+      result_event.presentation =
+          ToolResultPresentation(task, call, model_results[index], verbose_);
+      result_event.render = api_.render_stream;
+      Emit(std::move(result_event));
+    }
   }
   size_t original_chars = 0;
   size_t model_chars = 0;

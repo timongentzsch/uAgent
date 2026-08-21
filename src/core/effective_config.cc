@@ -13,6 +13,7 @@
 
 #include "include/core/config.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 extern char** environ;
@@ -37,7 +38,7 @@ FileStamp MergeFile(const std::string& path, const char* source,
     }
   }
   if (!stable) after.size = -2;  // force another boundary check
-  if (!parsed.empty()) chmod(path.c_str(), 0600);
+  if (!parsed.empty()) chmod(path.c_str(), kPrivateFileMode);
   RuntimeConfig::Values scope(parsed.begin(), parsed.end());
   for (const auto& [key, value] : process) scope[key] = value;
   for (const auto& [key, ignored] : parsed) {
@@ -157,22 +158,17 @@ std::optional<ConfigReload> ConfigManager::Reload(const RuntimeConfig& active) {
   reload.deferred = DifferentKeys(next.config, reload.active);
   std::set<std::string> deferred(reload.deferred.begin(),
                                  reload.deferred.end());
-  std::set<std::string> environment_keys;
-  for (const auto& [key, ignored] : current_.values) {
-    (void)ignored;
-    environment_keys.insert(key);
-  }
-  for (const auto& [key, ignored] : next.values) {
-    (void)ignored;
-    environment_keys.insert(key);
-  }
-  for (const std::string& key : environment_keys) {
+  for (const auto& [key, value] : next.values) {
     auto old_value = current_.values.find(key);
-    auto new_value = next.values.find(key);
-    bool changed = old_value == current_.values.end() ||
-                   new_value == next.values.end() ||
-                   old_value->second != new_value->second;
+    bool changed =
+        old_value == current_.values.end() || old_value->second != value;
     if (changed && RuntimeConfigField(key).empty()) deferred.insert(key);
+  }
+  for (const auto& entry : current_.values) {  // keys the reload dropped
+    if (!next.values.contains(entry.first) &&
+        RuntimeConfigField(entry.first).empty()) {
+      deferred.insert(entry.first);
+    }
   }
   reload.deferred.assign(deferred.begin(), deferred.end());
   deferred_ = reload.deferred;

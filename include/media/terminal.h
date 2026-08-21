@@ -86,14 +86,6 @@ inline void EmitItermImage(const std::string& data, uintmax_t bytes,
   emit(std::string_view("\033]1337;FileEnd\a\n"));
 }
 
-inline std::string ItermImageSequence(const std::string& data, uintmax_t bytes,
-                                      int64_t columns, bool multipart) {
-  std::string output;
-  EmitItermImage(data, bytes, columns, multipart,
-                 [&](std::string_view part) { output.append(part); });
-  return output;
-}
-
 template <class Emit>
 inline void EmitKittyPng(const std::string& data, int64_t columns,
                          Emit&& emit) {
@@ -110,13 +102,6 @@ inline void EmitKittyPng(const std::string& data, int64_t columns,
     emit(std::string_view("\033\\"));
   }
   emit(std::string_view("\n"));
-}
-
-inline std::string KittyPngSequence(const std::string& data, int64_t columns) {
-  std::string output;
-  EmitKittyPng(data, columns,
-               [&](std::string_view part) { output.append(part); });
-  return output;
 }
 
 inline bool EmitChafaKittyImage(const std::string& path, int64_t columns) {

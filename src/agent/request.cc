@@ -35,14 +35,12 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   const json& messages =
       request_messages ? *request_messages : conversation_.Messages();
   const size_t schema_bytes = JsonEstimatedBytes(schemas);
-  const size_t message_bytes = JsonEstimatedBytes(messages);
   const size_t estimated_bytes =
-      api_.capabilities.native_tools
-          ? SaturatingAdd(message_bytes, schema_bytes)
-          : message_bytes;
+      RequestContextBytes(schema_bytes, request_messages);
   context_snapshot_.store(EstimatedTokens(estimated_bytes),
                           std::memory_order_relaxed);
   if (Debug().Enabled()) {
+    const size_t message_bytes = JsonEstimatedBytes(messages);
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
     json record = {

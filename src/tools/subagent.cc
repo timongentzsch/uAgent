@@ -22,6 +22,12 @@ namespace {
 
 constexpr size_t kAdvertisedRoutes = 16;
 
+// Concurrency is enforced by the spawn path (RunShellCommand reserves an
+// activity slot bounded by MaxBackgroundJobs); this is only a runaway ceiling.
+int64_t MaxSubagentCallsPerTurn() {
+  return std::max<int64_t>(1, EnvLong("UAGENT_SUBAGENT_CALLS_PER_TURN", 32));
+}
+
 std::string JoinSelections(std::vector<std::string> selections) {
   std::sort(selections.begin(), selections.end());
   selections.erase(std::unique(selections.begin(), selections.end()),
@@ -188,7 +194,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.delegates = true;
   tool.retain_output = true;
   tool.available_in_lean = false;
-  tool.max_calls_per_turn = MaxBackgroundJobs();
+  tool.max_calls_per_turn = MaxSubagentCallsPerTurn();
   tool.summary = [&api, &routes, &providers](const json& arguments) {
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");

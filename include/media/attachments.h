@@ -10,12 +10,10 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/json.h"
 #include "include/tools/tool.h"
-#include "third_party/json.hpp"
 
 namespace uagent {
-
-using nlohmann::json;
 
 struct Attachment {
   std::string path, name, mime;

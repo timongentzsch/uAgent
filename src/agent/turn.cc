@@ -198,10 +198,6 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 
 void Agent::Turn(const std::string& user_input, json user_content) {
   if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
-  RunTurn(user_input, std::move(user_content));
-}
-
-void Agent::RunTurn(const std::string& user_input, json user_content) {
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
   ++turn_id_;

@@ -53,7 +53,7 @@ file notifications where available.
 
 | Tool | Condition |
 | --- | --- |
-| `web_search` | a supported server or configured search route is available |
+| `web_search` | an OpenRouter-protocol route or configured search endpoint is available |
 | `subagent` | delegation is enabled and the current depth is below its limit |
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
@@ -64,10 +64,22 @@ availability. It returns text only: it decodes markup, JSON, XML and plain
 text, and refuses anything else rather than handing over bytes. A page behind a
 login or assembled by scripting belongs to the browser skill. Bodies larger
 than `UAGENT_WEB_FETCH_BYTES` are read up to the cap and marked partial.
+Only public Internet destinations are accepted: every IPv4 or IPv6 address
+libcurl resolves for the initial URL and each redirect is checked before the
+socket opens, so a redirect or a rebound name cannot reach what the URL could
+not. Loopback, private, carrier-NAT, link-local, reserved and multicast
+destinations are refused, including their IPv4-mapped, NAT64, Teredo and 6to4
+spellings. Fetches connect directly and ignore proxy environment variables so a
+proxy cannot resolve an unchecked destination on the tool's behalf.
 
-`web_search` is always one named model-facing function. Its host implementation
-selects OpenAI Responses or OpenRouter server search, so models, yolo mode, and
-delegated workers receive the same schema and accounting.
+Every tool call is printed in full — the trace shows exactly what was
+requested — while results are summarised outside `/verbose`.
+
+`web_search` is always one named model-facing function. The host implementation
+calls OpenRouter's hosted `openrouter:web_search` server tool on a route of its
+own, so models, yolo mode, and delegated workers receive the same schema,
+citations, and accounting whichever model is answering. Set
+`UAGENT_WEB_SEARCH_BACKEND=off` to withhold the tool.
 
 Independent parallel-safe calls may execute concurrently, but results are
 appended to the conversation in model call order. Tool-specific limits,

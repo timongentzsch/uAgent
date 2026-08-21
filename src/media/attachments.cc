@@ -152,22 +152,34 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
     return "";
   }
   out.reserve(*reserved);
-  unsigned char in[3];
+  std::vector<unsigned char> block(48 * 1024);
   uintmax_t read_bytes = 0;
-  for (size_t n; (n = fread(in, 1, 3, file.get())) > 0;) {
+  size_t held = 0;  // bytes of an incomplete triple carried into the next read
+  for (size_t n; (n = fread(block.data() + held, 1, block.size() - held,
+                            file.get())) > 0;) {
     read_bytes += n;
     if (read_bytes > max_bytes) {
       error = "attachment grew beyond the byte limit while reading: " +
               attachment.path;
       return "";
     }
-    out += kBase64Alphabet[in[0] >> 2];
-    out += kBase64Alphabet[((in[0] & 3) << 4) | (n > 1 ? in[1] >> 4 : 0)];
-    out += n > 1
-               ? kBase64Alphabet[((in[1] & 15) << 2) | (n > 2 ? in[2] >> 6 : 0)]
-               : '=';
-    out += n > 2 ? kBase64Alphabet[in[2] & 63] : '=';
-    if (n < 3) break;
+    size_t whole = (held + n) - (held + n) % 3;
+    for (size_t i = 0; i < whole; i += 3) {
+      const unsigned char* in = block.data() + i;
+      out += kBase64Alphabet[in[0] >> 2];
+      out += kBase64Alphabet[((in[0] & 3) << 4) | (in[1] >> 4)];
+      out += kBase64Alphabet[((in[1] & 15) << 2) | (in[2] >> 6)];
+      out += kBase64Alphabet[in[2] & 63];
+    }
+    held = held + n - whole;
+    for (size_t i = 0; i < held; ++i) block[i] = block[whole + i];
+  }
+  if (held > 0) {
+    unsigned char second = held > 1 ? block[1] : 0;
+    out += kBase64Alphabet[block[0] >> 2];
+    out += kBase64Alphabet[((block[0] & 3) << 4) | (second >> 4)];
+    out += held > 1 ? kBase64Alphabet[(second & 15) << 2] : '=';
+    out += '=';
   }
   if (!ferror(file.get())) return out;
   error = "failed to read " + attachment.path;

@@ -10,6 +10,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,11 +23,85 @@ namespace uagent {
 
 namespace {
 
-std::string DisplayText(std::string text) {
-  ReplaceAll(text, "\n", "↵");
-  ReplaceAll(text, "\t", "⇥");
-  return TerminalSafe(text);
+// Map the bytes the composer has to show inline and, when asked, report where
+// `offset` lands in the mapped text. The mapping is per byte, so mapping the
+// prefix and the remainder separately equals mapping the whole string; that
+// spares the caller a second full mapping pass just to locate the caret.
+std::string DisplayText(std::string_view text, size_t offset = 0,
+                        size_t* mapped_offset = nullptr) {
+  auto map = [](std::string_view part) {
+    std::string mapped(part);
+    ReplaceAll(mapped, "\n", "↵");
+    ReplaceAll(mapped, "\t", "⇥");
+    return TerminalSafe(mapped);
+  };
+  if (mapped_offset == nullptr) return map(text);
+  size_t split = std::min(offset, text.size());
+  std::string safe = map(text.substr(0, split));
+  *mapped_offset = safe.size();
+  safe += map(text.substr(split));
+  return safe;
 }
+
+// Cursor movement and erasure append into one buffer so a redraw reaches the
+// terminal as a single write instead of a partially applied frame.
+void AppendMoveToTop(std::string& out, size_t caret_row) {
+  out += "\r";
+  if (caret_row > 0) out += "\033[" + std::to_string(caret_row) + "A";
+}
+
+void AppendEraseRows(std::string& out, size_t rows) {
+  for (size_t row = 0; row < rows; ++row) {
+    out += "\r\033[2K";
+    if (row + 1 < rows) out += "\033[1B";
+  }
+  if (rows > 1) out += "\033[" + std::to_string(rows - 1) + "A";
+  out += "\r";
+}
+
+enum class SequenceAction {
+  kHistoryPrevious,
+  kHistoryNext,
+  kLeft,
+  kRight,
+  kHome,
+  kEnd,
+  kDeleteForward,
+  kPreviousWord,
+  kNextWord,
+  kDeletePreviousWord,
+};
+
+struct SequenceBinding {
+  std::string_view sequence;
+  SequenceAction action;
+};
+
+constexpr SequenceBinding kSequenceBindings[] = {
+    {"\x1b[A", SequenceAction::kHistoryPrevious},
+    {"\x1bOA", SequenceAction::kHistoryPrevious},
+    {"\x1b[B", SequenceAction::kHistoryNext},
+    {"\x1bOB", SequenceAction::kHistoryNext},
+    {"\x1b[C", SequenceAction::kRight},
+    {"\x1bOC", SequenceAction::kRight},
+    {"\x1b[D", SequenceAction::kLeft},
+    {"\x1bOD", SequenceAction::kLeft},
+    {"\x1b[H", SequenceAction::kHome},
+    {"\x1b[1~", SequenceAction::kHome},
+    {"\x1bOH", SequenceAction::kHome},
+    {"\x1b[F", SequenceAction::kEnd},
+    {"\x1b[4~", SequenceAction::kEnd},
+    {"\x1bOF", SequenceAction::kEnd},
+    {"\x1b[3~", SequenceAction::kDeleteForward},
+    {"\033b", SequenceAction::kPreviousWord},
+    {"\x1b[1;3D", SequenceAction::kPreviousWord},
+    {"\x1b[1;5D", SequenceAction::kPreviousWord},
+    {"\033f", SequenceAction::kNextWord},
+    {"\x1b[1;3C", SequenceAction::kNextWord},
+    {"\x1b[1;5C", SequenceAction::kNextWord},
+    {"\x1b\x7f", SequenceAction::kDeletePreviousWord},
+    {"\x1b\x08", SequenceAction::kDeletePreviousWord},
+};
 
 // One character back/forward from a boundary, over the shared scanners.
 size_t PreviousUtf8(const std::string& text, size_t at) {
@@ -63,7 +138,15 @@ bool InteractiveOutput::Start() {
     return false;
   }
   close(descriptors[1]);
-  setvbuf(stdout, nullptr, _IONBF, 0);
+  // Buffered, deliberately: unbuffered turned every putchar of the streaming
+  // markdown renderer into its own write(2) and left the renderer's byte/time
+  // flush governor with nothing to govern. Buffering hands that governor the
+  // real flush control. Line buffering rather than fully buffered, because
+  // callers outside this layer print notices with plain printf and rely on
+  // them reaching the pipe when the line ends; only the mid-line streaming
+  // path (which flushes on its own budget) and Stop() need explicit flushes.
+  static char buffer[64 * 1024];
+  setvbuf(stdout, buffer, _IOLBF, sizeof buffer);
   return true;
 }
 
@@ -240,11 +323,12 @@ size_t RawComposer::AvailableColumns() const {
 }
 
 RawComposer::Layout RawComposer::ComputeLayout() const {
-  std::string safe = DisplayText(buffer_);
+  size_t mapped_cursor = 0;
+  std::string safe = DisplayText(buffer_, cursor_, &mapped_cursor);
   std::vector<std::string> rows = WrapLines(safe, AvailableColumns());
   if (rows.empty()) rows = {""};
 
-  size_t before_width = DisplayWidth(DisplayText(buffer_.substr(0, cursor_)));
+  size_t before_width = DisplayWidth(safe.substr(0, mapped_cursor));
   size_t row = 0;
   while (row + 1 < rows.size()) {
     size_t row_width = DisplayWidth(rows[row]);
@@ -257,21 +341,15 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
 }
 
 void RawComposer::MoveToTop() {
-  output_.Write("\r");
-  if (caret_row_ > 0) {
-    output_.Write("\033[" + std::to_string(caret_row_) + "A");
-  }
+  std::string out;
+  AppendMoveToTop(out, caret_row_);
+  output_.Write(out);
 }
 
 void RawComposer::EraseDrawnRows() {
-  for (size_t row = 0; row < drawn_rows_; ++row) {
-    output_.Write("\r\033[2K");
-    if (row + 1 < drawn_rows_) output_.Write("\033[1B");
-  }
-  if (drawn_rows_ > 1) {
-    output_.Write("\033[" + std::to_string(drawn_rows_ - 1) + "A");
-  }
-  output_.Write("\r");
+  std::string out;
+  AppendEraseRows(out, drawn_rows_);
+  output_.Write(out);
 }
 
 void RawComposer::Render() {
@@ -283,35 +361,29 @@ void RawComposer::RenderFromTop() {
   Layout layout = ComputeLayout();
   size_t count = layout.rows.size();
   size_t previous_rows = drawn_rows_;
-  EraseDrawnRows();
+  std::string out;
+  AppendEraseRows(out, drawn_rows_);
 
   // Draw the new block top-to-bottom. Growing taller emits real newlines so
   // extra rows are created rather than overwriting the status line above.
   for (size_t i = 0; i < count; ++i) {
-    if (i > 0) {
-      if (i >= previous_rows) {
-        output_.Write("\n\r");
-      } else {
-        output_.Write("\033[1B\r");
-      }
-    }
-    output_.Write("\033[2K");
-    if (i == 0) output_.Write(prompt_);
-    output_.Write(layout.rows[i]);
+    if (i > 0) out += i >= previous_rows ? "\n\r" : "\033[1B\r";
+    out += "\033[2K";
+    if (i == 0) out += prompt_;
+    out += layout.rows[i];
   }
 
   // Place the caret from column zero so prompt width and continuation rows
   // are handled explicitly rather than inferred from the old cursor column.
-  output_.Write("\r");
+  out += "\r";
   size_t rows_up = count - 1 - layout.caret_row;
-  if (rows_up > 0) {
-    output_.Write("\033[" + std::to_string(rows_up) + "A");
-  }
+  if (rows_up > 0) out += "\033[" + std::to_string(rows_up) + "A";
   size_t caret_column = layout.caret_col;
   if (layout.caret_row == 0) caret_column += DisplayWidth(prompt_);
-  if (caret_column > 0) {
-    output_.Write("\033[" + std::to_string(caret_column) + "C");
-  }
+  if (caret_column > 0) out += "\033[" + std::to_string(caret_column) + "C";
+
+  // One write per redraw: the terminal never observes a half-erased frame.
+  output_.Write(out);
 
   drawn_rows_ = count;
   caret_row_ = layout.caret_row;
@@ -368,38 +440,43 @@ void RawComposer::DeletePreviousWord() {
 }
 
 void RawComposer::ApplySequence(const std::string& sequence) {
-  if (sequence == "\x1b[A" || sequence == "\x1bOA") History(-1);
-  if (sequence == "\x1b[B" || sequence == "\x1bOB") History(1);
-  if (sequence == "\x1b[C" || sequence == "\x1bOC") {
-    cursor_ = NextUtf8(buffer_, cursor_);
-  }
-  if (sequence == "\x1b[D" || sequence == "\x1bOD") {
-    cursor_ = PreviousUtf8(buffer_, cursor_);
-  }
-  if (sequence == "\x1b[H" || sequence == "\x1b[1~" || sequence == "\x1bOH") {
-    cursor_ = 0;
-  }
-  if (sequence == "\x1b[F" || sequence == "\x1b[4~" || sequence == "\x1bOF") {
-    cursor_ = buffer_.size();
-  }
-  if (sequence == "\x1b[3~" && cursor_ < buffer_.size()) {
-    size_t next = NextUtf8(buffer_, cursor_);
-    buffer_.erase(cursor_, next - cursor_);
-  }
-  if (sequence ==
-          "\x1b"
-          "b" ||
-      sequence == "\x1b[1;3D" || sequence == "\x1b[1;5D") {
-    PreviousWord();
-  }
-  if (sequence ==
-          "\x1b"
-          "f" ||
-      sequence == "\x1b[1;3C" || sequence == "\x1b[1;5C") {
-    NextWord();
-  }
-  if (sequence == "\x1b\x7f" || sequence == "\x1b\x08") {
-    DeletePreviousWord();
+  for (const SequenceBinding& binding : kSequenceBindings) {
+    if (binding.sequence != sequence) continue;
+    switch (binding.action) {
+      case SequenceAction::kHistoryPrevious:
+        History(-1);
+        break;
+      case SequenceAction::kHistoryNext:
+        History(1);
+        break;
+      case SequenceAction::kLeft:
+        cursor_ = PreviousUtf8(buffer_, cursor_);
+        break;
+      case SequenceAction::kRight:
+        cursor_ = NextUtf8(buffer_, cursor_);
+        break;
+      case SequenceAction::kHome:
+        cursor_ = 0;
+        break;
+      case SequenceAction::kEnd:
+        cursor_ = buffer_.size();
+        break;
+      case SequenceAction::kDeleteForward:
+        if (cursor_ < buffer_.size()) {
+          buffer_.erase(cursor_, NextUtf8(buffer_, cursor_) - cursor_);
+        }
+        break;
+      case SequenceAction::kPreviousWord:
+        PreviousWord();
+        break;
+      case SequenceAction::kNextWord:
+        NextWord();
+        break;
+      case SequenceAction::kDeletePreviousWord:
+        DeletePreviousWord();
+        break;
+    }
+    return;
   }
 }
 

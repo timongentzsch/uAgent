@@ -3,6 +3,7 @@
 #include "include/ui/input_decoder.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <utility>
 
@@ -32,12 +33,11 @@ void TerminalInputDecoder::Feed(std::string_view data) {
 // Compare the first `count` pending bytes against `sequence`.
 bool TerminalInputDecoder::MatchesFirst(std::string_view sequence,
                                         size_t count) const {
-  for (size_t index = 0; index < count; ++index) {
-    if (pending_[index] != static_cast<unsigned char>(sequence[index])) {
-      return false;
-    }
-  }
-  return true;
+  return std::equal(pending_.begin(),
+                    pending_.begin() + static_cast<std::ptrdiff_t>(count),
+                    sequence.begin(), [](unsigned char pending, char wanted) {
+                      return pending == static_cast<unsigned char>(wanted);
+                    });
 }
 
 bool TerminalInputDecoder::StartsWith(std::string_view sequence) const {
@@ -61,7 +61,8 @@ size_t TerminalInputDecoder::CompleteCsiBytes() const {
 }
 
 void TerminalInputDecoder::Consume(size_t count) {
-  while (count-- > 0) pending_.pop_front();
+  pending_.erase(pending_.begin(),
+                 pending_.begin() + static_cast<std::ptrdiff_t>(count));
 }
 
 void TerminalInputDecoder::ResetEscape() { escape_pending_ = false; }
@@ -170,11 +171,9 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     if (sequence_bytes == 0) {
       sequence_bytes = 2;
     }
-    std::string sequence;
-    sequence.reserve(sequence_bytes);
-    for (size_t index = 0; index < sequence_bytes; ++index) {
-      sequence += static_cast<char>(pending_[index]);
-    }
+    std::string sequence(
+        pending_.begin(),
+        pending_.begin() + static_cast<std::ptrdiff_t>(sequence_bytes));
     Consume(sequence_bytes);
     ResetEscape();
     return TerminalInputToken{TerminalInputTokenKind::kSequence,

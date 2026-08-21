@@ -481,6 +481,62 @@ def wait_for_processes_stopped(pids, timeout=2):
     return states
 
 
+def descendant_pids(root_pid):
+    """Every process below root_pid, so a leaked grandchild is still visible."""
+    children = {}
+    for line in subprocess.check_output(["ps", "-axo", "pid=,ppid="], text=True).splitlines():
+        child, parent = map(int, line.split())
+        children.setdefault(parent, []).append(child)
+    found, pending = set(), [root_pid]
+    while pending:
+        for child in children.get(pending.pop(), []):
+            if child not in found:
+                found.add(child)
+                pending.append(child)
+    return found
+
+
+def wait_until(predicate, message, timeout=30, interval=0.02):
+    """Poll until predicate() holds, or fail the test with message."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(interval)
+    raise AssertionError(message)
+
+
+def write_session(home, name, messages, *, cwd, kinds=None, context_tokens=0, **header):
+    """Write one saved session the way the agent persists it.
+
+    The format-3 envelope lives here alone: a schema change is one edit, and a
+    fixture cannot drift into a shape the agent would never write.
+    """
+    fields = {
+        "format": 3,
+        "cwd": str(pathlib.Path(cwd).resolve()),
+        "model": "test",
+        "session_id": name,
+        "turns": len(messages),
+        "title": name,
+    }
+    fields.update(header)
+    payload = {
+        "messages": messages,
+        "message_kinds": [message["role"] for message in messages] if kinds is None else kinds,
+        "archive": [],
+        "archive_dropped_segments": 0,
+        "context_tokens": context_tokens,
+        "usage": {},
+        "route_usage": {},
+    }
+    history = home / ".uagent" / "history"
+    history.mkdir(parents=True, exist_ok=True)
+    session = history / f"{name}.json"
+    session.write_text(json.dumps(fields) + "\n" + json.dumps(payload), encoding="utf-8")
+    return session
+
+
 def function_tools(body):
     return [tool["function"] for tool in body.get("tools", []) if tool.get("type") == "function"]
 
@@ -1097,27 +1153,15 @@ def test_multiline_bracketed_paste(root, home):
 
 
 def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
-    history = home / ".uagent" / "history"
-    history.mkdir(parents=True)
-    header = {
-        "format": 3,
-        "cwd": str(root.resolve()),
-        "model": "test",
-        "session_id": "resume-picker-test",
-        "turns": 0,
-        "title": "saved session",
-    }
-    payload = {
-        "messages": [{"role": "system", "content": "saved system"}],
-        "message_kinds": ["system"],
-        "archive": [],
-        "archive_dropped_segments": 0,
-        "context_tokens": 1_900_000,
-        "usage": {},
-        "route_usage": {},
-    }
-    (history / "resume-picker.json").write_text(
-        json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8"
+    write_session(
+        home,
+        "resume-picker",
+        [{"role": "system", "content": "saved system"}],
+        cwd=root,
+        context_tokens=1_900_000,
+        session_id="resume-picker-test",
+        turns=0,
+        title="saved session",
     )
 
     def disable_icrnl(slave):
@@ -2137,6 +2181,47 @@ def test_memory_reaches_context_by_scope(root, home):
         (global_dir / "style.md").unlink(missing_ok=True)
 
 
+def test_configured_redaction_keywords_apply(root, home):
+    # The keyword list is read once per process, so this needs a fresh agent
+    # rather than a unit test. Configured keywords must extend the built-ins,
+    # never replace them, and must be matched literally.
+    workspace = root / "redact-workspace"
+    workspace.mkdir()
+    # Global memories carry their body into the system prompt; project ones are
+    # listed by name only, so only a global memory exercises the redactor here.
+    global_dir = global_memory_dir(home)
+    global_dir.mkdir(parents=True, exist_ok=True)
+    (global_dir / "creds.md").write_text(
+        "db_dsn=postgres://user/redact-dsn-sentinel\n"
+        "passwd=redact-passwd-sentinel\n"
+        "harmless value 42\n",
+        encoding="utf-8",
+    )
+
+    def verify(_, body):
+        system = str(body["messages"][0].get("content", ""))
+        valid = (
+            "redact-dsn-sentinel" not in system
+            and "redact-passwd-sentinel" not in system
+            and "[REDACTED]" in system
+            and "harmless value 42" in system
+        )
+        return event({"content": "redact-ok" if valid else "redact-bad"})
+
+    server = Server([verify])
+    try:
+        env = base_env(home, server.url)
+        # ".*" must be treated as a literal keyword, not a pattern.
+        env["UAGENT_MEMORY_REDACT_KEYWORDS"] = "db_dsn, .*"
+        result = run(workspace, env, "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "redact-ok", result.stdout)
+    finally:
+        server.close()
+        # HOME is shared by every test; a global memory would join them all.
+        (global_dir / "creds.md").unlink(missing_ok=True)
+
+
 def test_context_command_shows_memory_and_skills(root, home):
     workspace = root / "context-workspace"
     workspace.mkdir()
@@ -2191,33 +2276,21 @@ def test_context_command_shows_memory_and_skills(root, home):
 def test_memory_background_extractor_is_bounded(root, home):
     workspace = root / "memory-extract-workspace"
     workspace.mkdir()
-    history = home / ".uagent" / "history"
-    history.mkdir(parents=True)
-    session = history / "extract.json"
-    header = {
-        "format": 3,
-        "cwd": str(workspace.resolve()),
-        "model": "test",
-        "session_id": "memory-extract-test",
-        "turns": 2,
-        "title": "durable preference",
-    }
-    payload = {
-        "messages": [
+    session = write_session(
+        home,
+        "extract",
+        [
             {"role": "system", "content": "system-content-must-not-leak"},
             {"role": "user", "content": "memory-extract-user-sentinel"},
             {"role": "assistant", "content": "first answer"},
             {"role": "user", "content": "please keep fixes concise"},
             {"role": "assistant", "content": "understood"},
         ],
-        "message_kinds": ["system", "user", "assistant", "user", "assistant"],
-        "archive": [],
-        "archive_dropped_segments": 0,
-        "context_tokens": 0,
-        "usage": {},
-        "route_usage": {},
-    }
-    session.write_text(json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8")
+        cwd=workspace,
+        session_id="memory-extract-test",
+        turns=2,
+        title="durable preference",
+    )
     target = project_memory_dir(home, workspace) / "extracted.md"
 
     def extract(_, body):
@@ -2259,22 +2332,19 @@ def test_memory_background_extractor_is_bounded(root, home):
         env = base_env(home, server.url)
         env["UAGENT_MEMORY_IDLE_SECONDS"] = "0"
 
-        def wait_for_extraction():
-            deadline = time.monotonic() + 5
-            while time.monotonic() < deadline:
-                markers = list((home / ".uagent/memory/.processed").rglob("*.state"))
-                if target.exists() and any(
-                    marker.read_text(encoding="utf-8").strip() == "done" for marker in markers
-                ):
-                    return
-                time.sleep(0.05)
-            raise AssertionError("background memory extraction did not finish")
+        def extracted():
+            markers = list((home / ".uagent/memory/.processed").rglob("*.state"))
+            return target.exists() and any(
+                marker.read_text(encoding="utf-8").strip() == "done" for marker in markers
+            )
 
         code, output = run_pty(
             workspace,
             env,
             b"/q\n",
-            before_payload=wait_for_extraction,
+            before_payload=lambda: wait_until(
+                extracted, "background memory extraction did not finish", timeout=5
+            ),
         )
         assert_true(code == 0, output)
         assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
@@ -2300,49 +2370,27 @@ def test_memory_background_extractor_is_bounded(root, home):
 
 
 def test_memory_background_extractor_releases_failed_claims(root, _home):
-    def scenario(name, payload=None):
+    def scenario(name, kinds=None):
         case_home = root / f"memory-{name}-home"
         workspace = root / f"memory-{name}-workspace"
         workspace.mkdir()
-        history = case_home / ".uagent" / "history"
-        history.mkdir(parents=True)
-        session = history / "extract.json"
-        header = {
-            "format": 3,
-            "cwd": str(workspace.resolve()),
-            "model": "test",
-            "session_id": f"memory-{name}",
-            "turns": 2,
-            "title": name,
-        }
-        valid_payload = {
-            "messages": [
+        write_session(
+            case_home,
+            "extract",
+            [
                 {"role": "user", "content": f"remember-{name}"},
                 {"role": "assistant", "content": "understood"},
             ],
-            "message_kinds": ["user", "assistant"],
-            "archive": [],
-            "archive_dropped_segments": 0,
-            "context_tokens": 0,
-            "usage": {},
-            "route_usage": {},
-        }
-        session.write_text(
-            json.dumps(header) + "\n" + json.dumps(payload or valid_payload),
-            encoding="utf-8",
+            cwd=workspace,
+            kinds=kinds,
+            session_id=f"memory-{name}",
+            turns=2,
+            title=name,
         )
         return case_home, workspace
 
     def markers(case_home):
         return list((case_home / ".uagent/memory/.processed").rglob("*.state"))
-
-    def wait_until(predicate, message, timeout=30):
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if predicate():
-                return
-            time.sleep(0.02)
-        raise AssertionError(message)
 
     no_write_home, no_write_workspace = scenario("no-write")
     with Server([event({"content": "Nothing durable to save."})]) as server:
@@ -2368,8 +2416,8 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
         assert_true(len(server.requests) == 1, server.requests)
         assert_true(not list((no_write_home / ".uagent/memory").rglob("*.md")), no_write_home)
 
-    def run_cleanup_case(name, responder, payload=None, wait_for_request=False):
-        case_home, workspace = scenario(name, payload)
+    def run_cleanup_case(name, responder, kinds=None, wait_for_request=False):
+        case_home, workspace = scenario(name, kinds)
         trace = root / f"memory-{name}.jsonl"
         with Server([responder]) as server:
             env = base_env(case_home, server.url)
@@ -2419,20 +2467,10 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
     failed_requests = run_cleanup_case("model-failure", fail_request, wait_for_request=True)
     assert_true(failed_requests, "model failure did not reach the provider")
 
-    invalid_payload = {
-        "messages": [
-            {"role": "user", "content": "invalid"},
-            {"role": "assistant", "content": "invalid"},
-        ],
-        "message_kinds": ["user"],
-        "archive": [],
-        "archive_dropped_segments": 0,
-        "context_tokens": 0,
-        "usage": {},
-        "route_usage": {},
-    }
+    # One kind for two messages: a session the agent would never write, which
+    # must be rejected before it reaches the provider.
     invalid_requests = run_cleanup_case(
-        "invalid-session", event({"content": "unused"}), payload=invalid_payload
+        "invalid-session", event({"content": "unused"}), kinds=["user"]
     )
     assert_true(not invalid_requests, invalid_requests)
 
@@ -2705,6 +2743,9 @@ def test_model_route_switch(root, home):
     providers["second"]["models"]["fast"]["context"] = 8192
     try:
         env = provider_env(home, first.url, providers, "first/main")
+        # Unset, the cap is omitted so the provider applies its own maximum;
+        # the switched route still has to carry it.
+        env["UAGENT_MAX_TOKENS"] = "16000"
         result = run_dialog(
             root,
             env,
@@ -3022,31 +3063,19 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
 
 
 def test_absolute_compaction_ceiling(root, home):
-    history = home / ".uagent" / "history"
-    history.mkdir(parents=True)
-    header = {
-        "format": 3,
-        "cwd": str(root.resolve()),
-        "model": "test",
-        "session_id": "absolute-compact",
-        "turns": 1,
-        "title": "prior task",
-    }
-    payload = {
-        "messages": [
+    write_session(
+        home,
+        "absolute",
+        [
             {"role": "system", "content": "saved system"},
             {"role": "user", "content": "prior task"},
             {"role": "assistant", "content": "large " + "x" * 10000},
         ],
-        "message_kinds": ["system", "user", "assistant"],
-        "archive": [],
-        "archive_dropped_segments": 0,
-        "context_tokens": 2500,
-        "usage": {},
-        "route_usage": {},
-    }
-    (history / "absolute.json").write_text(
-        json.dumps(header) + "\n" + json.dumps(payload), encoding="utf-8"
+        cwd=root,
+        context_tokens=2500,
+        session_id="absolute-compact",
+        turns=1,
+        title="prior task",
     )
 
     def compact(_, body):
@@ -3333,38 +3362,24 @@ def test_subagent_interrupt_reaps_child(root, home):
             stderr=subprocess.PIPE,
             text=True,
         )
-        task_started = False
         child_pids = set()
-        deadline = time.monotonic() + 4
-        while time.monotonic() < deadline and not task_started:
-            if trace.exists():
-                for line in trace.read_text().splitlines():
-                    event_data = json.loads(line)
-                    data = event_data.get("data", {})
-                    result = data.get("result", "")
-                    if (
-                        event_data.get("event") == "tool_result"
-                        and data.get("name") == "subagent"
-                        and result.startswith("[started] subagent id ")
-                    ):
-                        task_started = True
-                        processes = subprocess.check_output(
-                            ["ps", "-axo", "pid=,ppid="], text=True
-                        ).splitlines()
-                        children = {}
-                        for process_line in processes:
-                            child, parent = map(int, process_line.split())
-                            children.setdefault(parent, []).append(child)
-                        pending = [process.pid]
-                        while pending:
-                            parent = pending.pop()
-                            for child in children.get(parent, []):
-                                if child not in child_pids:
-                                    child_pids.add(child)
-                                    pending.append(child)
-                        break
-            time.sleep(0.02)
-        assert_true(task_started, "delegated child did not start")
+
+        def delegated_child_started():
+            if not trace.exists():
+                return False
+            for line in trace.read_text().splitlines():
+                event_data = json.loads(line)
+                data = event_data.get("data", {})
+                if (
+                    event_data.get("event") == "tool_result"
+                    and data.get("name") == "subagent"
+                    and str(data.get("result", "")).startswith("[started] subagent id ")
+                ):
+                    child_pids.update(descendant_pids(process.pid))
+                    return True
+            return False
+
+        wait_until(delegated_child_started, "delegated child did not start", timeout=4)
         assert_true(child_pids, "delegated child pid was not observable")
         process.send_signal(signal.SIGINT)
         process.communicate(timeout=8)

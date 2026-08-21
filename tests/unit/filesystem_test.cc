@@ -22,8 +22,6 @@ void TestFileTools() {
       ToolReadFile((root / "missing.txt").string(), int64_t{1}, int64_t{1});
   CHECK(!missing_read.Ok());
   CHECK(missing_read.error == ToolErrorCode::kNotFound);
-  CHECK(ToolReadFile((root / "missing.txt").string(), 1, 1).output ==
-        missing_read.output);
   ToolResult missing_list = ToolListDir((root / "missing-dir").string());
   CHECK(!missing_list.Ok());
   CHECK(missing_list.error == ToolErrorCode::kNotFound);

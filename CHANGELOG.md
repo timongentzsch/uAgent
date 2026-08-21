@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Streaming markdown measured display width by counting UTF-8 lead bytes, so a
+  line containing CJK, emoji, or combining marks reported the wrong row count
+  and redrawn tables erased the wrong number of rows.
+- The compiler-family guard in CMake was assigned an unevaluated expression and
+  always tested true, so warnings-as-errors applied to every compiler and the
+  "sanitizers require Clang or GCC" refusal could never fire.
+- `web_fetch` now rejects loopback, private, link-local, reserved, and other
+  non-public resolved destinations on every redirect connection, closing an
+  SSRF path to local services and cloud metadata endpoints.
+
+### Changed
+
+- Tool calls are always shown in full. Only results are shortened outside
+  `/verbose`, so a decision is never abbreviated in the scrollback while its
+  output is.
+- Hosted `web_search` is OpenRouter's `openrouter:web_search` only. The OpenAI
+  Responses backend is gone, `UAGENT_WEB_SEARCH_BACKEND` takes `auto`,
+  `openrouter` or `off`, and the model-facing tool, citations, bounds and usage
+  accounting are unchanged.
+- `subagent` is bounded per turn by `UAGENT_SUBAGENT_CALLS_PER_TURN` (32)
+  instead of by the live-activity slot count, so sequential delegation waves are
+  no longer refused while no child is running. Concurrency remains bounded by
+  `UAGENT_MAX_BACKGROUND_JOBS` and cost by the session budget.
+- Request payloads reuse the serialized prefix of the previous request instead
+  of re-serializing the whole history, byte for byte, so provider-side prefix
+  caching is unaffected.
+- Redirected terminal output is line buffered rather than unbuffered, so the
+  renderer's existing flush budget governs writes.
+- Permission modes and the `run` yield bounds are single-sourced in
+  `include/core/limits.h`.
+
+### Removed
+
+- The `openai_stream` fuzz target, which asserted nothing beyond "does not
+  crash"; SSE framing remains fuzzed.
+
 ## v0.5.0 - 2026-08-20
 
 ### Added

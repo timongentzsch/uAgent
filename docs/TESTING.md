@@ -12,11 +12,12 @@ ctest --preset debug --output-on-failure
 head/tail buffering and LRU retention, status-row assembly, atomic pre-spawn admission, default
 yielding, event-driven PTY and pipe input/output, split readiness markers, exactly-once completion delivery,
 200 Ctrl+B/exit races, parallel foreground handoff, PTY input/resize, non-TTY
-rejection, and resumed-image matching. Provider fixtures cover structured and
+rejection, resumed-image matching, the public-destination policy behind
+`web_fetch`, and request-payload byte stability across history mutations. Provider fixtures cover structured and
 proxy-wrapped error classes, one-shot context compaction, observational
 background completion, bounded task delivery, and no-replay failure paths. One shared HTTP/PTY fixture drives isolated
 `runtime`, `tools`, `ui`, `providers`, `mcp`, and `delegation` CTest processes.
-Fuzz targets run in CI.
+The SSE framing fuzz target runs in CI.
 
 The end-to-end efficiency harness has a hermetic smoke mode that runs in CTest
 and a separately authorized live mode. Both compare the same read-only task

@@ -867,11 +867,14 @@ def test_reasoning_modes_render_consistently(root, home):
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
 
+        # The working row also names the route, so the ticker window is a few
+        # columns narrower than the reasoning it scrolls: assert the clause
+        # that fits rather than a width budget the row no longer has.
         code, compact = run_pty(
             root,
             env,
             [
-                (b"go\n", b"Planning provider normalization phases"),
+                (b"go\n", b"provider normalization phases"),
                 (b"", b"Final answer"),
                 b"/q\n",
             ],
@@ -879,7 +882,7 @@ def test_reasoning_modes_render_consistently(root, home):
         )
         assert_true(code == 0, compact)
         assert_true(b"thinking \xc2\xb7" in compact, compact)
-        assert_true(b"Planning provider normalization phases" in compact, compact)
+        assert_true(b"provider normalization phases" in compact, compact)
         assert_true(b"thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
         assert_true(b"****" not in compact, compact)
         assert_true(b"\xc2\xb7 thinking" not in compact, compact)

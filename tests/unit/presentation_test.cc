@@ -94,6 +94,16 @@ void TestPollCollapse() {
   // A body that merely mentions an error later is still a success.
   CHECK(StoredToolResultPresentation("run", "cc a.c\nerror: bad").status ==
         PresentationStatus::kSucceeded);
+  // A kept receipt replays as it was drawn rather than as a summary line, so
+  // a resumed diff keeps the colour it had when it happened.
+  PresentationRecord redrawn =
+      StoredToolResultPresentation("edit_file", "edited a.txt", "-old\n+new");
+  CHECK(redrawn.change_display);
+  CHECK(redrawn.multiline);
+  CHECK(redrawn.detail == "-old\n+new");
+  // A failure is still a failure, receipt or not.
+  CHECK(StoredToolResultPresentation("edit_file", "error: no such file", "x")
+            .status == PresentationStatus::kFailed);
 
   ClearPollAnchor(4242);
 }

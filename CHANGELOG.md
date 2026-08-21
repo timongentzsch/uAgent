@@ -21,6 +21,10 @@
   `attach` when the bytes are a document rather than markup.
 - Converted HTML keeps its headings, table cells and `<pre>` indentation, and
   no longer leaks attribute markup into the text.
+- A resumed session redraws the diff an edit produced instead of collapsing it
+  to a grey summary line. Receipts are kept beside the transcript, so the
+  model's copy of a tool result is unchanged, and they leave when their turn
+  does.
 - Tool calls are always shown in full. Only results are shortened outside
   `/verbose`, so a decision is never abbreviated in the scrollback while its
   output is.

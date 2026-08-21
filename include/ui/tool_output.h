@@ -118,7 +118,8 @@ inline PresentationRecord ToolResultPresentation(
 }
 
 inline PresentationRecord StoredToolResultPresentation(
-    const std::string& name, const std::string& output) {
+    const std::string& name, const std::string& output,
+    const std::string& display = "") {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   // A stored result keeps the text the model saw, not the status the live row
@@ -132,6 +133,13 @@ inline PresentationRecord StoredToolResultPresentation(
   record.status = replayed.Ok() ? PresentationStatus::kSucceeded
                                 : PresentationStatus::kFailed;
   record.title = name.empty() ? "tool" : name;
+  // A kept receipt replays as it was drawn, the way the live row showed it.
+  if (replayed.Ok() && !display.empty()) {
+    record.detail = display;
+    record.multiline = true;
+    record.change_display = true;
+    return record;
+  }
   record.summary = TerminalSummary(ToolResultSummary(replayed, output,
                                                      /*truncated=*/false),
                                    record.title.size() + 6);
@@ -139,8 +147,9 @@ inline PresentationRecord StoredToolResultPresentation(
 }
 
 inline void PrintStoredToolResult(const std::string& name,
-                                  const std::string& output) {
-  PrintPresentation(StoredToolResultPresentation(name, output));
+                                  const std::string& output,
+                                  const std::string& display = "") {
+  PrintPresentation(StoredToolResultPresentation(name, output, display));
 }
 
 }  // namespace uagent

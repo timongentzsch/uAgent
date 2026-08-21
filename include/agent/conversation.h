@@ -38,6 +38,9 @@ class Conversation {
   const json& Messages() const { return messages_; }
   const json& Archive() const { return archive_; }
   const std::vector<MessageKind>& Kinds() const { return kinds_; }
+  // Rendered tool receipts, keyed by call id. The model never sees these; they
+  // exist so a resumed transcript can redraw a diff instead of a grey line.
+  const json& ToolDisplays() const { return tool_displays_; }
 
   bool Empty() const { return messages_.empty(); }
   size_t Size() const { return messages_.size(); }
@@ -51,9 +54,14 @@ class Conversation {
 
   void Reset(json baseline, std::vector<MessageKind> kinds);
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
-               int64_t dropped_segments);
+               int64_t dropped_segments, json tool_displays = json::object());
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
   void RefreshBaseline(json system);
+
+  // Keeps the receipt only while its call is still in the transcript, so a
+  // compacted turn takes its diffs with it.
+  void RecordToolDisplay(const std::string& call_id, std::string display);
+  const std::string* ToolDisplay(const std::string& call_id) const;
 
   void Push(json message, MessageKind kind);
   void Upsert(json message, MessageKind kind);
@@ -85,8 +93,11 @@ class Conversation {
  private:
   void AddArchiveSegment(json segment, int64_t archive_cap);
 
+  void PruneToolDisplays();
+
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
+  json tool_displays_ = json::object();
   json archive_ = json::array();
   int64_t archive_bytes_ = 0;
   int64_t dropped_segments_ = 0;

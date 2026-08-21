@@ -251,6 +251,31 @@ void TestConversation() {
   CHECK(resumed.Size() == 2);
   CHECK(!resumed.HasKind(MessageKind::kMemory));
   CHECK(resumed.At(1).value("content", "") == "continue");
+
+  // A rendered receipt is kept beside the transcript, never inside it: the
+  // model's copy of a tool result must not grow by what the terminal drew.
+  Conversation receipts;
+  receipts.Push({{"role", "user"}, {"content", "edit"}}, MessageKind::kUser);
+  receipts.Push({{"role", "tool"}, {"tool_call_id", "a"}, {"content", "ok"}},
+                MessageKind::kToolResult);
+  receipts.RecordToolDisplay("a", "-old\n+new");
+  receipts.RecordToolDisplay("b", "orphan");
+  receipts.RecordToolDisplay("c", "");  // nothing drawn, nothing kept
+  CHECK(receipts.ToolDisplay("a") != nullptr);
+  CHECK(*receipts.ToolDisplay("a") == "-old\n+new");
+  CHECK(receipts.ToolDisplay("c") == nullptr);
+  CHECK(receipts.At(1).value("content", "") == "ok");
+  CHECK(!receipts.At(1).contains("display"));
+  // Restoring a session carries them back; one written before receipts were
+  // kept simply replays without any.
+  Conversation reloaded;
+  CHECK(reloaded.Restore(receipts.Messages(), receipts.Kinds(), json::array(),
+                         0, receipts.ToolDisplays()));
+  CHECK(reloaded.ToolDisplay("a") != nullptr);
+  Conversation legacy;
+  CHECK(
+      legacy.Restore(receipts.Messages(), receipts.Kinds(), json::array(), 0));
+  CHECK(legacy.ToolDisplay("a") == nullptr);
 }
 
 }  // namespace uagent

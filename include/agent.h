@@ -219,8 +219,11 @@ class Agent {
 
   void RefreshBaseline();
 
+  // `display` is the terminal-only receipt, kept beside the transcript so a
+  // resumed session can redraw it; the model only ever sees `result`.
   void AppendToolResult(const ToolCall& call, bool text_mode,
-                        const std::string& result);
+                        const std::string& result,
+                        const std::string& display = "");
 
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,

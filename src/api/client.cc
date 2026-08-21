@@ -31,6 +31,21 @@ namespace {
 
 constexpr char kMessagesSlot[] = "\x01uagent-messages\x01";
 
+// Whether any message carries a content part of `type`.
+bool HasContentPart(const json& messages, std::string_view type) {
+  if (!messages.is_array()) return false;
+  for (const json& message : messages) {
+    if (!message.is_object() || !message.contains("content") ||
+        !message["content"].is_array()) {
+      continue;
+    }
+    for (const json& part : message["content"]) {
+      if (JsonValue(part, "type", "") == type) return true;
+    }
+  }
+  return false;
+}
+
 struct Ipv4Network {
   uint32_t address;
   uint32_t mask;
@@ -356,6 +371,14 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   }
   if (capabilities.stream_usage_option) {
     body["stream_options"] = {{"include_usage", true}};
+  }
+  // Only OpenRouter understands this, and only a request that carries a
+  // document needs it: the plugin decides how a PDF the model cannot read
+  // natively gets parsed, rather than leaving that to an unseen default.
+  if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
+      HasContentPart(messages, "file")) {
+    body["plugins"] = json::array(
+        {{{"id", "file-parser"}, {"pdf", {{"engine", config.pdf_engine}}}}});
   }
   int64_t max_tokens = MaxOutputTokens();
   if (max_tokens > 0) {

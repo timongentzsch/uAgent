@@ -84,11 +84,19 @@ RejectedCapability RejectedRouteCapability(
       AsciiLower(result.remote_error_type + " " + result.remote_error_code);
   std::string message = AsciiLower(result.error);
   std::string evidence = structured + " " + message;
-  if (capabilities.image_input && evidence.find("image") != std::string::npos &&
-      (evidence.find("input") != std::string::npos ||
-       evidence.find("support") != std::string::npos ||
-       evidence.find("modalit") != std::string::npos)) {
+  auto unsupported_modality = [&](std::string_view noun) {
+    return evidence.find(noun) != std::string::npos &&
+           (evidence.find("input") != std::string::npos ||
+            evidence.find("support") != std::string::npos ||
+            evidence.find("modalit") != std::string::npos);
+  };
+  if (capabilities.image_input && unsupported_modality("image")) {
     return RejectedCapability::kImageInput;
+  }
+  if (capabilities.file_input &&
+      (unsupported_modality("file") || unsupported_modality("document") ||
+       unsupported_modality("pdf"))) {
+    return RejectedCapability::kFileInput;
   }
   if (result.http_status != 400) return RejectedCapability::kNone;
   if (capabilities.parallel_tools &&
@@ -110,6 +118,8 @@ const char* CapabilityName(RejectedCapability capability) {
   switch (capability) {
     case RejectedCapability::kImageInput:
       return "image_input";
+    case RejectedCapability::kFileInput:
+      return "file_input";
     case RejectedCapability::kParallelTools:
       return "parallel_tool_calls";
     case RejectedCapability::kStreamUsage:

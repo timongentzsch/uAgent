@@ -287,7 +287,7 @@ json AttachmentContent(const std::string& prompt,
   return content;
 }
 
-size_t StripImageContentParts(json& messages) {
+size_t StripContentParts(json& messages, std::string_view type) {
   size_t rewritten = 0;
   for (json& message : messages) {
     if (!message.contains("content") || !message["content"].is_array()) {
@@ -296,7 +296,7 @@ size_t StripImageContentParts(json& messages) {
     json kept = json::array();
     size_t dropped = 0;
     for (json& part : message["content"]) {
-      if (JsonValue(part, "type", "") == "image_url") {
+      if (JsonValue(part, "type", "") == type) {
         ++dropped;
       } else {
         kept.push_back(std::move(part));

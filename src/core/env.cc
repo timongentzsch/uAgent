@@ -353,6 +353,8 @@ constexpr StringOption kStringOptions[] = {
      &RuntimeConfig::web_search_context_size, "", false, false},
     {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, "", true,
      false},
+    {"UAGENT_PDF_ENGINE", "pdf_engine", &RuntimeConfig::pdf_engine,
+     "cloudflare-ai", false, false},
     {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, "", false,
      false},
 };

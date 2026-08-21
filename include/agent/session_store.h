@@ -24,6 +24,9 @@ inline constexpr const char* kSessionHeaderSessionId = "session_id";
 inline constexpr const char* kSessionHeaderTurns = "turns";
 inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr int64_t kSessionFormat = 3;
+// Format 2 predates `message_kinds`; the loader reconstructs them from the
+// roles so an older session still resumes and still feeds memory extraction.
+inline constexpr int64_t kOldestReadableSessionFormat = 2;
 
 enum class SessionStoreError {
   kNone,

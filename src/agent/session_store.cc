@@ -56,6 +56,31 @@ constexpr Field kStateFields[] = {
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false}};
 
+// Sessions written before message kinds were recorded carry the role alone.
+// Every distinction replay depends on survives in it: the leading system
+// baseline, the harness's runtime-context line, tool results, and the rest.
+// Recovering them beats discarding a session the resume picker still lists.
+json InferredMessageKinds(const json& messages) {
+  json kinds = json::array();
+  if (!messages.is_array()) return kinds;
+  for (size_t index = 0; index < messages.size(); ++index) {
+    const json& message = messages[index];
+    std::string role = JsonValue(message, "role", "");
+    MessageKind kind = MessageKind::kUser;
+    if (role == "assistant") {
+      kind = MessageKind::kAssistant;
+    } else if (role == "tool") {
+      kind = MessageKind::kToolResult;
+    } else if (role == "system") {
+      kind = index == 0 ? MessageKind::kSystem : MessageKind::kInternal;
+    } else if (JsonValue(message, "content", "").starts_with("[environment:")) {
+      kind = MessageKind::kRuntimeContext;
+    }
+    kinds.push_back(MessageKindName(kind));
+  }
+  return kinds;
+}
+
 constexpr Field kHeaderFields[] = {
     {kSessionHeaderCwd, json::value_t::string, true},
     {kSessionHeaderModel, json::value_t::string, true},
@@ -145,7 +170,7 @@ SessionLoadResult SessionStore::Load(const std::string& path,
             std::nullopt};
   }
   int64_t format = header["format"].get<int64_t>();
-  if (format != kSessionFormat) {
+  if (format < kOldestReadableSessionFormat || format > kSessionFormat) {
     return {Error(SessionStoreError::kIncompatible,
                   "unsupported session format " + std::to_string(format)),
             std::nullopt};
@@ -170,6 +195,12 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   }
 
   json state = json::parse(body, nullptr, false);
+  // The only difference an older readable format leaves behind: kinds are
+  // reconstructed here, and the next save writes them out as current.
+  if (state.is_object() && !state.contains("message_kinds") &&
+      state.contains("messages")) {
+    state["message_kinds"] = InferredMessageKinds(state["messages"]);
+  }
   if (state.is_discarded() || !ValidState(state)) {
     return {Error(SessionStoreError::kCorrupt,
                   "session payload is invalid or incomplete"),

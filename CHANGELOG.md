@@ -21,7 +21,9 @@
   `UAGENT_PDF_ENGINE` (free `cloudflare-ai` by default) rather than left to an
   unseen provider default. A route that refuses documents outright is now
   negotiated down like image input, and the attachment continues as a path the
-  model can reach another way.
+  model can reach another way. Once a route is known to refuse documents, none
+  is encoded for it again: the part is never built, so a large file is not read
+  and base64'd only to be stripped.
 
 ### Changed
 

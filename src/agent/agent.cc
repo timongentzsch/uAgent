@@ -628,9 +628,9 @@ bool Agent::DrainAttachments() {
   std::vector<Attachment> pending = Attachments().Take();
   if (pending.empty()) return false;
   std::string error;
-  json content = AttachmentContent("[attached on request]", pending, error,
-                                   api_.capabilities.image_input,
-                                   !api_.config.image_model.empty());
+  json content = AttachmentContent(
+      "[attached on request]", pending, error, api_.capabilities.image_input,
+      !api_.config.image_model.empty(), api_.capabilities.file_input);
   if (error.empty()) {
     ImageFallbackResult fallback = ApplyImageFallbackToUserContent(content);
     if (!fallback.error.empty()) error = fallback.error;

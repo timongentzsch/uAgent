@@ -55,14 +55,17 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
 bool Base64Decode(std::string_view input, std::string& output,
                   size_t max_bytes);
 
+// The text part always names every path, so a route that cannot take a kind
+// of attachment still learns where it is and can reach it with other tools.
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
                        std::string& error, bool image_input_available = true,
-                       bool image_fallback_available = false);
+                       bool image_fallback_available = false,
+                       bool file_input_available = true);
 
-// Remove only image parts after an endpoint rejects them. Other attachment
-// types remain available on the retry, and the text part retains every path.
 // Drops every content part of `type`, returning how many messages changed.
+// Used after an endpoint rejects a kind of input; the text part already
+// retains every path.
 // The caller says what replaces them, since an image and a document degrade
 // into different explanations.
 size_t StripContentParts(json& messages, std::string_view type);

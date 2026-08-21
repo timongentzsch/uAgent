@@ -164,11 +164,14 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
 }
 
 bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
-                           json archive, int64_t dropped_segments) {
+                           json archive, int64_t dropped_segments,
+                           json tool_displays) {
   if (!messages.is_array() || messages.empty() ||
       messages.size() != kinds.size() || !archive.is_array()) {
     return false;
   }
+  tool_displays_ =
+      tool_displays.is_object() ? std::move(tool_displays) : json::object();
   NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
@@ -184,6 +187,39 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   NormalizeRoles(baseline, kinds);
   messages_ = std::move(baseline);
   kinds_ = std::move(kinds);
+  tool_displays_ = json::object();
+}
+
+// A receipt is worth keeping only while the call it describes is still in the
+// transcript. Pruning against the live messages covers every way one can
+// leave -- compaction, archiving, an explicit erase -- without hooking each.
+void Conversation::PruneToolDisplays() {
+  json kept = json::object();
+  for (const json& message : messages_) {
+    if (!message.is_object()) continue;
+    auto id = message.find("tool_call_id");
+    if (id == message.end() || !id->is_string()) continue;
+    const std::string& key = id->get_ref<const std::string&>();
+    auto stored = tool_displays_.find(key);
+    if (stored != tool_displays_.end()) kept[key] = *stored;
+  }
+  tool_displays_ = std::move(kept);
+}
+
+void Conversation::RecordToolDisplay(const std::string& call_id,
+                                     std::string display) {
+  if (call_id.empty() || display.empty()) return;
+  tool_displays_[call_id] = std::move(display);
+  // Each receipt is already bounded when it is rendered; this only stops a
+  // very long session from accumulating ones whose calls are long gone.
+  constexpr size_t kMaxStoredToolDisplays = 128;
+  if (tool_displays_.size() > kMaxStoredToolDisplays) PruneToolDisplays();
+}
+
+const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
+  auto stored = tool_displays_.find(call_id);
+  if (stored == tool_displays_.end() || !stored->is_string()) return nullptr;
+  return &stored->get_ref<const std::string&>();
 }
 
 void Conversation::RefreshBaseline(json system) {

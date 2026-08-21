@@ -96,7 +96,8 @@ json StateJson(const SessionState& state) {
           {"usage", UsageJson(state.usage)},
           {"route_usage", RouteUsageJson(state.route_usage)},
           {"adaptive_system", state.adaptive_system},
-          {"adaptive_system_revision", state.adaptive_system_revision}};
+          {"adaptive_system_revision", state.adaptive_system_revision},
+          {"tool_displays", state.tool_displays}};
 }
 
 }  // namespace
@@ -202,6 +203,10 @@ SessionLoadResult SessionStore::Load(const std::string& path,
   record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
   record.state.adaptive_system_revision =
       JsonValue(state, "adaptive_system_revision", uint64_t{0});
+  // Absent in sessions written before receipts were kept: they simply replay
+  // without them, which is what they did when they were saved.
+  record.state.tool_displays =
+      JsonValue(state, "tool_displays", json::object());
   return {{}, std::move(record)};
 }
 

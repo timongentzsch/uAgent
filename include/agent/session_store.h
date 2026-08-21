@@ -53,6 +53,9 @@ struct SessionState {
   RouteUsage route_usage;
   std::string adaptive_system;
   uint64_t adaptive_system_revision = 0;
+  // Rendered tool receipts keyed by call id, so a resumed transcript can
+  // redraw a diff instead of a grey summary line.
+  json tool_displays = json::object();
 };
 
 struct SessionRecord {

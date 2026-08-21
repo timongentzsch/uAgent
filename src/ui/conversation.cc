@@ -67,8 +67,9 @@ void PrintConversationHistory(const Conversation& conversation,
         std::string path = ReplayableImagePath(*image->second, stored);
         if (!path.empty()) (void)ToolShowImage(path);
       }
+      const std::string* display = conversation.ToolDisplay(id);
       PrintStoredToolResult(name == tool_names.end() ? "" : name->second,
-                            stored);
+                            stored, display ? *display : std::string());
     } else if (kind == MessageKind::kAssistant) {
       std::vector<ToolCall> text_calls;
       if (content.is_string()) {

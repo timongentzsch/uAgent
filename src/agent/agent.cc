@@ -148,7 +148,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                   session_usage_,
                   route_usage_,
                   adaptive_system_ ? adaptive_system_->instructions : "",
-                  adaptive_system_ ? adaptive_system_->revision : 0};
+                  adaptive_system_ ? adaptive_system_->revision : 0,
+                  conversation_.ToolDisplays()};
   SessionStoreStatus status = SessionStore::Save(path, record);
   if (!status.Ok()) {
     error = std::move(status.message);
@@ -168,7 +169,8 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   if (!conversation_.Restore(std::move(record.state.messages),
                              std::move(record.state.message_kinds),
                              std::move(record.state.archive),
-                             record.state.archive_dropped_segments)) {
+                             record.state.archive_dropped_segments,
+                             std::move(record.state.tool_displays))) {
     error = "session conversation state is invalid";
     return false;
   }

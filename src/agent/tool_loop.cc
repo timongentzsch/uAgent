@@ -36,7 +36,9 @@ size_t ParallelRunEnd(const std::vector<size_t>& runnable,
 }  // namespace
 
 void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
-                             const std::string& result) {
+                             const std::string& result,
+                             const std::string& display) {
+  conversation_.RecordToolDisplay(call.id, display);
   const Tool* tool = FindTool(tools_, call.name);
   if (!text_mode && tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
@@ -250,7 +252,8 @@ bool Agent::RunCalls(
     CallTask& task = tasks[index];
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
-    AppendToolResult(call, text_mode, model_results[index]);
+    AppendToolResult(call, text_mode, model_results[index],
+                     task.result.Ok() ? task.result.display : "");
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

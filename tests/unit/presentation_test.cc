@@ -49,7 +49,7 @@ void TestPollCollapse() {
   ClearPollAnchor(4242);
 
   // The call line is withheld; the outcome is unknown until the result.
-  PresentationRecord call_record = ToolCallPresentation(quiet, call, false);
+  PresentationRecord call_record = ToolCallPresentation(quiet, call);
   CHECK(call_record.poll);
 
   PresentationRecord first = ToolResultPresentation(quiet, call, "", false);

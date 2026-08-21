@@ -43,7 +43,7 @@ class MdStream {
   std::string row;
   std::vector<std::string> table;
   std::string cur_raw, prev_raw;
-  size_t vis_line = 0, prev_rows = 1;
+  size_t prev_rows = 1;
   size_t pending_output = 0;
   bool output_started = false;
   std::chrono::steady_clock::time_point last_flush =
@@ -53,7 +53,7 @@ class MdStream {
   void Pv(const std::string& text);
   void Pc(char value);
   void EmitPre();
-  std::string Marker() const;
+  std::string_view Marker() const;
   void Step(char value);
   void Classify(char value);
   void FenceClassify(char value);

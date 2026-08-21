@@ -70,7 +70,7 @@ struct ActivitySession {
 struct BgJob {
   BgJob(pid_t process_pid, std::string log_path, std::string command,
         bool is_detached = false, std::string job_kind = {},
-        std::optional<int> status = std::nullopt, int64_t activity_id = 0,
+        int64_t activity_id = 0,
         std::shared_ptr<ActivitySession> activity = nullptr,
         std::string label = {}, std::string receipt = {},
         std::string source = {});
@@ -79,7 +79,6 @@ struct BgJob {
   std::string log, cmd;
   bool detached = false;
   std::string kind;
-  std::optional<int> leader_status;
   int64_t id = 0;
   std::shared_ptr<ActivitySession> session;
   std::string display_label;

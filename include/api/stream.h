@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/agent/tool_protocol.h"
 #include "include/api/openai_stream.h"
@@ -34,12 +35,15 @@ struct StreamCtx {
   std::map<int, ToolCall> calls;  // keyed by stream index
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
-  int64_t first_event_timeout_s = 300;
-  int64_t idle_timeout_s = 300;
-  size_t response_cap = 32 * 1024 * 1024;
+  // 0 is unbounded here as everywhere else; a real request overwrites all
+  // three from RuntimeConfig, which is where the tunable defaults live.
+  int64_t first_event_timeout_s = 0;
+  int64_t idle_timeout_s = 0;
+  size_t response_cap = 0;
   size_t received = 0;
   std::string timeout_reason;
   SseParser sse;
+  std::vector<SseEvent> events;  // reused across write callbacks
 
   // Hold leading content back while it could still be any tool protocol, so
   // neither our fallback blocks nor malformed provider markup flashes as an
@@ -134,7 +138,8 @@ struct StreamCtx {
       res->error = sse.Error();
       return false;
     }
-    for (const SseEvent& event : sse.TakeEvents()) HandleEvent(event);
+    sse.TakeEvents(events);
+    for (const SseEvent& event : events) HandleEvent(event);
     return true;
   }
 };

@@ -126,16 +126,6 @@ class TerminalSpinner {
   TerminalSpinner(const TerminalSpinner&) = delete;
   TerminalSpinner& operator=(const TerminalSpinner&) = delete;
 
-  void SetLabel(std::string label) {
-    rolling_ = false;
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      label_ = std::move(label);
-    }
-    UpdateTerminalActivity(activity_id_, label_.c_str());
-    wake_.notify_one();
-  }
-
   // Switch to rolling-ticker mode: `text` is the bounded, newline-collapsed
   // reasoning buffer, kept behind the caller's static `prefix`. Each status
   // frame renders the prefix plus a sliding window of the buffer.

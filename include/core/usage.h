@@ -13,8 +13,6 @@
 
 namespace uagent {
 
-using nlohmann::json;
-
 struct Usage {
   int64_t input = 0;
   int64_t output = 0;

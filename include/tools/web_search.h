@@ -2,7 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
 #define UAGENT_INCLUDE_TOOLS_WEB_SEARCH_H_
-// One model-facing search tool with independently selectable hosted backends.
+// One model-facing search tool over OpenRouter's hosted `openrouter:web_search`
+// server tool. The route is selected independently of the conversation's.
 
 #include <string>
 #include <vector>
@@ -15,10 +16,7 @@
 
 namespace uagent {
 
-enum class WebSearchBackend { kNone, kResponses, kOpenRouter };
-
 struct WebSearchRoute {
-  WebSearchBackend backend = WebSearchBackend::kNone;
   std::string base_url;
   std::string api_key;
   std::string model;
@@ -27,8 +25,7 @@ struct WebSearchRoute {
   std::string effort;
 
   bool Valid() const {
-    return backend != WebSearchBackend::kNone && !base_url.empty() &&
-           !api_key.empty() && !model.empty();
+    return !base_url.empty() && !api_key.empty() && !model.empty();
   }
 };
 
@@ -43,7 +40,7 @@ WebSearchRoute SelectWebSearchRoute(
     const Api& api, const std::vector<NamedProvider>& providers);
 json WebSearchRequest(const WebSearchRoute& route, const RuntimeConfig& config,
                       const std::string& prompt);
-WebSearchResult ParseResponsesSearch(const json& response);
+WebSearchResult ParseWebSearch(const json& response);
 Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    std::vector<NamedProvider> providers);
 

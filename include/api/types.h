@@ -11,8 +11,6 @@
 
 namespace uagent {
 
-using nlohmann::json;
-
 enum class RemoteErrorKind : uint8_t {
   kNone,
   kTransient,

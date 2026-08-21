@@ -44,9 +44,14 @@ struct DetachedActivity {
 };
 
 void BgTrackSignal(pid_t pid, bool add);
-void KillProcess(pid_t pid, int* status = nullptr);
+void KillProcess(pid_t pid);
 std::string FmtExit(int status, bool show_ok);
 ToolResult ProcessResult(std::string output, int status);
+// Shared output budgeting for every activity read: ActivityOutputCap folds a
+// caller request into the global cap, LimitOutput enforces it head-and-tail.
+int64_t ActivityOutputCap(int64_t requested);
+std::string LimitOutput(std::string text, int64_t cap);
+ToolResult LimitOutput(ToolResult result, int64_t cap);
 std::string ReadLogTail(const std::string& path, int64_t cap);
 uint64_t LogFileBytes(const std::string& path);
 void RemoveLog(const std::string& path);

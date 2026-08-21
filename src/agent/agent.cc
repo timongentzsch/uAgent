@@ -192,8 +192,10 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   return true;
 }
 
-size_t Agent::RequestContextBytes(size_t schema_bytes) const {
-  size_t bytes = JsonEstimatedBytes(conversation_.Messages());
+size_t Agent::RequestContextBytes(size_t schema_bytes,
+                                  const json* messages) const {
+  size_t bytes =
+      JsonEstimatedBytes(messages ? *messages : conversation_.Messages());
   return api_.capabilities.native_tools ? SaturatingAdd(bytes, schema_bytes)
                                         : bytes;
 }
@@ -228,6 +230,14 @@ json Agent::CompactionMessages() const {
     transcript.Push(label);
     transcript.Push(bounded(value, cap));
     transcript.Push("\n");
+  };
+  auto append_call = [&](const std::string& name, const json& arguments,
+                         std::string fallback) {
+    const Tool* tool = FindTool(tools_, name);
+    append("TOOL CALL " + name + ": ",
+           tool && arguments.is_object() ? ToolSummary(*tool, arguments)
+                                         : std::move(fallback),
+           kEvidenceBytes);
   };
 
   for (size_t index = BaselineSize(); index < conversation_.Size(); ++index) {
@@ -264,26 +274,16 @@ json Agent::CompactionMessages() const {
           std::string id = JsonValue(call, "id", "");
           if (!id.empty()) tool_names[id] = name;
           json arguments = ParsedToolCallArguments(function);
-          const Tool* tool = FindTool(tools_, name);
-          std::string summary =
-              tool && arguments.is_object()
-                  ? ToolSummary(*tool, arguments)
-                  : (arguments.is_string() ? arguments.get<std::string>()
-                                           : JsonDump(arguments));
-          append("TOOL CALL " + name + ": ", std::move(summary),
-                 kEvidenceBytes);
+          append_call(name, arguments,
+                      arguments.is_string() ? arguments.get<std::string>()
+                                            : JsonDump(arguments));
         }
       } else {
         for (const ToolCall& call : text_calls) {
           json arguments = json::parse(call.args, nullptr, false);
-          const Tool* tool = FindTool(tools_, call.name);
-          std::string summary =
-              tool && arguments.is_object()
-                  ? ToolSummary(*tool, arguments)
-                  : (arguments.is_discarded() ? call.args
-                                              : JsonDump(arguments));
-          append("TOOL CALL " + call.name + ": ", std::move(summary),
-                 kEvidenceBytes);
+          append_call(
+              call.name, arguments,
+              arguments.is_discarded() ? call.args : JsonDump(arguments));
         }
       }
       continue;

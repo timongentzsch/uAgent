@@ -68,7 +68,7 @@ bool PlausibleInlineMath(std::string_view text) {
 
 size_t MathSpan(const std::string& text, size_t position) {
   if (Escaped(text, position)) return std::string::npos;
-  std::string close;
+  std::string_view close;
   size_t begin = position;
   if (text.compare(position, 2, "$$") == 0) {
     close = "$$";
@@ -261,7 +261,9 @@ std::string RenderCell(const std::string& text, size_t& visible_columns) {
       output += code ? CODE() : FgDfl();
       continue;
     }
-    size_t math_end = code ? std::string::npos : MathSpan(text, index);
+    size_t math_end = code || (value != '$' && value != '\\')
+                          ? std::string::npos
+                          : MathSpan(text, index);
     if (math_end != std::string::npos) {
       std::string span = text.substr(index, math_end - index);
       std::string rendered = PrettyMath(MathBody(span));
@@ -302,16 +304,19 @@ std::vector<std::string> SplitCells(const std::string& text) {
   std::string cell;
   bool code_span = false;
   for (size_t index = 0; index < text.size(); ++index) {
-    if (text[index] == '`') code_span = !code_span;
-    size_t end = code_span ? std::string::npos : MathSpan(text, index);
+    char value = text[index];
+    if (value == '`') code_span = !code_span;
+    size_t end = code_span || (value != '$' && value != '\\')
+                     ? std::string::npos
+                     : MathSpan(text, index);
     if (end != std::string::npos) {
       cell += text.substr(index, end - index);
       index = end - 1;
-    } else if (text[index] == '\\' && index + 1 < text.size() &&
+    } else if (value == '\\' && index + 1 < text.size() &&
                text[index + 1] == '|') {
       cell += "\\|";
       ++index;
-    } else if (text[index] == '|' && !code_span) {
+    } else if (value == '|' && !code_span) {
       cells.push_back(Trim(cell));
       cell.clear();
     } else {
@@ -363,7 +368,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
     intable = tablemode = false;
   }
   FlushTable();
-  if (!pre.empty()) Pv(pre), pre.clear();
+  EmitPre();
   if (bold || ital || code || math || heading || fence || fencehead) {
     fputs(RST(), stdout);
   }
@@ -399,13 +404,14 @@ void MdStream::Pv(const std::string& s) {
   if (s.empty()) return;  // an empty write is not output, and must not release
   ReleaseBlanks();
   fputs(s.c_str(), stdout);
-  vis_line += DisplayWidth(s);
 }
 
+// Locked putc on purpose: TerminalSpinner writes stdout from its own thread
+// (core/term.h), so the unlocked variant would be a data race. Buffering, not
+// the lock, is what removed the per-character write(2).
 void MdStream::Pc(char c) {
   ReleaseBlanks();
   putchar(c);
-  if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) vis_line++;
 }
 
 void MdStream::EmitPre() {
@@ -413,9 +419,12 @@ void MdStream::EmitPre() {
   pre.clear();
 }
 
-std::string MdStream::Marker() const {  // pre minus its leading indentation
+// The view is only valid until the next change to pre; every caller reads it
+// before appending to or clearing pre.
+std::string_view MdStream::Marker() const {  // pre minus its indentation
   size_t sp = pre.find_first_not_of(" \t");
-  return sp == std::string::npos ? "" : pre.substr(sp);
+  return sp == std::string::npos ? std::string_view()
+                                 : std::string_view(pre).substr(sp);
 }
 
 void MdStream::Step(char c) {
@@ -427,7 +436,6 @@ void MdStream::Step(char c) {
       table.push_back(row);
       row.clear();
       cur_raw.clear();
-      vis_line = 0;
       intable = false;
       linestart = true;
     } else {
@@ -496,7 +504,7 @@ void MdStream::Classify(char c) {
     FenceClassify(c);
     return;
   }
-  std::string mk = Marker();
+  std::string_view mk = Marker();
   if (mk.empty()) {  // only indentation so far
     if (c == ' ' || c == '\t') {
       pre += c;
@@ -611,7 +619,7 @@ void MdStream::Classify(char c) {
 // directly rather than through Pc/Pv, so held blanks are released by hand.
 void MdStream::FenceClassify(char c) {
   ReleaseBlanks();
-  std::string mk = Marker();
+  std::string_view mk = Marker();
   if (mk.size() >= 3) {  // "```" held: it only closes if the line ends here
     if (c == ' ') {
       pre += c;
@@ -826,16 +834,19 @@ void MdStream::EndLine() {  // inline styles never span lines
   }
   // Nothing visible reached this line, so hold its newline rather than print
   // it: ReleaseBlanks emits one if text follows, and Flush drops the rest.
+  // One width pass over the raw line replaces per-character bookkeeping that
+  // counted every leading UTF-8 byte as a column, so CJK, emoji and combining
+  // marks used to give prev_rows (and thus RetroTable) the wrong row count.
+  size_t vis_line = DisplayWidth(cur_raw);
   if (vis_line == 0) {
     ++blank_held;
   } else {
     putchar('\n');
   }
-  prev_raw = cur_raw;
   size_t columns = TerminalWidth();
   prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;
+  prev_raw = std::move(cur_raw);
   cur_raw.clear();
-  vis_line = 0;
   linestart = true;
 }
 
@@ -844,39 +855,25 @@ void MdStream::RetroTable() {
     fputs("\033[A\033[2K", stdout);  // up + clear
   }
   table.push_back(prev_raw);
-  table.push_back(Marker());
+  table.emplace_back(Marker());
   pre.clear();
   cur_raw.clear();
-  vis_line = 0;
   ForgetPreviousLine();
   tablemode = true;  // body rows follow until a line without '|'
 }
 
 void MdStream::FlushTable() {
   if (table.empty()) return;
-  // no |---| separator row -> not actually a table (e.g. "| jq ."): pass
-  // through
-  bool any_sep = false;
+  std::vector<std::vector<std::pair<std::string, size_t>>>
+      rows;  // cell, visible width
+  std::vector<bool> sep;
+  std::vector<size_t> w;
+  bool any_sep = false;  // a |---| row is what makes this block a table
   for (auto& raw : table) {
     std::string t = Trim(raw);
     if (t.size() > 1 && t.find_first_not_of("-:| ") == std::string::npos) {
       any_sep = true;
     }
-  }
-  if (!any_sep) {
-    for (auto& raw : table) {
-      fputs(raw.c_str(), stdout);
-      putchar('\n');
-    }
-    table.clear();
-    return;
-  }
-  std::vector<std::vector<std::pair<std::string, size_t>>>
-      rows;  // cell, visible width
-  std::vector<bool> sep;
-  std::vector<size_t> w;
-  for (auto& raw : table) {
-    std::string t = Trim(raw);
     if (!t.empty() && t.front() == '|') t.erase(0, 1);
     if (!t.empty() && t.back() == '|') t.pop_back();
     std::vector<std::string> cells = SplitCells(t);
@@ -889,10 +886,19 @@ void MdStream::FlushTable() {
     for (size_t c = 0; c < cells.size(); c++) {
       size_t vis = 0;
       std::string out = is_sep ? "" : RenderCell(cells[c], vis);
-      rows.back().push_back({out, vis});
+      rows.back().emplace_back(std::move(out), vis);
       if (c >= w.size()) w.resize(c + 1, 0);
       if (vis > w[c]) w[c] = vis;
     }
+  }
+  // no separator row -> not actually a table (e.g. "| jq ."): pass through
+  if (!any_sep) {
+    for (const auto& raw : table) {
+      fputs(raw.c_str(), stdout);
+      putchar('\n');
+    }
+    table.clear();
+    return;
   }
   size_t header = 0;
   while (header < rows.size() && sep[header]) ++header;
@@ -919,16 +925,19 @@ void MdStream::FlushTable() {
     ForgetPreviousLine();
     return;
   }
+  const std::string no_cell;
   for (size_t r = 0; r < rows.size(); r++) {
     if (sep[r]) continue;
     std::string ln;
+    ln.reserve(table_width);
     for (size_t c = 0; c < w.size(); c++) {
-      auto cell = c < rows[r].size()
-                      ? rows[r][c]
-                      : std::make_pair(std::string(), static_cast<size_t>(0));
+      bool present = c < rows[r].size();
+      const std::string& text = present ? rows[r][c].first : no_cell;
       if (c > 0) ln += "  ";
-      size_t padding = c + 1 < w.size() ? w[c] - cell.second : 0;
-      ln += cell.first + std::string(padding, ' ');
+      size_t padding =
+          c + 1 < w.size() ? w[c] - (present ? rows[r][c].second : 0) : 0;
+      ln += text;
+      ln.append(padding, ' ');
     }
     printf("%s%s%s\n", r == header ? BOLD() : "", ln.c_str(), RST());
   }

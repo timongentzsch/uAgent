@@ -9,6 +9,7 @@
 
 #include "include/core/env.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/media.h"
 #include "include/tools/adapt_system.h"
@@ -180,6 +181,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   attach.capabilities = Capability(ToolCapability::kInspect);
   attach.max_calls_per_turn = 4;  // each one rides on the next request
 
+  // The schema below is a raw JSON literal, so its "maximum" cannot be spelled
+  // as kMaxYieldMs directly; this assert fails the build if the constant moves.
+  static_assert(kMaxYieldMs == 30000, "update \"maximum\" in the run schema");
   Tool& run = AddTool(
       tools,
       MakeTool("run",
@@ -216,8 +220,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     std::string error = RunCommandPolicyError(JsonValue(a, "command", ""));
     if (!error.empty()) return error;
     int64_t yield_ms = JsonValue(a, "yield_ms", int64_t{0});
-    if (yield_ms > 0 && yield_ms < 250) {
-      return std::string("error: yield_ms must be 0 or at least 250");
+    if (yield_ms > 0 && yield_ms < kMinYieldMs) {
+      return std::string("error: yield_ms must be 0 or at least ") +
+             std::to_string(kMinYieldMs);
     }
     return std::string();
   };
@@ -226,7 +231,6 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // Each call owns its process group and log, so independent commands
   // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
-  run.verbatim_label = true;
   run.command_policy = true;
 
   Tool& python = AddTool(

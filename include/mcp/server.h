@@ -27,6 +27,7 @@
 #include "include/core/child_env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -242,8 +243,8 @@ inline bool McpSpawn(
   // nonblocking writes: a blocking write() of a large request would ignore
   // the drain in mcp_write and reintroduce the two-full-pipes deadlock
   fcntl(inp[1], F_SETFL, O_NONBLOCK);
-  int errfd =
-      open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0600);
+  int errfd = open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC,
+                   kPrivateFileMode);
   ChildEnvironment child_environment(env);
   pid_t pid = fork();
   if (pid < 0) {

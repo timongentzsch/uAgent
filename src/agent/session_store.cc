@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -23,41 +24,58 @@ SessionStoreStatus Error(SessionStoreError code, std::string message) {
   return {code, std::move(message)};
 }
 
-bool ValidState(const json& value) {
+struct Field {
+  const char* key;
+  json::value_t type;
+  bool required;
+};
+
+// number_integer also admits number_unsigned, mirroring is_number_integer().
+bool HasFields(const json& value, std::span<const Field> fields) {
   if (!value.is_object()) return false;
-  if (value.contains("adaptive_system") &&
-      (!value["adaptive_system"].is_string() ||
-       value["adaptive_system"].get_ref<const std::string&>().size() >
-           kAdaptiveSystemBytes)) {
+  for (const Field& field : fields) {
+    const auto entry = value.find(field.key);
+    if (entry == value.end()) {
+      if (field.required) return false;
+    } else if (entry->type() != field.type &&
+               !(field.type == json::value_t::number_integer &&
+                 entry->is_number_integer())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+constexpr Field kStateFields[] = {
+    {"messages", json::value_t::array, true},
+    {"message_kinds", json::value_t::array, true},
+    {"archive", json::value_t::array, true},
+    {"archive_dropped_segments", json::value_t::number_integer, true},
+    {"context_tokens", json::value_t::number_integer, true},
+    {"usage", json::value_t::object, true},
+    {"adaptive_system", json::value_t::string, false},
+    {"adaptive_system_revision", json::value_t::number_unsigned, false}};
+
+constexpr Field kHeaderFields[] = {
+    {kSessionHeaderCwd, json::value_t::string, true},
+    {kSessionHeaderModel, json::value_t::string, true},
+    {kSessionHeaderSessionId, json::value_t::string, true},
+    {kSessionHeaderTurns, json::value_t::number_integer, true},
+    {kSessionHeaderTitle, json::value_t::string, true}};
+
+bool ValidState(const json& value) {
+  if (!HasFields(value, kStateFields)) return false;
+  const auto adaptive = value.find("adaptive_system");
+  if (adaptive != value.end() &&
+      adaptive->get_ref<const std::string&>().size() > kAdaptiveSystemBytes) {
     return false;
   }
-  if (value.contains("adaptive_system_revision") &&
-      !value["adaptive_system_revision"].is_number_unsigned()) {
-    return false;
-  }
-  return value.contains("messages") && value["messages"].is_array() &&
-         !value["messages"].empty() && value.contains("message_kinds") &&
-         value["message_kinds"].is_array() &&
-         value["message_kinds"].size() == value["messages"].size() &&
-         value.contains("archive") && value["archive"].is_array() &&
-         value.contains("archive_dropped_segments") &&
-         value["archive_dropped_segments"].is_number_integer() &&
-         value.contains("context_tokens") &&
-         value["context_tokens"].is_number_integer() &&
-         value.contains("usage") && value["usage"].is_object();
+  return !value["messages"].empty() &&
+         value["message_kinds"].size() == value["messages"].size();
 }
 
 bool ValidHeader(const json& header) {
-  return header.is_object() && header.contains(kSessionHeaderCwd) &&
-         header[kSessionHeaderCwd].is_string() &&
-         header.contains(kSessionHeaderModel) &&
-         header[kSessionHeaderModel].is_string() &&
-         header.contains(kSessionHeaderSessionId) &&
-         header[kSessionHeaderSessionId].is_string() &&
-         header.contains(kSessionHeaderTurns) &&
-         header[kSessionHeaderTurns].is_number_integer() &&
-         header.contains(kSessionHeaderTitle) &&
-         header[kSessionHeaderTitle].is_string();
+  return HasFields(header, kHeaderFields);
 }
 
 json HeaderJson(const SessionMetadata& metadata) {

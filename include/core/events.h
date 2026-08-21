@@ -19,6 +19,8 @@
 
 #include "include/core/debug.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -77,7 +79,6 @@ struct PresentationRecord {
   std::string summary;
   std::string detail;
   bool multiline = false;
-  bool verbatim = false;
   bool change_display = false;
   // Opening a skill changes how the whole turn proceeds, so it is marked in
   // the scrollback rather than reading as one more tool row.
@@ -85,6 +86,15 @@ struct PresentationRecord {
   bool poll = false;  // bare activity-tool check, no interaction sent
   std::vector<PresentationArtifact> artifacts;
 };
+
+// What the agent decided to do is shown in full; only results are shortened
+// outside /verbose. A label with newlines becomes detail so the row stays one
+// line, and the bound keeps one argument from flooding the scrollback.
+inline void SetCallLabel(PresentationRecord& record, std::string label) {
+  record.multiline = label.find('\n') != std::string::npos;
+  (record.multiline ? record.detail : record.summary) =
+      Utf8Trunc(std::move(label), kToolLabelChars);
+}
 
 // A user-facing notice — one line the person should see. It rides the same
 // spine as everything else so it reaches the journal and the JSONL, not only a
@@ -159,7 +169,6 @@ class Observability {
   void Diagnostic(const std::string& name, json data = json::object()) noexcept;
 
   DebugSink& DebugOutput() { return debug_; }
-  JsonEventStream& JsonOutput() { return json_; }
   SessionJournal& Journal() { return journal_; }
 
   void Flush();

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/ui/presentation.h"
 
@@ -293,7 +294,8 @@ bool SessionJournal::Flush(const std::string& path, std::string& error) const {
   std::string content;
   content.reserve(bytes_);
   for (const std::string& line : lines_) content += line + '\n';
-  return AtomicWriteFile(path, content, 0600, /*preserve_mode=*/false, error);
+  return AtomicWriteFile(path, content, kPrivateFileMode,
+                         /*preserve_mode=*/false, error);
 }
 
 void SessionJournal::Clear() {

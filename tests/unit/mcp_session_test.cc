@@ -113,14 +113,12 @@ void TestMcpContractHelpers() {
   CHECK(tools[0].output_schema == output_schema);
   CHECK(tools[0].provider == "mcp:probe");
 
-  const char* inherited_home = getenv("HOME");
-  std::string prior_home = inherited_home ? inherited_home : "";
   namespace fs = std::filesystem;
   fs::path image_home =
       fs::temp_directory_path() /
       ("uagent-mcp-image-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(image_home);
-  setenv("HOME", image_home.c_str(), 1);
+  ScopedEnv scoped_home("HOME", image_home.c_str());
   json response = {
       {"result",
        {{"content", json::array({{{"type", "text"}, {"text", "plain"}},
@@ -169,11 +167,6 @@ void TestMcpContractHelpers() {
   CHECK(empty_remote_error.output ==
         "error: mcp(probe) returned isError without diagnostic text" +
             McpStderrHint(server.name));
-  if (inherited_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
   std::error_code remove_error;
   fs::remove_all(image_home, remove_error);
 }
@@ -316,6 +309,22 @@ void TestProjectTrustTracksSemanticConfig() {
 
 void TestScopedBaseAndMemory() {
   namespace fs = std::filesystem;
+  // Redaction is gated by a marker pre-scan, so every pattern alternative needs
+  // a case here: a missing marker silently disables that pattern.
+  for (const char* secret :
+       {"passwd=hunter2trustno1", "passwd: hunter2trust",
+        "PASSWD='hunter2trustno1'", "password=hunter2trust",
+        "api_key=AKIAIOSFODNN7EXAMPLE", "access_token: abcdefghijklmnop",
+        "auth-token = abcdefghijklmnop", "secret = s3cr3tvaluehere",
+        "Authorization: Bearer abcdefghijklmnop",
+        "sk-proj-abcdefghijklmnopqrst", "ghp_abcdefghijklmnopqrst",
+        "github_pat_abcdefghijklmnopqrst",
+        "-----BEGIN PRIVATE KEY-----\nx\n"}) {
+    CHECK(RedactMemorySecrets(secret).find("REDACTED") != std::string::npos);
+  }
+  CHECK(RedactMemorySecrets("nothing sensitive here") ==
+        "nothing sensitive here");
+
   TestWorkspace test("memory");
   const fs::path& root = test.root;
   const fs::path& workspace = test.workspace;

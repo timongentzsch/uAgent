@@ -154,14 +154,17 @@ void PrintProjectContext(const ProjectInstructions& instructions,
   }
 }
 
-void PrintTools(const std::vector<Tool>& tools) {
-  if (tools.empty()) return;
+// Tools and skills print the same row: a count and the names, joined. Routes
+// below are deliberately not this, since they carry a value per name.
+void PrintNameRow(std::string_view label,
+                  const std::vector<std::string>& names) {
+  if (names.empty()) return;
   std::string list;
-  for (const Tool& tool : tools) {
+  for (const std::string& name : names) {
     if (!list.empty()) list += ", ";
-    list += tool.name;
+    list += name;
   }
-  PrintStartupRow("Tools", std::to_string(tools.size()) + " available",
+  PrintStartupRow(label, std::to_string(names.size()) + " available",
                   {std::move(list)});
 }
 
@@ -184,17 +187,6 @@ void PrintRoutes(const RuntimeConfig& config) {
   }
   if (!count) return;
   PrintStartupRow("Routes", std::to_string(count) + " configured",
-                  {std::move(list)});
-}
-
-void PrintSkills(const std::vector<Skill>& skills) {
-  if (skills.empty()) return;
-  std::string list;
-  for (const Skill& skill : skills) {
-    if (!list.empty()) list += ", ";
-    list += skill.name;
-  }
-  PrintStartupRow("Skills", std::to_string(skills.size()) + " available",
                   {std::move(list)});
 }
 
@@ -239,12 +231,55 @@ bool ProbeModel(Api& api) {
   return !api.model.empty();
 }
 
+// Project docs and memory context share one byte budget: what the project
+// instructions do not spend is what the memory index may.
+ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
+                                     const RuntimeConfig& config,
+                                     bool memory_child, size_t project_limit) {
+  ProjectInstructions instructions;
+  if (!memory_child) {
+    instructions = LoadProjectInstructions(workspace, project_limit);
+  }
+  if (config.memory_enabled) {
+    size_t remaining = instructions.text.size() >= project_limit
+                           ? 0
+                           : project_limit - instructions.text.size();
+    MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
+    instructions.memory_index = std::move(memories.text);
+    instructions.memory_sources = std::move(memories.sources);
+    instructions.memory_truncated |= memories.truncated;
+    instructions.memory_limit = remaining;
+
+    size_t always_bytes =
+        static_cast<size_t>(std::max(int64_t{0}, config.memory_always_bytes));
+    if (always_bytes > 0) {
+      MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
+      instructions.memory_always = std::move(always.text);
+      for (const std::string& source : always.sources) {
+        if (std::find(instructions.memory_sources.begin(),
+                      instructions.memory_sources.end(),
+                      source) == instructions.memory_sources.end()) {
+          instructions.memory_sources.push_back(source);
+        }
+      }
+      if (always.truncated) {
+        instructions.memory_truncated = true;
+        instructions.memory_limit = always_bytes;
+      }
+    }
+  }
+  return instructions;
+}
+
 std::vector<Tool> BuildTools(AppContext& context,
                              const std::filesystem::path& workspace,
                              const json& trusted_snapshot,
                              std::vector<Skill> skills) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
+  // One read of the toolset selector: the three shapes it can take are one
+  // decision, not three unrelated conditions.
+  const std::string toolset = EnvStr("UAGENT_TOOLSET");
   bool inline_images =
       context.options.prompt.empty() && g_tty &&
       DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
@@ -254,12 +289,12 @@ std::vector<Tool> BuildTools(AppContext& context,
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
   }
-  if (EnvStr("UAGENT_TOOLSET") == "memory") {
+  if (toolset == "memory") {
     std::erase_if(tools, [](const Tool& tool) { return !tool.memory_store; });
     return tools;
   }
   // A tool-less child remains useful for constrained internal tasks.
-  if (EnvStr("UAGENT_TOOLSET") == "none") return {};
+  if (toolset == "none") return {};
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   if (search_route.Valid()) {
@@ -275,7 +310,7 @@ std::vector<Tool> BuildTools(AppContext& context,
         SubagentTool(api, runtime.processes, context.provider.routes,
                      context.provider.providers, context.options.debug));
   }
-  if (LeanToolset()) {
+  if (toolset == "lean") {
     KeepLeanTools(tools);
   }
   ApplyToolPolicy(tools, context.tool_policy);
@@ -285,13 +320,50 @@ std::vector<Tool> BuildTools(AppContext& context,
     std::vector<Tool> skill_tool{SkillTool(skills, tool_names)};
     ApplyToolPolicy(skill_tool, context.tool_policy);
     if (!skill_tool.empty()) {
-      PrintSkills(skills);
+      std::vector<std::string> skill_names;
+      skill_names.reserve(skills.size());
+      for (const Skill& skill : skills) skill_names.push_back(skill.name);
+      PrintNameRow("Skills", skill_names);
+      tool_names.push_back(skill_tool.front().name);
       tools.push_back(std::move(skill_tool.front()));
     }
   }
-  PrintTools(tools);
+  PrintNameRow("Tools", tool_names);
   PrintRoutes(runtime.config);
   return tools;
+}
+
+// Approval policy in one place, so the prompt and the yolo shortcut cannot
+// drift apart from the debug record of what was granted.
+Agent::Approver MakeApprover(AppContext* app) {
+  return [app](const Tool& tool, const json& arguments) {
+    bool granted = true;
+    if (!app->options.yolo) {
+      // Print the full command/payload before asking, so long commands are
+      // never truncated in the approval prompt.
+      std::string payload = TerminalSafe(ToolSummary(tool, arguments));
+      fprintf(stdout, "%sallow %s%s\n%s\n%s\n", YEL(),
+              TerminalSafe(tool.name).c_str(), RST(), payload.c_str(), RST());
+      std::string question = std::string(YEL()) + "allow " +
+                             TerminalSafe(tool.name) + "? [Y/n] " + RST();
+      granted = Confirm(question, /*default_yes=*/true);
+    }
+    DebugLog("approval", {{"tool", tool.name},
+                          {"automatic", app->options.yolo},
+                          {"granted", granted}});
+    return granted;
+  };
+}
+
+// An MCP rescan can add or drop tools mid-session, so the policy filter has to
+// run again on whatever the refresh produced.
+Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
+  return [app](std::chrono::steady_clock::time_point deadline) {
+    bool changed = McpRefreshTools(app->tools, app->runtime.mcp,
+                                   app->runtime.config, deadline);
+    if (changed) ApplyToolPolicy(app->tools, app->tool_policy);
+    return changed;
+  };
 }
 
 void LogReady(const AppContext& context) {
@@ -435,38 +507,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   api.render_stream = context->options.prompt.empty();
   size_t project_limit =
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
-  ProjectInstructions instructions;
-  if (!memory_child) {
-    instructions = LoadProjectInstructions(workspace, project_limit);
-  }
-  if (context->runtime.config.memory_enabled) {
-    size_t remaining = instructions.text.size() >= project_limit
-                           ? 0
-                           : project_limit - instructions.text.size();
-    MemoryIndex memories = LoadMemoryIndex(workspace, remaining);
-    instructions.memory_index = std::move(memories.text);
-    instructions.memory_sources = std::move(memories.sources);
-    instructions.memory_truncated |= memories.truncated;
-    instructions.memory_limit = remaining;
-
-    size_t always_bytes = static_cast<size_t>(
-        std::max(int64_t{0}, context->runtime.config.memory_always_bytes));
-    if (always_bytes > 0) {
-      MemoryIndex always = LoadAlwaysOnMemory(workspace, always_bytes);
-      instructions.memory_always = std::move(always.text);
-      for (const std::string& source : always.sources) {
-        if (std::find(instructions.memory_sources.begin(),
-                      instructions.memory_sources.end(),
-                      source) == instructions.memory_sources.end()) {
-          instructions.memory_sources.push_back(source);
-        }
-      }
-      if (always.truncated) {
-        instructions.memory_truncated = true;
-        instructions.memory_limit = always_bytes;
-      }
-    }
-  }
+  ProjectInstructions instructions = LoadInstructions(
+      workspace, context->runtime.config, memory_child, project_limit);
   printf("%s%sµAgent%s\n", RST(), BOLD(), RST());
   PrintProjectContext(instructions, project_limit);
   std::vector<Skill> skills =
@@ -494,31 +536,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,
-      context->runtime.side_usage,
-      [app](const Tool& tool, const json& arguments) {
-        bool granted = true;
-        if (!app->options.yolo) {
-          // Print the full command/payload before asking, so long commands are
-          // never truncated in the approval prompt.
-          std::string payload = TerminalSafe(ToolSummary(tool, arguments));
-          fprintf(stdout, "%sallow %s%s\n%s\n%s\n", YEL(),
-                  TerminalSafe(tool.name).c_str(), RST(), payload.c_str(),
-                  RST());
-          std::string question = std::string(YEL()) + "allow " +
-                                 TerminalSafe(tool.name) + "? [Y/n] " + RST();
-          granted = Confirm(question, /*default_yes=*/true);
-        }
-        DebugLog("approval", {{"tool", tool.name},
-                              {"automatic", app->options.yolo},
-                              {"granted", granted}});
-        return granted;
-      },
-      [app](std::chrono::steady_clock::time_point deadline) {
-        bool changed = McpRefreshTools(app->tools, app->runtime.mcp,
-                                       app->runtime.config, deadline);
-        if (changed) ApplyToolPolicy(app->tools, app->tool_policy);
-        return changed;
-      },
+      context->runtime.side_usage, MakeApprover(app), MakeToolRefresher(app),
       std::move(instructions), std::move(skills),
       &context->runtime.adaptive_system);
   LogReady(*context);

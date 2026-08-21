@@ -48,8 +48,7 @@ inline std::string ToolResultSummary(const ToolResult& result,
 }
 
 inline PresentationRecord ToolCallPresentation(const CallTask& task,
-                                               const ToolCall& call,
-                                               bool verbose) {
+                                               const ToolCall& call) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolCall;
   record.id = call.id;
@@ -57,16 +56,7 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   record.skill = task.tool && task.tool->name == "skill";
   record.poll =
       IsActivityPoll(task);  // outcome unknown until result; see below
-  bool full_label = verbose || (task.tool && task.tool->verbatim_label);
-  record.verbatim = full_label;
-  if (!task.label.empty()) {
-    if (full_label && task.label.find('\n') != std::string::npos) {
-      record.detail = task.label;
-      record.multiline = true;
-    } else {
-      record.summary = Utf8Trunc(task.label, size_t{2048});
-    }
-  }
+  SetCallLabel(record, task.label);
   return record;
 }
 

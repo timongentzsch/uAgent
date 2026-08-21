@@ -85,26 +85,30 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(std::filesystem::file_size(ledger) == 0);
   std::filesystem::remove(ledger);
 
-  setenv("UAGENT_MAX_STEPS", "0", 1);
-  setenv("UAGENT_MAX_TOOL_CALLS", "0", 1);
-  setenv("UAGENT_TEST_LONG", "999999999999999999999999999999", 1);
-  setenv("UAGENT_SESSION_BUDGET", "2.5", 1);
-  setenv("UAGENT_MAX_TURN_COST", "nan", 1);
-  setenv("UAGENT_SUBAGENT_MODEL", "fast/model", 1);
-  setenv("UAGENT_TOOL_TRACE_PROTECT_CHARS", "1234", 1);
-  setenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", "5678", 1);
-  setenv("UAGENT_SESSION_ARCHIVE_BYTES", "-1", 1);
-  setenv("UAGENT_WEB_SEARCH_MODEL", "vendor/search", 1);
-  setenv("UAGENT_WEB_SEARCH_BACKEND", "responses", 1);
-  setenv("UAGENT_WEB_SEARCH_URL", "https://search.example/v1", 1);
-  setenv("UAGENT_WEB_SEARCH_API_KEY", "secret-search-key", 1);
-  setenv("UAGENT_WEB_SEARCH_EFFORT", "low", 1);
-  setenv("UAGENT_WEB_SEARCH_ENGINE", "invalid", 1);
-  setenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge", 1);
-  setenv("UAGENT_WEB_SEARCH_MAX_RESULTS", "99", 1);
-  setenv("UAGENT_WEB_SEARCH_MAX_USES", "0", 1);
-  setenv("UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two", 1);
-  setenv("UAGENT_OPENROUTER_VARIANT", "floor", 1);
+  // One table drives the set and the clear, so the two cannot drift apart.
+  static constexpr std::pair<const char*, const char*> kRuntimeEnv[] = {
+      {"UAGENT_MAX_STEPS", "0"},
+      {"UAGENT_MAX_TOOL_CALLS", "0"},
+      {"UAGENT_TEST_LONG", "999999999999999999999999999999"},
+      {"UAGENT_SESSION_BUDGET", "2.5"},
+      {"UAGENT_MAX_TURN_COST", "nan"},
+      {"UAGENT_SUBAGENT_MODEL", "fast/model"},
+      {"UAGENT_TOOL_TRACE_PROTECT_CHARS", "1234"},
+      {"UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", "5678"},
+      {"UAGENT_SESSION_ARCHIVE_BYTES", "-1"},
+      {"UAGENT_WEB_SEARCH_MODEL", "vendor/search"},
+      {"UAGENT_WEB_SEARCH_BACKEND", "off"},
+      {"UAGENT_WEB_SEARCH_URL", "https://search.example/v1"},
+      {"UAGENT_WEB_SEARCH_API_KEY", "secret-search-key"},
+      {"UAGENT_WEB_SEARCH_EFFORT", "low"},
+      {"UAGENT_WEB_SEARCH_ENGINE", "invalid"},
+      {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "huge"},
+      {"UAGENT_WEB_SEARCH_MAX_RESULTS", "99"},
+      {"UAGENT_WEB_SEARCH_MAX_USES", "0"},
+      {"UAGENT_MCP_ROOTS", "/tmp/one:/tmp/two"},
+      {"UAGENT_OPENROUTER_VARIANT", "floor"},
+  };
+  for (const auto& entry : kRuntimeEnv) setenv(entry.first, entry.second, 1);
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 0);
   CHECK(config.max_tool_calls == 0);
@@ -116,7 +120,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(ToolTracePruneMinChars() == 5678);
   CHECK(config.session_archive_bytes == 0);
   CHECK(config.web_search_model == "vendor/search");
-  CHECK(config.web_search_backend == "responses");
+  CHECK(config.web_search_backend == "off");
   CHECK(config.web_search_url == "https://search.example/v1");
   CHECK(config.web_search_api_key == "secret-search-key");
   CHECK(config.web_search_effort == "low");
@@ -137,25 +141,7 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(diagnostics.value("tool_trace_prune_min_chars", int64_t{0}) == 5678);
   CHECK(diagnostics.value("web_search_api_key", "") == "<set>");
   CHECK(JsonDump(diagnostics).find("secret-search-key") == std::string::npos);
-  unsetenv("UAGENT_MAX_STEPS");
-  unsetenv("UAGENT_MAX_TOOL_CALLS");
-  unsetenv("UAGENT_TEST_LONG");
-  unsetenv("UAGENT_SESSION_BUDGET");
-  unsetenv("UAGENT_MAX_TURN_COST");
-  unsetenv("UAGENT_SUBAGENT_MODEL");
-  unsetenv("UAGENT_TOOL_TRACE_PROTECT_CHARS");
-  unsetenv("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS");
-  unsetenv("UAGENT_MCP_ROOTS");
-  unsetenv("UAGENT_SESSION_ARCHIVE_BYTES");
-  unsetenv("UAGENT_WEB_SEARCH_MODEL");
-  unsetenv("UAGENT_WEB_SEARCH_BACKEND");
-  unsetenv("UAGENT_WEB_SEARCH_URL");
-  unsetenv("UAGENT_WEB_SEARCH_API_KEY");
-  unsetenv("UAGENT_WEB_SEARCH_EFFORT");
-  unsetenv("UAGENT_WEB_SEARCH_ENGINE");
-  unsetenv("UAGENT_WEB_SEARCH_CONTEXT_SIZE");
-  unsetenv("UAGENT_WEB_SEARCH_MAX_RESULTS");
-  unsetenv("UAGENT_WEB_SEARCH_MAX_USES");
+  for (const auto& entry : kRuntimeEnv) unsetenv(entry.first);
   setenv("UAGENT_OPENROUTER_VARIANT", "invalid", 1);
   CHECK(RuntimeConfig::FromEnvironment().openrouter_variant.empty());
   unsetenv("UAGENT_OPENROUTER_VARIANT");
@@ -221,6 +207,38 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(!body.contains("max_tokens"));
   unsetenv("UAGENT_MAX_TOKENS");
   CHECK(body["stream_options"].value("include_usage", false));
+
+  // The incremental payload cache reuses the previous request's serialized
+  // messages, so it has to be byte-identical to dumping the whole body -
+  // provider prefix caching pays for exact bytes and a stale prefix would be
+  // silent. Every shape of history mutation is checked, not just appending.
+  json history = json::array();
+  auto message = [](const char* role, std::string text) {
+    return json{{"role", role}, {"content", std::move(text)}};
+  };
+  auto same_bytes = [&](const json& messages, const std::string& session) {
+    bool available = false;
+    return api.ChatPayload(messages, json::array(), session, &available) ==
+           JsonDump(
+               api.BuildChatBody(messages, json::array(), session, &available));
+  };
+  CHECK(same_bytes(history, ""));  // empty history
+  history.push_back(message("system", "base"));
+  CHECK(same_bytes(history, ""));  // first element
+  history.push_back(message("user", "h\u00e9llo \"quoted\"\n\t"));
+  CHECK(same_bytes(history, ""));  // append, with bytes that escape
+  CHECK(same_bytes(history, ""));  // unchanged history, full cache hit
+  history[1]["content"] = "edited";
+  CHECK(same_bytes(history, ""));  // last element rewritten
+  history[0]["content"] = "rewritten";
+  CHECK(same_bytes(history, ""));  // prefix rewritten
+  history.erase(1);
+  CHECK(same_bytes(history, ""));  // truncation
+  history.insert(history.begin(), message("user", "prepended"));
+  CHECK(same_bytes(history, ""));        // insertion shifts every element
+  CHECK(same_bytes(json::array(), ""));  // cleared
+  CHECK(same_bytes(history, ""));        // refilled after a clear
+  CHECK(same_bytes(history, "stable-session"));  // body around it changes
 
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;
@@ -326,53 +344,28 @@ void TestAgentConfigAllowlist() {
                       "OPENROUTER_EFFORT=high\n")
             .output.starts_with("wrote "));
 
-  const char* inherited_home = getenv("HOME");
-  const char* inherited_config = getenv("UAGENT_CONFIG_FILE");
-  std::string prior_home = inherited_home ? inherited_home : "";
-  std::string prior_config = inherited_config ? inherited_config : "";
-  setenv("HOME", root.c_str(), 1);
-  unsetenv("UAGENT_CONFIG_FILE");
-  unsetenv("OPENROUTER_API_KEY");
-  unsetenv("OPENROUTER_MODEL");
-  unsetenv("OPENROUTER_EFFORT");
+  ScopedEnv scoped_home("HOME", root.c_str());
+  ScopedEnv scoped_config("UAGENT_CONFIG_FILE");
+  ScopedEnv scoped_key("OPENROUTER_API_KEY");
+  ScopedEnv scoped_model("OPENROUTER_MODEL");
+  ScopedEnv scoped_effort("OPENROUTER_EFFORT");
   ConfigManager loaded = ConfigManager::Capture(/*trust_project=*/false, {});
   (void)loaded.Initialize();
   CHECK(EnvStr("OPENROUTER_API_KEY") == "test-key");
   CHECK(EnvStr("OPENROUTER_MODEL") == "vendor/model");
   CHECK(EnvStr("OPENROUTER_EFFORT") == "high");
 
-  unsetenv("OPENROUTER_API_KEY");
-  unsetenv("OPENROUTER_MODEL");
-  unsetenv("OPENROUTER_EFFORT");
-  if (inherited_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
-  if (inherited_config) {
-    setenv("UAGENT_CONFIG_FILE", prior_config.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_CONFIG_FILE");
-  }
   std::error_code ec;
   fs::remove_all(root, ec);
 }
 
 void TestChildEnvironmentPolicy() {
-  auto prior = [](const char* key) -> std::optional<std::string> {
-    const char* value = getenv(key);
-    return value ? std::optional<std::string>(value) : std::nullopt;
-  };
-  const auto prior_api = prior("UAGENT_API_KEY");
-  const auto prior_token = prior("GITHUB_TOKEN");
-  const auto prior_usage = prior("UAGENT_USAGE_FILE");
-  const auto prior_safe = prior("UAGENT_CHILD_ENV_SAFE");
-  const auto prior_allow = prior("UAGENT_SHELL_ENV_ALLOW");
-  setenv("UAGENT_API_KEY", "secret", 1);
-  setenv("GITHUB_TOKEN", "secret", 1);
-  setenv("UAGENT_USAGE_FILE", "/tmp/ledger", 1);
-  setenv("UAGENT_CHILD_ENV_SAFE", "visible", 1);
-  setenv("UAGENT_SHELL_ENV_ALLOW", " GITHUB_TOKEN, SSH_AUTH_SOCK ", 1);
+  ScopedEnv scoped_api("UAGENT_API_KEY", "secret");
+  ScopedEnv scoped_token("GITHUB_TOKEN", "secret");
+  ScopedEnv scoped_usage("UAGENT_USAGE_FILE", "/tmp/ledger");
+  ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
+  ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
+                         " GITHUB_TOKEN, SSH_AUTH_SOCK ");
 
   ChildEnvironment shell;
   CHECK(!shell.Contains("UAGENT_API_KEY"));
@@ -389,19 +382,6 @@ void TestChildEnvironmentPolicy() {
       {{"UAGENT_API_KEY", "explicit"}, {"UAGENT_USAGE_FILE", "/tmp/child"}});
   CHECK(delegated.Contains("UAGENT_API_KEY"));
   CHECK(delegated.Contains("UAGENT_USAGE_FILE"));
-
-  auto restore = [](const char* key, const std::optional<std::string>& value) {
-    if (value) {
-      setenv(key, value->c_str(), 1);
-    } else {
-      unsetenv(key);
-    }
-  };
-  restore("UAGENT_API_KEY", prior_api);
-  restore("GITHUB_TOKEN", prior_token);
-  restore("UAGENT_USAGE_FILE", prior_usage);
-  restore("UAGENT_CHILD_ENV_SAFE", prior_safe);
-  restore("UAGENT_SHELL_ENV_ALLOW", prior_allow);
 }
 
 void TestModelPreference() {
@@ -410,9 +390,7 @@ void TestModelPreference() {
                   ("uagent-model-preference-" +
                    std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root);
-  const char* inherited_home = getenv("HOME");
-  std::string prior_home = inherited_home ? inherited_home : "";
-  setenv("HOME", root.c_str(), 1);
+  ScopedEnv scoped_home("HOME", root.c_str());
 
   std::string error;
   CHECK(SaveModelPreference({"provider/fast", "https://example.test/v1", true},
@@ -427,18 +405,15 @@ void TestModelPreference() {
   CHECK(!SaveModelPreference({"bad\nmodel", "https://example.test/v1", false},
                              error));
 
-  if (inherited_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
   std::error_code ec;
   fs::remove_all(root, ec);
 }
 
 void TestProviderTemplates() {
-  const ProviderTemplate* openrouter = FindProviderTemplate("openrouter");
+  const ProviderTemplate* openrouter =
+      FindProviderTemplateForUrl("https://openrouter.ai/api/v1");
   CHECK(openrouter != nullptr);
+  CHECK(openrouter && openrouter->name == std::string("openrouter"));
   CHECK(openrouter && openrouter->matches_url("https://openrouter.ai/api/v1"));
   CHECK(FindProviderTemplateForUrl("https://edge.openrouter.ai/v1") ==
         openrouter);
@@ -453,12 +428,10 @@ void TestProviderTemplates() {
       +[](std::string url) { return url == "https://provider.test/v1"; },
       ProviderProtocol::kOpenAi,
   };
-  const char* inherited_effort = getenv("UAGENT_REASONING_EFFORT");
-  std::string prior_effort = inherited_effort ? inherited_effort : "";
-  setenv(kTestProvider.api_key_env, "test-key", 1);
-  setenv(kTestProvider.model_env, "selected-model", 1);
-  setenv(kTestProvider.effort_env, "low", 1);
-  unsetenv("UAGENT_REASONING_EFFORT");
+  ScopedEnv scoped_key(kTestProvider.api_key_env, "test-key");
+  ScopedEnv scoped_model(kTestProvider.model_env, "selected-model");
+  ScopedEnv scoped_provider_effort(kTestProvider.effort_env, "low");
+  ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT");
   RuntimeConfig config;
   Api api(config);
   CHECK(ApplyProviderTemplate(api, kTestProvider));
@@ -466,29 +439,20 @@ void TestProviderTemplates() {
   CHECK(api.api_key == "test-key");
   CHECK(api.model == "selected-model");
   CHECK(api.reasoning_effort == "low");
-  unsetenv(kTestProvider.api_key_env);
-  unsetenv(kTestProvider.model_env);
-  unsetenv(kTestProvider.effort_env);
-  if (inherited_effort) {
-    setenv("UAGENT_REASONING_EFFORT", prior_effort.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_REASONING_EFFORT");
-  }
 }
 
 void TestNamedProviders() {
-  std::vector<std::pair<const char*, std::optional<std::string>>> prior_route;
-  for (const char* key : {"UAGENT_BASE_URL", "UAGENT_MODEL",
-                          "UAGENT_REASONING_EFFORT", "UAGENT_CONTEXT"}) {
-    const char* value = getenv(key);
-    prior_route.emplace_back(
-        key, value ? std::optional<std::string>(value) : std::nullopt);
-  }
-  const char* inherited = getenv("UAGENT_PROVIDERS");
-  std::string prior = inherited ? inherited : "";
-  const char* inherited_openrouter = getenv("OPENROUTER_API_KEY");
-  std::string prior_openrouter =
-      inherited_openrouter ? inherited_openrouter : "";
+  // Route variables keep their inherited value until the body changes them,
+  // and every one of them is restored when this scope ends.
+  ScopedEnv scoped_base_url("UAGENT_BASE_URL", std::getenv("UAGENT_BASE_URL"));
+  ScopedEnv scoped_model("UAGENT_MODEL", std::getenv("UAGENT_MODEL"));
+  ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
+                          std::getenv("UAGENT_REASONING_EFFORT"));
+  ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
+  ScopedEnv scoped_providers("UAGENT_PROVIDERS",
+                             std::getenv("UAGENT_PROVIDERS"));
+  ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
+                              std::getenv("OPENROUTER_API_KEY"));
   json configured = {
       {"", {{"base_url", "https://empty.test/v1"}}},
       {"all", {{"base_url", "https://reserved.test/v1"}}},
@@ -631,34 +595,12 @@ void TestNamedProviders() {
   CHECK(openrouter && openrouter->api_key == "openrouter-key");
   AddAvailableProviderTemplates(catalog);
   CHECK(catalog.providers.size() == 3);
-
-  if (inherited) {
-    setenv("UAGENT_PROVIDERS", prior.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_PROVIDERS");
-  }
-  if (inherited_openrouter) {
-    setenv("OPENROUTER_API_KEY", prior_openrouter.c_str(), 1);
-  } else {
-    unsetenv("OPENROUTER_API_KEY");
-  }
-  for (const auto& [key, value] : prior_route) {
-    if (value) {
-      setenv(key, value->c_str(), 1);
-    } else {
-      unsetenv(key);
-    }
-  }
 }
 
 void TestEffectiveConfigReload() {
   TestWorkspace workspace("effective-config");
-  const char* inherited = getenv("UAGENT_MAX_STEPS");
-  std::string prior = inherited ? inherited : "";
-  const char* inherited_model = getenv("UAGENT_MODEL");
-  std::string prior_model = inherited_model ? inherited_model : "";
-  setenv("UAGENT_MAX_STEPS", "9", 1);
-  unsetenv("UAGENT_MODEL");
+  ScopedEnv scoped_steps("UAGENT_MAX_STEPS", "9");
+  ScopedEnv scoped_model("UAGENT_MODEL");
   std::string path = UagentConfigPath();
   CHECK(ToolWriteFile(
             path,
@@ -715,17 +657,6 @@ void TestEffectiveConfigReload() {
   }
   CHECK(JsonDump(manager.DiagnosticJson(reload ? reload->active : active))
             .find("changed-secret") == std::string::npos);
-
-  if (inherited) {
-    setenv("UAGENT_MAX_STEPS", prior.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_MAX_STEPS");
-  }
-  if (inherited_model) {
-    setenv("UAGENT_MODEL", prior_model.c_str(), 1);
-  } else {
-    unsetenv("UAGENT_MODEL");
-  }
 }
 
 }  // namespace uagent

@@ -60,9 +60,14 @@ inline std::string CitationMarkdown(const json& annotations) {
   return out;
 }
 
-inline std::string CitationEvidence(const json& annotations,
-                                    size_t max_entries = 5,
-                                    size_t excerpt_chars = 800) {
+// What one search answer may spend on evidence: enough sources to corroborate
+// a claim, enough of each to judge it, and no more context than that is worth.
+inline constexpr size_t kEvidenceEntries = 5;
+inline constexpr size_t kEvidenceExcerptChars = 800;
+
+inline std::string CitationEvidence(
+    const json& annotations, size_t max_entries = kEvidenceEntries,
+    size_t excerpt_chars = kEvidenceExcerptChars) {
   std::vector<CitationEntry> entries = CitationEntries(annotations);
   std::string out;
   for (size_t i = 0; i < std::min(entries.size(), max_entries); ++i) {

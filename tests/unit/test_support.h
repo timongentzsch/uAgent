@@ -13,6 +13,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -92,47 +93,106 @@ class TestWorkspace {
   bool had_home_ = false;
 };
 
+// Sets an environment variable immediately and restores the inherited value
+// (or its absence) when the scope ends, so a test may read back what it set.
+class ScopedEnv {
+ public:
+  ScopedEnv(const char* key, const char* value) : key_(key) {
+    const char* prior = std::getenv(key);
+    had_ = prior != nullptr;
+    if (prior) prior_ = prior;
+    if (value) {
+      setenv(key, value, 1);
+    } else {
+      unsetenv(key);
+    }
+  }
+  ScopedEnv(const char* key, const std::string& value)
+      : ScopedEnv(key, value.c_str()) {}
+  // Unsets for the scope.
+  explicit ScopedEnv(const char* key) : ScopedEnv(key, nullptr) {}
+
+  ~ScopedEnv() {
+    if (had_) {
+      setenv(key_, prior_.c_str(), 1);
+    } else {
+      unsetenv(key_);
+    }
+  }
+
+  ScopedEnv(const ScopedEnv&) = delete;
+  ScopedEnv& operator=(const ScopedEnv&) = delete;
+
+ private:
+  const char* key_;
+  std::string prior_;
+  bool had_ = false;
+};
+
+// Blocks until the activity behind `job` has drained its output, or until the
+// timeout expires; returns whether it drained.
+inline bool WaitForActivityDrain(
+    ProcessSupervisor& supervisor, const BgJob& job,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+  if (!job.session) return false;
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lock(job.session->mutex);
+      if (job.session->state == ActivityState::kDrained) return true;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    const uint64_t generation = supervisor.Generation();
+    supervisor.WaitForChange(generation, deadline);
+  }
+}
+
 extern int failures;
 void Check(bool condition, const char* expression, int line);
 
-void TestTextToolProtocol();
-void TestToolResults();
-void TestRegistries();
-void TestOptions();
-void TestLineNumberStripping();
-void TestMarkdownBlankLines();
-void TestMarkdownMath();
-void TestCapsAndEscaping();
-void TestFileTools();
-void TestActivityBar();
-void TestPollCollapse();
-void TestTerminalSafety();
-void TestTerminalInputDecoder();
-void TestSseChunkPartitions();
-void TestSseFraming();
-void TestBackgroundValidation();
-void TestActivitySessions();
-void TestToolExecutionPolicy();
-void TestOpenRouterServerSearch();
-void TestAttachmentEncoding();
-void TestGrepTool();
-void TestPythonTool();
-void TestRuntimeOwnershipHelpers();
-void TestAgentConfigAllowlist();
-void TestEffectiveConfigReload();
-void TestChildEnvironmentPolicy();
-void TestModelPreference();
-void TestProviderTemplates();
-void TestNamedProviders();
-void TestSafeJsonValues();
-void TestProjectInstructionDiscovery();
-void TestMcpContractHelpers();
-void TestWorkspaceScopedSession();
-void TestConversation();
-void TestObservabilityEvents();
-void TestProjectTrustTracksSemanticConfig();
-void TestScopedBaseAndMemory();
-void TestSkillDiscovery();
+// The suite in run order: declarations and dispatch expand from this list.
+#define UAGENT_TESTS(X)                   \
+  X(TestTextToolProtocol)                 \
+  X(TestToolResults)                      \
+  X(TestRegistries)                       \
+  X(TestOptions)                          \
+  X(TestMarkdownBlankLines)               \
+  X(TestMarkdownMath)                     \
+  X(TestCapsAndEscaping)                  \
+  X(TestFileTools)                        \
+  X(TestActivityBar)                      \
+  X(TestPollCollapse)                     \
+  X(TestTerminalSafety)                   \
+  X(TestTerminalInputDecoder)             \
+  X(TestSseChunkPartitions)               \
+  X(TestSseFraming)                       \
+  X(TestBackgroundValidation)             \
+  X(TestActivitySessions)                 \
+  X(TestToolExecutionPolicy)              \
+  X(TestOpenRouterServerSearch)           \
+  X(TestAttachmentEncoding)               \
+  X(TestGrepTool)                         \
+  X(TestPythonTool)                       \
+  X(TestRuntimeOwnershipHelpers)          \
+  X(TestAgentConfigAllowlist)             \
+  X(TestEffectiveConfigReload)            \
+  X(TestChildEnvironmentPolicy)           \
+  X(TestModelPreference)                  \
+  X(TestProviderTemplates)                \
+  X(TestNamedProviders)                   \
+  X(TestSafeJsonValues)                   \
+  X(TestProjectInstructionDiscovery)      \
+  X(TestMcpContractHelpers)               \
+  X(TestConversation)                     \
+  X(TestObservabilityEvents)              \
+  X(TestWorkspaceScopedSession)           \
+  X(TestProjectTrustTracksSemanticConfig) \
+  X(TestScopedBaseAndMemory)              \
+  X(TestSkillDiscovery)
+
+#define UAGENT_DECLARE_TEST(name) void name();
+UAGENT_TESTS(UAGENT_DECLARE_TEST)
+#undef UAGENT_DECLARE_TEST
 
 }  // namespace uagent
 

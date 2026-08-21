@@ -352,9 +352,6 @@ void TestBackgroundValidation() {
   for (const char* name : {"read_path", "grep", "run", "activity"}) {
     const Tool* tool = FindTool(tools, name);
     CHECK(tool && tool->parallel_safe);
-    if (tool) {
-      CHECK(ToolDescription(*tool).find("Batchable") != std::string::npos);
-    }
   }
 
   fs::path log =

@@ -26,20 +26,28 @@ constexpr std::array<std::string_view, 14> kBlocks = {
     "br", "p",  "div", "li", "tr", "h1", "h2",
     "h3", "h4", "h5",  "h6", "ul", "ol", "table"};
 
-constexpr std::array<std::pair<std::string_view, std::string_view>, 6>
-    kEntities = {{{"&amp;", "&"},
-                  {"&lt;", "<"},
-                  {"&gt;", ">"},
-                  {"&quot;", "\""},
-                  {"&#39;", "'"},
-                  {"&nbsp;", " "}}};
+constexpr std::array<std::pair<std::string_view, char>, 6> kEntities = {
+    {{"&amp;", '&'},
+     {"&lt;", '<'},
+     {"&gt;", '>'},
+     {"&quot;", '"'},
+     {"&#39;", '\''},
+     {"&nbsp;", ' '}}};
 
-bool Listed(const auto& names, const std::string& name) {
-  return std::find(names.begin(), names.end(), name) != names.end();
+bool Listed(const auto& names, std::string_view name) {
+  return std::any_of(names.begin(), names.end(), [&](std::string_view listed) {
+    return name.size() == listed.size() &&
+           std::equal(name.begin(), name.end(), listed.begin(),
+                      [](char left, char lowered) {
+                        return tolower(static_cast<unsigned char>(left)) ==
+                               lowered;
+                      });
+  });
 }
 
-// The tag name of `<...>` at `open`, lowercased and without a leading slash.
-std::string TagName(const std::string& html, size_t open) {
+// The tag name of `<...>` at `open`, without a leading slash; case folds at
+// comparison time so no lowercased copy is made.
+std::string_view TagName(const std::string& html, size_t open) {
   size_t at = open + 1;
   if (at < html.size() && html[at] == '/') ++at;
   size_t end = at;
@@ -47,7 +55,7 @@ std::string TagName(const std::string& html, size_t open) {
          (isalnum(static_cast<unsigned char>(html[end])) || html[end] == '!')) {
     ++end;
   }
-  return AsciiLower(html.substr(at, end - at));
+  return std::string_view(html).substr(at, end - at);
 }
 
 // Skip past a `<name ...>...</name>` pair, or past the opening tag alone when
@@ -68,20 +76,27 @@ size_t SkipElement(const std::string& html, size_t open,
                             : static_cast<size_t>(found - html.begin()));
 }
 
-void Decode(std::string& text) {
-  for (const auto& [entity, glyph] : kEntities) {
-    ReplaceAll(text, std::string(entity), std::string(glyph));
-  }
-}
-
 // One space per whitespace run, one blank line per newline run, no trailing
-// spaces. A page's indentation is markup, not meaning.
+// spaces, entities decoded in the same pass. A page's indentation is markup,
+// not meaning.
 std::string Tidy(const std::string& text) {
   std::string out;
   out.reserve(text.size());
   int newlines = 0;
   bool space = false;
-  for (char c : text) {
+  for (size_t at = 0; at < text.size(); ++at) {
+    char c = text[at];
+    if (c == '&') {
+      const auto* entity = std::find_if(
+          kEntities.begin(), kEntities.end(), [&](const auto& candidate) {
+            return text.compare(at, candidate.first.size(), candidate.first) ==
+                   0;
+          });
+      if (entity != kEntities.end()) {
+        c = entity->second;
+        at += entity->first.size() - 1;
+      }
+    }
     if (c == '\n') {
       ++newlines;
       space = false;
@@ -129,7 +144,7 @@ std::string HtmlToText(const std::string& html) {
       at = end == std::string::npos ? html.size() : end + 3;
       continue;
     }
-    std::string name = TagName(html, at);
+    std::string_view name = TagName(html, at);
     size_t end;
     if (Listed(kDropped, name)) {
       end = SkipElement(html, at, name);
@@ -141,7 +156,6 @@ std::string HtmlToText(const std::string& html) {
     if (end == std::string::npos) break;
     at = end + 1;
   }
-  Decode(text);
   return Tidy(text);
 }
 

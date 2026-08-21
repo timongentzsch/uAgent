@@ -22,6 +22,7 @@
 #include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/path_policy.h"
@@ -33,14 +34,15 @@ namespace {
 constexpr size_t kMaxDiffDisplayLines = 80;
 constexpr size_t kMaxDiffDisplayLineBytes = 1000;
 
-std::vector<std::string> DiffLines(const std::string& text) {
-  std::vector<std::string> lines;
+// Views borrow `text`, so every caller keeps the buffer alive past the diff.
+std::vector<std::string_view> DiffLines(std::string_view text) {
+  std::vector<std::string_view> lines;
   for (size_t begin = 0; begin < text.size();) {
     size_t end = text.find('\n', begin);
-    std::string line = text.substr(begin, end - begin);
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    lines.push_back(std::move(line));
-    if (end == std::string::npos) break;
+    std::string_view line = text.substr(begin, end - begin);
+    if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+    lines.push_back(line);
+    if (end == std::string_view::npos) break;
     begin = end + 1;
   }
   return lines;
@@ -55,12 +57,12 @@ struct EditDisplay {
 };
 
 void AppendDisplayLine(EditDisplay& display, char marker,
-                       const std::string& text) {
+                       std::string_view text) {
   if (display.lines >= kMaxDiffDisplayLines) {
     display.truncated = true;
     return;
   }
-  std::string shown = Utf8Prefix(text, kMaxDiffDisplayLineBytes);
+  std::string shown = Utf8Prefix(std::string(text), kMaxDiffDisplayLineBytes);
   if (shown.size() < text.size()) shown += "…";
   display.body += marker;
   display.body += shown;
@@ -74,8 +76,8 @@ struct LineDiff {
 
 // Common-prefix/suffix trim, not a minimal (LCS) diff; good enough for a
 // human-scanned receipt and shared by every whole- or partial-file display.
-LineDiff TrimCommonLines(const std::vector<std::string>& old_lines,
-                         const std::vector<std::string>& new_lines) {
+LineDiff TrimCommonLines(const std::vector<std::string_view>& old_lines,
+                         const std::vector<std::string_view>& new_lines) {
   size_t prefix = 0;
   while (prefix < old_lines.size() && prefix < new_lines.size() &&
          old_lines[prefix] == new_lines[prefix]) {
@@ -92,8 +94,8 @@ LineDiff TrimCommonLines(const std::vector<std::string>& old_lines,
 }
 
 void AppendLineDiff(EditDisplay& display,
-                    const std::vector<std::string>& old_lines,
-                    const std::vector<std::string>& new_lines,
+                    const std::vector<std::string_view>& old_lines,
+                    const std::vector<std::string_view>& new_lines,
                     const LineDiff& diff) {
   if (diff.prefix > 0) {
     AppendDisplayLine(display, ' ', old_lines[diff.prefix - 1]);
@@ -128,8 +130,8 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
   std::string before = data.substr(block_start, block_end - block_start);
   std::string after = before;
   after.replace(match - block_start, old_text.size(), new_text);
-  std::vector<std::string> old_lines = DiffLines(before);
-  std::vector<std::string> new_lines = DiffLines(after);
+  std::vector<std::string_view> old_lines = DiffLines(before);
+  std::vector<std::string_view> new_lines = DiffLines(after);
   LineDiff diff = TrimCommonLines(old_lines, new_lines);
   display.removed += static_cast<int64_t>(diff.old_end - diff.prefix) * applied;
   display.added += static_cast<int64_t>(diff.new_end - diff.prefix) * applied;
@@ -245,12 +247,12 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
 }
 
 ToolResult ToolWriteFile(const std::string& path, const std::string& content) {
-  return ToolWriteFileMode(path, content, 0644);
+  return ToolWriteFileMode(path, content, kSharedFileMode);
 }
 
 ToolResult ToolWritePrivateFile(const std::string& path,
                                 const std::string& content) {
-  return ToolWriteFileMode(path, content, 0600);
+  return ToolWriteFileMode(path, content, kPrivateFileMode);
 }
 
 // strip read_file-style "   123\t" prefixes, but only if every non-empty line
@@ -282,14 +284,21 @@ std::string StripLineNumbers(const std::string& s) {
 
 namespace {
 
-int64_t CountOccurrences(const std::string& hay, const std::string& needle) {
-  if (needle.empty()) return 0;
-  int64_t n = 0;
+struct Occurrences {
+  int64_t count = 0;
+  size_t first = std::string::npos;
+};
+
+Occurrences CountOccurrences(const std::string& hay,
+                             const std::string& needle) {
+  Occurrences found;
+  if (needle.empty()) return found;
   for (size_t pos = 0; (pos = hay.find(needle, pos)) != std::string::npos;
        pos += needle.size()) {
-    ++n;
+    if (found.count == 0) found.first = pos;
+    ++found.count;
   }
-  return n;
+  return found;
 }
 
 bool MostlyCrLf(const std::string& text) {
@@ -393,6 +402,35 @@ void ReplaceAllOccurrences(std::string& data, const std::string& old_s,
   data.swap(out);
 }
 
+struct ResolvedEdit {
+  std::string old_text;
+  Occurrences found;
+  bool normalized_old = false;
+};
+
+ResolvedEdit ResolveEditText(const std::string& data, const FileEdit& edit,
+                             bool file_crlf) {
+  ResolvedEdit resolved{edit.old_text, CountOccurrences(data, edit.old_text),
+                        false};
+  if (resolved.found.count == 0) {  // copied output from line-numbering readers
+    std::string stripped = StripLineNumbers(edit.old_text);
+    if (stripped != resolved.old_text) {
+      resolved.old_text = std::move(stripped);
+      resolved.found = CountOccurrences(data, resolved.old_text);
+    }
+  }
+  if (resolved.found.count == 0) {  // normalized model text, style unchanged
+    std::string normalized =
+        FileLineEnding(resolved.old_text, file_crlf, /*normalize_crlf=*/true);
+    if (normalized != resolved.old_text) {
+      resolved.old_text = std::move(normalized);
+      resolved.found = CountOccurrences(data, resolved.old_text);
+      resolved.normalized_old = resolved.found.count > 0;
+    }
+  }
+  return resolved;
+}
+
 }  // namespace
 
 ToolResult ToolEditFile(const std::string& path,
@@ -437,25 +475,9 @@ ToolResult ToolEditFile(const std::string& path,
           "error: edit " + std::to_string(i + 1) + " has an empty `old` value");
     }
     const bool file_crlf = MostlyCrLf(data);
-    std::string old_eff = edit.old_text;
-    int64_t count = CountOccurrences(data, old_eff);
-    bool normalized_old = false;
-    if (count == 0) {  // accept copied output from line-numbering readers
-      std::string stripped = StripLineNumbers(edit.old_text);
-      if (stripped != edit.old_text) {
-        old_eff = stripped;
-        count = CountOccurrences(data, old_eff);
-      }
-    }
-    if (count == 0) {  // tolerate normalized model text without changing style
-      std::string normalized =
-          FileLineEnding(old_eff, file_crlf, /*normalize_crlf=*/true);
-      if (normalized != old_eff) {
-        old_eff = normalized;
-        count = CountOccurrences(data, old_eff);
-        normalized_old = count > 0;
-      }
-    }
+    ResolvedEdit resolved = ResolveEditText(data, edit, file_crlf);
+    const std::string& old_eff = resolved.old_text;
+    const int64_t count = resolved.found.count;
     if (count == 0) {
       std::string normalized_new =
           FileLineEnding(edit.new_text, file_crlf, /*normalize_crlf=*/true);
@@ -477,12 +499,12 @@ ToolResult ToolEditFile(const std::string& path,
                              " times in " + path +
                              "; add surrounding context or set `replace_all`");
     }
-    size_t match = data.find(old_eff);
+    size_t match = resolved.found.first;
     bool replacement_crlf =
         count == 1 ? CrLfAtMatch(data, match, old_eff.size(), file_crlf)
                    : file_crlf;
-    std::string new_eff =
-        FileLineEnding(edit.new_text, replacement_crlf, normalized_old);
+    std::string new_eff = FileLineEnding(edit.new_text, replacement_crlf,
+                                         resolved.normalized_old);
     if (old_eff == new_eff) {
       ++already_applied;
       continue;
@@ -623,8 +645,8 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
 std::string WholeFileDiffDisplay(const std::string& path,
                                  const std::string& previous,
                                  const std::string& content, bool existed) {
-  std::vector<std::string> old_lines = DiffLines(previous);
-  std::vector<std::string> new_lines = DiffLines(content);
+  std::vector<std::string_view> old_lines = DiffLines(previous);
+  std::vector<std::string_view> new_lines = DiffLines(content);
   LineDiff diff = TrimCommonLines(old_lines, new_lines);
   if (diff.old_end == diff.prefix && diff.new_end == diff.prefix) return "";
 

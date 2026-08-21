@@ -16,11 +16,12 @@ namespace {
 // One table drives both parsing and `--help`, so a flag cannot be accepted
 // without being documented or documented without being accepted.
 enum class FlagKind {
-  kToggle,  // sets a bool on Options
-  kConfig,  // takes a value, forwarded to the config layer as `key`
-  kBudget,  // takes a validated dollar amount
-  kPrompt,  // takes the headless prompt
-  kAttach,  // takes a path, repeatable
+  kToggle,     // sets a bool on Options
+  kConfig,     // takes a value, forwarded to the config layer as `key`
+  kConfigSet,  // takes none, forwards the fixed `preset` as `key`
+  kBudget,     // takes a validated dollar amount
+  kPrompt,     // takes the headless prompt
+  kAttach,     // takes a path, repeatable
   kVersion,
   kHelp,
 };
@@ -29,9 +30,14 @@ struct FlagSpec {
   std::string_view flag;
   FlagKind kind;
   bool Options::* toggle = nullptr;
-  const char* key = nullptr;    // config key for kConfig
+  const char* key = nullptr;    // config key for kConfig/kConfigSet
   const char* value = nullptr;  // metavar; nullptr means the flag takes none
   const char* help = nullptr;   // empty help hides an alias from the listing
+  // The value is written as `--flag=VALUE` instead of a separate argument, is
+  // optional, and lands in `text` rather than the config layer.
+  bool optional_value = false;
+  std::string Options::* text = nullptr;
+  const char* preset = nullptr;  // config value for kConfigSet
 };
 
 constexpr FlagSpec kFlags[] = {
@@ -45,8 +51,11 @@ constexpr FlagSpec kFlags[] = {
      nullptr, "emit versioned JSONL events in headless mode"},
     {"--budget", FlagKind::kBudget, nullptr, nullptr, "USD",
      "cap total session spend between model calls"},
-    {"--no-memory", FlagKind::kToggle, &Options::no_memory, nullptr, nullptr,
-     "disable memory recall and writes for this session"},
+    {.flag = "--no-memory",
+     .kind = FlagKind::kConfigSet,
+     .key = "UAGENT_MEMORY",
+     .help = "disable memory recall and writes for this session",
+     .preset = "0"},
     {"--model", FlagKind::kConfig, nullptr, "UAGENT_MODEL", "SELECTION",
      "conversation model as [provider/]model[:variant][:effort]"},
     {"--image-model", FlagKind::kConfig, nullptr, "UAGENT_IMAGE_MODEL",
@@ -57,8 +66,13 @@ constexpr FlagSpec kFlags[] = {
      "UAGENT_WEB_SEARCH_MODEL", "SELECTION", "model route for web search"},
     {"--memory-model", FlagKind::kConfig, nullptr, "UAGENT_MEMORY_MODEL",
      "SELECTION", "model route for background memory extraction"},
-    {"--debug", FlagKind::kToggle, &Options::debug, nullptr, nullptr,
-     "write a sensitive reconstructable JSONL trace"},
+    {.flag = "--debug",
+     .kind = FlagKind::kToggle,
+     .toggle = &Options::debug,
+     .value = "PATH",
+     .help = "write a sensitive reconstructable JSONL trace",
+     .optional_value = true,
+     .text = &Options::debug_path},
     {"--attach", FlagKind::kAttach, nullptr, nullptr, "PATH",
      "send an image or document with the first message"},
     {"-c", FlagKind::kToggle, &Options::resume_latest, nullptr, nullptr,
@@ -88,27 +102,36 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
   ParsedOptions parsed;
   for (int index = 1; index < argc; ++index) {
     std::string argument = argv[index];
+    std::string value;
+    bool has_value = false;
     const FlagSpec* spec = FindFlag(argument);
     if (!spec) {
-      if (argument.starts_with("--debug=")) {
-        parsed.options.debug = true;
-        parsed.options.debug_path = argument.substr(8);
-        continue;
+      // `--flag=VALUE` is accepted only where the table marks the value
+      // optional; every other flag spells its value as the next argument.
+      size_t equals = argument.find('=');
+      const FlagSpec* prefixed =
+          equals == std::string::npos
+              ? nullptr
+              : FindFlag(std::string_view(argument).substr(0, equals));
+      if (!prefixed || !prefixed->optional_value) {
+        parsed.error = "unknown flag: " + argument;
+        return parsed;
       }
-      parsed.error = "unknown flag: " + argument;
-      return parsed;
-    }
-    std::string value;
-    if (spec->value) {
+      spec = prefixed;
+      value = argument.substr(equals + 1);
+      has_value = true;
+    } else if (spec->value && !spec->optional_value) {
       if (++index >= argc) {
         parsed.error = argument + " requires a value";
         return parsed;
       }
       value = argv[index];
+      has_value = true;
     }
     switch (spec->kind) {
       case FlagKind::kToggle:
         parsed.options.*spec->toggle = true;
+        if (has_value && spec->text) parsed.options.*spec->text = value;
         break;
       case FlagKind::kConfig:
         if (Trim(value).empty()) {
@@ -117,13 +140,19 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         }
         parsed.options.overrides[spec->key] = Trim(value);
         break;
-      case FlagKind::kBudget:
-        if (!ParseFiniteDouble(value.c_str(), parsed.options.budget) ||
-            parsed.options.budget <= 0) {
+      case FlagKind::kConfigSet:
+        parsed.options.overrides[spec->key] = spec->preset;
+        break;
+      case FlagKind::kBudget: {
+        double budget = 0;
+        if (!ParseFiniteDouble(value.c_str(), budget) || budget <= 0) {
           parsed.error = "--budget must be a positive dollar amount";
           return parsed;
         }
+        parsed.options.overrides["UAGENT_SESSION_BUDGET"] =
+            std::to_string(budget);
         break;
+      }
       case FlagKind::kPrompt:
         parsed.options.prompt = std::move(value);
         break;
@@ -138,11 +167,6 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         return parsed;
     }
   }
-  if (parsed.options.budget > 0) {
-    parsed.options.overrides["UAGENT_SESSION_BUDGET"] =
-        std::to_string(parsed.options.budget);
-  }
-  if (parsed.options.no_memory) parsed.options.overrides["UAGENT_MEMORY"] = "0";
   if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&
@@ -155,11 +179,10 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
 const char* UsageText() {
   static const std::string kText = [] {
     auto invocation_of = [](const FlagSpec& spec) {
-      // --debug is spelled with its optional value in both places.
-      if (spec.flag == "--debug") return std::string("--debug[=PATH]");
       std::string invocation(spec.flag);
-      if (spec.value) invocation += " " + std::string(spec.value);
-      return invocation;
+      if (!spec.value) return invocation;
+      return spec.optional_value ? invocation + "[=" + spec.value + "]"
+                                 : invocation + " " + spec.value;
     };
     size_t column = 0;
     for (const FlagSpec& spec : kFlags) {

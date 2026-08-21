@@ -12,18 +12,6 @@ const char* ProviderProtocolName(ProviderProtocol protocol) {
   return protocol == ProviderProtocol::kOpenRouter ? "openrouter" : "openai";
 }
 
-const char* SearchProtocolName(SearchProtocol protocol) {
-  switch (protocol) {
-    case SearchProtocol::kNone:
-      return "none";
-    case SearchProtocol::kResponses:
-      return "responses";
-    case SearchProtocol::kOpenRouter:
-      return "openrouter";
-  }
-  return "none";
-}
-
 ProviderProtocol ParseProviderProtocol(const std::string& protocol) {
   return protocol == "openrouter" ? ProviderProtocol::kOpenRouter
                                   : ProviderProtocol::kOpenAi;
@@ -64,7 +52,6 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"provider_routing", provider_routing},
           {"session_passthrough", session_passthrough},
           {"model_variants", model_variants},
-          {"search_protocol", SearchProtocolName(search_protocol)},
           {"observed_reasoning_text", reasoning_text},
           {"observed_reasoning_details", reasoning_details},
           {"observed_reasoning_content", reasoning_content},
@@ -84,10 +71,8 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
     capabilities.provider_routing = true;
     capabilities.session_passthrough = true;
     capabilities.model_variants = true;
-    capabilities.search_protocol = SearchProtocol::kOpenRouter;
   } else if (OpenaiUrl(base_url)) {
     capabilities.max_completion_tokens = true;
-    capabilities.search_protocol = SearchProtocol::kResponses;
   }
   capabilities.ResetNegotiated();
   return capabilities;

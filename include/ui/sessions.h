@@ -21,6 +21,7 @@
 #include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/display.h"
@@ -46,7 +47,7 @@ inline std::vector<SessionInfo> ListSessions() {
   std::string base = UagentDir(kHistoryDir);
   std::string scoped = base + "/" + WorkspaceId(current);
   fs::create_directories(scoped, ec);
-  chmod(scoped.c_str(), 0700);
+  chmod(scoped.c_str(), kPrivateDirMode);
   for (const std::string& dir : {scoped, base}) {
     for (auto& e : fs::directory_iterator(dir, ec)) {
       if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;

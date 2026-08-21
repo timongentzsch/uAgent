@@ -69,9 +69,7 @@ void TestProjectInstructionDiscovery() {
   CHECK(ToolWriteFile((empty / "AGENTS.md").string(), "must-not-load")
             .output.starts_with("wrote "));
 
-  const char* inherited_home = getenv("HOME");
-  std::string prior_home = inherited_home ? inherited_home : "";
-  setenv("HOME", home.c_str(), 1);
+  ScopedEnv scoped_home("HOME", home.c_str());
 
   ProjectInstructions loaded = LoadProjectInstructions(child, 32 * 1024);
   MemoryIndex memories = LoadMemoryIndex(child, 32 * 1024 - loaded.text.size());
@@ -130,11 +128,6 @@ void TestProjectInstructionDiscovery() {
   CHECK(capped.truncated);
   CHECK(capped.text == "glob");
 
-  if (inherited_home) {
-    setenv("HOME", prior_home.c_str(), 1);
-  } else {
-    unsetenv("HOME");
-  }
   std::error_code ec;
   fs::remove_all(root, ec);
 }

@@ -22,7 +22,7 @@ C++20 binary built with CMake and `-fno-exceptions`. Optional tools reach for
 
 **Provider neutrality is an invariant, not a setting.** Route capabilities are
 negotiated once into a central contract, and request serialization, reasoning
-replay, search protocol, and degradation all read that contract. No code path
+replay, search availability, and degradation all read that contract. No code path
 branches on a provider or model name, so a new endpoint is configuration rather
 than a patch.
 
@@ -125,8 +125,8 @@ The core registry includes:
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
 the active schemas. In the interactive UI, compact reasoning updates only the
-transient activity row; `/verbose` restores the full muted reasoning stream and
-expanded bounded tool output. `/context` also reports redacted effective
+transient activity row; tool calls are always shown in full, and `/verbose`
+restores the full muted reasoning stream and expanded bounded tool output. `/context` also reports redacted effective
 configuration, provenance, restart-required fields, and negotiated route
 capabilities before showing the exact next request. See [the tool reference](docs/TOOLS.md), or run `/context`
 to inspect the exact registry for the next request.

@@ -11,7 +11,10 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-set(_IS_GCC_CLANG CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+set(_IS_GCC_CLANG OFF)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  set(_IS_GCC_CLANG ON)
+endif()
 
 find_package(CURL REQUIRED)
 find_package(Threads REQUIRED)
@@ -76,6 +79,7 @@ add_library(
   src/agent/request.cc
   src/agent/session_store.cc
   src/agent/tool_loop.cc
+  src/agent/trace.cc
   src/agent/turn.cc
   src/api/capabilities.cc
   src/api/client.cc
@@ -92,11 +96,13 @@ add_library(
   src/core/env.cc
   src/core/events.cc
   src/core/file_watch.cc
+  src/core/fs.cc
   src/core/platform_posix.cc
   src/core/signals.cc
   src/core/steering.cc
   src/core/strings.cc
   src/core/term.cc
+  src/mcp/result.cc
   src/media/attachments.cc
   src/providers.cc
   src/tools/adapt_system.cc
@@ -183,11 +189,9 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 if(UAGENT_BUILD_FUZZERS)
-  foreach(target IN ITEMS sse openai_stream)
-    add_executable(uagent_fuzz_${target} tests/fuzz/fuzz_${target}.cc)
-    target_link_libraries(uagent_fuzz_${target} PRIVATE uagent_core)
-    target_link_options(uagent_fuzz_${target} PRIVATE -fsanitize=fuzzer)
-  endforeach()
+  add_executable(uagent_fuzz_sse tests/fuzz/fuzz_sse.cc)
+  target_link_libraries(uagent_fuzz_sse PRIVATE uagent_core)
+  target_link_options(uagent_fuzz_sse PRIVATE -fsanitize=fuzzer)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

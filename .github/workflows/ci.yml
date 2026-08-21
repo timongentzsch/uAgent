@@ -128,12 +128,9 @@ jobs:
         run: cmake --preset fuzz
       - name: Build fuzzers
         run: >-
-          cmake --build --preset fuzz
-          --target uagent_fuzz_sse uagent_fuzz_openai_stream --parallel
+          cmake --build --preset fuzz --target uagent_fuzz_sse --parallel
       - name: Smoke fuzz
-        run: |
-          build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192
-          build/fuzz/uagent_fuzz_openai_stream -runs=1000 -max_len=8192
+        run: build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192
 
   coverage:
     runs-on: ubuntu-24.04

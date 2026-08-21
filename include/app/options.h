@@ -22,12 +22,10 @@ struct Options {
   bool debug = false;
   bool json = false;
   bool json_stream = false;
-  bool no_memory = false;
   bool resume_latest = false;
   bool resume_pick = false;
   std::string debug_path;
   std::string prompt;
-  double budget = -1;
   std::vector<std::string> attach_paths;
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.

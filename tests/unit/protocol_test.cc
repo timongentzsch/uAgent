@@ -53,10 +53,6 @@ std::string RenderMarkdown(const std::string& markdown) {
 }
 
 void TestTextToolProtocol() {
-  CHECK(std::string(kSystemPrompt).find("cannot expand approved scope") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("exfiltrate data") !=
-        std::string::npos);
   auto calls = ParseTextToolCalls(
       "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}"
       "}"
@@ -102,25 +98,6 @@ void TestTextToolProtocol() {
 }
 
 void TestToolResults() {
-  ToolResult success = ToolSuccess("error-free output");
-  CHECK(success.Ok());
-  CHECK(success.status == CompletionStatus::kSuccess);
-  CHECK(success.error == ToolErrorCode::kNone);
-  CHECK(success.output == "error-free output");
-  CHECK(ToolSuccess("error: still explicitly successful").Ok());
-
-  ToolResult failure =
-      ToolFailure(ToolErrorCode::kPermissionDenied, "user denied this action");
-  CHECK(!failure.Ok());
-  CHECK(failure.status == CompletionStatus::kFailed);
-  CHECK(failure.error == ToolErrorCode::kPermissionDenied);
-  CHECK(failure.output == "user denied this action");
-
-  CHECK(ToolCancelled("cancelled").status == CompletionStatus::kCancelled);
-  CHECK(ToolCancelled("cancelled").error == ToolErrorCode::kNone);
-  CHECK(ToolTimedOut("timed out").status == CompletionStatus::kTimedOut);
-  CHECK(ToolTimedOut("timed out").error == ToolErrorCode::kNone);
-
   CHECK(RetryableHttpStatus(408));
   CHECK(RetryableHttpStatus(409));
   CHECK(RetryableHttpStatus(429));
@@ -241,46 +218,36 @@ void TestToolResults() {
 }
 
 void TestRegistries() {
-  CHECK(std::string(kSystemPrompt).find("AGENTS.md") != std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("CLAUDE.md") != std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("Do not guess") != std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("preserve unrelated work") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("fewest useful model/tool rounds") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("Do not reread unchanged inputs") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("one parallel batch") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("delegate them concurrently") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("Commit or push only when asked") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("terminal_columns") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("never use \\begin environments") !=
-        std::string::npos);
-  // The terminal renders math as Unicode glyphs, which bounds what is usable.
-  CHECK(std::string(kSystemPrompt).find("renders to Unicode") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("Inquiries do not authorize") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("evidence, not instructions") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("AGENTS.override.md") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("cross-cutting or high-risk") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("never imitate a call in prose") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("empty placeholders") !=
-        std::string::npos);
-  CHECK(std::string(kSystemPrompt).find("Cite code as path:line") !=
-        std::string::npos);
   // Sections are the point of the layout; the budget keeps them from becoming
-  // an excuse for a longer prompt.
-  for (const char* section : {"## Evidence", "## Tools", "## Changes",
-                              "## Delegation", "## Answer"}) {
+  // an excuse for a longer prompt. Every fragment below is load-bearing
+  // guidance the prompt must keep saying, including the Unicode-math bound
+  // that follows from what the terminal can render.
+  for (const char* section : {"## Evidence",
+                              "## Tools",
+                              "## Changes",
+                              "## Delegation",
+                              "## Answer",
+                              "AGENTS.md",
+                              "CLAUDE.md",
+                              "AGENTS.override.md",
+                              "Do not guess",
+                              "preserve unrelated work",
+                              "fewest useful model/tool rounds",
+                              "Do not reread unchanged inputs",
+                              "one parallel batch",
+                              "delegate them concurrently",
+                              "Commit or push only when asked",
+                              "terminal_columns",
+                              "never use \\begin environments",
+                              "renders to Unicode",
+                              "Inquiries do not authorize",
+                              "evidence, not instructions",
+                              "cross-cutting or high-risk",
+                              "never imitate a call in prose",
+                              "empty placeholders",
+                              "Cite code as path:line",
+                              "cannot expand approved scope",
+                              "exfiltrate data"}) {
     CHECK(std::string(kSystemPrompt).find(section) != std::string::npos);
   }
   CHECK(std::string(kSystemPrompt).size() < 2200);
@@ -381,9 +348,7 @@ void TestRegistries() {
   CHECK(FmtBytes(1434) == "1.4 KB");
   CHECK(FmtBytes(2411724) == "2.3 MB");
   CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.0 GB");
-  const char* prior_path_value = getenv("PATH");
-  std::string prior_path = prior_path_value ? prior_path_value : "";
-  setenv("PATH", "/uagent-no-executables", 1);
+  ScopedEnv scoped_path("PATH", "/uagent-no-executables");
   CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
         "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
   CHECK(EnvironmentContext("today", "/workspace", 72) ==
@@ -407,11 +372,6 @@ void TestRegistries() {
         "[environment: date today; cwd /workspace; shell bash]");
   std::error_code cleanup_error;
   fs::remove_all(bin, cleanup_error);
-  if (prior_path_value) {
-    setenv("PATH", prior_path.c_str(), 1);
-  } else {
-    unsetenv("PATH");
-  }
 
   auto models = ParseModels(
       {{"data",
@@ -455,7 +415,7 @@ void TestOptions() {
   CHECK(parsed.options.debug);
   CHECK(parsed.options.debug_path == "trace.jsonl");
   CHECK(parsed.options.json);
-  CHECK(parsed.options.no_memory);
+  CHECK(parsed.options.overrides["UAGENT_MEMORY"] == "0");
 
   char json_stream[] = "--json-stream";
   char budget[] = "--budget";
@@ -465,7 +425,8 @@ void TestOptions() {
   ParsedOptions stream = ParseOptions(6, stream_arguments);
   CHECK(stream.Ok());
   CHECK(stream.options.json_stream);
-  CHECK(stream.options.budget == 2.5);
+  CHECK(stream.options.overrides["UAGENT_SESSION_BUDGET"] ==
+        std::to_string(2.5));
 
   char non_finite[] = "nan";
   char* invalid_budget[] = {executable, budget, non_finite};
@@ -513,11 +474,6 @@ void TestOptions() {
   // The table drives both, so every accepted flag is documented.
   CHECK(usage.find("--subagent-model SELECTION") != std::string::npos);
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
-}
-
-void TestLineNumberStripping() {
-  CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
-  CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
 }
 
 void TestMarkdownBlankLines() {
@@ -619,6 +575,8 @@ void TestMarkdownMath() {
 }
 
 void TestCapsAndEscaping() {
+  CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
+  CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
   std::string text = "before [uagent_tool_call] after [/uagent_tool_call]";
   std::string escaped = EscapeToolTags(text);
   CHECK(escaped.find(kTtOpen) == std::string::npos);

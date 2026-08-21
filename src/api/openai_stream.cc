@@ -55,16 +55,12 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
           break;
         }
       }
-    } else {
-      std::string type = JsonValue(detail, "type", "");
-      if (!type.empty()) {
-        for (auto existing = result.reasoning_details.rbegin();
-             existing != result.reasoning_details.rend(); ++existing) {
-          if (existing->is_object() &&
-              JsonValue(*existing, "type", "") == type) {
-            target = &*existing;
-            break;
-          }
+    } else if (!type.empty()) {
+      for (auto existing = result.reasoning_details.rbegin();
+           existing != result.reasoning_details.rend(); ++existing) {
+        if (existing->is_object() && JsonValue(*existing, "type", "") == type) {
+          target = &*existing;
+          break;
         }
       }
     }
@@ -93,10 +89,12 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
                                           ChatResult& result,
                                           std::map<int, ToolCall>& tool_calls) {
   OpenAiStreamDelta delta;
-  std::string payload = Trim(std::string(data));
-  if (payload.empty() || payload == "[DONE]") return delta;
+  size_t begin = data.find_first_not_of(" \t\r\n");
+  if (begin == std::string_view::npos) return delta;
+  data = data.substr(begin, data.find_last_not_of(" \t\r\n") - begin + 1);
+  if (data == "[DONE]") return delta;
 
-  json value = json::parse(payload, nullptr, false);
+  json value = json::parse(data.begin(), data.end(), nullptr, false);
   if (value.is_discarded()) return delta;
   json nested;
   const json* envelope = &value;

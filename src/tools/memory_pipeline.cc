@@ -22,6 +22,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
@@ -72,7 +73,7 @@ bool Claim(const std::string& source, const std::filesystem::path& cwd,
     }
   }
 
-  int fd = open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+  int fd = open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, kPrivateFileMode);
   if (fd < 0) {
     if (errno != EEXIST) error = strerror(errno);
     return false;

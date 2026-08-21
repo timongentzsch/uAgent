@@ -13,6 +13,8 @@
 namespace uagent {
 
 void TestObservabilityEvents() {
+  // The public_type strings are the --json-stream contract that external
+  // consumers parse, so they are pinned here rather than left to the table.
   CHECK(std::string(PolicyFor(EventId::kTurnStarted).public_type) ==
         "turn.started");
   CHECK(std::string(PolicyFor(EventId::kToolCall).public_type) == "tool.call");

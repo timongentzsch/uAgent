@@ -23,8 +23,10 @@ inline bool RetryableHttpStatus(int64_t status) {
   return status == 408 || status == 409 || status == 429 || status >= 500;
 }
 
-inline constexpr std::array<std::string_view, 18> kTransientErrors = {
+inline constexpr std::array<std::string_view, 20> kTransientErrors = {
     "server_error",
+    "api_error",
+    "overloaded_error",
     "server_is_overloaded",
     "slow_down",
     "service_unavailable",
@@ -205,6 +207,17 @@ inline bool SafeContextRecovery(const ChatResult& result) {
          result.reasoning_details.empty() && result.tool_calls.empty() &&
          result.annotations.empty() &&
          (result.usage.is_null() || result.usage.empty());
+}
+
+// A stream that failed before producing anything usable. Providers must
+// inject mid-stream failures in-band once HTTP 200 is committed, and those
+// frames carry provider-specific types no classifier can enumerate; treating a
+// barren one as retryable costs a replay of a request that produced no visible
+// answer, no executable call and no billed usage, where the alternative is
+// discarding a whole turn's work.
+inline bool BarrenStreamError(const ChatResult& result) {
+  return result.content.empty() && result.tool_calls.empty() &&
+         result.annotations.empty() && result.usage.is_null();
 }
 
 inline bool SafeToRetry(const ChatResult& result) {

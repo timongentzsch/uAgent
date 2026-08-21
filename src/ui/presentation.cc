@@ -171,8 +171,11 @@ struct TerminalPresenter::State {
       if (!spinner) return;
       AppendRolling(reasoning_tail, value);
       // Strip on the whole buffer, not per delta: decoration detection needs
-      // the neighbouring characters, which a chunk boundary would split.
-      spinner->SetRolling("thinking · ", StripDisplayMarkdown(reasoning_tail));
+      // the neighbouring characters, which a chunk boundary would split. The
+      // renderer applies it, so that whole-buffer pass runs once per drawn
+      // frame instead of once per streamed token — an order of magnitude
+      // apart — while the ticker still shows the newest text.
+      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
       return;
     }
 

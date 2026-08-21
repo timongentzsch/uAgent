@@ -87,6 +87,7 @@ bool Agent::RunCalls(
     task.args = json::parse(call.args, nullptr, false);
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
+    if (tool) ClampToolArguments(*tool, task.args);
     const json& arguments = task.args;
     std::string invalid;
     bool valid = false;

@@ -10,7 +10,7 @@ or multi-tenant service.
 | first event / stream idle | 300 / 300 s |
 | request / complete turn | 600 s / unlimited (`0`) |
 | model rounds / tool calls | unlimited / unlimited (both configurable) |
-| subagent depth / rounds / calls | 2 / 25 / 60 |
+| subagent depth / rounds / calls | 2 / 100 / 240 (per call: `max_steps`, `max_tool_calls`) |
 | subagent launches per turn | 32 (concurrency bounded by background jobs) |
 | reported turn cost | unlimited |
 | request / response | 64 / 32 MiB |
@@ -138,7 +138,10 @@ working directory reuses its process group.
 `run` waits 10 seconds by default before returning a still-running command as
 an activity; `UAGENT_RUN_YIELD_MS` changes that default. Explicit `yield_ms=0`
 waits until the command exits or an explicitly configured turn
-limit/interruption applies; 250 through 30,000 select another initial wait. Set
+limit/interruption applies; 250 through 30,000 select another initial wait. A
+pacing hint past its bound — `yield_ms`, `context`, `wait_ms`, an output cap —
+is clamped to that bound rather than rejected, since asking for more than the
+maximum means the maximum. Set
 `tty=true` only when the process needs interactive input. A PTY activity retains merged output, writable input, process-group interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
 interactively reattached after the harness exits. Waiting log readers use

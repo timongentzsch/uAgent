@@ -1429,6 +1429,41 @@ void TestGrepTool() {
   CHECK(activity && activity->mutates({{"id", 1}, {"chars", "y"}}));
   CHECK(activity && InvalidToolArgument(*activity, {{"id", "bad"}}) ==
                         "`id` must be integer");
+  // Each argument set names the verb it performs: a resize used to render as
+  // a bare target, indistinguishable from a poll.
+  CHECK(activity && activity->summary({{"id", 3}}) == "poll activity 3");
+  CHECK(activity && activity->summary(json::object()) == "list activities");
+  CHECK(activity &&
+        activity->summary({{"id", 3}, {"rows", 40}, {"cols", 120}}) ==
+            "resize 40×120 → activity 3");
+  CHECK(activity &&
+        activity->summary({{"id", 3}, {"chars", "hello"}}).rfind("write ", 0) ==
+            0);
+  CHECK(activity && activity->summary({{"mode", "all"}, {"wait_ms", 5000}})
+                            .find("all · all current") != std::string::npos);
+  CHECK(activity &&
+        activity->summary({{"id", 3}, {"wait_ms", 5000}, {"until", "ready"}})
+                .rfind("await ready", 0) == 0);
+  // A pacing hint outside its bounds is honoured at the bound rather than
+  // rejected, which used to spend a model round; identifiers are untouched.
+  json overshoot = {{"id", 3}, {"wait_ms", 900000}};
+  if (activity) ClampToolArguments(*activity, overshoot);
+  CHECK(overshoot["wait_ms"] == 300000);
+  CHECK(overshoot["id"] == 3);
+  CHECK(activity && InvalidToolArgument(*activity, overshoot).empty());
+  const Tool* grep_tool = FindTool(lean_tools, "grep");
+  json wide = {{"pattern", "x"}, {"context", 40}};
+  CHECK(grep_tool != nullptr);
+  if (grep_tool) ClampToolArguments(*grep_tool, wide);
+  CHECK(wide["context"] == 10);
+  const Tool* run_tool = FindTool(lean_tools, "run");
+  json slow = {{"command", "ls"}, {"yield_ms", 60000}};
+  if (run_tool) ClampToolArguments(*run_tool, slow);
+  CHECK(slow["yield_ms"] == 30000);
+  // A fractional value stays a type error: clamping never masks one.
+  json fractional = {{"command", "ls"}, {"yield_ms", 1.5}};
+  if (run_tool) ClampToolArguments(*run_tool, fractional);
+  CHECK(run_tool && !InvalidToolArgument(*run_tool, fractional).empty());
   CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==

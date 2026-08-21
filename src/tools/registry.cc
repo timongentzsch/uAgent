@@ -143,6 +143,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                         JsonValue(a, "context", int64_t{0}), context,
                         JsonValue(a, "mode", "content") == "files");
       }));
+  grep.clamped_arguments = {"context"};
   grep.parallel_safe = true;  // read-only, like read_path
   grep.capabilities = Capability(ToolCapability::kInspect);
   grep.summary = [](const json& a) {
@@ -213,6 +214,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                      JsonValue(a, "yield_ms", RunDefaultYieldMs()),
                      JsonValue(a, "max_output_chars", int64_t{0}));
                }));
+  run.clamped_arguments = {"yield_ms", "max_output_chars"};
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
@@ -312,6 +314,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             return ToolActivityOutput(supervisor, id, wait_ms,
                                       JsonValue(a, "until", ""), context, cap);
           }));
+  activity.clamped_arguments = {"wait_ms", "max_output_chars", "rows", "cols"};
   activity.parallel_safe = true;
   // Reading and writing share one tool, so the union gates exposure and the
   // per-call predicate gates approval, as the memory tool does.
@@ -337,18 +340,34 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     }
     return std::string();
   };
+  // One tool writes, resizes, waits, polls and lists, so the receipt leads
+  // with the verb the call actually performs. Naming only the target read as
+  // the wrong operation — a resize was indistinguishable from a bare poll.
   activity.summary = [](const json& a) {
     int64_t id = JsonValue(a, "id", int64_t{0});
     std::string target = id > 0
                              ? "activity " + std::to_string(id)
                              : JsonValue(a, "mode", "any") + " · all current";
-    if (a.contains("chars")) {
-      return target + " · " +
-             FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size()));
-    }
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
-    return wait_ms > 0 ? target + " · wait≤" + FmtDuration(wait_ms / 1000.0)
-                       : target;
+    std::string wait =
+        wait_ms > 0 ? "wait≤" + FmtDuration(wait_ms / 1000.0) : std::string();
+    std::string window = wait.empty() ? std::string() : " · " + wait;
+    if (a.contains("chars")) {
+      return "write " +
+             FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size())) +
+             " → " + target + window;
+    }
+    if (a.contains("rows")) {
+      return "resize " + std::to_string(JsonValue(a, "rows", int64_t{0})) +
+             "×" + std::to_string(JsonValue(a, "cols", int64_t{0})) + " → " +
+             target + window;
+    }
+    if (a.contains("until")) {
+      return "await " + TerminalSafe(JsonValue(a, "until", "")) + " · " +
+             target + window;
+    }
+    if (!wait.empty()) return wait + " · " + target;
+    return id > 0 ? "poll " + target : std::string("list activities");
   };
 
   Tool& activity_stop = AddTool(

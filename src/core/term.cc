@@ -39,9 +39,23 @@ struct TerminalActivityState {
     double roll_edge = 0;     // last frame's live edge, to measure arrival
     std::chrono::steady_clock::time_point roll_last{};  // last advance tick
     bool rolling = false;
+    // The buffer as it is drawn, plus the caller's normalizer. Recomputing it
+    // only when the buffer changes keeps whole-buffer work off the token path.
+    ActivityTextTransform roll_transform = nullptr;
+    std::string roll_display;
+    bool roll_stale = false;
   };
   std::vector<Entry> active;
 };
+
+const std::string& RollDisplay(TerminalActivityState::Entry& entry) {
+  if (entry.roll_stale) {
+    entry.roll_display =
+        entry.roll_transform ? entry.roll_transform(entry.roll) : entry.roll;
+    entry.roll_stale = false;
+  }
+  return entry.roll_display;
+}
 
 TerminalActivityState& TerminalActivities() {
   static TerminalActivityState state;
@@ -70,6 +84,9 @@ void UpdateTerminalActivity(uint64_t id, std::string label) {
       entry.rolling = false;
       entry.roll_prefix.clear();
       entry.roll.clear();
+      entry.roll_display.clear();
+      entry.roll_transform = nullptr;
+      entry.roll_stale = false;
       entry.roll_cursor = 0;
       return;
     }
@@ -81,18 +98,22 @@ void UpdateTerminalActivity(uint64_t id, std::string label) {
 // end is clamped to the newest text on the next frame); afterwards the buffer
 // grows with each streamed delta and the window scrolls to follow it.
 void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
-                                const std::string& text) {
+                                const std::string& text,
+                                ActivityTextTransform transform) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
   for (auto& entry : state.active) {
     if (entry.id == id) {
+      entry.roll_prefix = prefix;
+      entry.roll = text;
+      entry.roll_transform = transform;
+      entry.roll_stale = true;
       if (!entry.rolling) {
-        entry.roll_cursor = static_cast<double>(DisplayWidth(text));
+        entry.roll_cursor =
+            static_cast<double>(DisplayWidth(RollDisplay(entry)));
         entry.roll_edge = entry.roll_cursor;
         entry.roll_last = std::chrono::steady_clock::now();
       }
-      entry.roll_prefix = prefix;
-      entry.roll = text;
       entry.rolling = true;
       return;
     }
@@ -129,7 +150,9 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
   std::lock_guard<std::mutex> lock(state.mutex);
   if (state.active.empty()) return "";
   TerminalActivityState::Entry& entry = state.active.back();
-  if (!entry.rolling || entry.roll.empty()) return entry.label;
+  if (!entry.rolling) return entry.label;
+  const std::string& text = RollDisplay(entry);
+  if (text.empty()) return entry.label;
   size_t reserved = DisplayWidth(entry.roll_prefix);
   if (reserved >= columns) return entry.roll_prefix;
   columns -= reserved;
@@ -156,7 +179,7 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
   double secs = std::chrono::duration<double>(now - entry.roll_last).count();
   entry.roll_last = now;
 
-  size_t total = DisplayWidth(entry.roll);
+  size_t total = DisplayWidth(text);
   size_t cols = columns > total ? total : columns;
   double target = static_cast<double>(total > cols ? total - cols : 0);
   double arrived = target - entry.roll_edge;
@@ -172,8 +195,7 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
     entry.roll_cursor = target;
   }
   return entry.roll_prefix +
-         DisplayWindow(entry.roll, static_cast<size_t>(entry.roll_cursor),
-                       cols);
+         DisplayWindow(text, static_cast<size_t>(entry.roll_cursor), cols);
 }
 
 }  // namespace uagent

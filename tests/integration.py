@@ -1387,7 +1387,7 @@ def test_input_steering_yields_activity_wait(root, home):
                 # startup banner lists "activity" and the run result says
                 # "[running] activity <id>", so a bare marker fires before the
                 # model has issued the wait and steering lands a round early.
-                (b"start\n", b"activity(any"),
+                (b"start\n", b"activity(wait"),
                 (b"change course\n", b"steering-wait-ok"),
                 b"/q\n",
             ],

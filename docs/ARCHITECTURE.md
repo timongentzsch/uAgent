@@ -254,7 +254,11 @@ and is visible through `/context`.
 `EventId` and one compile-time policy table define stable debug/public names,
 durability, and public projection. Terminal, JSONL, debug, and journal sinks
 are concrete direct owners; there is no runtime sink registration. Transient
-reasoning/answer deltas are rendered but never journaled. Turn, tool,
+reasoning/answer deltas are rendered but never journaled. With
+`UAGENT_HEADLESS_PROGRESS=1` — set for a background child, whose stderr already
+lands in the log its parent polls — the same durable events are echoed as one
+stderr line each, so a delegated run is traceable while it works; the stdout
+answer contract is unchanged. Turn, tool,
 capability, config, notice, and session lifecycle events append bounded
 metadata to a private sidecar journal without entering model context.
 

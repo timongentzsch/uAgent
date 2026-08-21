@@ -69,11 +69,17 @@ inline void TerminalClearToEnd() {
 uint64_t BeginTerminalActivity(std::string label);
 void UpdateTerminalActivity(uint64_t id, std::string label);
 
-// Switch an activity to rolling-ticker mode: `text` is the bounded,
-// newline-collapsed reasoning buffer, kept behind the caller's static
-// `prefix`. Each status frame renders the prefix plus a window of the buffer.
+// How the renderer turns the raw buffer into displayable text. The ui layer
+// owns that definition; passing it here is what lets whole-buffer
+// normalization run once per drawn frame rather than once per streamed token.
+using ActivityTextTransform = std::string (*)(const std::string&);
+
+// Switch an activity to rolling-ticker mode: `text` is the bounded reasoning
+// buffer, kept behind the caller's static `prefix`. Each status frame renders
+// the prefix plus a window of the transformed buffer.
 void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
-                                const std::string& text);
+                                const std::string& text,
+                                ActivityTextTransform transform = nullptr);
 void EndTerminalActivity(uint64_t id);
 
 // The newest activity's static label, and whether it is in rolling mode.
@@ -129,9 +135,10 @@ class TerminalSpinner {
   // Switch to rolling-ticker mode: `text` is the bounded, newline-collapsed
   // reasoning buffer, kept behind the caller's static `prefix`. Each status
   // frame renders the prefix plus a sliding window of the buffer.
-  void SetRolling(const std::string& prefix, const std::string& text) {
+  void SetRolling(const std::string& prefix, const std::string& text,
+                  ActivityTextTransform transform = nullptr) {
     rolling_ = true;
-    SetTerminalActivityRolling(activity_id_, prefix, text);
+    SetTerminalActivityRolling(activity_id_, prefix, text, transform);
     wake_.notify_one();
   }
 

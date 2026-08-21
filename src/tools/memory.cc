@@ -55,7 +55,7 @@ std::optional<std::string> FirstLine(const std::filesystem::path& path) {
 // -fno-exceptions makes a malformed std::regex fatal, and an arbitrary pattern
 // invites catastrophic backtracking over every memory body.
 const std::vector<std::string>& RedactKeywords() {
-  static const std::vector<std::string> keywords = [] {
+  static const std::vector<std::string> kKeywords = [] {
     std::vector<std::string> all = {
         "api_key",      "api-key",     "apikey",     "access_token",
         "access-token", "accesstoken", "auth_token", "auth-token",
@@ -79,7 +79,7 @@ const std::vector<std::string>& RedactKeywords() {
     }
     return all;
   }();
-  return keywords;
+  return kKeywords;
 }
 
 // Cheap gate for the redactor: text that mentions no credential at all is the
@@ -87,7 +87,7 @@ const std::vector<std::string>& RedactKeywords() {
 // are derived from RedactKeywords() rather than restated, so a keyword can no
 // longer be gated out of existence -- `passwd` was missed that way once.
 bool MentionsSecret(std::string_view text) {
-  static const std::vector<std::string> markers = [] {
+  static const std::vector<std::string> kMarkers = [] {
     std::vector<std::string> all;
     for (const std::string& keyword : RedactKeywords()) {
       all.push_back(AsciiLower(keyword));
@@ -98,7 +98,7 @@ bool MentionsSecret(std::string_view text) {
     return all;
   }();
   return std::any_of(
-      markers.begin(), markers.end(), [&](const std::string& marker) {
+      kMarkers.begin(), kMarkers.end(), [&](const std::string& marker) {
         return std::search(text.begin(), text.end(), marker.begin(),
                            marker.end(), [](char left, char right) {
                              return std::tolower(static_cast<unsigned char>(

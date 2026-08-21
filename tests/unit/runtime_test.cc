@@ -217,14 +217,14 @@ void TestRuntimeOwnershipHelpers() {
                                  {{"type", "file"},
                                   {"file", {{"filename", "a.pdf"}}}}})}}});
   CHECK(!api.BuildChatBody(documented, json::array(), "").contains("plugins"));
-  Api viaOpenRouter(config);
-  viaOpenRouter.capabilities = CapabilitiesForRoute(
-      ProviderProtocol::kOpenRouter, viaOpenRouter.base_url);
-  json plugged = viaOpenRouter.BuildChatBody(documented, json::array(), "");
+  Api via_open_router(config);
+  via_open_router.capabilities = CapabilitiesForRoute(
+      ProviderProtocol::kOpenRouter, via_open_router.base_url);
+  json plugged = via_open_router.BuildChatBody(documented, json::array(), "");
   CHECK(plugged["plugins"][0]["id"] == "file-parser");
   CHECK(plugged["plugins"][0]["pdf"]["engine"] == "cloudflare-ai");
   // A request without a document does not carry it.
-  CHECK(!viaOpenRouter
+  CHECK(!via_open_router
              .BuildChatBody(
                  json::array({{{"role", "user"}, {"content", "plain"}}}),
                  json::array(), "")

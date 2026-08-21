@@ -1056,6 +1056,28 @@ void TestOpenRouterServerSearch() {
   // An unterminated tag ends the document rather than leaking markup.
   CHECK(HtmlToText("visible<div class=") == "visible");
   CHECK(HtmlToText("<style>only</style>").empty());
+  // A `>` inside a quoted attribute does not end the tag. Pages carry JSON in
+  // attributes, and stopping early spilled the remainder out as text.
+  CHECK(HtmlToText(R"(<div data-mw='{"parts":["]}'>text</div>)") == "text");
+  CHECK(HtmlToText("<a href=\"?a=1&amp;b=2\">link</a>") == "link");
+  // Cells are columns, not lines: without a separator the figures either side
+  // of a boundary ran together into one unreadable number.
+  CHECK(HtmlToText("<tr><td>US</td><td>1,000</td><td>2,000</td></tr>") ==
+        "| US | 1,000 | 2,000");
+  // Headings carry their depth, so the outline survives the conversion.
+  CHECK(HtmlToText("<h2>Title</h2><p>body</p>") == "## Title\n\nbody");
+  CHECK(HtmlToText("<h6>deep</h6>") == "###### deep");
+  // Site furniture is not what a reader came for.
+  CHECK(HtmlToText("<nav>menu</nav><p>real</p><footer>legal</footer>") ==
+        "real");
+  // Indentation inside <pre> is the meaning: collapsing it broke every
+  // Python block that came back through this tool.
+  CHECK(HtmlToText("<pre>def f():\n    return 1\n</pre>") ==
+        "def f():\n    return 1");
+  CHECK(HtmlToText("<pre><span>if x:</span>\n    pass</pre>") ==
+        "if x:\n    pass");
+  CHECK(HtmlToText("<p>before</p><pre>  kept  </pre><p>after</p>") ==
+        "before\n\n  kept  \n\nafter");
 
   ChatResult result;
   StreamCtx stream;

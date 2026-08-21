@@ -117,16 +117,30 @@ inline PresentationRecord ToolResultPresentation(
   return record;
 }
 
-inline void PrintStoredToolResult(const std::string& name,
-                                  const std::string& output) {
+inline PresentationRecord StoredToolResultPresentation(
+    const std::string& name, const std::string& output) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
-  record.status = PresentationStatus::kSucceeded;
+  // A stored result keeps the text the model saw, not the status the live row
+  // was coloured from. Tools write a failure with an `error: ` prefix, so
+  // replay reads the signal the model read instead of resuming every call as
+  // a success and rendering the whole scrollback in the success colour.
+  ToolResult replayed;
+  if (output.rfind("error: ", 0) == 0) {
+    replayed.status = CompletionStatus::kFailed;
+  }
+  record.status = replayed.Ok() ? PresentationStatus::kSucceeded
+                                : PresentationStatus::kFailed;
   record.title = name.empty() ? "tool" : name;
-  record.summary = TerminalSummary(ToolResultSummary(ToolResult{}, output,
+  record.summary = TerminalSummary(ToolResultSummary(replayed, output,
                                                      /*truncated=*/false),
                                    record.title.size() + 6);
-  PrintPresentation(record);
+  return record;
+}
+
+inline void PrintStoredToolResult(const std::string& name,
+                                  const std::string& output) {
+  PrintPresentation(StoredToolResultPresentation(name, output));
 }
 
 }  // namespace uagent

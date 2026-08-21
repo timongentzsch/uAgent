@@ -78,10 +78,10 @@ void SaveSelectedModel(AppSession& session, const std::string& selected) {
                              {"base_url", session.ApiClient().base_url},
                              {"effort", session.ApiClient().reasoning_effort},
                              {"preference_saved", saved}});
-  printf(
-      "%s· model %s%s\n", DIM(),
-      RouteSelection(session.ApiClient(), session.context.provider.providers).c_str(),
-      RST());
+  printf("%s· model %s%s\n", DIM(),
+         RouteSelection(session.ApiClient(), session.context.provider.providers)
+             .c_str(),
+         RST());
   if (!saved) {
     printf("%s· model changed but preference was not saved: %s%s\n", YEL(),
            TerminalSafe(error).c_str(), RST());
@@ -172,7 +172,8 @@ void HandleModels(AppSession& session, const std::string& argument) {
     printf("%s· model search cancelled%s\n", YEL(), RST());
     return;
   }
-  std::optional<ModelCandidate> selected = PickModel(search, session.ApiClient());
+  std::optional<ModelCandidate> selected =
+      PickModel(search, session.ApiClient());
   if (!selected) return;
   ApplyRoute(session.ApiClient(), selected->route);
   SaveSelectedModel(session, selected->selection);
@@ -228,9 +229,10 @@ void HandleVariant(AppSession& session, const std::string& argument) {
   std::string variant = argument;
   if (variant.starts_with(':')) variant.erase(0, 1);
   if (variant.empty()) {
-    std::string label = session.ApiClient().config.openrouter_variant.empty()
-                            ? "default"
-                            : ":" + session.ApiClient().config.openrouter_variant;
+    std::string label =
+        session.ApiClient().config.openrouter_variant.empty()
+            ? "default"
+            : ":" + session.ApiClient().config.openrouter_variant;
     printf("%s· variant %s · choose default, nitro, floor, or exacto%s\n",
            DIM(), label.c_str(), RST());
     return;
@@ -249,8 +251,8 @@ void HandleVariant(AppSession& session, const std::string& argument) {
   if (variant == "nitro") detail = "highest throughput";
   if (variant == "floor") detail = "lowest price";
   if (variant == "exacto") detail = "quality-first tool reliability";
-  DebugLog("variant_changed",
-           {{"variant", variant}, {"model", session.ApiClient().RequestModel()}});
+  DebugLog("variant_changed", {{"variant", variant},
+                               {"model", session.ApiClient().RequestModel()}});
   std::string label = variant.empty() ? "default" : ":" + variant;
   printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
 }
@@ -280,9 +282,9 @@ void HandleAttach(AppSession& session, const std::string& argument) {
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(argument, attachment, error) ||
-      !(error =
-            ImageInputError(attachment, session.ApiClient().capabilities.image_input,
-                            !session.ApiClient().config.image_model.empty()))
+      !(error = ImageInputError(
+            attachment, session.ApiClient().capabilities.image_input,
+            !session.ApiClient().config.image_model.empty()))
            .empty()) {
     printf("%s%s%s\n", RED(), error.c_str(), RST());
     return;
@@ -345,10 +347,10 @@ void HandleContext(AppSession& session) {
       {"base_url_source", source("UAGENT_BASE_URL")},
       {"model", session.ApiClient().RequestModel()},
       {"model_source", std::move(model_source)},
-      {"credentials",
-       session.ApiClient().api_key.empty() || session.ApiClient().api_key == "sk-noop"
-           ? "<unset>"
-           : "<set>"},
+      {"credentials", session.ApiClient().api_key.empty() ||
+                              session.ApiClient().api_key == "sk-noop"
+                          ? "<unset>"
+                          : "<set>"},
       {"credential_source", std::move(credential_source)},
       {"context_window", session.ApiClient().ctx_window}};
   printf("%seffective configuration%s\n%s\n", BOLD(), RST(),

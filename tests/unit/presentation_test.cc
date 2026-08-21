@@ -84,6 +84,17 @@ void TestPollCollapse() {
   CHECK(!failure.poll);
   CHECK(failure.status == PresentationStatus::kFailed);
 
+  // A resumed transcript stores the text the model saw, not the status the
+  // live row was coloured from, so replay reads the `error: ` prefix rather
+  // than repainting every past failure as a success.
+  CHECK(StoredToolResultPresentation("run", "error: no such file").status ==
+        PresentationStatus::kFailed);
+  CHECK(StoredToolResultPresentation("run", "built 3 targets").status ==
+        PresentationStatus::kSucceeded);
+  // A body that merely mentions an error later is still a success.
+  CHECK(StoredToolResultPresentation("run", "cc a.c\nerror: bad").status ==
+        PresentationStatus::kSucceeded);
+
   ClearPollAnchor(4242);
 }
 

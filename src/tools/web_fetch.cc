@@ -17,8 +17,18 @@
 namespace uagent {
 namespace {
 
-// Elements whose content is code or styling rather than text: dropped whole.
-constexpr std::array<std::string_view, 3> kDropped = {"script", "style", "svg"};
+// Elements whose content is code, styling or site furniture rather than the
+// text a reader came for: dropped whole.
+constexpr std::array<std::string_view, 6> kDropped = {
+    "script", "style", "svg", "nav", "footer", "aside"};
+
+// Indentation inside these is the meaning, not markup, so their text is kept
+// exactly as written.
+constexpr std::array<std::string_view, 1> kPre = {"pre"};
+
+// Table cells read as columns rather than lines: without a separator the
+// figureseither side of a boundary would run together into one number.
+constexpr std::array<std::string_view, 2> kCells = {"td", "th"};
 
 // Everything else that reads as a line break once the tags are gone. Inline
 // elements are absent on purpose, so words are not split across lines.
@@ -33,6 +43,19 @@ constexpr std::array<std::pair<std::string_view, char>, 6> kEntities = {
      {"&quot;", '"'},
      {"&#39;", '\''},
      {"&nbsp;", ' '}}};
+
+// Decodes the entity starting at `at` into `c`, advancing past it. Shared so
+// tidied and verbatim text agree on what an entity means.
+bool DecodeEntity(const std::string& text, size_t& at, char& c) {
+  const auto* entity = std::find_if(
+      kEntities.begin(), kEntities.end(), [&](const auto& candidate) {
+        return text.compare(at, candidate.first.size(), candidate.first) == 0;
+      });
+  if (entity == kEntities.end()) return false;
+  c = entity->second;
+  at += entity->first.size() - 1;
+  return true;
+}
 
 bool Listed(const auto& names, std::string_view name) {
   return std::any_of(names.begin(), names.end(), [&](std::string_view listed) {
@@ -86,17 +109,7 @@ std::string Tidy(const std::string& text) {
   bool space = false;
   for (size_t at = 0; at < text.size(); ++at) {
     char c = text[at];
-    if (c == '&') {
-      const auto* entity = std::find_if(
-          kEntities.begin(), kEntities.end(), [&](const auto& candidate) {
-            return text.compare(at, candidate.first.size(), candidate.first) ==
-                   0;
-          });
-      if (entity != kEntities.end()) {
-        c = entity->second;
-        at += entity->first.size() - 1;
-      }
-    }
+    if (c == '&') DecodeEntity(text, at, c);
     if (c == '\n') {
       ++newlines;
       space = false;
@@ -120,6 +133,36 @@ std::string Tidy(const std::string& text) {
   return out;
 }
 
+// Entities decoded, every other byte kept: what <pre> content needs.
+std::string Verbatim(const std::string& text) {
+  std::string out;
+  out.reserve(text.size());
+  for (size_t at = 0; at < text.size(); ++at) {
+    char c = text[at];
+    if (c == '&') DecodeEntity(text, at, c);
+    out += c;
+  }
+  return out;
+}
+
+// The `>` that closes the tag opened at `open`, ignoring any inside a quoted
+// attribute value. Pages embed JSON in attributes, and stopping at the first
+// `>` would spill the remainder of it into the text as markup.
+size_t TagEnd(const std::string& html, size_t open) {
+  char quote = '\0';
+  for (size_t at = open + 1; at < html.size(); ++at) {
+    char c = html[at];
+    if (quote != '\0') {
+      if (c == quote) quote = '\0';
+    } else if (c == '"' || c == '\'') {
+      quote = c;
+    } else if (c == '>') {
+      return at;
+    }
+  }
+  return std::string::npos;
+}
+
 // Types this tool can turn into text: markup is converted, the rest already
 // reads as text. Anything else is bytes the model cannot use.
 bool Textual(const std::string& type) {
@@ -132,8 +175,21 @@ bool Textual(const std::string& type) {
 }  // namespace
 
 std::string HtmlToText(const std::string& html) {
+  std::string out;
   std::string text;
-  text.reserve(html.size() / 2);
+  out.reserve(html.size() / 2);
+  // Prose is collapsed; <pre> is not, so the pending run is flushed under
+  // whichever rule was in force while it was collected.
+  bool preformatted = false;
+  auto flush = [&] {
+    out += preformatted ? Verbatim(text) : Tidy(text);
+    text.clear();
+  };
+  // Tidy trims each run it is given, so the break around a <pre> block has to
+  // be written between runs rather than inside one.
+  auto boundary = [&] {
+    if (!out.empty()) out += "\n\n";
+  };
   for (size_t at = 0; at < html.size();) {
     if (html[at] != '<') {
       text += html[at++];
@@ -145,18 +201,36 @@ std::string HtmlToText(const std::string& html) {
       continue;
     }
     std::string_view name = TagName(html, at);
+    bool closing = at + 1 < html.size() && html[at + 1] == '/';
     size_t end;
     if (Listed(kDropped, name)) {
       end = SkipElement(html, at, name);
     } else {
-      if (Listed(kBlocks, name)) text += '\n';
-      end = html.find('>', at);
+      bool heading = name.size() == 2 && (name[0] | 0x20) == 'h' &&
+                     name[1] >= '1' && name[1] <= '6';
+      if (Listed(kPre, name)) {
+        flush();
+        preformatted = !closing;
+        boundary();
+      } else if (!closing && heading) {
+        // Markdown depth, so a reader and a model both see the outline.
+        text += '\n';
+        text.append(static_cast<size_t>(name[1] - '0'), '#');
+        text += ' ';
+      } else if (!closing && Listed(kCells, name)) {
+        text += " | ";
+      } else if (Listed(kBlocks, name)) {
+        text += '\n';
+      }
+      end = TagEnd(html, at);
     }
     // An unterminated tag means the rest of the document is markup.
     if (end == std::string::npos) break;
     at = end + 1;
   }
-  return Tidy(text);
+  flush();
+  while (!out.empty() && out.back() == '\n') out.pop_back();
+  return out;
 }
 
 Tool WebFetchTool(Api& api) {

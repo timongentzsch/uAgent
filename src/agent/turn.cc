@@ -280,7 +280,13 @@ void Agent::Turn(const std::string& user_input, json user_content) {
   int64_t repeated_calls = 0;
   int64_t consecutive_failed_tools = 0;
   bool failure_advisory_sent = false;
-  bool empty_response_recovered = false;
+  bool markup_recovered = false;
+  // A completion with no answer and no call carries nothing to react to, so
+  // the first one is replayed unchanged, a repeat earns a guiding note, and
+  // only a third ends the turn: a barren provider response must not cost the
+  // work this turn has already done.
+  constexpr int64_t kEmptyResponseAttempts = 3;
+  int64_t empty_responses = 0;
   bool context_overflow_recovery_attempted = false;
   // A harness note that guides exactly the next model call and is retracted
   // once it has been sent. At most one is ever live.
@@ -306,7 +312,8 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     state.same_tool_rounds = 0;
     stable_arguments.clear();
     failure_advisory_sent = false;
-    empty_response_recovered = false;
+    markup_recovered = false;
+    empty_responses = 0;
     DebugLog("steering_applied",
              {{"turn", turn_id_}, {"messages", queued.size()}});
     return true;
@@ -432,8 +439,8 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     if (calls.empty() &&
         (!text_calls.empty() || ContainsForeignToolCallMarkup(r.content) ||
          r.suppressed)) {
-      if (!empty_response_recovered) {
-        empty_response_recovered = true;
+      if (!markup_recovered) {
+        markup_recovered = true;
         conversation_.Push(
             HarnessMessage("[invalid model tool markup] The attempted call was "
                            "not executed. Return prose using existing results; "
@@ -470,16 +477,27 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     }
 
     if (calls.empty() && r.content.empty()) {
-      if (!empty_response_recovered && state.tool_count > 0) {
-        empty_response_recovered = true;
-        conversation_.Push(
-            HarnessMessage("[empty model response] Return the final answer "
-                           "from existing results. Do not repeat completed "
-                           "work."),
-            MessageKind::kInternal);
-        pending_note = conversation_.Size() - 1;
+      if (++empty_responses < kEmptyResponseAttempts) {
+        // The first replay goes out unchanged: only a repeat is evidence that
+        // the model needs steering rather than another attempt.
+        if (empty_responses > 1) {
+          conversation_.Push(
+              HarnessMessage(state.tool_count > 0
+                                 ? "[empty model response] Return the final "
+                                   "answer from existing results. Do not "
+                                   "repeat completed work."
+                                 : "[empty model response] The previous reply "
+                                   "arrived empty. Answer the request "
+                                   "directly."),
+              MessageKind::kInternal);
+          pending_note = conversation_.Size() - 1;
+        }
         DebugLog("empty_response_recovery",
-                 {{"turn", turn_id_}, {"step", step}});
+                 {{"turn", turn_id_},
+                  {"step", step},
+                  {"attempt", empty_responses},
+                  {"guided", empty_responses > 1},
+                  {"finish_reason", r.finish_reason}});
         Emit(NoticeEvent(PresentationStatus::kNeutral,
                          "· recovering empty response"));
         continue;

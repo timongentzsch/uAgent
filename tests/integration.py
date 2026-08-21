@@ -685,7 +685,7 @@ def test_stream_error_is_not_an_empty_response(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_empty_response_after_tools_recovers_once(root, home):
+def test_empty_response_after_tools_recovers(root, home):
     def recovered(_, body):
         contents = [
             message.get("content", "")
@@ -697,17 +697,29 @@ def test_empty_response_after_tools_recovers_once(root, home):
         )
         return event({"content": "recovered" if valid else "missing-recovery"})
 
+    def unchanged(_, body):
+        # The first barren completion is replayed as it was: reacting to a
+        # provider hiccup would mutate the history for nothing.
+        contents = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "user"
+        ]
+        assert_true(not any("empty model response" in content for content in contents), contents)
+        return event()
+
     with Server(
         [
             tool_call("read_path", {"path": "."}),
             event(),
+            unchanged,
             recovered,
         ]
     ) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "recovered", result.stdout)
-        assert_true(len(server.requests) == 3, len(server.requests))
+        assert_true(len(server.requests) == 4, len(server.requests))
 
 
 def test_foreign_tool_markup_recovers_as_prose(root, home):
@@ -764,12 +776,13 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
             tool_call("read_path", {"path": "."}),
             event(),
             event(),
+            event(),
         ]
     ) as exhausted:
         result = run(root, base_env(home, exhausted.url), "--yolo", "-p", "inspect")
         assert_true(result.returncode != 0, result.stdout)
         assert_true("model returned an empty response" in result.stderr, result.stderr)
-        assert_true(len(exhausted.requests) == 3, len(exhausted.requests))
+        assert_true(len(exhausted.requests) == 4, len(exhausted.requests))
 
 
 def test_transient_stream_errors_retry_before_progress(root, home):

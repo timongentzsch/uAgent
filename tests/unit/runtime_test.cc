@@ -209,6 +209,27 @@ void TestRuntimeOwnershipHelpers() {
   unsetenv("UAGENT_MAX_TOKENS");
   CHECK(body["stream_options"].value("include_usage", false));
 
+  // The file-parser plugin rides the conversation request, so it is sent only
+  // where it is understood and only when a document is actually attached.
+  json documented = json::array(
+      {{{"role", "user"},
+        {"content", json::array({{{"type", "text"}, {"text", "read it"}},
+                                 {{"type", "file"},
+                                  {"file", {{"filename", "a.pdf"}}}}})}}});
+  CHECK(!api.BuildChatBody(documented, json::array(), "").contains("plugins"));
+  Api viaOpenRouter(config);
+  viaOpenRouter.capabilities = CapabilitiesForRoute(
+      ProviderProtocol::kOpenRouter, viaOpenRouter.base_url);
+  json plugged = viaOpenRouter.BuildChatBody(documented, json::array(), "");
+  CHECK(plugged["plugins"][0]["id"] == "file-parser");
+  CHECK(plugged["plugins"][0]["pdf"]["engine"] == "cloudflare-ai");
+  // A request without a document does not carry it.
+  CHECK(!viaOpenRouter
+             .BuildChatBody(
+                 json::array({{{"role", "user"}, {"content", "plain"}}}),
+                 json::array(), "")
+             .contains("plugins"));
+
   // The incremental payload cache reuses the previous request's serialized
   // messages, so it has to be byte-identical to dumping the whole body -
   // provider prefix caching pays for exact bytes and a stale prefix would be

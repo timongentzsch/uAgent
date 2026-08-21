@@ -62,7 +62,10 @@ json AttachmentContent(const std::string& prompt,
 
 // Remove only image parts after an endpoint rejects them. Other attachment
 // types remain available on the retry, and the text part retains every path.
-size_t StripImageContentParts(json& messages);
+// Drops every content part of `type`, returning how many messages changed.
+// The caller says what replaces them, since an image and a document degrade
+// into different explanations.
+size_t StripContentParts(json& messages, std::string_view type);
 
 }  // namespace uagent
 

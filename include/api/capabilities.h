@@ -17,6 +17,7 @@ enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter };
 enum class RejectedCapability : uint8_t {
   kNone,
   kImageInput,
+  kFileInput,
   kParallelTools,
   kStreamUsage,
   kNativeTools,
@@ -33,6 +34,8 @@ struct ProviderCapabilities {
   bool parallel_tools = true;
   bool stream_usage_option = true;
   bool image_input = true;
+  // Document parts, which not every route accepts even when it takes images.
+  bool file_input = true;
 
   // Stable route dialect features.
   bool model_catalog_required = true;

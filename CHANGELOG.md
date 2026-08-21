@@ -14,6 +14,15 @@
   non-public resolved destinations on every redirect connection, closing an
   SSRF path to local services and cloud metadata endpoints.
 
+### Added
+
+- Attached documents are parsed deliberately on OpenRouter routes: requests
+  that carry one send the `file-parser` plugin, with the engine chosen by
+  `UAGENT_PDF_ENGINE` (free `cloudflare-ai` by default) rather than left to an
+  unseen provider default. A route that refuses documents outright is now
+  negotiated down like image input, and the attachment continues as a path the
+  model can reach another way.
+
 ### Changed
 
 - `web_fetch` downloads up to the attachment budget rather than a fixed 2 MiB,

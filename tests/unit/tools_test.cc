@@ -1171,7 +1171,7 @@ void TestAttachmentEncoding() {
         std::string::npos);
   json messages =
       json::array({{{"role", "user"}, {"content", std::move(content)}}});
-  CHECK(StripImageContentParts(messages) == 1);
+  CHECK(StripContentParts(messages, "image_url") == 1);
   CHECK(messages[0]["content"].size() == 2);
   CHECK(messages[0]["content"][0]["text"].get<std::string>().find("withheld") ==
         std::string::npos);

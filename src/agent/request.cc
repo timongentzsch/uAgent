@@ -141,6 +141,21 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   return result;
 }
 
+namespace {
+
+// Substituted content says so in the transcript: the model must not conclude
+// it saw what was taken away.
+void AppendContentNote(json& content, const std::string& note) {
+  if (!content.empty() && JsonValue(content[0], "type", "") == "text" &&
+      content[0].contains("text") && content[0]["text"].is_string()) {
+    content[0]["text"] = content[0]["text"].get<std::string>() + "\n\n" + note;
+  } else {
+    content.insert(content.begin(), {{"type", "text"}, {"text", note}});
+  }
+}
+
+}  // namespace
+
 std::string Agent::AnalyzeImageContent(const json& content,
                                        std::string& error) {
   error.clear();
@@ -217,7 +232,7 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
   if (!api_.config.image_model.empty()) {
     analysis = AnalyzeImageContent(analysis_content, fallback.error);
   }
-  fallback.rewritten = StripImageContentParts(messages);
+  fallback.rewritten = StripContentParts(messages, "image_url");
   fallback.applied = fallback.rewritten > 0;
   if (!fallback.applied) return fallback;
 
@@ -228,16 +243,7 @@ Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
   } else if (!fallback.error.empty()) {
     note = "[vision model analysis failed: " + fallback.error + "]";
   }
-  if (!note.empty()) {
-    json& content = messages[target]["content"];
-    if (!content.empty() && JsonValue(content[0], "type", "") == "text" &&
-        content[0].contains("text") && content[0]["text"].is_string()) {
-      content[0]["text"] =
-          content[0]["text"].get<std::string>() + "\n\n" + note;
-    } else {
-      content.insert(content.begin(), {{"type", "text"}, {"text", note}});
-    }
-  }
+  if (!note.empty()) AppendContentNote(messages[target]["content"], note);
 
   std::string model = TerminalSafe(api_.config.image_model);
   if (rejected) fallback.status = "model rejected image input — ";
@@ -391,6 +397,36 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
     changed(rejected);
     ReportImageFallback(fallback);
     return fallback.applied;
+  }
+  if (rejected == RejectedCapability::kFileInput) {
+    api_.capabilities.file_input = false;
+    // No converter here: the bytes stay on disk and the model is told where,
+    // which is enough for it to reach them another way.
+    json& messages = conversation_.Messages();
+    std::string names;
+    for (const json& message : messages) {
+      if (!message.contains("content") || !message["content"].is_array()) {
+        continue;
+      }
+      for (const json& part : message["content"]) {
+        if (JsonValue(part, "type", "") != "file" || !part.contains("file")) {
+          continue;
+        }
+        std::string name = JsonValue(part["file"], "filename", "");
+        if (!name.empty()) names += (names.empty() ? "" : ", ") + name;
+      }
+    }
+    size_t stripped = StripContentParts(messages, "file");
+    changed(rejected);
+    if (!stripped) return false;
+    AppendContentNote(messages[messages.size() - 1]["content"],
+                      "[document content; not read by this model" +
+                          (names.empty() ? "" : ": " + names) + "]");
+    EnsureRuntimeContext();
+    Emit(NoticeEvent(
+        PresentationStatus::kWarned,
+        "· model rejected file input — attachments continue as file paths"));
+    return true;
   }
   if (rejected == RejectedCapability::kParallelTools) {
     api_.capabilities.parallel_tools = false;

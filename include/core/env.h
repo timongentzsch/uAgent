@@ -154,6 +154,9 @@ struct RuntimeConfig {
   std::string web_search_engine = "auto";
   std::string web_search_context_size;
   std::string image_model;
+  // OpenRouter file-parser engine for documents a model cannot read natively:
+  // cloudflare-ai (free), mistral-ocr (scans, billed per page) or native.
+  std::string pdf_engine;
   std::string mcp_roots;
   bool openrouter_fallbacks = true;
   bool memory_enabled = true;

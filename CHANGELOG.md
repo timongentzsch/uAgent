@@ -16,6 +16,11 @@
 
 ### Changed
 
+- `web_fetch` downloads up to the attachment budget rather than a fixed 2 MiB,
+  which had truncated an ordinary arXiv paper, and it now points at `run` plus
+  `attach` when the bytes are a document rather than markup.
+- Converted HTML keeps its headings, table cells and `<pre>` indentation, and
+  no longer leaks attribute markup into the text.
 - Tool calls are always shown in full. Only results are shortened outside
   `/verbose`, so a decision is never abbreviated in the scrollback while its
   output is.

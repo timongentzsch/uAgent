@@ -25,9 +25,11 @@ struct AppSession {
   std::string& session_file;
   uint64_t& saved_revision;
 
-  AppRuntime& runtime() const { return context.runtime; }
-  Api& api() const { return context.runtime.api; }
-  Agent& agent() const { return *context.agent; }
+  // Named for what they reach, not for the type they return: a member may not
+  // shadow the type name it hands back.
+  AppRuntime& Runtime() const { return context.runtime; }
+  Api& ApiClient() const { return context.runtime.api; }
+  Agent& ActiveAgent() const { return *context.agent; }
 };
 
 // Returns true when the command ends the session.

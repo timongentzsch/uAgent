@@ -37,30 +37,30 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     fprintf(stderr, "cannot load session journal: %s\n", error.c_str());
   }
   Emit(Event{EventId::kSessionResumed,
-             {{"model", session.api().RequestModel()},
-              {"messages", session.agent().MessageCount()}}});
+             {{"model", session.ApiClient().RequestModel()},
+              {"messages", session.ActiveAgent().MessageCount()}}});
 }
 
 StatusView SessionStatusView(const AppSession& session) {
   std::string model =
-      RouteSelection(session.api(), session.context.provider.providers);
+      RouteSelection(session.ApiClient(), session.context.provider.providers);
   std::string host = model.find('/') == std::string::npos
-                         ? UrlHost(session.api().base_url)
+                         ? UrlHost(session.ApiClient().base_url)
                          : "";
-  return StatusView{.context_used = session.agent().ContextUsed(),
+  return StatusView{.context_used = session.ActiveAgent().ContextUsed(),
                     .model = std::move(model),
                     .host = std::move(host),
-                    .verbose = session.agent().Verbose(),
+                    .verbose = session.ActiveAgent().Verbose(),
                     .yolo = session.context.options.yolo,
                     .attachments = session.attachments.size(),
-                    .background = session.runtime().processes.Count()};
+                    .background = session.Runtime().processes.Count()};
 }
 
 namespace {
 
 void ActivateCurrentRoute(AppSession& session) {
-  ActivateRoute(session.api());
-  session.agent().RouteChanged();
+  ActivateRoute(session.ApiClient());
+  session.ActiveAgent().RouteChanged();
 }
 
 void SaveSelectedModel(AppSession& session, const std::string& selected) {
@@ -72,15 +72,15 @@ void SaveSelectedModel(AppSession& session, const std::string& selected) {
   ActivateCurrentRoute(session);
   std::string error;
   bool saved = SaveModelPreference(
-      {selected, session.api().base_url, named_route}, error);
+      {selected, session.ApiClient().base_url, named_route}, error);
   DebugLog("route_changed", {{"route", selected},
-                             {"model", session.api().model},
-                             {"base_url", session.api().base_url},
-                             {"effort", session.api().reasoning_effort},
+                             {"model", session.ApiClient().model},
+                             {"base_url", session.ApiClient().base_url},
+                             {"effort", session.ApiClient().reasoning_effort},
                              {"preference_saved", saved}});
   printf(
       "%s· model %s%s\n", DIM(),
-      RouteSelection(session.api(), session.context.provider.providers).c_str(),
+      RouteSelection(session.ApiClient(), session.context.provider.providers).c_str(),
       RST());
   if (!saved) {
     printf("%s· model changed but preference was not saved: %s%s\n", YEL(),
@@ -164,7 +164,7 @@ void HandleModels(AppSession& session, const std::string& argument) {
   fflush(stdout);
   TerminalSpinner spinner(true, SpinnerLabel("searching model catalogs"));
   ModelSearch search =
-      SearchModels(session.api(), session.context.provider.routes,
+      SearchModels(session.ApiClient(), session.context.provider.routes,
                    session.context.provider.providers, argument);
   spinner.Stop();
   if (AbortRequested()) {
@@ -172,9 +172,9 @@ void HandleModels(AppSession& session, const std::string& argument) {
     printf("%s· model search cancelled%s\n", YEL(), RST());
     return;
   }
-  std::optional<ModelCandidate> selected = PickModel(search, session.api());
+  std::optional<ModelCandidate> selected = PickModel(search, session.ApiClient());
   if (!selected) return;
-  ApplyRoute(session.api(), selected->route);
+  ApplyRoute(session.ApiClient(), selected->route);
   SaveSelectedModel(session, selected->selection);
 }
 
@@ -187,7 +187,7 @@ void HandleModel(AppSession& session, const std::string& argument) {
     return;
   }
   std::string selected =
-      SelectModel(session.api(), session.context.provider.routes,
+      SelectModel(session.ApiClient(), session.context.provider.routes,
                   session.context.provider.providers, argument);
   if (selected.empty()) {
     printf("%s· unknown model %s; use /models%s\n", RED(),
@@ -200,12 +200,12 @@ void HandleModel(AppSession& session, const std::string& argument) {
 void HandleEffort(AppSession& session, const std::string& argument) {
   if (argument.empty()) {
     printf("%s· effort %s%s\n", DIM(),
-           session.api().reasoning_effort.empty()
+           session.ApiClient().reasoning_effort.empty()
                ? "default"
-               : session.api().reasoning_effort.c_str(),
+               : session.ApiClient().reasoning_effort.c_str(),
            RST());
   } else if (argument == "default") {
-    session.api().reasoning_effort.clear();
+    session.ApiClient().reasoning_effort.clear();
     ActivateCurrentRoute(session);
     printf("%s· effort provider default%s\n", DIM(), RST());
   } else if (!ValidEffort(argument)) {
@@ -214,23 +214,23 @@ void HandleEffort(AppSession& session, const std::string& argument) {
         "max; use default to defer to the provider%s\n",
         RED(), RST());
   } else {
-    session.api().reasoning_effort = argument;
+    session.ApiClient().reasoning_effort = argument;
     ActivateCurrentRoute(session);
     printf("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
   }
 }
 
 void HandleVariant(AppSession& session, const std::string& argument) {
-  if (!session.api().capabilities.model_variants) {
+  if (!session.ApiClient().capabilities.model_variants) {
     printf("%s· /variant is unavailable on the active route%s\n", RED(), RST());
     return;
   }
   std::string variant = argument;
   if (variant.starts_with(':')) variant.erase(0, 1);
   if (variant.empty()) {
-    std::string label = session.api().config.openrouter_variant.empty()
+    std::string label = session.ApiClient().config.openrouter_variant.empty()
                             ? "default"
-                            : ":" + session.api().config.openrouter_variant;
+                            : ":" + session.ApiClient().config.openrouter_variant;
     printf("%s· variant %s · choose default, nitro, floor, or exacto%s\n",
            DIM(), label.c_str(), RST());
     return;
@@ -241,8 +241,8 @@ void HandleVariant(AppSession& session, const std::string& argument) {
            RST());
     return;
   }
-  session.api().config.openrouter_variant = variant;
-  session.runtime().config.openrouter_variant = variant;
+  session.ApiClient().config.openrouter_variant = variant;
+  session.Runtime().config.openrouter_variant = variant;
   setenv("UAGENT_OPENROUTER_VARIANT", variant.c_str(), 1);
   ActivateCurrentRoute(session);
   const char* detail = "provider default";
@@ -250,13 +250,13 @@ void HandleVariant(AppSession& session, const std::string& argument) {
   if (variant == "floor") detail = "lowest price";
   if (variant == "exacto") detail = "quality-first tool reliability";
   DebugLog("variant_changed",
-           {{"variant", variant}, {"model", session.api().RequestModel()}});
+           {{"variant", variant}, {"model", session.ApiClient().RequestModel()}});
   std::string label = variant.empty() ? "default" : ":" + variant;
   printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
 }
 
 void HandleCompact(AppSession& session) {
-  session.agent().Compact();
+  session.ActiveAgent().Compact();
   SteeringState().Take();
 }
 
@@ -281,8 +281,8 @@ void HandleAttach(AppSession& session, const std::string& argument) {
   std::string error;
   if (!InspectAttachment(argument, attachment, error) ||
       !(error =
-            ImageInputError(attachment, session.api().capabilities.image_input,
-                            !session.api().config.image_model.empty()))
+            ImageInputError(attachment, session.ApiClient().capabilities.image_input,
+                            !session.ApiClient().config.image_model.empty()))
            .empty()) {
     printf("%s%s%s\n", RED(), error.c_str(), RST());
     return;
@@ -293,7 +293,7 @@ void HandleAttach(AppSession& session, const std::string& argument) {
 }
 
 void HandleCost(const AppSession& session) {
-  json routes = session.agent().RouteUsageJson();
+  json routes = session.ActiveAgent().RouteUsageJson();
   if (routes.empty()) {
     printf("%s· no session spend yet%s\n", DIM(), RST());
     return;
@@ -314,15 +314,15 @@ void HandleCost(const AppSession& session) {
     printf("%s· %s · %s · %s%s\n", DIM(), TerminalSafe(route).c_str(),
            tokens.c_str(), cost.c_str(), RST());
   }
-  const Usage& spent = session.agent().SessionUsage();
+  const Usage& spent = session.ActiveAgent().SessionUsage();
   std::string totals = TokenSummary(spent);
   std::string session_cache = CacheSummary(spent);
   if (!session_cache.empty()) totals += " · " + session_cache;
   printf(
       "%s· total · %s · %s", DIM(), totals.c_str(),
       spent.cost_reported ? FmtCost(spent.cost).c_str() : "cost unavailable");
-  if (session.api().config.session_budget > 0) {
-    printf(" / %s", FmtCost(session.api().config.session_budget).c_str());
+  if (session.ApiClient().config.session_budget > 0) {
+    printf(" / %s", FmtCost(session.ApiClient().config.session_budget).c_str());
   }
   printf("%s\n", RST());
 }
@@ -331,8 +331,8 @@ void HandleCost(const AppSession& session) {
 // source of each setting, then the request the model would see.
 void HandleContext(AppSession& session) {
   json effective =
-      session.context.config_manager.DiagnosticJson(session.runtime().config);
-  effective["capabilities"] = session.api().capabilities.DiagnosticJson();
+      session.context.config_manager.DiagnosticJson(session.Runtime().config);
+  effective["capabilities"] = session.ApiClient().capabilities.DiagnosticJson();
   const json& sources = effective["sources"];
   auto source = [&](const char* key, std::string fallback = "runtime") {
     return sources.is_object() ? JsonValue(sources, key, fallback) : fallback;
@@ -341,20 +341,20 @@ void HandleContext(AppSession& session) {
   std::string credential_source =
       source("UAGENT_API_KEY", source("OPENROUTER_API_KEY"));
   effective["route"] = {
-      {"base_url", RedactedUrl(session.api().base_url)},
+      {"base_url", RedactedUrl(session.ApiClient().base_url)},
       {"base_url_source", source("UAGENT_BASE_URL")},
-      {"model", session.api().RequestModel()},
+      {"model", session.ApiClient().RequestModel()},
       {"model_source", std::move(model_source)},
       {"credentials",
-       session.api().api_key.empty() || session.api().api_key == "sk-noop"
+       session.ApiClient().api_key.empty() || session.ApiClient().api_key == "sk-noop"
            ? "<unset>"
            : "<set>"},
       {"credential_source", std::move(credential_source)},
-      {"context_window", session.api().ctx_window}};
+      {"context_window", session.ApiClient().ctx_window}};
   printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
          TerminalSafe(JsonDump(effective, 2)).c_str());
   printf("%smodel request%s\n", BOLD(), RST());
-  session.agent().PrintContext();
+  session.ActiveAgent().PrintContext();
 }
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
@@ -370,8 +370,8 @@ void HandleTools(const AppSession& session) {
 
 void HandleMemory(const AppSession& session) {
   printf("%s· memory %s%s\n", DIM(),
-         session.api().config.memory_enabled ? "on" : "off", RST());
-  if (!session.api().config.memory_enabled) return;
+         session.ApiClient().config.memory_enabled ? "on" : "off", RST());
+  if (!session.ApiClient().config.memory_enabled) return;
   std::vector<MemoryEntry> entries = ListMemories();
   if (entries.empty()) {
     printf("%s· no saved memories%s\n", DIM(), RST());
@@ -420,7 +420,7 @@ void HandleMemory(const AppSession& session) {
 }
 
 void HandleProcesses(const AppSession& session) {
-  ToolResult activities = ToolActivityList(session.runtime().processes);
+  ToolResult activities = ToolActivityList(session.Runtime().processes);
   if (activities.output.starts_with('(')) {
     printf("%s· %s%s\n", DIM(), activities.output.c_str(), RST());
     return;
@@ -436,34 +436,34 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
     case SlashCommandId::kQuit:
       return true;
     case SlashCommandId::kReset:
-      session.agent().Reset();
+      session.ActiveAgent().Reset();
       session.context.observability.Journal().Clear();
       session.attachments.clear();
       session.session_file.clear();
-      session.saved_revision = session.agent().Revision();
+      session.saved_revision = session.ActiveAgent().Revision();
       printf("%s· fresh session%s\n", DIM(), RST());
       break;
     case SlashCommandId::kSessions: {
       std::string chosen = PickSession();
       if (!chosen.empty()) {
         std::string previous_path = session.session_file;
-        ResumeInto(session.agent(), chosen, session.session_file);
+        ResumeInto(session.ActiveAgent(), chosen, session.session_file);
         LoadSessionJournal(session, previous_path);
         session.attachments.clear();
-        session.saved_revision = session.agent().Revision();
+        session.saved_revision = session.ActiveAgent().Revision();
       }
       break;
     }
     case SlashCommandId::kTrace:
-      session.agent().PrintTrace();
+      session.ActiveAgent().PrintTrace();
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
       break;
     case SlashCommandId::kVerbose:
-      session.agent().SetVerbose(!session.agent().Verbose());
+      session.ActiveAgent().SetVerbose(!session.ActiveAgent().Verbose());
       printf("%s· verbose %s%s\n", DIM(),
-             session.agent().Verbose()
+             session.ActiveAgent().Verbose()
                  ? "ON — full reasoning and expanded bounded tool output"
                  : "off — compact reasoning and compact tool output",
              RST());

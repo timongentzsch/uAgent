@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "include/api/retry.h"

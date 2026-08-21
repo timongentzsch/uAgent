@@ -128,7 +128,19 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         {"description", "lean default; full includes implementation tools"}}},
       {"model",
        {{"type", "string"},
-        {"description", ModelPropertyDescription(routes, providers)}}}};
+        {"description", ModelPropertyDescription(routes, providers)}}},
+      {"max_steps",
+       {{"type", "integer"},
+        {"minimum", 1},
+        {"maximum", 500},
+        {"description",
+         "optional model-round ceiling for this child; omit for the "
+         "configured default"}}},
+      {"max_tool_calls",
+       {{"type", "integer"},
+        {"minimum", 1},
+        {"maximum", 500},
+        {"description", "optional tool-call ceiling for this child"}}}};
   Tool tool = MakeTool(
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "
@@ -168,17 +180,29 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         EnvironmentOverrides environment =
             ChildAgentEnvironment(std::move(route));
+        // A caller that knows the shape of the subtask may raise or lower the
+        // ceiling for that one child; the schema bounds it, and the session
+        // cost budget still applies underneath.
+        int64_t steps = JsonValue(arguments, "max_steps", SubagentMaxSteps());
+        int64_t tool_calls =
+            JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls());
+        bool background = JsonValue(arguments, "background", true);
         environment.insert(
             environment.end(),
-            {{"UAGENT_MAX_STEPS", std::to_string(SubagentMaxSteps())},
-             {"UAGENT_MAX_TOOL_CALLS", std::to_string(SubagentMaxToolCalls())},
+            {{"UAGENT_MAX_STEPS", std::to_string(steps)},
+             {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
              {"UAGENT_TOOLSET", std::move(mode)},
              {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"}});
+        // Only a background child is polled while it runs. A foreground child
+        // is read once, where progress lines would only pad the answer the
+        // parent quotes.
+        if (background) {
+          environment.emplace_back("UAGENT_HEADLESS_PROGRESS", "1");
+        }
         if (api.config.session_budget > 0) {
           environment.emplace_back("UAGENT_SESSION_BUDGET",
                                    std::to_string(remaining_budget));
         }
-        bool background = JsonValue(arguments, "background", true);
         std::string command =
             ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
         return RunShellCommand(processes, context,
@@ -189,6 +213,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                 .environment = std::move(environment)})
             .result;
       });
+  tool.clamped_arguments = {"max_steps", "max_tool_calls"};
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.delegates = true;

@@ -35,6 +35,8 @@ class MdStream {
   // a message with several, and each one is a wasted terminal row.
   size_t blank_held = 0;
   std::string pre;
+  // Rendered bytes waiting for one write, drained at every entry point's exit.
+  std::string outbuf;
   bool heading = false;
   bool fence = false;
   bool fencehead = false;
@@ -52,6 +54,9 @@ class MdStream {
   void FlushOutput(size_t bytes, bool newline, bool force = false);
   void Pv(const std::string& text);
   void Pc(char value);
+  void Put(char value);
+  void Put(std::string_view text);
+  void FlushOut();
   void EmitPre();
   std::string_view Marker() const;
   void Step(char value);

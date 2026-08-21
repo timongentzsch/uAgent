@@ -4,6 +4,21 @@
 
 ### Fixed
 
+- A provider error injected mid-stream discarded a whole turn's work. Such a
+  frame is now retried when it arrived before any answer text, tool call,
+  annotation or usage — the attempt left nothing to replay — and the bare
+  `{"type":"api_error","message":…}` shape some providers send is read as the
+  error it is instead of dropped as an unrecognized frame.
+- Parallel tool calls streamed without an `index` piled into one slot, so a
+  single call arrived carrying two tools' arguments and was rejected. Fragments
+  without an index are keyed by call id instead.
+- A numeric pacing hint outside its schema bounds — `yield_ms`, `context`,
+  `wait_ms`, a page size — rejected the call, spending a model round to say
+  "use the maximum". Those arguments are clamped into range; identifiers are
+  not, and a fractional value is still a type error.
+- An `activity` receipt named only its target, so a resize read as a bare poll
+  and a write as a size with no operation. Each argument set now names its
+  verb.
 - Streaming markdown measured display width by counting UTF-8 lead bytes, so a
   line containing CJK, emoji, or combining marks reported the wrong row count
   and redrawn tables erased the wrong number of rows.
@@ -16,6 +31,10 @@
 
 ### Added
 
+- `UAGENT_HEADLESS_PROGRESS=1` echoes every durable event as one stderr line.
+  It is set for background children, whose stderr already lands in the log the
+  parent polls, so a delegated run is traceable while it works; the stdout
+  answer contract is unchanged.
 - Attached documents are parsed deliberately on OpenRouter routes: requests
   that carry one send the `file-parser` plugin, with the engine chosen by
   `UAGENT_PDF_ENGINE` (free `cloudflare-ai` by default) rather than left to an
@@ -27,6 +46,17 @@
 
 ### Changed
 
+- Streaming markdown hands a whole chunk to stdio once instead of taking the
+  stream lock for every character, which was about a third of render cost, and
+  `TerminalSafe` no longer rebuilds a string byte by byte when nothing in it
+  needs escaping.
+- The reasoning ticker normalizes its buffer once per drawn frame rather than
+  once per streamed token: the renderer applies the transform, so the ui layer
+  still owns what "displayable" means.
+- Subagents default to 100 model rounds and 240 tool calls, up from 25 and 60 —
+  the parent runs unbounded, and cost, wall clock and the session budget are
+  the limits that protect a delegated run. A call may set `max_steps` or
+  `max_tool_calls` for one child.
 - `web_fetch` downloads up to the attachment budget rather than a fixed 2 MiB,
   which had truncated an ordinary arXiv paper, and it now points at `run` plus
   `attach` when the bytes are a document rather than markup.

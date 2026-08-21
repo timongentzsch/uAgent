@@ -195,6 +195,38 @@ void ReadStringArray(const char* name, std::vector<std::string>& values,
 
 }  // namespace
 
+void ClampToolArguments(const Tool& tool, json& args) {
+  if (tool.clamped_arguments.empty() || !args.is_object()) return;
+  const auto properties = tool.parameters.find("properties");
+  if (properties == tool.parameters.end() || !properties->is_object()) return;
+  for (const std::string& name : tool.clamped_arguments) {
+    const auto value = args.find(name);
+    const auto schema = properties->find(name);
+    if (value == args.end() || !value->is_number() ||
+        schema == properties->end() || !schema->is_object()) {
+      continue;
+    }
+    const double given = value->get<double>();
+    double bounded = given;
+    const auto minimum = schema->find("minimum");
+    if (minimum != schema->end() && minimum->is_number()) {
+      bounded = std::max(bounded, minimum->get<double>());
+    }
+    const auto maximum = schema->find("maximum");
+    if (maximum != schema->end() && maximum->is_number()) {
+      bounded = std::min(bounded, maximum->get<double>());
+    }
+    if (bounded == given) continue;
+    // A fractional value for an integer property is still a type error, and
+    // clamping must not hide it.
+    if (value->is_number_integer()) {
+      *value = static_cast<int64_t>(bounded);
+    } else {
+      *value = bounded;
+    }
+  }
+}
+
 std::string InvalidToolArgument(const Tool& tool, const json& args) {
   return InvalidSchemaValue(ToolParameters(tool), args, tool.name,
                             /*root=*/true);

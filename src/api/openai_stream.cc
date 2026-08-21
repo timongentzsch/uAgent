@@ -23,6 +23,21 @@ void MergeStreamIdentity(std::string& target, const std::string& fragment) {
   }
 }
 
+// OpenAI-compatible streams number parallel tool calls with `index`. A
+// provider that omits it would otherwise pile every fragment into slot 0 and
+// yield one call whose arguments merge two schemas, so key on the call id
+// instead: a known id continues its slot, an unseen id opens the next one, and
+// an anonymous fragment continues the newest slot.
+int StreamToolSlot(const std::map<int, ToolCall>& calls,
+                   const std::string& id) {
+  if (calls.empty()) return 0;
+  if (id.empty()) return calls.rbegin()->first;
+  for (const auto& [slot, call] : calls) {
+    if (call.id == id) return slot;
+  }
+  return calls.rbegin()->first + 1;
+}
+
 void AddAnnotations(const json& annotations, ChatResult& result) {
   if (!annotations.is_array()) return;
   for (const json& annotation : annotations) {
@@ -104,8 +119,20 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     if (nested.is_object()) envelope = &nested;
   }
   if (envelope->contains("error")) {
-    result.retryable = ApplyRemoteError((*envelope)["error"], result);
+    result.retryable = ApplyRemoteError((*envelope)["error"], result) ||
+                       BarrenStreamError(result);
     result.error = JsonErrorMessage(*envelope, "stream failed");
+    return delta;
+  }
+  // Some providers inject the bare {"type":"…error","message":"…"} shape
+  // rather than the documented envelope. Falling through would drop it as an
+  // unrecognized frame and end the stream with no diagnosis at all.
+  if (!value.contains("choices") && envelope->contains("message") &&
+      (*envelope)["message"].is_string() &&
+      JsonValue(*envelope, "type", "").ends_with("error")) {
+    result.retryable =
+        ApplyRemoteError(*envelope, result) || BarrenStreamError(result);
+    result.error = (*envelope)["message"].get<std::string>();
     return delta;
   }
   if (value.contains("usage") && !value["usage"].is_null()) {
@@ -178,12 +205,15 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   delta.activity = delta.activity || !event_delta["tool_calls"].empty();
   for (const json& tool_call : event_delta["tool_calls"]) {
     if (!tool_call.is_object()) continue;
-    int64_t index = JsonValue(tool_call, "index", int64_t{0});
-    if (index < 0 || index > std::numeric_limits<int>::max()) continue;
-    ToolCall& target = tool_calls[static_cast<int>(index)];
+    int64_t index = JsonValue(tool_call, "index", int64_t{-1});
+    if (index > std::numeric_limits<int>::max()) continue;
+    std::string id;
     if (tool_call.contains("id") && tool_call["id"].is_string()) {
-      MergeStreamIdentity(target.id, tool_call["id"].get<std::string>());
+      id = tool_call["id"].get<std::string>();
     }
+    if (index < 0) index = StreamToolSlot(tool_calls, id);
+    ToolCall& target = tool_calls[static_cast<int>(index)];
+    if (!id.empty()) MergeStreamIdentity(target.id, id);
     if (!tool_call.contains("function") || !tool_call["function"].is_object()) {
       continue;
     }

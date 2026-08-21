@@ -334,7 +334,7 @@ MdStream::MdStream() { on = g_tty && EnvStr("UAGENT_MARKDOWN", "1") != "0"; }
 void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);
   if (!on) {
-    fputs(safe.c_str(), stdout);
+    Put(safe);
     FlushOutput(safe.size(), safe.find('\n') != std::string::npos);
     return;
   }
@@ -344,13 +344,16 @@ void MdStream::Feed(std::string_view s) {
 
 void MdStream::FeedPlain(std::string_view s) {
   std::string safe = TerminalSafe(s);
-  fputs(safe.c_str(), stdout);
+  Put(safe);
   FlushOutput(safe.size(), false, true);
 }
 
 void MdStream::Control(const char* s) {
-  fputs(s, stdout);
+  Put(s);
   pending_output += strlen(s);
+  // A control sequence is the caller's way of ordering its own writes around
+  // this stream, so it may not sit in the buffer waiting for text.
+  FlushOut();
 }
 
 void MdStream::Flush() {  // stream end: resolve everything still held
@@ -370,7 +373,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   FlushTable();
   EmitPre();
   if (bold || ital || code || math || heading || fence || fencehead) {
-    fputs(RST(), stdout);
+    Put(RST());
   }
   blank_held = 0;  // trailing blank lines never reach the terminal
   bold = ital = code = heading = fence = fencehead = false;
@@ -383,6 +386,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
 }
 
 void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
+  FlushOut();
   pending_output += bytes;
   auto now = std::chrono::steady_clock::now();
   if (force || newline || !output_started || pending_output >= kFlushBytes ||
@@ -397,21 +401,34 @@ void MdStream::FlushOutput(size_t bytes, bool newline, bool force) {
 void MdStream::ReleaseBlanks() {
   if (!blank_held) return;
   blank_held = 0;
-  putchar('\n');
+  Put('\n');
 }
 
 void MdStream::Pv(const std::string& s) {
   if (s.empty()) return;  // an empty write is not output, and must not release
   ReleaseBlanks();
-  fputs(s.c_str(), stdout);
+  Put(s);
 }
 
-// Locked putc on purpose: TerminalSpinner writes stdout from its own thread
-// (core/term.h), so the unlocked variant would be a data race. Buffering, not
-// the lock, is what removed the per-character write(2).
 void MdStream::Pc(char c) {
   ReleaseBlanks();
-  putchar(c);
+  Put(c);
+}
+
+// Emission is collected here and handed to stdio once per chunk instead of
+// once per character, which is where a third of the render cost sat: stdio
+// takes its lock — needed, because TerminalSpinner writes stdout from its own
+// thread (core/term.h) — on every single putchar. Every public entry point
+// drains the buffer before returning, so nothing an outside writer can
+// observe has moved.
+void MdStream::Put(char value) { outbuf += value; }
+
+void MdStream::Put(std::string_view text) { outbuf.append(text); }
+
+void MdStream::FlushOut() {
+  if (outbuf.empty()) return;
+  fwrite(outbuf.data(), 1, outbuf.size(), stdout);
+  outbuf.clear();
 }
 
 void MdStream::EmitPre() {
@@ -465,14 +482,14 @@ void MdStream::Step(char c) {
   }
   if (fencehead) {  // rest of the ``` marker line, shown dim
     if (c == '\n') {
-      fputs(RST(), stdout);
-      putchar('\n');
-      if (fence) fputs(CodeBlk(), stdout);  // color the block body
+      Put(RST());
+      Put('\n');
+      if (fence) Put(CodeBlk());  // color the block body
       fencehead = false;
       linestart = true;
       ForgetPreviousLine();
     } else {
-      putchar(c);
+      Put(c);
     }
     return;
   }
@@ -485,14 +502,14 @@ void MdStream::Step(char c) {
     return;
   }
   if (fence) {
-    putchar(c);
+    Put(c);
     if (c == '\n') {
       linestart = true;
       ForgetPreviousLine();
       // The persistent composer inserts a reset-styled status row after a
       // complete line. Queue the fence color at the start of the next line so
       // streamed code blocks do not lose their styling after line one.
-      fputs(CodeBlk(), stdout);
+      Put(CodeBlk());
     }
     return;
   }
@@ -539,7 +556,7 @@ void MdStream::Classify(char c) {
     }
     if (c == ' ') {  // "# ..." -> bold, hashes hidden
       Pv(pre.substr(0, pre.size() - mk.size()));  // indentation
-      fputs(BOLD(), stdout);
+      Put(BOLD());
       heading = true;
       pre.clear();
       linestart = false;
@@ -554,7 +571,7 @@ void MdStream::Classify(char c) {
     if (c == '`' && mk.size() < 3) {
       pre += c;
       if (Marker() == "```") {  // fence opens
-        fputs(DIM(), stdout);
+        Put(DIM());
         Pv(pre);
         pre.clear();
         fence = true;
@@ -626,17 +643,17 @@ void MdStream::FenceClassify(char c) {
       return;
     }
     if (c == '\n') {
-      fputs(DIM(), stdout);
-      fputs(pre.c_str(), stdout);
+      Put(DIM());
+      Put(pre);
       pre.clear();
-      fputs(RST(), stdout);
-      putchar('\n');
+      Put(RST());
+      Put('\n');
       fence = false;
       return;  // linestart stays true
     }
-    fputs(pre.c_str(), stdout);
+    Put(pre);
     pre.clear();  // "```something": content
-    putchar(c);
+    Put(c);
     linestart = false;
     return;
   }
@@ -648,15 +665,15 @@ void MdStream::FenceClassify(char c) {
     pre += c;
     return;
   }
-  fputs(pre.c_str(), stdout);
+  Put(pre);
   pre.clear();
   if (c == '\n') {
-    putchar('\n');
+    Put('\n');
     prev_raw.clear();
-    fputs(CodeBlk(), stdout);
+    Put(CodeBlk());
     return;
   }
-  putchar(c);
+  Put(c);
   linestart = false;
 }
 
@@ -665,13 +682,13 @@ void MdStream::InlineChar(char c) {
     dollar = false;
     if (c == '$') {
       math = 2;
-      fputs(MATH(), stdout);
+      Put(MATH());
       math_text.clear();
       return;
     }
     if (c != '\n' && c != ' ' && c != '\t') {
       math = 1;
-      fputs(MATH(), stdout);
+      Put(MATH());
       math_text.clear();
       MathChar(c);
       return;
@@ -682,7 +699,7 @@ void MdStream::InlineChar(char c) {
     slash = false;
     if (!code && (c == '(' || c == '[')) {
       math = c == '(' ? 3 : 4;
-      fputs(MATH(), stdout);
+      Put(MATH());
       math_text.clear();
       return;
     }
@@ -698,7 +715,7 @@ void MdStream::InlineChar(char c) {
     if (n == 1 && c == '*') {  // "**"
       if (bold) {
         bold = false;
-        fputs(BoldOff(), stdout);
+        Put(BoldOff());
       } else {
         star = 2;  // opening bold only if a non-space follows
       }
@@ -709,14 +726,14 @@ void MdStream::InlineChar(char c) {
         Pv("**");  // "a ** b": literal
       } else {
         bold = true;
-        fputs(BOLD(), stdout);
+        Put(BOLD());
       }
     } else if (ital) {
       ital = false;
-      fputs(ItalOff(), stdout);
+      Put(ItalOff());
     } else if (c != ' ' && c != '\n') {
       ital = true;
-      fputs(ITAL(), stdout);
+      Put(ITAL());
     } else {
       Pv("*");  // "2 * 3": literal
     }
@@ -735,7 +752,7 @@ void MdStream::InlineChar(char c) {
   }
   if (c == '`') {
     code = !code;
-    fputs(code ? CODE() : FgDfl(), stdout);
+    Put(code ? CODE() : FgDfl());
     return;
   }
   if (c == '\n') {
@@ -806,7 +823,7 @@ void MdStream::FinishMath() {
   math = 0;
   dollar = math_dollar = slash = false;
   linestart = false;
-  fputs(FgDfl(), stdout);
+  Put(FgDfl());
 }
 
 void MdStream::ReplayMath() {
@@ -817,7 +834,7 @@ void MdStream::ReplayMath() {
   math_text.clear();
   math = 0;
   dollar = math_dollar = slash = false;
-  fputs(FgDfl(), stdout);
+  Put(FgDfl());
   Pv(MathOpen(kind));
   for (char value : text) InlineChar(value);
 }
@@ -829,7 +846,7 @@ void MdStream::ForgetPreviousLine() {
 
 void MdStream::EndLine() {  // inline styles never span lines
   if (bold || ital || code || heading) {
-    fputs(RST(), stdout);
+    Put(RST());
     bold = ital = code = heading = false;
   }
   // Nothing visible reached this line, so hold its newline rather than print
@@ -841,7 +858,7 @@ void MdStream::EndLine() {  // inline styles never span lines
   if (vis_line == 0) {
     ++blank_held;
   } else {
-    putchar('\n');
+    Put('\n');
   }
   size_t columns = TerminalWidth();
   prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;
@@ -852,7 +869,7 @@ void MdStream::EndLine() {  // inline styles never span lines
 
 void MdStream::RetroTable() {
   for (size_t i = 0; i < prev_rows; ++i) {
-    fputs("\033[A\033[2K", stdout);  // up + clear
+    Put("\033[A\033[2K");  // up + clear
   }
   table.push_back(prev_raw);
   table.emplace_back(Marker());
@@ -894,8 +911,8 @@ void MdStream::FlushTable() {
   // no separator row -> not actually a table (e.g. "| jq ."): pass through
   if (!any_sep) {
     for (const auto& raw : table) {
-      fputs(raw.c_str(), stdout);
-      putchar('\n');
+      Put(raw);
+      Put('\n');
     }
     table.clear();
     return;
@@ -912,13 +929,12 @@ void MdStream::FlushTable() {
         continue;
       }
       if (!after_separator && r == header) continue;
-      if (r != header && r > 0) putchar('\n');
+      if (r != header && r > 0) Put('\n');
       for (size_t c = 0; c < rows[r].size(); ++c) {
         std::string label = header < rows.size() && c < rows[header].size()
                                 ? rows[header][c].first
                                 : "Column " + std::to_string(c + 1);
-        printf("%s%s:%s %s\n", DIM(), label.c_str(), RST(),
-               rows[r][c].first.c_str());
+        Put(DIM() + label + ":" + RST() + " " + rows[r][c].first + "\n");
       }
     }
     table.clear();
@@ -939,7 +955,7 @@ void MdStream::FlushTable() {
       ln += text;
       ln.append(padding, ' ');
     }
-    printf("%s%s%s\n", r == header ? BOLD() : "", ln.c_str(), RST());
+    Put((r == header ? BOLD() : "") + ln + RST() + "\n");
   }
   table.clear();
   ForgetPreviousLine();

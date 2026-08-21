@@ -275,6 +275,42 @@ void TestSseChunkPartitions() {
       nested_error, no_tool_calls);
   CHECK(nested_error.retryable);
   CHECK(nested_error.remote_error_kind == RemoteErrorKind::kTransient);
+
+  // A bare error frame says the same thing as the documented envelope, and a
+  // stream that failed before emitting anything is safe to replay.
+  ChatResult flat_error;
+  DecodeOpenAiStreamEvent(
+      R"({"type":"api_error","message":"JSON error injected into SSE stream"})",
+      flat_error, no_tool_calls);
+  CHECK(flat_error.error == "JSON error injected into SSE stream");
+  CHECK(SafeToRetry(flat_error));
+
+  // The same frame after visible output is not replayed: StreamCtx has
+  // already appended the answer text the user has seen.
+  ChatResult answered_then_error;
+  StreamCtx answered_stream;
+  answered_stream.res = &answered_then_error;
+  answered_stream.started = std::chrono::steady_clock::now();
+  answered_stream.EmitContent("visible");
+  DecodeOpenAiStreamEvent(
+      R"({"type":"api_error","message":"JSON error injected into SSE stream"})",
+      answered_then_error, no_tool_calls);
+  CHECK(!SafeToRetry(answered_then_error));
+
+  // Parallel calls streamed without `index` keep separate argument buffers
+  // instead of merging into one call with two schemas' arguments.
+  ChatResult unindexed_calls;
+  std::map<int, ToolCall> parallel;
+  DecodeOpenAiStreamEvent(
+      R"({"choices":[{"delta":{"tool_calls":[{"id":"a","function":{"name":"grep","arguments":"{\"pattern\":"}},{"id":"b","function":{"name":"run","arguments":"{\"command\":"}}]}}]})",
+      unindexed_calls, parallel);
+  DecodeOpenAiStreamEvent(
+      R"({"choices":[{"delta":{"tool_calls":[{"id":"b","function":{"arguments":"\"ls\"}"}}]}}]})",
+      unindexed_calls, parallel);
+  CHECK(parallel.size() == 2);
+  CHECK(parallel[0].name == "grep");
+  CHECK(parallel[0].args == "{\"pattern\":");
+  CHECK(parallel[1].args == "{\"command\":\"ls\"}");
 }
 
 void TestSseFraming() {

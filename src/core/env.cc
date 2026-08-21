@@ -86,10 +86,15 @@ bool CanDelegate() {
 
 bool LeanToolset() { return EnvStr("UAGENT_TOOLSET") == "lean"; }
 
-int64_t SubagentMaxSteps() { return EnvLong("UAGENT_SUBAGENT_MAX_STEPS", 25); }
+// The parent runs with no step ceiling at all (RuntimeConfig::max_steps), so a
+// child that reads a handful of files per step used to be cut off mid-review
+// while its parent was unbounded. Cost, wall clock and the parent's session
+// budget are the limits that actually protect a delegated run; these only stop
+// a child that has stopped making progress.
+int64_t SubagentMaxSteps() { return EnvLong("UAGENT_SUBAGENT_MAX_STEPS", 100); }
 
 int64_t SubagentMaxToolCalls() {
-  return EnvLong("UAGENT_SUBAGENT_MAX_TOOL_CALLS", 60);
+  return EnvLong("UAGENT_SUBAGENT_MAX_TOOL_CALLS", 240);
 }
 
 std::string SubagentModel() { return EnvStr("UAGENT_SUBAGENT_MODEL"); }

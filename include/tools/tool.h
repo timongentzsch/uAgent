@@ -188,14 +188,20 @@ struct Tool {
   int64_t timeout_s = -1;           // -1 = global default; 0 = turn limit
   int64_t result_chars = -1;        // -1 = global result cap
   int64_t max_calls_per_turn = -1;  // -1 = global turn budget
-  bool available_in_lean = true;    // omit implementation-only schemas in tasks
-  bool retain_output = false;       // keep durable procedure/state in context
-  bool dedupe_output = false;       // collapse verified recent duplicate output
-  bool serial_media = false;    // suppress activity animation while rendering
-  bool replay_image = false;    // replay a successful historical local image
-  bool command_policy = false;  // receives the approved-command allowlist
-  bool delegates = false;       // contributes delegation runtime context
-  bool memory_store = false;    // retained only when memory is enabled
+  // Numeric pacing hints — a yield, a context radius, a page size — where a
+  // value outside the schema's bounds means "as much as allowed", not a
+  // mistake. Clamping them into range costs nothing; rejecting spends a whole
+  // model round to say the same thing, and these are the arguments models
+  // overshoot most often.
+  std::vector<std::string> clamped_arguments;
+  bool available_in_lean = true;  // omit implementation-only schemas in tasks
+  bool retain_output = false;     // keep durable procedure/state in context
+  bool dedupe_output = false;     // collapse verified recent duplicate output
+  bool serial_media = false;      // suppress activity animation while rendering
+  bool replay_image = false;      // replay a successful historical local image
+  bool command_policy = false;    // receives the approved-command allowlist
+  bool delegates = false;         // contributes delegation runtime context
+  bool memory_store = false;      // retained only when memory is enabled
   int64_t blocking_wait_default_ms =
       -1;  // >=0: wait_ms is intentional blocking
   enum class Visibility {
@@ -291,6 +297,10 @@ inline const Tool* FindTool(const std::vector<Tool>& tools,
 // its helpers live in src/tools/policy.cc — one TU calls them, and every
 // other includer of this header paid for parsing them.
 std::string InvalidToolArgument(const Tool& tool, const json& args);
+
+// Pull the tool's `clamped_arguments` back inside their schema bounds. Runs
+// before validation, so an overshooting hint is honoured at the bound.
+void ClampToolArguments(const Tool& tool, json& args);
 
 // A tool's `stable_argument` must keep the same value for a whole turn.
 // `values` carries that per-turn memory for the caller.

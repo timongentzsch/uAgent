@@ -238,6 +238,14 @@ std::string OneLine(const std::string& s, size_t cap) {
 
 std::string TerminalSafe(std::string_view s) {
   if (!g_tty) return std::string(s);
+  // Almost every string handed to a terminal is already safe. One scan and a
+  // copy beats rebuilding it byte by byte, and this sits on the streaming
+  // render path where it runs once per chunk.
+  if (std::none_of(s.begin(), s.end(), [](unsigned char c) {
+        return c == 0x7f || (c < 0x20 && c != '\n' && c != '\t');
+      })) {
+    return std::string(s);
+  }
   std::string out;
   out.reserve(s.size());
   for (unsigned char c : s) {

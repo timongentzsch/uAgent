@@ -3,6 +3,7 @@
 #include "include/core/events.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -11,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
@@ -214,6 +216,28 @@ json JournalProjection(const Event& event) {
   return data;
 }
 
+// A headless child prints nothing until its final answer, so a parent that
+// delegated a long task cannot tell work from a stall. When the parent asks
+// for it, every durable event is echoed as one unbuffered stderr line: the
+// child's stderr is already dup2'd into the activity log the parent polls
+// (tools/shell.cc), so live traceability needs no second channel and no change
+// to the stdout answer contract.
+// One line per event, kept narrow enough to stay readable in a polled log.
+constexpr size_t kProgressLineChars = 120;
+
+void EchoHeadlessProgress(const Event& event, const EventPolicy& policy) {
+  static const bool kEnabled = EnvStr("UAGENT_HEADLESS_PROGRESS") == "1";
+  if (!kEnabled || !policy.journal_type || !event.presentation) return;
+  const PresentationRecord& record = *event.presentation;
+  std::string line = record.title;
+  if (!record.summary.empty()) {
+    line += line.empty() ? record.summary : " · " + record.summary;
+  }
+  if (line.empty()) line = policy.journal_type;
+  fprintf(stderr, "· %s\n",
+          Utf8Trunc(TerminalSafe(line), kProgressLineChars).c_str());
+}
+
 }  // namespace
 
 const EventPolicy& PolicyFor(EventId id) {
@@ -354,6 +378,7 @@ void Observability::Emit(Event event) noexcept {
   }
   if (policy.durability == EventDurability::kDurable) {
     journal_.Append(event, policy);
+    EchoHeadlessProgress(event, policy);
   }
 }
 

@@ -155,8 +155,12 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
   std::vector<unsigned char> block(48 * 1024);
   uintmax_t read_bytes = 0;
   size_t held = 0;  // bytes of an incomplete triple carried into the next read
-  for (size_t n; (n = fread(block.data() + held, 1, block.size() - held,
-                            file.get())) > 0;) {
+  // Stop at end of file rather than reading once more to discover it: a short
+  // read already sets the flag, and reading a failed stream leaves its
+  // position indeterminate.
+  while (!feof(file.get()) && !ferror(file.get())) {
+    size_t n = fread(block.data() + held, 1, block.size() - held, file.get());
+    if (n == 0) break;
     read_bytes += n;
     if (read_bytes > max_bytes) {
       error = "attachment grew beyond the byte limit while reading: " +

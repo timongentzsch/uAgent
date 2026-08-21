@@ -111,6 +111,9 @@ struct ActivityView {
   std::chrono::steady_clock::duration elapsed{};
   int64_t context_used = 0;
   int64_t context_window = 0;
+  // The active route in schema form, the same string StatusView::model
+  // spells, so both rows name the route identically.
+  std::string model;
   size_t background = 0;
   size_t foreground = 0;
   size_t queued = 0;
@@ -135,6 +138,7 @@ inline std::string ActivityBar(const ActivityView& view) {
   std::string state = view.interrupting
                           ? "interrupting"
                           : (activity.empty() ? "working" : activity);
+  std::string route = view.model.empty() ? std::string() : " · " + view.model;
   std::string suffix = " · " + seconds;
   suffix += " · " + ContextSummary(view.context_used, view.context_window);
   if (view.background > 0) suffix += " · bg:" + std::to_string(view.background);
@@ -146,6 +150,18 @@ inline std::string ActivityBar(const ActivityView& view) {
   }
   if (view.queued > 0) suffix += " · steer:" + std::to_string(view.queued);
   size_t width = TerminalWidth(1);
+  // The route is the part of this row that yields when a rolling ticker wants
+  // the same columns: it never changes during a turn and the idle row names it
+  // anyway, whereas a window under roughly forty columns shows fragments of
+  // words rather than a readable phrase — and a fully qualified route id can
+  // take half a narrow terminal by itself.
+  if (!route.empty() && CurrentTerminalActivityRolling()) {
+    static constexpr size_t kReadableTicker = 32;
+    size_t taken =
+        DisplayWidth(prefix) + DisplayWidth(suffix) + DisplayWidth(route);
+    if (width < taken + kReadableTicker) route.clear();
+  }
+  suffix = route + suffix;
   if (SteeringEnabled()) {
     std::string hint = " · Esc interrupt";
     // A rolling ticker always holds more text than fits, so it asks for

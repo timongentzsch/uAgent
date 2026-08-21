@@ -300,6 +300,9 @@ class Application {
       view.elapsed = std::chrono::steady_clock::now() - started;
       view.context_used = app.agent_.ContextSnapshot();
       view.context_window = app.api_.ctx_window;
+      AppSession session = app.Session();
+      view.model = RouteSelection(session.ApiClient(),
+                                  session.context.provider.providers);
       view.background = app.runtime_.processes.Count();
       view.foreground = app.runtime_.processes.ForegroundCount();
       view.queued = SteeringState().QueuedCount();

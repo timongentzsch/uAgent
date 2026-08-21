@@ -46,6 +46,10 @@
 
 ### Changed
 
+- The working row names the active route exactly as the idle row does. When a
+  rolling reasoning ticker is competing for the same columns the route yields
+  first: it does not change during a turn, and a fully qualified route id can
+  otherwise leave the ticker too narrow to read.
 - Streaming markdown hands a whole chunk to stdio once instead of taking the
   stream lock for every character, which was about a third of render cost, and
   `TerminalSafe` no longer rebuilds a string byte by byte when nothing in it

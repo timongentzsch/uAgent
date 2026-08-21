@@ -135,6 +135,17 @@ void TestActivityBar() {
   CHECK(unknown_bar.find("ctx 12.0K") != std::string::npos);
   CHECK(unknown_bar.find("ctx 12.0K/") == std::string::npos);
 
+  // The working row names the route exactly as the idle row does, and an
+  // unset route adds no segment.
+  ActivityView routed = Working(std::chrono::milliseconds(1500));
+  routed.model = "openrouter/deepseek/deepseek-v4-flash:high";
+  std::string routed_bar = ActivityBar(routed);
+  CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high") !=
+        std::string::npos);
+  CHECK(routed_bar.find("openrouter/deepseek/deepseek-v4-flash:high · 1.5s") !=
+        std::string::npos);
+  CHECK(first.find("openrouter") == std::string::npos);
+
   // Counters are omitted at zero rather than rendered as "bg:0".
   CHECK(first.find("bg:") == std::string::npos);
   CHECK(first.find("steer:") == std::string::npos);

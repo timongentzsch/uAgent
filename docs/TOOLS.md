@@ -63,7 +63,11 @@ file notifications where available.
 availability. It returns text only: it decodes markup, JSON, XML and plain
 text, and refuses anything else rather than handing over bytes. A page behind a
 login or assembled by scripting belongs to the browser skill. Bodies larger
-than `UAGENT_WEB_FETCH_BYTES` are read up to the cap and marked partial.
+than `UAGENT_WEB_FETCH_BYTES` are read up to the cap and marked partial; that
+cap follows the attachment budget, so anything the model could be handed is
+also large enough to fetch. A PDF or an image is not a dead end either: it is
+not markup, so `web_fetch` refuses it and says to download the bytes with `run`
+and read them with `attach`, which the model understands directly.
 Only public Internet destinations are accepted: every IPv4 or IPv6 address
 libcurl resolves for the initial URL and each redirect is checked before the
 socket opens, so a redirect or a rebound name cannot reach what the URL could

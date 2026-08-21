@@ -148,7 +148,7 @@ UAGENT_MODEL=local/fast
 | `UAGENT_WEB_SEARCH_BACKEND` | `auto` | `auto`/`openrouter` select the hosted OpenRouter search route; `off` withholds the tool |
 | `UAGENT_WEB_SEARCH_URL` | empty | custom OpenRouter-compatible search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
-| `UAGENT_WEB_FETCH_BYTES` | 2 MiB | `web_fetch` download cap; a larger page is read to the cap and marked partial |
+| `UAGENT_WEB_FETCH_BYTES` | `UAGENT_ATTACHMENT_MB` (10 MiB) | `web_fetch` download cap; a larger page is read to the cap and marked partial |
 | `UAGENT_WEB_SEARCH_MODEL` | empty | search model override |
 | `UAGENT_WEB_SEARCH_EFFORT` | empty | search reasoning effort |
 | `UAGENT_WEB_SEARCH_ENGINE` | `auto` | engine selection |

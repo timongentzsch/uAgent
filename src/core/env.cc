@@ -155,8 +155,13 @@ int64_t SkillDescriptionBytes() {
 
 int64_t MaxSkills() { return EnvBounded("UAGENT_SKILLS", 64, 1); }
 
+// Defaults to the attachment budget: a document worth fetching is usually one
+// worth handing to the model, and a smaller cap here would refuse pages this
+// process is already willing to carry. A 2 MiB cap truncated an ordinary
+// arXiv paper.
 int64_t WebFetchBytes() {
-  return EnvBounded("UAGENT_WEB_FETCH_BYTES", 2 * 1024 * 1024, 1024);
+  return EnvBounded("UAGENT_WEB_FETCH_BYTES", AttachmentLimitMb() * 1024 * 1024,
+                    1024);
 }
 
 int64_t GrepResults() {

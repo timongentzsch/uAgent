@@ -45,7 +45,7 @@ git diff --check
 ```
 
 Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
--Wsign-conversion -Wshadow -Wold-style-cast` and, on Clang, `-Wthread-safety`.
+-Wsign-conversion -Wshadow -Wold-style-cast` and, on Clang with libc++, `-Wthread-safety`.
 Make a narrowing or signedness change explicit at the point it happens rather
 than widening the type that receives it.
 

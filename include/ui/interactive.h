@@ -10,10 +10,12 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/cli.h"
@@ -21,6 +23,35 @@
 #include "include/ui/input_decoder.h"
 
 namespace uagent {
+
+struct InteractiveOutputUpdate {
+  std::string committed;
+  std::string tail;
+  bool changed = false;
+  bool adopts_visible_tail = false;
+};
+
+// Decodes immutable records and append-only stream fragments from the stdout
+// pipe. Unframed output keeps the historical newline-delimited behavior.
+class InteractiveTranscript {
+ public:
+  InteractiveOutputUpdate Feed(std::string_view bytes, bool finish = false);
+  void AdoptTail() { tail_.clear(); }
+
+ private:
+  void AppendTail(std::string_view text, InteractiveOutputUpdate& update);
+  void CommitTail(InteractiveOutputUpdate& update);
+  void ApplyFrame(uint8_t kind, std::string_view payload,
+                  InteractiveOutputUpdate& update);
+
+  std::string wire_;
+  std::string tail_;
+};
+
+// Terminal presentation writes complete records atomically. Markdown appends to
+// the replaceable tail; a newline, following record, or loop finish commits it.
+void WriteTerminalRecord(std::string_view text) noexcept;
+void WriteTerminalTail(std::string_view text) noexcept;
 
 // Owns the stdout redirection, so worker output reaches the terminal through
 // the composer rather than overwriting the block it has drawn.
@@ -30,7 +61,8 @@ class InteractiveOutput {
 
   bool Start();
   void Stop();
-  std::string Read() const;
+  InteractiveOutputUpdate Read(bool finish = false);
+  void AdoptTail() { transcript_.AdoptTail(); }
   void Write(const std::string& text) const;
 
   int ReadFd() const { return read_.Get(); }
@@ -38,6 +70,7 @@ class InteractiveOutput {
  private:
   Fd saved_;  // the real terminal, kept aside while stdout is the pipe
   Fd read_;
+  InteractiveTranscript transcript_;
 };
 
 class RawComposer {

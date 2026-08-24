@@ -175,6 +175,44 @@ size_t DisplayWidth(const std::string& s) {
   return width;
 }
 
+size_t DisplayRows(const std::string& s, size_t columns) {
+  if (s.empty()) return 0;
+  columns = std::max(size_t{1}, columns);
+  std::mbstate_t state{};
+  size_t rows = 1;
+  size_t column = 0;
+  for (size_t offset = 0; offset < s.size();) {
+    char value = s[offset];
+    if (value == '\n') {
+      ++rows;
+      column = 0;
+      ++offset;
+      continue;
+    }
+    if (value == '\r') {
+      column = 0;
+      ++offset;
+      continue;
+    }
+    if (value == '\t') {
+      size_t next = column - column % 8 + 8;
+      column = std::min(next, columns - 1);
+      ++offset;
+      continue;
+    }
+    Glyph glyph = NextGlyph(s, offset, state, /*skip_ansi=*/true);
+    if (glyph.width > 0) {
+      if (column >= columns || glyph.width > columns - column) {
+        ++rows;
+        column = 0;
+      }
+      column += glyph.width;
+    }
+    offset += glyph.bytes;
+  }
+  return rows;
+}
+
 std::string DisplayTrunc(std::string s, size_t columns) {
   if (DisplayWidth(s) <= columns) return s;
   if (columns == 0) return "";

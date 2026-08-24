@@ -14,6 +14,7 @@
 #include "include/cli.h"
 #include "include/md.h"
 #include "include/ui/display.h"
+#include "include/ui/interactive.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -95,6 +96,72 @@ void TestTableRetroErasesRenderedRows() {
   CHECK(erases == 1);
   CHECK(output.find("aaaaaaaaaa") != std::string::npos);
   CHECK(output.find("bb") != std::string::npos);
+}
+
+void TestInteractiveTranscriptFraming() {
+  fflush(stdout);
+  int saved = dup(STDOUT_FILENO);
+  FILE* capture = tmpfile();
+  CHECK(saved >= 0 && capture != nullptr);
+  if (saved < 0 || !capture) {
+    if (saved >= 0) close(saved);
+    if (capture) fclose(capture);
+    return;
+  }
+
+  dup2(fileno(capture), STDOUT_FILENO);
+  bool prior = PersistentComposer();
+  SetPersistentComposer(true);
+  WriteTerminalRecord("record-one\n");
+  WriteTerminalTail("par");
+  WriteTerminalTail("tial\nnext");
+  WriteTerminalRecord("record-two\n");
+  fflush(stdout);
+  SetPersistentComposer(prior);
+  dup2(saved, STDOUT_FILENO);
+  close(saved);
+
+  fseek(capture, 0, SEEK_END);
+  int64_t bytes = ftell(capture);
+  fseek(capture, 0, SEEK_SET);
+  std::string wire(static_cast<size_t>(bytes), '\0');
+  if (bytes > 0) {
+    CHECK(fread(wire.data(), 1, wire.size(), capture) == wire.size());
+  }
+  fclose(capture);
+
+  InteractiveTranscript transcript;
+  std::string committed;
+  bool saw_partial_tail = false;
+  bool saw_next_tail = false;
+  for (char byte : wire) {
+    InteractiveOutputUpdate update =
+        transcript.Feed(std::string_view(&byte, 1));
+    committed += update.committed;
+    saw_partial_tail = saw_partial_tail || update.tail == "par";
+    saw_next_tail = saw_next_tail || update.tail == "next";
+    CHECK(update.tail.find("record-") == std::string::npos);
+  }
+  CHECK(committed == "record-one\npartial\nnext\nrecord-two\n");
+  CHECK(saw_partial_tail);
+  CHECK(saw_next_tail);
+
+  InteractiveTranscript legacy;
+  InteractiveOutputUpdate first = legacy.Feed("legacy");
+  CHECK(first.committed.empty());
+  CHECK(first.tail == "legacy");
+  InteractiveOutputUpdate second = legacy.Feed("-line\nlive");
+  CHECK(second.committed == "legacy-line\n");
+  CHECK(second.tail == "live");
+  InteractiveOutputUpdate final = legacy.Feed({}, true);
+  CHECK(final.committed == "live\n");
+  CHECK(final.tail.empty());
+  CHECK(final.adopts_visible_tail);
+
+  InteractiveTranscript steered;
+  CHECK(steered.Feed("before").tail == "before");
+  steered.AdoptTail();
+  CHECK(steered.Feed("after").tail == "after");
 }
 
 void TestTextToolProtocol() {
@@ -375,6 +442,10 @@ void TestRegistries() {
   CHECK(ActivityLabel("thinking · abcdef", 15) == "thinking · cdef");
   CHECK(ActivityLabel("thinking · abcdef", 15).find("…") == std::string::npos);
   CHECK(DisplayWidth(DisplayTrunc("abcdef", 4)) <= 4);
+  CHECK(DisplayRows("1234567890", 10) == 1);
+  CHECK(DisplayRows("1234567890X", 10) == 2);
+  CHECK(DisplayRows("\033[36ma\tXYZ", 10) == 2);
+  CHECK(DisplayRows("", 10) == 0);
   CHECK(FmtCount(999) == "999");
   CHECK(FmtCount(1000) == "1.0K");
   CHECK(FmtCount(1'000'000) == "1.0M");

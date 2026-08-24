@@ -17,6 +17,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/interactive.h"
 
 namespace uagent {
 
@@ -252,24 +253,23 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     const char* color = record.status == PresentationStatus::kFailed   ? RED()
                         : record.status == PresentationStatus::kWarned ? YEL()
                                                                        : DIM();
-    printf("%s%s%s\n", color, TerminalSafe(record.title).c_str(), RST());
+    WriteTerminalRecord(std::string(color) + TerminalSafe(record.title) +
+                        RST() + "\n");
     return;
   }
   if (record.kind == PresentationKind::kToolCall) {
     // A skill is a procedure the rest of the turn follows, so it is worth
     // finding in the scrollback later; ◆ already marks that class of event.
     if (record.skill && !record.summary.empty()) {
-      printf("%s%s◆ skill %s%s\n", BOLD(), BLUE(),
-             TerminalSafe(record.summary).c_str(), RST());
+      WriteTerminalRecord(std::string(BOLD()) + BLUE() + "◆ skill " +
+                          TerminalSafe(record.summary) + RST() + "\n");
       return;
     }
     if (record.poll) return;  // rendered once, at result time
     std::string prefix = "→ " + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       prefix += '\n' + TerminalSafe(record.detail);
-      // The persistent composer resets SGR when it paints a status row. Keep
-      // every physical line self-contained so a repaint between writes cannot
-      // leave the remainder in the terminal's default foreground colour.
+      // Keep each physical line independently styled in copied transcripts.
       size_t newline = 0;
       while ((newline = prefix.find('\n', newline)) != std::string::npos) {
         prefix.insert(++newline, CYAN());
@@ -278,14 +278,15 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     } else if (!record.summary.empty()) {
       prefix += '(' + TerminalSafe(record.summary) + ')';
     }
-    printf("%s%s%s\n", CYAN(), prefix.c_str(), RST());
+    WriteTerminalRecord(std::string(CYAN()) + prefix + RST() + "\n");
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
-    printf("%s• %s%s\n", style, TerminalSafe(record.summary).c_str(), RST());
+    WriteTerminalRecord(std::string(style) + "• " +
+                        TerminalSafe(record.summary) + RST() + "\n");
     return;
   }
 
@@ -293,27 +294,28 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     std::istringstream input(record.detail);
     std::string line;
     if (!std::getline(input, line)) return;
-    printf("%s•%s %s%s%s\n", DIM(), RST(), BOLD(), TerminalSafe(line).c_str(),
-           RST());
+    std::string output = std::string(DIM()) + "•" + RST() + " " + BOLD() +
+                         TerminalSafe(line) + RST() + "\n";
     while (std::getline(input, line)) {
       const char* style = DIM();
       if (!line.empty() && line[0] == '+') style = GREEN();
       if (!line.empty() && line[0] == '-') style = RED();
       if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-      printf("%s    %s%s\n", style, TerminalSafe(line).c_str(), RST());
+      output += std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
     }
+    WriteTerminalRecord(output);
     return;
   }
 
   const char* style = ResultStyle(record.status);
   std::string prefix = "  ← " + TerminalSafe(record.title);
   if (record.multiline && !record.detail.empty()) {
-    printf("%s%s%s\n%s\n", style, prefix.c_str(), RST(),
-           TerminalSafe(record.detail).c_str());
+    WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
+                        TerminalSafe(record.detail) + "\n");
     return;
   }
-  printf("%s%s: %s%s\n", style, prefix.c_str(),
-         TerminalSafe(record.summary).c_str(), RST());
+  WriteTerminalRecord(std::string(style) + prefix + ": " +
+                      TerminalSafe(record.summary) + RST() + "\n");
 }
 
 }  // namespace uagent

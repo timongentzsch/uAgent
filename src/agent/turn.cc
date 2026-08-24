@@ -451,8 +451,8 @@ void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
 }
 
 bool Agent::HandleActivityPollResults(
-    const std::vector<ActivityPollResult>& polls, TurnState& state,
-    TurnLoop& loop) {
+    const std::vector<ActivityPollResult>& polls, bool exclusive,
+    TurnState& state, TurnLoop& loop) {
   auto reset = [&] {
     loop.quiet_activity_id = 0;
     loop.quiet_activity_polls = 0;
@@ -465,7 +465,7 @@ bool Agent::HandleActivityPollResults(
     loop.last_call.clear();
     loop.repeated_calls = 0;
   }
-  if (polls.size() != 1) {
+  if (!exclusive || polls.size() != 1) {
     if (!polls.empty()) reset();
     return false;
   }
@@ -607,7 +607,8 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
     }
     return InterruptTurn(state);
   }
-  if (HandleActivityPollResults(activity_polls, state, loop)) {
+  if (HandleActivityPollResults(activity_polls, calls.size() == 1, state,
+                                loop)) {
     return StepFlow::kEndTurn;
   }
   if (StopForRepeatedRejections(rejections, state, loop)) {

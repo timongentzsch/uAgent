@@ -122,15 +122,15 @@ bool Agent::RunCalls(
       reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
              "unknown_tool", issue);
     } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
-      reject(task, ToolErrorCode::kInvalidArguments,
-             "error: invalid tool argument: " + issue->message,
+      std::string message = "error: invalid tool argument: " + issue->message;
+      reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
              "invalid_argument", std::move(issue));
     } else if (tool->validate) {
       auto semantic_issue = tool->validate(arguments);
       if (semantic_issue) {
-        reject(task, ToolErrorCode::kInvalidArguments,
-               issue_message(*semantic_issue), "rejected",
-               std::move(semantic_issue));
+        std::string message = issue_message(*semantic_issue);
+        reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
+               "rejected", std::move(semantic_issue));
       } else {
         valid = true;
       }

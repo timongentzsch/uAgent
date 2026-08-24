@@ -92,6 +92,17 @@ std::string SubagentTargetLabel(const Api& api,
                         providers);
 }
 
+std::string SubagentDiagnosticRoute(
+    const SideRoute& route, const std::vector<NamedProvider>& providers) {
+  std::string selected = route.selection;
+  std::string resolved = RouteSelection(route, providers);
+  std::string label = selected.empty() ? resolved : selected;
+  if (!resolved.empty() && resolved != label) label += " -> " + resolved;
+  std::string host = UrlHost(route.base_url);
+  if (!host.empty()) label += " @ " + host;
+  return label;
+}
+
 }  // namespace
 
 std::string DefaultSubagentModel(const Api& api) {
@@ -166,12 +177,15 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             NormalizeModelId(JsonValue(arguments, "model", ""));
         SideRoute route =
             ResolveSubagentRoute(api, routes, providers, requested);
+        std::string route_label = SubagentDiagnosticRoute(route, providers);
         if (route.unresolved &&
             route.selection.find('/') != std::string::npos &&
             !CanUseRawModel(api, route.selection)) {
           return ToolFailure(
               ToolErrorCode::kInvalidArguments,
-              "error: unknown model route: " + TerminalSafe(route.selection));
+              ChildAgentFailureReport(
+                  route_label, ChildAgentFailureStage::kRouteResolution,
+                  "unknown model route: " + TerminalSafe(route.selection)));
         }
         double remaining_budget = 0;
         if (std::optional<ToolResult> blocked =
@@ -209,13 +223,25 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         std::string command =
             ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
-        return RunShellCommand(processes, context,
-                               {.command = std::move(command),
-                                .background = background,
-                                .immediate = background,
-                                .job_kind = "subagent",
-                                .environment = std::move(environment)})
-            .result;
+        ToolResult result =
+            RunShellCommand(processes, context,
+                            {.command = std::move(command),
+                             .background = background,
+                             .immediate = background,
+                             .job_kind = "subagent",
+                             .activity_label = route_label,
+                             .environment = std::move(environment)})
+                .result;
+        if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
+          ChildAgentFailureStage stage =
+              result.error == ToolErrorCode::kProcessFailed ||
+                      result.status == CompletionStatus::kTimedOut
+                  ? ChildAgentFailureStage::kExecution
+                  : ChildAgentFailureStage::kSpawn;
+          result.output = ChildAgentFailureReport(route_label, stage,
+                                                  std::move(result.output));
+        }
+        return result;
       });
   tool.clamped_arguments = {"max_steps", "max_tool_calls"};
   tool.mutating = true;

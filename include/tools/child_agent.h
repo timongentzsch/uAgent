@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "include/api.h"
 #include "include/core/child_env.h"
@@ -18,6 +19,19 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+enum class ChildAgentFailureStage {
+  kRouteResolution,
+  kSpawn,
+  kExecution,
+};
+
+// A bounded, route-explicit failure record shared by synchronous delegation
+// and background completion. It records that policy was preserved rather than
+// hiding a provider/model fallback behind a retry.
+std::string ChildAgentFailureReport(std::string_view route,
+                                    ChildAgentFailureStage stage,
+                                    std::string diagnostics = {});
 
 // Route, depth and usage ledger. Overrides are applied in order with the last
 // occurrence winning, so callers append their own policy after this.

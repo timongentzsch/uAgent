@@ -2,15 +2,65 @@
 
 #include "include/tools/child_agent.h"
 
+#include <cstddef>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/tools/output_buffer.h"
 
 namespace uagent {
+namespace {
+
+constexpr size_t kChildDiagnosticBytes = 2048;
+
+const char* FailureStageName(ChildAgentFailureStage stage) {
+  switch (stage) {
+    case ChildAgentFailureStage::kRouteResolution:
+      return "route resolution";
+    case ChildAgentFailureStage::kSpawn:
+      return "process spawn";
+    case ChildAgentFailureStage::kExecution:
+      return "child execution";
+  }
+  return "child execution";
+}
+
+const char* FailureRemedy(ChildAgentFailureStage stage) {
+  switch (stage) {
+    case ChildAgentFailureStage::kRouteResolution:
+      return "choose a configured model route or correct UAGENT_PROVIDERS";
+    case ChildAgentFailureStage::kSpawn:
+      return "verify the uagent executable and local process limits, then "
+             "retry this route";
+    case ChildAgentFailureStage::kExecution:
+      return "inspect the partial diagnostics and verify this endpoint and "
+             "model before retrying";
+  }
+  return "inspect the partial diagnostics before retrying";
+}
+
+}  // namespace
+
+std::string ChildAgentFailureReport(std::string_view route,
+                                    ChildAgentFailureStage stage,
+                                    std::string diagnostics) {
+  HeadTailBuffer bounded(kChildDiagnosticBytes);
+  bounded.Push(TerminalSafe(diagnostics));
+  std::string partial = bounded.Snapshot();
+  if (partial.empty()) partial = "(none captured)";
+  std::string configured = route.empty() ? "(unresolved)" : TerminalSafe(route);
+  return "error: delegated child failed\nconfigured route: " + configured +
+         "\nfailure stage: " + FailureStageName(stage) +
+         "\nremedy: " + FailureRemedy(stage) +
+         "\nfallback: none; provider, model, pricing, and privacy policy were "
+         "not changed\npartial diagnostics:\n" +
+         partial;
+}
 
 EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
   return {

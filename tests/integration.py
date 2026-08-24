@@ -3850,6 +3850,69 @@ def test_subagent_uses_selected_model_route(root, home):
         child.close()
 
 
+def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home):
+    def reject_child(handler, body):
+        assert_true(body.get("model") == "unsupported-model", body)
+        payload = json.dumps(
+            {
+                "error": {
+                    "message": "fixture endpoint rejects unsupported-model",
+                    "type": "invalid_request_error",
+                    "code": "model_not_found",
+                }
+            }
+        ).encode()
+        write_http_response(handler, payload, status=400)
+
+    child = Server([reject_child])
+
+    def route(_, body):
+        results = tool_results(body["messages"])
+        report = next((result for result in reversed(results) if "configured route:" in result), "")
+        if report:
+            valid = all(
+                marker in report
+                for marker in (
+                    "configured route: failing/child -> failing/unsupported-model",
+                    "@ 127.0.0.1",
+                    "failure stage: child execution",
+                    "remedy:",
+                    "fallback: none",
+                    "partial diagnostics:",
+                    "fixture endpoint rejects unsupported-model",
+                )
+            )
+            valid = valid and "child-secret-do-not-print" not in report and len(report) < 4000
+            return event({"content": "child-diagnostic-ok" if valid else report})
+        if any("[started] subagent id " in result for result in results):
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        return tool_call(
+            "subagent",
+            {"prompt": "fail on the configured route", "model": "failing/child"},
+        )
+
+    parent = Server([route])
+    try:
+        env = base_env(home, parent.url)
+        env["UAGENT_PROVIDERS"] = json.dumps(
+            {
+                "failing": {
+                    "base_url": child.url,
+                    "api_key": "child-secret-do-not-print",
+                    "models": {"child": {"id": "unsupported-model", "effort": "low"}},
+                }
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "delegate failure", timeout=12)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "child-diagnostic-ok", result.stdout)
+        assert_true(len(child.requests) == 1, len(child.requests))
+        assert_true(len(parent.requests) == 3, len(parent.requests))
+    finally:
+        parent.close()
+        child.close()
+
+
 def test_image_fallback_reaches_another_provider(root, home):
     """A vision route on a different provider stands in for native image input."""
     picture = root / "shot.png"

@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_
 #define UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_
-// One terminal renderer for every tool call and result. Compact mode stays on
-// one bounded line; verbose mode uses normal terminal scrollback.
+// One terminal renderer for every tool call and result. Calls are complete;
+// compact result rows stay bounded, while verbose results use scrollback.
 
 #include <algorithm>
 #include <chrono>

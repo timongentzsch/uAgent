@@ -122,6 +122,12 @@ bool Agent::RunCalls(
       task.label = ToolSummary(*tool, arguments);
       valid = true;
     }
+    if (!valid) {
+      // A rejected call is still what the model attempted. Show its complete
+      // arguments instead of a bare tool name, which is useless when several
+      // malformed retries differ only in their payload.
+      task.label = arguments.is_discarded() ? call.args : JsonDump(arguments);
+    }
     Event call_event{EventId::kToolCall,
                      ToolCallData(call, turn_id_, step, text_mode)};
     call_event.presentation = ToolCallPresentation(task, call);

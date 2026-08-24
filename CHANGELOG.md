@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Long multiline tool calls retain their action colour across persistent-composer
+  repaints and are no longer shortened at 2,048 characters. Rejected calls also
+  show their attempted arguments instead of a bare tool name.
+
 ### Changed
 
 - `attach` no longer carries a per-turn call cap of its own. Four was a limit

@@ -187,7 +187,7 @@ void JsonEventStream::Stop() {
 void JsonEventStream::Emit(const std::string& type, json data) noexcept {
   if (!file_) return;
   std::lock_guard<std::mutex> lock(mutex_);
-  json record = {{"schema", "uagent.event.v1"},
+  json record = {{"schema", "uagent.event.v2"},
                  {"seq", ++seq_},
                  {"time", UtcStamp()},
                  {"type", type},

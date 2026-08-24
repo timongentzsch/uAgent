@@ -1,18 +1,37 @@
 # Changelog
 
-## Unreleased
+## v0.7.0 - 2026-08-24
 
 ### Fixed
 
+- Activity polling is semantic rather than a blind identical-call counter.
+  Productive reads reset the state; two consecutive no-change polls prompt one
+  bounded `wait`; a third terminates cleanly. Mixed batches with useful work do
+  not count as a polling loop.
+- The SIGCHLD wake dispatcher no longer writes its marker byte to unused file
+  descriptor slots. Under a PTY those zero-valued slots were stdin, so enough
+  child exits could inject control bytes into a long tool-call record.
+- Persistent-composer output is record-framed across arbitrary pipe reads.
+  Long multiline calls remain complete and cyan on every physical line, live
+  Markdown tails stay replaceable, and completed records enter scrollback
+  atomically rather than being mistaken for streaming text.
 - Equivalent deterministic tool rejections now stop after the third round,
   before a fourth model request. Repetition checks use canonical execution
   arguments, so irrelevant provider-materialized fields cannot disguise a
   retry or turn a non-blocking activity into a wait.
+- Activity input now distinguishes invalid dimensions, a non-PTY activity, a
+  closed input descriptor, descriptor duplication failure, and `ioctl`, write,
+  or signal failure, with the matching error category and actionable message.
+- Delegated-child failures report the configured route, failure stage, bounded
+  head/tail diagnostics, and a remedy. The harness explicitly preserves the
+  selected provider, model, pricing, and privacy policy instead of silently
+  falling back.
 - Delegated children no longer duplicate the parent's always-on memory block,
   which produced a misleading truncation warning in child logs.
-- Long multiline tool calls retain their action colour across persistent-composer
-  repaints and are no longer shortened at 2,048 characters. Rejected calls also
-  show their attempted arguments instead of a bare tool name.
+- Public `tool.call` JSONL no longer exposes raw argument values. The new
+  `uagent.event.v2` projection carries only argument keys and JSON types, a
+  normalized operation, and structured validation issue metadata;
+  sensitive debug/internal history remains complete.
 
 ### Changed
 
@@ -28,13 +47,14 @@
   `resize` operation. Irrelevant provider-materialized fields are removed only
   from the execution copy, so field presence can no longer turn a wait into a
   write or resize.
-
 - `attach` no longer carries a per-turn call cap of its own. Four was a limit
   on the wrong axis: it withdrew the tool from the schema once the count was
-  reached, so a model handling five screenshots lost the tool rather than being
-  told why. What one request may carry is already bounded by the queued-count
-  ceiling (`UAGENT_PENDING_ATTACHMENTS`) and the total byte budget
-  (`UAGENT_ATTACHMENT_MB`), both of which refuse with a reason.
+  reached, while queued count and total byte limits already refuse with a
+  reason.
+- Seven-run Release medians against v0.6.0 on the same host showed no hot-path
+  regression above 0.7%: TTY Markdown was -0.2%, plain SSE +0.7%, and headless
+  SSE -0.3%. The executable grew 3.3% and the built-in schema grew 298 bytes
+  (4.9%) for the explicit file/activity contracts.
 
 ## v0.6.0 - 2026-08-24
 

@@ -111,7 +111,7 @@ may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
 The typed observational spine fans semantic lifecycle events to four fixed
-consumers: terminal presentation, backward-compatible `uagent.event.v1`, the
+consumers: terminal presentation, versioned `uagent.event.v2`, the sensitive
 sensitive debug trace, and a bounded metadata-only session journal. Events
 return no result and cannot affect agent control flow. Reasoning/answer token
 deltas are transient and never enter the journal. There is no dynamic sink
@@ -125,9 +125,10 @@ reasoning details, annotations, remote errors, and retry/suppression state.
 Model-request records include an exact schema snapshot whenever the active
 schema set changes, so the message deltas and snapshots remain reconstructable.
 Trace records are queued in sequence and serialized/flushed by a background
-writer; shutdown drains the queue. `--json-stream` keeps the v1 raw
-`tool.call.data.arguments` field and also exposes `parsed_arguments` whenever
-the payload is valid JSON.
+writer; shutdown drains the queue. `--json-stream` projects tool calls as
+metadata only: argument keys and JSON types, a normalized operation, and any
+validation issue code/field. Raw argument values remain available only in the
+sensitive debug trace and internal conversation history.
 
 Commands, delegated tasks, and detached terminals share activity IDs.
 Session-lifetime activities use opaque IDs distinct from OS PIDs; persistent
@@ -141,17 +142,20 @@ waits until the command exits or an explicitly configured turn
 limit/interruption applies; 250 through 30,000 select another initial wait. A
 pacing hint past its bound — `yield_ms`, `context`, `wait_ms`, an output cap —
 is clamped to that bound rather than rejected, since asking for more than the
-maximum means the maximum. Set
-`tty=true` only when the process needs interactive input. A PTY activity retains merged output, writable input, process-group interruption, and resize support.
+maximum means the maximum. Set `tty=true` only when the process needs
+interactive input. A PTY activity retains merged output, writable input,
+process-group interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
 interactively reattached after the harness exits. Waiting log readers use
 kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
 bounded polling fallback.
 
 `activity(operation=poll, id=...)` drains bounded new output without cancelling
-ownership; `wait_ms` optionally blocks for output or exit and `until` waits for
-fixed readiness text. `operation=write` sends `chars` (including an intentional
-empty string), `\u0003` interrupts the process group, and `operation=resize`
+ownership; repeated no-change polls of one activity receive one bounded-wait
+advisory and then terminate rather than busy-looping, while real output and
+productive mixed batches reset that semantic loop state. `wait_ms` optionally
+blocks for output or exit and `until` waits for fixed readiness text.
+`operation=write` sends `chars` (including an intentional empty string), `\u0003` interrupts the process group, and `operation=resize`
 requires `rows` plus `cols`. Ordinary writes and all resizes against non-TTY
 activities are rejected. Ordinary and PTY activities share one event-driven
 output/reap thread, so
@@ -162,14 +166,17 @@ private logs continue to support diagnostics and large-output artifacts.
 `max_output_chars` can lower the host cap for one `run`, output, input, or wait
 interaction. Output already drained by those tools is not delivered again on
 completion. Completed tasks use one bounded batched context message;
-`activity` can explicitly replay a retained bounded transcript. Command completion is UI-only and never starts or enters a model turn.
-Subagent completion is added once to the next naturally occurring model call, capped at 6 KiB each
-and 12 KiB per batch, without triggering a turn.
+`activity` can explicitly replay a retained bounded transcript. Command
+completion is UI-only and never starts or enters a model turn. Subagent
+completion is added once to the next naturally occurring model call, capped at
+6 KiB each and 12 KiB per batch, without triggering a turn.
 
 Use `subagent(background=false)` when the next step requires the child result;
-background children notify the agent automatically on exit.
-`activity(operation=wait, wait_ms=..., mode=...)` is an intentional join when
-no useful parent work remains.
+background children notify the agent automatically on exit. A failed child
+reports its configured route, failure stage, bounded partial diagnostics, and a
+remedy; the harness never silently changes provider, model, pricing, or privacy
+policy. `activity(operation=wait, wait_ms=..., mode=...)` is an intentional
+join when no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
 group and removes its records and logs. Persistent TUI and headless runs
 publish completion without polling or starting a model turn.

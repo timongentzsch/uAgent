@@ -2154,7 +2154,15 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
 def test_headless_json_stream_emits_lifecycle_events(root, home):
     with Server(
         [
-            tool_call("read_path", {"path": "."}),
+            tool_call(
+                "activity",
+                {
+                    "operation": "resize",
+                    "id": 2147483000,
+                    "rows": 0,
+                    "cols": 997,
+                },
+            ),
             event(
                 {"content": "stream-answer"},
                 usage={"prompt_tokens": 4, "completion_tokens": 2, "cost": 0.01},
@@ -2176,8 +2184,26 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         assert_true(types[0] == "turn.started", types)
         assert_true("tool.call" in types and "tool.result" in types, types)
         tool_event = next(item for item in records if item["type"] == "tool.call")
-        assert_true(json.loads(tool_event["data"]["arguments"]) == {"path": "."}, tool_event)
-        assert_true(tool_event["data"]["parsed_arguments"] == {"path": "."}, tool_event)
+        metadata = tool_event["data"]
+        assert_true("arguments" not in metadata and "parsed_arguments" not in metadata, metadata)
+        assert_true(metadata["argument_keys"] == ["cols", "id", "operation", "rows"], metadata)
+        assert_true(
+            metadata["argument_types"]
+            == {"cols": "number", "id": "number", "operation": "string", "rows": "number"},
+            metadata,
+        )
+        assert_true(metadata["operation"] == "resize", metadata)
+        assert_true(metadata["issue_code"] == "activity.invalid_dimensions", metadata)
+        assert_true(metadata["issue_field"] == "", metadata)
+        result_event = next(item for item in records if item["type"] == "tool.result")
+        assert_true(
+            result_event["data"]["issue_code"] == "activity.invalid_dimensions", result_event
+        )
+        assert_true(result_event["data"]["issue_field"] == "", result_event)
+        encoded_metadata = json.dumps(metadata)
+        assert_true(
+            "2147483000" not in encoded_metadata and "997" not in encoded_metadata, metadata
+        )
         assert_true("usage" in types and types[-1] == "answer", types)
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
 

@@ -11,10 +11,13 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "include/core/fd.h"
+#include "include/core/thread_annotations.h"
 #include "include/tools/output_buffer.h"
 
 namespace uagent {
@@ -36,6 +39,7 @@ std::string ActivityKindName(ActivityKind kind);
 bool ActivityTerminal(ActivityState state);
 
 struct ActivitySession {
+  // Identity, written once during registration and read freely afterwards.
   int64_t id = 0;
   pid_t pid = -1;
   ActivityKind kind = ActivityKind::kCommand;
@@ -43,28 +47,32 @@ struct ActivitySession {
   std::string log;
   std::string cmd;
 
-  // Process I/O descriptors are owned and closed only by ProcessSupervisor's
-  // I/O thread. Tools duplicate input_fd before writing.
-  int output_fd = -1;
-  int input_fd = -1;
-  int log_fd = -1;
+  // Closed by ProcessSupervisor's I/O thread as soon as the activity reaches
+  // a terminal state. Tools duplicate input_fd before writing, because this
+  // owner may close underneath them.
+  Fd output_fd;
+  Fd input_fd;
+  Fd log_fd;
   int64_t log_limit = 0;
   int64_t logged_bytes = 0;
 
-  mutable std::mutex mutex;
+  // `mutex` covers the mutable state below. `interaction` is coarser, taken
+  // first when both are needed, and serialises whole tool interactions
+  // (write stdin, then collect the reply).
   mutable std::mutex interaction;
-  ActivityState state = ActivityState::kStarting;
-  std::optional<int> wait_status;
-  bool background_requested = false;
-  bool stop_requested = false;
-  bool output_eof = false;
-  bool delivered = false;
-  HeadTailBuffer pending_output;
-  HeadTailBuffer transcript;
-  std::string until_window;
-  std::chrono::steady_clock::time_point last_used =
+  mutable std::mutex mutex;
+  ActivityState state UAGENT_GUARDED_BY(mutex) = ActivityState::kStarting;
+  std::optional<int> wait_status UAGENT_GUARDED_BY(mutex);
+  bool background_requested UAGENT_GUARDED_BY(mutex) = false;
+  bool stop_requested UAGENT_GUARDED_BY(mutex) = false;
+  bool output_eof UAGENT_GUARDED_BY(mutex) = false;
+  bool delivered UAGENT_GUARDED_BY(mutex) = false;
+  HeadTailBuffer pending_output UAGENT_GUARDED_BY(mutex);
+  HeadTailBuffer transcript UAGENT_GUARDED_BY(mutex);
+  std::string until_window UAGENT_GUARDED_BY(mutex);
+  std::chrono::steady_clock::time_point last_used UAGENT_GUARDED_BY(mutex) =
       std::chrono::steady_clock::now();
-  std::chrono::steady_clock::time_point exited_at{};
+  std::chrono::steady_clock::time_point exited_at UAGENT_GUARDED_BY(mutex){};
 };
 
 struct BgJob {
@@ -154,30 +162,34 @@ class ProcessSupervisor {
   friend class ActivityReservation;
   std::optional<int64_t> CommitReservation(BgJob job);
   void ReleaseReservation();
-  std::optional<BgJob> TakeForegroundLocked(pid_t pid);
-  void AssignId(BgJob& job);
-  size_t IndexOfLocked(int64_t id) const;
-  size_t RetainedIndexOfLocked(int64_t id) const;
-  void StartIoLocked();
-  void IoLoop();
-  void NotifyLocked();
-  void PruneRetainedLocked();
+  std::optional<BgJob> TakeForegroundLocked(pid_t pid) UAGENT_REQUIRES(mutex_);
+  void AssignId(BgJob& job) UAGENT_REQUIRES(mutex_);
+  size_t IndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
+  size_t RetainedIndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
+  void StartIoLocked() UAGENT_REQUIRES(mutex_);
+  void IoLoop(const std::stop_token& stop);
+  void NotifyLocked() UAGENT_REQUIRES(mutex_);
+  void PruneRetainedLocked() UAGENT_REQUIRES(mutex_);
 
   mutable std::mutex mutex_;
   mutable std::condition_variable event_;
-  std::vector<BgJob> jobs_;
-  std::vector<BgJob> foreground_;
-  std::vector<BgJob> retained_;
-  std::vector<std::shared_ptr<ActivitySession>> io_sessions_;
-  std::thread io_thread_;
-  int wake_read_ = -1;
-  int wake_write_ = -1;
+  std::vector<BgJob> jobs_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<BgJob> foreground_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<BgJob> retained_ UAGENT_GUARDED_BY(mutex_);
+  std::vector<std::shared_ptr<ActivitySession>> io_sessions_
+      UAGENT_GUARDED_BY(mutex_);
+  // A stop_callback writes the wake pipe, so request_stop() both flags the
+  // loop and unblocks its poll().
+  std::jthread io_thread_;
+  Fd wake_read_;
+  Fd wake_write_;
+  // Borrowed. Written under the lock; the wake path tolerates a stale read.
   int notify_fd_ = -1;
   bool child_wake_registered_ = false;
-  bool stopping_ = false;
-  int64_t reservations_ = 0;
-  uint64_t generation_ = 0;
-  int64_t next_id_ = int64_t{1} << 30;
+  bool stopping_ UAGENT_GUARDED_BY(mutex_) = false;
+  int64_t reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
+  uint64_t generation_ UAGENT_GUARDED_BY(mutex_) = 0;
+  int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;
 };
 
 }  // namespace uagent

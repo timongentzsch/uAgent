@@ -49,6 +49,7 @@ def integration_group(name):
                 "command_help",
                 "multiline_",
                 "signal_exit",
+                "suspend_",
                 "response_stats",
                 "context_command",
                 "memory_command",
@@ -272,11 +273,18 @@ def run_pty(
     startup_marker=None,
     configure_terminal=None,
     before_payload=None,
+    after_exit=None,
+    suspend=None,
 ):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
     if configure_terminal is not None:
         configure_terminal(slave)
+    # A session of its own isolates the child from the runner's signals, but it
+    # also orphans its process group, and the kernel discards stop signals sent
+    # to an orphaned group. A suspend case therefore needs a plain process
+    # group inside this session, the way a shell's job control provides one.
+    placement = {"process_group": 0} if suspend else {"start_new_session": True}
     process = subprocess.Popen(
         [str(BINARY), *args],
         cwd=cwd,
@@ -284,7 +292,7 @@ def run_pty(
         stdin=slave,
         stdout=slave,
         stderr=slave,
-        start_new_session=True,
+        **placement,
     )
     os.close(slave)
     output = bytearray()
@@ -350,6 +358,8 @@ def run_pty(
             process.wait()
             os.close(master)
             raise
+    if suspend is not None:
+        suspend(process, master)
     if interrupt:
         process.send_signal(signal.SIGINT)
     else:
@@ -394,6 +404,10 @@ def run_pty(
     if process.poll() is None:
         process.kill()
     process.wait()
+    # Inspect the PTY the child left behind, line discipline included, while
+    # the master is still open.
+    if after_exit is not None:
+        after_exit(master)
     os.close(master)
     return process.returncode, bytes(output)
 
@@ -1473,12 +1487,102 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
         assert_true(output.count(b"pending draft") <= 2, output)
 
 
-def test_signal_exit_restores_terminal(root, home):
+def wait_until_stopped(pid, timeout=10):
+    """WUNTRACED reports a job-control stop without reaping the child."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        waited, status = os.waitpid(pid, os.WUNTRACED | os.WNOHANG)
+        if waited == pid and os.WIFSTOPPED(status):
+            return os.WSTOPSIG(status)
+        time.sleep(0.05)
+    return 0
+
+
+def wait_for_echo(master, wanted, timeout=10):
+    """Wait for the line discipline to reach a state, rather than sleeping.
+
+    A fixed sleep is what makes a terminal test flaky on a loaded machine.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        lflag = termios.tcgetattr(master)[3]
+        if bool(lflag & termios.ECHO) == wanted:
+            return lflag
+        time.sleep(0.05)
+    return termios.tcgetattr(master)[3]
+
+
+def test_suspend_restores_and_rearms_terminal(root, home):
+    # Ctrl+Z stops the process, so it cannot restore anything on the way down:
+    # the handler has to hand back a cooked line discipline before the stop and
+    # re-arm raw mode on SIGCONT, or the resumed session echoes every keypress.
+    seen = {}
+
+    def cooked(slave):
+        attributes = termios.tcgetattr(slave)
+        attributes[3] |= termios.ICANON | termios.ECHO
+        termios.tcsetattr(slave, termios.TCSANOW, attributes)
+
+    def suspend(process, master):
+        seen["running"] = termios.tcgetattr(master)[3]
+        process.send_signal(signal.SIGTSTP)
+        seen["stop_signal"] = wait_until_stopped(process.pid)
+        # Cooked by the time it is stopped, and raw again once resumed. The
+        # repaint itself stays in the PTY for the harness to collect: reading
+        # it here would take those bytes out of the asserted transcript.
+        seen["stopped"] = wait_for_echo(master, wanted=True)
+        process.send_signal(signal.SIGCONT)
+        seen["resumed"] = wait_for_echo(master, wanted=False)
+
     with Server([event({"content": "unused"})]) as server:
-        code, output = run_pty(root, base_env(home, server.url), interrupt=True)
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            interrupt=True,
+            configure_terminal=cooked,
+            suspend=suspend,
+        )
+    # It really suspended, and SIGINT still ends the session afterwards.
+    assert_true(seen["stop_signal"] == signal.SIGTSTP, seen)
+    assert_true(code == 130, (code, output))
+    # Raw while running, cooked while stopped, raw again after fg.
+    assert_true(not seen["running"] & termios.ECHO, oct(seen["running"]))
+    assert_true(seen["stopped"] & termios.ECHO, oct(seen["stopped"]))
+    assert_true(seen["stopped"] & termios.ICANON, oct(seen["stopped"]))
+    assert_true(not seen["resumed"] & termios.ECHO, oct(seen["resumed"]))
+    # Bracketed paste is retired before the stop and re-armed on resume.
+    assert_true(output.count(b"\x1b[?2004l") >= 1, output)
+    assert_true(output.count(b"\x1b[?2004h") >= 2, output)
+
+
+def test_signal_exit_restores_terminal(root, home):
+    # A signal exit out of the raw-mode composer must hand back a cooked line
+    # discipline too, or the surviving shell has no echo until `stty sane`.
+    final = {}
+
+    def cooked(slave):
+        attributes = termios.tcgetattr(slave)
+        attributes[3] |= termios.ICANON | termios.ECHO
+        termios.tcsetattr(slave, termios.TCSANOW, attributes)
+
+    def capture(master):
+        final["lflag"] = termios.tcgetattr(master)[3]
+
+    with Server([event({"content": "unused"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            interrupt=True,
+            configure_terminal=cooked,
+            after_exit=capture,
+        )
         restore = b"\x1b[0m\x1b[39m\x1b[49m"
         assert_true(code == 130, (code, output))
         assert_true(output.rfind(restore) > output.rfind(b"\x1b[48;5;"), output)
+        # The composer really did take the terminal (bracketed paste on).
+        assert_true(b"\x1b[?2004h" in output, output)
+        assert_true(final["lflag"] & termios.ECHO, oct(final["lflag"]))
+        assert_true(final["lflag"] & termios.ICANON, oct(final["lflag"]))
 
 
 def test_input_redraw_survives_terminal_resize_and_delete(root, home):

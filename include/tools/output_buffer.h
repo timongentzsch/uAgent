@@ -13,12 +13,12 @@ namespace uagent {
 // Bounded process output preserving a stable prefix and the newest suffix.
 class HeadTailBuffer {
  public:
-  explicit HeadTailBuffer(size_t max_bytes = 1024 * 1024)
+  explicit HeadTailBuffer(size_t max_bytes = size_t{1024} * 1024)
       : head_budget_(max_bytes / 2), tail_budget_(max_bytes - head_budget_) {}
 
   void Push(std::string_view bytes) {
     size_t head = std::min(head_budget_ - head_.size(), bytes.size());
-    head_.append(bytes.data(), head);
+    head_.append(bytes.substr(0, head));
     bytes.remove_prefix(head);
     if (bytes.empty()) return;
     if (tail_budget_ == 0) {

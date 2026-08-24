@@ -31,6 +31,20 @@ namespace {
 
 constexpr char kMessagesSlot[] = "\x01uagent-messages\x01";
 
+// The transport's failure vocabulary. The three entry points below return
+// three result types, but the retry classifier and the user-facing notice
+// both work from this text, so it is written once.
+constexpr char kCurlInitFailed[] = "curl init failed";
+constexpr char kHeaderAllocationFailed[] = "failed to allocate HTTP headers";
+
+std::string ConnectionError(CURLcode rc) {
+  return std::string("connection error: ") + curl_easy_strerror(rc);
+}
+
+std::string HttpStatusError(int64_t status) {
+  return "HTTP " + std::to_string(status);
+}
+
 // Whether any message carries a content part of `type`.
 bool HasContentPart(const json& messages, std::string_view type) {
   if (!messages.is_array()) return false;
@@ -301,8 +315,8 @@ CURLcode RunTransfer(CURLM* multi, CURL* handle, curl_slist* headers,
 
 }  // namespace
 
-Api::Api(RuntimeConfig config)
-    : config(std::move(config)),
+Api::Api(RuntimeConfig runtime_config)
+    : config(std::move(runtime_config)),
       handle_(curl_easy_init()),
       multi_(curl_multi_init()) {}
 
@@ -535,7 +549,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                                : "transient provider failure";
       printf("%s· %s — retry %d/%d in %s%s\n", DIM(),
              TerminalSafe(reason).c_str(), attempt, kChatAttempts - 1,
-             FmtDuration(delay.count() / 1000.0).c_str(), RST());
+             FmtDuration(static_cast<double>(delay.count()) / 1000.0).c_str(),
+             RST());
     }
     if (!WaitForRetry(delay, render_output)) {
       res.error.clear();
@@ -569,7 +584,8 @@ JsonResponse Api::Post(const std::string& path, const json& body,
                             {"error", response.error}});
     // A silent backoff reads as a stalled turn. The notice is durable, so the
     // session log explains the gap afterwards too.
-    std::string seconds = FmtDuration(delay.count() / 1000.0);
+    std::string seconds =
+        FmtDuration(static_cast<double>(delay.count()) / 1000.0);
     Emit(NoticeEvent(PresentationStatus::kWarned,
                      "· " + TerminalSafe(response.error) + " — retry " +
                          std::to_string(attempt) + "/" +
@@ -587,7 +603,7 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   WebResponse result;
   CURL* h = Prepare(url);
   if (!h) {
-    result.error = "curl init failed";
+    result.error = kCurlInitFailed;
     return result;
   }
   SizedBuffer out;
@@ -595,7 +611,7 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   CurlHeaders headers;
   // Identify honestly; many origins reject libcurl's default agent outright.
   if (!headers.Add(std::string("User-Agent: uagent/") + kVersion)) {
-    result.error = "failed to allocate HTTP headers";
+    result.error = kHeaderAllocationFailed;
     return result;
   }
   SetAbortable(h);
@@ -626,9 +642,9 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
   if (rc != CURLE_OK && socket_policy.denied) {
     result.error = "refused non-public network destination";
   } else if (rc != CURLE_OK && !out.exceeded) {
-    result.error = std::string("connection error: ") + curl_easy_strerror(rc);
+    result.error = ConnectionError(rc);
   } else if (result.http_status >= 400) {
-    result.error = "HTTP " + std::to_string(result.http_status);
+    result.error = HttpStatusError(result.http_status);
   }
   return result;
 }
@@ -639,7 +655,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ChatResult res;
   CURL* h = Prepare(base_url + "/chat/completions");
   if (!h) {
-    res.error = "curl init failed";
+    res.error = kCurlInitFailed;
     return res;
   }
   StreamCtx ctx;
@@ -659,7 +675,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }
   if (!headers_ok) {
-    res.error = "failed to allocate HTTP headers";
+    res.error = kHeaderAllocationFailed;
     return res;
   }
   curl_easy_setopt(h, CURLOPT_HTTPHEADER, headers.Get());
@@ -678,10 +694,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
   }
 
-  std::string activity = web_available ? "working · web available" : "working";
+  const std::string activity =
+      web_available ? "working · web available" : "working";
   ResponseObservation observation(render_stream && render_output,
-                                  full_reasoning, std::move(activity),
-                                  turn_started);
+                                  full_reasoning, activity, turn_started);
 
   CURLcode rc = CURLE_OK;
   bool cancelled =
@@ -704,7 +720,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   }
   if (!res.error.empty()) return res;
   if (rc != CURLE_OK) {
-    res.error = std::string("connection error: ") + curl_easy_strerror(rc);
+    res.error = ConnectionError(rc);
     res.retryable = true;
     return res;
   }
@@ -718,7 +734,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
         res.remote_error_kind == RemoteErrorKind::kNone) {
       res.remote_error_kind = RemoteErrorKind::kContextLengthExceeded;
     }
-    res.error = "HTTP " + std::to_string(res.http_status) + ": " +
+    res.error = HttpStatusError(res.http_status) + ": " +
                 JsonErrorMessage(error_response, std::move(ctx.error_body));
     res.retryable = res.retryable || RetryableHttpStatus(res.http_status);
     return res;
@@ -754,7 +770,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
   JsonResponse result;
   CURL* h = Prepare(base_url + path);
   if (!h) {
-    result.error = "curl init failed";
+    result.error = kCurlInitFailed;
     return result;
   }
   SizedBuffer out;
@@ -768,7 +784,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
                      static_cast<curl_off_t>(payload->size()));
   }
   if (!headers_ok) {
-    result.error = "failed to allocate HTTP headers";
+    result.error = kHeaderAllocationFailed;
     return result;
   }
   if (abortable) SetAbortable(h);
@@ -779,14 +795,14 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
     return result;
   }
   if (rc != CURLE_OK) {
-    result.error = std::string("connection error: ") + curl_easy_strerror(rc);
+    result.error = ConnectionError(rc);
     return result;
   }
   result.body = json::parse(out.data, nullptr, false);
   if (result.body.is_discarded()) {
     result.error = "invalid JSON response";
   } else if (result.http_status >= 400) {
-    result.error = "HTTP " + std::to_string(result.http_status);
+    result.error = HttpStatusError(result.http_status);
   }
   return result;
 }

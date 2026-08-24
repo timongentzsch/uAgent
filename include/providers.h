@@ -91,7 +91,7 @@ struct ModelSelection {
   std::string effort;
 };
 
-ModelSelection ParseModelSelection(std::string selection);
+ModelSelection ParseModelSelection(const std::string& selection);
 
 // Where a side model runs: the parent's route unless the selection names one
 // that resolves. `unresolved` marks a named route that matched nothing, which

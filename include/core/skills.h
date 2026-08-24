@@ -74,7 +74,7 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
   std::string custom = EnvStr("UAGENT_SKILL_PATH");
   if (!custom.empty()) {
     for (const std::string& entry : SplitPathList(custom)) {
-      if (!Trim(entry).empty()) path.push_back(fs::path(Trim(entry)));
+      if (!Trim(entry).empty()) path.emplace_back(Trim(entry));
     }
     return path;
   }
@@ -184,7 +184,7 @@ inline std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
 // The complete body without its front matter, bounded. Oversized skills fail
 // explicitly instead of silently giving the model a partial procedure.
 inline SkillReadResult ReadSkillBody(const Skill& skill,
-                                     std::string arguments = {}) {
+                                     const std::string& arguments = {}) {
   std::ifstream input(skill.path, std::ios::binary);
   if (!input) return {false, "error: cannot read " + skill.path};
   ParseSkillFrontMatter(input);

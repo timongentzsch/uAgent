@@ -45,8 +45,9 @@ inline void KeepSupportedSkills(std::vector<Skill>& skills,
   });
 }
 
-inline ToolResult OpenSkill(const Skill& skill, std::string arguments = {}) {
-  SkillReadResult result = ReadSkillBody(skill, std::move(arguments));
+inline ToolResult OpenSkill(const Skill& skill,
+                            const std::string& arguments = {}) {
+  SkillReadResult result = ReadSkillBody(skill, arguments);
   return result.ok
              ? ToolSuccess(std::move(result.output))
              : ToolFailure(ToolErrorCode::kInternal, std::move(result.output));
@@ -54,7 +55,7 @@ inline ToolResult OpenSkill(const Skill& skill, std::string arguments = {}) {
 
 inline std::string SkillCatalogue(const std::vector<Skill>& skills,
                                   std::string_view query) {
-  constexpr size_t kCatalogueChars = 8 * 1024;
+  constexpr size_t kCatalogueChars = size_t{8} * 1024;
   constexpr std::string_view kMore = "\n[more matches; narrow query]";
   bool descriptions = !Trim(std::string(query)).empty();
   std::string out;

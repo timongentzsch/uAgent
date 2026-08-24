@@ -145,7 +145,7 @@ class SessionJournal {
 
  private:
   static constexpr size_t kMaxEvents = 512;
-  static constexpr size_t kMaxBytes = 256 * 1024;
+  static constexpr size_t kMaxBytes = size_t{256} * 1024;
 
   std::deque<std::string> lines_;
   size_t bytes_ = 0;
@@ -191,7 +191,7 @@ void Emit(Event event) noexcept;
 
 class ResponseObservation {
  public:
-  ResponseObservation(bool render, bool verbose, std::string label,
+  ResponseObservation(bool render, bool verbose, const std::string& label,
                       std::chrono::steady_clock::time_point anchor = {});
   ~ResponseObservation();
   ResponseObservation(const ResponseObservation&) = delete;

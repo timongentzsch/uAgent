@@ -121,7 +121,7 @@ std::string Tidy(const std::string& text) {
     }
     if (!out.empty()) {
       if (newlines > 0) {
-        out.append(std::min(newlines, 2), '\n');
+        out.append(static_cast<size_t>(std::min(newlines, 2)), '\n');
       } else if (space) {
         out += ' ';
       }

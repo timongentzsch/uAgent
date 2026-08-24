@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
@@ -105,28 +106,21 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
   return error;
 }
 
+// master_fd is set only on success; the caller owns it from then on.
 int SpawnPtyShell(const std::string& shell, std::string& command,
                   char* const* environment, pid_t& pid, int& master_fd) {
 #if defined(__unix__) || defined(__APPLE__)
-  master_fd = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
-  if (master_fd < 0) return errno;
-  if (grantpt(master_fd) != 0 || unlockpt(master_fd) != 0) {
-    int error = errno;
-    close(master_fd);
-    master_fd = -1;
-    return error;
-  }
-  const char* slave_name = ptsname(master_fd);
-  if (!slave_name) {
-    int error = errno;
-    close(master_fd);
-    master_fd = -1;
-    return error;
-  }
+  master_fd = -1;
+  // Owned here until the child is running; every failure below closes it.
+  Fd master(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
+  if (!master) return errno;
+  if (grantpt(master.Get()) != 0 || unlockpt(master.Get()) != 0) return errno;
+  const char* slave_name = ptsname(master.Get());
+  if (!slave_name) return errno;
   winsize initial_size{};
   initial_size.ws_row = 24;
   initial_size.ws_col = 80;
-  (void)ioctl(master_fd, TIOCSWINSZ, &initial_size);
+  (void)ioctl(master.Get(), TIOCSWINSZ, &initial_size);
 
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);
@@ -134,7 +128,7 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
                                    0);
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDOUT_FILENO);
   posix_spawn_file_actions_adddup2(&actions, STDIN_FILENO, STDERR_FILENO);
-  posix_spawn_file_actions_addclose(&actions, master_fd);
+  posix_spawn_file_actions_addclose(&actions, master.Get());
   posix_spawnattr_t attributes;
   posix_spawnattr_init(&attributes);
   PosixSpawnFlags group_flag = POSIX_SPAWN_SETPGROUP;
@@ -146,10 +140,7 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
                                      environment, pid);
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
-  if (error != 0) {
-    close(master_fd);
-    master_fd = -1;
-  }
+  if (error == 0) master_fd = master.Release();
   return error;
 #else
   (void)shell;
@@ -201,23 +192,23 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   }
   int64_t max_jobs = MaxBackgroundJobs();
   std::string log;
-  int lfd = CreateTempFile(UagentDir(kTerminalsDir) + "/pending-" +
-                               std::to_string(getpid()) + "-XXXXXX",
-                           log);
-  if (lfd < 0) {
+  Fd lfd(CreateTempFile(UagentDir(kTerminalsDir) + "/pending-" +
+                            std::to_string(getpid()) + "-XXXXXX",
+                        log));
+  if (!lfd) {
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create log file " + log)};
   }
-  fchmod(lfd, kPrivateFileMode);
+  fchmod(lfd.Get(), kPrivateFileMode);
   std::string bounded_cmd =
       "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
       " --log-pump " + ShellQuote(log) + " " + std::to_string(BashLogBytes());
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      SpawnLoggedShell(spec.shell, bounded_cmd, lfd,
+      SpawnLoggedShell(spec.shell, bounded_cmd, lfd.Get(),
                        /*detach=*/true, child_environment.Data(), pid);
-  close(lfd);
+  lfd.Reset();
   if (spawn_error != 0) {
     unlink(log.c_str());
     return {ToolFailure(
@@ -276,14 +267,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
   std::string log;
-  int lfd = CreateTempFile(
+  Fd lfd(CreateTempFile(
       UagentDir(kBgDir) + "/pending-" + std::to_string(getpid()) + "-XXXXXX",
-      log);
-  if (lfd < 0) {
+      log));
+  if (!lfd) {
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create log file " + log)};
   }
-  fchmod(lfd, kPrivateFileMode);
+  fchmod(lfd.Get(), kPrivateFileMode);
   int64_t log_bytes = BashLogBytes();
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
   std::string bounded_cmd = cmd;
@@ -292,11 +283,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   int pipe_fds[2] = {-1, -1};
   bool tty = spec.tty;
   if (!tty && pipe(pipe_fds) != 0) {
-    close(lfd);
     unlink(log.c_str());
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create process output pipe")};
   }
+  // Owned from here: every early return closes them, and only the hand-off to
+  // the supervisor releases them.
+  Fd pipe_read(pipe_fds[0]), pipe_write(pipe_fds[1]);
   auto session = std::make_shared<ActivitySession>();
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
@@ -305,10 +298,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                           master_fd)
           : SpawnLoggedShell(shell, bounded_cmd, pipe_fds[1], /*detach=*/false,
                              child_environment.Data(), pid);
-  if (pipe_fds[1] >= 0) close(pipe_fds[1]);
+  pipe_write.Reset();
+  Fd master(master_fd);
   if (spawn_error != 0) {
-    if (pipe_fds[0] >= 0) close(pipe_fds[0]);
-    close(lfd);
     unlink(log.c_str());
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
@@ -332,16 +324,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
     KillProcess(pid);
-    close(lfd);
-    if (master_fd >= 0) close(master_fd);
-    if (pipe_fds[0] >= 0) close(pipe_fds[0]);
     RemoveLog(log);
     return {JobLimitError(max_jobs)};
   }
   int64_t activity_id = *registered;
-  int output_fd = tty ? master_fd : pipe_fds[0];
-  int input_fd = tty ? dup(master_fd) : -1;
-  supervisor.RegisterIo(session, output_fd, input_fd, lfd, log_bytes);
+  int input_fd = tty ? dup(master.Get()) : -1;
+  int output_fd = tty ? master.Release() : pipe_read.Release();
+  supervisor.RegisterIo(session, output_fd, input_fd, lfd.Release(), log_bytes);
 
   TrackPid(g_child_pgids, kFgMax, pid, true);
   bool cancelled = false;

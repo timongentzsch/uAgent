@@ -20,6 +20,7 @@
 #include "include/api.h"
 #include "include/core/child_env.h"
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
@@ -73,14 +74,14 @@ bool Claim(const std::string& source, const std::filesystem::path& cwd,
     }
   }
 
-  int fd = open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, kPrivateFileMode);
-  if (fd < 0) {
+  Fd fd(open(marker.c_str(), O_WRONLY | O_CREAT | O_EXCL, kPrivateFileMode));
+  if (!fd) {
     if (errno != EEXIST) error = strerror(errno);
     return false;
   }
   constexpr std::string_view kProcessing = "processing\n";
-  ssize_t written = write(fd, kProcessing.data(), kProcessing.size());
-  int close_error = close(fd);
+  ssize_t written = write(fd.Get(), kProcessing.data(), kProcessing.size());
+  int close_error = fd.Close();
   if (written != static_cast<ssize_t>(kProcessing.size()) || close_error != 0) {
     fs::remove(marker, code);
     error = "cannot persist memory claim";

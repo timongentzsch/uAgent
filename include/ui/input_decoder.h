@@ -14,10 +14,14 @@
 namespace uagent {
 
 inline constexpr size_t kInputHistoryEntries = 200;
-inline constexpr size_t kInputHistoryEntryBytes = 16 * 1024;
-inline constexpr size_t kInputBufferBytes = 64 * 1024;
+inline constexpr size_t kInputHistoryEntryBytes = size_t{16} * 1024;
+inline constexpr size_t kInputBufferBytes = size_t{64} * 1024;
 inline constexpr size_t kInputPasteBytes = kInputBufferBytes;
 inline constexpr size_t kInputSequenceBytes = 64;
+// String sequences (OSC, DCS, SOS, PM, APC) carry a payload rather than a
+// fixed grammar, and an OSC 52 reply is routinely kilobytes. Past this bound
+// the sequence is abandoned, so a missing terminator cannot grow the deque.
+inline constexpr size_t kInputStringSequenceBytes = 4096;
 // A complete sequence is handled immediately; only a genuinely lone Escape
 // waits, long enough for fragmented PTY input under load.
 inline constexpr std::chrono::milliseconds kInputEscapeDelay{100};
@@ -46,6 +50,12 @@ class TerminalInputDecoder {
   bool StartsWith(std::string_view sequence) const;
   bool IsPrefixOf(std::string_view sequence) const;
   size_t CompleteCsiBytes() const;
+  // ESC ] / P / X / ^ / _ ... BEL or ST. Terminal replies, never user input:
+  // their payload must not reach the buffer as typed text.
+  bool StartsStringSequence() const;
+  size_t CompleteStringSequenceBytes() const;
+  // ESC [ M b x y: three raw bytes follow a final byte the CSI scan accepts.
+  bool StartsX10Mouse() const;
   void Consume(size_t count);
   void ResetEscape();
 

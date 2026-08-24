@@ -196,6 +196,330 @@ std::vector<std::string> Agent::ExplicitSkillContext(
   return selected;
 }
 
+// The mutable state of one step loop, in a struct rather than as two dozen
+// locals so each phase below can be an ordinary function.
+struct Agent::TurnLoop {
+  std::unordered_map<std::string, int64_t> tool_counts;
+  std::unordered_map<std::string, std::string> stable_arguments;
+  std::string last_call;
+  int64_t step = 0;
+  int64_t repeated_calls = 0;
+  int64_t consecutive_failed_tools = 0;
+  int64_t empty_responses = 0;
+  bool failure_advisory_sent = false;
+  bool markup_recovered = false;
+  bool context_overflow_recovery_attempted = false;
+  bool detached_records_available = false;
+  bool midturn_compaction_enabled = true;
+  // A harness note that guides exactly the next model call and is retracted
+  // once it has been sent. At most one is ever live.
+  std::optional<size_t> pending_note;
+};
+
+void Agent::PushSkillContext(std::string skill) {
+  conversation_.Push(
+      HarnessMessage("[explicit skill instructions; user selected]\n" +
+                     std::move(skill)),
+      MessageKind::kInternal);
+}
+
+// Every interruption ends the turn the same way, whatever noticed it first.
+Agent::StepFlow Agent::InterruptTurn(TurnState& state) {
+  state.outcome = "interrupted";
+  last_error_ = state.outcome;
+  return StepFlow::kEndTurn;
+}
+
+// Steering joins the conversation as ordinary user messages, and every
+// per-step recovery counter starts over: the question has changed.
+bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
+  std::vector<std::string> queued = SteeringState().TakeQueued();
+  if (queued.empty()) return false;
+  SteeringState().Take();
+  for (std::string& input : queued) {
+    for (std::string& skill : ExplicitSkillContext(input)) {
+      PushSkillContext(std::move(skill));
+    }
+    conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
+                       MessageKind::kUser);
+  }
+  loop.last_call.clear();
+  loop.repeated_calls = 0;
+  loop.consecutive_failed_tools = 0;
+  state.last_single_tool.clear();
+  state.same_tool_rounds = 0;
+  loop.stable_arguments.clear();
+  loop.failure_advisory_sent = false;
+  loop.markup_recovered = false;
+  loop.empty_responses = 0;
+  DebugLog("steering_applied",
+           {{"turn", turn_id_}, {"messages", queued.size()}});
+  return true;
+}
+
+// Everything that happens before the model call: steering, a refreshed system
+// message, the budget gates, and the schemas this step is allowed to offer.
+Agent::StepFlow Agent::PrepareStep(TurnState& state, TurnLoop& loop,
+                                   json& schemas) {
+  ApplyQueuedSteering(state, loop);
+  RefreshSystemMessage();
+  if (SteeringState().Requested()) return InterruptTurn(state);
+  if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
+  if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
+  if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
+  DrainBackground();
+  MergeSideUsage(state.usage);
+  if (TurnCostExceeded(state)) return StepFlow::kEndTurn;
+  ToolAvailability availability{
+      .detached_terminal = processes_.PendingCount() > 0 ||
+                           processes_.DetachedCount() > 0 ||
+                           loop.detached_records_available,
+  };
+  schemas =
+      AvailableToolSchemas(tools_, schemas_, loop.tool_counts, availability);
+  if (loop.step > 0 && loop.midturn_compaction_enabled) {
+    MidturnCompact compacted =
+        MaybeCompactDuringTurn(schemas, state.usage, state.start);
+    if (compacted != MidturnCompact::kNotNeeded) {
+      loop.midturn_compaction_enabled = false;
+      // A successful compaction rebuilt the history, so a recorded note
+      // index no longer refers to its note; a failed one left history
+      // exactly as it was, and the note still has to be retracted.
+      if (compacted == MidturnCompact::kSucceeded) loop.pending_note.reset();
+      return StepFlow::kRetryStep;
+    }
+  }
+  return StepFlow::kProceed;
+}
+
+// An interrupted or failed model call; kProceed means the response is usable.
+Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
+                                            TurnState& state, TurnLoop& loop,
+                                            const json& schemas,
+                                            bool attachment) {
+  if (response.interrupted) {
+    state.line_open = false;
+    // Recorded before the steering check: if steering resumes the turn, the
+    // outcome is overwritten by whatever ends it.
+    InterruptTurn(state);
+    printf("\n");
+    Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+    conversation_.Push(
+        HarnessMessage("(response interrupted; partial output was "
+                       "discarded)"),
+        MessageKind::kInternal);
+    return ApplyQueuedSteering(state, loop) ? StepFlow::kNextStep
+                                            : StepFlow::kEndTurn;
+  }
+  if (response.error.empty()) return StepFlow::kProceed;
+  state.line_open = false;
+  if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
+  if (!loop.context_overflow_recovery_attempted &&
+      SafeContextRecovery(response) && !attachment) {
+    loop.context_overflow_recovery_attempted = true;
+    int64_t rejected_tokens =
+        EstimatedTokens(RequestContextBytes(JsonEstimatedBytes(schemas)));
+    int64_t learned_context =
+        std::max<int64_t>(4096, rejected_tokens - rejected_tokens / 10);
+    int64_t prior_context = api_.ctx_window;
+    if (prior_context <= 0 || learned_context < prior_context) {
+      api_.ctx_window = learned_context;
+      Emit(Event{EventId::kCapabilityChanged,
+                 {{"feature", "context_window"},
+                  {"from", prior_context},
+                  {"to", learned_context},
+                  {"reason", "provider_rejected_request"}}});
+    }
+    DebugLog("context_overflow_recovery", {{"turn", turn_id_},
+                                           {"step", loop.step},
+                                           {"rejected_tokens", rejected_tokens},
+                                           {"learned_context", api_.ctx_window},
+                                           {"messages", conversation_.Size()}});
+    Emit(NoticeEvent(PresentationStatus::kNeutral,
+                     "· provider context limit reached — compacting once"));
+    loop.midturn_compaction_enabled = false;
+    if (Compact(true, &state.usage)) {
+      state.start = conversation_.Size();
+      return StepFlow::kRetryStep;
+    }
+    state.outcome = "error";
+    last_error_ = response.error;
+    return StepFlow::kEndTurn;
+  }
+  if (response.remote_error_kind == RemoteErrorKind::kContextLengthExceeded) {
+    DebugLog("context_overflow_recovery_skipped",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"already_attempted", loop.context_overflow_recovery_attempted},
+              {"attachment", attachment},
+              {"semantic_progress", response.semantic_progress}});
+  }
+  if (DegradeAndRetry(response)) return StepFlow::kRetryStep;
+  state.outcome = "error";
+  last_error_ = response.error;
+  Emit(NoticeEvent(PresentationStatus::kFailed, response.error));
+  return StepFlow::kEndTurn;
+}
+
+// Text that imitates a tool protocol but parses as nothing. One correction is
+// worth sending; a second means the model will not recover.
+Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnState& state,
+                                                TurnLoop& loop) {
+  if (!loop.markup_recovered) {
+    loop.markup_recovered = true;
+    conversation_.Push(
+        HarnessMessage("[invalid model tool markup] The attempted call was "
+                       "not executed. Return prose using existing results; "
+                       "do not imitate a tool protocol."),
+        MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+    DebugLog("foreign_tool_markup_recovery",
+             {{"turn", turn_id_}, {"step", loop.step}});
+    return StepFlow::kNextStep;
+  }
+  state.outcome = "error";
+  last_error_ = "model repeatedly returned invalid tool markup";
+  return StepFlow::kEndTurn;
+}
+
+// A completion with no answer and no call carries nothing to react to, so the
+// first one is replayed unchanged, a repeat earns a guiding note, and only a
+// third ends the turn: a barren provider response must not cost the work this
+// turn has already done.
+Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
+                                           TurnState& state, TurnLoop& loop) {
+  constexpr int64_t kEmptyResponseAttempts = 3;
+  if (++loop.empty_responses >= kEmptyResponseAttempts) {
+    state.outcome = "error";
+    last_error_ = "model returned an empty response";
+    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    return StepFlow::kEndTurn;
+  }
+  // The first replay goes out unchanged: only a repeat is evidence that the
+  // model needs steering rather than another attempt.
+  if (loop.empty_responses > 1) {
+    conversation_.Push(
+        HarnessMessage(state.tool_count > 0
+                           ? "[empty model response] Return the final "
+                             "answer from existing results. Do not "
+                             "repeat completed work."
+                           : "[empty model response] The previous reply "
+                             "arrived empty. Answer the request "
+                             "directly."),
+        MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+  }
+  DebugLog("empty_response_recovery",
+           {{"turn", turn_id_},
+            {"step", loop.step},
+            {"attempt", loop.empty_responses},
+            {"guided", loop.empty_responses > 1},
+            {"finish_reason", response.finish_reason}});
+  Emit(
+      NoticeEvent(PresentationStatus::kNeutral, "· recovering empty response"));
+  return StepFlow::kNextStep;
+}
+
+// Worth a trace record long before it is worth stopping the turn.
+void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
+                                      TurnState& state, TurnLoop& loop) {
+  if (calls.size() != 1) {
+    state.last_single_tool.clear();
+    state.same_tool_rounds = 0;
+    return;
+  }
+  state.same_tool_rounds =
+      calls[0].name == state.last_single_tool ? state.same_tool_rounds + 1 : 1;
+  state.last_single_tool = calls[0].name;
+  if (state.same_tool_rounds == 8) {
+    DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
+                                      {"step", loop.step},
+                                      {"tool", calls[0].name},
+                                      {"rounds", state.same_tool_rounds}});
+  }
+}
+
+void Agent::PushAssistantMessage(ChatResult& response,
+                                 const std::vector<ToolCall>& calls,
+                                 bool text_mode) {
+  json message = {{"role", "assistant"}, {"content", response.content}};
+  if (!calls.empty() && !text_mode) {
+    json encoded = json::array();
+    for (const ToolCall& call : calls) {
+      encoded.push_back(
+          {{"id", call.id},
+           {"type", "function"},
+           {"function", {{"name", call.name}, {"arguments", call.args}}}});
+    }
+    message["tool_calls"] = std::move(encoded);
+    // Tool-only turns carry no prose; store null so strict backends
+    // (e.g. Anthropic) don't reject an empty text block on replay.
+    if (response.content.empty()) message["content"] = nullptr;
+  }
+  // Preserve the replay fields the active route actually emitted while any
+  // tool protocol continues; completed prose does not burden later turns.
+  if (!calls.empty()) api_.PreserveAssistantReasoning(message, response);
+  conversation_.Push(std::move(message), MessageKind::kAssistant);
+}
+
+// Plain prose and no call: the turn is done unless steering reopened it.
+Agent::StepFlow Agent::FinishWithProse(ChatResult& response, TurnState& state,
+                                       TurnLoop& loop) {
+  // Content that looked like a tool call was held back from the stream; if it
+  // didn't parse into one, it's prose -- show it now.
+  if (response.suppressed) {
+    MdPrint(response.content);
+    printf("\n");
+  }
+  if (ApplyQueuedSteering(state, loop)) return StepFlow::kNextStep;
+  if (SteeringState().Requested()) return InterruptTurn(state);
+  state.complete = true;
+  state.outcome = "complete";
+  return StepFlow::kEndTurn;
+}
+
+Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
+                                        bool text_mode, TurnState& state,
+                                        TurnLoop& loop) {
+  if (state.line_open) printf("\n");
+  bool cancelled = RunCalls(calls, text_mode, state.tool_count,
+                            loop.tool_counts, loop.stable_arguments, loop.step,
+                            state.deadline, loop.consecutive_failed_tools);
+  state.line_open = false;
+  if (!loop.failure_advisory_sent && loop.consecutive_failed_tools >= 3) {
+    loop.failure_advisory_sent = true;
+    conversation_.Push(
+        HarnessMessage("[tool failure advisory] Three consecutive tool "
+                       "calls failed. Reassess the shared premise or "
+                       "execution environment before trying another "
+                       "variant; use existing evidence or a different "
+                       "approach when possible."),
+        MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+    DebugLog("tool_failure_advisory",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"consecutive_failures", loop.consecutive_failed_tools}});
+  }
+  bool foreground_interrupted = SteeringState().Requested() || cancelled;
+  bool steering_applied = ApplyQueuedSteering(state, loop);
+  if (cancelled) BgCancelSubagents(processes_);
+  if (foreground_interrupted) {
+    if (steering_applied) return StepFlow::kNextStep;
+    if (cancelled) {
+      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+    }
+    return InterruptTurn(state);
+  }
+  // Do not start a network request with only curl's one-second granularity
+  // left after tools. Report the owning turn budget instead of a misleading
+  // transport timeout that cannot possibly be retried.
+  if (TurnDeadlineExceeded(state, std::chrono::seconds(1))) {
+    return StepFlow::kEndTurn;
+  }
+  return StepFlow::kNextStep;
+}
+
 void Agent::Turn(const std::string& user_input, json user_content) {
   if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
   api_.turn_started = std::chrono::steady_clock::now();
@@ -252,22 +576,15 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     return;
   }
   EnsureRuntimeContext();
-  auto push_skill = [&](std::string skill) {
-    conversation_.Push(
-        HarnessMessage("[explicit skill instructions; user selected]\n" +
-                       std::move(skill)),
-        MessageKind::kInternal);
-  };
   TurnState state;
+  TurnLoop loop;
   state.start = conversation_.Size();  // user message and prune_* start
-  for (std::string& skill : explicit_skills) push_skill(std::move(skill));
+  for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
   conversation_.Push(
       {{"role", "user"},
        {"content", attachment ? std::move(user_content) : json(user_input)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
   turn_search_trace_.Reset();
-  std::unordered_map<std::string, int64_t> tool_counts;
-  std::unordered_map<std::string, std::string> stable_arguments;
   state.max_steps = api_.config.max_steps;
   state.max_turn_seconds = api_.config.max_turn_seconds;
   state.max_turn_cost = api_.config.max_turn_cost;
@@ -276,311 +593,67 @@ void Agent::Turn(const std::string& user_input, json user_content) {
                        ? DeadlineAfter(state.started, state.max_turn_seconds)
                        : std::chrono::steady_clock::time_point::max();
   active_deadline_ = state.deadline;
-  std::string last_call;
-  int64_t repeated_calls = 0;
-  int64_t consecutive_failed_tools = 0;
-  bool failure_advisory_sent = false;
-  bool markup_recovered = false;
-  // A completion with no answer and no call carries nothing to react to, so
-  // the first one is replayed unchanged, a repeat earns a guiding note, and
-  // only a third ends the turn: a barren provider response must not cost the
-  // work this turn has already done.
-  constexpr int64_t kEmptyResponseAttempts = 3;
-  int64_t empty_responses = 0;
-  bool context_overflow_recovery_attempted = false;
-  // A harness note that guides exactly the next model call and is retracted
-  // once it has been sent. At most one is ever live.
-  std::optional<size_t> pending_note;
-  bool detached_records_available = !DetachedRecords().empty();
-  bool midturn_compaction_enabled = true;
+  loop.detached_records_available = !DetachedRecords().empty();
 
-  auto apply_queued_steering = [&] {
-    std::vector<std::string> queued = SteeringState().TakeQueued();
-    if (queued.empty()) return false;
-    SteeringState().Take();
-    for (std::string& input : queued) {
-      for (std::string& skill : ExplicitSkillContext(input)) {
-        push_skill(std::move(skill));
-      }
-      conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
-                         MessageKind::kUser);
+  for (; state.max_steps <= 0 || loop.step < state.max_steps; ++loop.step) {
+    json schemas;
+    StepFlow flow = PrepareStep(state, loop, schemas);
+    if (flow == StepFlow::kEndTurn) break;
+    if (flow == StepFlow::kRetryStep) {
+      --loop.step;
+      continue;
     }
-    last_call.clear();
-    repeated_calls = 0;
-    consecutive_failed_tools = 0;
-    state.last_single_tool.clear();
-    state.same_tool_rounds = 0;
-    stable_arguments.clear();
-    failure_advisory_sent = false;
-    markup_recovered = false;
-    empty_responses = 0;
-    DebugLog("steering_applied",
-             {{"turn", turn_id_}, {"messages", queued.size()}});
-    return true;
-  };
 
-  int64_t step = 0;
-  for (; state.max_steps <= 0 || step < state.max_steps; ++step) {
-    apply_queued_steering();
-    RefreshSystemMessage();
-    if (SteeringState().Requested()) {
-      state.outcome = "interrupted";
-      last_error_ = state.outcome;
-      break;
+    ChatResult response = Chat("turn", loop.step, schemas);
+    if (loop.pending_note) {
+      conversation_.Erase(*loop.pending_note, *loop.pending_note + 1);
+      loop.pending_note.reset();
     }
-    if (TurnDeadlineExceeded(state)) break;
-    if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
-    if (TurnDeadlineExceeded(state)) break;
-    DrainBackground();
-    MergeSideUsage(state.usage);
+    flow = HandleFailedResponse(response, state, loop, schemas, attachment);
+    if (flow == StepFlow::kEndTurn) break;
+    if (flow == StepFlow::kNextStep) continue;
+    if (flow == StepFlow::kRetryStep) {
+      --loop.step;
+      continue;
+    }
+
+    RecordModelResponse(response, state, loop.tool_counts);
     if (TurnCostExceeded(state)) break;
-    ToolAvailability availability{
-        .detached_terminal = processes_.PendingCount() > 0 ||
-                             processes_.DetachedCount() > 0 ||
-                             detached_records_available,
-    };
-    json available_schemas =
-        AvailableToolSchemas(tools_, schemas_, tool_counts, availability);
-    if (step > 0 && midturn_compaction_enabled) {
-      MidturnCompact compacted =
-          MaybeCompactDuringTurn(available_schemas, state.usage, state.start);
-      if (compacted != MidturnCompact::kNotNeeded) {
-        midturn_compaction_enabled = false;
-        // A successful compaction rebuilt the history, so a recorded note
-        // index no longer refers to its note; a failed one left history
-        // exactly as it was, and the note still has to be retracted.
-        if (compacted == MidturnCompact::kSucceeded) pending_note.reset();
-        --step;
-        continue;
-      }
-    }
-    ChatResult r = Chat("turn", step, available_schemas);
-    if (pending_note) {
-      conversation_.Erase(*pending_note, *pending_note + 1);
-      pending_note.reset();
-    }
 
-    if (r.interrupted) {
-      state.line_open = false;
-      state.outcome = "interrupted";
-      last_error_ = state.outcome;
-      printf("\n");
-      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
-      conversation_.Push(
-          HarnessMessage("(response interrupted; partial output was "
-                         "discarded)"),
-          MessageKind::kInternal);
-      if (apply_queued_steering()) continue;
-      break;
-    }
-    if (!r.error.empty()) {
-      state.line_open = false;
-      if (TurnDeadlineExceeded(state)) break;
-      if (!context_overflow_recovery_attempted && SafeContextRecovery(r) &&
-          !attachment) {
-        context_overflow_recovery_attempted = true;
-        int64_t rejected_tokens = EstimatedTokens(
-            RequestContextBytes(JsonEstimatedBytes(available_schemas)));
-        int64_t learned_context =
-            std::max<int64_t>(4096, rejected_tokens - rejected_tokens / 10);
-        int64_t prior_context = api_.ctx_window;
-        if (prior_context <= 0 || learned_context < prior_context) {
-          api_.ctx_window = learned_context;
-          Emit(Event{EventId::kCapabilityChanged,
-                     {{"feature", "context_window"},
-                      {"from", prior_context},
-                      {"to", learned_context},
-                      {"reason", "provider_rejected_request"}}});
-        }
-        DebugLog("context_overflow_recovery",
-                 {{"turn", turn_id_},
-                  {"step", step},
-                  {"rejected_tokens", rejected_tokens},
-                  {"learned_context", api_.ctx_window},
-                  {"messages", conversation_.Size()}});
-        Emit(NoticeEvent(PresentationStatus::kNeutral,
-                         "· provider context limit reached — compacting once"));
-        midturn_compaction_enabled = false;
-        if (Compact(true, &state.usage)) {
-          state.start = conversation_.Size();
-          --step;
-          continue;
-        }
-        state.outcome = "error";
-        last_error_ = r.error;
-        break;
-      }
-      if (r.remote_error_kind == RemoteErrorKind::kContextLengthExceeded) {
-        DebugLog("context_overflow_recovery_skipped",
-                 {{"turn", turn_id_},
-                  {"step", step},
-                  {"already_attempted", context_overflow_recovery_attempted},
-                  {"attachment", attachment},
-                  {"semantic_progress", r.semantic_progress}});
-      }
-      if (DegradeAndRetry(r)) {
-        --step;
-        continue;
-      }
-      state.outcome = "error";
-      last_error_ = r.error;
-      Emit(NoticeEvent(PresentationStatus::kFailed, r.error));
-      break;
-    }
-
-    RecordModelResponse(r, state, tool_counts);
-    if (TurnCostExceeded(state)) break;
-    std::vector<ToolCall> calls = std::move(r.tool_calls);
+    std::vector<ToolCall> calls = std::move(response.tool_calls);
     std::vector<ToolCall> text_calls;
-    if (calls.empty()) text_calls = ParseTextToolCalls(r.content);
-    bool text_mode = !api_.capabilities.native_tools && !text_calls.empty();
+    if (calls.empty()) text_calls = ParseTextToolCalls(response.content);
+    // Recorded before the move below empties `text_calls`.
+    const bool parsed_text_calls = !text_calls.empty();
+    bool text_mode = !api_.capabilities.native_tools && parsed_text_calls;
     if (text_mode) calls = std::move(text_calls);
 
     if (calls.empty() &&
-        (!text_calls.empty() || ContainsForeignToolCallMarkup(r.content) ||
-         r.suppressed)) {
-      if (!markup_recovered) {
-        markup_recovered = true;
-        conversation_.Push(
-            HarnessMessage("[invalid model tool markup] The attempted call was "
-                           "not executed. Return prose using existing results; "
-                           "do not imitate a tool protocol."),
-            MessageKind::kInternal);
-        pending_note = conversation_.Size() - 1;
-        DebugLog("foreign_tool_markup_recovery",
-                 {{"turn", turn_id_}, {"step", step}});
+        (parsed_text_calls || ContainsForeignToolCallMarkup(response.content) ||
+         response.suppressed)) {
+      if (HandleUnparsedToolMarkup(state, loop) == StepFlow::kNextStep) {
         continue;
       }
-      state.outcome = "error";
-      last_error_ = "model repeatedly returned invalid tool markup";
       break;
     }
-
     if (!ToolCallsWithinLimits(calls, state, api_.config.max_tool_calls,
-                               last_call, repeated_calls)) {
+                               loop.last_call, loop.repeated_calls)) {
       break;
     }
-    if (calls.size() == 1) {
-      state.same_tool_rounds = calls[0].name == state.last_single_tool
-                                   ? state.same_tool_rounds + 1
-                                   : 1;
-      state.last_single_tool = calls[0].name;
-      if (state.same_tool_rounds == 8) {
-        DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
-                                          {"step", step},
-                                          {"tool", calls[0].name},
-                                          {"rounds", state.same_tool_rounds}});
-      }
-    } else {
-      state.last_single_tool.clear();
-      state.same_tool_rounds = 0;
-    }
-
-    if (calls.empty() && r.content.empty()) {
-      if (++empty_responses < kEmptyResponseAttempts) {
-        // The first replay goes out unchanged: only a repeat is evidence that
-        // the model needs steering rather than another attempt.
-        if (empty_responses > 1) {
-          conversation_.Push(
-              HarnessMessage(state.tool_count > 0
-                                 ? "[empty model response] Return the final "
-                                   "answer from existing results. Do not "
-                                   "repeat completed work."
-                                 : "[empty model response] The previous reply "
-                                   "arrived empty. Answer the request "
-                                   "directly."),
-              MessageKind::kInternal);
-          pending_note = conversation_.Size() - 1;
-        }
-        DebugLog("empty_response_recovery",
-                 {{"turn", turn_id_},
-                  {"step", step},
-                  {"attempt", empty_responses},
-                  {"guided", empty_responses > 1},
-                  {"finish_reason", r.finish_reason}});
-        Emit(NoticeEvent(PresentationStatus::kNeutral,
-                         "· recovering empty response"));
+    RecordToolRoundRepetition(calls, state, loop);
+    if (calls.empty() && response.content.empty()) {
+      if (HandleEmptyResponse(response, state, loop) == StepFlow::kNextStep) {
         continue;
       }
-      state.outcome = "error";
-      last_error_ = "model returned an empty response";
-      Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
       break;
     }
 
-    json amsg = {{"role", "assistant"}, {"content", r.content}};
-    if (!calls.empty() && !text_mode) {
-      json tcs = json::array();
-      for (const ToolCall& c : calls) {
-        tcs.push_back(
-            {{"id", c.id},
-             {"type", "function"},
-             {"function", {{"name", c.name}, {"arguments", c.args}}}});
-      }
-      amsg["tool_calls"] = std::move(tcs);
-      // Tool-only turns carry no prose; store null so strict backends
-      // (e.g. Anthropic) don't reject an empty text block on replay.
-      if (r.content.empty()) amsg["content"] = nullptr;
-    }
-    // Preserve the replay fields the active route actually emitted while any
-    // tool protocol continues; completed prose does not burden later turns.
-    if (!calls.empty()) api_.PreserveAssistantReasoning(amsg, r);
-    conversation_.Push(std::move(amsg), MessageKind::kAssistant);
-
-    if (calls.empty()) {
-      // content that looked like a tool call was held back from the
-      // stream; if it didn't parse into one, it's prose — show it now
-      if (r.suppressed) {
-        MdPrint(r.content);
-        printf("\n");
-      }
-      if (apply_queued_steering()) continue;
-      if (SteeringState().Requested()) {
-        state.outcome = "interrupted";
-        last_error_ = state.outcome;
-        break;
-      }
-      state.complete = true;
-      state.outcome = "complete";
-      break;  // plain prose -> turn is done
-    }
-    if (state.line_open) printf("\n");
-    bool cancelled = RunCalls(calls, text_mode, state.tool_count, tool_counts,
-                              stable_arguments, step, state.deadline,
-                              consecutive_failed_tools);
-    state.line_open = false;
-    if (!failure_advisory_sent && consecutive_failed_tools >= 3) {
-      failure_advisory_sent = true;
-      conversation_.Push(
-          HarnessMessage("[tool failure advisory] Three consecutive tool "
-                         "calls failed. Reassess the shared premise or "
-                         "execution environment before trying another "
-                         "variant; use existing evidence or a different "
-                         "approach when possible."),
-          MessageKind::kInternal);
-      pending_note = conversation_.Size() - 1;
-      DebugLog("tool_failure_advisory",
-               {{"turn", turn_id_},
-                {"step", step},
-                {"consecutive_failures", consecutive_failed_tools}});
-    }
-    bool foreground_interrupted = SteeringState().Requested() || cancelled;
-    bool steering_applied = apply_queued_steering();
-    if (cancelled) BgCancelSubagents(processes_);
-    if (foreground_interrupted) {
-      if (steering_applied) continue;
-      state.outcome = "interrupted";
-      if (cancelled) {
-        Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
-      }
-      break;
-    }
-    // Do not start a network request with only curl's one-second granularity
-    // left after tools. Report the owning turn budget instead of a misleading
-    // transport timeout that cannot possibly be retried.
-    if (TurnDeadlineExceeded(state, std::chrono::seconds(1))) break;
+    PushAssistantMessage(response, calls, text_mode);
+    flow = calls.empty() ? FinishWithProse(response, state, loop)
+                         : ExecuteToolCalls(calls, text_mode, state, loop);
+    if (flow == StepFlow::kEndTurn) break;
   }
-  FinishTurn(state, step);
+  FinishTurn(state, loop.step);
 }
 
 // The one-line accounting footer printed after every turn.
@@ -637,7 +710,8 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
                     .count();
   double tokens_per_second =
       state.model_generation_ms > 0
-          ? state.model_generated_tokens * 1000.0 / state.model_generation_ms
+          ? static_cast<double>(state.model_generated_tokens) * 1000.0 /
+                static_cast<double>(state.model_generation_ms)
           : 0;
   // One write: the interactive composer repaints on every chunk it observes,
   // so a footer split across writes would redraw the input line mid-line.

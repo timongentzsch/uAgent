@@ -7,12 +7,24 @@
 #include <chrono>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/strings.h"
 
 namespace uagent {
+
+// no-color.org and bixense.com/clicolors: an explicit opt-out wins over an
+// explicit opt-in, and both win over the isatty answer.
+bool ResolveColorEnabled(bool tty) {
+  if (!EnvStr("NO_COLOR").empty()) return false;
+  if (EnvStr("TERM") == "dumb") return false;
+  const std::string force = EnvStr("CLICOLOR_FORCE");
+  if (!force.empty() && force != "0") return true;
+  return tty;
+}
 
 namespace {
 std::atomic<bool>& PersistentComposerFlag() {
@@ -62,6 +74,15 @@ TerminalActivityState& TerminalActivities() {
   return state;
 }
 
+// The live entry with this id, or nullptr. Callers hold state.mutex.
+TerminalActivityState::Entry* FindActivityLocked(TerminalActivityState& state,
+                                                 uint64_t id) {
+  for (TerminalActivityState::Entry& entry : state.active) {
+    if (entry.id == id) return &entry;
+  }
+  return nullptr;
+}
+
 }  // namespace
 
 uint64_t BeginTerminalActivity(std::string label) {
@@ -78,19 +99,16 @@ uint64_t BeginTerminalActivity(std::string label) {
 void UpdateTerminalActivity(uint64_t id, std::string label) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
-  for (auto& entry : state.active) {
-    if (entry.id == id) {
-      entry.label = std::move(label);
-      entry.rolling = false;
-      entry.roll_prefix.clear();
-      entry.roll.clear();
-      entry.roll_display.clear();
-      entry.roll_transform = nullptr;
-      entry.roll_stale = false;
-      entry.roll_cursor = 0;
-      return;
-    }
-  }
+  TerminalActivityState::Entry* entry = FindActivityLocked(state, id);
+  if (!entry) return;
+  entry->label = std::move(label);
+  entry->rolling = false;
+  entry->roll_prefix.clear();
+  entry->roll.clear();
+  entry->roll_display.clear();
+  entry->roll_transform = nullptr;
+  entry->roll_stale = false;
+  entry->roll_cursor = 0;
 }
 
 // Put the activity into rolling-ticker mode with the current reasoning buffer.
@@ -102,22 +120,18 @@ void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
                                 ActivityTextTransform transform) {
   TerminalActivityState& state = TerminalActivities();
   std::lock_guard<std::mutex> lock(state.mutex);
-  for (auto& entry : state.active) {
-    if (entry.id == id) {
-      entry.roll_prefix = prefix;
-      entry.roll = text;
-      entry.roll_transform = transform;
-      entry.roll_stale = true;
-      if (!entry.rolling) {
-        entry.roll_cursor =
-            static_cast<double>(DisplayWidth(RollDisplay(entry)));
-        entry.roll_edge = entry.roll_cursor;
-        entry.roll_last = std::chrono::steady_clock::now();
-      }
-      entry.rolling = true;
-      return;
-    }
+  TerminalActivityState::Entry* entry = FindActivityLocked(state, id);
+  if (!entry) return;
+  entry->roll_prefix = prefix;
+  entry->roll = text;
+  entry->roll_transform = transform;
+  entry->roll_stale = true;
+  if (!entry->rolling) {
+    entry->roll_cursor = static_cast<double>(DisplayWidth(RollDisplay(*entry)));
+    entry->roll_edge = entry->roll_cursor;
+    entry->roll_last = std::chrono::steady_clock::now();
   }
+  entry->rolling = true;
 }
 
 void EndTerminalActivity(uint64_t id) {
@@ -157,21 +171,15 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
   if (reserved >= columns) return entry.roll_prefix;
   columns -= reserved;
 
-  // The window tracks the newest text: reasoning arrives far faster than any
-  // readable scroll rate, so a fixed rate would fall behind without bound and
-  // show text that is already stale. The cursor instead chases the live edge,
-  // moving at least kRollColsPerSec and always closing the remaining gap
-  // within kCatchUpSeconds, which bounds staleness in time rather than in
-  // columns — the lag settles at kCatchUpSeconds of text at any arrival rate.
+  // Reasoning arrives far faster than any readable scroll rate, so a fixed
+  // rate falls behind without bound. The cursor chases the live edge instead,
+  // moving at least kRollColsPerSec and closing the gap within
+  // kCatchUpSeconds: staleness is bounded in time, not in columns.
   //
-  // That leaves one honest limit: when the stream outruns the window, no motion
-  // is readable — sliding by that much is not scrolling but a flicker of
-  // fragments landing mid-word. The choice is made from how fast the live edge
-  // is moving, not from the gap that has accumulated: deciding per gap makes
-  // the ticker drift and then snap by whole windows, which is worse than
-  // either mode. Above half a window of new text per frame it simply follows
-  // the edge, the way a status row should when the text will not fit through
-  // it; below that it slides.
+  // When the stream outruns the window no motion is readable, so the ticker
+  // follows the edge rather than sliding. That choice is made from the edge's
+  // speed, not the accumulated gap: deciding per gap drifts and then snaps by
+  // whole windows, which reads worse than either mode.
   constexpr double kRollColsPerSec = 14.0;
   constexpr double kCatchUpSeconds = 0.5;
   constexpr double kReadableFraction = 0.5;

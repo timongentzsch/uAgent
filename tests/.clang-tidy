@@ -1,0 +1,9 @@
+# Tests inherit the root configuration and drop one check.
+#
+# CHECK() aborts the process on failure, which the optional analysis does not
+# model: every `CHECK(value.has_value()); use(*value);` pair reads to it as an
+# unchecked access. Requiring a second guard inside the test would only make
+# the assertion harder to read.
+InheritParentConfig: true
+Checks: >
+  -bugprone-unchecked-optional-access

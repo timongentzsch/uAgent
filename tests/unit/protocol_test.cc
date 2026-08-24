@@ -29,17 +29,20 @@ std::string RenderMarkdownChunks(const std::vector<std::string>& chunks) {
   }
   dup2(fileno(capture), STDOUT_FILENO);
   bool prior_tty = g_tty;
+  bool prior_color = g_color;
   g_tty = true;
+  g_color = true;
   MdStream stream;
   for (const std::string& chunk : chunks) stream.Feed(chunk);
   stream.Flush();
   fflush(stdout);
   g_tty = prior_tty;
+  g_color = prior_color;
   dup2(saved, STDOUT_FILENO);
   close(saved);
   fseek(capture, 0, SEEK_END);
   int64_t bytes = ftell(capture);
-  rewind(capture);
+  fseek(capture, 0, SEEK_SET);
   std::string output(static_cast<size_t>(bytes), '\0');
   if (bytes > 0) {
     CHECK(fread(output.data(), 1, output.size(), capture) == output.size());
@@ -50,6 +53,48 @@ std::string RenderMarkdownChunks(const std::vector<std::string>& chunks) {
 
 std::string RenderMarkdown(const std::string& markdown) {
   return RenderMarkdownChunks({markdown});
+}
+
+// Render at a known width. Both standard descriptors are redirected so the
+// TIOCGWINSZ probe fails and COLUMNS decides the layout.
+std::string RenderMarkdownColumns(const std::string& markdown,
+                                  int64_t columns) {
+  const char* prior = getenv("COLUMNS");
+  const std::string saved_columns = prior ? prior : "";
+  setenv("COLUMNS", std::to_string(columns).c_str(), 1);
+  int saved_stdin = dup(STDIN_FILENO);
+  FILE* empty = tmpfile();
+  if (empty) dup2(fileno(empty), STDIN_FILENO);
+  std::string output = RenderMarkdown(markdown);
+  if (saved_stdin >= 0) {
+    dup2(saved_stdin, STDIN_FILENO);
+    close(saved_stdin);
+  }
+  if (empty) fclose(empty);
+  if (prior) {
+    setenv("COLUMNS", saved_columns.c_str(), 1);
+  } else {
+    unsetenv("COLUMNS");
+  }
+  return output;
+}
+
+// A table header is reprinted by erasing the rendered rows it occupies:
+// `**bold**` is eight columns of source and four on screen, and counting the
+// source ate a line of transcript whenever that crossed a wrap boundary.
+void TestTableRetroErasesRenderedRows() {
+  // 19 columns of source, 15 rendered: at 16 columns the source wraps and the
+  // rendered line does not.
+  const std::string table = "**aaaaaaaaaa** | bb\n---|---\n";
+  const std::string output = RenderMarkdownColumns(table, 16);
+  size_t erases = 0;
+  for (size_t at = output.find("\033[A\033[2K"); at != std::string::npos;
+       at = output.find("\033[A\033[2K", at + 1)) {
+    ++erases;
+  }
+  CHECK(erases == 1);
+  CHECK(output.find("aaaaaaaaaa") != std::string::npos);
+  CHECK(output.find("bb") != std::string::npos);
 }
 
 void TestTextToolProtocol() {
@@ -524,7 +569,7 @@ void TestMarkdownMath() {
 
   std::vector<std::string> character_chunks;
   for (char value : market_markdown) {
-    character_chunks.push_back(std::string(1, value));
+    character_chunks.emplace_back(1, value);
   }
   CHECK(RenderMarkdownChunks(character_chunks) == market);
   for (size_t split = 0; split <= market_markdown.size(); ++split) {
@@ -618,15 +663,19 @@ void TestCapsAndEscaping() {
   CHECK(StatusOverflowRows(80, 0) == 0);
 
   bool prior_tty = g_tty;
+  bool prior_color = g_color;
   g_tty = true;
+  g_color = true;
   std::string banded = UserEchoRow(InputPrompt(), "hello");
   CHECK(banded.starts_with("\r"));
   CHECK(banded.find(InputBg()) != std::string::npos);
   CHECK(banded.find("hello\033[K") != std::string::npos);
   CHECK(banded.find('\n') == std::string::npos);
   g_tty = false;
+  g_color = false;
   CHECK(UserEchoRow(InputPrompt(), "hello") == "\r> hello");
   g_tty = prior_tty;
+  g_color = prior_color;
 
   std::vector<CallTask> tasks(3);
   tasks[0].result = ToolFailure(ToolErrorCode::kRemoteError, "short");

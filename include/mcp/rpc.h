@@ -27,8 +27,9 @@ inline bool McpWrite(McpServer& s, const std::string& data) {
   size_t off = 0;
   while (off < data.size()) {
     if (AbortRequested()) return false;  // user hit Ctrl+C mid-call
-    struct pollfd p[3] = {
-        {s.in, POLLOUT, 0}, {s.out, POLLIN, 0}, {AbortWakeFd(), POLLIN, 0}};
+    struct pollfd p[3] = {{s.in.Get(), POLLOUT, 0},
+                          {s.out.Get(), POLLIN, 0},
+                          {AbortWakeFd(), POLLIN, 0}};
     int pr = poll(p, 3, 10000);
     if (pr < 0 && errno == EINTR) continue;
     if (pr <= 0) {
@@ -48,7 +49,7 @@ inline bool McpWrite(McpServer& s, const std::string& data) {
       return false;
     }
     if (p[0].revents & POLLOUT) {
-      ssize_t n = write(s.in, data.data() + off, data.size() - off);
+      ssize_t n = write(s.in.Get(), data.data() + off, data.size() - off);
       if (n < 0) {
         if (errno == EINTR || errno == EAGAIN) continue;
         s.Shutdown();
@@ -69,7 +70,7 @@ inline bool McpReadLine(McpServer& s, std::string& line,
     if (!s.alive) return false;
     if (cancellable && AbortRequested()) return false;
     if (std::chrono::steady_clock::now() >= deadline) return false;
-    struct pollfd p[2] = {{s.out, POLLIN, 0},
+    struct pollfd p[2] = {{s.out.Get(), POLLIN, 0},
                           {cancellable ? AbortWakeFd() : -1, POLLIN, 0}};
     int pr = poll(p, 2, PollTimeoutMs(deadline));
     if (pr < 0 && errno != EINTR) {
@@ -129,7 +130,7 @@ inline bool McpHandleMessage(McpServer& s, const json& message) {
 // list without first receiving a tools/call.
 inline void McpDrainInbound(McpServer& s) {
   while (s.alive) {
-    struct pollfd descriptor = {s.out, POLLIN, 0};
+    struct pollfd descriptor = {s.out.Get(), POLLIN, 0};
     int ready = poll(&descriptor, 1, 0);
     if (ready < 0 && errno == EINTR) continue;
     if (ready <= 0) break;

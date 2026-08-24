@@ -18,7 +18,7 @@ struct SseEvent {
 
 class SseParser {
  public:
-  explicit SseParser(size_t max_event_bytes = 1024 * 1024)
+  explicit SseParser(size_t max_event_bytes = size_t{1024} * 1024)
       : max_event_bytes_(max_event_bytes) {}
 
   bool Feed(std::string_view bytes);

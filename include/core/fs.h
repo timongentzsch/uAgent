@@ -21,22 +21,31 @@
 #include <filesystem>
 #include <istream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 #include "include/core/checked.h"
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
 
 namespace uagent {
 
+// The throwing overload aborts under -fno-exceptions on a lookup error
+// (EACCES on a parent, ELOOP). A path we cannot look up is not there.
+inline bool PathExists(const std::filesystem::path& path) {
+  std::error_code ignored;
+  return std::filesystem::exists(path, ignored);
+}
+
 inline std::string UserHome() {
   const char* home = getenv("HOME");
   if (home && *home) return home;
   int64_t buffer_size = sysconf(_SC_GETPW_R_SIZE_MAX);
-  if (buffer_size < 0) buffer_size = 16 * 1024;
+  if (buffer_size < 0) buffer_size = int64_t{16} * 1024;
   std::vector<char> buffer(static_cast<size_t>(buffer_size));
   struct passwd entry{};
   struct passwd* result = nullptr;
@@ -146,10 +155,10 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   fs::path parent =
       target.has_parent_path() ? target.parent_path() : fs::path(".");
   std::string temp;
-  int fd = CreateTempFile(
+  Fd fd(CreateTempFile(
       (parent / ("." + target.filename().string() + ".uagent.XXXXXX")).string(),
-      temp);
-  if (fd < 0) {
+      temp));
+  if (!fd) {
     error = "cannot create temporary file for " + path + ": " + strerror(errno);
     return false;
   }
@@ -163,18 +172,14 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   mode_t mode = preserve_mode && stat(target.c_str(), &st) == 0
                     ? st.st_mode & 07777
                     : create_mode;
-  if (fchmod(fd, mode) != 0) {
-    std::string message = strerror(errno);
-    close(fd);
-    return fail(message);
+  if (fchmod(fd.Get(), mode) != 0) return fail(strerror(errno));
+  if (!WriteFully(fd.Get(), content)) {
+    return fail("write to " + path + " failed: " + strerror(errno));
   }
-  if (!WriteFully(fd, content)) {
-    std::string message = "write to " + path + " failed: " + strerror(errno);
-    close(fd);
-    return fail(message);
-  }
-  int failure = fsync(fd) != 0 ? errno : 0;
-  if (close(fd) != 0 && !failure) failure = errno;
+  // A deferred write can still fail in close(2), so the commit is fsync plus
+  // a close that returned zero.
+  int failure = fsync(fd.Get()) != 0 ? errno : 0;
+  if (fd.Close() != 0 && !failure) failure = errno;
   if (failure) {
     return fail("write to " + path + " failed: " + strerror(failure));
   }
@@ -252,26 +257,20 @@ inline bool LockFileExclusive(int fd) {
 
 inline bool AppendPrivateLine(const std::string& path, const std::string& line,
                               std::string& error) {
-  int fd = open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode);
-  if (fd < 0) {
+  Fd fd(open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode));
+  if (!fd) {
     error = strerror(errno);
     return false;
   }
-  fchmod(fd, kPrivateFileMode);
-  if (!LockFileExclusive(fd)) {
+  fchmod(fd.Get(), kPrivateFileMode);
+  if (!LockFileExclusive(fd.Get())) {
     error = strerror(errno);
-    close(fd);
     return false;
   }
-  if (!WriteFully(fd, line + "\n")) {
-    error = strerror(errno);
-    flock(fd, LOCK_UN);
-    close(fd);
-    return false;
-  }
-  flock(fd, LOCK_UN);
-  close(fd);
-  return true;
+  const bool written = WriteFully(fd.Get(), line + "\n");
+  if (!written) error = strerror(errno);
+  flock(fd.Get(), LOCK_UN);
+  return written;
 }
 
 // Atomically drain a small private append-only file. Truncating the locked
@@ -280,22 +279,21 @@ inline bool AppendPrivateLine(const std::string& path, const std::string& line,
 inline bool TakePrivateText(const std::string& path, std::string& content,
                             std::string& error) {
   content.clear();
-  int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
-  if (fd < 0) {
+  Fd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
+  if (!fd) {
     if (errno == ENOENT) return true;
     error = strerror(errno);
     return false;
   }
-  if (!LockFileExclusive(fd)) {
+  if (!LockFileExclusive(fd.Get())) {
     error = strerror(errno);
-    close(fd);
     return false;
   }
-  constexpr size_t kMaxBytes = 16 * 1024 * 1024;
+  constexpr size_t kMaxBytes = size_t{16} * 1024 * 1024;
   char buffer[4096];
   bool ok = true;
   for (;;) {
-    ssize_t count = read(fd, buffer, sizeof buffer);
+    ssize_t count = read(fd.Get(), buffer, sizeof buffer);
     if (count < 0 && errno == EINTR) continue;
     if (count < 0) {
       error = strerror(errno);
@@ -311,12 +309,11 @@ inline bool TakePrivateText(const std::string& path, std::string& content,
     }
     content.append(buffer, bytes);
   }
-  if (ok && ftruncate(fd, 0) != 0) {
+  if (ok && ftruncate(fd.Get(), 0) != 0) {
     error = strerror(errno);
     ok = false;
   }
-  flock(fd, LOCK_UN);
-  close(fd);
+  flock(fd.Get(), LOCK_UN);
   return ok;
 }
 

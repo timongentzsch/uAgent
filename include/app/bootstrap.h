@@ -13,6 +13,7 @@
 #include "include/app/runtime.h"
 #include "include/core/effective_config.h"
 #include "include/core/events.h"
+#include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
 #include "include/providers.h"
@@ -32,7 +33,7 @@ class HeadlessOutput {
   void Restore();
 
  private:
-  int saved_stdout_ = -1;
+  Fd saved_stdout_;  // the real stdout, parked while output is silenced
 };
 
 struct AppContext {

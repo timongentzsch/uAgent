@@ -79,6 +79,20 @@ inline const std::string* JsonStringRef(const json& object, const char* key) {
              : nullptr;
 }
 
+// A nested object or array, or nullptr when absent or the wrong shape. One
+// lookup, and no operator[] that could insert into a mutable parent.
+inline const json* JsonObject(const json& object, const char* key) {
+  if (!object.is_object()) return nullptr;
+  auto value = object.find(key);
+  return value != object.end() && value->is_object() ? &*value : nullptr;
+}
+
+inline const json* JsonArray(const json& object, const char* key) {
+  if (!object.is_object()) return nullptr;
+  auto value = object.find(key);
+  return value != object.end() && value->is_array() ? &*value : nullptr;
+}
+
 // OpenAI-compatible APIs use either {"error":"..."} or
 // {"error":{"message":"..."}} for HTTP and streamed failures.
 inline std::string JsonErrorMessage(const json& object,

@@ -7,6 +7,7 @@
 
 #include <signal.h>
 #include <sys/types.h>
+#include <termios.h>
 
 #include <atomic>
 #include <csignal>
@@ -61,9 +62,21 @@ bool RegisterChildWakeFd(int fd, bool add);
 // flag so an otherwise idle event loop redraws immediately.
 void SetTerminalWakeFd(int fd);
 
+// Terminal modes the fatal-signal and suspend handlers hand back, published by
+// the composer while raw mode is armed. Without them a signal exit leaves the
+// user's shell with ECHO and ICANON cleared.
+void ArmTerminalModes(const termios& cooked, const termios& raw);
+void DisarmTerminalModes();
+// Where a handler writes its restoring escapes. The REPL redirects stdout into
+// a pipe it drains itself, so it publishes the saved terminal descriptor here.
+void SetSignalTerminalFd(int fd);
+
 void SigintHandler(int signal_number);
 void InstallSigchldHandler();
 void InstallSigwinchHandler();
+// Ctrl+Z drops raw mode and bracketed paste before stopping; SIGCONT re-arms
+// them and asks the event loop for a repaint.
+void InstallSuspendHandlers();
 
 // Run fn with Ctrl+C wired to cancel it instead of exiting the program. The
 // caller owns the abort flag because an outer operation may need to observe it.

@@ -12,6 +12,12 @@
 
 namespace uagent {
 
+// Classification and range tests are byte-wise, and `char` is signed here:
+// say so once rather than sign-extend a high byte by accident.
+inline unsigned char Byte(char value) {
+  return static_cast<unsigned char>(value);
+}
+
 std::string Trim(const std::string& s);
 
 void ReplaceAll(std::string& s, const std::string& from, const std::string& to);

@@ -414,7 +414,7 @@ void Emit(Event event) noexcept {
 }
 
 ResponseObservation::ResponseObservation(
-    bool render, bool verbose, std::string label,
+    bool render, bool verbose, const std::string& label,
     std::chrono::steady_clock::time_point anchor) {
   Event event{EventId::kResponseStarted};
   event.render = render;

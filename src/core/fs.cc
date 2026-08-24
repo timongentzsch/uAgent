@@ -25,6 +25,7 @@ namespace {
 
 template <typename Visit>
 void ForEachTreeEntry(const std::string& dir, Visit&& visit) {
+  // NOLINTNEXTLINE(misc-unused-alias-decls) used below; the check misses it
   namespace fs = std::filesystem;
   std::error_code ec;
   for (fs::recursive_directory_iterator

@@ -161,7 +161,7 @@ void TestConversation() {
   tool_turn(3, "read_file", 'c');
   tool_turn(4, "read_file", 'd');
   tool_turn(5, "read_file", 'e');
-  traces.ArchiveRange("test_trace", 1, traces.Size(), 5, 64 * 1024);
+  traces.ArchiveRange("test_trace", 1, traces.Size(), 5, size_t{64} * 1024);
   ToolTracePruneResult pruned =
       traces.PruneOldToolResults(1500, 2500, {"skill"});
   CHECK(pruned.results == 2);

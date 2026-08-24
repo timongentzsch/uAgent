@@ -60,6 +60,29 @@ size_t TerminalInputDecoder::CompleteCsiBytes() const {
   return 0;
 }
 
+bool TerminalInputDecoder::StartsStringSequence() const {
+  if (pending_.size() < 2 || pending_[0] != 0x1b) return false;
+  const unsigned char introducer = pending_[1];
+  return introducer == ']' || introducer == 'P' || introducer == 'X' ||
+         introducer == '^' || introducer == '_';
+}
+
+size_t TerminalInputDecoder::CompleteStringSequenceBytes() const {
+  for (size_t index = 2; index < pending_.size(); ++index) {
+    if (pending_[index] == 0x07) return index + 1;  // BEL
+    if (pending_[index] == 0x1b && index + 1 < pending_.size() &&
+        pending_[index + 1] == '\\') {
+      return index + 2;  // ST
+    }
+  }
+  return 0;
+}
+
+bool TerminalInputDecoder::StartsX10Mouse() const {
+  return pending_.size() >= 3 && pending_[0] == 0x1b && pending_[1] == '[' &&
+         pending_[2] == 'M';
+}
+
 void TerminalInputDecoder::Consume(size_t count) {
   pending_.erase(pending_.begin(),
                  pending_.begin() + static_cast<std::ptrdiff_t>(count));
@@ -76,6 +99,11 @@ bool TerminalInputDecoder::HasReady() const {
            std::chrono::steady_clock::now() - escape_started_ >=
                kInputEscapeDelay;
   }
+  if (StartsStringSequence()) {
+    return CompleteStringSequenceBytes() > 0 ||
+           pending_.size() >= kInputStringSequenceBytes;
+  }
+  if (StartsX10Mouse()) return pending_.size() >= 6;
   if (pending_[1] == '[') {
     return CompleteCsiBytes() > 0 || pending_.size() >= kInputSequenceBytes;
   }
@@ -147,15 +175,46 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
       return TerminalInputToken{TerminalInputTokenKind::kEscape, "", false};
     }
 
-    // A Meta pair must arrive inside the ambiguity window. CSI/SS3 sequences
-    // stay exempt so arrows split by a slow terminal connection remain intact.
+    // A Meta pair must arrive inside the ambiguity window. CSI, SS3 and the
+    // string introducers stay exempt: a sequence split by a slow connection
+    // must not decay into a bare Escape plus its payload as typed text.
+    const bool sequence_introducer =
+        pending_[1] == '[' || pending_[1] == 'O' || StartsStringSequence();
     if (pending_[1] == 0x1b ||
-        (escape_was_pending && pending_[1] != '[' && pending_[1] != 'O' &&
+        (escape_was_pending && !sequence_introducer &&
          std::chrono::steady_clock::now() - escape_started_ >=
              kInputEscapeDelay)) {
       pending_.pop_front();
       ResetEscape();
       return TerminalInputToken{TerminalInputTokenKind::kEscape, "", false};
+    }
+
+    if (StartsStringSequence()) {
+      size_t string_bytes = CompleteStringSequenceBytes();
+      if (string_bytes == 0) {
+        if (pending_.size() < kInputStringSequenceBytes) return std::nullopt;
+        // Unterminated past the bound: drop it rather than grow.
+        Consume(pending_.size());
+        ResetEscape();
+        continue;
+      }
+      std::string sequence(
+          pending_.begin(),
+          pending_.begin() + static_cast<std::ptrdiff_t>(string_bytes));
+      Consume(string_bytes);
+      ResetEscape();
+      return TerminalInputToken{TerminalInputTokenKind::kSequence,
+                                std::move(sequence)};
+    }
+
+    // The coordinate bytes may be arbitrary, including 0x1b, so take a block.
+    if (StartsX10Mouse()) {
+      if (pending_.size() < 6) return std::nullopt;
+      std::string sequence(pending_.begin(), pending_.begin() + 6);
+      Consume(6);
+      ResetEscape();
+      return TerminalInputToken{TerminalInputTokenKind::kSequence,
+                                std::move(sequence)};
     }
 
     size_t sequence_bytes = CompleteCsiBytes();

@@ -113,7 +113,9 @@ void TestPollCollapse() {
 // the frame clock, which counters appear, and the label/counter split.
 void TestActivityBar() {
   bool prior = g_tty;
+  bool prior_color = g_color;
   g_tty = true;
+  g_color = true;
 
   // Spinner advances one frame per 100ms and wraps after ten.
   std::string first = ActivityBar(Working(std::chrono::milliseconds(0)));
@@ -171,6 +173,7 @@ void TestActivityBar() {
   CHECK(first.find("working") != std::string::npos);
 
   g_tty = prior;
+  g_color = prior_color;
 }
 
 }  // namespace uagent

@@ -212,13 +212,13 @@ int64_t Agent::SnapshotContext(size_t schema_bytes) const {
 int64_t Agent::ContextUsed() const { return SnapshotContext(schema_chars_); }
 
 json Agent::CompactionMessages() const {
-  size_t transcript_bytes = 256 * 1024;
-  if (api_.ctx_window > 0 && api_.ctx_window < 128 * 1024) {
+  size_t transcript_bytes = size_t{256} * 1024;
+  if (api_.ctx_window > 0 && api_.ctx_window < int64_t{128} * 1024) {
     size_t route_bytes = static_cast<size_t>(api_.ctx_window) * 2;
     transcript_bytes =
-        std::clamp(route_bytes, size_t{16 * 1024}, transcript_bytes);
+        std::clamp(route_bytes, size_t{16} * 1024, transcript_bytes);
   }
-  constexpr size_t kProseBytes = 8 * 1024;
+  constexpr size_t kProseBytes = size_t{8} * 1024;
   constexpr size_t kEvidenceBytes = 1024;
   HeadTailBuffer transcript(transcript_bytes);
   std::unordered_map<std::string, std::string> tool_names;
@@ -227,18 +227,19 @@ json Agent::CompactionMessages() const {
     buffer.Push(value);
     return buffer.Snapshot();
   };
-  auto append = [&](std::string_view label, std::string value, size_t cap) {
+  auto append = [&](std::string_view label, const std::string& value,
+                    size_t cap) {
     if (value.empty()) return;
     transcript.Push(label);
     transcript.Push(bounded(value, cap));
     transcript.Push("\n");
   };
   auto append_call = [&](const std::string& name, const json& arguments,
-                         std::string fallback) {
+                         const std::string& fallback) {
     const Tool* tool = FindTool(tools_, name);
     append("TOOL CALL " + name + ": ",
            tool && arguments.is_object() ? ToolSummary(*tool, arguments)
-                                         : std::move(fallback),
+                                         : fallback,
            kEvidenceBytes);
   };
 
@@ -257,21 +258,19 @@ json Agent::CompactionMessages() const {
       }
     }
     if (kind == MessageKind::kUser) {
-      append("USER: ", std::move(content), kProseBytes);
+      append("USER: ", content, kProseBytes);
       continue;
     }
     if (kind == MessageKind::kAssistant) {
       std::vector<ToolCall> text_calls = ParseTextToolCalls(content);
       if (text_calls.empty()) {
-        append("ASSISTANT: ", std::move(content), kProseBytes);
+        append("ASSISTANT: ", content, kProseBytes);
       }
-      if (message.contains("tool_calls") && message["tool_calls"].is_array()) {
-        for (const json& call : message["tool_calls"]) {
-          if (!call.is_object() || !call.contains("function") ||
-              !call["function"].is_object()) {
-            continue;
-          }
-          const json& function = call["function"];
+      if (const json* tool_calls = JsonArray(message, "tool_calls")) {
+        for (const json& call : *tool_calls) {
+          const json* found = JsonObject(call, "function");
+          if (!found) continue;
+          const json& function = *found;
           std::string name = JsonValue(function, "name", "tool");
           std::string id = JsonValue(call, "id", "");
           if (!id.empty()) tool_names[id] = name;
@@ -299,15 +298,15 @@ json Agent::CompactionMessages() const {
         name = found == tool_names.end() ? "tool" : found->second;
         result = std::move(content);
       }
-      append("TOOL RESULT " + name + ": ", std::move(result), kEvidenceBytes);
+      append("TOOL RESULT " + name + ": ", result, kEvidenceBytes);
       continue;
     }
     if (kind == MessageKind::kInternal) {
       constexpr std::string_view kPriorSummary =
           "[model-generated context summary; non-authoritative]";
       bool prior_summary = content.starts_with(kPriorSummary);
-      append(prior_summary ? "PRIOR SUMMARY: " : "HARNESS: ",
-             std::move(content), prior_summary ? kProseBytes : kEvidenceBytes);
+      append(prior_summary ? "PRIOR SUMMARY: " : "HARNESS: ", content,
+             prior_summary ? kProseBytes : kEvidenceBytes);
     }
   }
 
@@ -329,10 +328,10 @@ json Agent::CompactionUserMessages() const {
   // A summary is lossy by definition. Keep recent real user instructions as
   // an independent source of truth, while bounding them to a small fraction
   // of the next context. Codex uses the same summary-plus-user-message shape.
-  size_t cap = 80 * 1024;
+  size_t cap = size_t{80} * 1024;
   if (api_.ctx_window > 0) {
     size_t route_cap = static_cast<size_t>(api_.ctx_window) / 2;
-    cap = std::min(cap, std::max(size_t{4 * 1024}, route_cap));
+    cap = std::min(cap, std::max(size_t{4} * 1024, route_cap));
   }
 
   std::vector<std::string> newest_first;
@@ -476,6 +475,145 @@ void Agent::MergeSessionUsage(const Usage& usage) {
   api_.session_cost = session_usage_.cost;
 }
 
+// One finished extraction: its receipt decides what the memory event records,
+// and only a change or a failure is worth a line on screen.
+void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
+  bool success =
+      WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
+  MemoryEvent event;
+  std::string receipt_error;
+  bool receipt_exists =
+      !completion.receipt_path.empty() && PathExists(completion.receipt_path);
+  bool has_receipt =
+      receipt_exists &&
+      ReadMemoryReceipt(completion.receipt_path, event, receipt_error);
+  if (!success || !has_receipt) {
+    event = {};
+    if (!success) {
+      event.action = "failed";
+    } else if (receipt_exists) {
+      event.action = "receipt_unavailable";
+    } else {
+      event.action = "no_change";
+    }
+    event.source_session = completion.source_id;
+    event.timestamp = UtcStamp();
+    event.automatic = true;
+    if (!success) {
+      event.preview =
+          Utf8Trunc(OneLine(RedactMemorySecrets(completion.output)), 160);
+    }
+    std::string event_error;
+    if (!WriteMemoryEvent(event, {}, event_error)) {
+      DebugLog("memory_event_write_error", {{"error", event_error}});
+    }
+  }
+  if (!completion.receipt_path.empty()) {
+    std::error_code ignored;
+    std::filesystem::remove(completion.receipt_path, ignored);
+  }
+
+  bool show = verbose_ || event.action == "created" ||
+              event.action == "updated" || event.action == "failed" ||
+              event.action == "receipt_unavailable";
+  if (show) {
+    bool warning =
+        event.action == "failed" || event.action == "receipt_unavailable";
+    const char* mark = warning ? "!" : "◇";
+    if (event.action == "created" || event.action == "updated") mark = "◆";
+    std::string label = event.action;
+    if (event.action == "no_change") {
+      label = "extraction complete · nothing saved";
+    } else if (event.action == "receipt_unavailable") {
+      label = "extraction complete · receipt unavailable";
+    }
+    std::string line = std::string(mark) + " memory " + label;
+    if (!event.key.empty()) line += " · " + event.key;
+    Emit(NoticeEvent(
+        warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
+        std::move(line)));
+    if (!event.preview.empty()) {
+      Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview));
+    }
+  }
+  DebugLog("memory_extract_finished", {{"activity_id", completion.activity_id},
+                                       {"action", event.action},
+                                       {"key", event.key},
+                                       {"source_session", event.source_session},
+                                       {"receipt_error", receipt_error}});
+}
+
+// Everything that is not a memory extraction: a notice and a presentation
+// record each, and one bounded batch message for delegated children.
+void Agent::DeliverActivityCompletions(
+    const std::vector<BackgroundCompletion>& completions) {
+  const size_t delivered = static_cast<size_t>(std::count_if(
+      completions.begin(), completions.end(), [](const auto& completion) {
+        return completion.kind != ActivityKind::kMemory;
+      }));
+  constexpr size_t kAutomaticBatchBytes = size_t{12} * 1024;
+  std::string batch = "[completed background tasks; bounded]\n";
+  size_t child_count = 0;
+  size_t reduced = 0;
+  bool first = true;
+  for (const BackgroundCompletion& completion : completions) {
+    if (completion.kind == ActivityKind::kMemory) continue;
+    size_t running = processes_.Count();
+    std::string header = BgResultHeader(completion);
+    Emit(NoticeEvent(PresentationStatus::kNeutral,
+                     "· bg job finished " + header + " · " +
+                         std::to_string(running) + " still running"));
+
+    PresentationRecord record;
+    record.kind = PresentationKind::kToolResult;
+    record.status =
+        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0
+            ? PresentationStatus::kSucceeded
+            : PresentationStatus::kFailed;
+    record.title = (completion.kind == ActivityKind::kSubagent
+                        ? completion.kind_label + " "
+                        : std::string("activity ")) +
+                   std::to_string(completion.activity_id);
+    record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
+    Event display{
+        EventId::kActivityCompleted,
+        {{"id", completion.activity_id},
+         {"kind", ActivityKindName(completion.kind)},
+         {"status",
+          WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
+         {"output_chars", completion.output.size()}}};
+    display.presentation = std::move(record);
+    display.render = api_.render_stream;
+    Emit(std::move(display));
+
+    if (completion.kind != ActivityKind::kSubagent) continue;
+    ++child_count;
+    std::string note = header + "\n" + completion.output +
+                       FmtExit(completion.status, /*show_ok=*/true);
+    size_t separator = first ? 0 : 2;
+    if (batch.size() + separator + note.size() > kAutomaticBatchBytes) {
+      HeadTailBuffer excerpt(512);
+      excerpt.Push(completion.output);
+      note = header + "\n" + excerpt.Snapshot() +
+             "\n[completion reduced; use activity for the retained "
+             "transcript]" +
+             FmtExit(completion.status, /*show_ok=*/true);
+      ++reduced;
+    }
+    if (!first) batch += "\n\n";
+    first = false;
+    batch += note;
+  }
+  if (child_count > 0) {
+    conversation_.Push(HarnessMessage(std::move(batch)),
+                       MessageKind::kInternal);
+  }
+  DebugLog("background_results_delivered",
+           {{"count", delivered},
+            {"model_visible_children", child_count},
+            {"reduced", reduced}});
+}
+
 bool Agent::DrainBackground() {
   bool changed = false;
   // Take one snapshot. A memory child can become drainable at any instant; two
@@ -483,140 +621,17 @@ bool Agent::DrainBackground() {
   // after the memory-only pass, bypassing its receipt and audit handling.
   std::vector<BackgroundCompletion> completions =
       BgTakeCompletedDetails(processes_);
-  // Extraction is maintenance, not a new conversation event.
   for (BackgroundCompletion& completion : completions) {
-    if (completion.kind != ActivityKind::kMemory) continue;
-    bool success =
-        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
-    MemoryEvent event;
-    std::string receipt_error;
-    bool receipt_exists = !completion.receipt_path.empty() &&
-                          std::filesystem::exists(completion.receipt_path);
-    bool has_receipt =
-        receipt_exists &&
-        ReadMemoryReceipt(completion.receipt_path, event, receipt_error);
-    if (!success || !has_receipt) {
-      event = {};
-      if (!success) {
-        event.action = "failed";
-      } else if (receipt_exists) {
-        event.action = "receipt_unavailable";
-      } else {
-        event.action = "no_change";
-      }
-      event.source_session = completion.source_id;
-      event.timestamp = UtcStamp();
-      event.automatic = true;
-      if (!success) {
-        event.preview =
-            Utf8Trunc(OneLine(RedactMemorySecrets(completion.output)), 160);
-      }
-      std::string event_error;
-      if (!WriteMemoryEvent(event, {}, event_error)) {
-        DebugLog("memory_event_write_error", {{"error", event_error}});
-      }
+    if (completion.kind == ActivityKind::kMemory) {
+      ReportMemoryCompletion(completion);
     }
-    if (!completion.receipt_path.empty()) {
-      std::error_code ignored;
-      std::filesystem::remove(completion.receipt_path, ignored);
-    }
-
-    bool show = verbose_ || event.action == "created" ||
-                event.action == "updated" || event.action == "failed" ||
-                event.action == "receipt_unavailable";
-    if (show) {
-      bool warning =
-          event.action == "failed" || event.action == "receipt_unavailable";
-      const char* mark = warning ? "!" : "◇";
-      if (event.action == "created" || event.action == "updated") mark = "◆";
-      std::string label = event.action;
-      if (event.action == "no_change") {
-        label = "extraction complete · nothing saved";
-      } else if (event.action == "receipt_unavailable") {
-        label = "extraction complete · receipt unavailable";
-      }
-      std::string line = std::string(mark) + " memory " + label;
-      if (!event.key.empty()) line += " · " + event.key;
-      Emit(NoticeEvent(
-          warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
-          std::move(line)));
-      if (!event.preview.empty()) {
-        Emit(NoticeEvent(PresentationStatus::kNeutral, "  " + event.preview));
-      }
-    }
-    DebugLog("memory_extract_finished",
-             {{"activity_id", completion.activity_id},
-              {"action", event.action},
-              {"key", event.key},
-              {"source_session", event.source_session},
-              {"receipt_error", receipt_error}});
   }
-  size_t delivered = static_cast<size_t>(std::count_if(
+  const bool delivered = std::any_of(
       completions.begin(), completions.end(), [](const auto& completion) {
         return completion.kind != ActivityKind::kMemory;
-      }));
-  if (delivered > 0) {
-    constexpr size_t kAutomaticBatchBytes = 12 * 1024;
-    std::string batch = "[completed background tasks; bounded]\n";
-    size_t child_count = 0;
-    size_t reduced = 0;
-    bool first = true;
-    for (const BackgroundCompletion& completion : completions) {
-      if (completion.kind == ActivityKind::kMemory) continue;
-      size_t running = processes_.Count();
-      std::string header = BgResultHeader(completion);
-      Emit(NoticeEvent(PresentationStatus::kNeutral,
-                       "· bg job finished " + header + " · " +
-                           std::to_string(running) + " still running"));
-
-      PresentationRecord record;
-      record.kind = PresentationKind::kToolResult;
-      record.status =
-          WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0
-              ? PresentationStatus::kSucceeded
-              : PresentationStatus::kFailed;
-      record.title = (completion.kind == ActivityKind::kSubagent
-                          ? completion.kind_label + " "
-                          : std::string("activity ")) +
-                     std::to_string(completion.activity_id);
-      record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
-      Event display{
-          EventId::kActivityCompleted,
-          {{"id", completion.activity_id},
-           {"kind", ActivityKindName(completion.kind)},
-           {"status",
-            WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
-           {"output_chars", completion.output.size()}}};
-      display.presentation = std::move(record);
-      display.render = api_.render_stream;
-      Emit(std::move(display));
-
-      if (completion.kind != ActivityKind::kSubagent) continue;
-      ++child_count;
-      std::string note = header + "\n" + completion.output +
-                         FmtExit(completion.status, /*show_ok=*/true);
-      size_t separator = first ? 0 : 2;
-      if (batch.size() + separator + note.size() > kAutomaticBatchBytes) {
-        HeadTailBuffer excerpt(512);
-        excerpt.Push(completion.output);
-        note = header + "\n" + excerpt.Snapshot() +
-               "\n[completion reduced; use activity for the retained "
-               "transcript]" +
-               FmtExit(completion.status, /*show_ok=*/true);
-        ++reduced;
-      }
-      if (!first) batch += "\n\n";
-      first = false;
-      batch += note;
-    }
-    if (child_count > 0) {
-      conversation_.Push(HarnessMessage(std::move(batch)),
-                         MessageKind::kInternal);
-    }
-    DebugLog("background_results_delivered",
-             {{"count", delivered},
-              {"model_visible_children", child_count},
-              {"reduced", reduced}});
+      });
+  if (delivered) {
+    DeliverActivityCompletions(completions);
     changed = true;
   }
   if (DrainAttachments()) changed = true;

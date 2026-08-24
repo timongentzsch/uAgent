@@ -126,6 +126,13 @@ class Agent {
   struct TurnState;
   struct TurnLoop;
 
+  struct ActivityPollResult {
+    int64_t id = 0;
+    bool ok = false;
+    bool no_change = false;
+    bool terminal = false;
+  };
+
   struct ToolRejection {
     std::string tool;
     std::string issue_code;
@@ -188,6 +195,8 @@ class Agent {
   StepFlow HandleEmptyResponse(const ChatResult& response, TurnState& state,
                                TurnLoop& loop);
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
+                                 TurnState& state, TurnLoop& loop);
+  bool HandleActivityPollResults(const std::vector<ActivityPollResult>& polls,
                                  TurnState& state, TurnLoop& loop);
   bool StopForRepeatedRejections(const std::vector<ToolRejection>& rejections,
                                  TurnState& state, TurnLoop& loop);
@@ -277,7 +286,8 @@ class Agent {
                 std::unordered_map<std::string, std::string>& stable_arguments,
                 int64_t step, std::chrono::steady_clock::time_point deadline,
                 int64_t& consecutive_failed_tools,
-                std::vector<ToolRejection>& rejections);
+                std::vector<ToolRejection>& rejections,
+                std::vector<ActivityPollResult>& activity_polls);
 
   void RebuildToolSchemas();
   std::vector<std::string> ExplicitSkillContext(

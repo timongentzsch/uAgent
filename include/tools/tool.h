@@ -91,6 +91,7 @@ struct ToolResult {
   int64_t result_chars = -1;
   std::string display;     // optional terminal-only receipt
   bool no_change = false;  // activity poll found nothing new
+  bool activity_terminal = false;
 
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };

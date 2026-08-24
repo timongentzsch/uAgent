@@ -33,6 +33,17 @@ size_t ParallelRunEnd(const std::vector<size_t>& runnable,
   return end;
 }
 
+std::string NormalizedOperation(const json& arguments) {
+  if (!arguments.is_object()) return {};
+  for (const char* field : {"operation", "action"}) {
+    auto value = arguments.find(field);
+    if (value != arguments.end() && value->is_string()) {
+      return AsciiLower(Trim(value->get<std::string>()));
+    }
+  }
+  return {};
+}
+
 }  // namespace
 
 void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
@@ -70,8 +81,9 @@ bool Agent::RunCalls(
     std::unordered_map<std::string, int64_t>& tool_counts,
     std::unordered_map<std::string, std::string>& stable_arguments,
     int64_t step, std::chrono::steady_clock::time_point deadline,
-    int64_t& consecutive_failed_tools) {
+    int64_t& consecutive_failed_tools, std::vector<ToolRejection>& rejections) {
   std::vector<CallTask> tasks(calls.size());
+  rejections.clear();
   std::atomic<int64_t> completion_sequence{0};
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status,
@@ -94,10 +106,7 @@ bool Agent::RunCalls(
     task.args = task.raw_args;
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
-    if (tool && task.args.is_object()) {
-      if (tool->canonicalize) tool->canonicalize(task.args);
-      ClampToolArguments(*tool, task.args);
-    }
+    if (tool) CanonicalizeToolArguments(*tool, task.args);
     const json& arguments = task.args;
     bool valid = false;
     if (arguments.is_discarded() || !arguments.is_object()) {
@@ -106,8 +115,10 @@ bool Agent::RunCalls(
       reject(task, ToolErrorCode::kInvalidArguments, "error: " + issue.message,
              "malformed_arguments", issue);
     } else if (!tool) {
+      ToolArgumentIssue issue =
+          ArgumentIssue("tool.unknown", "unknown tool " + call.name);
       reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
-             "unknown_tool");
+             "unknown_tool", issue);
     } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
       reject(task, ToolErrorCode::kInvalidArguments,
              "error: invalid tool argument: " + issue->message,
@@ -137,12 +148,14 @@ bool Agent::RunCalls(
     }
     if (valid && tool->max_calls_per_turn >= 0 &&
         tool_counts[call.name] >= tool->max_calls_per_turn) {
-      reject(task, ToolErrorCode::kLimitExceeded,
-             "error: " + call.name + " reached its per-turn call limit (" +
-                 std::to_string(tool->max_calls_per_turn) +
-                 "); continue from the results you have — do not "
-                 "reimplement it with run",
-             "call_limit");
+      std::string message =
+          "error: " + call.name + " reached its per-turn call limit (" +
+          std::to_string(tool->max_calls_per_turn) +
+          "); continue from the results you have — do not reimplement it "
+          "with run";
+      ToolArgumentIssue issue = ArgumentIssue("tool.call_limit", message);
+      reject(task, ToolErrorCode::kLimitExceeded, std::move(message),
+             "call_limit", issue);
       valid = false;
     }
     if (valid) task.label = ToolSummary(*tool, arguments);
@@ -293,6 +306,12 @@ bool Agent::RunCalls(
                     [](const CallTask& task) { return !task.result.Ok(); });
   consecutive_failed_tools =
       any_succeeded ? 0 : consecutive_failed_tools + failed;
+  for (size_t index = 0; index < tasks.size(); ++index) {
+    const CallTask& task = tasks[index];
+    if (!task.issue) continue;
+    rejections.push_back({calls[index].name, task.issue->code,
+                          task.issue->field, NormalizedOperation(task.args)});
+  }
   if (Debug().Enabled() && model_chars < original_chars) {
     Debug().Write("tool_batch_capped", {{"turn", turn_id_},
                                         {"step", step},

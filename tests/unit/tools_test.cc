@@ -1510,7 +1510,7 @@ void TestGrepTool() {
       {"wait_ms", 0},        {"until", "ready"}, {"mode", "all"},
       {"rows", 40},          {"cols", 120},      {"max_output_chars", 0}};
   json raw_poll = materialized_poll;
-  if (activity) activity->canonicalize(materialized_poll);
+  if (activity) CanonicalizeToolArguments(*activity, materialized_poll);
   CHECK(raw_poll.contains("chars") && raw_poll.contains("rows"));
   CHECK(!materialized_poll.contains("chars"));
   CHECK(!materialized_poll.contains("mode"));
@@ -1522,7 +1522,7 @@ void TestGrepTool() {
 
   json materialized_write = raw_poll;
   materialized_write["operation"] = "write";
-  if (activity) activity->canonicalize(materialized_write);
+  if (activity) CanonicalizeToolArguments(*activity, materialized_write);
   CHECK(materialized_write.contains("chars"));
   CHECK(materialized_write["chars"] == "");
   CHECK(!materialized_write.contains("rows"));

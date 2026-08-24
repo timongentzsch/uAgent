@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -141,20 +142,22 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
                           std::to_string(max_tool_calls) + ")");
     return false;
   }
-  auto blocking_wait = [&](const ToolCall& call) {
-    const Tool* tool = FindTool(tools_, call.name);
-    if (!tool || tool->blocking_wait_default_ms < 0) return false;
-    json arguments = json::parse(call.args, nullptr, false);
-    return JsonValue(arguments, "wait_ms", tool->blocking_wait_default_ms) > 0;
-  };
   bool repeated = false;
   for (const ToolCall& call : calls) {
-    if (blocking_wait(call)) {
+    const Tool* tool = FindTool(tools_, call.name);
+    json arguments = json::parse(call.args, nullptr, false);
+    if (tool) CanonicalizeToolArguments(*tool, arguments);
+    bool blocking_wait =
+        tool && tool->blocking_wait_default_ms >= 0 &&
+        JsonValue(arguments, "wait_ms", tool->blocking_wait_default_ms) > 0;
+    if (blocking_wait) {
       last_call.clear();
       repeated_calls = 0;
       continue;
     }
-    std::string signature = call.name + "\n" + call.args;
+    std::string normalized =
+        arguments.is_object() ? JsonDump(arguments) : call.args;
+    std::string signature = call.name + "\n" + normalized;
     repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
     last_call = std::move(signature);
     repeated = repeated || repeated_calls > 3;
@@ -201,6 +204,7 @@ std::vector<std::string> Agent::ExplicitSkillContext(
 struct Agent::TurnLoop {
   std::unordered_map<std::string, int64_t> tool_counts;
   std::unordered_map<std::string, std::string> stable_arguments;
+  std::unordered_map<std::string, int64_t> rejection_rounds;
   std::string last_call;
   int64_t step = 0;
   int64_t repeated_calls = 0;
@@ -249,6 +253,7 @@ bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
   state.last_single_tool.clear();
   state.same_tool_rounds = 0;
   loop.stable_arguments.clear();
+  loop.rejection_rounds.clear();
   loop.failure_advisory_sent = false;
   loop.markup_recovered = false;
   loop.empty_responses = 0;
@@ -439,6 +444,39 @@ void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
   }
 }
 
+bool Agent::StopForRepeatedRejections(
+    const std::vector<ToolRejection>& rejections, TurnState& state,
+    TurnLoop& loop) {
+  constexpr int64_t kRejectedRoundLimit = 3;
+  std::unordered_set<std::string> seen_this_round;
+  for (const ToolRejection& rejection : rejections) {
+    std::string key = rejection.tool + "\n" + rejection.issue_code + "\n" +
+                      rejection.issue_field + "\n" + rejection.operation;
+    if (!seen_this_round.insert(key).second) continue;
+    int64_t rounds = ++loop.rejection_rounds[key];
+    if (rounds < kRejectedRoundLimit) continue;
+
+    state.outcome = "error";
+    last_error_ = "model repeated an equivalent rejected " + rejection.tool +
+                  " call 3 times (" + rejection.issue_code;
+    if (!rejection.issue_field.empty()) {
+      last_error_ += ": " + rejection.issue_field;
+    }
+    last_error_ += ")";
+    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    DebugLog("deterministic_rejection_loop",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"tool", rejection.tool},
+              {"issue_code", rejection.issue_code},
+              {"issue_field", rejection.issue_field},
+              {"operation", rejection.operation},
+              {"rounds", rounds}});
+    return true;
+  }
+  return false;
+}
+
 void Agent::PushAssistantMessage(ChatResult& response,
                                  const std::vector<ToolCall>& calls,
                                  bool text_mode) {
@@ -482,10 +520,25 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
                                         bool text_mode, TurnState& state,
                                         TurnLoop& loop) {
   if (state.line_open) printf("\n");
-  bool cancelled = RunCalls(calls, text_mode, state.tool_count,
-                            loop.tool_counts, loop.stable_arguments, loop.step,
-                            state.deadline, loop.consecutive_failed_tools);
+  std::vector<ToolRejection> rejections;
+  bool cancelled =
+      RunCalls(calls, text_mode, state.tool_count, loop.tool_counts,
+               loop.stable_arguments, loop.step, state.deadline,
+               loop.consecutive_failed_tools, rejections);
   state.line_open = false;
+  bool foreground_interrupted = SteeringState().Requested() || cancelled;
+  bool steering_applied = ApplyQueuedSteering(state, loop);
+  if (cancelled) BgCancelSubagents(processes_);
+  if (foreground_interrupted) {
+    if (steering_applied) return StepFlow::kNextStep;
+    if (cancelled) {
+      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
+    }
+    return InterruptTurn(state);
+  }
+  if (StopForRepeatedRejections(rejections, state, loop)) {
+    return StepFlow::kEndTurn;
+  }
   if (!loop.failure_advisory_sent && loop.consecutive_failed_tools >= 3) {
     loop.failure_advisory_sent = true;
     conversation_.Push(
@@ -500,16 +553,6 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
              {{"turn", turn_id_},
               {"step", loop.step},
               {"consecutive_failures", loop.consecutive_failed_tools}});
-  }
-  bool foreground_interrupted = SteeringState().Requested() || cancelled;
-  bool steering_applied = ApplyQueuedSteering(state, loop);
-  if (cancelled) BgCancelSubagents(processes_);
-  if (foreground_interrupted) {
-    if (steering_applied) return StepFlow::kNextStep;
-    if (cancelled) {
-      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
-    }
-    return InterruptTurn(state);
   }
   // Do not start a network request with only curl's one-second granularity
   // left after tools. Report the owning turn budget instead of a misleading

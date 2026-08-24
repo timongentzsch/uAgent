@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Equivalent deterministic tool rejections now stop after the third round,
+  before a fourth model request. Repetition checks use canonical execution
+  arguments, so irrelevant provider-materialized fields cannot disguise a
+  retry or turn a non-blocking activity into a wait.
 - Delegated children no longer duplicate the parent's always-on memory block,
   which produced a misleading truncation warning in child logs.
 - Long multiline tool calls retain their action colour across persistent-composer

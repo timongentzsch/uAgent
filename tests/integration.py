@@ -3297,6 +3297,57 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
 
 
+def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home):
+    trace = root / "rejected-tools.jsonl"
+    dimensions = [(0, 80), (24, 0), (1001, 80)]
+    responses = [
+        tool_call(
+            "activity",
+            {
+                "operation": "resize",
+                "id": 1,
+                "rows": rows,
+                "cols": cols,
+                "chars": "provider-default" * attempt,
+                "wait_ms": attempt,
+            },
+        )
+        for attempt, (rows, cols) in enumerate(dimensions, start=1)
+    ]
+    responses.append(event({"content": "fourth-round-should-not-run"}))
+    with Server(responses) as server:
+        result = run(
+            root, base_env(home, server.url), "--yolo", f"--debug={trace}", "-p", "inspect"
+        )
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true(
+            "equivalent rejected activity call 3 times "
+            "(activity.invalid_dimensions)" in result.stderr,
+            result.stderr,
+        )
+        assert_true(len(server.requests) == 3, len(server.requests))
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        loops = [r for r in records if r["event"] == "deterministic_rejection_loop"]
+        assert_true(len(loops) == 1, loops)
+        assert_true(loops[0]["data"]["issue_code"] == "activity.invalid_dimensions", loops)
+        assert_true(loops[0]["data"]["issue_field"] == "", loops)
+        assert_true(loops[0]["data"]["operation"] == "resize", loops)
+
+
+def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home):
+    call = {"operation": "list", "wait_ms": 1}
+    responses = [tool_call("activity", call) for _ in range(4)]
+    responses.append(event({"content": "fifth-round-should-not-run"}))
+    with Server(responses) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "list")
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true(
+            "model repeated the same tool call more than 3 times" in result.stderr,
+            result.stderr,
+        )
+        assert_true(len(server.requests) == 4, len(server.requests))
+
+
 def test_tool_call_budget_is_unlimited_by_default(root, home):
     source = root / "many-lines.txt"
     source.write_text("\n".join(str(i) for i in range(101)), encoding="utf-8")

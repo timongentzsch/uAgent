@@ -126,6 +126,13 @@ class Agent {
   struct TurnState;
   struct TurnLoop;
 
+  struct ToolRejection {
+    std::string tool;
+    std::string issue_code;
+    std::string issue_field;
+    std::string operation;
+  };
+
   // What the step loop does next. kRetryStep repeats the step without
   // spending one of the turn's budget.
   enum class StepFlow {
@@ -181,6 +188,8 @@ class Agent {
   StepFlow HandleEmptyResponse(const ChatResult& response, TurnState& state,
                                TurnLoop& loop);
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
+                                 TurnState& state, TurnLoop& loop);
+  bool StopForRepeatedRejections(const std::vector<ToolRejection>& rejections,
                                  TurnState& state, TurnLoop& loop);
   void PushAssistantMessage(ChatResult& response,
                             const std::vector<ToolCall>& calls, bool text_mode);
@@ -267,7 +276,8 @@ class Agent {
                 std::unordered_map<std::string, int64_t>& tool_counts,
                 std::unordered_map<std::string, std::string>& stable_arguments,
                 int64_t step, std::chrono::steady_clock::time_point deadline,
-                int64_t& consecutive_failed_tools);
+                int64_t& consecutive_failed_tools,
+                std::vector<ToolRejection>& rejections);
 
   void RebuildToolSchemas();
   std::vector<std::string> ExplicitSkillContext(

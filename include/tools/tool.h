@@ -320,6 +320,10 @@ inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
 // before validation, so an overshooting hint is honoured at the bound.
 void ClampToolArguments(const Tool& tool, json& args);
 
+// Apply a tool's provider-materialization cleanup and numeric clamps to the
+// separate execution copy of its arguments.
+void CanonicalizeToolArguments(const Tool& tool, json& args);
+
 // A tool's `stable_argument` must keep the same value for a whole turn.
 // `values` carries that per-turn memory for the caller.
 std::string StableArgumentError(

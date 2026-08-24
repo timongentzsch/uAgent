@@ -247,6 +247,12 @@ void ClampToolArguments(const Tool& tool, json& args) {
   }
 }
 
+void CanonicalizeToolArguments(const Tool& tool, json& args) {
+  if (!args.is_object()) return;
+  if (tool.canonicalize) tool.canonicalize(args);
+  ClampToolArguments(tool, args);
+}
+
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args) {
   return InvalidSchemaValue(ToolParameters(tool), args, tool.name,

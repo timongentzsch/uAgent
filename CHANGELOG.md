@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `attach` no longer carries a per-turn call cap of its own. Four was a limit
+  on the wrong axis: it withdrew the tool from the schema once the count was
+  reached, so a model handling five screenshots lost the tool rather than being
+  told why. What one request may carry is already bounded by the queued-count
+  ceiling (`UAGENT_PENDING_ATTACHMENTS`) and the total byte budget
+  (`UAGENT_ATTACHMENT_MB`), both of which refuse with a reason.
+
 ## v0.6.0 - 2026-08-24
 
 ### Fixed

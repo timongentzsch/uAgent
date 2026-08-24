@@ -1232,6 +1232,22 @@ void TestAttachmentEncoding() {
             .find("Image input unavailable") != std::string::npos);
   CHECK(std::string(ModelImageInputInstruction(true, false)).empty());
 
+  // The attach tool has no per-turn call cap, so this queue ceiling is what
+  // bounds a runaway caller -- including an MCP server, which queues images
+  // with no model call to budget against.
+  setenv("UAGENT_PENDING_ATTACHMENTS", "2", 1);
+  CHECK(Attachments().Add(file.string()).Ok());
+  CHECK(Attachments().Add(file.string()).Ok());
+  ToolResult refused_queue = Attachments().Add(file.string());
+  CHECK(!refused_queue.Ok());
+  CHECK(refused_queue.output.find("too many attachments pending") !=
+        std::string::npos);
+  // Draining the queue for the next request clears the ceiling again.
+  CHECK(Attachments().Take().size() == 2);
+  CHECK(Attachments().Add(file.string()).Ok());
+  CHECK(Attachments().Take().size() == 1);
+  unsetenv("UAGENT_PENDING_ATTACHMENTS");
+
   setenv("UAGENT_IMAGE_PROTOCOL", "iterm", 1);
   CHECK(DetectTerminalImageProtocol() == TerminalImageProtocol::kIterm);
   std::string iterm;
@@ -1381,6 +1397,12 @@ void TestGrepTool() {
   CHECK(image != nullptr);
   CHECK(image && image->serial_media);
   CHECK(image && image->replay_image);
+  // Attachments are bounded by the queue ceiling and the byte budget, not by a
+  // call count that would withdraw the tool mid-turn without saying why.
+  const Tool* attach = FindTool(lean_tools, "attach");
+  CHECK(attach != nullptr);
+  CHECK(attach && attach->max_calls_per_turn < 0);
+  CHECK(attach && ToolDescription(*attach).find("Limit:") == std::string::npos);
   const Tool* run = FindTool(lean_tools, "run");
   CHECK(run != nullptr);
   if (run) {

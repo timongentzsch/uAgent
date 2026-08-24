@@ -180,7 +180,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       }));
   attach.parallel_safe = true;
   attach.capabilities = Capability(ToolCapability::kInspect);
-  attach.max_calls_per_turn = 4;  // each one rides on the next request
+  // No per-turn cap of its own: the queue ceiling and the byte budget already
+  // bound what one request can carry, and they reject with the reason rather
+  // than hiding the tool once a count is reached.
 
   // The schema below is a raw JSON literal, so its "maximum" cannot be spelled
   // as kMaxYieldMs directly; this assert fails the build if the constant moves.

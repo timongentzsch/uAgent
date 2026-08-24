@@ -241,9 +241,58 @@ void TestActivitySessions() {
     int64_t id = ActivityId(pipe_jobs[0]);
     ToolResult rejected = ToolActivityInput(non_tty, id, "hello\n", 0, context);
     CHECK(!rejected.Ok());
+    CHECK(rejected.error == ToolErrorCode::kUnavailable);
+    CHECK(rejected.output.find("does not accept input") != std::string::npos);
     CHECK(rejected.output.find("tty=true") != std::string::npos);
+    ToolResult no_pty = ToolActivityInput(non_tty, id, "", 0, context, 30, 100);
+    CHECK(!no_pty.Ok());
+    CHECK(no_pty.error == ToolErrorCode::kUnavailable);
+    CHECK(no_pty.output.find("has no PTY to resize") != std::string::npos);
+    ToolResult bad_dimensions =
+        ToolActivityInput(non_tty, id, "", 0, context, 0, 100);
+    CHECK(!bad_dimensions.Ok());
+    CHECK(bad_dimensions.error == ToolErrorCode::kInvalidArguments);
+    CHECK(bad_dimensions.output.find("1..1000") != std::string::npos);
     CHECK(ToolActivityInput(non_tty, id, "\x03", 0, context).Ok());
     (void)ToolActivityWait(non_tty, {id}, "all", 2000, context);
+  }
+
+  ProcessSupervisor closed_input;
+  auto closed_session = std::make_shared<ActivitySession>();
+  closed_session->tty = true;
+  CHECK(closed_input.TryAdd(
+      {899998, "", "closed input", false, "", 0, closed_session}, 1));
+  std::vector<BgJob> closed_jobs = closed_input.Snapshot();
+  CHECK(closed_jobs.size() == 1);
+  if (!closed_jobs.empty()) {
+    int64_t id = ActivityId(closed_jobs[0]);
+    ToolResult closed =
+        ToolActivityInput(closed_input, id, "hello", 0, context);
+    CHECK(!closed.Ok());
+    CHECK(closed.error == ToolErrorCode::kUnavailable);
+    CHECK(closed.output.find("input is closed") != std::string::npos);
+    CHECK(closed_input.Take(id).has_value());
+  }
+
+  ProcessSupervisor invalid_pty;
+  auto invalid_pty_session = std::make_shared<ActivitySession>();
+  invalid_pty_session->tty = true;
+  invalid_pty_session->input_fd.Reset(open("/dev/null", O_RDWR));
+  CHECK(invalid_pty_session->input_fd.Valid());
+  CHECK(invalid_pty.TryAdd(
+      {899997, "", "invalid PTY", false, "", 0, invalid_pty_session}, 1));
+  std::vector<BgJob> invalid_pty_jobs = invalid_pty.Snapshot();
+  CHECK(invalid_pty_jobs.size() == 1);
+  if (!invalid_pty_jobs.empty()) {
+    int64_t id = ActivityId(invalid_pty_jobs[0]);
+    ToolResult failed_resize =
+        ToolActivityInput(invalid_pty, id, "", 0, context, 30, 100);
+    CHECK(!failed_resize.Ok());
+    CHECK(failed_resize.error == ToolErrorCode::kProcessFailed);
+    CHECK(failed_resize.output.find("could not resize activity " +
+                                    std::to_string(id)) != std::string::npos);
+    CHECK(failed_resize.output.find(" PTY: ") != std::string::npos);
+    CHECK(invalid_pty.Take(id).has_value());
   }
 
   ProcessSupervisor steering_wait;

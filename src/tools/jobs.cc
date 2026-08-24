@@ -692,39 +692,73 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   if (!job || !job->session) return ActivityNotFound(id);
   std::shared_ptr<ActivitySession> session = job->session;
   std::lock_guard<std::mutex> interaction(session->interaction);
+  const bool resize = rows > 0 || cols > 0;
+  if (resize && (rows <= 0 || cols <= 0 || rows > 1000 || cols > 1000)) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: PTY resize requires rows and cols in 1..1000");
+  }
+
+  const bool needs_input =
+      resize || (!chars.empty() && chars != std::string_view("\x03"));
+  if (needs_input && !session->tty) {
+    std::string action =
+        resize ? "has no PTY to resize" : "does not accept input";
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "error: activity " + std::to_string(id) + " " + action +
+                           "; start it with tty=true");
+  }
+
   // A private duplicate: the supervisor's I/O thread may close the session's
   // own descriptor at any point after this lock is released.
   Fd input;
+  bool input_open = false;
+  int duplicate_error = 0;
   {
     std::lock_guard<std::mutex> lock(session->mutex);
-    input = session->input_fd.Duplicate();
     session->last_used = std::chrono::steady_clock::now();
-  }
-  if (rows > 0 || cols > 0) {
-    if (!session->tty || !input || rows <= 0 || cols <= 0 || rows > 1000 ||
-        cols > 1000) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: PTY resize requires rows and cols in 1..1000");
+    if (needs_input) {
+      input_open = session->input_fd.Valid();
+      if (input_open) {
+        input = session->input_fd.Duplicate();
+        if (!input) duplicate_error = errno;
+      }
     }
+  }
+  if (needs_input && !input_open) {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "error: activity " + std::to_string(id) +
+                           " input is closed; inspect its output or start a "
+                           "new tty=true activity");
+  }
+  if (needs_input && !input) {
+    return ToolFailure(ToolErrorCode::kInternal,
+                       "error: could not access activity " +
+                           std::to_string(id) +
+                           " input: " + std::strerror(duplicate_error));
+  }
+
+  if (resize) {
     winsize size{};
     size.ws_row = static_cast<uint16_t>(rows);
     size.ws_col = static_cast<uint16_t>(cols);
     if (ioctl(input.Get(), TIOCSWINSZ, &size) != 0) {
+      int resize_error = errno;
       return ToolFailure(ToolErrorCode::kProcessFailed,
-                         "error: could not resize activity PTY");
+                         "error: could not resize activity " +
+                             std::to_string(id) +
+                             " PTY: " + std::strerror(resize_error));
     }
     (void)kill(-job->pid, SIGWINCH);
   }
   if (!chars.empty()) {
     if (chars == "\x03") {
       if (kill(-job->pid, SIGINT) != 0 && errno != ESRCH) {
-        return ToolFailure(
-            ToolErrorCode::kProcessFailed,
-            "error: could not interrupt activity " + std::to_string(id));
+        int interrupt_error = errno;
+        return ToolFailure(ToolErrorCode::kProcessFailed,
+                           "error: could not interrupt activity " +
+                               std::to_string(id) + ": " +
+                               std::strerror(interrupt_error));
       }
-    } else if (!session->tty) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: activity stdin is closed (run with tty=true)");
     } else {
       size_t offset = 0;
       while (offset < chars.size()) {
@@ -732,8 +766,11 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
             write(input.Get(), chars.data() + offset, chars.size() - offset);
         if (count < 0 && errno == EINTR) continue;
         if (count <= 0) {
+          int write_error = errno;
           return ToolFailure(ToolErrorCode::kProcessFailed,
-                             "error: could not write activity stdin");
+                             "error: could not write activity " +
+                                 std::to_string(id) +
+                                 " stdin: " + std::strerror(write_error));
         }
         offset += static_cast<size_t>(count);
       }

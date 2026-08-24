@@ -22,7 +22,8 @@ Tool PollingActivityTool() {
   Tool tool;
   tool.name = "activity";
   tool.mutates = [](const json& args) {
-    return args.contains("chars") || args.contains("rows");
+    return JsonValue(args, "operation", "") == "write" ||
+           JsonValue(args, "operation", "") == "resize";
   };
   return tool;
 }
@@ -40,7 +41,7 @@ void TestPollCollapse() {
 
   CallTask quiet;
   quiet.tool = &tool;
-  quiet.args = {{"id", 4242}};
+  quiet.args = {{"operation", "poll"}, {"id", 4242}};
   quiet.ordinal = "[1] ";
   quiet.result = ToolSuccess("(no new output)");
   quiet.result.no_change = true;
@@ -82,7 +83,7 @@ void TestPollCollapse() {
 
   // Sending input steers the activity, so it is never treated as a poll.
   CallTask steering = quiet;
-  steering.args = {{"id", 4242}, {"chars", "y\n"}};
+  steering.args = {{"operation", "write"}, {"id", 4242}, {"chars", "y\n"}};
   CHECK(!IsActivityPoll(steering));
   CHECK(!ToolResultPresentation(steering, call, "", false).poll);
 

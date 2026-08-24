@@ -148,27 +148,28 @@ interactively reattached after the harness exits. Waiting log readers use
 kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
 bounded polling fallback.
 
-`activity(id)` drains bounded new output without cancelling ownership;
-`wait_ms` optionally blocks for output or exit and `until` waits for fixed
-readiness text. `activity(id, chars)` writes raw PTY bytes; empty input
-polls, `\u0003` interrupts the process group, and `rows` plus `cols` resize the
-PTY. Ordinary writes to non-TTY activities are rejected. Ordinary and PTY
-activities share one event-driven output/reap thread, so
-`activity`, foreground yielding, and blocking waits
-use notifications rather than log polling. Interactions against one activity
+`activity(operation=poll, id=...)` drains bounded new output without cancelling
+ownership; `wait_ms` optionally blocks for output or exit and `until` waits for
+fixed readiness text. `operation=write` sends `chars` (including an intentional
+empty string), `\u0003` interrupts the process group, and `operation=resize`
+requires `rows` plus `cols`. Ordinary writes and all resizes against non-TTY
+activities are rejected. Ordinary and PTY activities share one event-driven
+output/reap thread, so
+`activity`, foreground yielding, and blocking waits use notifications rather
+than log polling. Interactions against one activity
 are serialized. Incremental output uses a 1 MiB equal head/tail buffer, while
 private logs continue to support diagnostics and large-output artifacts.
 `max_output_chars` can lower the host cap for one `run`, output, input, or wait
 interaction. Output already drained by those tools is not delivered again on
 completion. Completed tasks use one bounded batched context message;
-`activity` can explicitly replay a retained bounded transcript. Command
-completion is UI-only and never starts or enters a model turn. Subagent completion
-is added once to the next naturally occurring model call, capped at 6 KiB each
+`activity` can explicitly replay a retained bounded transcript. Command completion is UI-only and never starts or enters a model turn.
+Subagent completion is added once to the next naturally occurring model call, capped at 6 KiB each
 and 12 KiB per batch, without triggering a turn.
 
 Use `subagent(background=false)` when the next step requires the child result;
-background children notify the agent automatically on exit. `activity(wait_ms,
-mode)` is an intentional join when no useful parent work remains.
+background children notify the agent automatically on exit.
+`activity(operation=wait, wait_ms=..., mode=...)` is an intentional join when
+no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
 group and removes its records and logs. Persistent TUI and headless runs
 publish completion without polling or starting a model turn.

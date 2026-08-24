@@ -166,12 +166,29 @@ void TestActivitySessions() {
     int64_t id = ActivityId(pty_jobs[0]);
     CHECK(id != pty_jobs[0].pid);
     CHECK(started.result.output.find("tty=yes") != std::string::npos);
-    ToolResult initial = ToolActivityOutput(pty_processes, id);
+    std::vector<Tool> pty_tools = BuiltinTools(pty_processes);
+    const Tool* activity = FindTool(pty_tools, "activity");
+    CHECK(activity != nullptr);
+    ToolResult initial =
+        activity ? activity->run({{"operation", "poll"}, {"id", id}}, context)
+                 : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(initial.output.find("(no new output)") != std::string::npos);
     CHECK(initial.no_change);
-    CHECK(ToolActivityInput(pty_processes, id, "", 0, context, 30, 100).Ok());
+    CHECK(activity && activity
+                          ->run({{"operation", "resize"},
+                                 {"id", id},
+                                 {"rows", 30},
+                                 {"cols", 100},
+                                 {"wait_ms", 0}},
+                                context)
+                          .Ok());
     ToolResult input =
-        ToolActivityInput(pty_processes, id, "hello\n", 2000, context);
+        activity ? activity->run({{"operation", "write"},
+                                  {"id", id},
+                                  {"chars", "hello\n"},
+                                  {"wait_ms", 2000}},
+                                 context)
+                 : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(input.Ok());
     CHECK(input.output.find("got:hello") != std::string::npos);
     ToolResult completed =
@@ -1470,49 +1487,75 @@ void TestGrepTool() {
   CHECK(python && python->timeout_s == 0);
   CHECK(python && python->stable_argument == "path");
   CHECK(FindTool(lean_tools, "wait_background") == nullptr);
-  // One tool covers list, drain, write and wait; the mode is the argument set.
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
-  CHECK(activity && activity->parameters["properties"].contains("until"));
-  CHECK(activity && activity->parameters["properties"]["mode"]["enum"] ==
-                        json::array({"any", "all"}));
-  CHECK(activity && !activity->validate(
-                        {{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}}));
   CHECK(activity &&
-        ValidationMessage(*activity, {{"until", "ready"}})
-                .find("requires id and wait_ms") != std::string::npos);
-  auto activity_issue =
-      activity ? activity->validate({{"until", "ready"}}) : std::nullopt;
-  CHECK(activity_issue && activity_issue->code == "activity.until");
-  CHECK(activity_issue && activity_issue->field == "until");
-  CHECK(activity && ValidationMessage(*activity, {{"chars", "x"}})
-                            .find("writing requires id") != std::string::npos);
-  CHECK(activity && ValidationMessage(*activity, {{"id", 1}, {"rows", 40}})
-                            .find("supplied together") != std::string::npos);
-  // Reading needs no approval; writing does.
-  CHECK(activity && !activity->mutates({{"id", 1}}));
-  CHECK(activity && activity->mutates({{"id", 1}, {"chars", "y"}}));
-  CHECK(activity && InvalidToolArgument(*activity, {{"id", "bad"}}) ==
+        activity->parameters["required"] == json::array({"operation"}));
+  CHECK(activity &&
+        activity->parameters["properties"]["operation"]["enum"] ==
+            json::array({"list", "poll", "wait", "write", "resize"}));
+
+  json materialized_poll = {
+      {"operation", "poll"}, {"id", 3},          {"chars", ""},
+      {"wait_ms", 0},        {"until", "ready"}, {"mode", "all"},
+      {"rows", 40},          {"cols", 120},      {"max_output_chars", 0}};
+  json raw_poll = materialized_poll;
+  if (activity) activity->canonicalize(materialized_poll);
+  CHECK(raw_poll.contains("chars") && raw_poll.contains("rows"));
+  CHECK(!materialized_poll.contains("chars"));
+  CHECK(!materialized_poll.contains("mode"));
+  CHECK(!materialized_poll.contains("rows"));
+  CHECK(!materialized_poll.contains("max_output_chars"));
+  CHECK(materialized_poll.contains("until"));
+  CHECK(activity && !FindToolArgumentIssue(*activity, materialized_poll));
+  CHECK(activity && !activity->validate(materialized_poll));
+
+  json materialized_write = raw_poll;
+  materialized_write["operation"] = "write";
+  if (activity) activity->canonicalize(materialized_write);
+  CHECK(materialized_write.contains("chars"));
+  CHECK(materialized_write["chars"] == "");
+  CHECK(!materialized_write.contains("rows"));
+  CHECK(activity && !activity->validate(materialized_write));
+  CHECK(activity && !activity->mutates(materialized_poll));
+  CHECK(activity && activity->mutates(materialized_write));
+
+  auto resize_issue =
+      activity ? activity->validate({{"operation", "resize"}, {"id", 3}})
+               : std::nullopt;
+  CHECK(resize_issue && resize_issue->code == "activity.invalid_dimensions");
+  auto id_issue =
+      activity ? activity->validate({{"operation", "poll"}}) : std::nullopt;
+  CHECK(id_issue && id_issue->code == "activity.missing_id");
+  CHECK(activity && InvalidToolArgument(
+                        *activity, {{"operation", "poll"}, {"id", "bad"}}) ==
                         "`id` must be integer");
-  // Each argument set names the verb it performs: a resize used to render as
-  // a bare target, indistinguishable from a poll.
-  CHECK(activity && activity->summary({{"id", 3}}) == "poll activity 3");
-  CHECK(activity && activity->summary(json::object()) == "list activities");
+
+  CHECK(activity && activity->summary({{"operation", "poll"}, {"id", 3}}) ==
+                        "poll activity 3");
   CHECK(activity &&
-        activity->summary({{"id", 3}, {"rows", 40}, {"cols", 120}}) ==
-            "resize 40×120 → activity 3");
+        activity->summary({{"operation", "list"}}) == "list activities");
+  CHECK(
+      activity &&
+      activity->summary(
+          {{"operation", "resize"}, {"id", 3}, {"rows", 40}, {"cols", 120}}) ==
+          "resize 40×120 → activity 3");
+  CHECK(
+      activity &&
+      activity->summary({{"operation", "write"}, {"id", 3}, {"chars", "hello"}})
+              .rfind("write ", 0) == 0);
   CHECK(activity &&
-        activity->summary({{"id", 3}, {"chars", "hello"}}).rfind("write ", 0) ==
-            0);
-  CHECK(activity && activity->summary({{"mode", "all"}, {"wait_ms", 5000}})
-                            .find("all · all current") != std::string::npos);
-  CHECK(activity &&
-        activity->summary({{"id", 3}, {"wait_ms", 5000}, {"until", "ready"}})
-                .rfind("await ready", 0) == 0);
-  // A pacing hint outside its bounds is honoured at the bound rather than
-  // rejected, which used to spend a model round; identifiers are untouched.
-  json overshoot = {{"id", 3}, {"wait_ms", 900000}};
+        activity->summary(
+                    {{"operation", "wait"}, {"mode", "all"}, {"wait_ms", 5000}})
+                .find("all · all current") != std::string::npos);
+  CHECK(activity && activity->summary({{"operation", "poll"},
+                                       {"id", 3},
+                                       {"wait_ms", 5000},
+                                       {"until", "ready"}})
+                            .rfind("await ready", 0) == 0);
+
+  json overshoot = {{"operation", "poll"}, {"id", 3}, {"wait_ms", 900000}};
   if (activity) ClampToolArguments(*activity, overshoot);
   CHECK(overshoot["wait_ms"] == 300000);
   CHECK(overshoot["id"] == 3);

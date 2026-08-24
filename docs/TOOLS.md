@@ -38,10 +38,13 @@ These tools are advertised when supervised background work makes them useful:
 still-running command becomes an activity. Explicit `yield_ms=0` waits to the
 turn deadline; values from 250 through 30,000 override the initial wait. Set
 `tty=true` only when the process needs interactive input.
-`activity` with empty `chars` polls for up to five seconds by default; `\u0003`
-interrupts the process group. PTY resize requires `rows` and `cols` together.
-Normal input to a non-TTY activity is rejected. `run` and `activity` accept `max_output_chars` to lower the
-host-capped output budget for one interaction.
+Every `activity` call names one operation: `list`, `poll`, `wait`, `write`, or
+`resize`. `poll`, `write`, and `resize` require an `id`; `wait` requires a
+bounded `wait_ms` and optionally chooses `mode=any|all`. An empty `chars` value
+is a valid write with no input bytes, while `\u0003` interrupts the process
+group. A resize requires `rows` and `cols` in 1..1000. Normal input to a non-TTY
+activity is rejected. `run` and `activity` accept `max_output_chars` to lower
+the host-capped output budget for one interaction.
 
 Supervised PTY and non-TTY outputs share one event-driven process-I/O layer.
 Once returned by `run` or `activity`, output is not returned again as new output. A 1 MiB head/tail

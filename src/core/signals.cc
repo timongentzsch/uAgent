@@ -109,7 +109,7 @@ void InitializeNotificationsOnce() {
         if (g_child_wakes->stopping.load(std::memory_order_relaxed)) break;
         std::lock_guard<std::mutex> lock(g_child_wakes->mutex);
         for (int descriptor : g_child_wakes->descriptors) {
-          WakeDescriptor(descriptor);
+          if (descriptor > 0) WakeDescriptor(descriptor);
         }
       }
     });

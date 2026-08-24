@@ -25,6 +25,16 @@ from memory_fixture import global_memory_dir, project_memory_dir
 # Enough of a PNG for the attachment inspector to accept it.
 SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 BINARY = pathlib.Path(sys.argv[1]).resolve()
+# A sanitized or coverage-instrumented binary starts and renders several times
+# slower than a plain one, which turns every wall-clock budget below into a
+# coin flip on a shared runner. Those jobs raise the multiplier instead of each
+# deadline being retuned by hand.
+TIMEOUT_SCALE = float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))
+
+
+def budget(seconds):
+    """Scale a test-side deadline for a slow build."""
+    return seconds * TIMEOUT_SCALE
 
 
 def integration_group(name):
@@ -246,7 +256,7 @@ def run(cwd, env, *args, timeout=10):
         stdin=subprocess.DEVNULL,
         text=True,
         capture_output=True,
-        timeout=timeout,
+        timeout=budget(timeout),
     )
 
 
@@ -258,7 +268,7 @@ def run_dialog(cwd, env, text, *args, timeout=10):
         input=text,
         text=True,
         capture_output=True,
-        timeout=timeout,
+        timeout=budget(timeout),
     )
 
 
@@ -296,7 +306,7 @@ def run_pty(
     )
     os.close(slave)
     output = bytearray()
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + budget(timeout)
     last_match_end = 0
 
     def read_until(marker=None, start=0, following=None):
@@ -487,7 +497,7 @@ def live_process_states(pids):
 
 def wait_for_processes_stopped(pids, timeout=2):
     """Allow process-group teardown and orphan reaping to settle."""
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + budget(timeout)
     states = live_process_states(pids)
     while states and time.monotonic() < deadline:
         time.sleep(0.02)
@@ -512,7 +522,7 @@ def descendant_pids(root_pid):
 
 def wait_until(predicate, message, timeout=30, interval=0.02):
     """Poll until predicate() holds, or fail the test with message."""
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + budget(timeout)
     while time.monotonic() < deadline:
         if predicate():
             return
@@ -1489,7 +1499,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
 
 def wait_until_stopped(pid, timeout=10):
     """WUNTRACED reports a job-control stop without reaping the child."""
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + budget(timeout)
     while time.monotonic() < deadline:
         waited, status = os.waitpid(pid, os.WUNTRACED | os.WNOHANG)
         if waited == pid and os.WIFSTOPPED(status):
@@ -1503,7 +1513,7 @@ def wait_for_echo(master, wanted, timeout=10):
 
     A fixed sleep is what makes a terminal test flaky on a loaded machine.
     """
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + budget(timeout)
     while time.monotonic() < deadline:
         lflag = termios.tcgetattr(master)[3]
         if bool(lflag & termios.ECHO) == wanted:

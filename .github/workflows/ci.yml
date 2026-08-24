@@ -89,6 +89,10 @@ jobs:
   sanitizers:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # Instrumented startup and rendering cost several times the plain build, so
+    # the terminal tests get proportionally longer deadlines here.
+    env:
+      UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies

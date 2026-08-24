@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <mutex>
 #include <string>
@@ -25,9 +26,33 @@ volatile sig_atomic_t g_child_pgids[kFgMax] = {};
 volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
 volatile sig_atomic_t g_bg_pids[kBgMax] = {};
 bool g_tty = false;
+bool g_color = false;
 volatile sig_atomic_t g_signal_tty = 0;
 
 namespace {
+
+// Read by the fatal-signal and suspend handlers. Published before the armed
+// flag and cleared after it, so observing the flag means observing the struct.
+termios g_cooked_termios{};
+termios g_raw_termios{};
+volatile sig_atomic_t g_termios_armed = 0;
+// Nothing drains the REPL's stdout pipe once the process is exiting or
+// stopped, so handlers write to the terminal descriptor the composer saved.
+volatile sig_atomic_t g_signal_terminal_fd = STDOUT_FILENO;
+constexpr char kBracketedPasteOn[] = "\033[?2004h";
+
+void WriteToTerminal(const char* bytes, size_t size) {
+  (void)(write(static_cast<int>(g_signal_terminal_fd), bytes, size) < 0);
+}
+
+// Async-signal-safe: write(2) and tcsetattr(3) are both on the POSIX list.
+void RestoreTerminalModesFromHandler() {
+  if (g_signal_tty) {
+    WriteToTerminal(kTerminalRestore, sizeof(kTerminalRestore) - 1);
+    WriteToTerminal(kTerminalModeReset, sizeof(kTerminalModeReset) - 1);
+  }
+  if (g_termios_armed) tcsetattr(STDIN_FILENO, TCSANOW, &g_cooked_termios);
+}
 
 constexpr int kChildWakeMax = 32;
 volatile sig_atomic_t g_abort_wake_write = -1;
@@ -190,16 +215,53 @@ void SigintHandler(int signal_number) {
     kill(-pid, SIGTERM);
     kill(pid, SIGTERM);
   }
-  if (g_signal_tty) {
-    (void)(write(STDOUT_FILENO, kTerminalRestore,
-                 sizeof(kTerminalRestore) - 1) < 0);
-    (void)(write(STDOUT_FILENO, kTerminalModeReset,
-                 sizeof(kTerminalModeReset) - 1) < 0);
-  }
+  RestoreTerminalModesFromHandler();
   _exit(128 + signal_number);
 }
 
+void ArmTerminalModes(const termios& cooked, const termios& raw) {
+  g_cooked_termios = cooked;
+  g_raw_termios = raw;
+  std::atomic_signal_fence(std::memory_order_release);
+  g_termios_armed = 1;
+}
+
+void DisarmTerminalModes() {
+  g_termios_armed = 0;
+  std::atomic_signal_fence(std::memory_order_release);
+}
+
+void SetSignalTerminalFd(int fd) {
+  g_signal_terminal_fd = static_cast<sig_atomic_t>(fd < 0 ? STDOUT_FILENO : fd);
+}
+
 namespace {
+
+void TstpHandler(int);
+
+void ContHandler(int) {
+  // The default disposition was restored before the stop, so re-arm first.
+  struct sigaction action{};
+  action.sa_handler = TstpHandler;
+  sigemptyset(&action.sa_mask);
+  sigaction(SIGTSTP, &action, nullptr);
+  if (g_termios_armed) {
+    tcsetattr(STDIN_FILENO, TCSANOW, &g_raw_termios);
+    if (g_signal_tty) {
+      WriteToTerminal(kBracketedPasteOn, sizeof(kBracketedPasteOn) - 1);
+    }
+  }
+  // The terminal may have been resized while we were stopped, and the repaint
+  // path is the same either way.
+  g_terminal_resized = 1;
+  WakeDescriptor(g_terminal_wake_write);
+}
+
+void TstpHandler(int) {
+  RestoreTerminalModesFromHandler();
+  signal(SIGTSTP, SIG_DFL);
+  raise(SIGTSTP);
+}
 
 void SigchldHandler(int) {
   WakeDescriptor(g_child_signal_write);
@@ -228,6 +290,18 @@ void InstallSigwinchHandler() {
   action.sa_handler = SigwinchHandler;
   sigemptyset(&action.sa_mask);
   sigaction(SIGWINCH, &action, nullptr);
+}
+
+void InstallSuspendHandlers() {
+  struct sigaction stop{};
+  stop.sa_handler = TstpHandler;
+  sigemptyset(&stop.sa_mask);
+  sigaction(SIGTSTP, &stop, nullptr);
+  struct sigaction resume{};
+  resume.sa_handler = ContHandler;
+  sigemptyset(&resume.sa_mask);
+  resume.sa_flags = SA_RESTART;
+  sigaction(SIGCONT, &resume, nullptr);
 }
 
 }  // namespace uagent

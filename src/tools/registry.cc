@@ -350,7 +350,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                              : JsonValue(a, "mode", "any") + " · all current";
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
     std::string wait =
-        wait_ms > 0 ? "wait≤" + FmtDuration(wait_ms / 1000.0) : std::string();
+        wait_ms > 0
+            ? "wait≤" + FmtDuration(static_cast<double>(wait_ms) / 1000.0)
+            : std::string();
     std::string window = wait.empty() ? std::string() : " · " + wait;
     if (a.contains("chars")) {
       return "write " +

@@ -99,7 +99,8 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
 inline std::string McpFileUri(const std::filesystem::path& path) {
   constexpr char kHex[] = "0123456789ABCDEF";
   std::string uri = "file://";
-  for (unsigned char byte : path.string()) {
+  for (char raw : path.string()) {
+    const unsigned char byte = Byte(raw);
     bool safe = (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') ||
                 (byte >= '0' && byte <= '9') || byte == '-' || byte == '_' ||
                 byte == '.' || byte == '~' || byte == '/';

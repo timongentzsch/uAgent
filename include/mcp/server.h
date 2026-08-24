@@ -49,12 +49,12 @@ inline void McpShutdown(McpServer& server);
 struct McpServer {
   std::string name;
   pid_t pid = -1;
-  int in = -1,
-      out = -1;  // in: we write (server's stdin) · out: we read (its stdout)
+  // in: we write (the server's stdin) · out: we read (its stdout)
+  Fd in, out;
   bool alive = false;
   std::string rbuf;  // partial line from the server
   int64_t next_id = 1;
-  size_t response_cap = 16 * 1024 * 1024;
+  size_t response_cap = size_t{16} * 1024 * 1024;
   json config;
   json roots = json::array();
   bool tools_changed = false;
@@ -64,14 +64,8 @@ struct McpServer {
   // Closing our ends is the polite stop signal for a stdio server.
   void CloseTransport() {
     alive = false;
-    if (in >= 0) {
-      close(in);
-      in = -1;
-    }
-    if (out >= 0) {
-      close(out);
-      out = -1;
-    }
+    in.Reset();
+    out.Reset();
   }
 
   // Signals target the whole group (-pid): servers spawn their own workers.
@@ -205,7 +199,7 @@ inline bool McpFillBuffer(McpServer& s, bool eof_is_fatal = true) {
   char buffer[1 << 16];
   ssize_t count;
   do {
-    count = read(s.out, buffer, sizeof buffer);
+    count = read(s.out.Get(), buffer, sizeof buffer);
   } while (count < 0 && errno == EINTR);
   if (count <= 0) {
     if (!eof_is_fatal) return true;
@@ -231,42 +225,36 @@ inline bool McpSpawn(
     const std::string& cwd, size_t log_bytes) {
   int inp[2], outp[2];  // inp: us -> server stdin, outp: server stdout -> us
   if (pipe(inp) != 0) return false;
-  if (pipe(outp) != 0) {
-    close(inp[0]);
-    close(inp[1]);
-    return false;
-  }
+  Fd in_read(inp[0]), in_write(inp[1]);
+  // Every early return from here closes all four ends.
+  if (pipe(outp) != 0) return false;
+  Fd out_read(outp[0]), out_write(outp[1]);
   // parent ends must not leak into later-spawned servers (a leaked write end
   // would keep a sibling's stdin open forever, defeating EOF shutdown)
-  fcntl(inp[1], F_SETFD, FD_CLOEXEC);
-  fcntl(outp[0], F_SETFD, FD_CLOEXEC);
+  fcntl(in_write.Get(), F_SETFD, FD_CLOEXEC);
+  fcntl(out_read.Get(), F_SETFD, FD_CLOEXEC);
   // nonblocking writes: a blocking write() of a large request would ignore
   // the drain in mcp_write and reintroduce the two-full-pipes deadlock
-  fcntl(inp[1], F_SETFL, O_NONBLOCK);
-  int errfd = open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC,
-                   kPrivateFileMode);
+  fcntl(in_write.Get(), F_SETFL, O_NONBLOCK);
+  Fd errfd(open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC,
+                kPrivateFileMode));
   ChildEnvironment child_environment(env);
   pid_t pid = fork();
-  if (pid < 0) {
-    close(inp[0]);
-    close(inp[1]);
-    close(outp[0]);
-    close(outp[1]);
-    if (errfd >= 0) close(errfd);
-    return false;
-  }
+  if (pid < 0) return false;
   if (pid == 0) {
+    // Between fork and exec: explicit moves only, and every path ends in
+    // _exit, so no destructor is relied upon.
     setpgid(0, 0);  // own group: terminal Ctrl+C must not kill the server
-    dup2(inp[0], 0);
-    dup2(outp[1], 1);
-    if (errfd >= 0) {
-      dup2(errfd, 2);
-      close(errfd);
+    dup2(in_read.Get(), 0);
+    dup2(out_write.Get(), 1);
+    if (errfd) {
+      dup2(errfd.Get(), 2);
+      close(errfd.Get());
     }
-    close(inp[0]);
-    close(inp[1]);
-    close(outp[0]);
-    close(outp[1]);
+    close(in_read.Get());
+    close(in_write.Get());
+    close(out_read.Get());
+    close(out_write.Get());
     struct rlimit file_limit = {static_cast<rlim_t>(log_bytes),
                                 static_cast<rlim_t>(log_bytes)};
     setrlimit(RLIMIT_FSIZE, &file_limit);
@@ -284,12 +272,12 @@ inline bool McpSpawn(
     execvp(cmd.c_str(), argv.data());
     _exit(127);
   }
-  close(inp[0]);
-  close(outp[1]);
-  if (errfd >= 0) close(errfd);
+  in_read.Reset();
+  out_write.Reset();
+  errfd.Reset();
   s.pid = pid;
-  s.in = inp[1];
-  s.out = outp[0];
+  s.in = std::move(in_write);
+  s.out = std::move(out_read);
   s.alive = true;
   // SIGINT idle-exit TERMs these (see core/signals.h)
   TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/true);

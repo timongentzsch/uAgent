@@ -149,13 +149,13 @@ std::string ReadLogTail(const std::string& path, int64_t cap) {
       cap > 0 ? std::max(int64_t{0}, cap - static_cast<int64_t>(current.size()))
               : -1;
   auto [previous, previous_start] = tail(path + ".1", remaining);
-  if (current.empty() && previous.empty() && !std::filesystem::exists(path) &&
-      !std::filesystem::exists(path + ".1")) {
+  if (current.empty() && previous.empty() && !PathExists(path) &&
+      !PathExists(path + ".1")) {
     return "(no output captured: " + path + " missing)";
   }
   std::string s = previous + current;
   if (previous_start > 0 || current_start > 0 ||
-      (!previous.empty() && std::filesystem::exists(path + ".1"))) {
+      (!previous.empty() && PathExists(path + ".1"))) {
     s = "[rotating log tail]\n" + s;
   }
   return s.empty() ? "(no output)" : s;
@@ -177,10 +177,10 @@ void RemoveLog(const std::string& path) {
 
 ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
   std::string target;
-  int fd = CreateTempFile(UagentDir(kArtifactsDir) + "/output-XXXXXX", target);
-  if (fd >= 0) {
-    fchmod(fd, kPrivateFileMode);
-    close(fd);
+  Fd fd(CreateTempFile(UagentDir(kArtifactsDir) + "/output-XXXXXX", target));
+  if (fd) {
+    fchmod(fd.Get(), kPrivateFileMode);
+    fd.Reset();
     if (rename(path.c_str(), target.c_str()) == 0) {
       chmod(target.c_str(), kPrivateFileMode);
       return {target, bytes};
@@ -218,9 +218,9 @@ CollectedLog CollectCompletedLog(const std::string& path, int64_t cap) {
 // server logs bounded without sending SIGXFSZ/SIGPIPE to the server itself.
 int ToolLogPump(const std::string& path, int64_t max_bytes) {
   int64_t segment = std::max(int64_t{512}, max_bytes / 2);
-  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode);
-  if (fd < 0) return 1;
-  std::array<char, 64 * 1024> buffer{};
+  Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode));
+  if (!fd) return 1;
+  std::array<char, size_t{64} * 1024> buffer{};
   int64_t written = 0;
   for (;;) {
     ssize_t count = read(STDIN_FILENO, buffer.data(), buffer.size());
@@ -229,26 +229,23 @@ int ToolLogPump(const std::string& path, int64_t max_bytes) {
     size_t offset = 0;
     while (offset < static_cast<size_t>(count)) {
       if (written >= segment) {
-        close(fd);
+        fd.Reset();
         unlink((path + ".1").c_str());
         rename(path.c_str(), (path + ".1").c_str());
-        fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode);
-        if (fd < 0) return 1;
+        fd.Reset(
+            open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, kPrivateFileMode));
+        if (!fd) return 1;
         written = 0;
       }
       size_t chunk = std::min(static_cast<size_t>(segment - written),
                               static_cast<size_t>(count) - offset);
-      ssize_t n = write(fd, buffer.data() + offset, chunk);
+      ssize_t n = write(fd.Get(), buffer.data() + offset, chunk);
       if (n < 0 && errno == EINTR) continue;
-      if (n <= 0) {
-        close(fd);
-        return 1;
-      }
+      if (n <= 0) return 1;
       offset += static_cast<size_t>(n);
       written += n;
     }
   }
-  close(fd);
   return 0;
 }
 
@@ -462,7 +459,8 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
   auto deadline =
       std::min(context.deadline, std::chrono::steady_clock::now() +
                                      std::chrono::milliseconds(wait_ms));
-  HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap) : 1024 * 1024);
+  HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap)
+                                   : size_t{1024} * 1024);
   std::optional<std::chrono::steady_clock::time_point> quiet_deadline;
   {
     std::lock_guard<std::mutex> lock(job.session->mutex);
@@ -681,24 +679,24 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   if (!job || !job->session) return ActivityNotFound(id);
   std::shared_ptr<ActivitySession> session = job->session;
   std::lock_guard<std::mutex> interaction(session->interaction);
-  int input_fd = -1;
+  // A private duplicate: the supervisor's I/O thread may close the session's
+  // own descriptor at any point after this lock is released.
+  Fd input;
   {
     std::lock_guard<std::mutex> lock(session->mutex);
-    if (session->input_fd >= 0) input_fd = dup(session->input_fd);
+    input = session->input_fd.Duplicate();
     session->last_used = std::chrono::steady_clock::now();
   }
   if (rows > 0 || cols > 0) {
-    if (!session->tty || input_fd < 0 || rows <= 0 || cols <= 0 ||
-        rows > 1000 || cols > 1000) {
-      if (input_fd >= 0) close(input_fd);
+    if (!session->tty || !input || rows <= 0 || cols <= 0 || rows > 1000 ||
+        cols > 1000) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: PTY resize requires rows and cols in 1..1000");
     }
     winsize size{};
     size.ws_row = static_cast<uint16_t>(rows);
     size.ws_col = static_cast<uint16_t>(cols);
-    if (ioctl(input_fd, TIOCSWINSZ, &size) != 0) {
-      close(input_fd);
+    if (ioctl(input.Get(), TIOCSWINSZ, &size) != 0) {
       return ToolFailure(ToolErrorCode::kProcessFailed,
                          "error: could not resize activity PTY");
     }
@@ -707,23 +705,20 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
   if (!chars.empty()) {
     if (chars == "\x03") {
       if (kill(-job->pid, SIGINT) != 0 && errno != ESRCH) {
-        if (input_fd >= 0) close(input_fd);
         return ToolFailure(
             ToolErrorCode::kProcessFailed,
             "error: could not interrupt activity " + std::to_string(id));
       }
     } else if (!session->tty) {
-      if (input_fd >= 0) close(input_fd);
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: activity stdin is closed (run with tty=true)");
     } else {
       size_t offset = 0;
       while (offset < chars.size()) {
         ssize_t count =
-            write(input_fd, chars.data() + offset, chars.size() - offset);
+            write(input.Get(), chars.data() + offset, chars.size() - offset);
         if (count < 0 && errno == EINTR) continue;
         if (count <= 0) {
-          close(input_fd);
           return ToolFailure(ToolErrorCode::kProcessFailed,
                              "error: could not write activity stdin");
         }
@@ -731,7 +726,7 @@ ToolResult ToolActivityInput(const ProcessSupervisor& supervisor, int64_t id,
       }
     }
   }
-  if (input_fd >= 0) close(input_fd);
+  input.Reset();
   int64_t cap = ActivityOutputCap(max_output_chars);
   std::string output = CollectSessionOutput(supervisor, *job, wait_ms, {},
                                             context, cap, !chars.empty());

@@ -236,8 +236,9 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
+// Unconditional: sanitising is a property of the sink, not of isatty. A
+// redirected transcript would otherwise keep escapes that cat(1) executes.
 std::string TerminalSafe(std::string_view s) {
-  if (!g_tty) return std::string(s);
   // Almost every string handed to a terminal is already safe. One scan and a
   // copy beats rebuilding it byte by byte, and this sits on the streaming
   // render path where it runs once per chunk.
@@ -248,7 +249,8 @@ std::string TerminalSafe(std::string_view s) {
   }
   std::string out;
   out.reserve(s.size());
-  for (unsigned char c : s) {
+  for (char raw : s) {
+    const unsigned char c = Byte(raw);
     if (c == '\n' || c == '\t' || c >= 0x20) {
       if (c == 0x7f) {
         out += "\\x7f";
@@ -458,7 +460,7 @@ std::string FmtDuration(double seconds) {
   // Below a minute the decimal carries the signal; above it, a second unit
   // reads better than a long float ("41m 1s", not "2461.0s").
   if (!(seconds > 0)) return "0ms";
-  int64_t milliseconds = static_cast<int64_t>(seconds * 1000.0 + 0.5);
+  int64_t milliseconds = std::llround(seconds * 1000.0);
   if (milliseconds < 1000) return std::to_string(milliseconds) + "ms";
   if (seconds < 60.0) {
     std::ostringstream output;

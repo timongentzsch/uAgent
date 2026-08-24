@@ -170,6 +170,39 @@ void TestActivitySessions() {
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
 
+  // Descriptor ownership is a type, but only a count proves it. A PTY run and
+  // a pipe run each take a log, an output end and (for a PTY) an input end;
+  // if any of those outlive their activity, this grows per iteration.
+  {
+    ProcessSupervisor leak_check;
+    auto open_descriptors = [] {
+      size_t count = 0;
+      std::error_code ec;
+      for (const auto& entry :
+           std::filesystem::directory_iterator("/dev/fd", ec)) {
+        (void)entry;
+        ++count;
+      }
+      return count;
+    };
+    // One warm-up pair: the supervisor's I/O thread and wake pipe are created
+    // on first use and are not per-activity.
+    for (bool tty : {false, true}) {
+      (void)RunShellCommand(leak_check, context,
+                            {.command = "printf x", .tty = tty});
+    }
+    const size_t settled = open_descriptors();
+    for (int index = 0; index < 6; ++index) {
+      for (bool tty : {false, true}) {
+        CHECK(RunShellCommand(leak_check, context,
+                              {.command = "printf x", .tty = tty})
+                  .result.Ok());
+      }
+    }
+    // Retained activities keep their transcript, never their descriptors.
+    CHECK(open_descriptors() <= settled + 2);
+  }
+
   ProcessSupervisor non_tty;
   CHECK(RunShellCommand(
             non_tty, context,
@@ -710,6 +743,7 @@ void TestToolExecutionPolicy() {
   std::vector<BgJob> tasks = task_processes.Snapshot();
   CHECK(tasks.size() == 1);
   std::vector<pid_t> task_ids;
+  task_ids.reserve(tasks.size());
   for (const BgJob& job : tasks) task_ids.push_back(job.pid);
   CHECK(BgCancelSubagents(task_processes) == 1);
   CHECK(!task_processes.PendingCount());

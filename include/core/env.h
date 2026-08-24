@@ -85,8 +85,7 @@ int64_t McpConfigBytes();
 int64_t McpDescriptionChars();
 int64_t MaxPendingAttachments();
 int64_t AttachmentLimitMb();
-// Shared by the attachment path and MCP image results, which previously each
-// carried their own copy of the default.
+// One default, shared by the attachment path and MCP image results.
 int64_t TerminalImageLimitMb();
 int64_t ImageMaxColumns();
 // The fallback is the width actually available, so it is passed in.
@@ -112,8 +111,8 @@ struct RuntimeConfig {
   int64_t first_event_timeout_s = 300;
   int64_t stream_idle_timeout_s = 300;
   int64_t request_timeout_s = 600;
-  int64_t request_bytes = 64 * 1024 * 1024;
-  int64_t response_bytes = 32 * 1024 * 1024;
+  int64_t request_bytes = int64_t{64} * 1024 * 1024;
+  int64_t response_bytes = int64_t{32} * 1024 * 1024;
   int64_t max_steps = 0;
   // Zero disables the model-round limit; turn time, cost, context, process,
   // and tool-call budgets remain independent safety limits.
@@ -137,13 +136,13 @@ struct RuntimeConfig {
   int64_t mcp_servers = 32;
   int64_t mcp_pages = 100;
   int64_t mcp_tools = 256;
-  int64_t mcp_config_bytes = 1024 * 1024;
-  int64_t mcp_response_bytes = 16 * 1024 * 1024;
-  int64_t mcp_schema_bytes = 256 * 1024;
-  int64_t mcp_log_bytes = 16 * 1024 * 1024;
+  int64_t mcp_config_bytes = int64_t{1024} * 1024;
+  int64_t mcp_response_bytes = int64_t{16} * 1024 * 1024;
+  int64_t mcp_schema_bytes = int64_t{256} * 1024;
+  int64_t mcp_log_bytes = int64_t{16} * 1024 * 1024;
   int64_t memory_always_bytes = 2048;
-  int64_t project_doc_bytes = 32 * 1024;
-  int64_t session_archive_bytes = 16 * 1024 * 1024;
+  int64_t project_doc_bytes = int64_t{32} * 1024;
+  int64_t session_archive_bytes = int64_t{16} * 1024 * 1024;
   std::string openrouter_provider;
   std::string openrouter_variant;
   std::string web_search_backend = "auto";

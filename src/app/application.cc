@@ -107,7 +107,7 @@ class Application {
     }
   }
 
-  void RunTurns(std::string input, json content = nullptr) {
+  void RunTurns(const std::string& input, json content = nullptr) {
     ReloadConfigAtTurnBoundary();
     agent_.Turn(input, std::move(content));
     SteeringState().Take();
@@ -248,7 +248,7 @@ class Application {
     saved_revision_ = agent_.Revision();
   }
 
-  void RunPrompt(std::string input) {
+  void RunPrompt(const std::string& input) {
     json content;
     if (!attachments_.empty()) {
       std::string error;
@@ -262,7 +262,7 @@ class Application {
       }
       attachments_.clear();
     }
-    RunTurns(std::move(input), std::move(content));
+    RunTurns(input, std::move(content));
   }
 
   bool ProcessInput(std::string input) {
@@ -282,14 +282,14 @@ class Application {
       fflush(stdout);
       return false;
     }
-    RunPrompt(std::move(input));
+    RunPrompt(input);
     return false;
   }
 
-  // The pinned-region state machine of the persistent composer: every
-  // responsibility below used to be a capturing lambda inside Run().
+  // The pinned-region state machine of the persistent composer.
   struct InteractiveLoop {
-    explicit InteractiveLoop(Application& app) : app(app), composer(output) {}
+    explicit InteractiveLoop(Application& owner)
+        : app(owner), composer(output) {}
 
     std::string Status() {
       if (!working) {
@@ -500,13 +500,13 @@ class Application {
       events.reserve(3 + app.runtime_.mcp.Servers().size());
       while (!exit_when_idle || working) {
         events = {{STDIN_FILENO, POLLIN, 0},
-                  {output.Fd(), POLLIN, 0},
-                  {broker.Fd(), POLLIN, 0}};
+                  {output.ReadFd(), POLLIN, 0},
+                  {broker.ReadFd(), POLLIN, 0}};
         if (!working) {
           for (const auto& server : app.runtime_.mcp.Servers()) {
-            if (server->alive && server->out >= 0) {
+            if (server->alive && server->out) {
               events.push_back(
-                  {server->out,
+                  {server->out.Get(),
                    static_cast<int16_t>(POLLIN | POLLHUP | POLLERR), 0});
             }
           }
@@ -535,7 +535,8 @@ class Application {
           }
         }
 
-        int ready = poll(events.data(), events.size(), timeout_ms);
+        int ready =
+            poll(events.data(), static_cast<nfds_t>(events.size()), timeout_ms);
         if (ready < 0 && errno != EINTR) break;
         if (g_terminal_resized) {
           g_terminal_resized = 0;
@@ -549,17 +550,14 @@ class Application {
             std::chrono::steady_clock::now() >= *resize_settled) {
           resize_settled.reset();
           // A resize must *replace* the pinned region, not add to it: erasing
-          // only downward leaves the status row that sits above the cursor, so
-          // every repaint would append another one. Walk up to the status row
-          // first, the way every other paint does.
+          // only downward leaves the status row above the cursor, so every
+          // repaint would append another one. Walk up to it first.
           //
-          // The status row's own rewrap is accounted for by
-          // StatusOverflowRows(). CaretRow() covers the rest exactly when the
-          // composer did not reflow — an empty or short draft, or any widening.
-          // Narrowing with a draft long enough to soft-wrap can still leave one
-          // stale fragment above; the next mount clears it. Pinning that down
-          // needs a cursor position report, which is deliberately not in this
-          // change.
+          // StatusOverflowRows() accounts for the status row's own rewrap and
+          // CaretRow() for the rest, exactly when the composer did not reflow.
+          // Narrowing with a soft-wrapped draft can still leave one stale
+          // fragment above; the next mount clears it. Fixing that needs a
+          // cursor position report.
           if (composer.Drawn()) Paint({}, nullptr, {}, true);
           last_redraw = std::chrono::steady_clock::now();
           last_state = StatusState();

@@ -29,11 +29,12 @@ void InitializeProcess() {
   const char* session = getenv("PLAYWRIGHT_CLI_SESSION");
   const char* generated = getenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION");
   if (!session || (generated && session == std::string(generated))) {
-    std::string session = "uagent-" + std::to_string(getpid());
-    setenv("PLAYWRIGHT_CLI_SESSION", session.c_str(), 1);
-    setenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION", session.c_str(), 1);
+    const std::string owned = "uagent-" + std::to_string(getpid());
+    setenv("PLAYWRIGHT_CLI_SESSION", owned.c_str(), 1);
+    setenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION", owned.c_str(), 1);
   }
   g_tty = isatty(STDOUT_FILENO);
+  g_color = ResolveColorEnabled(g_tty);
   g_signal_tty = g_tty;
   InitializeSignalNotifications();
   signal(SIGINT, SigintHandler);
@@ -42,6 +43,7 @@ void InitializeProcess() {
   signal(SIGPIPE, SIG_IGN);
   InstallSigchldHandler();
   InstallSigwinchHandler();
+  InstallSuspendHandlers();
 }
 
 // Report a startup failure in whichever shape the caller asked for. Emit is a
@@ -82,7 +84,7 @@ int Main(int argc, char** argv) {
     printf("%s", UsageText());
     return 0;
   }
-  if (parsed.action == OptionsAction::kVersion) {
+  if (parsed.action == OptionsAction::kPrintVersion) {
     printf("uagent %s\n", kVersion);
     return 0;
   }

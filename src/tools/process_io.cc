@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <stop_token>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,9 +30,13 @@ namespace {
 constexpr size_t kRetainedActivities = 16;
 constexpr auto kTrailingOutputGrace = std::chrono::milliseconds(100);
 
-void CloseFd(int& fd) {
-  if (fd >= 0) close(fd);
-  fd = -1;
+// Release the descriptors when the activity goes terminal, not when the
+// session object is finally dropped.
+void CloseSessionIo(const std::shared_ptr<ActivitySession>& session) {
+  std::lock_guard<std::mutex> lock(session->mutex);
+  session->output_fd.Reset();
+  session->input_fd.Reset();
+  session->log_fd.Reset();
 }
 
 }  // namespace
@@ -110,31 +115,33 @@ ProcessSupervisor::ProcessSupervisor() {
 
 ProcessSupervisor::~ProcessSupervisor() {
   BgShutdownAll(*this);
-  int wake_fd = -1;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     stopping_ = true;
     NotifyLocked();
-    wake_fd = wake_write_;
   }
-  WakeDescriptor(wake_fd);
+  // The stop callback wakes the poll, so this is the whole handshake;
+  // ~jthread would join but not unblock.
+  io_thread_.request_stop();
   if (io_thread_.joinable()) io_thread_.join();
   if (child_wake_registered_) {
-    (void)RegisterChildWakeFd(wake_write_, /*add=*/false);
+    (void)RegisterChildWakeFd(wake_write_.Get(), /*add=*/false);
   }
-  CloseFd(wake_read_);
-  CloseFd(wake_write_);
 }
 
 void ProcessSupervisor::StartIoLocked() {
   if (io_thread_.joinable()) return;
   int wake[2] = {-1, -1};
   if (OpenNonblockingPipe(wake)) {
-    wake_read_ = wake[0];
-    wake_write_ = wake[1];
+    wake_read_.Reset(wake[0]);
+    wake_write_.Reset(wake[1]);
   }
-  child_wake_registered_ = RegisterChildWakeFd(wake_write_, /*add=*/true);
-  io_thread_ = std::thread([this] { IoLoop(); });
+  child_wake_registered_ = RegisterChildWakeFd(wake_write_.Get(), /*add=*/true);
+  io_thread_ = std::jthread([this](const std::stop_token& stop) {
+    std::stop_callback wake_on_stop(
+        stop, [this] { WakeDescriptor(wake_write_.Get()); });
+    IoLoop(stop);
+  });
 }
 
 void ProcessSupervisor::RegisterIo(
@@ -148,9 +155,9 @@ void ProcessSupervisor::RegisterIo(
   if (input_fd >= 0) fcntl(input_fd, F_SETFD, FD_CLOEXEC);
   {
     std::lock_guard<std::mutex> state_lock(session->mutex);
-    session->output_fd = output_fd;
-    session->input_fd = input_fd;
-    session->log_fd = log_fd;
+    session->output_fd.Reset(output_fd);
+    session->input_fd.Reset(input_fd);
+    session->log_fd.Reset(log_fd);
     session->log_limit = log_limit;
     session->state = ActivityState::kRunning;
   }
@@ -159,7 +166,7 @@ void ProcessSupervisor::RegisterIo(
     io_sessions_.push_back(session);
     StartIoLocked();
     NotifyLocked();
-    WakeDescriptor(wake_write_);
+    WakeDescriptor(wake_write_.Get());
   }
 }
 
@@ -246,8 +253,11 @@ size_t ProcessSupervisor::ForegroundCount() const {
 bool ProcessSupervisor::WaitForForeground(
     size_t count, std::chrono::steady_clock::time_point deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
-  return event_.wait_until(lock, deadline,
-                           [&] { return foreground_.size() >= count; });
+  // The predicate runs with `lock` held, which the analysis cannot see through
+  // condition_variable. Same for the two waits below.
+  return event_.wait_until(lock, deadline, [&]() UAGENT_NO_TSA {
+    return foreground_.size() >= count;
+  });
 }
 
 bool ProcessSupervisor::RequestForegroundBackground() {
@@ -425,39 +435,39 @@ void ProcessSupervisor::Wake() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     NotifyLocked();
-    wake_fd = wake_write_;
+    wake_fd = wake_write_.Get();
   }
   WakeDescriptor(wake_fd);
 }
 
 void ProcessSupervisor::WaitForChange(uint64_t generation) const {
   std::unique_lock<std::mutex> lock(mutex_);
-  event_.wait(lock, [&] { return generation_ != generation; });
+  event_.wait(lock, [&]() UAGENT_NO_TSA { return generation_ != generation; });
 }
 
 bool ProcessSupervisor::WaitForChange(
     uint64_t generation, std::chrono::steady_clock::time_point deadline) const {
   std::unique_lock<std::mutex> lock(mutex_);
-  return event_.wait_until(lock, deadline,
-                           [&] { return generation_ != generation; });
+  return event_.wait_until(lock, deadline, [&]() UAGENT_NO_TSA {
+    return generation_ != generation;
+  });
 }
 
-void ProcessSupervisor::IoLoop() {
-  for (;;) {
+void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
+  while (!stop.stop_requested()) {
     std::vector<std::shared_ptr<ActivitySession>> sessions;
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (stopping_) break;
       sessions = io_sessions_;
     }
     std::vector<pollfd> poll_fds;
     poll_fds.reserve(sessions.size() + 1);
-    poll_fds.push_back({wake_read_, POLLIN, 0});
+    poll_fds.push_back({wake_read_.Get(), POLLIN, 0});
     for (const auto& session : sessions) {
       int fd = -1;
       {
         std::lock_guard<std::mutex> lock(session->mutex);
-        fd = session->output_fd;
+        fd = session->output_fd.Get();
       }
       poll_fds.push_back(
           {fd, static_cast<int16_t>(POLLIN | POLLHUP | POLLERR), 0});
@@ -472,10 +482,11 @@ void ProcessSupervisor::IoLoop() {
       int candidate = PollTimeoutMs(session->exited_at + kTrailingOutputGrace);
       timeout_ms = timeout_ms < 0 ? candidate : std::min(timeout_ms, candidate);
     }
-    int ready = poll(poll_fds.data(), poll_fds.size(), timeout_ms);
+    int ready =
+        poll(poll_fds.data(), static_cast<nfds_t>(poll_fds.size()), timeout_ms);
     if (ready < 0 && errno != EINTR) continue;
     if (!poll_fds.empty() && (poll_fds[0].revents & POLLIN)) {
-      DrainDescriptor(wake_read_);
+      DrainDescriptor(wake_read_.Get());
       std::lock_guard<std::mutex> lock(mutex_);
       NotifyLocked();
     }
@@ -508,15 +519,15 @@ void ProcessSupervisor::IoLoop() {
             session->pending_output.Push(chunk);
             session->transcript.Push(chunk);
             session->until_window.append(chunk);
-            if (session->until_window.size() > 64 * 1024) {
+            if (session->until_window.size() > size_t{64} * 1024) {
               session->until_window.erase(
-                  0, session->until_window.size() - 64 * 1024);
+                  0, session->until_window.size() - size_t{64} * 1024);
             }
             int64_t remaining = std::max(
                 int64_t{0}, session->log_limit - session->logged_bytes);
             keep = std::min(static_cast<size_t>(remaining), chunk.size());
             session->logged_bytes += static_cast<int64_t>(keep);
-            log_fd = session->log_fd;
+            log_fd = session->log_fd.Get();
             notify = true;
           }
           size_t offset = 0;
@@ -563,12 +574,7 @@ void ProcessSupervisor::IoLoop() {
       }
       std::erase_if(io_sessions_, terminal);
     }
-    for (const auto& session : removed) {
-      std::lock_guard<std::mutex> lock(session->mutex);
-      CloseFd(session->output_fd);
-      CloseFd(session->input_fd);
-      CloseFd(session->log_fd);
-    }
+    for (const auto& session : removed) CloseSessionIo(session);
   }
 
   std::vector<std::shared_ptr<ActivitySession>> remaining;
@@ -576,12 +582,7 @@ void ProcessSupervisor::IoLoop() {
     std::lock_guard<std::mutex> lock(mutex_);
     remaining.swap(io_sessions_);
   }
-  for (const auto& session : remaining) {
-    std::lock_guard<std::mutex> lock(session->mutex);
-    CloseFd(session->output_fd);
-    CloseFd(session->input_fd);
-    CloseFd(session->log_fd);
-  }
+  for (const auto& session : remaining) CloseSessionIo(session);
 }
 
 }  // namespace uagent

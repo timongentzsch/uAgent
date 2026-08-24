@@ -28,6 +28,8 @@
 
 namespace uagent {
 
+struct BackgroundCompletion;
+
 class Agent {
  public:
   // Asks the user to approve a mutating call; wired up by the host. Approving a
@@ -109,6 +111,9 @@ class Agent {
   // Report finished background jobs to the user and hand them to the model.
   // The drain reaps and deletes each log, so its caller owns the only copy.
   bool DrainBackground();
+  void ReportMemoryCompletion(BackgroundCompletion& completion);
+  void DeliverActivityCompletions(
+      const std::vector<BackgroundCompletion>& completions);
 
   // Files the model attached ride in on a user message: Chat Completions tool
   // results are text-only, so image/file parts cannot travel with them.
@@ -119,6 +124,16 @@ class Agent {
 
  private:
   struct TurnState;
+  struct TurnLoop;
+
+  // What the step loop does next. kRetryStep repeats the step without
+  // spending one of the turn's budget.
+  enum class StepFlow {
+    kProceed,
+    kRetryStep,
+    kNextStep,
+    kEndTurn,
+  };
 
   enum class ImageFallbackCause { kKnownUnsupported, kRejected };
   struct ImageFallbackResult {
@@ -152,6 +167,27 @@ class Agent {
   void FinishTurn(TurnState& state, int64_t step);
   static std::string TurnStatsLine(const TurnState& state, double seconds,
                                    double tokens_per_second);
+
+  // One step of the turn, in the order the loop runs them. Each phase reports
+  // what the loop should do next.
+  void PushSkillContext(std::string skill);
+  StepFlow InterruptTurn(TurnState& state);
+  bool ApplyQueuedSteering(TurnState& state, TurnLoop& loop);
+  StepFlow PrepareStep(TurnState& state, TurnLoop& loop, json& schemas);
+  StepFlow HandleFailedResponse(ChatResult& response, TurnState& state,
+                                TurnLoop& loop, const json& schemas,
+                                bool attachment);
+  StepFlow HandleUnparsedToolMarkup(TurnState& state, TurnLoop& loop);
+  StepFlow HandleEmptyResponse(const ChatResult& response, TurnState& state,
+                               TurnLoop& loop);
+  void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
+                                 TurnState& state, TurnLoop& loop);
+  void PushAssistantMessage(ChatResult& response,
+                            const std::vector<ToolCall>& calls, bool text_mode);
+  StepFlow FinishWithProse(ChatResult& response, TurnState& state,
+                           TurnLoop& loop);
+  StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls, bool text_mode,
+                            TurnState& state, TurnLoop& loop);
 
   void ArchiveAll(const char* reason);
 

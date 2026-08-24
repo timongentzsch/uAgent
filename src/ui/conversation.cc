@@ -21,11 +21,9 @@
 namespace uagent {
 
 std::string ReplayableImagePath(const json& call, const std::string& result) {
-  if (!result.starts_with("displayed ") || !call.is_object() ||
-      !call.contains("function") || !call["function"].is_object()) {
-    return "";
-  }
-  const json& function = call["function"];
+  const json* found = JsonObject(call, "function");
+  if (!result.starts_with("displayed ") || !found) return "";
+  const json& function = *found;
   if (JsonValue(function, "name", "") != "show_image" ||
       !function.contains("arguments")) {
     return "";

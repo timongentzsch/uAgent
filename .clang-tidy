@@ -1,14 +1,52 @@
+# Correctness and cost checks are on as families rather than as a hand-picked
+# few, so a new check arrives with the toolchain instead of waiting to be
+# noticed. Every exclusion is a house rule with a reason:
+#   easily-swappable-parameters   - fires on every (width, height) pair
+#   narrowing-conversions         - -Wconversion covers it at the compiler
+#   branch-clone                  - identical arms are often clearer apart
+#   unused-local-non-trivial-...  - flags every scoped lock guard
+#   const-correctness             - local const is a style call, not a defect
+#   include-cleaner               - disagrees with the layered include policy
+#   no-recursion                  - the markdown and JSON walkers recurse
+#   non-private-member-variables  - the codebase uses plain data structs
+#   unused-parameters             - parameters used only under a platform ifdef
+#   use-anonymous-namespace       - conflicts with google-build-namespaces
+#   use-internal-linkage          - same ground, and noisier
+#   enum-size                     - byte-packing enums is not worth churn
+#   assignment-in-if-condition    - `!(err = Check()).empty()` in an else-if
+#                                   chain needs the lazy evaluation the chain
+#                                   gives it; hoisting it out nests the code
+#   inefficient-string-concat     - `a + "/" + b` off any hot path reads
+#                                   better than an append() chain
+#   optin.performance.Padding     - field order follows meaning, not layout
+# Verified locally with Homebrew LLVM's clang-tidy (upstream clang-tidy cannot
+# parse Apple SDK libc++ headers; see CONTRIBUTING).
 Checks: >
   -*,
   google-*,
-  bugprone-misplaced-widening-cast,
-  clang-analyzer-core.*,
-  clang-analyzer-deadcode.*,
-  clang-analyzer-unix.*,
+  bugprone-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-branch-clone,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-unused-local-non-trivial-variable,
+  clang-analyzer-*,
+  -clang-analyzer-optin.performance.Padding,
+  misc-*,
+  -misc-const-correctness,
+  -misc-include-cleaner,
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  -misc-unused-parameters,
+  -misc-use-anonymous-namespace,
+  -misc-use-internal-linkage,
+  modernize-use-emplace,
   modernize-use-nullptr,
   modernize-use-override,
-  performance-for-range-copy,
-  performance-move-const-arg,
+  modernize-use-using,
+  performance-*,
+  -performance-enum-size,
+  -performance-inefficient-string-concatenation,
   readability-identifier-naming
 WarningsAsErrors: '*'
 CheckOptions:

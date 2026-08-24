@@ -136,8 +136,10 @@ void AppendEditDisplay(EditDisplay& display, const std::string& data,
   display.removed += static_cast<int64_t>(diff.old_end - diff.prefix) * applied;
   display.added += static_cast<int64_t>(diff.new_end - diff.prefix) * applied;
 
-  int64_t line = 1 + static_cast<int64_t>(
-                         std::count(data.begin(), data.begin() + match, '\n'));
+  int64_t line =
+      1 + static_cast<int64_t>(std::count(
+              data.begin(), data.begin() + static_cast<std::ptrdiff_t>(match),
+              '\n'));
   std::string location = "line " + std::to_string(line);
   if (applied > 1) location += " · " + std::to_string(applied) + " matches";
   AppendDisplayLine(display, '@', location);
@@ -334,8 +336,9 @@ bool CrLfAtMatch(const std::string& data, size_t match, size_t length,
 std::string FileLineEnding(const std::string& text, bool crlf,
                            bool normalize_crlf) {
   std::string out;
-  out.reserve(text.size() +
-              (crlf ? std::count(text.begin(), text.end(), '\n') : 0));
+  out.reserve(text.size() + (crlf ? static_cast<size_t>(std::count(
+                                        text.begin(), text.end(), '\n'))
+                                  : 0));
   for (size_t i = 0; i < text.size(); ++i) {
     if (text[i] == '\r' && i + 1 < text.size() && text[i + 1] == '\n' &&
         normalize_crlf) {
@@ -364,7 +367,9 @@ std::string EditRecoveryHint(const std::string& data,
     size_t begin = match == 0 ? 0 : data.rfind('\n', match - 1) + 1;
     size_t end = data.find('\n', match);
     if (end == std::string::npos) end = data.size();
-    int64_t number = 1 + std::count(data.begin(), data.begin() + begin, '\n');
+    int64_t number =
+        1 + std::count(data.begin(),
+                       data.begin() + static_cast<std::ptrdiff_t>(begin), '\n');
     return "; nearby current line " + std::to_string(number) + ": " +
            Utf8Prefix(data.substr(begin, end - begin), 200);
   }
@@ -555,8 +560,9 @@ ToolResult ToolEditFile(const std::string& path, const std::string& old_s,
 namespace {
 
 bool LikelyTextSample(std::string_view sample) {
-  for (unsigned char value : sample) {
-    if (value == 0 || value < 0x09 || (value > 0x0d && value < 0x20)) {
+  for (char raw : sample) {
+    const unsigned char value = Byte(raw);
+    if (value < 0x09 || (value > 0x0d && value < 0x20)) {
       return false;
     }
   }

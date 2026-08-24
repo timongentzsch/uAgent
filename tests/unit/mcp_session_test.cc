@@ -477,9 +477,10 @@ void TestScopedBaseAndMemory() {
   CHECK(ToolMemoryAction("forget", "claude/MEMORY", std::nullopt).error ==
         ToolErrorCode::kPermissionDenied);
 
-  ProjectInstructions loaded = LoadProjectInstructions(workspace, 32 * 1024);
+  ProjectInstructions loaded =
+      LoadProjectInstructions(workspace, size_t{32} * 1024);
   MemoryIndex index =
-      LoadMemoryIndex(workspace, 32 * 1024 - loaded.text.size());
+      LoadMemoryIndex(workspace, size_t{32} * 1024 - loaded.text.size());
   loaded.memory_index = index.text;
   loaded.memory_sources = index.sources;
   loaded.truncated |= index.truncated;

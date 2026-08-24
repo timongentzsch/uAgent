@@ -22,7 +22,7 @@ enum class FlagKind {
   kBudget,     // takes a validated dollar amount
   kPrompt,     // takes the headless prompt
   kAttach,     // takes a path, repeatable
-  kVersion,
+  kPrintVersion,
   kHelp,
 };
 
@@ -81,7 +81,7 @@ constexpr FlagSpec kFlags[] = {
      ""},
     {"--resume", FlagKind::kToggle, &Options::resume_pick, nullptr, nullptr,
      "pick a saved session to resume at startup"},
-    {"--version", FlagKind::kVersion, nullptr, nullptr, nullptr,
+    {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,
      "print the installed version"},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
      nullptr, nullptr, "allow this workspace's .mcp.json and .uagent/.config"},
@@ -159,8 +159,8 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       case FlagKind::kAttach:
         parsed.options.attach_paths.push_back(std::move(value));
         break;
-      case FlagKind::kVersion:
-        parsed.action = OptionsAction::kVersion;
+      case FlagKind::kPrintVersion:
+        parsed.action = OptionsAction::kPrintVersion;
         return parsed;
       case FlagKind::kHelp:
         parsed.action = OptionsAction::kHelp;

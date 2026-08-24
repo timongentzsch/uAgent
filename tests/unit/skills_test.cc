@@ -144,6 +144,7 @@ void TestSkillDiscovery() {
   unsetenv("UAGENT_SKILL_DESC_BYTES");
 
   std::vector<Skill> catalogue_skills;
+  catalogue_skills.reserve(64);
   for (int i = 0; i < 64; ++i) {
     catalogue_skills.push_back(
         {"skill-" + std::to_string(i), std::string(512, 'x'), "", "", {}, ""});

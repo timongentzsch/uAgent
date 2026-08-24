@@ -214,10 +214,9 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
     if (index < 0) index = StreamToolSlot(tool_calls, id);
     ToolCall& target = tool_calls[static_cast<int>(index)];
     if (!id.empty()) MergeStreamIdentity(target.id, id);
-    if (!tool_call.contains("function") || !tool_call["function"].is_object()) {
-      continue;
-    }
-    const json& function = tool_call["function"];
+    const json* found = JsonObject(tool_call, "function");
+    if (!found) continue;
+    const json& function = *found;
     if (function.contains("name") && function["name"].is_string()) {
       MergeStreamIdentity(target.name, function["name"].get<std::string>());
     }

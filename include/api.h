@@ -15,8 +15,8 @@
 #include "include/api/types.h"
 #include "include/core/env.h"
 
-typedef void CURL;
-typedef void CURLM;
+using CURL = void;
+using CURLM = void;
 
 namespace uagent {
 

@@ -447,6 +447,9 @@ void TestProviderTemplates() {
       "UAGENT_TEST_PROVIDER_MODEL",
       "UAGENT_TEST_PROVIDER_EFFORT",
       "default-model",
+      // Signature fixed by ProviderUrlMatcher, whose real implementations
+      // consume the string they are handed.
+      // NOLINTNEXTLINE(performance-unnecessary-value-param)
       +[](std::string url) { return url == "https://provider.test/v1"; },
       ProviderProtocol::kOpenAi,
   };

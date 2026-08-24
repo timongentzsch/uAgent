@@ -80,16 +80,14 @@ constexpr int64_t kProtectedUserTurns = 2;
 constexpr std::string_view kCompactedToolOutput = "[old tool output compacted:";
 
 const json* FindToolCallFunction(const json& message, const std::string& id) {
-  if (!message.is_object() || JsonValue(message, "role", "") != "assistant" ||
-      !message.contains("tool_calls") || !message["tool_calls"].is_array()) {
+  const json* tool_calls = JsonArray(message, "tool_calls");
+  if (!tool_calls || JsonValue(message, "role", "") != "assistant") {
     return nullptr;
   }
-  for (const json& call : message["tool_calls"]) {
-    if (JsonValue(call, "id", "") != id || !call.contains("function") ||
-        !call["function"].is_object()) {
-      continue;
-    }
-    return &call["function"];
+  for (const json& call : *tool_calls) {
+    const json* function = JsonObject(call, "function");
+    if (!function || JsonValue(call, "id", "") != id) continue;
+    return function;
   }
   return nullptr;
 }

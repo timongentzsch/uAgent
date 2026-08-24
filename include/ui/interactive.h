@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/cli.h"
+#include "include/core/fd.h"
 #include "include/ui/input_decoder.h"
 
 namespace uagent {
@@ -32,11 +33,11 @@ class InteractiveOutput {
   std::string Read() const;
   void Write(const std::string& text) const;
 
-  int Fd() const { return read_; }
+  int ReadFd() const { return read_.Get(); }
 
  private:
-  int saved_ = -1;
-  int read_ = -1;
+  Fd saved_;  // the real terminal, kept aside while stdout is the pipe
+  Fd read_;
 };
 
 class RawComposer {
@@ -132,11 +133,11 @@ class InputBroker {
   void Notify() const;
   void Shutdown();
 
-  int Fd() const { return wake_[0]; }
-  int NotifyFd() const { return wake_[1]; }
+  int ReadFd() const { return wake_read_.Get(); }
+  int NotifyFd() const { return wake_write_.Get(); }
 
  private:
-  int wake_[2] = {-1, -1};
+  Fd wake_read_, wake_write_;
   mutable std::mutex mutex_;
   std::condition_variable changed_;
   std::string prompt_;

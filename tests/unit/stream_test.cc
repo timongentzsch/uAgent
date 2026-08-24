@@ -16,7 +16,7 @@
 namespace uagent {
 
 void TestSseChunkPartitions() {
-  auto event = [](json value, const char* ending = "\n\n") {
+  auto event = [](const json& value, const char* ending = "\n\n") {
     return "data: " + value.dump() + ending;
   };
 
@@ -396,7 +396,7 @@ void TestBackgroundValidation() {
   CHECK(ToolWritePrivateFile(log.string(), "abc😀tail")
             .output.starts_with("wrote "));
   std::string tail = ReadLogTail(log.string(), 7);  // begins inside 😀
-  CHECK(JsonDump(json(tail)).find("\x9F") == std::string::npos);
+  CHECK(JsonDump(json(tail)).find('\x9F') == std::string::npos);
   std::error_code ec;
   fs::remove(log, ec);
 }

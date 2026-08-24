@@ -77,13 +77,11 @@ json ToolTraceMessages(const json& messages, const json& kinds) {
     const json& message = messages[index];
     if (!message.is_object()) continue;
     if (JsonValue(message, "role", "") == "assistant") {
-      if (message.contains("tool_calls") && message["tool_calls"].is_array()) {
-        for (const json& call : message["tool_calls"]) {
-          if (!call.is_object() || !call.contains("function") ||
-              !call["function"].is_object()) {
-            continue;
-          }
-          const json& function = call["function"];
+      if (const json* tool_calls = JsonArray(message, "tool_calls")) {
+        for (const json& call : *tool_calls) {
+          const json* found = JsonObject(call, "function");
+          if (!found) continue;
+          const json& function = *found;
           json arguments = ParsedToolCallArguments(function);
           append_call(
               {JsonValue(call, "id", ""), JsonValue(function, "name", ""),

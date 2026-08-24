@@ -1,8 +1,38 @@
 # Changelog
 
-## Unreleased
+## v0.6.0 - 2026-08-24
 
 ### Fixed
+
+- Ctrl+C, SIGTERM or SIGHUP out of the interactive composer left the terminal
+  in raw mode: the handler reset colour and bracketed paste but never restored
+  the line discipline, so the surviving shell had no echo and no line editing
+  until `stty sane`. The composer now publishes its saved and raw `termios` to
+  the signal layer, which restores the cooked settings before `_exit`, and
+  writes its escapes to the real terminal rather than into the REPL's own
+  stdout pipe, where they were discarded on the way out.
+- Ctrl+Z suspended the agent in raw mode and resumed it without repainting.
+  SIGTSTP now drops raw mode and bracketed paste before stopping, and SIGCONT
+  re-arms both and asks the event loop for a full repaint.
+- Terminal escapes in model, tool and file content were only neutralized when
+  stdout was a TTY, so a redirected transcript kept them verbatim and replayed
+  them at whoever later ran `cat` on it. Sanitizing is now unconditional.
+- Four `std::filesystem::exists` calls used the throwing overload. Under
+  `-fno-exceptions` a lookup error there — EACCES on a parent directory, ELOOP,
+  ENAMETOOLONG — was an `abort()` mid-turn with no session save.
+- An OSC or DCS reply from the terminal — a colour query answer, a clipboard
+  payload — surrendered its introducer as an unknown sequence and then typed
+  its payload into the composer. String sequences are now decoded to their BEL
+  or ST terminator, bounded, and discarded past the bound; X10 mouse reports
+  (`ESC [ M b x y`) no longer leak their three coordinate bytes as text.
+- A table header was reprinted by erasing as many rows as its *markdown source*
+  occupied. `**bold**` is eight columns of source and four on screen, so a
+  header whose markup crossed a wrap boundary ate a line of transcript above
+  the table. Rows are now counted from the rendered line.
+- A turn interrupted while its tools were running recorded the outcome but not
+  the error, so a headless run cancelled at that moment exited 0 and reported
+  whatever partial answer existed. It now exits 1 with `interrupted`, like
+  every other interruption.
 
 - A provider error injected mid-stream discarded a whole turn's work. Such a
   frame is now retried when it arrived before any answer text, tool call,
@@ -31,6 +61,10 @@
 
 ### Added
 
+- `NO_COLOR`, `TERM=dumb` and `CLICOLOR_FORCE` are honoured. Colour and
+  terminal capability are now separate questions: suppressing colour no longer
+  suppresses cursor control, spinners or inline images, and forcing it works
+  down a pipe.
 - `UAGENT_HEADLESS_PROGRESS=1` echoes every durable event as one stderr line.
   It is set for background children, whose stderr already lands in the log the
   parent polls, so a delegated run is traceable while it works; the stdout
@@ -46,6 +80,30 @@
 
 ### Changed
 
+- File descriptors are owned by a move-only `Fd` type instead of a bare `int`
+  paired with a `close` on every early return, and the process supervisor's I/O
+  thread is a `std::jthread` whose stop token carries cancellation: a
+  `std::stop_callback` wakes the poll, so the shutdown handshake is one call
+  rather than a flag plus a manual pipe write.
+- Mutex-guarded state carries `UAGENT_GUARDED_BY` annotations, checked by
+  `-Wthread-safety`, and the build adds `-Wconversion -Wsign-conversion
+  -Wshadow -Wold-style-cast`. clang-tidy runs the `bugprone`, `performance`,
+  `misc` and `clang-analyzer` families rather than a hand-picked few.
+- The streaming markdown renderer bounds the three buffers a model could grow
+  without limit — the current line, an unterminated math span, and table rows —
+  degrading to plain output at the bound instead of accumulating. Measuring
+  rendered rows costs 2.6% on the TTY markdown benchmark.
+- `Agent::DrainBackground` splits into the memory-receipt pass and the activity
+  delivery pass (146 lines to 35).
+- A second fuzz target covers the composer's terminal input decoder: arbitrary
+  bytes fed whole and in fragments must decode identically.
+- Two constructor parameters and one enumerator were renamed so `-Wshadow` is
+  clean on GCC as well as Clang; GCC also warns for a parameter that shadows
+  its own field and for an enumerator that shadows a namespace-scope constant.
+- `Agent::Turn` was a 385-line function holding two dozen locals; the step loop
+  now hands a `TurnLoop` to named phases (`PrepareStep`, `HandleFailedResponse`,
+  `HandleEmptyResponse`, `ExecuteToolCalls`, …) that report what the loop does
+  next. Behavior is unchanged; the recoveries are individually readable.
 - The working row names the active route exactly as the idle row does. When a
   rolling reasoning ticker is competing for the same columns the route yields
   first: it does not change during a turn, and a fully qualified route id can

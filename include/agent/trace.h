@@ -85,11 +85,9 @@ inline PresentationRecord StoredToolCallPresentation(
 
 inline std::string PrintToolCallSummary(const json& call,
                                         const std::vector<Tool>& tools) {
-  if (!call.is_object() || !call.contains("function") ||
-      !call["function"].is_object()) {
-    return "";
-  }
-  const json& function = call["function"];
+  const json* found = JsonObject(call, "function");
+  if (!found) return "";
+  const json& function = *found;
   std::string name = JsonValue(function, "name", "");
   json args = ParsedToolCallArguments(function);
   PrintPresentation(StoredToolCallPresentation(name, args, tools));

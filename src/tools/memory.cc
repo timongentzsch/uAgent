@@ -193,7 +193,7 @@ std::optional<std::filesystem::path> CurrentWorkspace(std::string& error) {
   return std::nullopt;
 }
 
-constexpr size_t kMemoryEventBytes = 256 * 1024;
+constexpr size_t kMemoryEventBytes = size_t{256} * 1024;
 constexpr size_t kMemoryEventLineBytes = 4096;
 
 std::string MemoryEventsPath() {
@@ -231,40 +231,39 @@ bool AppendBoundedMemoryEvent(const std::string& line, std::string& error) {
     return false;
   }
   std::string path = MemoryEventsPath();
-  int fd = open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
-                kPrivateFileMode);
-  if (fd < 0) {
+  Fd fd(open(path.c_str(), O_CREAT | O_RDWR | O_APPEND | O_CLOEXEC,
+             kPrivateFileMode));
+  if (!fd) {
     error = strerror(errno);
     return false;
   }
   auto fail = [&](const std::string& message) {
     error = message;
-    flock(fd, LOCK_UN);
-    close(fd);
+    flock(fd.Get(), LOCK_UN);
     return false;
   };
-  if (!LockFileExclusive(fd)) return fail(strerror(errno));
+  if (!LockFileExclusive(fd.Get())) return fail(strerror(errno));
   struct stat status{};
-  if (fstat(fd, &status) != 0) return fail(strerror(errno));
+  if (fstat(fd.Get(), &status) != 0) return fail(strerror(errno));
   if (status.st_size > static_cast<off_t>(kMemoryEventBytes)) {
     off_t keep = static_cast<off_t>(kMemoryEventBytes / 2);
     off_t start = std::max<off_t>(0, status.st_size - keep);
     std::string tail(static_cast<size_t>(status.st_size - start), '\0');
-    ssize_t count = pread(fd, tail.data(), tail.size(), start);
+    ssize_t count = pread(fd.Get(), tail.data(), tail.size(), start);
     if (count < 0) return fail(strerror(errno));
     tail.resize(static_cast<size_t>(count));
     size_t first_line = tail.find('\n');
     if (start > 0 && first_line != std::string::npos) {
       tail.erase(0, first_line + 1);
     }
-    if (ftruncate(fd, 0) != 0 || lseek(fd, 0, SEEK_SET) < 0 ||
-        !WriteFully(fd, tail)) {
+    if (ftruncate(fd.Get(), 0) != 0 || lseek(fd.Get(), 0, SEEK_SET) < 0 ||
+        !WriteFully(fd.Get(), tail)) {
       return fail(strerror(errno));
     }
   }
-  if (!WriteFully(fd, line + "\n")) return fail(strerror(errno));
-  flock(fd, LOCK_UN);
-  if (close(fd) != 0) {
+  if (!WriteFully(fd.Get(), line + "\n")) return fail(strerror(errno));
+  flock(fd.Get(), LOCK_UN);
+  if (fd.Close() != 0) {
     error = strerror(errno);
     return false;
   }
@@ -306,7 +305,7 @@ ToolResult SearchMemoryText(const std::string& query) {
     size_t scanned = 0;
     bool key_match = AsciiLower(memory.key).find(needle) != std::string::npos;
     bool emitted = false;
-    while (scanned < 64 * 1024 && std::getline(input, line)) {
+    while (scanned < int64_t{64} * 1024 && std::getline(input, line)) {
       scanned += line.size() + 1;
       if (!key_match && AsciiLower(line).find(needle) == std::string::npos) {
         continue;

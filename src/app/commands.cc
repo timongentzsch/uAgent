@@ -113,10 +113,8 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
     }
     if (!candidate.info.efforts.empty()) {
       printf(" · supports ");
-      for (size_t effort = 0; effort < candidate.info.efforts.size();
-           ++effort) {
-        printf("%s%s", effort ? "," : "",
-               candidate.info.efforts[effort].c_str());
+      for (size_t index = 0; index < candidate.info.efforts.size(); ++index) {
+        printf("%s%s", index ? "," : "", candidate.info.efforts[index].c_str());
       }
     }
     printf("%s\n", RST());
@@ -336,7 +334,7 @@ void HandleContext(AppSession& session) {
       session.context.config_manager.DiagnosticJson(session.Runtime().config);
   effective["capabilities"] = session.ApiClient().capabilities.DiagnosticJson();
   const json& sources = effective["sources"];
-  auto source = [&](const char* key, std::string fallback = "runtime") {
+  auto source = [&](const char* key, const std::string& fallback = "runtime") {
     return sources.is_object() ? JsonValue(sources, key, fallback) : fallback;
   };
   std::string model_source = source("UAGENT_MODEL", source("OPENROUTER_MODEL"));

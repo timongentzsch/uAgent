@@ -152,7 +152,7 @@ std::string Base64File(const Attachment& attachment, uintmax_t max_bytes,
     return "";
   }
   out.reserve(*reserved);
-  std::vector<unsigned char> block(48 * 1024);
+  std::vector<unsigned char> block(size_t{48} * 1024);
   uintmax_t read_bytes = 0;
   size_t held = 0;  // bytes of an incomplete triple carried into the next read
   // Stop at end of file rather than reading once more to discover it: a short
@@ -258,8 +258,9 @@ json AttachmentContent(const std::string& prompt,
   int64_t limit_mb = AttachmentLimitMb();
   uintmax_t limit = static_cast<uintmax_t>(limit_mb) * 1024 * 1024;
   if (bytes > limit) {
-    error = "attachments total " + std::to_string(bytes / (1024 * 1024)) +
-            " MB; limit is " + std::to_string(limit_mb) + " MB";
+    error = "attachments total " +
+            std::to_string(bytes / (size_t{1024} * 1024)) + " MB; limit is " +
+            std::to_string(limit_mb) + " MB";
     return nullptr;
   }
 

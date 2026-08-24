@@ -63,7 +63,7 @@ std::vector<std::string> DifferentKeys(const RuntimeConfig& configured,
   }
   if (configured.web_search_api_key != active.web_search_api_key &&
       std::find(keys.begin(), keys.end(), "web_search_api_key") == keys.end()) {
-    keys.push_back("web_search_api_key");
+    keys.emplace_back("web_search_api_key");
   }
   return keys;
 }
@@ -100,15 +100,15 @@ EffectiveConfigSnapshot ConfigManager::Read() const {
   if (!custom_path_.empty()) {
     FileStamp stamp =
         MergeFile(custom_path_, "custom-config", process_, effective, origins);
-    snapshot.files.push_back({custom_path_, stamp});
+    snapshot.files.emplace_back(custom_path_, stamp);
   } else {
     FileStamp global =
         MergeFile(global_path_, "global-config", process_, effective, origins);
-    snapshot.files.push_back({global_path_, global});
+    snapshot.files.emplace_back(global_path_, global);
     if (trust_project_) {
       FileStamp project = MergeFile(project_path_, "project-config", process_,
                                     effective, origins);
-      snapshot.files.push_back({project_path_, project});
+      snapshot.files.emplace_back(project_path_, project);
     }
   }
   for (const auto& [key, value] : process_) {

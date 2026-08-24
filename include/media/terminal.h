@@ -76,7 +76,7 @@ inline void EmitItermImage(const std::string& data, uintmax_t bytes,
   }
   std::string start = "\033]1337;MultipartFile=" + options + "\a";
   emit(std::string_view(start));
-  constexpr size_t kChunkBytes = 64 * 1024;
+  constexpr size_t kChunkBytes = size_t{64} * 1024;
   for (size_t offset = 0; offset < data.size(); offset += kChunkBytes) {
     emit(std::string_view("\033]1337;FilePart="));
     emit(std::string_view(data).substr(

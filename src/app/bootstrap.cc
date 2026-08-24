@@ -21,6 +21,7 @@
 #include "include/core/config.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
@@ -410,27 +411,24 @@ void LogReady(const AppContext& context) {
 HeadlessOutput::~HeadlessOutput() { Restore(); }
 
 bool HeadlessOutput::Silence() {
-  if (saved_stdout_ >= 0) return true;
+  if (saved_stdout_) return true;
   fflush(stdout);
-  saved_stdout_ = dup(STDOUT_FILENO);
-  if (saved_stdout_ < 0) return false;
-  fcntl(saved_stdout_, F_SETFD, FD_CLOEXEC);
-  int null_fd = open("/dev/null", O_WRONLY);
-  if (null_fd < 0 || dup2(null_fd, STDOUT_FILENO) < 0) {
-    if (null_fd >= 0) close(null_fd);
+  saved_stdout_ = Fd(dup(STDOUT_FILENO));
+  if (!saved_stdout_) return false;
+  fcntl(saved_stdout_.Get(), F_SETFD, FD_CLOEXEC);
+  Fd null_fd(open("/dev/null", O_WRONLY));
+  if (!null_fd || dup2(null_fd.Get(), STDOUT_FILENO) < 0) {
     Restore();
     return false;
   }
-  close(null_fd);
   return true;
 }
 
 void HeadlessOutput::Restore() {
-  if (saved_stdout_ < 0) return;
+  if (!saved_stdout_) return;
   fflush(stdout);
-  dup2(saved_stdout_, STDOUT_FILENO);
-  close(saved_stdout_);
-  saved_stdout_ = -1;
+  dup2(saved_stdout_.Get(), STDOUT_FILENO);
+  saved_stdout_.Reset();
 }
 
 AppContext::AppContext(RuntimeConfig config, ConfigManager manager,

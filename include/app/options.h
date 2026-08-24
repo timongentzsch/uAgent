@@ -13,7 +13,7 @@ namespace uagent {
 enum class OptionsAction {
   kRun,
   kHelp,
-  kVersion,
+  kPrintVersion,
 };
 
 struct Options {

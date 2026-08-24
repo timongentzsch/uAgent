@@ -16,6 +16,7 @@
 
 #include "include/cli.h"
 #include "include/core/platform.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 
@@ -121,23 +122,17 @@ InteractiveOutput::~InteractiveOutput() { Stop(); }
 bool InteractiveOutput::Start() {
   int descriptors[2];
   if (pipe(descriptors) != 0) return false;
-  saved_ = dup(STDOUT_FILENO);
-  if (saved_ < 0) {
-    close(descriptors[0]);
-    close(descriptors[1]);
-    return false;
-  }
-  fcntl(saved_, F_SETFD, FD_CLOEXEC);
-  read_ = descriptors[0];
-  fcntl(read_, F_SETFL, fcntl(read_, F_GETFL) | O_NONBLOCK);
-  if (dup2(descriptors[1], STDOUT_FILENO) < 0) {
-    close(descriptors[0]);
-    close(descriptors[1]);
-    close(saved_);
-    read_ = saved_ = -1;
-    return false;
-  }
-  close(descriptors[1]);
+  Fd read_end(descriptors[0]);
+  Fd write_end(descriptors[1]);
+  Fd saved(dup(STDOUT_FILENO));
+  if (!saved) return false;
+  fcntl(saved.Get(), F_SETFD, FD_CLOEXEC);
+  fcntl(read_end.Get(), F_SETFL, fcntl(read_end.Get(), F_GETFL) | O_NONBLOCK);
+  if (dup2(write_end.Get(), STDOUT_FILENO) < 0) return false;
+  saved_ = std::move(saved);
+  read_ = std::move(read_end);
+  // From here stdout is the pipe, so signal handlers must not write there.
+  SetSignalTerminalFd(saved_.Get());
   // Buffered, deliberately: unbuffered turned every putchar of the streaming
   // markdown renderer into its own write(2) and left the renderer's byte/time
   // flush governor with nothing to govern. Buffering hands that governor the
@@ -151,22 +146,19 @@ bool InteractiveOutput::Start() {
 }
 
 void InteractiveOutput::Stop() {
-  if (saved_ < 0) return;
+  if (!saved_) return;
   fflush(stdout);
-  dup2(saved_, STDOUT_FILENO);
-  close(saved_);
-  saved_ = -1;
-  if (read_ >= 0) {
-    close(read_);
-    read_ = -1;
-  }
+  SetSignalTerminalFd(STDOUT_FILENO);
+  dup2(saved_.Get(), STDOUT_FILENO);
+  saved_.Reset();
+  read_.Reset();
 }
 
 std::string InteractiveOutput::Read() const {
   std::string out;
   char buffer[8192];
   for (;;) {
-    ssize_t count = read(read_, buffer, sizeof buffer);
+    ssize_t count = read(read_.Get(), buffer, sizeof buffer);
     if (count > 0) {
       out.append(buffer, static_cast<size_t>(count));
       continue;
@@ -178,7 +170,7 @@ std::string InteractiveOutput::Read() const {
 }
 
 void InteractiveOutput::Write(const std::string& text) const {
-  (void)WriteAll(saved_, text.data(), text.size());
+  (void)WriteAll(saved_.Get(), text.data(), text.size());
 }
 
 RawComposer::RawComposer(const InteractiveOutput& output)
@@ -195,12 +187,16 @@ bool RawComposer::Start() {
   raw.c_cc[VTIME] = 0;
   if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) return false;
   active_ = true;
+  // A fatal signal or Ctrl+Z from here on has to hand the terminal back
+  // cooked, and only the handler can do that.
+  ArmTerminalModes(saved_, raw);
   output_.Write("\033[?2004h");
   return true;
 }
 
 void RawComposer::Stop() {
   if (!active_) return;
+  DisarmTerminalModes();
   output_.Write("\033[?2004l");
   tcsetattr(STDIN_FILENO, TCSANOW, &saved_);
   active_ = false;
@@ -493,13 +489,15 @@ void RawComposer::History(int direction) {
   cursor_ = buffer_.size();
 }
 
-InputBroker::InputBroker() { (void)OpenNonblockingPipe(wake_); }
-
-InputBroker::~InputBroker() {
-  Shutdown();
-  if (wake_[0] >= 0) close(wake_[0]);
-  if (wake_[1] >= 0) close(wake_[1]);
+InputBroker::InputBroker() {
+  int wake[2] = {-1, -1};
+  if (OpenNonblockingPipe(wake)) {
+    wake_read_.Reset(wake[0]);
+    wake_write_.Reset(wake[1]);
+  }
 }
+
+InputBroker::~InputBroker() { Shutdown(); }
 
 std::string InputBroker::Read(const std::string& prompt, bool* eof,
                               bool keep_history, const std::string& initial) {
@@ -515,7 +513,7 @@ std::string InputBroker::Read(const std::string& prompt, bool* eof,
   return shutdown_ ? std::string() : answer_;
 }
 
-void InputBroker::DrainWake() const { DrainDescriptor(wake_[0]); }
+void InputBroker::DrainWake() const { DrainDescriptor(wake_read_.Get()); }
 
 bool InputBroker::Take(std::string& prompt, std::string& initial,
                        bool& keep_history) {
@@ -538,7 +536,7 @@ void InputBroker::Answer(std::string answer, bool eof) {
   changed_.notify_one();
 }
 
-void InputBroker::Notify() const { WakeDescriptor(wake_[1]); }
+void InputBroker::Notify() const { WakeDescriptor(wake_write_.Get()); }
 
 void InputBroker::Shutdown() {
   {

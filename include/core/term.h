@@ -5,6 +5,7 @@
 // Terminal colors and the blocking-call spinner. Every accessor returns an
 // empty string when stdout is not a TTY, so callers need no conditionals.
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
@@ -19,8 +20,13 @@
 
 namespace uagent {
 
+// Separate questions: NO_COLOR and TERM=dumb suppress colour without
+// suppressing cursor control, spinners or image protocols, and CLICOLOR_FORCE
+// asks for colour down a pipe.
 extern bool g_tty;
+extern bool g_color;
 extern volatile sig_atomic_t g_signal_tty;
+bool ResolveColorEnabled(bool tty);
 // True while the REPL owns a pinned composer, which paints its own status row
 // and must not be raced by the spinner thread. State-free header: the flag
 // itself lives in src/core/term.cc, like the activity registry below.
@@ -30,26 +36,26 @@ inline constexpr char kTerminalRestore[] = "\033[0m\033[39m\033[49m";
 // Separate from TERMINAL_RESTORE, which RST() emits mid-stream as a pure SGR
 // reset.
 inline constexpr char kTerminalModeReset[] = "\033[?2004l";
-inline const char* DIM() { return g_tty ? "\033[2m" : ""; }
-inline const char* RST() { return g_tty ? kTerminalRestore : ""; }
-inline const char* CYAN() { return g_tty ? "\033[36m" : ""; }
-inline const char* BLUE() { return g_tty ? "\033[38;5;68m" : ""; }
-inline const char* MUTED() { return g_tty ? "\033[90m" : ""; }
-inline const char* YEL() { return g_tty ? "\033[33m" : ""; }
-inline const char* RED() { return g_tty ? "\033[31m" : ""; }
-inline const char* GREEN() { return g_tty ? "\033[32m" : ""; }
-inline const char* BOLD() { return g_tty ? "\033[1m" : ""; }
+// One rule for every SGR accessor below.
+inline const char* Sgr(const char* sequence) { return g_color ? sequence : ""; }
+inline const char* DIM() { return Sgr("\033[2m"); }
+inline const char* RST() { return Sgr(kTerminalRestore); }
+inline const char* CYAN() { return Sgr("\033[36m"); }
+inline const char* BLUE() { return Sgr("\033[38;5;68m"); }
+inline const char* MUTED() { return Sgr("\033[90m"); }
+inline const char* YEL() { return Sgr("\033[33m"); }
+inline const char* RED() { return Sgr("\033[31m"); }
+inline const char* GREEN() { return Sgr("\033[32m"); }
+inline const char* BOLD() { return Sgr("\033[1m"); }
 // The band behind an echoed user turn, so a prompt is findable in scrollback.
-inline const char* InputBg() { return g_tty ? "\033[48;5;250m" : ""; }
-// Erase to end of line. With background-colour-erase this extends the current
-// background to the right edge, which is what turns the echo into a band.
+inline const char* InputBg() { return Sgr("\033[48;5;250m"); }
+// Cursor control, not colour, so it follows g_tty. With background-colour-erase
+// it extends the current background to the right edge, which bands the echo.
 inline const char* EraseToEol() { return g_tty ? "\033[K" : ""; }
-inline const char* BoldOff() { return g_tty ? "\033[22m" : ""; }
-inline const char* ITAL() { return g_tty ? "\033[3m" : ""; }
-inline const char* ItalOff() { return g_tty ? "\033[23m" : ""; }
-inline const char* FgDfl() {
-  return g_tty ? "\033[39m" : "";
-}  // default foreground
+inline const char* BoldOff() { return Sgr("\033[22m"); }
+inline const char* ITAL() { return Sgr("\033[3m"); }
+inline const char* ItalOff() { return Sgr("\033[23m"); }
+inline const char* FgDfl() { return Sgr("\033[39m"); }  // default foreground
 inline void TerminalRestore() {
   if (!g_tty) return;
   fputs(kTerminalRestore, stdout);
@@ -116,8 +122,9 @@ class TerminalSpinner {
                              std::chrono::steady_clock::now() - started_)
                              .count();
         const std::string shown =
-            rolling_ ? RenderCurrentTerminalActivity(TerminalWidth(14))
-                     : label_;
+            rolling_.load(std::memory_order_relaxed)
+                ? RenderCurrentTerminalActivity(TerminalWidth(14))
+                : label_;
         printf("\r%s%c %s · %s%s%s", DIM(), "|/-\\"[frame_], shown.c_str(),
                FmtDuration(elapsed).c_str(), EraseToEol(), RST());
         fflush(stdout);
@@ -137,7 +144,7 @@ class TerminalSpinner {
   // frame renders the prefix plus a sliding window of the buffer.
   void SetRolling(const std::string& prefix, const std::string& text,
                   ActivityTextTransform transform = nullptr) {
-    rolling_ = true;
+    rolling_.store(true, std::memory_order_relaxed);
     SetTerminalActivityRolling(activity_id_, prefix, text, transform);
     wake_.notify_one();
   }
@@ -166,7 +173,8 @@ class TerminalSpinner {
   uint64_t activity_id_ = 0;
   std::chrono::steady_clock::time_point started_;
   std::string label_;
-  bool rolling_ = false;
+  // Set by the streaming thread, read by the animation thread every frame.
+  std::atomic<bool> rolling_{false};
   std::thread thread_;
 };
 

@@ -61,7 +61,7 @@ void TestFileTools() {
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
   fs::path long_line = root / "long-line.txt";
-  CHECK(ToolWriteFile(long_line.string(), std::string(40 * 1024, 'x'))
+  CHECK(ToolWriteFile(long_line.string(), std::string(size_t{40} * 1024, 'x'))
             .output.starts_with("wrote "));
   std::string long_read = ToolReadFile(long_line.string(), 1, 1).output;
   CHECK(long_read.find("lines 1-1; line prefix limited") != std::string::npos);
@@ -287,9 +287,46 @@ void TestFileTools() {
 }
 
 void TestTerminalSafety() {
+  // Colour is a separate question from terminal-ness: an explicit opt-out
+  // wins over an explicit opt-in, and both win over the isatty answer.
+  const std::string prior_no_color = EnvStr("NO_COLOR");
+  const std::string prior_term = EnvStr("TERM");
+  const std::string prior_force = EnvStr("CLICOLOR_FORCE");
+  unsetenv("NO_COLOR");
+  unsetenv("CLICOLOR_FORCE");
+  setenv("TERM", "xterm-256color", 1);
+  CHECK(ResolveColorEnabled(true));
+  CHECK(!ResolveColorEnabled(false));
+  setenv("CLICOLOR_FORCE", "1", 1);
+  CHECK(ResolveColorEnabled(false));
+  setenv("CLICOLOR_FORCE", "0", 1);
+  CHECK(!ResolveColorEnabled(false));
+  unsetenv("CLICOLOR_FORCE");
+  setenv("TERM", "dumb", 1);
+  CHECK(!ResolveColorEnabled(true));
+  setenv("TERM", "xterm-256color", 1);
+  setenv("NO_COLOR", "1", 1);
+  CHECK(!ResolveColorEnabled(true));
+  setenv("CLICOLOR_FORCE", "1", 1);
+  CHECK(!ResolveColorEnabled(true));
+  for (const auto& [name, value] : {std::pair{"NO_COLOR", prior_no_color},
+                                    {"TERM", prior_term},
+                                    {"CLICOLOR_FORCE", prior_force}}) {
+    if (value.empty()) {
+      unsetenv(name);
+    } else {
+      setenv(name, value.c_str(), 1);
+    }
+  }
+
   bool prior = g_tty;
+  bool prior_color = g_color;
   g_tty = true;
+  g_color = true;
   CHECK(std::string(RST()).find("\033[49m") != std::string::npos);
+  g_color = false;
+  CHECK(std::string(RST()).empty());
+  g_color = true;
   CHECK(TerminalSafe("ok\x1b]52;bad\a") == "ok\\x1b]52;bad\\x07");
   CHECK(TerminalSafe("\x1b]0;title\a") == "\\x1b]0;title\\x07");
   CHECK(TerminalSafe("\x1b]8;;https://example.com\a"
@@ -309,9 +346,13 @@ void TestTerminalSafety() {
   CHECK(safe_long_osc.ends_with("\\x07"));
   CHECK(safe_long_osc.find('\x1b') == std::string::npos);
   CHECK(safe_long_osc.find('\a') == std::string::npos);
+  // Sanitising does not depend on isatty: a redirected transcript is exactly
+  // where an unescaped OSC gets replayed later by cat(1).
   g_tty = false;
-  CHECK(TerminalSafe("\x1b") == "\x1b");
+  g_color = false;
+  CHECK(TerminalSafe("\x1b") == "\\x1b");
   g_tty = prior;
+  g_color = prior_color;
   CHECK(DisplayWidth("ASCII") == 5);
   CHECK(DisplayWidth("界") >= 1);
   CHECK(WrapLines("abcdef", 3) == std::vector<std::string>({"abc", "def"}));

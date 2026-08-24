@@ -101,7 +101,7 @@ inline std::string PickSession() {
   int64_t n = 0;
   if (ParseInt64(ans.c_str(), n) && n >= 1 &&
       n <= static_cast<int64_t>(shown)) {
-    return sessions[n - 1].path;
+    return sessions[static_cast<size_t>(n - 1)].path;
   }
   printf("%s· not a listed number%s\n", DIM(), RST());
   return "";

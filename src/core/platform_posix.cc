@@ -7,6 +7,7 @@
 #include <array>
 #include <cerrno>
 
+#include "include/core/fd.h"
 #include "include/core/platform.h"
 
 extern char** environ;
@@ -28,16 +29,20 @@ bool WriteAll(int fd, const void* data, size_t size) {
 
 bool OpenNonblockingPipe(int descriptors[2]) {
   if (pipe(descriptors) != 0) return false;
-  for (int fd : {descriptors[0], descriptors[1]}) {
+  // Owned until both ends are configured, so a half-configured pipe cannot
+  // leak; the caller adopts them on the success path.
+  Fd read_end(descriptors[0]);
+  Fd write_end(descriptors[1]);
+  for (int fd : {read_end.Get(), write_end.Get()}) {
     int flags = fcntl(fd, F_GETFL);
     if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0 ||
         fcntl(fd, F_SETFD, FD_CLOEXEC) < 0) {
-      close(descriptors[0]);
-      close(descriptors[1]);
       descriptors[0] = descriptors[1] = -1;
       return false;
     }
   }
+  descriptors[0] = read_end.Release();
+  descriptors[1] = write_end.Release();
   return true;
 }
 

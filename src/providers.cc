@@ -41,7 +41,8 @@ std::string NormalizeModelId(std::string model) {
   bool separator = false;
   std::string normalized;
   normalized.reserve(model.size());
-  for (unsigned char value : model) {
+  for (char raw : model) {
+    const unsigned char value = Byte(raw);
     if (std::isspace(value)) {
       separator = !normalized.empty();
       continue;
@@ -112,7 +113,7 @@ bool SaveModelPreference(const ModelPreference& preference,
                          /*preserve_mode=*/false, error);
 }
 
-ModelSelection ParseModelSelection(std::string selection) {
+ModelSelection ParseModelSelection(const std::string& selection) {
   ModelSelection parsed;
   parsed.base = Trim(selection);
   for (;;) {
@@ -389,9 +390,9 @@ ProviderSetup ConfigureProvider(Api& api) {
     ModelPreference preference = LoadModelPreference();
     ModelSelection preferred = ParseModelSelection(preference.selection);
     if (preference.route) {
-      if (std::optional<ModelRoute> route = ResolveModelRoute(
+      if (std::optional<ModelRoute> saved = ResolveModelRoute(
               setup.routes, setup.providers, preferred.base)) {
-        ApplyRoute(api, *route);
+        ApplyRoute(api, *saved);
         ApplySelectionPolicy(api, preferred);
       }
     } else if (!preference.selection.empty()) {

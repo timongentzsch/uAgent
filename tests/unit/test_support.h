@@ -157,6 +157,7 @@ void Check(bool condition, const char* expression, int line);
   X(TestRegistries)                       \
   X(TestOptions)                          \
   X(TestMarkdownBlankLines)               \
+  X(TestTableRetroErasesRenderedRows)     \
   X(TestMarkdownMath)                     \
   X(TestCapsAndEscaping)                  \
   X(TestFileTools)                        \

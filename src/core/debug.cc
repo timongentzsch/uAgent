@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "include/core/events.h"
+#include "include/core/fd.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 
@@ -84,23 +85,22 @@ bool DebugSink::Start(std::string path) {
     error_ = error.message();
     return false;
   }
-  int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
-                kPrivateFileMode);
-  if (fd < 0) {
+  Fd fd(open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC,
+             kPrivateFileMode));
+  if (!fd) {
     error_ = strerror(errno);
     return false;
   }
-  if (fchmod(fd, kPrivateFileMode) != 0) {
+  if (fchmod(fd.Get(), kPrivateFileMode) != 0) {
     error_ = strerror(errno);
-    close(fd);
     return false;
   }
-  file_ = fdopen(fd, "w");
+  file_ = fdopen(fd.Get(), "w");
   if (!file_) {
     error_ = strerror(errno);
-    close(fd);
     return false;
   }
+  (void)fd.Release();  // fclose(file_) closes it from here on
   std::filesystem::path absolute = std::filesystem::absolute(path, error);
   path_ = error ? path : absolute.string();
   started_ = std::chrono::steady_clock::now();
@@ -170,11 +170,12 @@ JsonEventStream::~JsonEventStream() { Stop(); }
 
 bool JsonEventStream::Start() {
   if (file_) return true;
-  int fd = dup(STDOUT_FILENO);
-  if (fd < 0) return false;
-  file_ = fdopen(fd, "w");
-  if (!file_) close(fd);
-  return file_ != nullptr;
+  Fd fd(dup(STDOUT_FILENO));
+  if (!fd) return false;
+  file_ = fdopen(fd.Get(), "w");
+  if (!file_) return false;
+  (void)fd.Release();  // fclose(file_) closes it from here on
+  return true;
 }
 
 void JsonEventStream::Stop() {

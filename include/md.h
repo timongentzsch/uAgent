@@ -45,6 +45,10 @@ class MdStream {
   std::string row;
   std::vector<std::string> table;
   std::string cur_raw, prev_raw;
+  // What the terminal showed for this line, escapes excluded. The source is
+  // not a substitute: `**bold**` is eight source columns and four rendered.
+  std::string cur_rendered;
+  int escape_state = 0;  // 0 none · 1 after ESC · 2 inside CSI
   size_t prev_rows = 1;
   size_t pending_output = 0;
   bool output_started = false;
@@ -56,6 +60,10 @@ class MdStream {
   void Pc(char value);
   void Put(char value);
   void Put(std::string_view text);
+  // Every emitted byte passes through Put, the only place that can tell
+  // rendered text from the escapes around it.
+  void TrackRendered(char value);
+  void ForgetRenderedLine();
   void FlushOut();
   void EmitPre();
   std::string_view Marker() const;
@@ -72,6 +80,8 @@ class MdStream {
   // together.
   void ForgetPreviousLine();
   void RetroTable();
+  // A table that never ends is rendered in pieces rather than held.
+  void PushTableRow(const std::string& raw);
   void FlushTable();
 };
 

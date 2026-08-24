@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 0.5.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 0.6.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -25,7 +25,16 @@ target_link_libraries(uagent_options INTERFACE CURL::libcurl Threads::Threads)
 target_compile_features(uagent_options INTERFACE cxx_std_20)
 target_compile_definitions(uagent_options INTERFACE UAGENT_VERSION="${PROJECT_VERSION}")
 if(_IS_GCC_CLANG)
-  target_compile_options(uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic)
+  # Narrowing and signedness are load-bearing here: every limit in the agent is
+  # int64_t arithmetic that ends up indexing or sizing something unsigned.
+  target_compile_options(
+    uagent_options INTERFACE -fno-exceptions -Wall -Wextra -Wpedantic
+                             -Wconversion -Wsign-conversion -Wshadow
+                             -Wold-style-cast)
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  # Analyses the GUARDED_BY annotations in include/core/thread_annotations.h.
+  target_compile_options(uagent_options INTERFACE -Wthread-safety)
 endif()
 option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 if(UAGENT_WARNINGS_AS_ERRORS AND _IS_GCC_CLANG)
@@ -189,9 +198,11 @@ if(UAGENT_BUILD_BENCHMARKS)
 endif()
 
 if(UAGENT_BUILD_FUZZERS)
-  add_executable(uagent_fuzz_sse tests/fuzz/fuzz_sse.cc)
-  target_link_libraries(uagent_fuzz_sse PRIVATE uagent_core)
-  target_link_options(uagent_fuzz_sse PRIVATE -fsanitize=fuzzer)
+  foreach(_fuzzer sse input_decoder)
+    add_executable(uagent_fuzz_${_fuzzer} tests/fuzz/fuzz_${_fuzzer}.cc)
+    target_link_libraries(uagent_fuzz_${_fuzzer} PRIVATE uagent_core)
+    target_link_options(uagent_fuzz_${_fuzzer} PRIVATE -fsanitize=fuzzer)
+  endforeach()
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

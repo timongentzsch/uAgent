@@ -35,8 +35,8 @@ double EnvDouble(const char* name, double dflt) {
 
 namespace {
 
-constexpr int64_t kMaxMegabytes =
-    static_cast<int64_t>(std::numeric_limits<size_t>::max() / (1024 * 1024));
+constexpr int64_t kMaxMegabytes = static_cast<int64_t>(
+    std::numeric_limits<size_t>::max() / (int64_t{1024} * 1024));
 constexpr int64_t kMaxMinusOne = std::numeric_limits<int64_t>::max() - 1;
 
 int64_t EnvBounded(const char* name, int64_t dflt, int64_t minimum,
@@ -61,11 +61,11 @@ int64_t ToolBatchResultCap() {
 }
 
 int64_t ToolTraceProtectChars() {
-  return EnvBounded("UAGENT_TOOL_TRACE_PROTECT_CHARS", 64 * 1024, 0);
+  return EnvBounded("UAGENT_TOOL_TRACE_PROTECT_CHARS", int64_t{64} * 1024, 0);
 }
 
 int64_t ToolTracePruneMinChars() {
-  return EnvBounded("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", 32 * 1024, 0);
+  return EnvBounded("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", int64_t{32} * 1024, 0);
 }
 
 int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 85); }
@@ -116,7 +116,7 @@ int64_t ReadFileMaxLines() {
 }
 
 int64_t ReadFileBytes() {
-  return EnvBounded("UAGENT_READ_FILE_BYTES", 32 * 1024, 1024);
+  return EnvBounded("UAGENT_READ_FILE_BYTES", int64_t{32} * 1024, 1024);
 }
 
 int64_t ReadFileResultChars() {
@@ -127,7 +127,7 @@ int64_t ReadFileResultChars() {
 }
 
 int64_t EditFileBytes() {
-  return EnvLong("UAGENT_EDIT_FILE_BYTES", 10 * 1024 * 1024);
+  return EnvLong("UAGENT_EDIT_FILE_BYTES", int64_t{10} * 1024 * 1024);
 }
 
 int64_t ListDirEntries() {
@@ -143,15 +143,18 @@ int64_t MemoryBytes() { return EnvBounded("UAGENT_MEMORY_BYTES", 2048, 256); }
 int64_t MaxMemories() { return EnvBounded("UAGENT_MEMORY_FILES", 32, 1); }
 
 int64_t MemoryIdleSeconds() {
-  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", 6 * 60 * 60, 0, 48 * 60 * 60);
+  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", int64_t{6} * 60 * 60, 0,
+                    int64_t{48} * 60 * 60);
 }
 
 int64_t MemoryExtractBytes() {
-  return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", 32 * 1024, 4096, 256 * 1024);
+  return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", int64_t{32} * 1024, 4096,
+                    int64_t{256} * 1024);
 }
 
 int64_t SkillBodyBytes() {
-  return EnvBounded("UAGENT_SKILL_BYTES", 512 * 1024, 1024, 1024 * 1024);
+  return EnvBounded("UAGENT_SKILL_BYTES", int64_t{512} * 1024, 1024,
+                    int64_t{1024} * 1024);
 }
 
 int64_t SkillDescriptionBytes() {
@@ -178,7 +181,7 @@ int64_t GrepBytes() {
 }
 
 int64_t BashLogBytes() {
-  return EnvBounded("UAGENT_BASH_LOG_BYTES", 64 * 1024 * 1024, 1024);
+  return EnvBounded("UAGENT_BASH_LOG_BYTES", int64_t{64} * 1024 * 1024, 1024);
 }
 
 int64_t RunDefaultYieldMs() {
@@ -190,7 +193,7 @@ int64_t MaxBackgroundJobs() {
 }
 
 int64_t McpConfigBytes() {
-  return EnvBounded("UAGENT_MCP_CONFIG_BYTES", 1024 * 1024, 1024);
+  return EnvBounded("UAGENT_MCP_CONFIG_BYTES", int64_t{1024} * 1024, 1024);
 }
 
 int64_t McpDescriptionChars() { return EnvLong("UAGENT_MCP_DESC_CHARS", 400); }
@@ -323,7 +326,7 @@ constexpr LongOption kLongOptions[] = {
     {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes,
      1024, kAnyMax, false},
     {"UAGENT_MEMORY_ALWAYS_BYTES", "memory_always_bytes",
-     &RuntimeConfig::memory_always_bytes, 0, 64 * 1024, false},
+     &RuntimeConfig::memory_always_bytes, 0, int64_t{64} * 1024, false},
     {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
      &RuntimeConfig::project_doc_bytes, 0, kAnyMax, false},
     {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",

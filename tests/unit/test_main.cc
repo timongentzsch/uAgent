@@ -20,8 +20,8 @@ int RunTests() {
   std::setlocale(LC_CTYPE, "");
   curl_global_init(CURL_GLOBAL_DEFAULT);
   // The name precedes the run, so a failing CHECK names its test.
-#define UAGENT_RUN_TEST(name)                 \
-  std::cerr << "[ run ] " #name << std::endl; \
+#define UAGENT_RUN_TEST(name)            \
+  std::cerr << "[ run ] " #name << '\n'; \
   name();
   UAGENT_TESTS(UAGENT_RUN_TEST)
 #undef UAGENT_RUN_TEST

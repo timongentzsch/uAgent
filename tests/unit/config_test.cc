@@ -71,8 +71,10 @@ void TestProjectInstructionDiscovery() {
 
   ScopedEnv scoped_home("HOME", home.c_str());
 
-  ProjectInstructions loaded = LoadProjectInstructions(child, 32 * 1024);
-  MemoryIndex memories = LoadMemoryIndex(child, 32 * 1024 - loaded.text.size());
+  ProjectInstructions loaded =
+      LoadProjectInstructions(child, size_t{32} * 1024);
+  MemoryIndex memories =
+      LoadMemoryIndex(child, size_t{32} * 1024 - loaded.text.size());
   loaded.memory_index = memories.text;
   loaded.memory_sources = memories.sources;
   loaded.truncated |= memories.truncated;
@@ -119,10 +121,11 @@ void TestProjectInstructionDiscovery() {
   fs::create_directories(only_claude);
   CHECK(ToolWriteFile((only_claude / "CLAUDE.md").string(), "claude-fallback")
             .output.starts_with("wrote "));
-  CHECK(LoadProjectInstructions(only_claude, 32 * 1024)
+  CHECK(LoadProjectInstructions(only_claude, size_t{32} * 1024)
             .text.find("claude-fallback") != std::string::npos);
 
-  ProjectInstructions shadowed = LoadProjectInstructions(empty, 32 * 1024);
+  ProjectInstructions shadowed =
+      LoadProjectInstructions(empty, size_t{32} * 1024);
   CHECK(shadowed.text.find("must-not-load") == std::string::npos);
   ProjectInstructions capped = LoadProjectInstructions(child, 4);
   CHECK(capped.truncated);

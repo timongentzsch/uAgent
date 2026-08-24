@@ -21,6 +21,14 @@ namespace {
 constexpr size_t kFlushBytes = 256;
 constexpr auto kFlushInterval = std::chrono::milliseconds(16);
 
+// Each accumulator holds model-supplied text that only ends when the model
+// says so. Past these bounds the stream degrades to plain output rather than
+// growing: the line stops being measured, the math span replays as literal
+// text, the table renders the rows it has.
+constexpr size_t kMdLineBytes = size_t{1} << 20;
+constexpr size_t kMdMathBytes = size_t{64} * 1024;
+constexpr size_t kMdTableRows = 2000;
+
 const char* MathOpen(int math) {
   switch (math) {
     case 1:
@@ -366,7 +374,7 @@ void MdStream::Flush() {  // stream end: resolve everything still held
   if (dollar) Pc('$');
   if (slash) Pc('\\');
   if (intable || tablemode) {
-    if (!row.empty()) table.push_back(row);
+    if (!row.empty()) PushTableRow(row);
     row.clear();
     intable = tablemode = false;
   }
@@ -421,9 +429,46 @@ void MdStream::Pc(char c) {
 // thread (core/term.h) — on every single putchar. Every public entry point
 // drains the buffer before returning, so nothing an outside writer can
 // observe has moved.
-void MdStream::Put(char value) { outbuf += value; }
+void MdStream::Put(char value) {
+  outbuf += value;
+  TrackRendered(value);
+}
 
-void MdStream::Put(std::string_view text) { outbuf.append(text); }
+void MdStream::Put(std::string_view text) {
+  outbuf.append(text);
+  // Whole runs of plain text are the common case and carry no state change,
+  // so they are measured in one append rather than a byte at a time.
+  if (escape_state == 0 &&
+      text.find_first_of("\x1b\n\r") == std::string_view::npos) {
+    if (cur_rendered.size() < kMdLineBytes) cur_rendered.append(text);
+    return;
+  }
+  for (char value : text) TrackRendered(value);
+}
+
+// Colour changes cost no columns, and neither does the closing newline.
+void MdStream::TrackRendered(char value) {
+  if (escape_state != 0) {
+    if (escape_state == 1) {
+      escape_state = value == '[' ? 2 : 0;
+      return;
+    }
+    const unsigned char byte = Byte(value);
+    if (byte >= 0x40 && byte <= 0x7e) escape_state = 0;
+    return;
+  }
+  if (value == 0x1b) {
+    escape_state = 1;
+    return;
+  }
+  if (value == '\n' || value == '\r') return;
+  if (cur_rendered.size() < kMdLineBytes) cur_rendered += value;
+}
+
+void MdStream::ForgetRenderedLine() {
+  cur_rendered.clear();
+  escape_state = 0;
+}
 
 void MdStream::FlushOut() {
   if (outbuf.empty()) return;
@@ -445,14 +490,16 @@ std::string_view MdStream::Marker() const {  // pre minus its indentation
 }
 
 void MdStream::Step(char c) {
-  if (!intable && !tablemode && !fence && !fencehead && c != '\n') {
+  if (!intable && !tablemode && !fence && !fencehead && c != '\n' &&
+      cur_raw.size() < kMdLineBytes) {
     cur_raw += c;
   }
   if (intable) {  // line started with '|': one table row
     if (c == '\n') {
-      table.push_back(row);
+      PushTableRow(row);
       row.clear();
       cur_raw.clear();
+      ForgetRenderedLine();
       intable = false;
       linestart = true;
     } else {
@@ -467,7 +514,7 @@ void MdStream::Step(char c) {
       return;
     }
     if (SplitCells(row).size() > 1) {
-      table.push_back(row);
+      PushTableRow(row);
       row.clear();
       return;
     }
@@ -536,6 +583,7 @@ void MdStream::Classify(char c) {
       row = pre + c;
       pre.clear();
       cur_raw.clear();
+      ForgetRenderedLine();
       intable = true;
       return;
     }
@@ -763,6 +811,12 @@ void MdStream::InlineChar(char c) {
 }
 
 void MdStream::MathChar(char c) {
+  // An unterminated span would otherwise buffer the rest of the response.
+  if (math_text.size() >= kMdMathBytes) {
+    ReplayMath();
+    InlineChar(c);
+    return;
+  }
   if (slash) {
     slash = false;
     if ((math == 3 && c == ')') || (math == 4 && c == ']')) {
@@ -861,9 +915,12 @@ void MdStream::EndLine() {  // inline styles never span lines
     Put('\n');
   }
   size_t columns = TerminalWidth();
-  prev_rows = vis_line ? (vis_line - 1) / columns + 1 : 1;
+  // Rows come from the rendered line, which is what RetroTable has to erase.
+  size_t rendered = DisplayWidth(cur_rendered);
+  prev_rows = rendered ? (rendered - 1) / columns + 1 : 1;
   prev_raw = std::move(cur_raw);
   cur_raw.clear();
+  ForgetRenderedLine();
   linestart = true;
 }
 
@@ -875,8 +932,18 @@ void MdStream::RetroTable() {
   table.emplace_back(Marker());
   pre.clear();
   cur_raw.clear();
+  ForgetRenderedLine();
   ForgetPreviousLine();
   tablemode = true;  // body rows follow until a line without '|'
+}
+
+// At the cap, render what has arrived and start a fresh block.
+void MdStream::PushTableRow(const std::string& raw) {
+  table.push_back(raw);
+  if (table.size() < kMdTableRows) return;
+  bool resume = tablemode;
+  FlushTable();
+  tablemode = resume;
 }
 
 void MdStream::FlushTable() {

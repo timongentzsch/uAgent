@@ -290,7 +290,7 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
     int64_t tokens = used + pending + reserve;
     if (projected_tokens) *projected_tokens = tokens;
     double projected = static_cast<double>(tokens);
-    if (projected >= api_.ctx_window) return 100;
+    if (projected >= static_cast<double>(api_.ctx_window)) return 100;
     return static_cast<int64_t>(100.0 * projected /
                                 static_cast<double>(api_.ctx_window));
   }

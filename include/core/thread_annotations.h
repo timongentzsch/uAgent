@@ -2,12 +2,12 @@
 
 #ifndef UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
 #define UAGENT_INCLUDE_CORE_THREAD_ANNOTATIONS_H_
-// Clang thread-safety annotations, and nothing at all on other compilers.
-// Which mutex covers which field is checked by -Wthread-safety rather than
-// left to a comment. See
+// Clang thread-safety annotations when libc++ provides annotated mutexes.
+// libstdc++ mutexes are not capabilities, so Clang rejects attributes that
+// name them instead of analyzing their lock state. See
 // https://clang.llvm.org/docs/ThreadSafetyAnalysis.html.
 
-#if defined(__clang__)
+#if defined(__clang__) && defined(_LIBCPP_VERSION)
 #define UAGENT_TSA(annotation) __attribute__((annotation))
 #else
 #define UAGENT_TSA(annotation)

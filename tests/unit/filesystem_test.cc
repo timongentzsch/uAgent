@@ -215,6 +215,17 @@ void TestFileTools() {
       read_tool &&
       read_tool->run({{"path", root.string()}}, {}).output.find("outside.cc") ==
           std::string::npos);
+  const Tool* write_tool = FindTool(tools, "write_file");
+  CHECK(write_tool != nullptr);
+  fs::path empty_file = root / "empty";
+  if (write_tool) {
+    CHECK(InvalidToolArgument(*write_tool, {{"path", empty_file.string()}}) ==
+          "`content` is required");
+    CHECK(write_tool->run({{"path", empty_file.string()}, {"content", ""}}, {})
+              .Ok());
+    CHECK(fs::exists(empty_file));
+    CHECK(contents(empty_file).empty());
+  }
   const Tool* edit_tool = FindTool(tools, "edit_file");
   CHECK(edit_tool != nullptr);
   if (edit_tool) {

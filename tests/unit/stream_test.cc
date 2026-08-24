@@ -369,9 +369,16 @@ void TestBackgroundValidation() {
   CHECK(!supervisor.TakeAllForShutdown().empty());
   std::vector<Tool> tools = BuiltinTools(supervisor);
   CHECK(FindTool(tools, "wait_background") == nullptr);
+  const Tool* write = FindTool(tools, "write_file");
+  CHECK(write &&
+        write->parameters["required"] == json::array({"path", "content"}));
+  CHECK(write && write->parameters["properties"].size() == 2);
+  CHECK(write && write->parameters["properties"].contains("content"));
   const Tool* edit = FindTool(tools, "edit_file");
+  CHECK(edit && edit->parameters["required"] == json::array({"path", "edits"}));
+  CHECK(edit && edit->parameters["properties"].size() == 2);
   CHECK(edit && edit->parameters["properties"].contains("edits"));
-  CHECK(edit && !edit->parameters["properties"].contains("old"));
+  CHECK(edit && !edit->parameters["properties"].contains("content"));
   if (edit) {
     CHECK(ToolSummary(*edit, {{"path", "x"},
                               {"edits",

@@ -12,7 +12,8 @@ next request.
 | --- | --- | --- |
 | `read_path` | Read a known text file or bounded line range, or list a directory | standard and lean toolsets |
 | `grep` | Search paths or file contents with a regex and optional glob | standard and lean toolsets |
-| `edit_file` | Create or replace a file with `content`, or apply ordered exact `edits` atomically | standard toolset; mutating |
+| `write_file` | Create a file or replace it whole, including with empty content | standard toolset; mutating |
+| `edit_file` | Apply ordered exact replacements atomically to an existing file | standard toolset; mutating |
 | `attach` | Add a local image or document to the next model request | when attachments are enabled |
 | `show_image` | Render a local image with the terminal's native inline protocol | interactive terminals with inline-image support |
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |

@@ -28,10 +28,6 @@ inline constexpr int kSharedFileMode = 0644;
 inline constexpr int64_t kMinYieldMs = 250;
 inline constexpr int64_t kMaxYieldMs = 30000;
 
-// A tool call is always shown in full, so only a pathological argument needs
-// bounding. Live and replayed rows share the cap.
-inline constexpr size_t kToolLabelChars = 2048;
-
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_LIMITS_H_

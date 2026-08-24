@@ -19,7 +19,6 @@
 
 #include "include/core/debug.h"
 #include "include/core/json.h"
-#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -89,11 +88,10 @@ struct PresentationRecord {
 
 // What the agent decided to do is shown in full; only results are shortened
 // outside /verbose. A label with newlines becomes detail so the row stays one
-// line, and the bound keeps one argument from flooding the scrollback.
+// line.
 inline void SetCallLabel(PresentationRecord& record, std::string label) {
   record.multiline = label.find('\n') != std::string::npos;
-  (record.multiline ? record.detail : record.summary) =
-      Utf8Trunc(std::move(label), kToolLabelChars);
+  (record.multiline ? record.detail : record.summary) = std::move(label);
 }
 
 // A user-facing notice — one line the person should see. It rides the same

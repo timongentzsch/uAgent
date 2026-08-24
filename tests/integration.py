@@ -1373,13 +1373,37 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
 
 
 def test_multiline_run_keeps_action_color(root, home):
-    command = "printf 'one\\n'\nprintf 'two\\n'"
+    # Large enough to cross the old 2 KiB call-label cap and stdio write
+    # boundaries. Every line carries its own cyan SGR so a concurrent composer
+    # repaint cannot turn the tail into the terminal default foreground.
+    lines = [f"# color-segment-{index:03d}-" + "x" * 24 for index in range(90)]
+    lines.append("printf 'done\\n'")
+    command = "\n".join(lines)
     with Server([tool_call("run", {"command": command}), event({"content": "color-ok"})]) as server:
         code, output = run_pty(
             root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
         )
-        colored = b"\x1b[36m\xe2\x86\x92 run\r\nprintf 'one\\n'\r\nprintf 'two\\n'\x1b[0m"
-        assert_true(code == 0 and colored in output, output)
+        first = b"\x1b[36m\xe2\x86\x92 run\r\n\x1b[36m# color-segment-000"
+        assert_true(code == 0 and first in output, output)
+        for index in range(90):
+            marker = f"\x1b[36m# color-segment-{index:03d}".encode()
+            assert_true(marker in output, (index, output))
+
+
+def test_multiline_rejected_call_shows_arguments(root, home):
+    bad = {
+        "path": "visible-target",
+        "content": "replacement",
+        "edits": [{"old": "before", "new": "after", "replace_all": False}],
+    }
+    with Server([tool_call("edit_file", bad), event({"content": "rejected-ok"})]) as server:
+        code, output = run_pty(
+            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
+        )
+        assert_true(code == 0 and b"rejected-ok" in output, output)
+        assert_true(b"\xe2\x86\x92 edit_file(" in output, output)
+        assert_true(b'"path":"visible-target"' in output, output)
+        assert_true(b"supply either content or edits" in output, output)
 
 
 def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):

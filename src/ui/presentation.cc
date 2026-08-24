@@ -234,6 +234,7 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       break;
     default:
       if (event.render && event.presentation) {
+        if (state_) state_->BeginOutput();
         PrintPresentation(*event.presentation);
       }
       break;
@@ -266,6 +267,14 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     std::string prefix = "→ " + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       prefix += '\n' + TerminalSafe(record.detail);
+      // The persistent composer resets SGR when it paints a status row. Keep
+      // every physical line self-contained so a repaint between writes cannot
+      // leave the remainder in the terminal's default foreground colour.
+      size_t newline = 0;
+      while ((newline = prefix.find('\n', newline)) != std::string::npos) {
+        prefix.insert(++newline, CYAN());
+        newline += std::char_traits<char>::length(CYAN());
+      }
     } else if (!record.summary.empty()) {
       prefix += '(' + TerminalSafe(record.summary) + ')';
     }

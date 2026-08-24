@@ -71,6 +71,15 @@ void TestPollCollapse() {
   CHECK(!shown.poll);
   CHECK(shown.summary.find("waited on activity") == std::string::npos);
 
+  // Call arguments are history, not bounded result output. A long multiline
+  // call must survive both the live and replay presentation record intact.
+  std::string long_call = "first\n" + std::string(4096, 'x') + "\nlast";
+  PresentationRecord complete;
+  complete.kind = PresentationKind::kToolCall;
+  SetCallLabel(complete, long_call);
+  CHECK(complete.multiline);
+  CHECK(complete.detail == long_call);
+
   // Sending input steers the activity, so it is never treated as a poll.
   CallTask steering = quiet;
   steering.args = {{"id", 4242}, {"chars", "y\n"}};

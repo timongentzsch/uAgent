@@ -12,6 +12,17 @@
 
 ### Changed
 
+- Tool argument validation now reports stable issue codes and fields. Provider
+  arguments remain unchanged in history, while a separate canonical copy drives
+  validation, approval, policy, and execution.
+- Whole-file replacement is now the dedicated `write_file` operation;
+  `edit_file` accepts only ordered exact replacements. Empty writes remain valid,
+  and neither schema exposes mutually exclusive optional operations.
+- `activity` now requires an explicit `list`, `poll`, `wait`, `write`, or
+  `resize` operation. Irrelevant provider-materialized fields are removed only
+  from the execution copy, so field presence can no longer turn a wait into a
+  write or resize.
+
 - `attach` no longer carries a per-turn call cap of its own. Four was a limit
   on the wrong axis: it withdrew the tool from the schema once the count was
   reached, so a model handling five screenshots lost the tool rather than being

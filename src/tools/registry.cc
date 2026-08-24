@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -270,111 +271,171 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   python.stable_argument = "path";
   python.timeout_s = 0;  // bounded by the turn; no model-driven polling
 
-  // One tool for looking at running work: list them, drain one, write to one,
-  // or block until they finish. These were four tools whose only real
-  // difference was which optional argument was supplied, and their schemas
-  // cost more than the whole file-editing surface.
   Tool& activity = AddTool(
       tools,
       MakeTool(
           "activity",
-          "Inspect or drive activities. Omit id to list them, or with wait_ms "
-          "to block until any/all finish. With id, returns that activity's new "
-          "output; chars writes to it first (\\u0003 interrupts, empty polls), "
-          "and rows+cols resize a PTY. until returns early on a readiness "
-          "marker. Completion never starts a model turn.",
+          "Inspect or drive activities with an explicit operation: list, poll "
+          "one, wait for any/all, write to one, or resize its PTY. Completion "
+          "never starts a model turn.",
           schema(
               R"json({"type":"object","additionalProperties":false,"properties":{
-                    "id":{"type":"integer","minimum":1,"maximum":2147483647},
-                    "chars":{"type":"string","maxLength":65536},
-                    "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
-                    "until":{"type":"string","maxLength":256},
-                    "mode":{"type":"string","enum":["any","all"]},
-                    "rows":{"type":"integer","minimum":1,"maximum":1000},
-                    "cols":{"type":"integer","minimum":1,"maximum":1000},
-                    "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}}})json"),
+                  "operation":{"type":"string","enum":["list","poll","wait","write","resize"]},
+                  "id":{"type":"integer","minimum":1,"maximum":2147483647,
+                    "description":"activity for poll, write, or resize"},
+                  "chars":{"type":"string","maxLength":65536,
+                    "description":"bytes for write; empty is intentional"},
+                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
+                  "until":{"type":"string","maxLength":256,
+                    "description":"readiness marker for poll"},
+                  "mode":{"type":"string","enum":["any","all"],
+                    "description":"completion mode for wait"},
+                  "rows":{"type":"integer","description":"PTY rows in 1..1000"},
+                  "cols":{"type":"integer","description":"PTY columns in 1..1000"},
+                  "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}},
+                  "required":["operation"]})json"),
           [&supervisor](const json& a, const ToolContext& context) {
+            std::string operation = JsonValue(a, "operation", "");
             int64_t id = JsonValue(a, "id", int64_t{0});
+            int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
             int64_t cap = JsonValue(a, "max_output_chars", int64_t{0});
-            bool writing = a.contains("chars") || a.contains("rows");
-            // Writes settle quickly; a blocking wait is asked for explicitly
-            // and a bare drain returns what is already buffered.
-            int64_t wait_ms =
-                JsonValue(a, "wait_ms", writing ? int64_t{250} : int64_t{0});
-            if (writing) {
-              return ToolActivityInput(
-                  supervisor, id, JsonValue(a, "chars", ""), wait_ms, context,
-                  JsonValue(a, "rows", int64_t{0}),
-                  JsonValue(a, "cols", int64_t{0}), cap);
+            if (operation == "list") {
+              return ToolActivityOutput(supervisor, 0, 0, {}, context, cap);
             }
-            if (id <= 0 && wait_ms > 0) {
+            if (operation == "poll") {
+              return ToolActivityOutput(supervisor, id, wait_ms,
+                                        JsonValue(a, "until", ""), context,
+                                        cap);
+            }
+            if (operation == "wait") {
               return ToolActivityWait(supervisor, {},
                                       JsonValue(a, "mode", "any"), wait_ms,
                                       context, cap);
             }
-            return ToolActivityOutput(supervisor, id, wait_ms,
-                                      JsonValue(a, "until", ""), context, cap);
+            if (operation == "write") {
+              return ToolActivityInput(
+                  supervisor, id, JsonValue(a, "chars", ""),
+                  a.contains("wait_ms") ? wait_ms : 250, context, 0, 0, cap);
+            }
+            if (operation == "resize") {
+              return ToolActivityInput(
+                  supervisor, id, "", a.contains("wait_ms") ? wait_ms : 250,
+                  context, JsonValue(a, "rows", int64_t{0}),
+                  JsonValue(a, "cols", int64_t{0}), cap);
+            }
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: unknown activity operation");
           }));
-  activity.clamped_arguments = {"wait_ms", "max_output_chars", "rows", "cols"};
+  activity.canonicalize = [](json& a) {
+    std::string operation = JsonValue(a, "operation", "");
+    if (operation != "list" && operation != "poll" && operation != "wait" &&
+        operation != "write" && operation != "resize") {
+      return;
+    }
+    auto relevant = [&](std::string_view field) {
+      if (field == "id") {
+        return operation == "poll" || operation == "write" ||
+               operation == "resize";
+      }
+      if (field == "chars") return operation == "write";
+      if (field == "wait_ms") return operation != "list";
+      if (field == "until") return operation == "poll";
+      if (field == "mode") return operation == "wait";
+      if (field == "rows" || field == "cols") return operation == "resize";
+      return false;
+    };
+    for (std::string_view field :
+         {"id", "chars", "wait_ms", "until", "mode", "rows", "cols"}) {
+      if (!relevant(field)) a.erase(std::string(field));
+    }
+    auto cap = a.find("max_output_chars");
+    if (cap != a.end() && cap->is_number_integer() &&
+        cap->get<int64_t>() <= 0) {
+      a.erase(cap);
+    }
+  };
+  activity.clamped_arguments = {"wait_ms", "max_output_chars"};
   activity.parallel_safe = true;
-  // Reading and writing share one tool, so the union gates exposure and the
-  // per-call predicate gates approval, as the memory tool does.
   activity.capabilities = Capability(ToolCapability::kInspect) |
                           Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);
   activity.mutates = [](const json& a) {
-    return a.contains("chars") || a.contains("rows") || a.contains("cols");
+    std::string operation = JsonValue(a, "operation", "");
+    return operation == "write" || operation == "resize";
   };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   activity.visibility = Tool::Visibility::kDetachedTerminal;
   activity.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
-    if (a.contains("until") && (!a.contains("id") || !a.contains("wait_ms"))) {
-      return ArgumentIssue("activity.until", "until requires id and wait_ms",
-                           "until");
+    std::string operation = JsonValue(a, "operation", "");
+    if ((operation == "poll" || operation == "write" ||
+         operation == "resize") &&
+        !a.contains("id")) {
+      return ArgumentIssue("activity.missing_id", operation + " requires id",
+                           "id");
     }
-    if (a.contains("rows") != a.contains("cols")) {
-      return ArgumentIssue("activity.dimensions",
-                           "rows and cols must be supplied together");
+    if (operation == "write" && !a.contains("chars")) {
+      return ArgumentIssue("activity.missing_chars", "write requires chars",
+                           "chars");
     }
-    if ((a.contains("chars") || a.contains("rows")) &&
-        JsonValue(a, "id", int64_t{0}) <= 0) {
-      return ArgumentIssue("activity.missing_id", "writing requires id", "id");
+    if (operation == "wait" && !a.contains("wait_ms")) {
+      return ArgumentIssue("activity.missing_wait", "wait requires wait_ms",
+                           "wait_ms");
+    }
+    if (operation == "resize") {
+      int64_t rows = JsonValue(a, "rows", int64_t{0});
+      int64_t cols = JsonValue(a, "cols", int64_t{0});
+      if (rows < 1 || rows > 1000 || cols < 1 || cols > 1000) {
+        return ArgumentIssue("activity.invalid_dimensions",
+                             "resize requires rows and cols in 1..1000");
+      }
     }
     return std::nullopt;
   };
-  // One tool writes, resizes, waits, polls and lists, so the receipt leads
-  // with the verb the call actually performs. Naming only the target read as
-  // the wrong operation — a resize was indistinguishable from a bare poll.
   activity.summary = [](const json& a) {
+    std::string operation = JsonValue(a, "operation", "");
     int64_t id = JsonValue(a, "id", int64_t{0});
-    std::string target = id > 0
-                             ? "activity " + std::to_string(id)
-                             : JsonValue(a, "mode", "any") + " · all current";
+    if (operation.empty()) {
+      if (a.contains("chars")) {
+        operation = "write";
+      } else if (a.contains("rows") || a.contains("cols")) {
+        operation = "resize";
+      } else if (id > 0) {
+        operation = "poll";
+      } else if (JsonValue(a, "wait_ms", int64_t{0}) > 0) {
+        operation = "wait";
+      } else {
+        operation = "list";
+      }
+    }
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
     std::string wait =
         wait_ms > 0
-            ? "wait≤" + FmtDuration(static_cast<double>(wait_ms) / 1000.0)
+            ? " · wait≤" + FmtDuration(static_cast<double>(wait_ms) / 1000.0)
             : std::string();
-    std::string window = wait.empty() ? std::string() : " · " + wait;
-    if (a.contains("chars")) {
+    if (operation == "list") return std::string("list activities");
+    if (operation == "wait") {
+      return "wait for " + JsonValue(a, "mode", "any") + " · all current" +
+             wait;
+    }
+    std::string target = "activity " + std::to_string(id);
+    if (operation == "write") {
       return "write " +
              FmtBytes(static_cast<int64_t>(JsonValue(a, "chars", "").size())) +
-             " → " + target + window;
+             " → " + target + wait;
     }
-    if (a.contains("rows")) {
+    if (operation == "resize") {
       return "resize " + std::to_string(JsonValue(a, "rows", int64_t{0})) +
              "×" + std::to_string(JsonValue(a, "cols", int64_t{0})) + " → " +
-             target + window;
+             target + wait;
     }
-    if (a.contains("until")) {
+    if (operation == "poll" && a.contains("until")) {
       return "await " + TerminalSafe(JsonValue(a, "until", "")) + " · " +
-             target + window;
+             target + wait;
     }
-    if (!wait.empty()) return wait + " · " + target;
-    return id > 0 ? "poll " + target : std::string("list activities");
+    if (operation == "poll") return "poll " + target + wait;
+    return std::string("activity");
   };
-
   Tool& activity_stop = AddTool(
       tools,
       MakeTool("activity_stop",

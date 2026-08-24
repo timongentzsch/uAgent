@@ -50,10 +50,10 @@ untrusted model evidence even when you trust a server to run.
   exact variables with `UAGENT_SHELL_ENV_ALLOW`; the allowlist never applies to
   MCP servers, delegated agents, or `scratch`.
 - A `run(tty=true)` activity retains a writable PTY for the lifetime of the
-  harness. `activity(chars=...)` sends raw bytes with the permissions of the original
-  process, so treat every write, interrupt, and resize as process control.
-  Ordinary input to non-TTY activities is rejected. Detached persistent
-  activities retain logs but no reattachable stdin channel.
+  harness. `activity(operation=write, chars=...)` sends raw bytes with the
+  permissions of the original process, so treat every write, interrupt, and
+  resize as process control. Ordinary input to non-TTY activities is rejected.
+  Detached persistent activities retain logs but no reattachable stdin channel.
 - Automatic memory extraction runs only against one idle saved session. Its
   child receives the configured model credential but exposes only the memory
   tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript

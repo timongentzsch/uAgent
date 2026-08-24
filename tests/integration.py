@@ -1438,7 +1438,7 @@ def test_input_steering_yields_activity_wait(root, home):
                 }
             )
         if any("[running] activity" in result for result in results):
-            return tool_call("activity", {"wait_ms": 30000})
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return tool_call("run", {"command": "sleep 30", "yield_ms": 250})
 
     with Server([route]) as server:
@@ -3324,7 +3324,7 @@ def test_subagent_auto_join_continues_turn(root, home):
         if has_result:
             return event({"content": "late-task-ok"})
         if any("[started] subagent id " in str(message.get("content", "")) for message in messages):
-            return tool_call("activity", {"wait_ms": 30000})
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return tool_call("subagent", {"prompt": "child"})
 
     with Server([route]) as server:
@@ -3407,7 +3407,7 @@ def test_parallel_subagents_auto_join(root, home):
         if "child-a-result" in combined and "child-b-result" in combined:
             return event({"content": "parallel-task-ok"})
         if "[started] subagent id " in combined:
-            return tool_call("activity", {"wait_ms": 30000})
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return event(
             {
                 "tool_calls": [
@@ -3621,7 +3621,13 @@ def test_subagent_uses_selected_model_route(root, home):
         combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
         return event({"content": "route-ok" if "child-route-ok" in combined else "route-bad"})
 
-    parent = Server([delegate, lambda *_: tool_call("activity", {"wait_ms": 30000}), finish])
+    parent = Server(
+        [
+            delegate,
+            lambda *_: tool_call("activity", {"operation": "wait", "wait_ms": 30000}),
+            finish,
+        ]
+    )
     try:
         env = base_env(home, parent.url)
         env["UAGENT_CONTEXT"] = "32768"
@@ -3877,7 +3883,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "",
             )
             assert_true(f"activity {pid} " in listing, listing)
-            return tool_call("activity", {"id": pid})
+            return tool_call("activity", {"operation": "poll", "id": pid})
 
         def verify_output(_, body):
             results = tool_results(body["messages"])
@@ -3890,7 +3896,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
         def offer_output(_, body):
             names = function_names(body)
             assert_true("activity" in names, names)
-            return tool_call("activity", {})
+            return tool_call("activity", {"operation": "list"})
 
         with Server([offer_output, request_output, verify_output]) as server:
             inspect_env = base_env(home, server.url)
@@ -3965,7 +3971,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         return tool_call("run", {"command": f"kill -KILL {state['pid']}"})
 
     def inspect_group(_, body):
-        return tool_call("activity", {"id": state["pid"]})
+        return tool_call("activity", {"operation": "poll", "id": state["pid"]})
 
     def stop_group(_, body):
         result = tool_results(body["messages"])[-1]

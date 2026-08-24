@@ -21,7 +21,7 @@ namespace uagent {
 
 inline bool IsActivityPoll(const CallTask& task) {
   return task.tool && task.tool->name == "activity" &&
-         !(task.tool->mutates && task.tool->mutates(task.args)) &&
+         JsonValue(task.args, "operation", "") == "poll" &&
          JsonValue(task.args, "id", int64_t{0}) > 0;
 }
 

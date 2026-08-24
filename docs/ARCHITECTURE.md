@@ -115,15 +115,16 @@ retain interactive input after the harness exits.
 A single process-I/O thread blocks on PTY/pipe readiness and a nonblocking
 control pipe. `SIGCHLD` wakes a signal dispatcher that safely fans out to each
 supervisor control pipe, so child reaping does not require a fixed-frequency
-timer; only the bounded trailing-output grace creates a real deadline. The thread feeds the private log, an incremental 1 MiB head/tail
-buffer, and an aggregate bounded transcript, and it is the sole owner of
-process reaping and I/O-FD closure. The buffer preserves the oldest and newest bytes
-and reports an omitted middle. `activity` drains new output or waits for
-output, exit, a readiness marker, or queued steering; writing chars
-serializes PTY writes, polling, interruption, and resize for one activity.
-an id-less wait optionally joins blocked work and yields on queued steering
-without cancelling it, while `activity_stop` terminates the complete process
-group.
+timer; only the bounded trailing-output grace creates a real deadline. The
+thread feeds the private log, an incremental 1 MiB head/tail buffer, and an
+aggregate bounded transcript, and it is the sole owner of process reaping and
+I/O-FD closure. The buffer preserves the oldest and newest bytes
+and reports an omitted middle. Each `activity` call explicitly selects list,
+poll, wait, write, or resize; the operation, rather than the presence of an
+optional field, controls execution and approval. Interactions against one
+activity serialize PTY writes, polling, interruption, and resize. An id-less
+wait joins blocked work and yields on queued steering without cancelling it,
+while `activity_stop` terminates the complete process group.
 An exact live detached command and working-directory match returns the existing
 activity rather than spawning a duplicate. Results arrive at model-step
 boundaries. The persistent interactive loop and headless runner drain

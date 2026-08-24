@@ -322,13 +322,17 @@ class Application {
              std::to_string(app.runtime_.processes.ForegroundCount());
     }
 
+    size_t TailRows() const {
+      return DisplayRows(output_tail, TerminalWidth());
+    }
+
     // Erase from the top of the pinned region, which after a narrowing resize
     // starts above the status row: a terminal that rewraps has turned the row
     // written at the old width into several, and erasing from the last one
     // would leave the rest on screen for every later repaint to add to.
     void Unmount() {
       if (!composer.Drawn()) return;
-      size_t rows_up = composer.CaretRow() + 1 +
+      size_t rows_up = composer.CaretRow() + 1 + TailRows() +
                        StatusOverflowRows(status_columns, TerminalWidth());
       output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
       composer.Detach();
@@ -339,12 +343,15 @@ class Application {
     // caller differs only in the text it contributes and whether the composer
     // keeps its buffer, so geometry can only be wrong here.
     void Paint(std::string text, const std::string* prompt,
-               const std::string& initial, bool keep_history) {
+               const std::string& initial, bool keep_history,
+               std::optional<std::string> tail = std::nullopt) {
       Unmount();
+      if (tail) output_tail = std::move(*tail);
       if (!text.empty()) {
         if (text.back() != '\n') text += '\n';
         output.Write(text);
       }
+      if (!output_tail.empty()) output.Write(output_tail + "\n");
       output.Write(RenderedStatus() + "\n");
       if (prompt) {
         composer.Mount(*prompt, initial, keep_history);
@@ -379,13 +386,15 @@ class Application {
     }
 
     void FlushOutput(bool all) {
-      pending_output += output.Read();
-      size_t split = all ? pending_output.size() : pending_output.rfind('\n');
-      if (split == std::string::npos || split == 0) return;
-      if (!all) ++split;
-      std::string ready = pending_output.substr(0, split);
-      pending_output.erase(0, split);
-      Paint(std::move(ready), nullptr, {}, true);
+      InteractiveOutputUpdate update = output.Read(all);
+      if (!update.changed) return;
+      if (update.adopts_visible_tail) {
+        output_tail.clear();
+        update.committed.clear();
+        if (update.tail.empty()) return;
+      }
+      Paint(std::move(update.committed), nullptr, {}, true,
+            std::move(update.tail));
     }
 
     void StartWork(std::string input) {
@@ -413,7 +422,7 @@ class Application {
     bool answering = false;
     std::optional<std::string> next_input;
     std::string saved_draft;
-    std::string pending_output;
+    std::string output_tail;
     std::chrono::steady_clock::time_point started =
         std::chrono::steady_clock::now();
     std::optional<std::chrono::steady_clock::time_point> resize_settled;
@@ -432,6 +441,12 @@ class Application {
         output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
         output.Write(UserEchoRow(composer.Prompt(), TerminalSafe(event.text)) +
                      "\n");
+        // The submitted row now follows the visible tail, so that tail has
+        // entered scrollback and later deltas must start below the user row.
+        if (!output_tail.empty()) {
+          output.AdoptTail();
+          output_tail.clear();
+        }
       }
       if (event.kind == InteractiveInputKind::kBackground) {
         if (!working || !app.runtime_.processes.RequestForegroundBackground()) {

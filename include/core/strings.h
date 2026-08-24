@@ -58,6 +58,10 @@ std::string Utf8Trunc(std::string s, size_t cap);
 // incomplete sequences degrade to one column rather than breaking rendering.
 size_t DisplayWidth(const std::string& s);
 
+// Physical rows occupied by terminal text at a fixed width. SGR sequences are
+// zero-width and horizontal tabs follow the terminal's eight-column stops.
+size_t DisplayRows(const std::string& s, size_t columns);
+
 std::string DisplayTrunc(std::string s, size_t columns);
 std::string DisplayTail(std::string text, size_t columns);
 std::string ActivityLabel(const std::string& label, size_t columns);

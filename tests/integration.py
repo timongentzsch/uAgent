@@ -1501,6 +1501,35 @@ def test_input_idle_background_completion_is_observational(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
+def test_input_redraw_streaming_tail_survives_resize(root, home):
+    def streamed(handler, _):
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "TAIL-BEGIN"}, finish=None),
+                event({"content": "-TAIL-END"}),
+            ],
+            delay=0.4,
+        )
+
+    with Server([streamed]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"go\n", b"TAIL-BEGIN"),
+                (b"", b"TAIL-END", 36),
+                b"/q\n",
+            ],
+            columns=80,
+            timeout=10,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"TAIL-BEGIN-TAIL-END" in output, output)
+        assert_true(b"\x1eUAGENT\x1f" not in output, output)
+        assert_true(re.search(rb"\x1b\[\d+A\x1b\[J", output) is not None, output)
+
+
 def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
     def delayed(_, __):
         time.sleep(0.7)

@@ -14,6 +14,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/interactive.h"
 
 namespace uagent {
 namespace {
@@ -472,7 +473,7 @@ void MdStream::ForgetRenderedLine() {
 
 void MdStream::FlushOut() {
   if (outbuf.empty()) return;
-  fwrite(outbuf.data(), 1, outbuf.size(), stdout);
+  WriteTerminalTail(outbuf);
   outbuf.clear();
 }
 

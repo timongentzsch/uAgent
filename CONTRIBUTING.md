@@ -18,7 +18,7 @@ over local exceptions, and preserve behavior before redesigning a boundary.
 - Own a file descriptor with `Fd` (`include/core/fd.h`), never a bare `int`
   plus a `close` on each early return. Name the mutex that covers shared state
   with `UAGENT_GUARDED_BY`, and lock-holding helpers with `UAGENT_REQUIRES`
-  (`include/core/thread_annotations.h`); Clang checks both.
+  (`include/core/thread_annotations.h`).
 - Put session-static configuration in `RuntimeConfig`. Environment accessors
   are reserved for deliberately dynamic route/delegation state. Avoid
   unbounded inputs, queues, and arithmetic.
@@ -45,7 +45,7 @@ git diff --check
 ```
 
 Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
--Wsign-conversion -Wshadow -Wold-style-cast` and, on Clang with libc++, `-Wthread-safety`.
+-Wsign-conversion -Wshadow -Wold-style-cast`.
 Make a narrowing or signedness change explicit at the point it happens rather
 than widening the type that receives it.
 

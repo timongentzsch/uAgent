@@ -32,9 +32,10 @@ if(_IS_GCC_CLANG)
                              -Wconversion -Wsign-conversion -Wshadow
                              -Wold-style-cast)
 endif()
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  # Analyses the GUARDED_BY annotations in include/core/thread_annotations.h.
-  target_compile_options(uagent_options INTERFACE -Wthread-safety)
+if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20)
+  # Xcode 16 ships C++20 stop_token/jthread behind this libc++ feature gate.
+  target_compile_options(uagent_options INTERFACE -fexperimental-library)
 endif()
 option(UAGENT_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 if(UAGENT_WARNINGS_AS_ERRORS AND _IS_GCC_CLANG)

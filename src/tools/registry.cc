@@ -68,65 +68,60 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // file while keeping every other tool on the global result cap.
   read.result_chars = ReadFileResultChars();
 
-  // Creating and editing are the same act at different granularity, so one
-  // tool covers both: content replaces the file, edits change part of it.
+  Tool& write = path_tool(MakeTool(
+      "write_file",
+      "Create a file or replace it whole. Use edit_file for changes to an "
+      "existing file.",
+      schema(R"json({"type":"object","properties":{
+                  "path":{"type":"string"},
+                  "content":{"type":"string"}},
+                  "required":["path","content"]})json"),
+      [](const json& a, const ToolContext&) {
+        return ToolWriteFileWithDisplay(JsonValue(a, "path", ""),
+                                        JsonValue(a, "content", ""));
+      }));
+  write.mutating = true;
+  write.capabilities = Capability(ToolCapability::kMutate);
+  write.available_in_lean = false;
+  write.summary = [](const json& a) {
+    return JsonValue(a, "path", "") + " (" +
+           FmtBytes(static_cast<int64_t>(
+               JsonValue(a, "content", std::string()).size())) +
+           ")";
+  };
+
   Tool& edit = path_tool(MakeTool(
       "edit_file",
-      "Change a file: edits applies exact search/replace, batched and atomic "
-      "in order; content creates the file or replaces it whole. Prefer edits "
-      "on an existing file.",
+      "Apply exact search/replacements to an existing file, batched and "
+      "atomic in order.",
       schema(R"json({"type":"object","properties":{
-                    "path":{"type":"string"},
-                    "content":{"type":"string",
-                      "description":"whole new contents; omit when using edits"},
-                    "edits":{"type":"array","minItems":1,"maxItems":64,
-                      "description":"one or more exact replacements in order",
-                      "items":{"type":"object","properties":{
-                        "old":{"type":"string"},"new":{"type":"string"},
-                        "replace_all":{"type":"boolean"}},
-                        "required":["old","new"],"additionalProperties":false}}},
-                    "required":["path"]})json"),
+                  "path":{"type":"string"},
+                  "edits":{"type":"array","minItems":1,"maxItems":64,
+                    "description":"one or more exact replacements in order",
+                    "items":{"type":"object","properties":{
+                      "old":{"type":"string"},"new":{"type":"string"},
+                      "replace_all":{"type":"boolean"}},
+                      "required":["old","new"],"additionalProperties":false}}},
+                  "required":["path","edits"]})json"),
       [](const json& a, const ToolContext&) {
-        std::string path = JsonValue(a, "path", "");
-        if (a.contains("content")) {
-          return ToolWriteFileWithDisplay(path, JsonValue(a, "content", ""));
-        }
         std::vector<FileEdit> edits;
         for (const json& item : a["edits"]) {
           edits.push_back({JsonValue(item, "old", ""),
                            JsonValue(item, "new", ""),
                            JsonValue(item, "replace_all", false)});
         }
-        return ToolEditFile(path, edits);
+        return ToolEditFile(JsonValue(a, "path", ""), edits);
       }));
   edit.mutating = true;
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
-  edit.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
-    bool content = a.contains("content");
-    bool edits = a.contains("edits");
-    if (content == edits) {
-      return ArgumentIssue("edit.operation", "supply either content or edits");
-    }
-    return std::nullopt;
-  };
   edit.summary = [](const json& a) {
-    std::string path = JsonValue(a, "path", "");
-    if (a.contains("content")) {
-      return path + " (" +
-             FmtBytes(static_cast<int64_t>(
-                 JsonValue(a, "content", std::string()).size())) +
-             ")";
-    }
     size_t count = 0;
-    auto additional = a.find("edits");
-    if (additional != a.end() && additional->is_array()) {
-      count = additional->size();
-    }
-    return path + " (" + std::to_string(count) +
+    auto edits = a.find("edits");
+    if (edits != a.end() && edits->is_array()) count = edits->size();
+    return JsonValue(a, "path", "") + " (" + std::to_string(count) +
            (count == 1 ? " edit)" : " edits)");
   };
-
   Tool& grep = path_tool(MakeTool(
       "grep",
       "Locate file paths or matching content with a regex under an optional "

@@ -116,7 +116,7 @@ The core registry includes:
 | Area | Tools |
 | --- | --- |
 | inspect | `read_path`, `grep` |
-| mutate | `edit_file` |
+| mutate | `write_file`, `edit_file` |
 | execute | `run`, `scratch` |
 | activities | `activity`, `activity_stop` |
 | evidence and state | `attach`, `show_image`, `memory` |

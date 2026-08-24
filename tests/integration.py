@@ -1403,7 +1403,7 @@ def test_multiline_rejected_call_shows_arguments(root, home):
         assert_true(code == 0 and b"rejected-ok" in output, output)
         assert_true(b"\xe2\x86\x92 edit_file(" in output, output)
         assert_true(b'"path":"visible-target"' in output, output)
-        assert_true(b"supply either content or edits" in output, output)
+        assert_true(b"unknown argument" in output, output)
 
 
 def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
@@ -3161,7 +3161,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
                         "index": 0,
                         "id": "write-after-compact",
                         "function": {
-                            "name": "edit_file",
+                            "name": "write_file",
                             "arguments": json.dumps(
                                 {
                                     "path": str(output),
@@ -3582,9 +3582,9 @@ def test_subagent_uses_selected_model_route(root, home):
         assert_true(body.get("model") == "child-model", body.get("model"))
         assert_true("reasoning" in body and "stream_options" not in body, body)
         names = function_names(body)
-        assert_true({"edit_file", "memory"} <= names, names)
+        assert_true({"write_file", "edit_file", "memory"} <= names, names)
         return tool_call(
-            "edit_file",
+            "write_file",
             {"path": str(child_output), "content": "delegated"},
         )
 

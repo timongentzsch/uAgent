@@ -30,6 +30,16 @@
 
 namespace uagent {
 
+namespace {
+
+std::string ValidationMessage(const Tool& tool, const json& arguments) {
+  if (!tool.validate) return {};
+  auto issue = tool.validate(arguments);
+  return issue ? issue->message : std::string();
+}
+
+}  // namespace
+
 void TestActivitySessions() {
   RequestAbort();
   ClearAbort();
@@ -544,6 +554,10 @@ void TestToolExecutionPolicy() {
   CHECK(ToolParameters(tool)["additionalProperties"] == false);
   CHECK(InvalidToolArgument(tool, {{"invented", true}}) ==
         "unknown argument `invented`");
+  auto additional_issue = FindToolArgumentIssue(tool, {{"invented", true}});
+  CHECK(additional_issue &&
+        additional_issue->code == "schema.additional_property");
+  CHECK(additional_issue && additional_issue->field == "invented");
   tool.parameters["properties"]["ids"] = {
       {"type", "array"},
       {"maxItems", 2},
@@ -634,11 +648,10 @@ void TestToolExecutionPolicy() {
   CHECK(FindTool(restricted, "mutate") == nullptr);
   const Tool* allowed_run = FindTool(restricted, "run");
   CHECK(allowed_run != nullptr);
-  CHECK(
-      allowed_run &&
-      allowed_run->validate({{"command", "python3 slow_analysis.py"}}).empty());
   CHECK(allowed_run &&
-        !allowed_run->validate({{"command", "python3 other.py"}}).empty());
+        !allowed_run->validate({{"command", "python3 slow_analysis.py"}}));
+  CHECK(allowed_run &&
+        allowed_run->validate({{"command", "python3 other.py"}}));
 
   Tool terminal_only = unbounded;
   terminal_only.name = "terminal_only";
@@ -1411,16 +1424,14 @@ void TestGrepTool() {
     CHECK(run->timeout_s == 0);
     CHECK(run->command_policy);
     CHECK(static_cast<bool>(run->validate));
-    CHECK(run->validate({{"command", "cmake --build build"}}).empty());
-    CHECK(
-        run->validate({{"command", "python -c 'print(1')"}}).find("scratch") !=
-        std::string::npos);
-    CHECK(run->validate({{"command", "python3 script.py"}}).find("scratch") !=
-          std::string::npos);
-    CHECK(
-        run->validate({{"command", "pip install reportlab"}}).find("PEP 723") !=
-        std::string::npos);
-    CHECK(run->validate({{"command", "sudo tlmgr install tcolorbox"}})
+    CHECK(!run->validate({{"command", "cmake --build build"}}));
+    CHECK(ValidationMessage(*run, {{"command", "python -c 'print(1')"}})
+              .find("scratch") != std::string::npos);
+    CHECK(ValidationMessage(*run, {{"command", "python3 script.py"}})
+              .find("scratch") != std::string::npos);
+    CHECK(ValidationMessage(*run, {{"command", "pip install reportlab"}})
+              .find("PEP 723") != std::string::npos);
+    CHECK(ValidationMessage(*run, {{"command", "sudo tlmgr install tcolorbox"}})
               .find("privileged commands") != std::string::npos);
   }
   auto evaluator_tools = BuiltinTools(supervisor, root, false);
@@ -1431,8 +1442,7 @@ void TestGrepTool() {
                    .error = ""});
   const Tool* evaluator_run = FindTool(evaluator_tools, "run");
   CHECK(evaluator_run &&
-        evaluator_run->validate({{"command", "python3 slow_analysis.py"}})
-            .empty());
+        !evaluator_run->validate({{"command", "python3 slow_analysis.py"}}));
   const Tool* python = FindTool(lean_tools, "scratch");
   CHECK(python != nullptr);
   CHECK(python && ToolDescription(*python).find(
@@ -1467,19 +1477,19 @@ void TestGrepTool() {
   CHECK(activity && activity->parameters["properties"].contains("until"));
   CHECK(activity && activity->parameters["properties"]["mode"]["enum"] ==
                         json::array({"any", "all"}));
+  CHECK(activity && !activity->validate(
+                        {{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}}));
   CHECK(activity &&
-        !activity->validate({{"id", 1}, {"wait_ms", 1000}, {"until", "ready"}})
-             .size());
-  CHECK(activity &&
-        activity->validate({{"until", "ready"}})
+        ValidationMessage(*activity, {{"until", "ready"}})
                 .find("requires id and wait_ms") != std::string::npos);
-  CHECK(activity &&
-        activity->validate({{"chars", "x"}}).find("writing requires id") !=
-            std::string::npos);
-  CHECK(
-      activity &&
-      activity->validate({{"id", 1}, {"rows", 40}}).find("supplied together") !=
-          std::string::npos);
+  auto activity_issue =
+      activity ? activity->validate({{"until", "ready"}}) : std::nullopt;
+  CHECK(activity_issue && activity_issue->code == "activity.until");
+  CHECK(activity_issue && activity_issue->field == "until");
+  CHECK(activity && ValidationMessage(*activity, {{"chars", "x"}})
+                            .find("writing requires id") != std::string::npos);
+  CHECK(activity && ValidationMessage(*activity, {{"id", 1}, {"rows", 40}})
+                            .find("supplied together") != std::string::npos);
   // Reading needs no approval; writing does.
   CHECK(activity && !activity->mutates({{"id", 1}}));
   CHECK(activity && activity->mutates({{"id", 1}, {"chars", "y"}}));

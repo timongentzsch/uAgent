@@ -74,9 +74,15 @@ bool Agent::RunCalls(
   std::vector<CallTask> tasks(calls.size());
   std::atomic<int64_t> completion_sequence{0};
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
-                   const char* status) {
+                   const char* status,
+                   std::optional<ToolArgumentIssue> issue = std::nullopt) {
     task.result = ToolFailure(code, std::move(message));
     task.trace_status = status;
+    task.issue = std::move(issue);
+  };
+  auto issue_message = [](const ToolArgumentIssue& issue) {
+    return issue.message.starts_with("error:") ? issue.message
+                                               : "error: " + issue.message;
   };
   for (size_t index = 0; index < calls.size(); ++index) {
     const ToolCall& call = calls[index];
@@ -84,49 +90,66 @@ bool Agent::RunCalls(
     if (calls.size() > 1) {
       task.ordinal = "[" + std::to_string(index + 1) + "] ";
     }
-    task.args = json::parse(call.args, nullptr, false);
+    task.raw_args = json::parse(call.args, nullptr, false);
+    task.args = task.raw_args;
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
-    if (tool) ClampToolArguments(*tool, task.args);
+    if (tool && task.args.is_object()) {
+      if (tool->canonicalize) tool->canonicalize(task.args);
+      ClampToolArguments(*tool, task.args);
+    }
     const json& arguments = task.args;
-    std::string invalid;
     bool valid = false;
     if (arguments.is_discarded() || !arguments.is_object()) {
-      reject(task, ToolErrorCode::kInvalidArguments,
-             "error: malformed tool arguments (not valid JSON)",
-             "malformed_arguments");
+      ToolArgumentIssue issue = ArgumentIssue(
+          "arguments.malformed", "malformed tool arguments (not valid JSON)");
+      reject(task, ToolErrorCode::kInvalidArguments, "error: " + issue.message,
+             "malformed_arguments", issue);
     } else if (!tool) {
       reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
              "unknown_tool");
-    } else if (!(invalid = InvalidToolArgument(*tool, arguments)).empty()) {
+    } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
       reject(task, ToolErrorCode::kInvalidArguments,
-             "error: invalid tool argument: " + invalid, "invalid_argument");
-    } else if (tool->validate &&
-               !(invalid = tool->validate(arguments)).empty()) {
-      reject(task, ToolErrorCode::kInvalidArguments, std::move(invalid),
-             "rejected");
-    } else if (!(invalid =
-                     StableArgumentError(*tool, arguments, stable_arguments))
-                    .empty()) {
-      reject(task, ToolErrorCode::kInvalidArguments, std::move(invalid),
-             "unstable_argument");
-    } else if (tool->max_calls_per_turn >= 0 &&
-               tool_counts[call.name] >= tool->max_calls_per_turn) {
+             "error: invalid tool argument: " + issue->message,
+             "invalid_argument", std::move(issue));
+    } else if (tool->validate) {
+      auto semantic_issue = tool->validate(arguments);
+      if (semantic_issue) {
+        reject(task, ToolErrorCode::kInvalidArguments,
+               issue_message(*semantic_issue), "rejected",
+               std::move(semantic_issue));
+      } else {
+        valid = true;
+      }
+    } else {
+      valid = true;
+    }
+    if (valid) {
+      std::string stable =
+          StableArgumentError(*tool, arguments, stable_arguments);
+      if (!stable.empty()) {
+        ToolArgumentIssue issue =
+            ArgumentIssue("arguments.unstable", stable, tool->stable_argument);
+        reject(task, ToolErrorCode::kInvalidArguments, std::move(stable),
+               "unstable_argument", issue);
+        valid = false;
+      }
+    }
+    if (valid && tool->max_calls_per_turn >= 0 &&
+        tool_counts[call.name] >= tool->max_calls_per_turn) {
       reject(task, ToolErrorCode::kLimitExceeded,
              "error: " + call.name + " reached its per-turn call limit (" +
                  std::to_string(tool->max_calls_per_turn) +
                  "); continue from the results you have — do not "
                  "reimplement it with run",
              "call_limit");
-    } else {
-      task.label = ToolSummary(*tool, arguments);
-      valid = true;
+      valid = false;
     }
+    if (valid) task.label = ToolSummary(*tool, arguments);
     if (!valid) {
-      // A rejected call is still what the model attempted. Show its complete
-      // arguments instead of a bare tool name, which is useless when several
-      // malformed retries differ only in their payload.
-      task.label = arguments.is_discarded() ? call.args : JsonDump(arguments);
+      const json& shown =
+          task.raw_args.is_discarded() ? task.args : task.raw_args;
+      task.label = shown.is_discarded() ? call.args : JsonDump(shown);
     }
     Event call_event{EventId::kToolCall,
                      ToolCallData(call, turn_id_, step, text_mode)};

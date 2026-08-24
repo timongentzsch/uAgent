@@ -102,13 +102,13 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   edit.mutating = true;
   edit.capabilities = Capability(ToolCapability::kMutate);
   edit.available_in_lean = false;
-  edit.validate = [](const json& a) {
+  edit.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     bool content = a.contains("content");
     bool edits = a.contains("edits");
     if (content == edits) {
-      return std::string("error: supply either content or edits");
+      return ArgumentIssue("edit.operation", "supply either content or edits");
     }
-    return std::string();
+    return std::nullopt;
   };
   edit.summary = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
@@ -220,15 +220,19 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |
                      Capability(ToolCapability::kMutate);
-  run.validate = [](const json& a) {
+  run.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     std::string error = RunCommandPolicyError(JsonValue(a, "command", ""));
-    if (!error.empty()) return error;
+    if (!error.empty()) {
+      return ArgumentIssue("run.command_policy", std::move(error), "command");
+    }
     int64_t yield_ms = JsonValue(a, "yield_ms", int64_t{0});
     if (yield_ms > 0 && yield_ms < kMinYieldMs) {
-      return std::string("error: yield_ms must be 0 or at least ") +
-             std::to_string(kMinYieldMs);
+      return ArgumentIssue(
+          "run.yield_ms",
+          "yield_ms must be 0 or at least " + std::to_string(kMinYieldMs),
+          "yield_ms");
     }
-    return std::string();
+    return std::nullopt;
   };
   run.summary = [](const json& a) { return JsonValue(a, "command", ""); };
   run.timeout_s = 0;  // bounded by the turn; Escape remains responsive
@@ -329,18 +333,20 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   activity.visibility = Tool::Visibility::kDetachedTerminal;
-  activity.validate = [](const json& a) {
+  activity.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     if (a.contains("until") && (!a.contains("id") || !a.contains("wait_ms"))) {
-      return std::string("error: until requires id and wait_ms");
+      return ArgumentIssue("activity.until", "until requires id and wait_ms",
+                           "until");
     }
     if (a.contains("rows") != a.contains("cols")) {
-      return std::string("error: rows and cols must be supplied together");
+      return ArgumentIssue("activity.dimensions",
+                           "rows and cols must be supplied together");
     }
     if ((a.contains("chars") || a.contains("rows")) &&
         JsonValue(a, "id", int64_t{0}) <= 0) {
-      return std::string("error: writing requires id");
+      return ArgumentIssue("activity.missing_id", "writing requires id", "id");
     }
-    return std::string();
+    return std::nullopt;
   };
   // One tool writes, resizes, waits, polls and lists, so the receipt leads
   // with the verb the call actually performs. Naming only the target read as

@@ -69,31 +69,38 @@ std::optional<size_t> JsonSchemaSize(const json& schema,
                   : std::optional<size_t>(static_cast<size_t>(size));
 }
 
-std::string InvalidSchemaValue(const json& schema, const json& value,
-                               const std::string& path, bool root = false);
+std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
+                                                    const json& value,
+                                                    const std::string& path,
+                                                    bool root = false);
 
-std::string InvalidArrayValue(const json& schema, const json& value,
-                              const std::string& path) {
+std::optional<ToolArgumentIssue> InvalidArrayValue(const json& schema,
+                                                   const json& value,
+                                                   const std::string& path) {
   if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minItems");
       minimum && value.size() < *minimum) {
-    return "`" + path + "` has too few items";
+    return ArgumentIssue("schema.min_items", "`" + path + "` has too few items",
+                         path);
   }
   if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxItems");
       maximum && value.size() > *maximum) {
-    return "`" + path + "` has too many items";
+    return ArgumentIssue("schema.max_items",
+                         "`" + path + "` has too many items", path);
   }
   auto items = schema.find("items");
-  if (items == schema.end() || !items->is_object()) return "";
+  if (items == schema.end() || !items->is_object()) return std::nullopt;
   for (size_t index = 0; index < value.size(); ++index) {
-    std::string invalid = InvalidSchemaValue(
-        *items, value[index], path + "[" + std::to_string(index) + "]");
-    if (!invalid.empty()) return invalid;
+    auto invalid = InvalidSchemaValue(*items, value[index],
+                                      path + "[" + std::to_string(index) + "]");
+    if (invalid) return invalid;
   }
-  return "";
+  return std::nullopt;
 }
 
-std::string InvalidObjectValue(const json& schema, const json& value,
-                               const std::string& path, bool root) {
+std::optional<ToolArgumentIssue> InvalidObjectValue(const json& schema,
+                                                    const json& value,
+                                                    const std::string& path,
+                                                    bool root) {
   auto required = schema.find("required");
   if (required != schema.end() && required->is_array()) {
     for (const json& item : *required) {
@@ -101,7 +108,8 @@ std::string InvalidObjectValue(const json& schema, const json& value,
       const std::string& name = item.get_ref<const std::string&>();
       if (value.contains(name)) continue;
       std::string child = root || path.empty() ? name : path + "." + name;
-      return "`" + child + "` is required";
+      return ArgumentIssue("schema.required", "`" + child + "` is required",
+                           child);
     }
   }
 
@@ -112,16 +120,18 @@ std::string InvalidObjectValue(const json& schema, const json& value,
     for (const auto& [name, child] : value.items()) {
       (void)child;
       if (properties.contains(name)) continue;
-      return "unknown argument `" + (root ? name : path + "." + name) + "`";
+      std::string field = root ? name : path + "." + name;
+      return ArgumentIssue("schema.additional_property",
+                           "unknown argument `" + field + "`", field);
     }
   }
   for (const auto& [name, child_schema] : properties.items()) {
     if (!value.contains(name)) continue;
     std::string child = root || path.empty() ? name : path + "." + name;
-    std::string invalid = InvalidSchemaValue(child_schema, value[name], child);
-    if (!invalid.empty()) return invalid;
+    auto invalid = InvalidSchemaValue(child_schema, value[name], child);
+    if (invalid) return invalid;
   }
-  return "";
+  return std::nullopt;
 }
 
 bool JsonSchemaTypesMatch(const json& value, const json& types) {
@@ -135,17 +145,22 @@ bool JsonSchemaTypesMatch(const json& value, const json& types) {
   });
 }
 
-std::string InvalidSchemaValue(const json& schema, const json& value,
-                               const std::string& path, bool root) {
-  if (!schema.is_object()) return "";
+std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
+                                                    const json& value,
+                                                    const std::string& path,
+                                                    bool root) {
+  if (!schema.is_object()) return std::nullopt;
   auto types = schema.find("type");
   if (types != schema.end() && !JsonSchemaTypesMatch(value, *types)) {
-    return "`" + path + "` must be " + JsonSchemaTypeLabel(*types);
+    return ArgumentIssue(
+        "schema.type", "`" + path + "` must be " + JsonSchemaTypeLabel(*types),
+        path);
   }
   auto allowed = schema.find("enum");
   if (allowed != schema.end() && allowed->is_array() &&
       std::find(allowed->begin(), allowed->end(), value) == allowed->end()) {
-    return "`" + path + "` is not an allowed value";
+    return ArgumentIssue("schema.enum",
+                         "`" + path + "` is not an allowed value", path);
   }
 
   if (value.is_number()) {
@@ -153,28 +168,33 @@ std::string InvalidSchemaValue(const json& schema, const json& value,
     auto minimum = schema.find("minimum");
     if (minimum != schema.end() && minimum->is_number() &&
         number < minimum->get<double>()) {
-      return "`" + path + "` is below its minimum";
+      return ArgumentIssue("schema.minimum",
+                           "`" + path + "` is below its minimum", path);
     }
     auto maximum = schema.find("maximum");
     if (maximum != schema.end() && maximum->is_number() &&
         number > maximum->get<double>()) {
-      return "`" + path + "` is above its maximum";
+      return ArgumentIssue("schema.maximum",
+                           "`" + path + "` is above its maximum", path);
     }
   }
   if (value.is_string()) {
     const size_t size = value.get_ref<const std::string&>().size();
     if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minLength");
         minimum && size < *minimum) {
-      return "`" + path + "` is shorter than its minimum length";
+      return ArgumentIssue("schema.min_length",
+                           "`" + path + "` is shorter than its minimum length",
+                           path);
     }
     if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxLength");
         maximum && size > *maximum) {
-      return "`" + path + "` exceeds its maximum length";
+      return ArgumentIssue("schema.max_length",
+                           "`" + path + "` exceeds its maximum length", path);
     }
   }
   if (value.is_array()) return InvalidArrayValue(schema, value, path);
   if (value.is_object()) return InvalidObjectValue(schema, value, path, root);
-  return "";
+  return std::nullopt;
 }
 
 void ReadStringArray(const char* name, std::vector<std::string>& values,
@@ -227,7 +247,8 @@ void ClampToolArguments(const Tool& tool, json& args) {
   }
 }
 
-std::string InvalidToolArgument(const Tool& tool, const json& args) {
+std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
+                                                       const json& args) {
   return InvalidSchemaValue(ToolParameters(tool), args, tool.name,
                             /*root=*/true);
 }
@@ -286,18 +307,20 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
     if (!allowed && !allowlisted_run) return true;
     if (!tool.command_policy || policy.run_allowlist.empty()) return false;
 
-    tool.validate = [policy](const json& args) {
+    tool.validate =
+        [policy](const json& args) -> std::optional<ToolArgumentIssue> {
       if (!ExactRunAllowed(policy, args)) {
-        return std::string("error: command is not allowed by tool policy");
+        return ArgumentIssue("policy.command",
+                             "command is not allowed by tool policy",
+                             "command");
       }
       if (JsonValue(args, "detach", false) ||
           JsonValue(args, "shell", "bash") != "bash") {
-        return std::string(
-            "error: evaluator-authorized commands use foreground bash");
+        return ArgumentIssue(
+            "policy.execution_mode",
+            "evaluator-authorized commands use foreground bash");
       }
-      // The exact allowlist is stronger authority than the general shell
-      // heuristic (which normally redirects Python to scratch).
-      return std::string();
+      return std::nullopt;
     };
     tool.description +=
         " Only an evaluator-authorized exact command is allowed.";

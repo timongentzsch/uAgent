@@ -58,6 +58,17 @@ inline const char* ToolErrorCodeName(ToolErrorCode code) {
   return "internal";
 }
 
+struct ToolArgumentIssue {
+  std::string code;
+  std::string message;
+  std::string field;
+};
+
+inline ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
+                                       std::string field = {}) {
+  return {std::move(code), std::move(message), std::move(field)};
+}
+
 struct ToolArtifact {
   std::string path;
   uint64_t bytes = 0;
@@ -169,7 +180,8 @@ struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
   using Approval = std::function<bool(const json&)>;
-  using Validate = std::function<std::string(const json&)>;
+  using Validate = std::function<std::optional<ToolArgumentIssue>(const json&)>;
+  using Canonicalize = std::function<void(json&)>;
 
   std::string name;
   std::string description;
@@ -177,7 +189,8 @@ struct Tool {
   bool mutating = false;  // gated behind user approval
   Approval mutates;       // argument-dependent mutation (e.g. memory save)
   Run run;
-  Validate validate;           // args -> error before approval/execution
+  Canonicalize canonicalize;   // materialized provider args -> operation args
+  Validate validate;           // semantic issue before approval/execution
   Summary summary;             // args -> one-line display
   bool parallel_safe = false;  // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
@@ -293,10 +306,15 @@ inline const Tool* FindTool(const std::vector<Tool>& tools,
   return nullptr;
 }
 
-// Argument validation against a tool's JSON schema. The recursive walk and
-// its helpers live in src/tools/policy.cc — one TU calls them, and every
-// other includer of this header paid for parsing them.
-std::string InvalidToolArgument(const Tool& tool, const json& args);
+// Structured argument validation against a tool's JSON schema.
+std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
+                                                       const json& args);
+
+// Compatibility helper for callers that only need the human-readable error.
+inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
+  auto issue = FindToolArgumentIssue(tool, args);
+  return issue ? issue->message : std::string();
+}
 
 // Pull the tool's `clamped_arguments` back inside their schema bounds. Runs
 // before validation, so an overshooting hint is honoured at the bound.

@@ -2179,7 +2179,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         )
         assert_true(result.returncode == 0, result.stderr)
         records = [json.loads(line) for line in result.stdout.splitlines()]
-        assert_true(all(item["schema"] == "uagent.event.v1" for item in records), records)
+        assert_true(all(item["schema"] == "uagent.event.v2" for item in records), records)
         types = [item["type"] for item in records]
         assert_true(types[0] == "turn.started", types)
         assert_true("tool.call" in types and "tool.result" in types, types)

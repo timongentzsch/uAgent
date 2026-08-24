@@ -8,7 +8,7 @@ no application framework, no plugin system. It drives any OpenAI-compatible
 endpoint over direct HTTP streaming, supervises its own child processes, and
 emits every action as a typed event you can log, replay, and assert on.
 
-A release build is a 1.8 MB executable linking `libcurl`, `libc++`, and
+A release build is about a 2 MB executable linking `libcurl`, `libc++`, and
 `libSystem`. The only vendored source dependency is a single `json.hpp`.
 Linux and macOS.
 
@@ -39,7 +39,7 @@ wait, stop, background handoff mid-run with Ctrl+B, and log-only detach that
 outlives the turn. Nothing leaks on exit.
 
 **One observational spine, deliberately not a plugin system.** Every semantic
-event fans out to four fixed sinks — terminal, versioned `uagent.event.v1`
+event fans out to four fixed sinks — terminal, versioned `uagent.event.v2`
 JSONL, a sensitive debug trace, and a bounded metadata-only session journal.
 Emitters cannot read sink state or receive a result, so telemetry and rendering
 can never steer agent control flow. There is no runtime sink registration and

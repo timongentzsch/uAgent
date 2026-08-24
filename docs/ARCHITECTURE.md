@@ -12,7 +12,7 @@ main → Bootstrap → Application
                   ├─ Usage + session storage
                   └─ Observability
                        ├─ terminal presenter
-                       ├─ uagent.event.v1 JSONL
+                       ├─ uagent.event.v2 JSONL
                        ├─ debug JSONL
                        └─ bounded session journal
 ```
@@ -291,10 +291,10 @@ Verbose mode sends a labelled, muted stream into scrollback alongside expanded
 bounded tool output.
 
 `--debug` uses an ordered background writer; deterministic shutdown drains and
-joins it before process exit. `--json` and the existing `uagent.event.v1`
-`--json-stream` schema remain stable. No OTLP SDK is linked: the bounded JSONL
-formats are the optional telemetry boundary, and an external collector can
-tail them if deployment needs justify it.
+joins it before process exit. `--json-stream` is versioned as `uagent.event.v2`;
+`--json` keeps its separate result envelope. No OTLP SDK is linked: the bounded
+JSONL formats are the optional telemetry boundary, and an external collector
+can tail them if deployment needs justify it.
 
 ## Failure model
 

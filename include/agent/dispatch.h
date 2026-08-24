@@ -28,8 +28,10 @@ namespace uagent {
 
 struct CallTask {
   const Tool* tool = nullptr;
+  json raw_args;
   json args;
   ToolResult result;
+  std::optional<ToolArgumentIssue> issue;
   std::string trace_status;
   std::string label, ordinal;
   double duration_ms = 0;

@@ -85,8 +85,7 @@
   thread is a `std::jthread` whose stop token carries cancellation: a
   `std::stop_callback` wakes the poll, so the shutdown handshake is one call
   rather than a flag plus a manual pipe write.
-- Mutex-guarded state carries `UAGENT_GUARDED_BY` annotations, checked by
-  `-Wthread-safety`, and the build adds `-Wconversion -Wsign-conversion
+- Mutex-guarded state carries `UAGENT_GUARDED_BY` annotations, documenting lock ownership, and the build adds `-Wconversion -Wsign-conversion
   -Wshadow -Wold-style-cast`. clang-tidy runs the `bugprone`, `performance`,
   `misc` and `clang-analyzer` families rather than a hand-picked few.
 - The streaming markdown renderer bounds the three buffers a model could grow

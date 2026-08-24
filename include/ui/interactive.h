@@ -28,7 +28,7 @@ struct InteractiveOutputUpdate {
   std::string committed;
   std::string tail;
   bool changed = false;
-  bool adopts_visible_tail = false;
+  size_t adopted_prefix_bytes = 0;  // committed prefix already shown as tail
 };
 
 // Decodes immutable records and append-only stream fragments from the stdout

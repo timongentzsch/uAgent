@@ -388,10 +388,11 @@ class Application {
     void FlushOutput(bool all) {
       InteractiveOutputUpdate update = output.Read(all);
       if (!update.changed) return;
-      if (update.adopts_visible_tail) {
+      if (update.adopted_prefix_bytes > 0) {
         output_tail.clear();
-        update.committed.clear();
-        if (update.tail.empty()) return;
+        update.committed.erase(
+            0, std::min(update.adopted_prefix_bytes, update.committed.size()));
+        if (update.committed.empty() && update.tail.empty()) return;
       }
       Paint(std::move(update.committed), nullptr, {}, true,
             std::move(update.tail));

@@ -1383,6 +1383,8 @@ def test_multiline_run_keeps_action_color(root, home):
         code, output = run_pty(
             root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
         )
+        # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
+        assert_true(b"\x01" not in output, output)
         first = b"\x1b[36m\xe2\x86\x92 run\r\n\x1b[36m# color-segment-000"
         assert_true(code == 0 and first in output, output)
         for index in range(90):

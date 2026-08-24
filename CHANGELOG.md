@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Delegated children no longer duplicate the parent's always-on memory block,
+  which produced a misleading truncation warning in child logs.
 - Long multiline tool calls retain their action colour across persistent-composer
   repaints and are no longer shortened at 2,048 characters. Rejected calls also
   show their attempted arguments instead of a bare tool name.

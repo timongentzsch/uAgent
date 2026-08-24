@@ -192,7 +192,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
              {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
              {"UAGENT_TOOLSET", std::move(mode)},
-             {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"}});
+             {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"},
+             // The parent brief is standalone. Re-inlining every always-on
+             // memory in each child only duplicates context and emits a
+             // misleading truncation warning when that optional cache is full.
+             {"UAGENT_MEMORY_ALWAYS_BYTES", "0"}});
         // Only a background child is polled while it runs. A foreground child
         // is read once, where progress lines would only pad the answer the
         // parent quotes.

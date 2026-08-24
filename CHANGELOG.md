@@ -12,6 +12,8 @@
 
 ### Changed
 
+- `web_search` now accepts one required `queries` array instead of two
+  overlapping singular/plural inputs.
 - Tool argument validation now reports stable issue codes and fields. Provider
   arguments remain unchanged in history, while a separate canonical copy drives
   validation, approval, policy, and execution.

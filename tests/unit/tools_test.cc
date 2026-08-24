@@ -1059,6 +1059,15 @@ void TestOpenRouterServerSearch() {
   // them, or a retry would be cancelled before it ran.
   CHECK(search_tool.timeout_s == config.web_search_timeout_s * kSideAttempts);
   CHECK(search_tool.parameters["properties"]["queries"]["maxItems"] == 3);
+  CHECK(search_tool.parameters["required"] == json::array({"queries"}));
+  CHECK(!search_tool.parameters["properties"].contains("query"));
+  auto missing_queries = FindToolArgumentIssue(search_tool, json::object());
+  CHECK(missing_queries && missing_queries->code == "schema.required");
+  CHECK(missing_queries && missing_queries->field == "queries");
+  auto legacy_query = FindToolArgumentIssue(
+      search_tool, {{"query", "legacy"}, {"queries", {"current"}}});
+  CHECK(legacy_query && legacy_query->code == "schema.additional_property");
+  CHECK(search_tool.summary({{"queries", {"one", "two"}}}) == "one | two");
   CHECK(!search_tool.mutating);
   CHECK(search_tool.needs_approval &&
         search_tool.needs_approval(json::object()));

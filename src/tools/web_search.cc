@@ -143,9 +143,9 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
       "schema limit. Include dates or cutoffs in recency queries. Independent "
       "calls overlap. Do not repeat.",
       json::parse(R"json({"type":"object","properties":{
-          "query":{"type":"string","description":"single query"},
-          "queries":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":4,
-            "description":"1-4 queries"}}})json"),
+          "queries":{"type":"array","items":{"type":"string","minLength":1},
+            "minItems":1,"maxItems":4,"description":"1-4 queries"}},
+          "required":["queries"]})json"),
       [&api, &usage, providers = std::move(providers)](
           const json& a, const ToolContext& context) -> ToolResult {
         WebSearchRoute active = SelectWebSearchRoute(api, providers);
@@ -154,20 +154,14 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                              "error: web_search is not configured");
         }
         std::vector<std::string> queries;
-        if (a.contains("queries") && a["queries"].is_array()) {
-          for (const json& value : a["queries"]) {
-            if (!value.is_string()) continue;
-            std::string query = Trim(value.get<std::string>());
-            if (!query.empty()) queries.push_back(std::move(query));
+        queries.reserve(a["queries"].size());
+        for (const json& value : a["queries"]) {
+          std::string query = Trim(value.get<std::string>());
+          if (query.empty()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: queries must not be blank");
           }
-        }
-        if (queries.empty()) {
-          std::string query = Trim(JsonValue(a, "query", ""));
-          if (!query.empty()) queries.push_back(std::move(query));
-        }
-        if (queries.empty()) {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "error: query or queries is required");
+          queries.push_back(std::move(query));
         }
         size_t max_queries = static_cast<size_t>(
             std::min<int64_t>(4, api.config.web_search_max_uses));
@@ -260,17 +254,15 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                    Capability(ToolCapability::kExternal);
   t.needs_approval = [](const json&) { return true; };
   t.summary = [](const json& a) {
-    if (a.contains("queries") && a["queries"].is_array()) {
-      std::string summary;
-      for (const json& query : a["queries"]) {
-        if (query.is_string()) {
-          summary += (summary.empty() ? "" : " | ") +
-                     FirstLine(query.get<std::string>());
-        }
-      }
-      return summary;
+    auto queries = a.find("queries");
+    if (queries == a.end() || !queries->is_array()) return std::string();
+    std::string summary;
+    for (const json& query : *queries) {
+      if (!query.is_string()) continue;
+      summary +=
+          (summary.empty() ? "" : " | ") + FirstLine(query.get<std::string>());
     }
-    return JsonValue(a, "query", "");
+    return summary;
   };
   t.parallel_safe = true;
   t.parameters["properties"]["queries"]["maxItems"] =

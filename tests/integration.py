@@ -1805,7 +1805,7 @@ def test_openrouter_named_search_contract_and_errors(root, home):
         result = tool_results(body["messages"])[-1]
         assert_true("grounded answer" in result, result)
         assert_true("https://example.com/current" in result, result)
-        return tool_call("web_search", {"query": "failure probe"}, call_id="search-2")
+        return tool_call("web_search", {"queries": ["failure probe"]}, call_id="search-2")
 
     def finish(_, body):
         result = tool_results(body["messages"])[-1]
@@ -1814,7 +1814,11 @@ def test_openrouter_named_search_contract_and_errors(root, home):
 
     with Server([successful_search, rejected_search]) as search_server:
         with Server(
-            [tool_call("web_search", {"query": "current fact"}), ask_again, finish]
+            [
+                tool_call("web_search", {"queries": ["current fact"]}),
+                ask_again,
+                finish,
+            ]
         ) as model_server:
             env = base_env(home, model_server.url)
             env.update(
@@ -1836,6 +1840,8 @@ def test_openrouter_named_search_contract_and_errors(root, home):
                 schema["parameters"]["properties"]["queries"]["maxItems"] == 3,
                 schema,
             )
+            assert_true(schema["parameters"]["required"] == ["queries"], schema)
+            assert_true("query" not in schema["parameters"]["properties"], schema)
             assert_true(
                 all(
                     function_names(body) >= {"web_search"}

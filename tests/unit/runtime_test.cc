@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "include/api/retry.h"
+#include "include/tools/child_agent.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -385,6 +386,7 @@ void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_api("UAGENT_API_KEY", "secret");
   ScopedEnv scoped_token("GITHUB_TOKEN", "secret");
   ScopedEnv scoped_usage("UAGENT_USAGE_FILE", "/tmp/ledger");
+  ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
   ScopedEnv scoped_allow("UAGENT_SHELL_ENV_ALLOW",
                          " GITHUB_TOKEN, SSH_AUTH_SOCK ");
@@ -404,6 +406,45 @@ void TestChildEnvironmentPolicy() {
       {{"UAGENT_API_KEY", "explicit"}, {"UAGENT_USAGE_FILE", "/tmp/child"}});
   CHECK(delegated.Contains("UAGENT_API_KEY"));
   CHECK(delegated.Contains("UAGENT_USAGE_FILE"));
+
+  SideRoute route;
+  route.base_url = "https://child.example/v1";
+  route.api_key = "child-key";
+  route.model = "child-model";
+  route.context = 32768;
+  route.effort = "high";
+  route.protocol = ProviderProtocol::kOpenRouter;
+  route.variant = "nitro";
+  EnvironmentOverrides child_overrides = ChildAgentEnvironment(route);
+  auto child_value = [&](std::string_view key) {
+    auto found =
+        std::find_if(child_overrides.begin(), child_overrides.end(),
+                     [&](const auto& entry) { return entry.first == key; });
+    return found == child_overrides.end() ? std::string() : found->second;
+  };
+  CHECK(child_value("UAGENT_BASE_URL") == "https://child.example/v1");
+  CHECK(child_value("UAGENT_API_KEY") == "child-key");
+  CHECK(child_value("UAGENT_MODEL") == "child-model");
+  CHECK(child_value("UAGENT_CONTEXT") == "32768");
+  CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
+  CHECK(child_value("UAGENT_OPENROUTER_COMPATIBLE") == "1");
+  CHECK(child_value("UAGENT_OPENROUTER_VARIANT") == "nitro");
+  ChildEnvironment child(child_overrides);
+  CHECK(!child.Contains("UAGENT_PROVIDERS"));
+  CHECK(child.Contains("UAGENT_API_KEY"));
+
+  std::string diagnostics =
+      "diagnostic-head\n" + std::string(6000, 'x') + "\ndiagnostic-tail";
+  std::string report =
+      ChildAgentFailureReport("provider/child @ child.example",
+                              ChildAgentFailureStage::kExecution, diagnostics);
+  CHECK(report.size() < 3000);
+  CHECK(report.find("configured route: provider/child @ child.example") !=
+        std::string::npos);
+  CHECK(report.find("failure stage: child execution") != std::string::npos);
+  CHECK(report.find("fallback: none") != std::string::npos);
+  CHECK(report.find("diagnostic-head") != std::string::npos);
+  CHECK(report.find("diagnostic-tail") != std::string::npos);
 }
 
 void TestModelPreference() {

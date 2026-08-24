@@ -34,6 +34,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/files.h"
 
 namespace uagent {
@@ -924,13 +925,19 @@ std::vector<std::string> TakeCompleted(
       output = std::move(collected.output);
     }
     if (collected.artifact) output += ArtifactHint(*collected.artifact);
+    ActivityKind activity_kind =
+        job.session ? job.session->kind
+                    : ParseActivityKind(job.kind, job.detached);
+    if (activity_kind == ActivityKind::kSubagent &&
+        !(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
+      output = ChildAgentFailureReport(job.display_label,
+                                       ChildAgentFailureStage::kExecution,
+                                       std::move(output));
+    }
     std::string formatted =
         BgResultHeader(job) + "\n" + output + FmtExit(status, /*show_ok=*/true);
     notes.push_back(formatted);
     if (details) {
-      ActivityKind activity_kind =
-          job.session ? job.session->kind
-                      : ParseActivityKind(job.kind, job.detached);
       details->push_back({ActivityId(job), activity_kind, job.kind, status,
                           job.cmd, std::move(output), job.display_label,
                           job.receipt_path, job.source_id});

@@ -1548,7 +1548,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
             ],
         )
         assert_true(code == 0, output)
-        assert_true(b"status-redraw-ok" in output, output)
+        assert_true(output.count(b"status-redraw-ok") == 1, output)
         assert_true(output.count(b"pending draft") <= 2, output)
 
 

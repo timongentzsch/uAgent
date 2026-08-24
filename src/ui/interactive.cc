@@ -270,10 +270,10 @@ InteractiveOutputUpdate InteractiveTranscript::Feed(std::string_view bytes,
   }
   if (finish) CommitTail(update);
   update.tail = tail_;
-  update.adopts_visible_tail =
-      visible_tail_bytes > 0 &&
-      update.committed.size() == visible_tail_bytes + 1 &&
-      update.committed.back() == '\n';
+  if (visible_tail_bytes > 0 && update.committed.size() > visible_tail_bytes &&
+      update.committed[visible_tail_bytes] == '\n') {
+    update.adopted_prefix_bytes = visible_tail_bytes + 1;
+  }
   return update;
 }
 

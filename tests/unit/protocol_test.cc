@@ -156,7 +156,13 @@ void TestInteractiveTranscriptFraming() {
   InteractiveOutputUpdate final = legacy.Feed({}, true);
   CHECK(final.committed == "live\n");
   CHECK(final.tail.empty());
-  CHECK(final.adopts_visible_tail);
+  CHECK(final.adopted_prefix_bytes == std::string("live\n").size());
+
+  InteractiveTranscript promoted;
+  CHECK(promoted.Feed("visible").tail == "visible");
+  InteractiveOutputUpdate with_footer = promoted.Feed("\nfooter\n");
+  CHECK(with_footer.committed == "visible\nfooter\n");
+  CHECK(with_footer.adopted_prefix_bytes == std::string("visible\n").size());
 
   InteractiveTranscript steered;
   CHECK(steered.Feed("before").tail == "before");

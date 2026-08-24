@@ -447,10 +447,10 @@ void TestOptions() {
   char attach_flag[] = "--attach";
   char attachment[] = "image.png";
   char debug[] = "--debug=trace.jsonl";
-  char json[] = "--json";
+  char json_flag[] = "--json";
   char no_memory[] = "--no-memory";
   char* arguments[] = {executable, yolo,  prompt_flag, prompt,   attach_flag,
-                       attachment, debug, json,        no_memory};
+                       attachment, debug, json_flag,   no_memory};
   ParsedOptions parsed = ParseOptions(9, arguments);
   CHECK(parsed.Ok());
   CHECK(parsed.action == OptionsAction::kRun);
@@ -490,10 +490,10 @@ void TestOptions() {
   CHECK(!missing.Ok());
   CHECK(missing.error.find("requires a value") != std::string::npos);
 
-  char* json_without_prompt[] = {executable, json};
+  char* json_without_prompt[] = {executable, json_flag};
   CHECK(!ParseOptions(2, json_without_prompt).Ok());
 
-  char* conflicting_json[] = {executable, prompt_flag, prompt, json,
+  char* conflicting_json[] = {executable, prompt_flag, prompt, json_flag,
                               json_stream};
   CHECK(!ParseOptions(5, conflicting_json).Ok());
 

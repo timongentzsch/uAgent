@@ -197,7 +197,8 @@ class Agent {
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
                                  TurnState& state, TurnLoop& loop);
   bool HandleActivityPollResults(const std::vector<ActivityPollResult>& polls,
-                                 TurnState& state, TurnLoop& loop);
+                                 bool exclusive, TurnState& state,
+                                 TurnLoop& loop);
   bool StopForRepeatedRejections(const std::vector<ToolRejection>& rejections,
                                  TurnState& state, TurnLoop& loop);
   void PushAssistantMessage(ChatResult& response,

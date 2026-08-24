@@ -3468,6 +3468,48 @@ def test_activity_no_change_polls_are_steered_then_stopped(root, home):
         assert_true(len(server.requests) == 4, len(server.requests))
 
 
+def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home):
+    state = {"requests": 0, "id": 0}
+    source = root / "productive-batches.txt"
+    source.write_text("one\ntwo\nthree\n", encoding="utf-8")
+
+    def route(_, body):
+        state["requests"] += 1
+        results = tool_results(body["messages"])
+        running = next((text for text in results if text.startswith("[running] activity ")), "")
+        if not running:
+            return tool_call("run", {"command": "sleep 30", "yield_ms": 250})
+        match = re.search(r"activity (\d+)", running)
+        assert_true(match is not None, running)
+        state["id"] = int(match.group(1))
+        batch = state["requests"] - 1
+        if batch <= 3:
+            return tool_calls(
+                [
+                    (
+                        f"poll-{batch}",
+                        "activity",
+                        {"operation": "poll", "id": state["id"]},
+                    ),
+                    (
+                        f"read-{batch}",
+                        "read_path",
+                        {"path": str(source), "offset": batch, "limit": 1},
+                    ),
+                ]
+            )
+        return event({"content": "productive-batches-ok"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        result = run(root, env, "--yolo", "-p", "monitor and inspect", timeout=8)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("productive-batches-ok"), result.stdout)
+        assert_true(len(server.requests) == 5, len(server.requests))
+
+
 def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home):
     call = {"operation": "list", "wait_ms": 1}
     responses = [tool_call("activity", call) for _ in range(4)]

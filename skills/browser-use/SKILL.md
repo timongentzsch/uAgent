@@ -86,8 +86,9 @@ mobile pages are lighter, so both snapshots and screenshots cost less.
   with `find` for the text that should now exist instead of guessing a delay.
 - A page dialog blocks every later command until it is answered:
   `playwright-cli dialog-accept` (optionally with text) or `dialog-dismiss`.
-- `attach` is capped per turn. Mark up one screenshot with `highlight` rather
-  than sending several near-identical ones.
+- Attachments are bounded by a queued count and a total byte budget. Mark up
+  one screenshot with `highlight` rather than sending several near-identical
+  ones.
 - Use `attach --cdp=chrome` (or `--cdp=URL`) when the user requests their
   running Chrome, then navigate with `goto`; `open` would launch a separate
   managed browser. `detach` afterwards so their browser stays open. Otherwise

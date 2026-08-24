@@ -81,9 +81,11 @@ bool Agent::RunCalls(
     std::unordered_map<std::string, int64_t>& tool_counts,
     std::unordered_map<std::string, std::string>& stable_arguments,
     int64_t step, std::chrono::steady_clock::time_point deadline,
-    int64_t& consecutive_failed_tools, std::vector<ToolRejection>& rejections) {
+    int64_t& consecutive_failed_tools, std::vector<ToolRejection>& rejections,
+    std::vector<ActivityPollResult>& activity_polls) {
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
+  activity_polls.clear();
   std::atomic<int64_t> completion_sequence{0};
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status,
@@ -308,6 +310,14 @@ bool Agent::RunCalls(
       any_succeeded ? 0 : consecutive_failed_tools + failed;
   for (size_t index = 0; index < tasks.size(); ++index) {
     const CallTask& task = tasks[index];
+    if (calls[index].name == "activity" && task.args.is_object() &&
+        JsonValue(task.args, "operation", "") == "poll") {
+      int64_t id = JsonValue(task.args, "id", int64_t{0});
+      if (id > 0) {
+        activity_polls.push_back({id, task.result.Ok(), task.result.no_change,
+                                  task.result.activity_terminal});
+      }
+    }
     if (!task.issue) continue;
     rejections.push_back({calls[index].name, task.issue->code,
                           task.issue->field, NormalizedOperation(task.args)});

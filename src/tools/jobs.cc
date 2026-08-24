@@ -544,8 +544,11 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
     // rides in the header: an exit code means finished, its absence means the
     // id is still worth writing to.
     std::string state;
+    bool terminal = false;
     if (job->session) {
       std::lock_guard<std::mutex> lock(job->session->mutex);
+      terminal = job->session->wait_status.has_value() ||
+                 ActivityTerminal(job->session->state);
       if (job->session->wait_status) {
         state = " · exit " +
                 std::to_string(WIFEXITED(*job->session->wait_status)
@@ -558,18 +561,21 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor,
                                               ToolResultCap(), false, &fresh);
     ToolResult result = ToolSuccess(ActivityHeader(*job, state) + output);
     result.no_change = !fresh;
+    result.activity_terminal = terminal;
     return result;
   }
 
   std::optional<json> detached = FindDetachedRecord(pid);
   if (!detached) return ActivityNotFound(pid);
   const json& record = *detached;
-  std::string status =
-      JsonValue(record, "_alive", false) ? "running" : "exited";
-  return ToolSuccess(
+  bool alive = JsonValue(record, "_alive", false);
+  std::string status = alive ? "running" : "exited";
+  ToolResult result = ToolSuccess(
       "[" + status + " · activity " + std::to_string(pid) + " · " +
       JsonValue(record, "cwd", "") + " · log " + JsonValue(record, "log", "") +
       "]\n" + ReadLogTail(JsonValue(record, "log", ""), ToolResultCap()));
+  result.activity_terminal = !alive;
+  return result;
 }
 
 ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
@@ -606,6 +612,8 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
                     " · log " + watch_path + "]\n";
       ToolResult result = ToolSuccess(header + std::move(body));
       result.no_change = no_change;
+      pid_t activity_pid = job ? job->pid : static_cast<pid_t>(id);
+      result.activity_terminal = !ProcessGroupAlive(activity_pid);
       return LimitOutput(std::move(result), cap);
     };
     // Read at the global cap, not the caller's: reply() applies the head/tail
@@ -668,6 +676,11 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
   }
   ToolResult result = ToolSuccess(ActivityHeader(*job) + output);
   result.no_change = no_change;
+  {
+    std::lock_guard<std::mutex> lock(job->session->mutex);
+    result.activity_terminal = job->session->wait_status.has_value() ||
+                               ActivityTerminal(job->session->state);
+  }
   return result;
 }
 

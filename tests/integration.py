@@ -3363,6 +3363,83 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home):
         assert_true(loops[0]["data"]["operation"] == "resize", loops)
 
 
+def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home):
+    state = {"requests": 0, "id": 0}
+    trigger_prefix = root / "poll-trigger"
+    ack_prefix = root / "poll-ack"
+    command = "\n".join(
+        [
+            f"while [ ! -f {shlex.quote(str(trigger_prefix))}-{i} ]; do sleep 0.01; done; "
+            "yes x | head -c 70000; "
+            f"printf '\\nprogress-{i}\\n'; : > {shlex.quote(str(ack_prefix))}-{i}"
+            for i in range(1, 5)
+        ]
+        + ["sleep 30"]
+    )
+
+    def route(_, body):
+        state["requests"] += 1
+        results = tool_results(body["messages"])
+        running = next((text for text in results if text.startswith("[running] activity ")), "")
+        if not running:
+            return tool_call("run", {"command": command, "yield_ms": 250})
+        match = re.search(r"activity (\d+)", running)
+        assert_true(match is not None, running)
+        state["id"] = int(match.group(1))
+        poll = state["requests"] - 1
+        if poll <= 4:
+            pathlib.Path(f"{trigger_prefix}-{poll}").touch()
+            ack = pathlib.Path(f"{ack_prefix}-{poll}")
+            deadline = time.monotonic() + budget(3)
+            while not ack.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert_true(ack.exists(), f"activity did not produce progress {poll}")
+            return tool_call("activity", {"operation": "poll", "id": state["id"]})
+        complete = all(
+            any(f"progress-{index}" in result for result in results) for index in range(1, 5)
+        )
+        return event({"content": "progress-polls-ok" if complete else "progress-polls-bad"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_AUTO_COMPACT_PCT"] = "0"
+        env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
+        result = run(root, env, "--yolo", "-p", "monitor", timeout=12)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("progress-polls-ok"), result.stdout)
+        assert_true(len(server.requests) == 6, len(server.requests))
+
+
+def test_activity_no_change_polls_are_steered_then_stopped(root, home):
+    state = {"requests": 0, "id": 0}
+
+    def route(_, body):
+        state["requests"] += 1
+        results = tool_results(body["messages"])
+        running = next((text for text in results if text.startswith("[running] activity ")), "")
+        if not running:
+            return tool_call("run", {"command": "sleep 30", "yield_ms": 250})
+        match = re.search(r"activity (\d+)", running)
+        assert_true(match is not None, running)
+        state["id"] = int(match.group(1))
+        if state["requests"] == 4:
+            combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
+            assert_true("[activity poll advisory]" in combined, combined)
+        if state["requests"] <= 4:
+            return tool_call("activity", {"operation": "poll", "id": state["id"]})
+        return event({"content": "fifth-round-should-not-run"})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "monitor", timeout=8)
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true(
+            f"activity {state['id']} produced no new output across 3 consecutive polls"
+            in result.stderr,
+            result.stderr,
+        )
+        assert_true(len(server.requests) == 4, len(server.requests))
+
+
 def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home):
     call = {"operation": "list", "wait_ms": 1}
     responses = [tool_call("activity", call) for _ in range(4)]

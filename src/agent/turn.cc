@@ -208,9 +208,12 @@ struct Agent::TurnLoop {
   std::string last_call;
   int64_t step = 0;
   int64_t repeated_calls = 0;
+  int64_t quiet_activity_id = 0;
+  int64_t quiet_activity_polls = 0;
   int64_t consecutive_failed_tools = 0;
   int64_t empty_responses = 0;
   bool failure_advisory_sent = false;
+  bool quiet_activity_advisory_sent = false;
   bool markup_recovered = false;
   bool context_overflow_recovery_attempted = false;
   bool detached_records_available = false;
@@ -249,6 +252,9 @@ bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
   }
   loop.last_call.clear();
   loop.repeated_calls = 0;
+  loop.quiet_activity_id = 0;
+  loop.quiet_activity_polls = 0;
+  loop.quiet_activity_advisory_sent = false;
   loop.consecutive_failed_tools = 0;
   state.last_single_tool.clear();
   state.same_tool_rounds = 0;
@@ -444,6 +450,70 @@ void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
   }
 }
 
+bool Agent::HandleActivityPollResults(
+    const std::vector<ActivityPollResult>& polls, TurnState& state,
+    TurnLoop& loop) {
+  auto reset = [&] {
+    loop.quiet_activity_id = 0;
+    loop.quiet_activity_polls = 0;
+    loop.quiet_activity_advisory_sent = false;
+  };
+
+  bool successful = false;
+  for (const ActivityPollResult& poll : polls) successful |= poll.ok;
+  if (successful) {
+    loop.last_call.clear();
+    loop.repeated_calls = 0;
+  }
+  if (polls.size() != 1) {
+    if (!polls.empty()) reset();
+    return false;
+  }
+
+  const ActivityPollResult& poll = polls.front();
+  if (!poll.ok || poll.terminal || !poll.no_change) {
+    reset();
+    return false;
+  }
+  if (loop.quiet_activity_id != poll.id) {
+    reset();
+    loop.quiet_activity_id = poll.id;
+  }
+  ++loop.quiet_activity_polls;
+
+  constexpr int64_t kAdviseAfter = 2;
+  constexpr int64_t kStopAfter = 3;
+  if (loop.quiet_activity_polls >= kStopAfter) {
+    state.outcome = "error";
+    last_error_ = "activity " + std::to_string(poll.id) +
+                  " produced no new output across 3 consecutive polls";
+    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    DebugLog("activity_poll_loop", {{"turn", turn_id_},
+                                    {"step", loop.step},
+                                    {"activity_id", poll.id},
+                                    {"polls", loop.quiet_activity_polls}});
+    return true;
+  }
+  if (loop.quiet_activity_polls == kAdviseAfter &&
+      !loop.quiet_activity_advisory_sent) {
+    loop.quiet_activity_advisory_sent = true;
+    conversation_.Push(
+        HarnessMessage(
+            "[activity poll advisory] Activity " + std::to_string(poll.id) +
+            " returned no new output twice. Do not poll it again immediately. "
+            "If completion blocks the next step, issue one bounded activity "
+            "call with operation=wait, mode=any, and wait_ms; otherwise "
+            "continue independent work."),
+        MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+    DebugLog("activity_poll_advisory", {{"turn", turn_id_},
+                                        {"step", loop.step},
+                                        {"activity_id", poll.id},
+                                        {"polls", loop.quiet_activity_polls}});
+  }
+  return false;
+}
+
 bool Agent::StopForRepeatedRejections(
     const std::vector<ToolRejection>& rejections, TurnState& state,
     TurnLoop& loop) {
@@ -521,10 +591,11 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
                                         TurnLoop& loop) {
   if (state.line_open) printf("\n");
   std::vector<ToolRejection> rejections;
+  std::vector<ActivityPollResult> activity_polls;
   bool cancelled =
       RunCalls(calls, text_mode, state.tool_count, loop.tool_counts,
                loop.stable_arguments, loop.step, state.deadline,
-               loop.consecutive_failed_tools, rejections);
+               loop.consecutive_failed_tools, rejections, activity_polls);
   state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
   bool steering_applied = ApplyQueuedSteering(state, loop);
@@ -535,6 +606,9 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
       Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
     }
     return InterruptTurn(state);
+  }
+  if (HandleActivityPollResults(activity_polls, state, loop)) {
+    return StepFlow::kEndTurn;
   }
   if (StopForRepeatedRejections(rejections, state, loop)) {
     return StepFlow::kEndTurn;

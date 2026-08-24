@@ -168,6 +168,10 @@ bool Agent::RunCalls(
     }
     Event call_event{EventId::kToolCall,
                      ToolCallData(call, turn_id_, step, text_mode)};
+    if (task.issue) {
+      call_event.data["issue_code"] = task.issue->code;
+      call_event.data["issue_field"] = task.issue->field;
+    }
     call_event.presentation = ToolCallPresentation(task, call);
     call_event.render = api_.render_stream;
     Emit(std::move(call_event));

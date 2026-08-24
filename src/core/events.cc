@@ -3,6 +3,7 @@
 #include "include/core/events.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -79,13 +80,38 @@ static_assert(ValidPolicies());
 Observability* g_observability = nullptr;
 
 json PublicProjection(const Event& event) {
-  json data = event.data;
-  if (event.id == EventId::kToolCall && data.contains("arguments") &&
-      data["arguments"].is_string()) {
-    json parsed =
-        json::parse(data["arguments"].get<std::string>(), nullptr, false);
-    if (!parsed.is_discarded()) data["parsed_arguments"] = std::move(parsed);
+  if (event.id != EventId::kToolCall) return event.data;
+
+  json data = json::object();
+  for (const char* field : {"turn", "step", "id", "name", "text_protocol",
+                            "issue_code", "issue_field"}) {
+    if (event.data.contains(field)) data[field] = event.data[field];
   }
+
+  json keys = json::array();
+  json types = json::object();
+  json parsed =
+      json::parse(JsonValue(event.data, "arguments", ""), nullptr, false);
+  if (parsed.is_object()) {
+    for (auto it = parsed.begin(); it != parsed.end(); ++it) {
+      keys.push_back(it.key());
+      types[it.key()] = it.value().type_name();
+    }
+    for (const char* field : {"operation", "action"}) {
+      auto found = parsed.find(field);
+      if (found == parsed.end() || !found->is_string()) continue;
+      std::string operation = AsciiLower(Trim(found->get<std::string>()));
+      bool safe = !operation.empty() && operation.size() <= 64 &&
+                  std::all_of(operation.begin(), operation.end(), [](char c) {
+                    unsigned char byte = static_cast<unsigned char>(c);
+                    return std::isalnum(byte) || c == '_' || c == '-';
+                  });
+      if (safe) data["operation"] = std::move(operation);
+      break;
+    }
+  }
+  data["argument_keys"] = std::move(keys);
+  data["argument_types"] = std::move(types);
   return data;
 }
 

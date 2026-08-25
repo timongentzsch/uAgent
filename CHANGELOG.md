@@ -12,7 +12,8 @@
   loses an answer fails the build instead of being argued about. The same
   scenarios replay against a live route with `--run --model`.
 - `uagent --emit-reference` now also emits `system-prompt.md` and `tools.md`,
-  and the manifest carries a prompt and tool-schema digest. The bytes that
+  covering every advertised tool with its schema size and the sessions that pay
+  for it, and the manifest carries a prompt and tool-schema digest. The bytes that
   steer the model get the same drift gate as the bytes that configure it: a
   reworded prompt section or a changed tool schema is a reviewable diff.
 - `UAGENT_PROMPT_OVERLAY` names a JSON file that replaces base-prompt sections
@@ -23,6 +24,18 @@
 - `tests/integration.py` selects individual cases with `--test`, `-k` and
   `--list`, and refuses to run when a test is defined but missing from
   `TEST_ORDER`, because such a case would silently never run.
+- The `self-improve` skill runs one measured improvement iteration: real-session
+  evidence first, then Pareto-constrained proposals across hardware, tokens,
+  readability, capability, timing and generality, a slop scan, and committed
+  baselines as the gate.
+- `benchmarks/audit.py` prints that dashboard for one build and fails on a
+  regression, including an anti-overfitting check that compares the scenario
+  suite's tool mix with the mix real sessions actually used.
+- `benchmarks/session_metrics.py` now also reports non-ok results by tool and
+  status, time spent per tool, and context filled per tool, so an iteration
+  starts from where the cost actually is.
+- Eval scenarios carry a `regression` or `capability` tier, and the report adds
+  rounds that asked for nothing and the failure-category vector.
 - `uagent_info` topic `prompt` reports the system prompt actually in effect:
   base digest and size, the sections an overlay may replace, which conditional
   capability sections are active, and the overlay identity. It reports the

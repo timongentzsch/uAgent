@@ -1,0 +1,74 @@
+{
+  "schema": "uagent.audit.v1",
+  "generated_at": "2026-08-25T20:11:43Z",
+  "hardware": {
+    "binary_bytes": 7928632,
+    "peak_rss_bytes": 11862016
+  },
+  "token": {
+    "system_chars": 2993,
+    "schema_chars": 8175,
+    "advertised_tools": 10,
+    "always_on_schema_bytes": 5124,
+    "largest_schemas": {
+      "subagent": 1395,
+      "uagent_info": 1115,
+      "run": 1052,
+      "scratch": 812,
+      "read_path": 663
+    }
+  },
+  "speed": {
+    "rebuild_fanout": {
+      "include/core/strings.h": 56,
+      "include/core/checked.h": 52,
+      "include/core/json.h": 52,
+      "include/core/env.h": 45,
+      "include/core/time.h": 41,
+      "include/core/platform.h": 39
+    }
+  },
+  "capability": {
+    "surface_tools": 18,
+    "scenarios": 7,
+    "checks": 42,
+    "tiers": {
+      "regression": 7
+    },
+    "tool_calls": {
+      "read_path": 13,
+      "edit_file": 1,
+      "grep": 2,
+      "run": 1
+    }
+  },
+  "readability": {
+    "lint_findings": 1,
+    "marker_files": 0,
+    "largest_file_lines": 1094,
+    "largest_file": "src/tools/jobs.cc"
+  },
+  "representativeness": {
+    "real_calls": 4420,
+    "real_mix": {
+      "run": 2508,
+      "edit_file": 531,
+      "read_path": 510,
+      "grep": 317,
+      "activity": 214,
+      "scratch": 86,
+      "memory": 54,
+      "web_search": 49
+    },
+    "uncovered_above_floor": [],
+    "retired_names_in_history": [
+      "activity_output",
+      "activity_wait",
+      "advisor",
+      "delete_file",
+      "list_dir",
+      "read_file",
+      "run_python"
+    ]
+  }
+}

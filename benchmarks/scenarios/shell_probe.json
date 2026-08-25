@@ -1,0 +1,29 @@
+{
+  "name": "shell_probe",
+  "description": "Run a command and answer from its output. `run` is 55% of real tool calls, so this is the busiest path in the harness.",
+  "tier": "regression",
+  "variants": ["control"],
+  "yolo": true,
+  "prompt": "Run ./check.sh and report the failing case it prints.",
+  "files": {
+    "check.sh": "#!/bin/sh\necho 'FAIL: cache_hit expected 42 got None'\necho 'ran 3 cases'\nexit 1\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [{"id": "probe", "name": "run", "arguments": {"command": "sh check.sh"}}]
+      }
+    },
+    {
+      "respond": {"content": "check.sh reports FAIL: cache_hit expected 42 got None (exit 1)."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["cache_hit expected 42"],
+    "result_contains": ["FAIL: cache_hit expected 42 got None", "ran 3 cases"],
+    "max_requests": 2,
+    "max_tool_calls": 1
+  }
+}

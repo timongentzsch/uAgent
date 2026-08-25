@@ -1,0 +1,37 @@
+{
+  "name": "failed_call_recovery",
+  "description": "A wrong path must come back as a usable error and the corrected call must succeed. Non-ok results are 4.7% of real tool results, and no read-only scenario touches that path.",
+  "tier": "regression",
+  "variants": ["control"],
+  "prompt": "Read the summary note and report its marker.",
+  "files": {
+    "notes/summary.md": "MARKER-SUMMARY\nThe cache-hit branch returns None instead of the stored value.\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [{"id": "miss", "name": "read_path", "arguments": {"path": "summary.md"}}]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [
+          {"id": "hit", "name": "read_path", "arguments": {"path": "notes/summary.md"}}
+        ]
+      }
+    },
+    {
+      "respond": {"content": "MARKER-SUMMARY: the cache-hit branch returns None."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "result_contains": ["error:"],
+    "answer_contains": ["MARKER-SUMMARY"],
+    "no_repeated_calls": true,
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

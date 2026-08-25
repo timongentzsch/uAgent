@@ -215,7 +215,7 @@ def read_trace(path: Path) -> list[dict[str, Any]]:
 
 
 def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Per-step batching comes from ordering: calls follow the request that asked for them."""
+    """Per-step batching comes from ordering: calls follow the request that asked for them."""  # noqa: E501
     events: collections.Counter[str] = collections.Counter()
     batches: list[int] = []
     calls: list[dict[str, Any]] = []
@@ -252,11 +252,16 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
                 batches[-1] += 1
         elif name == "compact_end" and data.get("outcome") == "ok":
             compactions += 1
+    # A round that asked for nothing and answered nothing is wasted latency and
+    # wasted tokens; counting them separately from the round total is what makes
+    # "fewer rounds" a claim rather than an impression.
+    no_action = max(len([count for count in batches[:-1] if count == 0]), 0)
     return {
         "model_requests": len(batches),
         "tool_calls": len(calls),
         "calls": calls,
         "max_batch": max(batches, default=0),
+        "no_action_rounds": no_action,
         "compactions": compactions,
         "events": events,
         "estimated_request_chars": sum(request_chars),
@@ -333,6 +338,7 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
                 "--json",
                 "--no-memory",
                 f"--debug={trace_path}",
+                *(["--yolo"] if scenario.get("yolo") else []),
                 "--model",
                 model,
                 "--budget",
@@ -371,9 +377,13 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             unchanged=snapshot(workspace) == before,
             returncode=process.returncode,
             bodies=bodies,
+            workspace=workspace,
         )
         result = {
             "scenario": scenario["name"],
+            # A capability scenario is a hill to climb and does not gate the
+            # build; it graduates into the regression tier once it holds green.
+            "tier": scenario.get("tier", "regression"),
             "variant": variant,
             "model": model,
             "elapsed_seconds": round(elapsed, 3),
@@ -382,6 +392,7 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "model_requests": metrics["model_requests"],
             "tool_calls": metrics["tool_calls"],
             "max_batch": metrics["max_batch"],
+            "no_action_rounds": metrics["no_action_rounds"],
             "compactions": metrics["compactions"],
             "estimated_request_chars": metrics["estimated_request_chars"],
             "max_estimated_request_chars": metrics["max_estimated_request_chars"],
@@ -390,6 +401,13 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "score": sum(1 for value in checks.values() if value),
             "checks_total": len(checks),
             "passed": all(checks.values()),
+            # The failure-category vector says what broke, which a pass rate
+            # alone never does.
+            "failures": [name for name, ok in checks.items() if not ok],
+            "chars_per_check": round(
+                metrics["estimated_request_chars"]
+                / max(sum(1 for value in checks.values() if value), 1)
+            ),
             "answer": answer,
             "script_misses": script.misses if script else [],
             "error": envelope.get("error")
@@ -414,7 +432,18 @@ def answer_shape(answer: str, labels: list[str]) -> bool:
     )
 
 
-def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodies):
+def tool_result_text(bodies: list[dict[str, Any]]) -> str:
+    """Everything the harness handed back to the model in the final request."""
+    if not bodies:
+        return ""
+    return "\n".join(
+        str(message.get("content", ""))
+        for message in bodies[-1].get("messages", [])
+        if isinstance(message, dict) and message.get("role") == "tool"
+    )
+
+
+def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodies, workspace):
     wanted = scenario.get("checks", {})
     checks = {"process_ok": returncode == 0}
     read_paths = {
@@ -455,6 +484,23 @@ def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodie
                     checks[name] = all(
                         serialized.count(key) <= int(limit) for key, limit in value.items()
                     )
+        elif name == "files_after":
+            checks[name] = all(
+                (workspace / path).is_file()
+                and (workspace / path).read_text(encoding="utf-8") == content
+                for path, content in value.items()
+            )
+        elif name == "no_repeated_calls":
+            signatures = [
+                (call["name"], json.dumps(call["arguments"], sort_keys=True))
+                for call in metrics["calls"]
+            ]
+            checks[name] = (len(set(signatures)) == len(signatures)) == bool(value)
+        elif name == "result_contains":
+            # Tool results are only observable behind the scripted provider.
+            if bodies:
+                results = tool_result_text(bodies)
+                checks[name] = all(part in results for part in as_list(value))
         else:
             raise SystemExit(f"{scenario['name']}: unknown check '{name}'")
     if variant == "compacted":
@@ -484,9 +530,8 @@ def compare(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dic
         key = baseline_key(result)
         base = recorded.get(key)
         regressions = []
-        if not result["passed"]:
-            failed = [name for name, ok in result["checks"].items() if not ok]
-            regressions.append("failed checks: " + ", ".join(failed))
+        if not result["passed"] and result["tier"] == "regression":
+            regressions.append("failed checks: " + ", ".join(result["failures"]))
         if result["script_misses"]:
             regressions.append(f"{len(result['script_misses'])} unscripted requests")
         if base is None:
@@ -560,6 +605,7 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
                 "model_requests": result["model_requests"],
                 "tool_calls": result["tool_calls"],
                 "max_batch": result["max_batch"],
+                "no_action_rounds": result["no_action_rounds"],
                 "compactions": result["compactions"],
                 "max_estimated_request_chars": result["max_estimated_request_chars"],
                 "initial_schema_chars": result["initial_schema_chars"],
@@ -577,17 +623,20 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
 
 def print_results(results, comparisons):
     print(
-        f"{'scenario/variant':<34} {'score':>7} {'req':>4} {'tools':>6} "
+        f"{'scenario/variant':<34} {'score':>7} {'req':>4} {'idle':>5} {'tools':>6} "
         f"{'batch':>5} {'chars':>7} {'wall':>7}"
     )
     for result in results:
         print(
             f"{baseline_key(result):<34} "
             f"{result['score']}/{result['checks_total']:<5} "
-            f"{result['model_requests']:>4} {result['tool_calls']:>6} "
+            f"{result['model_requests']:>4} {result['no_action_rounds']:>5} "
+            f"{result['tool_calls']:>6} "
             f"{result['max_batch']:>5} {result['max_estimated_request_chars']:>7} "
             f"{result['elapsed_seconds']:>6.1f}s"
         )
+        if result["failures"]:
+            print(f"    failed: {', '.join(result['failures'])} [{result['tier']}]")
         if result["error"]:
             print(f"    error: {result['error']}")
     for comparison in comparisons:
@@ -595,6 +644,8 @@ def print_results(results, comparisons):
             continue
         detail = "; ".join(comparison["regressions"]) or "no baseline recorded"
         print(f"{comparison['status'].upper()}: {comparison['key']}: {detail}")
+    for note in graduation_notes(results):
+        print(f"GRADUATE: {note}")
 
 
 def parse_args():
@@ -624,6 +675,16 @@ def parse_args():
     if arguments.update and arguments.run:
         parser.error("baselines are hermetic; --update cannot use live runs")
     return arguments
+
+
+def graduation_notes(results: list[dict[str, Any]]) -> list[str]:
+    """A capability scenario that holds green belongs in the regression tier."""
+    return [
+        f"{baseline_key(result)}: capability scenario is green — set "
+        f'"tier": "regression" to gate it'
+        for result in results
+        if result["tier"] == "capability" and result["passed"]
+    ]
 
 
 def main() -> int:
@@ -662,7 +723,7 @@ def main() -> int:
     if arguments.report:
         arguments.report.parent.mkdir(parents=True, exist_ok=True)
         arguments.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if not all(result["passed"] for result in results):
+    if not all(result["passed"] for result in results if result["tier"] == "regression"):
         return 1
     if arguments.check and not all(item["passed"] for item in comparisons):
         return 1

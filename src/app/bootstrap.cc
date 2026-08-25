@@ -518,7 +518,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     DebugLog("startup_error", {{"error", "UAGENT_BASE_URL is not set"}});
     return Failure(
         "no provider configured — set OPENROUTER_API_KEY or point "
-        "UAGENT_BASE_URL at an OpenAI-compatible endpoint, e.g.\n"
+        "UAGENT_BASE_URL at a supported API endpoint, e.g.\n"
         "  export UAGENT_BASE_URL=http://localhost:8080/v1");
   }
   if (!ProbeModel(api)) {

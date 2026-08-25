@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_API_H_
 #define UAGENT_INCLUDE_API_H_
-// OpenAI-compatible client declaration. Curl/SSE/rendering details live in
-// src/api/client.cc and include/api/stream.h.
+// Provider-neutral API client declaration. Wire encoders and stream decoders
+// live under include/api and src/api.
 
 #include <chrono>
 #include <cstddef>
@@ -48,12 +48,16 @@ class Api {
                                   const ChatResult& result) const;
   std::string RequestModel() const;
   std::string CatalogModel() const;
+  bool NativeHostedTool(HostedTool tool) const;
+  json BuildRequestBody(const json& messages, const json& tool_schemas,
+                        const std::string& session_id = "",
+                        bool* web_available = nullptr) const;
+  // Compatibility name retained for embedders; it builds the active wire API.
   json BuildChatBody(const json& messages, const json& tool_schemas,
                      const std::string& session_id = "",
                      bool* web_available = nullptr) const;
-  // BuildChatBody dumped, reusing the serialized messages of the previous
-  // request for the unchanged prefix. Public so the byte-stability test in
-  // tests/unit/runtime_test.cc can compare it against a whole-body dump.
+  // Uses an incremental message serializer on Chat Completions and a stable
+  // adapter encoding on the other wire APIs.
   std::string ChatPayload(const json& messages, const json& tool_schemas,
                           const std::string& session_id = "",
                           bool* web_available = nullptr);

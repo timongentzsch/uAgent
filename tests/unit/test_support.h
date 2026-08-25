@@ -168,6 +168,8 @@ void Check(bool condition, const char* expression, int line);
   X(TestTerminalInputDecoder)             \
   X(TestSseChunkPartitions)               \
   X(TestSseFraming)                       \
+  X(TestWireAdapters)                     \
+  X(TestWireStreams)                      \
   X(TestBackgroundValidation)             \
   X(TestActivitySessions)                 \
   X(TestToolExecutionPolicy)              \

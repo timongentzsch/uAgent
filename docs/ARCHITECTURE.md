@@ -28,23 +28,26 @@ a service bus, service locator, or plugin system.
 | --- | --- |
 | `src/app/`, `include/app/` | options, bootstrap, REPL, shutdown |
 | `src/agent/`, `include/agent/` | conversation, compaction, tool loop |
-| `src/api/`, `include/api/` | OpenAI-compatible requests and streaming |
+| `src/api/`, `include/api/` | canonical request options, wire adapters, HTTP, and SSE decoding |
 | `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
 | `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
 | `src/mcp/`, `include/mcp/` | bounded stdio JSON-RPC integrations |
 | `include/core/` | configuration, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
-`Conversation` owns model-visible messages and the bounded archive. It emits
-the OpenAI-standard role shape: exactly one `system` message, at index zero,
-carrying the system prompt plus project instructions and the memory index;
-every later harness injection (runtime context, advisories, text-protocol tool
-results) rides as a `user` turn, and native tool results keep `tool`. Strict
-chat templates reject a second `system` message outright, so `NormalizeRole` is
-the single place that decides this. `Agent`
-compares estimated/reported context against one threshold; providers and tools
-do not own conversation state. `ProcessSupervisor`,
-`McpRuntime`, and `UsageAccumulator` each own one class of external resource.
+`Conversation` owns model-visible messages and the bounded archive. Its
+canonical role shape has exactly one `system` message at index zero, carrying
+the system prompt plus project instructions and the memory index. Every later
+harness injection (runtime context, advisories, text-protocol tool results)
+rides as a `user` turn, and native tool results keep `tool`. Wire adapters map
+that representation to Chat Completions messages, Responses input items, or
+Anthropic content blocks. Opaque reasoning and hosted-tool replay data is kept
+under one internal assistant-message field and emitted only when the same wire
+API continues; a route switch strips it. `NormalizeRole` is the single place
+that decides canonical provenance. `Agent` compares estimated/reported context
+against one threshold; providers and tools do not own conversation state.
+`ProcessSupervisor`, `McpRuntime`, and `UsageAccumulator` each own one class of
+external resource.
 
 Shared policy stays centralized: `MakeTool` defines tool metadata,
 `RuntimeConfig` defines limits, `RouteKey` defines route identity, and
@@ -69,16 +72,21 @@ implemented as a semantic “prompt injection regex”; the enforceable boundary
 the typed protocol plus schema validation, tool policy, path checks, approval,
 and process ownership. Prompt wording is defense in depth.
 
-Web search follows the same boundary: models always see one named function,
-while its host adapter selects the OpenRouter search route and owns limits,
-citations, errors, and usage accounting.
+Web search has two explicit paths. In `auto`, a Responses or Anthropic route
+gets its native hosted tool only when `hosted_tools` declares `web_search`;
+otherwise µAgent exposes its separately configured OpenRouter search function.
+`openrouter` forces the separate function and `off` exposes neither. No model
+name, provider label, or URL implies hosted-tool support. Both paths normalize
+citations and usage into the same turn accounting.
 
 Every route mutation uses one activation path: construct a centralized
 `ProviderCapabilities` contract, export its stable child-process projection,
-then rotate the agent route identity. Request serialization, model catalogues,
-reasoning replay, search availability, and negotiated degradation read that
-contract rather than provider/model names. Successful responses add observed
-reasoning, citation, and usage facts without controlling the current turn.
+then rotate the agent route identity. The contract independently declares
+`wire_api` (`chat_completions`, `responses`, or `anthropic_messages`) and
+`hosted_tools`. Request serialization, model catalogues, reasoning replay,
+search availability, and negotiated degradation read that contract rather
+than provider/model names. Successful responses add observed reasoning,
+citation, and usage facts without controlling the current turn.
 
 ## Turn
 

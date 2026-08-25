@@ -1,9 +1,10 @@
 # Bundled skills
 
-Skills `install.sh` puts in `~/.uagent/skills`. It refreshes its own bundled
-copy on later installs so release-specific procedures stay matched to the
-binary and override incompatible user-level vendor copies of the same name. A
-workspace can shadow any skill by name under `./.uagent/skills`.
+Binary archives carry the release-matched tree under
+`share/uagent/skills`; the runtime discovers it relative to the executable.
+`install.sh` also refreshes the same skills in `~/.uagent/skills`, where a user
+copy overrides an incompatible vendor copy. A workspace can shadow any skill
+by name under `./.uagent/skills`.
 
 Only the front matter of each `SKILL.md` is read at startup; the body is sent
 to the model when it opens the skill. Optional comma-separated

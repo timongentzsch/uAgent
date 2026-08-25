@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <sys/stat.h>
+
 #include <string>
 #include <vector>
 
@@ -21,13 +23,40 @@ void TestSkillDiscovery() {
 
   CHECK(LoadSkills(workspace).empty());
 
+  const std::string original_executable = ExecutablePath();
+  fs::path packaged = test.root / "package";
+  fs::path decoy = test.root / "decoy";
+  fs::create_directories(packaged / "bin");
+  fs::create_directories(decoy / "bin");
+  CHECK(ToolWriteFile((packaged / "bin/uagent").string(), "binary")
+            .output.starts_with("wrote "));
+  CHECK(chmod((packaged / "bin/uagent").c_str(), 0755) == 0);
+  CHECK(ToolWriteFile((decoy / "bin/uagent").string(), "not executable")
+            .output.starts_with("wrote "));
+  write_skill(packaged / "share/uagent/skills/bundled",
+              "---\ndescription: packaged with the binary\n---\n\nUse it.\n");
+  write_skill(decoy / "share/uagent/skills/decoy",
+              "---\ndescription: beside a PATH decoy\n---\n\nIgnore it.\n");
+  std::string packaged_path =
+      (decoy / "bin").string() + ":" + (packaged / "bin").string();
+  ScopedEnv scoped_path("PATH", packaged_path.c_str());
+  SetExecutablePath("uagent");
+  std::vector<Skill> skills = LoadSkills(workspace);
+  CHECK(skills.size() == 1);
+  CHECK(skills[0].name == "bundled");
+  CHECK(std::none_of(skills.begin(), skills.end(),
+                     [](const Skill& skill) { return skill.name == "decoy"; }));
+  SetExecutablePath(original_executable);
+  fs::remove_all(packaged);
+  fs::remove_all(decoy);
+
   write_skill(home / ".uagent/skills/release",
               "---\nname: release\ndescription: how to cut a release\n"
               "requires-tools: run, grep\nargument-hint: <version>\n---\n\n"
               "Run $ARGUMENTS checks from ${SKILL_DIR}, then tag.\n");
   // No front matter, so nothing to advertise: skipped rather than guessed at.
   write_skill(home / ".uagent/skills/broken", "no front matter here\n");
-  std::vector<Skill> skills = LoadSkills(workspace);
+  skills = LoadSkills(workspace);
   CHECK(skills.size() == 1);
   CHECK(skills[0].name == "release");
   CHECK(skills[0].description == "how to cut a release");

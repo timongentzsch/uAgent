@@ -7,6 +7,8 @@
 // startup. Discovery is deferred behind one fixed tool schema, and the body
 // arrives only when the model selects a skill.
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -16,6 +18,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/signals.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -62,6 +65,29 @@ inline void ParseSkillFrontMatter(
   }
 }
 
+inline std::filesystem::path InstalledSkillsPath() {
+  namespace fs = std::filesystem;
+  fs::path executable = ExecutablePath();
+  if (executable.empty()) return {};
+  if (!executable.has_parent_path()) {
+    for (const std::string& entry : SplitPathList(EnvStr("PATH"))) {
+      fs::path candidate = fs::path(entry) / executable;
+      std::error_code ec;
+      if (fs::is_regular_file(candidate, ec) &&
+          access(candidate.c_str(), X_OK) == 0) {
+        executable = std::move(candidate);
+        break;
+      }
+    }
+  }
+  if (!executable.has_parent_path()) return {};
+  std::error_code ec;
+  fs::path resolved = fs::canonical(executable, ec);
+  if (ec) resolved = fs::absolute(executable, ec);
+  if (ec || resolved.parent_path().empty()) return {};
+  return resolved.parent_path().parent_path() / "share/uagent/skills";
+}
+
 // SKILL.md is an open format that ~30 agents read from their own directory, so
 // a skill installed for any of them is already on the machine and usable here.
 // User-level paths first, then the workspace's, and ours last in each group:
@@ -87,6 +113,8 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
       path.push_back(fs::path(home) / vendor / "skills");
     }
   }
+  fs::path installed = InstalledSkillsPath();
+  if (!installed.empty()) path.push_back(std::move(installed));
   path.push_back(fs::path(GlobalBase()) / "skills");
   // Vendor-neutral project skills apply from every ancestor. Walk from the
   // filesystem root toward cwd so the nearest repository scope wins.

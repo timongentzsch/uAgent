@@ -17,6 +17,7 @@ struct OpenAiStreamDelta {
   bool activity = false;
 };
 
+void MergeStreamIdentity(std::string& target, const std::string& fragment);
 OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
                                           ChatResult& result,
                                           std::map<int, ToolCall>& tool_calls);

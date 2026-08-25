@@ -2,8 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_MEDIA_ATTACHMENTS_H_
 #define UAGENT_INCLUDE_MEDIA_ATTACHMENTS_H_
-// Local multimodal attachments for Chat Completions: images use image_url data
-// URLs; PDFs/documents use file_data. No upload API or decoding dependency.
+// Local canonical multimodal attachments: images use image_url data URLs;
+// PDFs/documents use file_data. Wire adapters translate them without uploads.
 
 #include <mutex>
 #include <string>

@@ -17,6 +17,7 @@
 #include "include/api.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
+#include "include/api/wire.h"
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
@@ -164,6 +165,15 @@ class CurlHeaders {
  private:
   curl_slist* list_ = nullptr;
 };
+
+bool AddApiHeaders(CurlHeaders& headers, WireApi wire_api,
+                   const std::string& api_key) {
+  if (wire_api == WireApi::kAnthropicMessages) {
+    return headers.Add("x-api-key: " + api_key) &&
+           headers.Add("anthropic-version: 2023-06-01");
+  }
+  return headers.Add("Authorization: Bearer " + api_key);
+}
 
 // The write target for both non-streaming transfers: append until the cap,
 // then stop the transfer rather than truncate silently.
@@ -327,6 +337,9 @@ Api::~Api() {
 
 void Api::PreserveAssistantReasoning(json& message,
                                      const ChatResult& result) const {
+  if (result.replay.is_object() && !result.replay.empty()) {
+    message[kWireReplayField] = result.replay;
+  }
   if (!result.reasoning_details.empty()) {
     message["reasoning_details"] = result.reasoning_details;
   } else if (capabilities.reasoning_replay_text && result.reasoning_field &&
@@ -366,29 +379,41 @@ std::string Api::RequestModel() const {
   return base + ":" + config.openrouter_variant;
 }
 
-json Api::BuildChatBody(const json& messages, const json& tool_schemas,
-                        const std::string& session_id,
-                        bool* web_available) const {
-  if (web_available) *web_available = false;
-  json body = {
-      {"model", RequestModel()}, {"messages", messages}, {"stream", true}};
-  if (capabilities.native_tools && !tool_schemas.empty()) {
-    body["tools"] = tool_schemas;
+bool Api::NativeHostedTool(HostedTool tool) const {
+  return config.web_search_backend == "auto" && capabilities.Supports(tool) &&
+         WireSupportsHostedTool(capabilities.wire_api, tool);
+}
+
+json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
+                           const std::string& session_id,
+                           bool* web_available) const {
+  bool native_web = NativeHostedTool(HostedTool::kWebSearch);
+  bool allow_function_web = config.web_search_backend != "off";
+  bool function_web = false;
+  if (allow_function_web && capabilities.native_tools &&
+      tool_schemas.is_array()) {
     for (const json& tool : tool_schemas) {
-      if (web_available && tool.is_object() && tool.contains("function") &&
-          tool["function"].is_object() &&
-          JsonValue(tool["function"], "name", "") == "web_search") {
-        *web_available = true;
-      }
+      const json* function = JsonObject(tool, "function");
+      function_web =
+          function_web ||
+          (function && JsonValue(*function, "name", "") == "web_search");
     }
-    if (capabilities.parallel_tools) body["parallel_tool_calls"] = true;
   }
-  if (capabilities.stream_usage_option) {
-    body["stream_options"] = {{"include_usage", true}};
-  }
-  // Only OpenRouter understands this, and only a request that carries a
-  // document needs it: the plugin decides how a PDF the model cannot read
-  // natively gets parsed, rather than leaving that to an unseen default.
+  if (web_available) *web_available = native_web || function_web;
+
+  WireRequest request{RequestModel(),
+                      messages,
+                      tool_schemas,
+                      reasoning_effort,
+                      MaxOutputTokens(),
+                      capabilities.native_tools,
+                      capabilities.parallel_tools,
+                      capabilities.stream_usage_option,
+                      native_web,
+                      allow_function_web};
+  json body = EncodeWireRequest(capabilities.wire_api, request);
+  if (capabilities.wire_api != WireApi::kChatCompletions) return body;
+
   if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
       HasContentPart(messages, "file")) {
     body["plugins"] = json::array(
@@ -416,6 +441,12 @@ json Api::BuildChatBody(const json& messages, const json& tool_schemas,
   return body;
 }
 
+json Api::BuildChatBody(const json& messages, const json& tool_schemas,
+                        const std::string& session_id,
+                        bool* web_available) const {
+  return BuildRequestBody(messages, tool_schemas, session_id, web_available);
+}
+
 const std::string& Api::MessageCache::Serialize(const json& messages) {
   size_t match = 0;
   while (match < ends_.size() && match < messages.size() &&
@@ -439,19 +470,35 @@ const std::string& Api::MessageCache::Serialize(const json& messages) {
 std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
                              const std::string& session_id,
                              bool* web_available) {
-  // A placeholder no model name, schema or session id can contain: the cached
-  // array is spliced in where the body dump put its escaped form. If it is not
-  // there exactly once, the assumption failed and the whole body is dumped.
+  if (capabilities.wire_api != WireApi::kChatCompletions) {
+    return JsonDump(
+        BuildRequestBody(messages, tool_schemas, session_id, web_available));
+  }
+  // Chat Completions can splice the canonical message array directly. Other
+  // adapters still produce deterministic bytes, but transform each message.
   const std::string slot = JsonDump(json(kMessagesSlot));
   std::string payload = JsonDump(
-      BuildChatBody(kMessagesSlot, tool_schemas, session_id, web_available));
-  size_t at = messages.is_array() ? payload.find(slot) : std::string::npos;
+      BuildRequestBody(kMessagesSlot, tool_schemas, session_id, web_available));
+  json sanitized;
+  const json* encoded_messages = &messages;
+  if (messages.is_array() &&
+      std::any_of(messages.begin(), messages.end(), [](const json& message) {
+        return message.is_object() && message.contains(kWireReplayField);
+      })) {
+    sanitized = messages;
+    for (json& message : sanitized) {
+      if (message.is_object()) message.erase(kWireReplayField);
+    }
+    encoded_messages = &sanitized;
+  }
+  size_t at =
+      encoded_messages->is_array() ? payload.find(slot) : std::string::npos;
   if (at == std::string::npos ||
       payload.find(slot, at + 1) != std::string::npos) {
     return JsonDump(
-        BuildChatBody(messages, tool_schemas, session_id, web_available));
+        BuildRequestBody(messages, tool_schemas, session_id, web_available));
   }
-  payload.replace(at, slot.size(), messages_.Serialize(messages));
+  payload.replace(at, slot.size(), messages_.Serialize(*encoded_messages));
   return payload;
 }
 
@@ -653,7 +700,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
                             bool render_output, bool full_reasoning) {
   ChatResult res;
-  CURL* h = Prepare(base_url + "/chat/completions");
+  CURL* h =
+      Prepare(base_url + std::string(WireEndpoint(capabilities.wire_api)));
   if (!h) {
     res.error = kCurlInitFailed;
     return res;
@@ -661,6 +709,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   StreamCtx ctx;
   ctx.handle = h;
   ctx.res = &res;
+  ctx.wire_api = capabilities.wire_api;
   ctx.started = std::chrono::steady_clock::now();
   ctx.last_byte = ctx.started;
   ctx.first_event_timeout_s = config.first_event_timeout_s;
@@ -669,7 +718,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   ctx.sse = SseParser(ctx.response_cap);
   CurlHeaders headers;
   bool headers_ok = headers.Add("Content-Type: application/json") &&
-                    headers.Add("Authorization: Bearer " + api_key) &&
+                    AddApiHeaders(headers, capabilities.wire_api, api_key) &&
                     headers.Add("Accept: text/event-stream");
   if (capabilities.session_passthrough && !session_id.empty()) {
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
@@ -776,7 +825,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
   SizedBuffer out;
   out.cap = ResponseCap();
   CurlHeaders headers;
-  bool headers_ok = headers.Add("Authorization: Bearer " + api_key);
+  bool headers_ok = AddApiHeaders(headers, capabilities.wire_api, api_key);
   if (payload) {
     headers_ok = headers_ok && headers.Add("Content-Type: application/json");
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload->c_str());

@@ -78,6 +78,19 @@ void TestTerminalInputDecoder() {
   CHECK(token && token->overflow);
   CHECK(token && token->text.size() == kInputPasteBytes);
 
+  // An oversized ordinary burst is discarded, then the next read is usable.
+  TerminalInputDecoder overflow_decoder;
+  overflow_decoder.Feed(std::string(kInputBufferBytes - 1, 'x'));
+  overflow_decoder.Feed("xx");
+  overflow_decoder.Feed("ignored");
+  CHECK(overflow_decoder.HasReady());
+  CHECK(!overflow_decoder.Next(true));
+  CHECK(!overflow_decoder.HasReady());
+  overflow_decoder.Feed("z");
+  token = overflow_decoder.Next();
+  CHECK(token && token->kind == TerminalInputTokenKind::kText);
+  CHECK(token && token->text == "z");
+
   // Terminal replies are not user input: the payload must not be typed into
   // the composer.
   decoder.Feed("\x1b]0;window title\x07");

@@ -2,9 +2,8 @@
 
 #ifndef UAGENT_INCLUDE_TOOLS_TOOL_H_
 #define UAGENT_INCLUDE_TOOLS_TOOL_H_
-// The Tool type and registry machinery. Each Tool bundles its OpenAI
-// schema with its handler, so adding a capability means appending to the
-// registry; nothing in the agent loop changes.
+// The Tool type and registry machinery. Each Tool bundles a canonical function
+// schema with its handler; wire adapters translate it at the API boundary.
 
 #include <algorithm>
 #include <chrono>

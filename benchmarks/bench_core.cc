@@ -11,7 +11,9 @@
 
 #include "include/agent.h"
 #include "include/agent/protocol.h"
+#include "include/api.h"
 #include "include/api/stream.h"
+#include "include/api/wire.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -121,6 +123,32 @@ int RunBenchmarks() {
   BenchmarkStream(false);
   BenchmarkStream(true);
   BenchmarkStream(false, false);
+
+  json history = json::array();
+  for (size_t index = 0; index < 128; ++index) {
+    history.push_back({{"role", index % 2 == 0 ? "user" : "assistant"},
+                       {"content", std::string(256, 'x')}});
+  }
+  const json no_tools = json::array();
+  const std::string benchmark_model = "benchmark-model";
+  constexpr size_t kWireIterations = 1000;
+  auto wire_benchmark = [&](WireApi wire_api, const char* name) {
+    WireRequest request{
+        benchmark_model, history, no_tools, "high", 4096, true, true, true,
+        false,           true};
+    Report(name, kWireIterations, Measure(kWireIterations, [&] {
+             return JsonDump(EncodeWireRequest(wire_api, request)).size();
+           }));
+  };
+  wire_benchmark(WireApi::kChatCompletions, "encode Chat Completions");
+  wire_benchmark(WireApi::kResponses, "encode Responses");
+  wire_benchmark(WireApi::kAnthropicMessages, "encode Anthropic Messages");
+  Api cached_chat;
+  cached_chat.model = benchmark_model;
+  (void)cached_chat.ChatPayload(history, no_tools);
+  Report("cached Chat payload", kWireIterations, Measure(kWireIterations, [&] {
+           return cached_chat.ChatPayload(history, no_tools).size();
+         }));
 
   ProcessSupervisor processes;
   auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."), false);

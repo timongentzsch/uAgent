@@ -9,19 +9,68 @@
 namespace uagent {
 
 const char* ProviderProtocolName(ProviderProtocol protocol) {
-  return protocol == ProviderProtocol::kOpenRouter ? "openrouter" : "openai";
+  switch (protocol) {
+    case ProviderProtocol::kOpenAi:
+      return "openai";
+    case ProviderProtocol::kOpenRouter:
+      return "openrouter";
+    case ProviderProtocol::kAnthropic:
+      return "anthropic";
+  }
+  return "openai";
 }
 
-ProviderProtocol ParseProviderProtocol(const std::string& protocol) {
-  return protocol == "openrouter" ? ProviderProtocol::kOpenRouter
-                                  : ProviderProtocol::kOpenAi;
+std::optional<ProviderProtocol> ParseProviderProtocol(
+    std::string_view protocol) {
+  if (protocol == "openai") return ProviderProtocol::kOpenAi;
+  if (protocol == "openrouter") return ProviderProtocol::kOpenRouter;
+  if (protocol == "anthropic") return ProviderProtocol::kAnthropic;
+  return std::nullopt;
+}
+
+const char* WireApiName(WireApi wire_api) {
+  switch (wire_api) {
+    case WireApi::kChatCompletions:
+      return "chat_completions";
+    case WireApi::kResponses:
+      return "responses";
+    case WireApi::kAnthropicMessages:
+      return "anthropic_messages";
+  }
+  return "chat_completions";
+}
+
+std::optional<WireApi> ParseWireApi(std::string_view wire_api) {
+  if (wire_api == "chat_completions") return WireApi::kChatCompletions;
+  if (wire_api == "responses") return WireApi::kResponses;
+  if (wire_api == "anthropic_messages") return WireApi::kAnthropicMessages;
+  return std::nullopt;
+}
+
+bool HasHostedTool(const json& hosted_tools, HostedTool tool) {
+  if (!hosted_tools.is_array()) return false;
+  const std::string_view wanted =
+      tool == HostedTool::kWebSearch ? "web_search" : "";
+  for (const json& value : hosted_tools) {
+    if (value.is_string() && value.get_ref<const std::string&>() == wanted) {
+      return true;
+    }
+  }
+  return false;
+}
+
+json HostedToolsJson(bool web_search) {
+  json tools = json::array();
+  if (web_search) tools.push_back("web_search");
+  return tools;
 }
 
 void ProviderCapabilities::ResetNegotiated() {
   native_tools = true;
   parallel_tools = true;
-  stream_usage_option = !OpenRouter();
+  stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
+  file_input = true;
   reasoning_text = false;
   reasoning_details = false;
   reasoning_content = false;
@@ -40,6 +89,8 @@ void ProviderCapabilities::Observe(const ChatResult& result) {
 
 json ProviderCapabilities::DiagnosticJson() const {
   return {{"protocol", ProviderProtocolName(protocol)},
+          {"wire_api", WireApiName(wire_api)},
+          {"hosted_tools", HostedToolsJson(hosted_web_search)},
           {"native_tools", native_tools},
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
@@ -60,9 +111,13 @@ json ProviderCapabilities::DiagnosticJson() const {
 }
 
 ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
-                                          const std::string& base_url) {
+                                          const std::string& base_url,
+                                          WireApi wire_api,
+                                          bool hosted_web_search) {
   ProviderCapabilities capabilities;
   capabilities.protocol = protocol;
+  capabilities.wire_api = wire_api;
+  capabilities.hosted_web_search = hosted_web_search;
   if (protocol == ProviderProtocol::kOpenRouter) {
     capabilities.model_catalog_required = false;
     capabilities.raw_slash_models = true;
@@ -71,7 +126,13 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
     capabilities.provider_routing = true;
     capabilities.session_passthrough = true;
     capabilities.model_variants = true;
+  } else if (protocol == ProviderProtocol::kAnthropic) {
+    capabilities.reasoning_object = true;
   } else if (OpenaiUrl(base_url)) {
+    capabilities.max_completion_tokens = true;
+  }
+  if (wire_api == WireApi::kResponses) {
+    capabilities.reasoning_object = true;
     capabilities.max_completion_tokens = true;
   }
   capabilities.ResetNegotiated();

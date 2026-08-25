@@ -11,7 +11,7 @@ inputs:
   version:
     description: Release tag to install
     required: false
-    default: v0.7.0
+    default: v0.8.0
 outputs:
   result:
     description: uagent.headless.v1 JSON envelope
@@ -25,32 +25,75 @@ runs:
         UAGENT_ACTION_PROMPT: ${{ inputs.prompt }}
         UAGENT_ACTION_BUDGET: ${{ inputs.budget }}
         UAGENT_ACTION_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
-        version=${UAGENT_ACTION_VERSION#v}
+        tag=$UAGENT_ACTION_VERSION
+        if [[ ! "$tag" =~ ^v[0-9]+([.][0-9]+){2}(-[0-9A-Za-z]+([.][0-9A-Za-z]+)*)?([+][0-9A-Za-z]+([.][0-9A-Za-z]+)*)?$ ]]; then
+          echo "version must be a v-prefixed semantic-version tag: $tag" >&2
+          exit 2
+        fi
+        version=${tag#v}
         case "$(uname -s)-$(uname -m)" in
           Linux-x86_64) target=linux-x86_64 ;;
           Linux-aarch64|Linux-arm64) target=linux-arm64 ;;
           Darwin-arm64) target=macos-arm64 ;;
           *) echo "unsupported runner: $(uname -s)-$(uname -m)" >&2; exit 2 ;;
         esac
-        base="https://github.com/timongentzsch/uAgent/releases/download/${UAGENT_ACTION_VERSION}"
-        archive="uagent-${version}-${target}.tar.gz"
+        base="https://github.com/timongentzsch/uAgent/releases/download/$tag"
+        archive="uagent-$version-$target.tar.gz"
         work=$(mktemp -d)
         trap 'rm -rf "$work"' EXIT
         curl -fsSLo "$work/$archive" "$base/$archive" || {
-          echo "µAgent release archive not found: ${UAGENT_ACTION_VERSION}/${archive}" >&2
+          echo "µAgent release archive not found: $tag/$archive" >&2
           exit 2
         }
-        curl -fsSLo "$work/$archive.sha256" "$base/$archive.sha256" || {
-          echo "µAgent checksum not found: ${UAGENT_ACTION_VERSION}/${archive}.sha256" >&2
-          exit 2
-        }
+        if [[ "$tag" == "v0.7.0" ]]; then
+          # This immutable legacy release predates attestations and signed manifests.
+          curl -fsSLo "$work/$archive.sha256" "$base/$archive.sha256" || {
+            echo "µAgent checksum not found: $tag/$archive.sha256" >&2
+            exit 2
+          }
+        else
+          manifest=SHA256SUMS
+          curl -fsSLo "$work/$manifest" "$base/$manifest" || {
+            echo "µAgent checksum manifest not found: $tag/$manifest" >&2
+            exit 2
+          }
+          if ! command -v gh >/dev/null || ! gh attestation verify --help >/dev/null 2>&1; then
+            echo "GitHub CLI with attestation support is required to install $tag" >&2
+            exit 2
+          fi
+          for subject in "$work/$archive" "$work/$manifest"; do
+            gh attestation verify "$subject" \
+              --repo timongentzsch/uAgent \
+              --signer-workflow timongentzsch/uAgent/.github/workflows/ci.yml \
+              --source-ref "refs/tags/$tag" \
+              --deny-self-hosted-runners
+          done
+          checksum_line=$(
+            LC_ALL=C awk -v archive="$archive" '
+              NF == 2 && $2 == archive &&
+                length($1) == 64 && $1 ~ /^[[:xdigit:]]+$/ {
+                if (++matches == 1) line = $0
+              }
+              END {
+                if (matches != 1) exit 1
+                print line
+              }
+            ' "$work/$manifest"
+          ) || {
+            echo "checksum manifest must contain exactly one SHA-256 for $archive" >&2
+            exit 2
+          }
+          printf '%s\n' "$checksum_line" > "$work/$archive.sha256"
+        fi
         if command -v sha256sum >/dev/null; then
-          (cd "$work" && sha256sum -c "$archive.sha256") >/dev/null
+          (cd "$work" && sha256sum --strict -c "$archive.sha256") >/dev/null
         else
           (cd "$work" && shasum -a 256 -c "$archive.sha256") >/dev/null
         fi
+        unset GH_TOKEN
         tar -xzf "$work/$archive" -C "$work"
         result=$(
           "$work/uagent-$version/bin/uagent" --yolo \

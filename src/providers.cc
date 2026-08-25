@@ -32,6 +32,8 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "openrouter/auto",
     OpenrouterUrl,
     ProviderProtocol::kOpenRouter,
+    WireApi::kChatCompletions,
+    false,
 }};
 
 }  // namespace
@@ -66,7 +68,9 @@ bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider) {
   if (api_key.empty()) return false;
   api.base_url = provider.base_url;
   api.api_key = std::move(api_key);
-  api.capabilities = CapabilitiesForRoute(provider.protocol, api.base_url);
+  api.capabilities =
+      CapabilitiesForRoute(provider.protocol, api.base_url, provider.wire_api,
+                           provider.hosted_web_search);
   if (api.model.empty()) {
     api.model = EnvStr(provider.model_env, provider.default_model);
   }
@@ -153,10 +157,23 @@ ProviderCatalog LoadProviderCatalog() {
     base_url = StripTrailingSlashes(std::move(base_url));
     std::string api_key = JsonValue(provider, "api_key", "sk-noop");
     int64_t context = JsonValue(provider, "context", int64_t{0});
-    ProviderProtocol protocol =
-        ParseProviderProtocol(JsonValue(provider, "protocol", "openai"));
-    catalog.providers.push_back(
-        {provider_name, base_url, api_key, context, protocol});
+    std::optional<WireApi> wire_api =
+        ParseWireApi(JsonValue(provider, "wire_api", "chat_completions"));
+    if (!wire_api) continue;
+    std::string protocol_name = JsonValue(provider, "protocol", "");
+    std::optional<ProviderProtocol> configured_protocol;
+    if (!protocol_name.empty()) {
+      configured_protocol = ParseProviderProtocol(protocol_name);
+      if (!configured_protocol) continue;
+    }
+    ProviderProtocol protocol = configured_protocol.value_or(
+        *wire_api == WireApi::kAnthropicMessages ? ProviderProtocol::kAnthropic
+                                                 : ProviderProtocol::kOpenAi);
+    bool hosted_web_search =
+        HasHostedTool(JsonValue(provider, "hosted_tools", json::array()),
+                      HostedTool::kWebSearch);
+    catalog.providers.push_back({provider_name, base_url, api_key, context,
+                                 protocol, *wire_api, hosted_web_search});
     if (!provider.contains("models") || !provider["models"].is_object()) {
       continue;
     }
@@ -167,12 +184,29 @@ ProviderCatalog LoadProviderCatalog() {
       route.base_url = base_url;
       route.api_key = api_key;
       route.protocol = protocol;
+      route.wire_api = *wire_api;
+      route.hosted_web_search = hosted_web_search;
       if (spec.is_string()) {
         route.model = spec.get<std::string>();
       } else if (spec.is_object()) {
         route.model = JsonValue(spec, "id", "");
         route.effort = JsonValue(spec, "effort", "");
         route.context = JsonValue(spec, "context", context);
+        if (spec.contains("wire_api")) {
+          std::optional<WireApi> model_wire =
+              ParseWireApi(JsonValue(spec, "wire_api", ""));
+          if (!model_wire) continue;
+          route.wire_api = *model_wire;
+          if (protocol_name.empty()) {
+            route.protocol = *model_wire == WireApi::kAnthropicMessages
+                                 ? ProviderProtocol::kAnthropic
+                                 : ProviderProtocol::kOpenAi;
+          }
+        }
+        if (spec.contains("hosted_tools")) {
+          route.hosted_web_search =
+              HasHostedTool(spec["hosted_tools"], HostedTool::kWebSearch);
+        }
       }
       if (!route.context) route.context = context;
       if (!route.model.empty() && ValidEffort(route.effort)) {
@@ -198,8 +232,9 @@ void AddAvailableProviderTemplates(ProviderCatalog& catalog) {
         FindNamedProvider(catalog.providers, provider.name)) {
       continue;
     }
-    catalog.providers.push_back({provider.name, provider.base_url,
-                                 std::move(api_key), 0, provider.protocol});
+    catalog.providers.push_back(
+        {provider.name, provider.base_url, std::move(api_key), 0,
+         provider.protocol, provider.wire_api, provider.hosted_web_search});
   }
 }
 
@@ -228,7 +263,9 @@ std::optional<ModelRoute> ResolveModelRoute(
                     selection.substr(slash + 1),
                     "",
                     provider->context,
-                    provider->protocol};
+                    provider->protocol,
+                    provider->wire_api,
+                    provider->hosted_web_search};
 }
 
 namespace {
@@ -236,8 +273,11 @@ namespace {
 // Two selections naming the same endpoint, model and protocol are the same
 // route however they were spelled; only one of them is offered.
 std::string RouteIdentity(const std::string& base_url, const std::string& model,
-                          ProviderProtocol protocol) {
-  return base_url + "\n" + model + "\n" + ProviderProtocolName(protocol);
+                          ProviderProtocol protocol, WireApi wire_api,
+                          bool hosted_web_search) {
+  return base_url + "\n" + model + "\n" + ProviderProtocolName(protocol) +
+         "\n" + WireApiName(wire_api) + "\n" +
+         (hosted_web_search ? "web_search" : "");
 }
 
 void ExportRoute(const Api& api) {
@@ -246,11 +286,17 @@ void ExportRoute(const Api& api) {
   setenv("UAGENT_REASONING_EFFORT", api.reasoning_effort.c_str(), 1);
   setenv("UAGENT_OPENROUTER_VARIANT", api.config.openrouter_variant.c_str(), 1);
   setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
+  setenv("UAGENT_PROVIDER_PROTOCOL",
+         ProviderProtocolName(api.capabilities.protocol), 1);
+  setenv("UAGENT_WIRE_API", WireApiName(api.capabilities.wire_api), 1);
+  setenv("UAGENT_HOSTED_TOOLS",
+         api.capabilities.hosted_web_search ? "web_search" : "", 1);
 }
 
 void ResetRouteCapabilities(Api& api) {
-  api.capabilities =
-      CapabilitiesForRoute(api.capabilities.protocol, api.base_url);
+  api.capabilities = CapabilitiesForRoute(
+      api.capabilities.protocol, api.base_url, api.capabilities.wire_api,
+      api.capabilities.hosted_web_search);
 }
 
 void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
@@ -276,6 +322,8 @@ SideRoute ResolveSideRoute(const Api& api,
   resolved.variant = api.config.openrouter_variant;
   resolved.context = api.ctx_window;
   resolved.protocol = api.capabilities.protocol;
+  resolved.wire_api = api.capabilities.wire_api;
+  resolved.hosted_web_search = api.capabilities.hosted_web_search;
   if (!parsed.base.empty()) {
     if (std::optional<ModelRoute> route =
             ResolveModelRoute(routes, providers, parsed.base)) {
@@ -285,6 +333,8 @@ SideRoute ResolveSideRoute(const Api& api,
       if (!route->effort.empty()) resolved.effort = route->effort;
       resolved.context = route->context;
       resolved.protocol = route->protocol;
+      resolved.wire_api = route->wire_api;
+      resolved.hosted_web_search = route->hosted_web_search;
     } else {
       // A bare model id on the parent's provider also lands here; only the
       // execution paths decide whether that is usable.
@@ -304,7 +354,8 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.model = route.model;
   if (!route.effort.empty()) api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
-  api.capabilities = CapabilitiesForRoute(route.protocol, route.base_url);
+  api.capabilities = CapabilitiesForRoute(
+      route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
 }
 
 namespace {
@@ -355,7 +406,8 @@ void ApplySideRoute(Api& api, const SideRoute& route) {
   api.model = route.model;
   api.reasoning_effort = route.effort;
   api.ctx_window = route.context;
-  api.capabilities = CapabilitiesForRoute(route.protocol, route.base_url);
+  api.capabilities = CapabilitiesForRoute(
+      route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
   api.config.openrouter_variant = route.variant;
 }
 
@@ -371,21 +423,50 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.model = requested.base;
   api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
   api.ctx_window = ContextWindow();
+  std::string protocol_setting = EnvStr("UAGENT_PROVIDER_PROTOCOL");
   std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
-  ProviderProtocol protocol =
-      compatible.empty()
-          ? (OpenrouterUrl(api.base_url) ? ProviderProtocol::kOpenRouter
-                                         : ProviderProtocol::kOpenAi)
-          : (compatible == "1" ? ProviderProtocol::kOpenRouter
-                               : ProviderProtocol::kOpenAi);
-  api.capabilities = CapabilitiesForRoute(protocol, api.base_url);
+  std::string wire_setting = EnvStr("UAGENT_WIRE_API", "chat_completions");
+  std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
+  WireApi wire_api = configured_wire.value_or(WireApi::kChatCompletions);
+  std::optional<ProviderProtocol> configured_protocol;
+  if (!protocol_setting.empty()) {
+    configured_protocol = ParseProviderProtocol(protocol_setting);
+  }
+  ProviderProtocol protocol;
+  if (configured_protocol) {
+    protocol = *configured_protocol;
+  } else if (!compatible.empty()) {
+    protocol = compatible == "1" ? ProviderProtocol::kOpenRouter
+                                 : ProviderProtocol::kOpenAi;
+  } else if (wire_api == WireApi::kAnthropicMessages) {
+    protocol = ProviderProtocol::kAnthropic;
+  } else {
+    protocol = OpenrouterUrl(api.base_url) ? ProviderProtocol::kOpenRouter
+                                           : ProviderProtocol::kOpenAi;
+  }
+  json hosted_tools = json::array();
+  for (std::string tool : SplitPathList(EnvStr("UAGENT_HOSTED_TOOLS"), ',')) {
+    tool = Trim(tool);
+    if (!tool.empty()) hosted_tools.push_back(std::move(tool));
+  }
+  api.capabilities =
+      CapabilitiesForRoute(protocol, api.base_url, wire_api,
+                           HasHostedTool(hosted_tools, HostedTool::kWebSearch));
 
   ProviderCatalog catalog = SessionProviderCatalog();
   ProviderSetup setup{
       std::move(catalog.models), std::move(catalog.providers), {}};
+  std::string metadata_error;
+  if (!configured_wire) metadata_error = "invalid wire API: " + wire_setting;
+  if (!protocol_setting.empty() && !configured_protocol) {
+    if (!metadata_error.empty()) metadata_error += "; ";
+    metadata_error += "invalid provider protocol: " + protocol_setting;
+  }
+  bool route_metadata_validated = false;
   if (std::optional<ModelRoute> route =
           ResolveModelRoute(setup.routes, setup.providers, api.model)) {
     ApplyRoute(api, *route);
+    route_metadata_validated = true;
   } else if (api.model.empty()) {  // no explicit model: restore the last /model
     ModelPreference preference = LoadModelPreference();
     ModelSelection preferred = ParseModelSelection(preference.selection);
@@ -393,6 +474,7 @@ ProviderSetup ConfigureProvider(Api& api) {
       if (std::optional<ModelRoute> saved = ResolveModelRoute(
               setup.routes, setup.providers, preferred.base)) {
         ApplyRoute(api, *saved);
+        route_metadata_validated = true;
         ApplySelectionPolicy(api, preferred);
       }
     } else if (!preference.selection.empty()) {
@@ -410,11 +492,19 @@ ProviderSetup ConfigureProvider(Api& api) {
   }
   // Command-line/config suffixes are the most specific route policy. Apply
   // them after a named route so they override its defaults without becoming
-  // part of the model ID sent to an OpenAI-compatible endpoint.
+  // part of the model ID sent over the active wire API.
   ApplySelectionPolicy(api, requested);
-  if (api.base_url.empty()) ApplyProviderTemplate(api, kProviderTemplates[0]);
+  if (api.base_url.empty() && metadata_error.empty()) {
+    route_metadata_validated =
+        ApplyProviderTemplate(api, kProviderTemplates[0]);
+  }
+  if (!metadata_error.empty() && !route_metadata_validated) {
+    setup.warning = std::move(metadata_error);
+    api.base_url.clear();
+  }
   if (!ValidEffort(api.reasoning_effort)) {
-    setup.warning =
+    if (!setup.warning.empty()) setup.warning += "; ";
+    setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
     api.reasoning_effort.clear();
     setenv("UAGENT_REASONING_EFFORT", "", 1);
@@ -515,7 +605,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       continue;
     }
     std::string identity =
-        RouteIdentity(route.base_url, route.model, route.protocol);
+        RouteIdentity(route.base_url, route.model, route.protocol,
+                      route.wire_api, route.hosted_web_search);
     if (!selections.insert(route.name).second) continue;
     route_identities.insert(std::move(identity));
     ModelInfo info{route.model, {}, {}, route.context};
@@ -531,7 +622,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                                      });
   if (!active_is_named && !api.base_url.empty()) {
     catalogs.push_back({"", api.base_url, api.api_key, api.ctx_window,
-                        api.capabilities.protocol});
+                        api.capabilities.protocol, api.capabilities.wire_api,
+                        api.capabilities.hosted_web_search});
   }
 
   using CatalogModels = std::optional<std::vector<ModelInfo>>;
@@ -550,7 +642,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         catalog_api.base_url = source.base_url;
         catalog_api.api_key = source.api_key;
         catalog_api.capabilities =
-            CapabilitiesForRoute(source.protocol, source.base_url);
+            CapabilitiesForRoute(source.protocol, source.base_url,
+                                 source.wire_api, source.hosted_web_search);
         responses[index] = QueryModels(catalog_api, /*abortable=*/true);
       }
     }));
@@ -568,15 +661,23 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       std::string selection =
           source.name.empty() ? info.id : source.name + "/" + info.id;
       std::string identity =
-          RouteIdentity(source.base_url, info.id, source.protocol);
+          RouteIdentity(source.base_url, info.id, source.protocol,
+                        source.wire_api, source.hosted_web_search);
       if (!ContainsCaseInsensitive(selection, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {
         continue;
       }
       int64_t context = info.context > 0 ? info.context : source.context;
-      ModelRoute route{selection, source.base_url, source.api_key, info.id,
-                       "",        context,         source.protocol};
+      ModelRoute route{selection,
+                       source.base_url,
+                       source.api_key,
+                       info.id,
+                       "",
+                       context,
+                       source.protocol,
+                       source.wire_api,
+                       source.hosted_web_search};
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});

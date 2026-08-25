@@ -212,6 +212,7 @@ struct Agent::TurnLoop {
   int64_t quiet_activity_polls = 0;
   int64_t consecutive_failed_tools = 0;
   int64_t empty_responses = 0;
+  int64_t provider_continuations = 0;
   bool failure_advisory_sent = false;
   bool quiet_activity_advisory_sent = false;
   bool markup_recovered = false;
@@ -566,7 +567,9 @@ void Agent::PushAssistantMessage(ChatResult& response,
   }
   // Preserve the replay fields the active route actually emitted while any
   // tool protocol continues; completed prose does not burden later turns.
-  if (!calls.empty()) api_.PreserveAssistantReasoning(message, response);
+  if (!calls.empty() || response.continue_response) {
+    api_.PreserveAssistantReasoning(message, response);
+  }
   conversation_.Push(std::move(message), MessageKind::kAssistant);
 }
 
@@ -737,6 +740,21 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     RecordModelResponse(response, state, loop.tool_counts);
     if (TurnCostExceeded(state)) break;
+    if (response.continue_response && !response.replay.empty()) {
+      constexpr int64_t kProviderContinuationLimit = 8;
+      if (++loop.provider_continuations > kProviderContinuationLimit) {
+        state.outcome = "error";
+        last_error_ = "provider continuation limit (8) reached";
+        Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+        break;
+      }
+      PushAssistantMessage(response, {}, false);
+      DebugLog("provider_continuation",
+               {{"turn", turn_id_},
+                {"step", loop.step},
+                {"wire_api", WireApiName(api_.capabilities.wire_api)}});
+      continue;
+    }
 
     std::vector<ToolCall> calls = std::move(response.tool_calls);
     std::vector<ToolCall> text_calls;

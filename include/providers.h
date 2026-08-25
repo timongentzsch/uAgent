@@ -20,12 +20,16 @@ struct ModelRoute {
   std::string name, base_url, api_key, model, effort;
   int64_t context = 0;
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
+  WireApi wire_api = WireApi::kChatCompletions;
+  bool hosted_web_search = false;
 };
 
 struct NamedProvider {
   std::string name, base_url, api_key;
   int64_t context = 0;
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
+  WireApi wire_api = WireApi::kChatCompletions;
+  bool hosted_web_search = false;
 };
 
 struct ProviderCatalog {
@@ -65,6 +69,8 @@ struct ProviderTemplate {
   const char* default_model;
   ProviderUrlMatcher matches_url;
   ProviderProtocol protocol;
+  WireApi wire_api;
+  bool hosted_web_search;
 };
 
 struct ProviderSetup {
@@ -101,6 +107,8 @@ struct SideRoute {
   std::string selection, model, base_url, api_key, effort, variant;
   int64_t context = 0;
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
+  WireApi wire_api = WireApi::kChatCompletions;
+  bool hosted_web_search = false;
   bool unresolved = false;
 };
 

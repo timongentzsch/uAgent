@@ -414,6 +414,8 @@ void TestChildEnvironmentPolicy() {
   route.context = 32768;
   route.effort = "high";
   route.protocol = ProviderProtocol::kOpenRouter;
+  route.wire_api = WireApi::kResponses;
+  route.hosted_web_search = true;
   route.variant = "nitro";
   EnvironmentOverrides child_overrides = ChildAgentEnvironment(route);
   auto child_value = [&](std::string_view key) {
@@ -428,6 +430,9 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
   CHECK(child_value("UAGENT_OPENROUTER_COMPATIBLE") == "1");
+  CHECK(child_value("UAGENT_PROVIDER_PROTOCOL") == "openrouter");
+  CHECK(child_value("UAGENT_WIRE_API") == "responses");
+  CHECK(child_value("UAGENT_HOSTED_TOOLS") == "web_search");
   CHECK(child_value("UAGENT_OPENROUTER_VARIANT") == "nitro");
   ChildEnvironment child(child_overrides);
   CHECK(!child.Contains("UAGENT_PROVIDERS"));
@@ -493,6 +498,8 @@ void TestProviderTemplates() {
       // NOLINTNEXTLINE(performance-unnecessary-value-param)
       +[](std::string url) { return url == "https://provider.test/v1"; },
       ProviderProtocol::kOpenAi,
+      WireApi::kChatCompletions,
+      false,
   };
   ScopedEnv scoped_key(kTestProvider.api_key_env, "test-key");
   ScopedEnv scoped_model(kTestProvider.model_env, "selected-model");
@@ -515,6 +522,11 @@ void TestNamedProviders() {
   ScopedEnv scoped_effort("UAGENT_REASONING_EFFORT",
                           std::getenv("UAGENT_REASONING_EFFORT"));
   ScopedEnv scoped_context("UAGENT_CONTEXT", std::getenv("UAGENT_CONTEXT"));
+  ScopedEnv scoped_protocol("UAGENT_PROVIDER_PROTOCOL",
+                            std::getenv("UAGENT_PROVIDER_PROTOCOL"));
+  ScopedEnv scoped_wire("UAGENT_WIRE_API", std::getenv("UAGENT_WIRE_API"));
+  ScopedEnv scoped_hosted("UAGENT_HOSTED_TOOLS",
+                          std::getenv("UAGENT_HOSTED_TOOLS"));
   ScopedEnv scoped_providers("UAGENT_PROVIDERS",
                              std::getenv("UAGENT_PROVIDERS"));
   ScopedEnv scoped_openrouter("OPENROUTER_API_KEY",
@@ -530,7 +542,15 @@ void TestNamedProviders() {
         {"context", 16384}}},
       {"static",
        {{"base_url", "https://static.test/v1"},
+        {"wire_api", "responses"},
+        {"hosted_tools", json::array({"web_search"})},
         {"models", {{"fast", "actual-model"}}}}},
+      {"bad-wire",
+       {{"base_url", "https://bad-wire.test/v1"},
+        {"wire_api", "model-name-is-not-a-wire-api"}}},
+      {"bad-protocol",
+       {{"base_url", "https://bad-protocol.test/v1"},
+        {"protocol", "model-name-is-not-a-protocol"}}},
   };
   setenv("UAGENT_PROVIDERS", JsonDump(configured).c_str(), 1);
   ProviderCatalog catalog = LoadProviderCatalog();
@@ -543,16 +563,24 @@ void TestNamedProviders() {
   CHECK(codex && codex->api_key == "local-key");
   CHECK(codex && codex->context == 16384);
   CHECK(codex && codex->protocol == ProviderProtocol::kOpenRouter);
+  CHECK(codex && codex->wire_api == WireApi::kChatCompletions);
+  CHECK(codex && !codex->hosted_web_search);
+  const NamedProvider* native = FindNamedProvider(catalog.providers, "static");
+  CHECK(native && native->wire_api == WireApi::kResponses);
+  CHECK(native && native->hosted_web_search);
 
   // Startup consumes the same selection grammar as interactive and side
   // routes. Suffixes configure policy and never leak into the provider model
   // identifier.
   setenv("UAGENT_MODEL", "codex-local/gpt-5.6-luna:nitro:low", 1);
+  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
   unsetenv("UAGENT_BASE_URL");
   unsetenv("UAGENT_REASONING_EFFORT");
   RuntimeConfig startup_config;
   Api startup(startup_config);
-  ConfigureProvider(startup);
+  ProviderSetup startup_setup = ConfigureProvider(startup);
+  CHECK(startup_setup.warning.empty());
   CHECK(startup.base_url == "http://127.0.0.1:8787/api/v1");
   CHECK(startup.api_key == "local-key");
   CHECK(startup.model == "gpt-5.6-luna");
@@ -641,6 +669,8 @@ void TestNamedProviders() {
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
   CHECK(fixed.has_value());
   CHECK(fixed && fixed->model == "actual-model");
+  CHECK(fixed && fixed->wire_api == WireApi::kResponses);
+  CHECK(fixed && fixed->hosted_web_search);
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "missing/model"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
@@ -661,6 +691,17 @@ void TestNamedProviders() {
   CHECK(openrouter && openrouter->api_key == "openrouter-key");
   AddAvailableProviderTemplates(catalog);
   CHECK(catalog.providers.size() == 3);
+
+  setenv("UAGENT_BASE_URL", "https://direct.test/v1", 1);
+  setenv("UAGENT_MODEL", "direct-model", 1);
+  setenv("UAGENT_WIRE_API", "invalid-direct-wire", 1);
+  setenv("UAGENT_PROVIDER_PROTOCOL", "invalid-direct-protocol", 1);
+  Api invalid_direct(RuntimeConfig{});
+  ProviderSetup invalid_setup = ConfigureProvider(invalid_direct);
+  CHECK(invalid_direct.base_url.empty());
+  CHECK(invalid_setup.warning.find("invalid wire API") != std::string::npos);
+  CHECK(invalid_setup.warning.find("invalid provider protocol") !=
+        std::string::npos);
 }
 
 void TestEffectiveConfigReload() {

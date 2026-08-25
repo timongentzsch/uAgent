@@ -19,7 +19,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Enough of a PNG for the attachment inspector to accept it.
 SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
-BINARY = pathlib.Path(sys.argv[1]).resolve()
+
+
+def _binary_from_argv():
+    """The suite is invoked as `integration.py BINARY ...`.
+
+    Importing this module for its HTTP/SSE fixture alone — the eval harness
+    reuses `Server`, `sse` and `event` rather than keeping a second copy — must
+    not require that argument.
+    """
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        return pathlib.Path(sys.argv[1]).resolve()
+    return None
+
+
+BINARY = _binary_from_argv()
 # A sanitized or coverage-instrumented binary starts and renders several times
 # slower than a plain one, which turns every wall-clock budget below into a
 # coin flip on a shared runner. Those jobs raise the multiplier instead of each
@@ -33,7 +47,11 @@ def budget(seconds):
 
 
 def integration_group(name):
-    """Keep integration domains isolated without duplicating shared fixtures."""
+    """Shard the suite into isolated CTest processes.
+
+    This is sharding, not selection: `integration.py --test/-k` picks individual
+    cases, and every case runs in exactly one group.
+    """
     groups = (
         ("mcp", ("mcp",)),
         ("delegation", ("subagent", "delegated_session", "parallel_subagents")),

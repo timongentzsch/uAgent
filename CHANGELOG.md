@@ -1,9 +1,12 @@
 # Changelog
 
-## v0.7.0 - 2026-08-24
+## v0.7.0 - 2026-08-25
 
 ### Fixed
 
+- Tool-originated attachment messages identify the originating call beside each
+  path, so images queued by parallel `attach` calls remain unambiguous on the
+  next model inference.
 - Activity polling is semantic rather than a blind identical-call counter.
   Productive reads reset the state; two consecutive no-change polls prompt one
   bounded `wait`; a third terminates cleanly. Mixed batches with useful work do

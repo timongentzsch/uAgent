@@ -126,11 +126,16 @@ inline ToolResult ToolTimedOut(std::string output) {
 }
 
 struct ToolContext {
+  ToolContext() = default;
+  explicit ToolContext(std::chrono::steady_clock::time_point deadline_value)
+      : deadline(deadline_value) {}
+
   std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::time_point::max();
   bool image_input_available = true;
   bool image_fallback_available = false;
   int64_t timeout_s = 0;
+  std::string call_id;
 
   bool Expired() const {
     return deadline != std::chrono::steady_clock::time_point::max() &&

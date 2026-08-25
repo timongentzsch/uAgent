@@ -687,10 +687,16 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   int64_t bytes = GrepBytes();
   if (ToolResultCap() > 0) bytes = std::min(bytes, ToolResultCap());
   bool ripgrep = ExecutableOnPath("rg");
+  // Ripgrep searches files in parallel and reports them in completion order, so
+  // two identical searches can disagree. That is not cosmetic here: results are
+  // truncated at a cap, so an unordered search returns an arbitrary subset, and
+  // a repeated search looks changed when nothing changed. Path order costs
+  // ripgrep's parallelism and buys a result the agent can compare and reuse.
+  const char* kSorted = " --sort path";
   std::string command;
   if (files_only) {
     if (ripgrep) {
-      command = "rg --files --color=never";
+      command = std::string("rg --files --color=never") + kSorted;
       if (!glob.empty()) command += " --glob " + ShellQuote(glob);
       command += " -- " + ShellQuote(target) +
                  " | rg --line-number --color=never -- " + ShellQuote(pattern);
@@ -700,8 +706,11 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
       command += " -print | grep -E -n -- " + ShellQuote(pattern);
     }
   } else {
-    command = ripgrep ? "rg --line-number --column --no-heading --color=never"
-                      : "grep -r -E -n -H -I --exclude-dir=.git";
+    command = ripgrep ? std::string(
+                            "rg --line-number --column --no-heading "
+                            "--color=never") +
+                            kSorted
+                      : std::string("grep -r -E -n -H -I --exclude-dir=.git");
     if (context_lines > 0) {
       command += ripgrep ? " --context " : " -C ";
       command += std::to_string(context_lines);

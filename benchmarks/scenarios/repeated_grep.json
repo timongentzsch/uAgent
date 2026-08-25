@@ -1,0 +1,43 @@
+{
+  "name": "repeated_grep",
+  "description": "A byte-identical repeat of a recent search must collapse to a receipt, exactly like a repeated read.",
+  "variants": ["control"],
+  "prompt": "Search for MARKER twice and report how many files matched.",
+  "files": {
+    "alpha.txt": {
+      "text": "MARKER alpha\n",
+      "repeat_text": "MARKER alpha occurrence {index:02d} with enough text to pass the deduplication floor.\n",
+      "repeat": 8
+    },
+    "beta.txt": {
+      "text": "MARKER beta\n",
+      "repeat_text": "MARKER beta occurrence {index:02d} with enough text to pass the deduplication floor.\n",
+      "repeat": 8
+    }
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [{"id": "first", "name": "grep", "arguments": {"pattern": "MARKER"}}]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [{"id": "second", "name": "grep", "arguments": {"pattern": "MARKER"}}]
+      }
+    },
+    {
+      "respond": {"content": "Two files matched: alpha.txt and beta.txt."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["alpha.txt", "beta.txt"],
+    "events": {"tool_result_deduplicated": 1},
+    "request_absent_repeats": {"occurrence 05": 2},
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

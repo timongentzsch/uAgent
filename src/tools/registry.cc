@@ -145,6 +145,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   grep.clamped_arguments = {"context"};
   grep.parallel_safe = true;  // read-only, like read_path
   grep.capabilities = Capability(ToolCapability::kInspect);
+  // Same contract as read_path: only a byte-identical repeat of a result still
+  // in recent context collapses to a receipt, so a search that found anything
+  // new is always resent in full.
+  grep.dedupe_output = true;
   grep.summary = [](const json& a) {
     std::string mode = JsonValue(a, "mode", "content");
     return (mode == "files" ? "files /" : "/") + JsonValue(a, "pattern", "") +

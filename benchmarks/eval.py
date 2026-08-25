@@ -548,7 +548,7 @@ def variant_comparisons(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return comparisons
 
 
-def write_baseline(results: list[dict[str, Any]], binary: Path) -> None:
+def write_baseline(results: list[dict[str, Any]]) -> None:
     payload = {
         "schema": "uagent.eval.baseline.v1",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -644,7 +644,7 @@ def main() -> int:
         comparisons += compare(results, load_baseline())
     print_results(results, comparisons)
     if arguments.update:
-        write_baseline(results, arguments.binary)
+        write_baseline(results)
     report = {
         "schema": "uagent.eval.v1",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

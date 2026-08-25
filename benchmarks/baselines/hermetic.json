@@ -1,6 +1,6 @@
 {
   "schema": "uagent.eval.baseline.v1",
-  "generated_at": "2026-08-25T19:38:46Z",
+  "generated_at": "2026-08-25T20:10:01Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
     "cache_hit_diagnosis/compacted": {
@@ -9,6 +9,7 @@
       "model_requests": 4,
       "tool_calls": 3,
       "max_batch": 2,
+      "no_action_rounds": 1,
       "compactions": 1,
       "max_estimated_request_chars": 15122,
       "initial_schema_chars": 9794
@@ -19,8 +20,31 @@
       "model_requests": 3,
       "tool_calls": 3,
       "max_batch": 2,
+      "no_action_rounds": 0,
       "compactions": 0,
       "max_estimated_request_chars": 19821,
+      "initial_schema_chars": 9794
+    },
+    "edit_and_verify/control": {
+      "score": 6,
+      "checks_total": 6,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 14521,
+      "initial_schema_chars": 9794
+    },
+    "failed_call_recovery/control": {
+      "score": 7,
+      "checks_total": 7,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 14262,
       "initial_schema_chars": 9794
     },
     "parallel_batch/control": {
@@ -29,6 +53,7 @@
       "model_requests": 2,
       "tool_calls": 3,
       "max_batch": 3,
+      "no_action_rounds": 0,
       "compactions": 0,
       "max_estimated_request_chars": 14327,
       "initial_schema_chars": 9794
@@ -39,6 +64,7 @@
       "model_requests": 3,
       "tool_calls": 2,
       "max_batch": 1,
+      "no_action_rounds": 0,
       "compactions": 0,
       "max_estimated_request_chars": 15739,
       "initial_schema_chars": 9794
@@ -49,8 +75,20 @@
       "model_requests": 3,
       "tool_calls": 2,
       "max_batch": 1,
+      "no_action_rounds": 0,
       "compactions": 0,
       "max_estimated_request_chars": 15118,
+      "initial_schema_chars": 9794
+    },
+    "shell_probe/control": {
+      "score": 6,
+      "checks_total": 6,
+      "model_requests": 2,
+      "tool_calls": 1,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 13921,
       "initial_schema_chars": 9794
     }
   }

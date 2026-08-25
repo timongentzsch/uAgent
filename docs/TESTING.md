@@ -59,9 +59,29 @@ Live runs are billable, require `--run`, and apply `--max-cost` (default
 dollar cap authoritative. A compacted run fails if its score is below its
 control, hermetically and live.
 
-`benchmarks/session_metrics.py` reports the same behaviors from real saved
-sessions; `--prompt-overlay` is what makes a before/after cohort comparable
-without rebuilding.
+Scenarios carry a `tier`. A `capability` scenario is reported but does not gate
+the build — it is a hill to climb — and graduates to `regression` once it holds
+green. The suite reports rounds that asked for nothing (`idle`) and the
+failure-category vector alongside the score, because a pass rate alone does not
+say what broke.
+
+## Improvement iterations
+
+`benchmarks/session_metrics.py` reports what real sessions did and where they
+spent time, tokens and turns; `benchmarks/audit.py` prints the six-clause
+dashboard — hardware, token, speed, capability, readability, and whether the
+scenario suite still resembles real usage — and fails on a baseline regression:
+
+```sh
+python3 benchmarks/session_metrics.py --since 2026-08-01
+python3 benchmarks/audit.py build/debug/uagent --check
+python3 benchmarks/audit.py build/debug/uagent --update   # review the diff
+```
+
+The audit reads session journals and a configured build tree, so it is a local
+tool rather than a CI gate. The `self-improve` skill drives the whole loop.
+`--prompt-overlay` is what makes a before/after cohort comparable without
+rebuilding.
 
 Keep tests proportional: pure helpers get focused unit coverage; externally
 visible behavior gets one hermetic integration path. Avoid duplicating the

@@ -1,0 +1,46 @@
+{
+  "name": "edit_and_verify",
+  "description": "Apply a fix and confirm it landed. Mutation is 13% of real tool calls and every read-only scenario misses it.",
+  "tier": "regression",
+  "variants": ["control"],
+  "yolo": true,
+  "prompt": "Fix the cache-hit bug in cache.py so a hit returns the cached value, then confirm the file on disk.",
+  "files": {
+    "cache.py": "def get_or_load(cache, key, loader):\n    if key in cache:\n        return None\n    value = loader(key)\n    cache[key] = value\n    return value\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "fix",
+            "name": "edit_file",
+            "arguments": {
+              "path": "cache.py",
+              "edits": [{"old": "    if key in cache:\n        return None", "new": "    if key in cache:\n        return cache[key]"}]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [{"id": "verify", "name": "read_path", "arguments": {"path": "cache.py"}}]
+      }
+    },
+    {
+      "respond": {"content": "cache.py now returns cache[key] on a hit; misses still load and store."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": false,
+    "files_after": {
+      "cache.py": "def get_or_load(cache, key, loader):\n    if key in cache:\n        return cache[key]\n    value = loader(key)\n    cache[key] = value\n    return value\n"
+    },
+    "answer_contains": ["cache[key]"],
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

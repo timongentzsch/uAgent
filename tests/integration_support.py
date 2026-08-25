@@ -709,6 +709,7 @@ TEST_ORDER = (
     "test_session_budget_stops_before_the_next_call",
     "test_turn_cost_is_unlimited_by_default",
     "test_tool_policy_scopes_schema_and_runtime",
+    "test_delete_file_removes_and_receipts",
     "test_grep_tool_round_trip",
     "test_project_agent_config_trust",
     "test_memory_reaches_context_by_scope",

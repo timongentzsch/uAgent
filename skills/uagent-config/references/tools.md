@@ -5,7 +5,7 @@
 
 Descriptions are what the model reads, including the batching and budget suffixes the registry appends. `bytes` is what one schema costs in every request that advertises it, and `when` says which sessions pay it. `schema` digests the complete JSON parameters, so an argument or its description cannot change without changing this table. Conditionally registered tools are rendered from empty dependencies: the route- and skill-catalogue text a live session splices in, and MCP tools, appear in `/context` instead.
 
-Advertised schema text totals 12043 bytes, of which 5124 bytes are sent by every session.
+Advertised schema text totals 12214 bytes, of which 5295 bytes are sent by every session.
 
 | Tool | Bytes | Arguments | Lean | Batchable | When | Schema | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -13,6 +13,7 @@ Advertised schema text totals 12043 bytes, of which 5124 bytes are sent by every
 | `read_path` | 581 | `limit?, offset?, path` | yes | yes | always | `8a70f441765b` | Read what is at a path: a text file's contents or line range, or a directory's entries. Results remain in context; do not reread an unchanged range. Reread after edits or external changes when exact current text matters. Use grep when the file or symbol is unknown; batch independent paths. Batchable with independent calls. |
 | `write_file` | 225 | `content, path` | no | no | always | `fa3df1e15a69` | Create a file or replace it whole. Use edit_file for changes to an existing file. |
 | `edit_file` | 479 | `edits, path` | no | no | always | `71d8041d1e31` | Apply exact search/replacements to an existing file, batched and atomic in order. |
+| `delete_file` | 171 | `path` | no | no | always | `248d9b4cfbdb` | Delete a regular file and show its removed content as a red diff. |
 | `grep` | 496 | `context?, glob?, mode?, path?, pattern` | yes | yes | always | `419febbcc0d3` | Locate file paths or matching content with a regex under an optional path and glob. Use mode=files to match paths and read_path afterward. Batchable with independent calls. |
 | `attach` | 210 | `path` | yes | yes | always | `248d9b4cfbdb` | Add an image/document to model context when read_path cannot parse it. Batchable with independent calls. |
 | `run` | 976 | `command, detach?, max_output_chars?, shell?, tty?, yield_ms?` | yes | yes | always | `d8861cc62f76` | Execute a non-privileged build, test, or shell command in cwd (bash default; omit cd; no sudo). Set tty=true only when the process needs interactive stdin. Do not use it for file search, reading, or editing when a dedicated tool exists. Use a project's existing Python runner such as uv run or pytest. Detach only for a persistent terminal that may outlive the current session. Batchable with independent calls. |

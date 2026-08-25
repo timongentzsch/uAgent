@@ -4,6 +4,18 @@
 
 ### Added
 
+- `delete_file` removes a regular file and reports the removed lines as a
+  receipt, so an approval prompt shows what is about to be lost. Directories,
+  non-regular files and missing paths are refused by the same path policy the
+  other file tools use.
+- `write_file` and `edit_file` preview the diff they would apply at the
+  approval prompt instead of a one-line summary, so consent is given against
+  the change rather than against its description.
+- Math in answers renders to Unicode through a shared transliteration table:
+  Greek, operators, super- and subscripts, fractions and roots. Unknown
+  commands survive verbatim rather than being dropped.
+- A session whose executable has been replaced on disk says so at the next
+  turn, which closes the loop after an improvement round is installed.
 - `benchmarks/eval.py` scores end-to-end agent behavior against declarative
   scenarios in `benchmarks/scenarios/*.json` — answer content and shape, files
   read, forbidden tools, model rounds, batch width, deduplication, request
@@ -74,6 +86,11 @@
 
 ### Changed
 
+- Diff receipts show whole lines and a realistic edit in full, capped at 400
+  lines rather than 80, so a review is not truncated where it matters while a
+  very large replace still cannot take the scrollback with it.
+- The rolling activity ticker and the styled-block renderer moved to
+  `include/core/style.h`, leaving one implementation of chasing a live edge.
 - A repeated `grep` with identical arguments collapses to a receipt when its
   result is byte-identical and still in recent context, matching `read_path`.
 - `uagent_configure` is registered only where a person can actually approve it.

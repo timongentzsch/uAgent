@@ -92,6 +92,22 @@ not to fix.
 Lead with the numbers, then the trade-offs, then a merge verdict. Name every
 known gap. The human decides the merge.
 
+### 8. Install, then say so
+
+A merged round changes nothing until the binary is replaced, and the running
+session is still the old build — nothing it reports about itself is true of the
+new one. After the merge is agreed:
+
+```sh
+cmake --build --preset release -j 12 && ./install.sh
+```
+
+Installing is automatable and belongs in this step. Restarting is not: ending
+the session the human is talking to would be a decision taken on their behalf.
+Say plainly that a restart is needed, and let them choose the moment. The next
+turn of any still-running session prints the same reminder on its own, because
+`uagent` notices when the file it was launched from has been replaced.
+
 ## Invariants
 
 Breaking one of these is a bug, not a trade-off.

@@ -112,6 +112,7 @@ add_library(
   src/core/debug.cc
   src/core/effective_config.cc
   src/core/env.cc
+  src/core/math.cc
   src/core/events.cc
   src/core/file_watch.cc
   src/core/fs.cc
@@ -171,6 +172,7 @@ if(BUILD_TESTING)
     tests/unit/conversation_test.cc
     tests/unit/events_test.cc
     tests/unit/filesystem_test.cc
+    tests/unit/math_test.cc
     tests/unit/grep_tool_test.cc
     tests/unit/input_decoder_test.cc
     tests/unit/mcp_session_test.cc

@@ -162,6 +162,7 @@ void Check(bool condition, const char* expression, int line);
   X(TestMarkdownMath)                     \
   X(TestCapsAndEscaping)                  \
   X(TestFileTools)                        \
+  X(TestMathTransliteration)              \
   X(TestActivityBar)                      \
   X(TestPollCollapse)                     \
   X(TestTerminalSafety)                   \

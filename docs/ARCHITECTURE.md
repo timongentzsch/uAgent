@@ -95,6 +95,23 @@ the one the binary applies.
 and the live tool list as a read-only tool. It is assembled only when called,
 adds nothing to the system prompt, and reports secrets as set or unset.
 
+The model-facing surface is generated the same way. `--emit-reference` also
+writes the base prompt with its capability fragments and the built-in tool
+schemas, and the manifest carries a digest of each, so a reworded prompt
+section or a changed argument description is a reviewable diff rather than an
+invisible behavior change. Emission is a function of the source alone: no
+environment, no live session. Per-session additions — host capabilities,
+runtime context, project instructions, the mutable directive — are recorded by
+`--debug` instead.
+
+`UAGENT_PROMPT_OVERLAY` names a JSON file that replaces base-prompt sections,
+so two prompt variants can be compared without rebuilding. It reaches prompt
+text only: the capability, host-capability and directive sections below the
+base are not addressable, and authority stays with tool policy, approval
+classes and process ownership. An absent or malformed overlay leaves the
+shipped prompt byte for byte, and an applied one is recorded next to the
+request it shaped.
+
 ## Changing µAgent's own configuration
 
 The agent has no tool that writes configuration. Editing `~/.uagent/.config`, a
@@ -346,5 +363,8 @@ presentation belongs in tool metadata, not string comparisons against tool
 names. Live environment access is limited to intentionally dynamic route and
 delegation state. Every new
 boundary needs a focused unit test and externally visible behavior needs a
-hermetic integration test. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
+hermetic integration test. Behavior that the model is supposed to exhibit —
+batching, deduplication, round count, answer shape — gets a scored scenario in
+`benchmarks/scenarios/` so a change to it is measured against a committed
+baseline rather than argued. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
 [TESTING.md](TESTING.md).

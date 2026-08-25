@@ -170,6 +170,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
+| `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
 | `UAGENT_APPROVAL` | string | empty | restart-required | yolo approves ordinary mutations without asking |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_TRUST_PROJECT_CONFIG` | string | empty | restart-required | trust this workspace's .mcp.json and config |

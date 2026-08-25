@@ -398,6 +398,44 @@ void TestRegistries() {
   std::string fetch_prompt = CapabilityPrompt(capability_tools);
   CHECK(fetch_prompt.find("Read a named page with web_fetch") !=
         std::string::npos);
+
+  // An absent, empty or malformed overlay must leave the shipped prompt byte
+  // for byte: the experiment path may not change the default build.
+  std::vector<std::string> applied;
+  CHECK(ApplyPromptOverlay(kSystemPrompt, json::object(), &applied) ==
+        std::string(kSystemPrompt));
+  CHECK(ApplyPromptOverlay(kSystemPrompt, json::array(), &applied) ==
+        std::string(kSystemPrompt));
+  CHECK(ApplyPromptOverlay(kSystemPrompt, json{{"replace", "not-an-object"}},
+                           &applied) == std::string(kSystemPrompt));
+  CHECK(ApplyPromptOverlay(kSystemPrompt,
+                           json{{"replace", {{"## Missing", "x"}}}},
+                           &applied) == std::string(kSystemPrompt));
+  CHECK(applied.empty());
+
+  std::string overlaid = ApplyPromptOverlay(
+      kSystemPrompt,
+      json{{"replace", {{"## Answer", "Answer briefly."}}}, {"append", "tail"}},
+      &applied);
+  CHECK(applied.size() == 2);
+  CHECK(applied[0] == "## Answer");
+  CHECK(applied[1] == "append");
+  CHECK(overlaid.find("## Answer\nAnswer briefly.") != std::string::npos);
+  CHECK(overlaid.ends_with("\n\ntail"));
+  // Sections the overlay did not name keep their shipped wording, and a
+  // replacement cannot reach past its own section.
+  CHECK(overlaid.find("## Evidence\nGather only what is necessary") !=
+        std::string::npos);
+  CHECK(overlaid.find("Cite code as path:line") == std::string::npos);
+  CHECK(overlaid.find("## Delegation") != std::string::npos);
+
+  applied.clear();
+  std::string middle = ApplyPromptOverlay(
+      kSystemPrompt, json{{"replace", {{"## Tools", "Use tools."}}}}, &applied);
+  CHECK(applied.size() == 1);
+  CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
+  CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);
+  CHECK(middle.find("Inquiries do not authorize") != std::string::npos);
   CHECK(fetch_prompt.find("browser skill's job") != std::string::npos);
   capability_tools.push_back(MakeTool(
       "adapt_system", "", json::object(),

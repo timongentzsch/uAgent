@@ -42,6 +42,8 @@ std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool AdaptiveSystemEnabled();
+// Experiment overlay for the base prompt: a path, empty when unset.
+std::string PromptOverlayPath();
 
 inline constexpr std::string_view kOpenRouterVariants[] = {"nitro", "floor",
                                                            "exacto"};

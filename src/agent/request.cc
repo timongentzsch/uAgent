@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,26 @@
 #include "include/tools/subagent.h"
 
 namespace uagent {
+namespace {
+
+// An overlay is a small declarative document, not a second prompt source: it is
+// bounded, parsed strictly, and ignored when absent or malformed.
+constexpr size_t kPromptOverlayBytes = 64 * 1024;
+
+json ReadPromptOverlay(std::string* digest) {
+  std::string path = PromptOverlayPath();
+  if (path.empty()) return json::object();
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return json::object();
+  std::string body;
+  ReadBounded(input, kPromptOverlayBytes, body);
+  if (digest) *digest = HashHex(body).substr(0, 12);
+  json parsed = json::parse(body, nullptr, false);
+  return parsed.is_object() ? parsed : json::object();
+}
+
+}  // namespace
+
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                        bool render_output, const json* request_messages) {
   if (api_.config.session_budget > 0 &&
@@ -57,6 +78,11 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"parallel_tools", api_.capabilities.parallel_tools},
         {"include_usage", api_.capabilities.stream_usage_option},
         {"system_revision", adaptive_system_ ? adaptive_system_->revision : 0}};
+    // An experiment that changed the prompt has to be visible in the same
+    // record as the request it shaped, or a report cannot be attributed.
+    std::string overlay_digest;
+    ReadPromptOverlay(&overlay_digest);
+    if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
     if (request_messages) {
       record["messages"] = messages;
       record["message_chars"] = message_bytes;
@@ -449,7 +475,12 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 }
 
 std::string Agent::SystemPrompt() const {
-  std::string prompt = kSystemPrompt;
+  std::vector<std::string> overlaid;
+  std::string prompt =
+      ApplyPromptOverlay(kSystemPrompt, ReadPromptOverlay(nullptr), &overlaid);
+  if (!overlaid.empty()) {
+    DebugLog("prompt_overlay_applied", {{"sections", overlaid}});
+  }
   prompt += CapabilityPrompt(tools_);
   prompt += TerminalImageInstruction();
   if (!api_.capabilities.native_tools) prompt += TextProtocolPrompt(tools_);

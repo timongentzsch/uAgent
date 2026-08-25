@@ -17,6 +17,8 @@ this file. Do not load every reference; pick the one the question needs.
 | Which flags exist? | `uagent_info` topic `cli`, or `references/cli.md` |
 | Which slash commands exist? | `uagent_info` topic `commands`, or `references/slash-commands.md` |
 | Full setting catalogue | `references/configuration.md` |
+| What is in the system prompt? | `references/system-prompt.md` |
+| Which built-in tools and arguments exist? | `uagent_info` topic `tools`, or `references/tools.md` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
 

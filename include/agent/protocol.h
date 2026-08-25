@@ -205,6 +205,40 @@ inline constexpr const char* kSystemPrompt =
     "sqrt have glyphs; anything else prints literally, so never use "
     "\\begin environments.";
 
+inline constexpr std::string_view kPromptSections[] = {
+    "## Evidence", "## Tools", "## Changes", "## Delegation", "## Answer"};
+
+// Replace or extend base-prompt sections from a declarative overlay so a prompt
+// variant can be measured without rebuilding the binary. This changes prompt
+// text only: tools, approvals, capabilities and limits stay host-owned, and the
+// sections below the base (capability, host, directive) are not reachable.
+// `applied` collects the section names an overlay actually changed.
+inline std::string ApplyPromptOverlay(std::string prompt, const json& overlay,
+                                      std::vector<std::string>* applied) {
+  if (!overlay.is_object()) return prompt;
+  json replace = JsonValue(overlay, "replace", json::object());
+  if (replace.is_object()) {
+    for (std::string_view name : kPromptSections) {
+      auto entry = replace.find(std::string(name));
+      if (entry == replace.end() || !entry->is_string()) continue;
+      size_t heading = prompt.find(name);
+      if (heading == std::string::npos) continue;
+      size_t body = prompt.find('\n', heading);
+      if (body == std::string::npos) continue;
+      size_t end = prompt.find("\n\n## ", body);
+      if (end == std::string::npos) end = prompt.size();
+      prompt.replace(body + 1, end - body - 1, entry->get<std::string>());
+      if (applied) applied->emplace_back(name);
+    }
+  }
+  std::string append = JsonValue(overlay, "append", std::string());
+  if (!append.empty()) {
+    prompt += "\n\n" + append;
+    if (applied) applied->emplace_back("append");
+  }
+  return prompt;
+}
+
 // Keep optional workflow rules out of the cacheable base unless the matching
 // tools are actually registered. Tool schemas still own argument-level detail.
 inline std::string CapabilityPrompt(const std::vector<Tool>& tools) {

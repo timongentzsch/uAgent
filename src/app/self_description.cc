@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/protocol.h"
+#include "include/agent/prompt.h"
 #include "include/api.h"
 #include "include/app/options.h"
 #include "include/cli.h"
@@ -31,7 +31,7 @@ struct TopicName {
 constexpr TopicName kTopics[] = {
     {SelfTopic::kStatus, "status"},     {SelfTopic::kCli, "cli"},
     {SelfTopic::kCommands, "commands"}, {SelfTopic::kConfig, "config"},
-    {SelfTopic::kTools, "tools"},
+    {SelfTopic::kPrompt, "prompt"},     {SelfTopic::kTools, "tools"},
 };
 
 json DefaultJson(const ConfigDescriptor& descriptor) {
@@ -192,6 +192,40 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["restart_required"] = diagnostics["restart_required"];
       break;
     }
+    case SelfTopic::kPrompt: {
+      // Identity, not a copy: message zero is already in the model's context,
+      // so what cannot be seen from there is which base, which conditional
+      // sections and which experiment produced it.
+      std::string base = SystemPromptBase();
+      json sections = json::array();
+      for (std::string_view section : PromptSections()) {
+        sections.push_back(section);
+      }
+      std::string capabilities = CapabilityPrompt(inputs.tools);
+      json triggers = json::array();
+      for (const char* trigger :
+           {"activity", "web_search", "web_fetch", "adapt_system"}) {
+        if (FindTool(inputs.tools, trigger)) triggers.push_back(trigger);
+      }
+      out["base"] = {{"chars", base.size()},
+                     {"digest", HashHex(base).substr(0, 12)},
+                     {"sections", std::move(sections)}};
+      out["capabilities"] = {{"chars", capabilities.size()},
+                             {"triggers", std::move(triggers)}};
+      out["host_capabilities"] = {
+          {"chars", HostCapabilityPrompt(inputs.tools).size()}};
+      std::string digest;
+      json overlay = PromptOverlay(&digest);
+      std::vector<std::string> applied;
+      ApplyPromptOverlay(base, overlay, &applied);
+      out["overlay"] = {{"path", PromptOverlayPath()},
+                        {"digest", digest},
+                        {"applied", applied}};
+      out["note"] =
+          "Project instructions, the memory index and any mutable directive "
+          "are appended per session; --debug records the exact bytes sent.";
+      break;
+    }
     case SelfTopic::kTools: {
       json tools = json::array();
       for (const Tool& tool : inputs.tools) {
@@ -228,8 +262,10 @@ json PromptSurfaceJson() {
   fragments.push_back({{"trigger", "web_search+subagent"},
                        {"text", CapabilityPrompt(research)}});
   json sections = json::array();
-  for (std::string_view section : kPromptSections) sections.push_back(section);
-  std::string base = kSystemPrompt;
+  for (std::string_view section : PromptSections()) {
+    sections.push_back(section);
+  }
+  std::string base = SystemPromptBase();
   return {{"base", base},
           {"base_chars", base.size()},
           {"overlay_sections", std::move(sections)},

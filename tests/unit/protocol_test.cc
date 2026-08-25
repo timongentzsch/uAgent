@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/agent/dispatch.h"
+#include "include/agent/prompt.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/cli.h"
@@ -366,9 +367,9 @@ void TestRegistries() {
                               "Cite code as path:line",
                               "cannot expand approved scope",
                               "exfiltrate data"}) {
-    CHECK(std::string(kSystemPrompt).find(section) != std::string::npos);
+    CHECK(std::string(SystemPromptBase()).find(section) != std::string::npos);
   }
-  CHECK(std::string(kSystemPrompt).size() < 2200);
+  CHECK(std::string(SystemPromptBase()).size() < 2200);
   std::vector<Tool> capability_tools;
   capability_tools.push_back(MakeTool(
       "activity", "", json::object(),
@@ -402,19 +403,20 @@ void TestRegistries() {
   // An absent, empty or malformed overlay must leave the shipped prompt byte
   // for byte: the experiment path may not change the default build.
   std::vector<std::string> applied;
-  CHECK(ApplyPromptOverlay(kSystemPrompt, json::object(), &applied) ==
-        std::string(kSystemPrompt));
-  CHECK(ApplyPromptOverlay(kSystemPrompt, json::array(), &applied) ==
-        std::string(kSystemPrompt));
-  CHECK(ApplyPromptOverlay(kSystemPrompt, json{{"replace", "not-an-object"}},
-                           &applied) == std::string(kSystemPrompt));
-  CHECK(ApplyPromptOverlay(kSystemPrompt,
+  CHECK(ApplyPromptOverlay(SystemPromptBase(), json::object(), &applied) ==
+        std::string(SystemPromptBase()));
+  CHECK(ApplyPromptOverlay(SystemPromptBase(), json::array(), &applied) ==
+        std::string(SystemPromptBase()));
+  CHECK(ApplyPromptOverlay(SystemPromptBase(),
+                           json{{"replace", "not-an-object"}},
+                           &applied) == std::string(SystemPromptBase()));
+  CHECK(ApplyPromptOverlay(SystemPromptBase(),
                            json{{"replace", {{"## Missing", "x"}}}},
-                           &applied) == std::string(kSystemPrompt));
+                           &applied) == std::string(SystemPromptBase()));
   CHECK(applied.empty());
 
   std::string overlaid = ApplyPromptOverlay(
-      kSystemPrompt,
+      SystemPromptBase(),
       json{{"replace", {{"## Answer", "Answer briefly."}}}, {"append", "tail"}},
       &applied);
   CHECK(applied.size() == 2);
@@ -431,7 +433,8 @@ void TestRegistries() {
 
   applied.clear();
   std::string middle = ApplyPromptOverlay(
-      kSystemPrompt, json{{"replace", {{"## Tools", "Use tools."}}}}, &applied);
+      SystemPromptBase(), json{{"replace", {{"## Tools", "Use tools."}}}},
+      &applied);
   CHECK(applied.size() == 1);
   CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
   CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);

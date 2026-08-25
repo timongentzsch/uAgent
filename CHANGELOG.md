@@ -23,6 +23,10 @@
 - `tests/integration.py` selects individual cases with `--test`, `-k` and
   `--list`, and refuses to run when a test is defined but missing from
   `TEST_ORDER`, because such a case would silently never run.
+- `uagent_info` topic `prompt` reports the system prompt actually in effect:
+  base digest and size, the sections an overlay may replace, which conditional
+  capability sections are active, and the overlay identity. It reports the
+  surface rather than copying message zero back into the transcript.
 
 - `uagent_configure` persists a change to µAgent's own configuration through a
   typed request against registered settings only. µAgent parses the current
@@ -57,6 +61,16 @@
 
 ### Changed
 
+- A repeated `grep` with identical arguments collapses to a receipt when its
+  result is byte-identical and still in recent context, matching `read_path`.
+- `uagent_configure` is registered only where a person can actually approve it.
+  The approver already denied every non-interactive call, so a piped or
+  delegated run was paying about a kilobyte of schema per request for a
+  guaranteed refusal.
+- Prompt authoring moved from `include/agent/protocol.h` to
+  `include/agent/prompt.h` plus `src/agent/prompt.cc`, leaving the header with
+  tool-call parsing alone. Rewording the prompt now rebuilds one translation
+  unit instead of nine.
 - `/effort` and `/variant` now persist to the same saved selection `/model`
   writes. Previously both changed only the live session while the bundled skill
   documented them as persistent; a session with nothing saved says so instead.

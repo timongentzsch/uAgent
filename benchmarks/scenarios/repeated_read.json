@@ -1,0 +1,38 @@
+{
+  "name": "repeated_read",
+  "description": "A byte-identical repeat of a recent read must collapse to a receipt instead of resending the file.",
+  "variants": ["control"],
+  "prompt": "Read notes.txt, then read notes.txt again, then report the marker.",
+  "files": {
+    "notes.txt": {
+      "text": "MARKER-NOTES\n",
+      "repeat_text": "- line {index:02d}: padding that pushes this result past the deduplication floor.\n",
+      "repeat": 12
+    }
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [{"id": "first", "name": "read_path", "arguments": {"path": "notes.txt"}}]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [{"id": "second", "name": "read_path", "arguments": {"path": "notes.txt"}}]
+      }
+    },
+    {
+      "respond": {"content": "MARKER-NOTES"}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["MARKER-NOTES"],
+    "events": {"tool_result_deduplicated": 1},
+    "request_absent_repeats": {"line 05": 1},
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

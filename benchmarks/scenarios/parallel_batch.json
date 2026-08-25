@@ -1,0 +1,34 @@
+{
+  "name": "parallel_batch",
+  "description": "Three independent reads issued as one batch must execute in a single model step and return in call order.",
+  "variants": ["control"],
+  "prompt": "Read alpha.txt, beta.txt and gamma.txt in one batch and answer with the three markers in file order.",
+  "files": {
+    "alpha.txt": "MARKER-ALPHA\n",
+    "beta.txt": "MARKER-BETA\n",
+    "gamma.txt": "MARKER-GAMMA\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [
+          {"id": "a", "name": "read_path", "arguments": {"path": "alpha.txt"}},
+          {"id": "b", "name": "read_path", "arguments": {"path": "beta.txt"}},
+          {"id": "c", "name": "read_path", "arguments": {"path": "gamma.txt"}}
+        ]
+      }
+    },
+    {
+      "respond": {"content": "MARKER-ALPHA, MARKER-BETA, MARKER-GAMMA"}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["MARKER-ALPHA", "MARKER-BETA", "MARKER-GAMMA"],
+    "request_ordered": ["MARKER-ALPHA", "MARKER-BETA", "MARKER-GAMMA"],
+    "max_requests": 2,
+    "max_tool_calls": 3,
+    "min_batch": 3
+  }
+}

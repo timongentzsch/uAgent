@@ -8,6 +8,15 @@ cmake --build --preset debug
 ctest --preset debug --output-on-failure
 ```
 
+One case can be run on its own; the suite refuses to start when a test is
+defined but missing from `TEST_ORDER`, because such a case would never run:
+
+```sh
+python3 tests/integration.py build/debug/uagent --list
+python3 tests/integration.py build/debug/uagent --test test_plain_turn
+python3 tests/integration.py build/debug/uagent -k compaction
+```
+
 `tests/unit/` covers local policy and protocols, including activity IDs,
 head/tail buffering and LRU retention, status-row assembly, atomic pre-spawn admission, default
 yielding, event-driven PTY and pipe input/output, split readiness markers, exactly-once completion delivery,
@@ -19,22 +28,40 @@ background completion, bounded task delivery, and no-replay failure paths. One s
 `runtime`, `tools`, `ui`, `providers`, `mcp`, and `delegation` CTest processes.
 The SSE framing fuzz target runs in CI.
 
-The end-to-end efficiency harness has a hermetic smoke mode that runs in CTest
-and a separately authorized live mode. Both compare the same read-only task
-with compaction disabled and forced mid-turn compaction, then report task
-quality, requests, tool calls, tokens/cache, cost, wall time, peak RSS, request
-and schema size, and binary size:
+## Behavioral evaluation
+
+`benchmarks/eval.py` scores end-to-end agent behavior against declarative
+scenarios in `benchmarks/scenarios/*.json`: workspace fixture, prompt, scripted
+provider, and the checks that define a good run — answer content and shape,
+files read, forbidden tools, model rounds, batch width, deduplication, request
+bytes, and workspace immutability. Results are compared with the committed
+baseline in `benchmarks/baselines/hermetic.json`, and CTest runs that gate:
 
 ```sh
-python3 benchmarks/agent_efficiency.py build/debug/uagent
-python3 benchmarks/agent_efficiency.py build/release/uagent --run \
-  --model provider/model --model another/model --report /tmp/uagent-efficiency.json
+python3 benchmarks/eval.py build/debug/uagent --check
+python3 benchmarks/eval.py build/debug/uagent --scenario parallel_batch
+python3 benchmarks/eval.py build/debug/uagent --update   # review the diff
+```
+
+The hermetic mode scripts the provider, so it measures harness behavior — the
+part this repository owns — not model quality. A prompt change moves request
+bytes there; whether it moves *quality* is only visible live:
+
+```sh
+python3 benchmarks/eval.py build/release/uagent --run \
+  --model provider/model --report /tmp/uagent-eval.json
+python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
+  --prompt-overlay experiment.json
 ```
 
 Live runs are billable, require `--run`, and apply `--max-cost` (default
 `$0.10`) to each isolated run. Providers that do not report cost cannot make a
-dollar cap authoritative; the report marks their cost unavailable. A compacted
-run fails if its behavioral score is below its control.
+dollar cap authoritative. A compacted run fails if its score is below its
+control, hermetically and live.
+
+`benchmarks/session_metrics.py` reports the same behaviors from real saved
+sessions; `--prompt-overlay` is what makes a before/after cohort comparable
+without rebuilding.
 
 Keep tests proportional: pure helpers get focused unit coverage; externally
 visible behavior gets one hermetic integration path. Avoid duplicating the

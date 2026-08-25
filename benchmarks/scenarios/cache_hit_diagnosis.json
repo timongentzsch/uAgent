@@ -1,0 +1,68 @@
+{
+  "name": "cache_hit_diagnosis",
+  "description": "Read-only diagnosis with a fixture large enough for a meaningful forced-compaction comparison.",
+  "variants": ["control", "compacted"],
+  "prompt": "Analyze the cache-hit bug in this fixture without changing files.\nYour first tool call must be read_path on ISSUE.md. Then inspect src/cache.py\nand tests/test_cache.py with read_path, using one parallel batch where possible.\nReturn four clearly labeled Markdown items covering defect, fix, regression\ntest, and scope; bullets or bold headings are both acceptable. The answer must\nname src/cache.py, `key in cache`, `cache[key]`, and test_cache_hit. Do not use\nrun, edit_file, delegation, memory, or web tools.",
+  "files": {
+    "ISSUE.md": {
+      "text": "# Cache hit returns no value\n\nA populated cache unexpectedly returns None. The diagnostic history below deliberately makes this fixture large enough for a meaningful forced-compaction comparison.\n\n",
+      "repeat_text": "- Observation {index:02d}: cache misses load and persist correctly; a subsequent hit returns no value.\n",
+      "repeat": 48
+    },
+    "src/cache.py": "def get_or_load(cache, key, loader):\n    if key in cache:\n        return None\n    value = loader(key)\n    cache[key] = value\n    return value\n",
+    "tests/test_cache.py": "from src.cache import get_or_load\n\n\ndef test_cache_hit():\n    assert get_or_load({\"ready\": 42}, \"ready\", lambda _: 0) == 42\n"
+  },
+  "script": [
+    {
+      "when": {"no_tools": true, "last_starts_with": "Summarize the bounded transcript"},
+      "respond": {
+        "content": "The user requested a read-only diagnosis of ISSUE.md, src/cache.py, and tests/test_cache.py. ISSUE.md has been read; inspect both code files next and return exactly four bullets."
+      }
+    },
+    {
+      "when": {"tool_results": 0, "contains": "ISSUE.md has been read"},
+      "respond": {
+        "tool_calls": [
+          {"id": "source", "name": "read_path", "arguments": {"path": "src/cache.py"}},
+          {"id": "test", "name": "read_path", "arguments": {"path": "tests/test_cache.py"}}
+        ]
+      }
+    },
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [{"id": "issue", "name": "read_path", "arguments": {"path": "ISSUE.md"}}]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [
+          {"id": "source", "name": "read_path", "arguments": {"path": "src/cache.py"}},
+          {"id": "test", "name": "read_path", "arguments": {"path": "tests/test_cache.py"}}
+        ]
+      }
+    },
+    {
+      "respond": {
+        "content": "- Defect: `src/cache.py` returns `None` when `key in cache`.\n- Fix: return `cache[key]` from the cache-hit branch.\n- Regression: `tests/test_cache.py::test_cache_hit` must assert the cached value.\n- Scope: cache misses still compute, store, and return the loader result.",
+        "usage": {
+          "prompt_tokens": 120,
+          "completion_tokens": 55,
+          "prompt_tokens_details": {"cached_tokens": 80},
+          "cost": 0.0002
+        }
+      }
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "read_paths": ["ISSUE.md", "src/cache.py", "tests/test_cache.py"],
+    "answer_contains": ["src/cache.py", "key in cache", "cache[key]", "test_cache_hit"],
+    "answer_shape": ["defect", "fix", "regression", "scope"],
+    "forbidden_tools": ["run", "edit_file", "write_file", "subagent", "memory", "web_search"],
+    "max_requests": 4,
+    "max_tool_calls": 3,
+    "min_batch": 2
+  }
+}

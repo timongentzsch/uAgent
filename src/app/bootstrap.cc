@@ -313,9 +313,12 @@ std::vector<Tool> BuildTools(AppContext& context,
         SelfDescriptionInputs{app->config_manager, app->runtime.config,
                               app->runtime.api, app->tools, app->options.yolo});
   }));
-  // Persisting configuration is a mandatory-human action, so it is withheld
-  // from delegated children that could never obtain that approval.
-  if (AgentDepth() == 0) {
+  // Persisting configuration is a mandatory-human action, so it is offered
+  // only where a person can actually answer. The approver denies the same
+  // cases outright, and advertising a kilobyte of schema for a call that can
+  // only be refused costs every non-interactive request without buying
+  // anything.
+  if (InteractiveApprovalAvailable()) {
     auto proposals = std::make_shared<ConfigProposalStore>();
     tools.push_back(ConfigureTool(
         [app = &context](ConfigProposalScope scope,

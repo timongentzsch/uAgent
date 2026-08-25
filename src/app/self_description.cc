@@ -3,12 +3,14 @@
 #include "include/app/self_description.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/agent/prompt.h"
 #include "include/api.h"
+#include "include/app/config_proposal.h"
 #include "include/app/options.h"
 #include "include/cli.h"
 #include "include/core/config_registry.h"
@@ -16,9 +18,15 @@
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
+#include "include/tools/configure.h"
 #include "include/tools/process.h"
 #include "include/tools/registry.h"
+#include "include/tools/self_info.h"
+#include "include/tools/skill.h"
+#include "include/tools/subagent.h"
 #include "include/tools/tool.h"
+#include "include/tools/web_fetch.h"
+#include "include/tools/web_search.h"
 
 namespace uagent {
 namespace {
@@ -274,21 +282,69 @@ json PromptSurfaceJson() {
 }
 
 json ToolSurfaceJson() {
+  // Every schema the model can be charged for, not just the built-in ones.
+  // The conditionally registered tools are the largest schemas in the surface,
+  // so leaving them out left most of the token cost outside the drift gate.
+  // Each factory is constructed with empty dependencies: the emitted text is
+  // the template, and the route- and catalogue-dependent parts a live session
+  // splices in are reported by `/context` instead.
   ProcessSupervisor supervisor;
   AdaptiveSystemState adaptive_system;
-  std::vector<Tool> tools =
-      BuiltinTools(supervisor, CanonicalAccessPath("."),
-                   /*inline_images=*/false, &adaptive_system);
+  Api api;
+  UsageAccumulator usage;
+  const std::string workspace = CanonicalAccessPath(".");
+  std::vector<Tool> tools = BuiltinTools(
+      supervisor, workspace, /*inline_images=*/false, &adaptive_system);
+  // The image tool exists only where the terminal can draw, so it is collected
+  // from a second registry rather than left out of the gate entirely.
+  for (Tool& tool : BuiltinTools(supervisor, workspace, /*inline_images=*/true,
+                                 &adaptive_system)) {
+    if (!FindTool(tools, tool.name)) tools.push_back(std::move(tool));
+  }
+  std::vector<std::pair<Tool, const char*>> conditional;
+  conditional.emplace_back(SelfInfoTool([](SelfTopic, const std::string&) {
+                             return json::object();
+                           }),
+                           "always");
+  conditional.emplace_back(
+      ConfigureTool(
+          [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+            return ConfigProposal{};
+          },
+          std::make_shared<ConfigProposalStore>()),
+      "interactive terminal");
+  conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
+  conditional.emplace_back(WebFetchTool(api), "always");
+  conditional.emplace_back(
+      SubagentTool(api, supervisor, {}, {}, /*debug=*/false),
+      "delegation depth");
+  conditional.emplace_back(SkillTool({}, {}), "skills installed");
+
   json out = json::array();
-  for (const Tool& tool : tools) {
+  auto emit = [&out](const Tool& tool, const char* when) {
     // ToolDescription, not the raw field: the batching and budget suffixes are
     // part of what the model reads.
     out.push_back({{"name", tool.name},
                    {"description", ToolDescription(tool)},
                    {"parameters", ToolParameters(tool)},
                    {"lean", tool.available_in_lean},
-                   {"parallel_safe", tool.parallel_safe}});
+                   {"parallel_safe", tool.parallel_safe},
+                   {"when", when}});
+  };
+  for (const Tool& tool : tools) {
+    const char* when = "always";
+    if (tool.visibility == Tool::Visibility::kDetachedTerminal) {
+      when = "detached activity";
+    } else if (tool.memory_store) {
+      when = "memory enabled";
+    } else if (tool.name == "adapt_system") {
+      when = "adapt_system enabled";
+    } else if (tool.replay_image) {
+      when = "terminal images";
+    }
+    emit(tool, when);
   }
+  for (const auto& [tool, when] : conditional) emit(tool, when);
   return out;
 }
 

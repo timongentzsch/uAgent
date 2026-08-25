@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import pathlib
 import sys
 import tempfile
@@ -24,29 +25,73 @@ ALL_TESTS = {
 }
 
 
+def check_registration():
+    """Execution is driven by TEST_ORDER alone.
+
+    A case added to a module's TESTS but not to TEST_ORDER would never run and
+    nothing would say so, which is exactly the failure a regression test is
+    supposed to prevent. Refuse to run instead.
+    """
+    unordered = sorted(set(ALL_TESTS) - set(TEST_ORDER))
+    undefined = sorted(set(TEST_ORDER) - set(ALL_TESTS))
+    problems = []
+    if unordered:
+        problems.append(f"defined but missing from TEST_ORDER (would never run): {unordered}")
+    if undefined:
+        problems.append(f"listed in TEST_ORDER but not defined: {undefined}")
+    if problems:
+        raise SystemExit("integration registration is inconsistent:\n  " + "\n  ".join(problems))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="µAgent integration suite")
+    parser.add_argument("binary", type=pathlib.Path, help="uagent binary under test")
+    parser.add_argument("--group", default="all", help="CTest shard: runtime, tools, ui, ...")
+    parser.add_argument("--test", action="append", default=[], help="exact test name; repeatable")
+    parser.add_argument(
+        "-k", "--match", action="append", default=[], help="substring filter; repeatable"
+    )
+    parser.add_argument("--list", action="store_true", help="print the selection and exit")
+    return parser.parse_args()
+
+
+def select(arguments):
+    names = [
+        name
+        for name in TEST_ORDER
+        if arguments.group == "all" or integration_group(name) == arguments.group
+    ]
+    if arguments.test:
+        unknown = sorted(set(arguments.test) - set(ALL_TESTS))
+        if unknown:
+            raise SystemExit(f"unknown test name: {unknown}")
+        names = [name for name in names if name in set(arguments.test)]
+    if arguments.match:
+        names = [name for name in names if any(part in name for part in arguments.match)]
+    return names
+
+
 def main():
-    requested_group = "all"
-    if len(sys.argv) == 4 and sys.argv[2] == "--group":
-        requested_group = sys.argv[3]
-    elif len(sys.argv) != 2:
-        raise SystemExit("usage: integration.py BINARY [--group GROUP]")
+    check_registration()
+    arguments = parse_args()
+    names = select(arguments)
+    if arguments.list:
+        for name in names:
+            print(f"{integration_group(name)}\t{name}")
+        return
+    if not names:
+        raise SystemExit(f"no integration tests selected (group={arguments.group})")
+    label = arguments.group if not (arguments.test or arguments.match) else "selected"
     with tempfile.TemporaryDirectory(prefix="uagent-integration-") as temp:
         root = pathlib.Path(temp)
-        tests = [
-            ALL_TESTS[name]
-            for name in TEST_ORDER
-            if requested_group == "all" or integration_group(name) == requested_group
-        ]
-        if not tests:
-            raise SystemExit(f"unknown or empty integration group: {requested_group}")
-        for test in tests:
-            print(f"running {test.__name__}", flush=True)
-            case_root = root / test.__name__
+        for name in names:
+            print(f"running {name}", flush=True)
+            case_root = root / name
             home = case_root / "home"
             home.mkdir(parents=True)
-            test(case_root, home)
-        print(f"all {len(tests)} {requested_group} integration tests passed")
+            ALL_TESTS[name](case_root, home)
+        print(f"all {len(names)} {label} integration tests passed")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

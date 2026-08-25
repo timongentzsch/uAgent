@@ -26,6 +26,7 @@ enum class SelfTopic {
   kCommands,
   kConfig,
   kTools,
+  kPrompt,
 };
 
 // The live state a description needs; held by reference for one call only.

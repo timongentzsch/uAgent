@@ -25,13 +25,13 @@ Tool SelfInfoTool(SelfDescriptionProvider describe) {
        {"properties",
         {{"topic",
           {{"type", "string"},
-           {"enum",
-            json::array({"status", "cli", "commands", "config", "tools"})},
+           {"enum", json::array({"status", "cli", "commands", "config", "tools",
+                                 "prompt"})},
            {"description",
             "status: version, route, effort, approval mode and budgets; cli: "
             "flags; commands: slash commands; config: settings with defaults, "
             "active values, source and reload policy; tools: the live tool "
-            "surface"}}},
+            "surface; prompt: the system prompt actually in effect"}}},
          {"name",
           {{"type", "string"},
            {"description",

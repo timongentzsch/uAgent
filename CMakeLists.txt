@@ -86,6 +86,7 @@ add_library(
   uagent_core
   src/agent/agent.cc
   src/agent/conversation.cc
+  src/agent/prompt.cc
   src/agent/request.cc
   src/agent/session_store.cc
   src/agent/tool_loop.cc

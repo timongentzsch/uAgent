@@ -91,8 +91,8 @@ unregistered setting does not compile, and CI fails when the generated
 references differ from the registry, so a documented default cannot drift from
 the one the binary applies.
 
-`uagent_info` exposes that registry, the flag table, the slash-command table
-and the live tool list as a read-only tool. It is assembled only when called,
+`uagent_info` exposes that registry, the flag table, the slash-command table,
+the live tool list and the prompt surface in effect as a read-only tool. It is assembled only when called,
 adds nothing to the system prompt, and reports secrets as set or unset.
 
 The model-facing surface is generated the same way. `--emit-reference` also
@@ -103,6 +103,12 @@ invisible behavior change. Emission is a function of the source alone: no
 environment, no live session. Per-session additions — host capabilities,
 runtime context, project instructions, the mutable directive — are recorded by
 `--debug` instead.
+
+Prompt authoring lives in `include/agent/prompt.h` and `src/agent/prompt.cc` —
+the base text, the conditional capability sections, the overlay and the runtime
+context line. `include/agent/protocol.h` keeps tool-call parsing and detection
+alone, so rewording the prompt rebuilds one translation unit rather than every
+consumer of the protocol.
 
 `UAGENT_PROMPT_OVERLAY` names a JSON file that replaces base-prompt sections,
 so two prompt variants can be compared without rebuilding. It reaches prompt

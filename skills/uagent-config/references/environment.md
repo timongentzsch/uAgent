@@ -117,8 +117,8 @@ UAGENT_MODEL=local/fast
 | `UAGENT_SHELL_ENV_ALLOW` | empty | comma list of sensitive vars forwarded only to approved shell commands |
 | `UAGENT_SUBAGENT_DEPTH` | 2 | maximum delegation depth |
 | `UAGENT_SUBAGENT_CALLS_PER_TURN` | 32 | cumulative `subagent` launches per turn; concurrency stays bounded by `UAGENT_MAX_BACKGROUND_JOBS` |
-| `UAGENT_SUBAGENT_MAX_STEPS` | 25 | model rounds per delegated child |
-| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 60 | tool calls per delegated child |
+| `UAGENT_SUBAGENT_MAX_STEPS` | 100 | model rounds per delegated child |
+| `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | 240 | tool calls per delegated child |
 | `UAGENT_SUBAGENT_MODEL` | current route | default delegated model route |
 | `UAGENT_DEPTH` | internal `0` | current supervised child depth |
 

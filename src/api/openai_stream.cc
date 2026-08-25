@@ -12,7 +12,6 @@
 #include "include/core/strings.h"
 
 namespace uagent {
-namespace {
 
 void MergeStreamIdentity(std::string& target, const std::string& fragment) {
   if (fragment.empty()) return;
@@ -22,6 +21,8 @@ void MergeStreamIdentity(std::string& target, const std::string& fragment) {
     target += fragment;
   }
 }
+
+namespace {
 
 // OpenAI-compatible streams number parallel tool calls with `index`. A
 // provider that omits it would otherwise pile every fragment into slot 0 and

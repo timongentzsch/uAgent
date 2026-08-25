@@ -115,8 +115,8 @@ class Agent {
   void DeliverActivityCompletions(
       const std::vector<BackgroundCompletion>& completions);
 
-  // Files the model attached ride in on a user message: Chat Completions tool
-  // results are text-only, so image/file parts cannot travel with them.
+  // Files the model attached ride in on a user message. Canonical tool results
+  // are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes

@@ -22,8 +22,87 @@ bool ShouldRememberInput(std::string_view input) {
          input.find_first_not_of(" \t\r\n") != std::string_view::npos;
 }
 
+void TerminalInputDecoder::StartPaste() {
+  Consume(kPasteStart.size());
+  ResetEscape();
+  pasting_ = true;
+  paste_.clear();
+  paste_overflow_ = false;
+}
+
+void TerminalInputDecoder::AppendPasteByte(unsigned char byte) {
+  if (paste_.size() < kInputPasteBytes) {
+    paste_.push_back(static_cast<char>(byte));
+  } else {
+    paste_overflow_ = true;
+  }
+}
+
+void TerminalInputDecoder::FeedPaste(const unsigned char*& data, size_t& size) {
+  while (pasting_) {
+    if (StartsWith(kPasteEnd)) {
+      Consume(kPasteEnd.size());
+      pasting_ = false;
+      paste_ready_ = true;
+      return;
+    }
+    if (size == 0) return;
+
+    pending_.push_back(*data);
+    ++data;
+    --size;
+    while (!pending_.empty() && !IsPrefixOf(kPasteEnd)) {
+      AppendPasteByte(pending_.front());
+      pending_.pop_front();
+    }
+  }
+}
+
+TerminalInputToken TerminalInputDecoder::TakePaste() {
+  ReplaceAll(paste_, "\r\n", "\n");
+  ReplaceAll(paste_, "\r", "\n");
+  std::erase(paste_, '\0');
+  TerminalInputToken token{TerminalInputTokenKind::kPaste, std::move(paste_),
+                           paste_overflow_};
+  paste_.clear();
+  paste_ready_ = false;
+  paste_overflow_ = false;
+  return token;
+}
+
 void TerminalInputDecoder::Feed(const unsigned char* data, size_t size) {
-  pending_.insert(pending_.end(), data, data + size);
+  if (size == 0 || pending_overflow_) return;
+
+  while (size > 0) {
+    if (pasting_) {
+      FeedPaste(data, size);
+      if (pasting_) return;
+      continue;
+    }
+
+    if (!paste_ready_ && IsPrefixOf(kPasteStart)) {
+      const size_t missing = kPasteStart.size() - pending_.size();
+      const size_t count = std::min(size, missing);
+      pending_.insert(pending_.end(), data, data + count);
+      data += count;
+      size -= count;
+      if (StartsWith(kPasteStart)) {
+        StartPaste();
+        continue;
+      }
+      if (IsPrefixOf(kPasteStart) || size == 0) return;
+    }
+
+    const size_t capacity = kInputBufferBytes - pending_.size();
+    if (size > capacity) {
+      pending_.clear();
+      ResetEscape();
+      pending_overflow_ = true;
+      return;
+    }
+    pending_.insert(pending_.end(), data, data + size);
+    return;
+  }
 }
 
 void TerminalInputDecoder::Feed(std::string_view data) {
@@ -91,6 +170,7 @@ void TerminalInputDecoder::Consume(size_t count) {
 void TerminalInputDecoder::ResetEscape() { escape_pending_ = false; }
 
 bool TerminalInputDecoder::HasReady() const {
+  if (paste_ready_ || pending_overflow_) return true;
   if (pending_.empty()) return false;
   if (pasting_) return StartsWith(kPasteEnd) || !IsPrefixOf(kPasteEnd);
   if (pending_.front() != 0x1b) return true;
@@ -121,26 +201,24 @@ TerminalInputDecoder::WakeDeadline() const {
 
 std::optional<TerminalInputToken> TerminalInputDecoder::Next(
     bool expire_escape) {
+  if (paste_ready_) {
+    pending_overflow_ = false;
+    return TakePaste();
+  }
+  if (pending_overflow_) {
+    pending_overflow_ = false;
+    return std::nullopt;
+  }
+
   while (!pending_.empty()) {
     if (pasting_) {
       if (StartsWith(kPasteEnd)) {
         Consume(kPasteEnd.size());
         pasting_ = false;
-        ReplaceAll(paste_, "\r\n", "\n");
-        ReplaceAll(paste_, "\r", "\n");
-        std::erase(paste_, '\0');
-        TerminalInputToken token{TerminalInputTokenKind::kPaste,
-                                 std::move(paste_), paste_overflow_};
-        paste_.clear();
-        paste_overflow_ = false;
-        return token;
+        return TakePaste();
       }
       if (IsPrefixOf(kPasteEnd)) return std::nullopt;
-      if (paste_.size() < kInputPasteBytes) {
-        paste_ += static_cast<char>(pending_.front());
-      } else {
-        paste_overflow_ = true;
-      }
+      AppendPasteByte(pending_.front());
       pending_.pop_front();
       continue;
     }
@@ -158,11 +236,7 @@ std::optional<TerminalInputToken> TerminalInputDecoder::Next(
       escape_started_ = std::chrono::steady_clock::now();
     }
     if (StartsWith(kPasteStart)) {
-      Consume(kPasteStart.size());
-      ResetEscape();
-      pasting_ = true;
-      paste_.clear();
-      paste_overflow_ = false;
+      StartPaste();
       continue;
     }
     if (pending_.size() == 1) {
@@ -245,7 +319,9 @@ void TerminalInputDecoder::Reset() {
   pending_.clear();
   paste_.clear();
   pasting_ = false;
+  paste_ready_ = false;
   paste_overflow_ = false;
+  pending_overflow_ = false;
   ResetEscape();
 }
 

@@ -43,12 +43,15 @@ model id. A suffix outranks both the route's own effort and the session default.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `UAGENT_BASE_URL` | inferred | OpenAI-compatible API base URL |
+| `UAGENT_BASE_URL` | inferred | active API base URL |
 | `UAGENT_API_KEY` | `sk-noop` | API credential |
 | `UAGENT_MODEL` | last selection | model or named `provider/model` route |
 | `UAGENT_REASONING_EFFORT` | empty | model effort: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max` |
 | `UAGENT_CONTEXT` | provider/profile | context-window tokens |
-| `UAGENT_PROVIDERS` | empty | JSON object defining named endpoints and model aliases |
+| `UAGENT_PROVIDERS` | empty | JSON object defining named endpoints, transport metadata, and model aliases |
+| `UAGENT_PROVIDER_PROTOCOL` | wire-derived | route dialect: `openai`, `openrouter`, or `anthropic` |
+| `UAGENT_WIRE_API` | `chat_completions` | transport: `chat_completions`, `responses`, or `anthropic_messages` |
+| `UAGENT_HOSTED_TOOLS` | empty | comma-separated route capabilities; currently `web_search` |
 | `UAGENT_OPENROUTER_COMPATIBLE` | URL-derived | force OpenRouter-compatible request behavior with `1` or `0` |
 | `OPENROUTER_API_KEY` | empty | selects built-in OpenRouter route, and the fallback `web_search` route |
 | `OPENROUTER_MODEL` | `openrouter/auto` | OpenRouter model when `UAGENT_MODEL` is absent |
@@ -59,19 +62,24 @@ model id. A suffix outranks both the route's own effort and the session default.
 | `UAGENT_APPROVAL` | prompt | set `yolo` for non-interactive tool approval |
 | `UAGENT_SESSION_BUDGET` | `0` | reported-cost session limit in USD; `0` disables |
 | `UAGENT_MAX_TURN_COST` | `0` | reported-cost limit per turn in USD; `0` disables |
-| `UAGENT_MAX_TOKENS` | `-1` | maximum response tokens; `-1` sends no cap so the provider's own maximum applies |
+| `UAGENT_MAX_TOKENS` | `-1` | maximum response tokens; `-1` omits the optional cap, while Anthropic Messages sends its required 8192-token default |
 | `UAGENT_STEERING` | `1` | enable Escape foreground interruption |
 | `UAGENT_ADAPT_SYSTEM` | `0` | expose experimental free-form mutable system-directive tool |
 | `UAGENT_MARKDOWN` | `1` | render terminal Markdown |
 | `UAGENT_DEBUG_LOG` | empty | default debug JSONL path |
 | `UAGENT_USAGE_FILE` | internal | append-only usage ledger used by supervised children |
 
-Example named routes:
+Example named routes (transport and hosted tools are explicit and independent
+of model names):
 
 ```sh
-UAGENT_PROVIDERS='{"local":{"base_url":"http://127.0.0.1:8000/v1","api_key":"sk-noop","context":131072,"models":{"fast":{"id":"model-id","effort":"low"}}}}'
+UAGENT_PROVIDERS='{"local":{"base_url":"http://127.0.0.1:8787/openai/v1","api_key":"sk-noop","wire_api":"responses","hosted_tools":["web_search"],"context":131072,"models":{"fast":{"id":"model-id","effort":"low"}}},"anthropic":{"base_url":"https://api.anthropic.com/v1","api_key":"replace-in-private-config","wire_api":"anthropic_messages","hosted_tools":["web_search"],"models":{"main":"claude-model-id"}}}'
 UAGENT_MODEL=local/fast
 ```
+
+A model object may override `wire_api` and `hosted_tools`. Unknown wire APIs or
+provider protocols are rejected rather than inferred. Hosted capabilities are
+never inferred from a provider label, URL, or model ID.
 
 ## Turn, request, and context limits
 
@@ -145,7 +153,7 @@ UAGENT_MODEL=local/fast
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
-| `UAGENT_WEB_SEARCH_BACKEND` | `auto` | `auto`/`openrouter` select the hosted OpenRouter search route; `off` withholds the tool |
+| `UAGENT_WEB_SEARCH_BACKEND` | `auto` | `auto`: declared native hosted search, then configured OpenRouter fallback; `openrouter`: fallback only; `off`: neither |
 | `UAGENT_WEB_SEARCH_URL` | empty | custom OpenRouter-compatible search endpoint |
 | `UAGENT_WEB_SEARCH_API_KEY` | empty | custom search credential |
 | `UAGENT_PDF_ENGINE` | `cloudflare-ai` | OpenRouter file-parser engine for documents a model cannot read natively: `cloudflare-ai` (free), `mistral-ocr` (scans, billed per page), `native`, or empty to send no plugin |

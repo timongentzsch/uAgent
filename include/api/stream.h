@@ -16,8 +16,8 @@
 #include <vector>
 
 #include "include/agent/tool_protocol.h"
-#include "include/api/openai_stream.h"
 #include "include/api/types.h"
+#include "include/api/wire.h"
 #include "include/core/checked.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
@@ -33,6 +33,8 @@ struct StreamCtx {
   std::string error_body;  // body when HTTP status >= 400
   int64_t status = 0;
   std::map<int, ToolCall> calls;  // keyed by stream index
+  WireApi wire_api = WireApi::kChatCompletions;
+  WireStreamState wire_state;
   std::chrono::steady_clock::time_point started;
   std::chrono::steady_clock::time_point last_byte;
   // 0 is unbounded here as everywhere else; a real request overwrites all
@@ -88,7 +90,8 @@ struct StreamCtx {
   // This runs inside a libcurl callback, so malformed server JSON is validated
   // explicitly and never crosses the C boundary.
   void HandleEvent(const SseEvent& event) {
-    OpenAiStreamDelta delta = DecodeOpenAiStreamEvent(event.data, *res, calls);
+    WireStreamDelta delta =
+        DecodeWireStreamEvent(wire_api, event.data, *res, calls, wire_state);
     if (delta.activity) MarkEvent();
     if (!delta.reasoning.empty()) {
       res->reasoning += delta.reasoning;

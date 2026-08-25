@@ -228,16 +228,22 @@ UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 ```
 
 CI adds warnings-as-errors, sanitizers, TSan, parser fuzzing, coverage, Google
-C++ style, and native Linux/macOS builds. Before a tag, verify the installed
-archive, one real turn per supported route, Playwright isolated and user attach,
-one private debug trace, and the hermetic suite.
+C++ style, CodeQL, and native Linux/macOS builds. Binary archives include the
+bundled skill tree and run `tests/package_contents.py` against the final tarball.
+Before a tag, verify the installed archive, one real turn per supported wire
+API, Playwright isolated and user attach, one private debug trace, and the
+hermetic suite.
 `install.sh` defaults to four build workers; set `UAGENT_BUILD_JOBS` for the
 host when a different resource limit is appropriate.
 
-The composite Action verifies a release SHA-256 and runs `--yolo --json` with
-a reported-cost budget. It requires provider credentials in the job environment
-and a trusted checkout. Never expose secrets while running untrusted fork code;
-pin both the Action ref and release version.
+For new releases, the composite Action verifies GitHub artifact attestations
+for both the selected archive and its `SHA256SUMS` manifest before extraction,
+then verifies the selected digest. The release job also publishes a keyless
+Sigstore bundle for the manifest; no private signing key is stored. The
+immutable v0.7.0 compatibility path predates attestations and verifies its
+original sidecar checksum. The Action requires provider credentials in the job
+environment and a trusted checkout. Never expose secrets while running
+untrusted fork code; pin both the Action ref and release version.
 
 ## Failure triage
 

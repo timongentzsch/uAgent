@@ -52,6 +52,9 @@ struct ChatResult {
   bool reasoning_details_field = false;
   std::vector<ToolCall> tool_calls;
   json annotations = json::array();
+  // Opaque provider output needed only when the same wire API continues. Wire
+  // adapters strip this from every other provider's request.
+  json replay = json::object();
   json usage;
   int64_t http_status = 0;
   double first_event_ms = -1;
@@ -72,6 +75,7 @@ struct ChatResult {
   bool suppressed = false;
   bool semantic_progress = false;
   bool retryable = false;
+  bool continue_response = false;
 };
 
 }  // namespace uagent

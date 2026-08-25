@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(uagent VERSION 0.7.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
+project(uagent VERSION 0.8.0 DESCRIPTION "Lean terminal coding agent" LANGUAGES CXX)
 include(GNUInstallDirs)
 
 if(NOT UNIX)
@@ -94,6 +94,8 @@ add_library(
   src/api/capabilities.cc
   src/api/client.cc
   src/api/openai_stream.cc
+  src/api/wire_request.cc
+  src/api/wire_stream.cc
   src/app/application.cc
   src/app/bootstrap.cc
   src/app/commands.cc
@@ -153,19 +155,25 @@ include(CTest)
 if(BUILD_TESTING)
   add_executable(
     uagent_tests
+    tests/unit/activity_sessions_test.cc
+    tests/unit/attachment_encoding_test.cc
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
     tests/unit/events_test.cc
     tests/unit/filesystem_test.cc
+    tests/unit/grep_tool_test.cc
     tests/unit/input_decoder_test.cc
     tests/unit/mcp_session_test.cc
+    tests/unit/openrouter_server_search_test.cc
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
+    tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc
-    tests/unit/tools_test.cc)
+    tests/unit/tool_execution_policy_test.cc
+    tests/unit/wire_test.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_core)
   target_compile_definitions(
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
@@ -207,6 +215,11 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 install(TARGETS uagent RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(
+  DIRECTORY skills/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
+  PATTERN ".*" EXCLUDE
+  PATTERN "__pycache__" EXCLUDE)
 set(UAGENT_GUIDES
     docs/ARCHITECTURE.md
     docs/OPERATIONS.md

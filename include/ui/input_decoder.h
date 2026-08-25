@@ -38,6 +38,8 @@ struct TerminalInputToken {
 
 class TerminalInputDecoder {
  public:
+  // An ordinary unread-input burst over kInputBufferBytes is dropped. Call
+  // Next() to acknowledge that drop before feeding subsequent input.
   void Feed(const unsigned char* data, size_t size);
   void Feed(std::string_view data);
   bool HasReady() const;
@@ -49,6 +51,10 @@ class TerminalInputDecoder {
   bool MatchesFirst(std::string_view sequence, size_t count) const;
   bool StartsWith(std::string_view sequence) const;
   bool IsPrefixOf(std::string_view sequence) const;
+  void StartPaste();
+  void AppendPasteByte(unsigned char byte);
+  void FeedPaste(const unsigned char*& data, size_t& size);
+  TerminalInputToken TakePaste();
   size_t CompleteCsiBytes() const;
   // ESC ] / P / X / ^ / _ ... BEL or ST. Terminal replies, never user input:
   // their payload must not reach the buffer as typed text.
@@ -62,7 +68,9 @@ class TerminalInputDecoder {
   std::deque<unsigned char> pending_;
   std::string paste_;
   bool pasting_ = false;
+  bool paste_ready_ = false;
   bool paste_overflow_ = false;
+  bool pending_overflow_ = false;
   bool escape_pending_ = false;
   std::chrono::steady_clock::time_point escape_started_{};
 };

@@ -1,5 +1,72 @@
 # Changelog
 
+## v0.8.0 - 2026-08-25
+
+### Added
+
+- Routes now declare `wire_api` independently as `chat_completions`,
+  `responses`, or `anthropic_messages`. Canonical conversation, function-call,
+  citation, usage, retry, and rendering state stays provider-neutral while
+  request encoding, headers, endpoints, and streamed event decoding live in
+  focused wire adapters.
+- OpenAI Responses and Anthropic Messages support fragmented answer/reasoning
+  streams, native function calls and results, opaque reasoning replay, hosted
+  search results and citations, normalized usage, structured errors, and
+  non-mutating retries. Anthropic `pause_turn` continuations replay encrypted
+  search data and are bounded per turn.
+- `UAGENT_PROVIDERS` accepts explicit `wire_api` and `hosted_tools` metadata at
+  provider or model scope. The same metadata is preserved by named-route
+  switching and delegated children; unknown transport/protocol values are
+  rejected rather than guessed.
+- CodeQL analyzes C++ on main, pull requests, and a weekly schedule. Tag release
+  jobs create one deterministic checksum manifest, sign it keylessly with
+  Sigstore, attest every published asset through GitHub OIDC, and scope elevated
+  permissions to that trusted job.
+
+### Changed
+
+- `UAGENT_WEB_SEARCH_BACKEND=auto` prefers native hosted search only when the
+  active Responses or Anthropic route explicitly declares `web_search`, then
+  falls back to the separately configured OpenRouter search function. `openrouter`
+  forces only that separate route and `off` withholds both; model names,
+  provider labels, and endpoint URLs never imply hosted-tool support.
+- Binary archives include the complete release-matched skill tree under
+  `share/uagent/skills`. Discovery is relocatable from the executable, source
+  installs still refresh the user copy, and CI compares every packaged skill
+  file with the tracked source before publication.
+- The 4,351-line Python integration suite is now a 52-line ordered runner plus
+  domain modules. The 1,773-line C++ tool suite is split across its six existing
+  behavioral boundaries. Automated AST/body comparison found all original
+  tests unchanged and in the same deterministic group order.
+- Nine-run Release medians against v0.7.0 on the same host kept common hot paths
+  within 1.5% (TTY Markdown -0.3%, plain SSE +1.0%, headless SSE +1.0%); schema
+  size stayed 6,420 bytes and the binary grew 2.8%. A cached 128-message Chat
+  payload encoded in about 8 µs; full Chat, Responses, and Anthropic adapter
+  encodes took about 131, 266, and 234 µs. Hermetic quality, request count,
+  tool count, usage, and roughly 10.3 MiB peak RSS were unchanged.
+
+### Fixed
+
+- Ordinary terminal input can no longer grow the decoder queue without bound.
+  An over-limit unread burst is dropped atomically, bracketed paste remains
+  streamed and bounded, and the decoder immediately accepts fresh input after
+  the overflow is acknowledged.
+- Chat Completions payload caching strips opaque Responses/Anthropic replay
+  state after a route switch. Responses continuations preserve completed output
+  item order, avoiding duplicate or reordered function calls when native search
+  and client tools occur in one response.
+- Binary packaging disables macOS AppleDouble metadata, rejects unsafe archive
+  member types and paths, and verifies the installed executable and exact skill
+  contents before upload.
+
+### Security
+
+- New releases publish GitHub build-provenance attestations and a keyless
+  Sigstore bundle for `SHA256SUMS`; the composite Action verifies repository,
+  workflow, tag ref, hosted builder, attestation, and selected digest before
+  extraction. The immutable v0.7.0 path retains its original checksum-only
+  verification.
+
 ## v0.7.0 - 2026-08-25
 
 ### Fixed

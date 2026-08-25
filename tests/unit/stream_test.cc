@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/api/openai_stream.h"
 #include "include/api/retry.h"
 #include "include/core/term.h"
 #include "include/ui/presentation.h"

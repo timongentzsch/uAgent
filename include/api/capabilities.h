@@ -6,14 +6,22 @@
 // provider name, model name, or response rendering shape.
 
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <string_view>
 
 #include "include/api/types.h"
 #include "include/core/json.h"
 
 namespace uagent {
 
-enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter };
+enum class ProviderProtocol : uint8_t { kOpenAi, kOpenRouter, kAnthropic };
+enum class WireApi : uint8_t {
+  kChatCompletions,
+  kResponses,
+  kAnthropicMessages,
+};
+enum class HostedTool : uint8_t { kWebSearch };
 enum class RejectedCapability : uint8_t {
   kNone,
   kImageInput,
@@ -24,10 +32,17 @@ enum class RejectedCapability : uint8_t {
 };
 
 const char* ProviderProtocolName(ProviderProtocol protocol);
-ProviderProtocol ParseProviderProtocol(const std::string& protocol);
+std::optional<ProviderProtocol> ParseProviderProtocol(
+    std::string_view protocol);
+const char* WireApiName(WireApi wire_api);
+std::optional<WireApi> ParseWireApi(std::string_view wire_api);
+bool HasHostedTool(const json& hosted_tools, HostedTool tool);
+json HostedToolsJson(bool web_search);
 
 struct ProviderCapabilities {
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
+  WireApi wire_api = WireApi::kChatCompletions;
+  bool hosted_web_search = false;
 
   // Request features that may be downgraded after a structured rejection.
   bool native_tools = true;
@@ -56,13 +71,19 @@ struct ProviderCapabilities {
   bool reported_usage = false;
 
   bool OpenRouter() const { return protocol == ProviderProtocol::kOpenRouter; }
+  bool Anthropic() const { return protocol == ProviderProtocol::kAnthropic; }
+  bool Supports(HostedTool tool) const {
+    return tool == HostedTool::kWebSearch && hosted_web_search;
+  }
   void ResetNegotiated();
   void Observe(const ChatResult& result);
   json DiagnosticJson() const;
 };
 
-ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
-                                          const std::string& base_url);
+ProviderCapabilities CapabilitiesForRoute(
+    ProviderProtocol protocol, const std::string& base_url,
+    WireApi wire_api = WireApi::kChatCompletions,
+    bool hosted_web_search = false);
 RejectedCapability RejectedRouteCapability(
     const ChatResult& result, const ProviderCapabilities& capabilities);
 const char* CapabilityName(RejectedCapability capability);

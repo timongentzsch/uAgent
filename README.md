@@ -4,9 +4,10 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 µAgent is a coding agent that ships as one native binary. No language runtime,
-no application framework, no plugin system. It drives any OpenAI-compatible
-endpoint over direct HTTP streaming, supervises its own child processes, and
-emits every action as a typed event you can log, replay, and assert on.
+no application framework, no plugin system. It streams Chat Completions,
+OpenAI Responses, and Anthropic Messages through explicit route adapters,
+supervises its own child processes, and emits every action as a typed event you
+can log, replay, and assert on.
 
 A release build is about a 2 MB executable linking `libcurl`, `libc++`, and
 `libSystem`. The only vendored source dependency is a single `json.hpp`.
@@ -20,11 +21,11 @@ manager, a dependency tree, and a runtime you have to keep alive. µAgent is a
 C++20 binary built with CMake and `-fno-exceptions`. Optional tools reach for
 `uv` or Playwright when you use them; the agent itself never does.
 
-**Provider neutrality is an invariant, not a setting.** Route capabilities are
-negotiated once into a central contract, and request serialization, reasoning
-replay, search availability, and degradation all read that contract. No code path
-branches on a provider or model name, so a new endpoint is configuration rather
-than a patch.
+**Provider neutrality is an invariant, not a setting.** A canonical
+conversation and tool protocol feed explicit Chat Completions, Responses, and
+Anthropic adapters. Route capabilities declare transport and hosted tools;
+model names and endpoint substrings never grant capabilities. Reasoning replay,
+citations, usage, retries, and rendering remain shared.
 
 **Every limit is explicit, bounded, and inspectable.** Requests, idle streams,
 tool output, processes, memory, context, and reported spend are bounded by
@@ -98,8 +99,11 @@ uagent --yolo
   Playwright automation, and dynamically discovered MCP tools.
 - One typed observational event spine with fixed terminal, stable JSONL,
   sensitive debug, and bounded metadata-only session-journal consumers.
-- Centralized route capabilities and provider-independent tool presentation;
-  provider/model names do not drive scheduling or rendering behavior.
+- Centralized route capabilities, provider-independent tool presentation, and
+  explicit Chat Completions, Responses, and Anthropic Messages adapters.
+- Native hosted web search when the active route declares it, otherwise an
+  explicitly configured OpenRouter search route; model names never imply
+  support.
 - Redacted effective configuration and provenance in `/context`, with validated
   request/turn settings reloaded only between turns.
 - Semantic context-overflow recovery: one bounded compaction and at most one

@@ -686,32 +686,31 @@ def test_self_configuration_asks_even_under_yolo(root, home):
 
 
 def test_self_configuration_requires_a_person(root, home):
-    """--yolo cannot commit a config change, and headless has nobody to ask."""
+    """With nobody to ask, the tool is not offered and the file is untouched.
+
+    The approver denies a mandatory-human call whenever no interactive
+    terminal is attached, so advertising the schema to a piped run would spend
+    a kilobyte on every request to buy a guaranteed refusal. Withholding it is
+    the same policy stated earlier: registration and approval share one
+    predicate.
+    """
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
     original = "# keep me\nUAGENT_MAX_TOOL_CALLS=40\n"
     config.write_text(original)
 
-    def request_change(_, body):
-        assert_true("uagent_configure" in function_names(body), function_names(body))
-        return tool_call(
-            "uagent_configure",
-            {
-                "scope": "user",
-                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
-            },
-        )
+    def refuse(_, body):
+        names = function_names(body)
+        assert_true("uagent_configure" not in names, names)
+        # The escape hatch is closed too: writing the file directly stays a
+        # mandatory-human mutation.
+        assert_true("write_file" in names, names)
+        return event({"content": "configure-absent"})
 
-    def finish(_, body):
-        result = tool_results(body["messages"])[-1]
-        assert_true("denied" in result.lower(), result)
-        return event({"content": "configure-denied"})
-
-    with Server([request_change, finish]) as server:
+    with Server([refuse]) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "raise the limit")
         assert_true(result.returncode == 0, result.stderr)
-        assert_true(result.stdout.strip().endswith("configure-denied"), result.stdout)
-        # --yolo did not write the file, and nothing was disturbed.
+        assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
         assert_true(config.read_text() == original, config.read_text())
 
 

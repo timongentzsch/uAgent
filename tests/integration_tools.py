@@ -619,11 +619,156 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         signal_process_group(state["pid"], signal.SIGKILL)
 
 
+def test_process_hardening_scrubs_loader_variables(root, home):
+    """Loader-injection variables never reach a spawned child process."""
+
+    def inspect(_, __):
+        return tool_call(
+            "run",
+            {"command": "echo preload=[${LD_PRELOAD:-unset}] limit=$(ulimit -c)"},
+        )
+
+    def finish(_, body):
+        output = tool_results(body["messages"])[-1]
+        assert_true("preload=[unset]" in output, output)
+        assert_true("limit=0" in output, output)
+        return event({"content": "hardening-ok"})
+
+    with Server([inspect, finish]) as server:
+        env = base_env(home, server.url)
+        env["LD_PRELOAD"] = "/nonexistent-injection.so"
+        result = run(root, env, "--yolo", "-p", "inspect")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("hardening-ok"), result.stdout)
+
+
+def test_self_configuration_asks_even_under_yolo(root, home):
+    """--yolo stops applying to this class; it still asks at a real terminal."""
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\n")
+
+    def request_change(_, __):
+        return tool_call(
+            "uagent_configure",
+            {
+                "scope": "user",
+                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "200"}],
+            },
+        )
+
+    def finish(_, __):
+        return event({"content": "yolo-still-asked"})
+
+    with Server([request_change, finish]) as server:
+        status, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                b"raise the limit\n",
+                (b"y\n", b"allow uagent_configure? "),
+                (b"/quit\n", b"yolo-still-asked"),
+            ],
+            args=("--yolo",),
+            timeout=20,
+        )
+        assert_true(status == 0, output)
+        # The prompt appeared despite --yolo, and only then was the file written.
+        assert_true(b"allow uagent_configure? " in output, output)
+        assert_true(b"changes \xc2\xb5Agent's own configuration" in output, output)
+        # The diff belongs to the approval prompt alone: the call label is a
+        # one-liner, so file contents stay out of traces and evidence.
+        assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
+        assert_true(b"uagent_configure(user " in output, output)
+        written = config.read_text()
+        assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
+        assert_true("# keep me" in written, written)
+
+
+def test_self_configuration_requires_a_person(root, home):
+    """--yolo cannot commit a config change, and headless has nobody to ask."""
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    original = "# keep me\nUAGENT_MAX_TOOL_CALLS=40\n"
+    config.write_text(original)
+
+    def request_change(_, body):
+        assert_true("uagent_configure" in function_names(body), function_names(body))
+        return tool_call(
+            "uagent_configure",
+            {
+                "scope": "user",
+                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
+            },
+        )
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("denied" in result.lower(), result)
+        return event({"content": "configure-denied"})
+
+    with Server([request_change, finish]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "raise the limit")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("configure-denied"), result.stdout)
+        # --yolo did not write the file, and nothing was disturbed.
+        assert_true(config.read_text() == original, config.read_text())
+
+
+def test_self_configuration_commits_after_approval(root, home):
+    """An approved change preserves comments and reports when it takes effect."""
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("# keep me\nUAGENT_MAX_TOOL_CALLS=40\nUNKNOWN_KEY=kept\n")
+
+    def request_change(_, __):
+        return tool_call(
+            "uagent_configure",
+            {
+                "scope": "user",
+                "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
+            },
+        )
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("wrote" in result, result)
+        assert_true("active at the next user turn" in result, result)
+        return event({"content": "configure-ok"})
+
+    with Server([request_change, finish]) as server:
+        env = base_env(home, server.url)
+        # A real terminal: piped stdin is deliberately not treated as a person.
+        # The answer is sent only once the approval prompt is on screen, so it
+        # cannot be swallowed as steering while the turn is still working.
+        status, output = run_pty(
+            root,
+            env,
+            [
+                b"raise the limit\n",
+                (b"y\n", b"allow uagent_configure? "),
+                (b"/quit\n", b"configure-ok"),
+            ],
+            timeout=20,
+        )
+        assert_true(status == 0, output)
+        assert_true(b"configure-ok" in output, output)
+        assert_true(b"wrote " in output, output)
+        written = config.read_text()
+        assert_true("UAGENT_MAX_TOOL_CALLS=120" in written, written)
+        assert_true("# keep me" in written, written)
+        assert_true("UNKNOWN_KEY=kept" in written, written)
+
+
 TESTS = (
     test_attach_tool_puts_bytes_in_context,
     test_full_run_and_python_terminal_trace,
     test_large_run_output_is_recoverable,
     test_run_rejects_python_and_sudo_before_execution,
+    test_self_configuration_requires_a_person,
+    test_self_configuration_asks_even_under_yolo,
+    test_self_configuration_commits_after_approval,
+    test_process_hardening_scrubs_loader_variables,
     test_grep_tool_round_trip,
     test_skill_tool_offers_and_opens,
     test_tool_trace_repeated_rounds_are_telemetry_only,

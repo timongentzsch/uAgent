@@ -383,6 +383,18 @@ std::string ComposeSelection(const std::string& scope, const std::string& model,
 
 }  // namespace
 
+bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
+                         std::string& error) {
+  ModelPreference preference = LoadModelPreference();
+  if (!PersistableSelection(preference.selection)) {
+    error = "no saved model preference to update";
+    return false;
+  }
+  ModelSelection parsed = ParseModelSelection(preference.selection);
+  preference.selection = ComposeSelection("", parsed.base, variant, effort);
+  return SaveModelPreference(preference, error);
+}
+
 std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers) {
   // CatalogModel strips a routing variant the request appends, so the suffixes

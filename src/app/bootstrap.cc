@@ -31,8 +31,10 @@
 #include "include/mcp/register.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
+#include "include/tools/self_info.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/web_fetch.h"
@@ -61,6 +63,12 @@ bool Confirm(const std::string& question, bool default_yes) {
   if (eof) return false;
   if (answer.empty()) return default_yes;
   return answer == "y" || answer == "Y" || answer == "yes";
+}
+
+// A mandatory-human decision needs a real person on the other end. Headless
+// runs, delegated children and piped input cannot supply one.
+bool InteractiveApprovalAvailable() {
+  return isatty(STDIN_FILENO) && AgentDepth() == 0;
 }
 
 bool ResolveProjectTrust(const Options& options, bool& trusted,
@@ -296,6 +304,28 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // A tool-less child remains useful for constrained internal tasks.
   if (toolset == "none") return {};
+  // Read-only self-description, answered from the live registries when the
+  // model asks rather than injected into every prompt.
+  tools.push_back(SelfInfoTool([app = &context](SelfTopic topic,
+                                                const std::string& name) {
+    return DescribeSelf(
+        topic, name,
+        SelfDescriptionInputs{app->config_manager, app->runtime.config,
+                              app->runtime.api, app->tools, app->options.yolo});
+  }));
+  // Persisting configuration is a mandatory-human action, so it is withheld
+  // from delegated children that could never obtain that approval.
+  if (AgentDepth() == 0) {
+    auto proposals = std::make_shared<ConfigProposalStore>();
+    tools.push_back(ConfigureTool(
+        [app = &context](ConfigProposalScope scope,
+                         const std::vector<ConfigChange>& changes) {
+          return PrepareConfigProposal(scope, changes, app->config_manager,
+                                       app->runtime.config,
+                                       app->options.trust_project);
+        },
+        std::move(proposals)));
+  }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   if (search_route.Valid()) {
@@ -335,22 +365,45 @@ std::vector<Tool> BuildTools(AppContext& context,
 }
 
 // Approval policy in one place, so the prompt and the yolo shortcut cannot
-// drift apart from the debug record of what was granted.
+// drift apart from the debug record of what was granted. A mandatory-human
+// call ignores every automatic-approval switch and denies when no human can
+// answer, so the agent cannot widen its own authority unattended.
 Agent::Approver MakeApprover(AppContext* app) {
   return [app](const Tool& tool, const json& arguments) {
+    ApprovalClass required = RequiredApproval(tool, arguments);
+    bool mandatory = required == ApprovalClass::kMandatoryHuman;
+    bool automatic = app->options.yolo && !mandatory;
     bool granted = true;
-    if (!app->options.yolo) {
+    if (!automatic) {
       // Print the full command/payload before asking, so long commands are
-      // never truncated in the approval prompt.
-      std::string payload = TerminalSafe(ToolSummary(tool, arguments));
-      fprintf(stdout, "%sallow %s%s\n%s\n%s\n", YEL(),
-              TerminalSafe(tool.name).c_str(), RST(), payload.c_str(), RST());
-      std::string question = std::string(YEL()) + "allow " +
-                             TerminalSafe(tool.name) + "? [Y/n] " + RST();
-      granted = Confirm(question, /*default_yes=*/true);
+      // never truncated in the approval prompt. A tool with more to show than
+      // its one-line label supplies its own preview.
+      std::string payload =
+          TerminalSafe(tool.approval_preview ? tool.approval_preview(arguments)
+                                             : ToolSummary(tool, arguments));
+      const char* headline = mandatory
+                                 ? "allow %s%s \u2014 changes \u00b5Agent's "
+                                   "own configuration\n%s\n%s\n"
+                                 : "allow %s%s\n%s\n%s\n";
+      fprintf(stdout, "%s", YEL());
+      fprintf(stdout, headline, TerminalSafe(tool.name).c_str(), RST(),
+              payload.c_str(), RST());
+      if (mandatory && !InteractiveApprovalAvailable()) {
+        fprintf(stdout,
+                "%s\u00b7 denied: this change needs a person, and no "
+                "interactive terminal is attached%s\n",
+                RED(), RST());
+        granted = false;
+      } else {
+        std::string question = std::string(YEL()) + "allow " +
+                               TerminalSafe(tool.name) +
+                               (mandatory ? "? [y/N] " : "? [Y/n] ") + RST();
+        granted = Confirm(question, /*default_yes=*/!mandatory);
+      }
     }
     DebugLog("approval", {{"tool", tool.name},
-                          {"automatic", app->options.yolo},
+                          {"automatic", automatic},
+                          {"mandatory_human", mandatory},
                           {"granted", granted}});
     return granted;
   };

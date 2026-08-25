@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 
 namespace uagent {
@@ -24,8 +25,10 @@ enum class SlashCommandId {
   kQuit,
   kReset,
   kSessions,
+  kStatus,
   kTools,
   kTrace,
+  kDebugConfig,
   kVariant,
   kVerbose,
   kYolo,
@@ -45,6 +48,9 @@ struct ParsedSlashCommand {
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
 void PrintCommandHelp();
+// The same rows the parser and help output use; an alias carries an empty
+// description and is hidden from listings.
+std::span<const SlashCommandSpec> SlashCommandRegistry();
 
 enum class InteractiveInputKind { kNone, kLine, kEscape, kBackground, kEof };
 

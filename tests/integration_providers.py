@@ -816,6 +816,79 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home):
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_self_info_reports_live_configuration(root, home):
+    """uagent_info answers from the running binary and never leaks secrets."""
+    config = home / ".uagent"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / ".config").write_text("UAGENT_MAX_TOOL_CALLS=120\n")
+
+    def ask_config(_, body):
+        assert_true("uagent_info" in function_names(body), function_names(body))
+        return tool_call("uagent_info", {"topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"})
+
+    def ask_status(_, body):
+        described = json.loads(tool_results(body["messages"])[-1])
+        setting = described["settings"][0]
+        assert_true(setting["name"] == "UAGENT_MAX_TOOL_CALLS", setting)
+        assert_true(setting["active"] == 120, setting)
+        assert_true(setting["source"] == "global-config", setting)
+        assert_true(setting["default"] == 0, setting)
+        assert_true(setting["takes_effect"] == "next-user-turn", setting)
+        return tool_call("uagent_info", {"topic": "status"}, call_id="call-2")
+
+    def finish(_, body):
+        status = json.loads(tool_results(body["messages"])[-1])
+        assert_true(status["version"], status)
+        assert_true(status["approval"] == "yolo", status)
+        serialized = json.dumps(body["messages"])
+        assert_true("canary-search-key" not in serialized, "secret leaked into transcript")
+        assert_true("canary-api-key" not in serialized, "secret leaked into transcript")
+        return event({"content": "self-info-ok"})
+
+    with Server([ask_config, ask_status, finish]) as server:
+        env = base_env(home, server.url)
+        env.update(
+            {
+                "UAGENT_API_KEY": "canary-api-key",
+                "UAGENT_WEB_SEARCH_API_KEY": "canary-search-key",
+            }
+        )
+        result = run(root, env, "--yolo", "-p", "describe yourself")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("self-info-ok"), result.stdout)
+        assert_true("canary-search-key" not in result.stdout, result.stdout)
+
+
+def test_effort_and_variant_persist_like_model(root, home):
+    """/effort updates the saved selection instead of evaporating on restart."""
+    preference = home / ".uagent" / "config" / "model-preference.json"
+    preference.parent.mkdir(parents=True, exist_ok=True)
+    preference.write_text(
+        json.dumps({"format": 1, "selection": "demo-model", "base_url": "", "route": False})
+    )
+
+    with Server([event({"content": "ready"})]) as server:
+        env = base_env(home, server.url)
+        session = run_dialog(root, env, "/effort high\n/quit\n")
+        assert_true(session.returncode == 0, session.stderr)
+        saved = json.loads(preference.read_text())
+        assert_true(saved["selection"] == "demo-model:high", saved)
+
+        # Clearing back to the provider default rewrites the same entry.
+        session = run_dialog(root, env, "/effort default\n/quit\n")
+        assert_true(session.returncode == 0, session.stderr)
+        saved = json.loads(preference.read_text())
+        assert_true(saved["selection"] == "demo-model", saved)
+
+    # With nothing saved, the command says so rather than implying persistence.
+    preference.unlink()
+    with Server([event({"content": "ready"})]) as server:
+        env = base_env(home, server.url)
+        session = run_dialog(root, env, "/effort high\n/quit\n")
+        assert_true("this session only" in session.stdout, session.stdout)
+        assert_true(not preference.exists(), "must not invent a preference")
+
+
 TESTS = (
     test_streamed_search_citations,
     test_openrouter_named_search_contract_and_errors,
@@ -825,6 +898,8 @@ TESTS = (
     test_provider_text_protocol_preserves_reasoning_and_trace,
     test_provider_responses_native_search_and_function_replay,
     test_provider_anthropic_native_search_pause_turn_replay,
+    test_self_info_reports_live_configuration,
+    test_effort_and_variant_persist_like_model,
     test_model_route_switch,
     test_openrouter_variant_is_scoped_to_openrouter,
     test_dynamic_provider_catalog_and_model,

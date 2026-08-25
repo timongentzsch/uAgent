@@ -181,12 +181,26 @@ inline constexpr uint32_t kAllToolCapabilities =
     Capability(ToolCapability::kDelegate) |
     Capability(ToolCapability::kExternal);
 
+enum class ApprovalClass {
+  kNone,
+  kYoloEligibleMutation,
+  kMandatoryHuman,
+};
+
 struct Tool {
   using Run = std::function<ToolResult(const json&, const ToolContext&)>;
   using Summary = std::function<std::string(const json&)>;
   using Approval = std::function<bool(const json&)>;
   using Validate = std::function<std::optional<ToolArgumentIssue>(const json&)>;
   using Canonicalize = std::function<void(json&)>;
+  // How a call must be authorised. `kMandatoryHuman` exists because some
+  // targets change µAgent's own authority or limits: yolo, UAGENT_APPROVAL and
+  // /yolo do not apply to it, and a non-interactive session denies rather than
+  // assuming consent.
+  using Classify = std::function<ApprovalClass(const json&)>;
+  // Full, possibly multi-line text shown only when asking a person to approve
+  // this call. `summary` stays a one-liner for labels, traces and evidence.
+  using Preview = std::function<std::string(const json&)>;
 
   std::string name;
   std::string description;
@@ -200,6 +214,8 @@ struct Tool {
   bool parallel_safe = false;  // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
   Approval needs_approval;          // dynamic policy (e.g. external read)
+  Classify approval_class;          // escalates specific arguments
+  Preview approval_preview;         // long-form text for the approval prompt
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
   std::string stable_argument;      // value must stay fixed during one turn
@@ -260,6 +276,18 @@ inline Tool& AddTool(std::vector<Tool>& tools, Tool tool) {
 
 inline bool ToolMutates(const Tool& tool, const json& arguments) {
   return tool.mutating || (tool.mutates && tool.mutates(arguments));
+}
+
+// The authority a call needs. A tool may escalate specific arguments; nothing
+// can de-escalate below what the tool itself declares.
+inline ApprovalClass RequiredApproval(const Tool& tool, const json& arguments) {
+  if (tool.approval_class) {
+    ApprovalClass escalated = tool.approval_class(arguments);
+    if (escalated == ApprovalClass::kMandatoryHuman) return escalated;
+  }
+  bool required = ToolMutates(tool, arguments) ||
+                  (tool.needs_approval && tool.needs_approval(arguments));
+  return required ? ApprovalClass::kYoloEligibleMutation : ApprovalClass::kNone;
 }
 
 inline void KeepLeanTools(std::vector<Tool>& tools) {

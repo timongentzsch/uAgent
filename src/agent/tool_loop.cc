@@ -176,10 +176,8 @@ bool Agent::RunCalls(
     call_event.render = api_.render_stream;
     Emit(std::move(call_event));
     if (valid) {
-      bool approval_required =
-          ToolMutates(*tool, arguments) ||
-          (tool->needs_approval && tool->needs_approval(arguments));
-      if (!approval_required || approve_(*tool, arguments)) {
+      ApprovalClass required = RequiredApproval(*tool, arguments);
+      if (required == ApprovalClass::kNone || approve_(*tool, arguments)) {
         task.execute = true;
         ++tool_count;
         ++tool_counts[call.name];

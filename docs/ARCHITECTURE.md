@@ -32,7 +32,7 @@ a service bus, service locator, or plugin system.
 | `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
 | `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
 | `src/mcp/`, `include/mcp/` | bounded stdio JSON-RPC integrations |
-| `include/core/` | configuration, usage, diagnostics, platform helpers |
+| `include/core/` | configuration registry, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
 
 `Conversation` owns model-visible messages and the bounded archive. Its
@@ -78,6 +78,31 @@ otherwise µAgent exposes its separately configured OpenRouter search function.
 `openrouter` forces the separate function and `off` exposes neither. No model
 name, provider label, or URL implies hosted-tool support. Both paths normalize
 citations and usage into the same turn accounting.
+
+## Configuration is described once
+
+One `constexpr` registry in `include/core/config_registry.h` describes every
+`UAGENT_*` setting: default, bounds, category, when a change takes effect, and
+whether the value may be displayed. Runtime getters resolve their descriptor at
+compile time, `RuntimeConfig` binds descriptors to fields, diagnostics derive
+redaction from declared sensitivity, and `uagent --emit-reference` generates the
+bundled skill's documentation from the same table. A getter naming an
+unregistered setting does not compile, and CI fails when the generated
+references differ from the registry, so a documented default cannot drift from
+the one the binary applies.
+
+`uagent_info` exposes that registry, the flag table, the slash-command table
+and the live tool list as a read-only tool. It is assembled only when called,
+adds nothing to the system prompt, and reports secrets as set or unset.
+
+## Changing µAgent's own configuration
+
+The agent has no tool that writes configuration. Editing `~/.uagent/.config`, a
+project config, the trust store or `.mcp.json` through the built-in file tools
+is classified `kMandatoryHuman`: `--yolo`, `UAGENT_APPROVAL=yolo` and `/yolo`
+do not apply, the default answer is no, and a headless or delegated run denies
+rather than assuming consent. This is defense in depth for the built-in tools,
+not a sandbox — an approved shell command can still reach the same paths.
 
 Every route mutation uses one activation path: construct a centralized
 `ProviderCapabilities` contract, export its stable child-process projection,

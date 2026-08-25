@@ -1,7 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <signal.h>
+#include <sys/resource.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
+extern char** environ;
 
 #include <clocale>
 #include <cstdint>
@@ -9,10 +15,13 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/app/bootstrap.h"
 #include "include/app/options.h"
+#include "include/app/reference.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
@@ -24,7 +33,35 @@
 namespace uagent {
 namespace {
 
+// Cheap, once-per-process defences for a tool that holds API keys in memory:
+// keep the heap out of core files, block same-user ptrace where the platform
+// offers it for free, and drop loader-injection variables before any child
+// process inherits them. None of this costs anything at run time.
+//
+// macOS PT_DENY_ATTACH is deliberately not used: it would break running µAgent
+// under a debugger, which matters for a tool people build from source.
+void HardenProcess() {
+  rlimit no_core{};
+  setrlimit(RLIMIT_CORE, &no_core);
+#ifdef PR_SET_DUMPABLE
+  prctl(PR_SET_DUMPABLE, 0, 0, 0, 0);
+#endif
+  static constexpr std::string_view kInjectionPrefixes[] = {"LD_", "DYLD_"};
+  std::vector<std::string> remove;
+  for (char** entry = environ; entry && *entry; ++entry) {
+    std::string_view variable(*entry);
+    size_t equals = variable.find('=');
+    if (equals == std::string_view::npos) continue;
+    std::string_view key = variable.substr(0, equals);
+    for (std::string_view prefix : kInjectionPrefixes) {
+      if (key.starts_with(prefix)) remove.emplace_back(key);
+    }
+  }
+  for (const std::string& key : remove) unsetenv(key.c_str());
+}
+
 void InitializeProcess() {
+  HardenProcess();
   std::setlocale(LC_CTYPE, "");
   const char* session = getenv("PLAYWRIGHT_CLI_SESSION");
   const char* generated = getenv("UAGENT_INTERNAL_PLAYWRIGHT_SESSION");
@@ -86,6 +123,14 @@ int Main(int argc, char** argv) {
   }
   if (parsed.action == OptionsAction::kPrintVersion) {
     printf("uagent %s\n", kVersion);
+    return 0;
+  }
+  if (parsed.action == OptionsAction::kEmitReference) {
+    std::string error;
+    if (!WriteReferenceFiles(parsed.options.reference_dir, error)) {
+      fprintf(stderr, "uagent: %s\n", error.c_str());
+      return 1;
+    }
     return 0;
   }
 

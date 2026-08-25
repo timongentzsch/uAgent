@@ -61,6 +61,18 @@ jobs:
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Check generated skill references
+        if: matrix.build_type == 'Release'
+        run: |
+          set -euo pipefail
+          generated=$(mktemp -d)
+          ./build/uagent --emit-reference "$generated"
+          if ! diff -ru skills/uagent-config/references "$generated" \
+              --exclude=self-configuration.md; then
+            echo '::error::generated references are stale; run' \
+              'uagent --emit-reference skills/uagent-config/references'
+            exit 1
+          fi
       - name: Package
         if: matrix.build_type == 'Release'
         shell: bash

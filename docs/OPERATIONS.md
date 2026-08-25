@@ -54,7 +54,8 @@ Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 Use `--no-memory` to remove memory recall and writes from the coordinator and
 delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
 environment setting. `/memory` shows the active policy and saved keys without
-calling a model. `/context` shows active and configured runtime values, source
+calling a model. `/status` answers the everyday questions in one screen and
+`/debug-config` shows why a value is active. `/context` shows active and configured runtime values, source
 provenance, restart-required changes, the redacted route, and negotiated route
 capabilities before the exact model request shape.
 

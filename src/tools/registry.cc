@@ -33,6 +33,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     tool.needs_approval = [workspace](const json& args) {
       return PathApprovalRequired(JsonValue(args, "path", ""), workspace);
     };
+    tool.approval_class = [](const json& args) {
+      return PathApprovalClass(JsonValue(args, "path", ""));
+    };
     return AddTool(tools, std::move(tool));
   };
 

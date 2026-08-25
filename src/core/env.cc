@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config_registry.h"
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -35,15 +36,6 @@ double EnvDouble(const char* name, double dflt) {
 
 namespace {
 
-constexpr int64_t kMaxMegabytes = static_cast<int64_t>(
-    std::numeric_limits<size_t>::max() / (int64_t{1024} * 1024));
-constexpr int64_t kMaxMinusOne = std::numeric_limits<int64_t>::max() - 1;
-
-int64_t EnvBounded(const char* name, int64_t dflt, int64_t minimum,
-                   int64_t maximum = std::numeric_limits<int64_t>::max()) {
-  return std::clamp(EnvLong(name, dflt), minimum, maximum);
-}
-
 bool OneOf(std::string_view value,
            std::initializer_list<std::string_view> allowed) {
   return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
@@ -51,7 +43,7 @@ bool OneOf(std::string_view value,
 
 }  // namespace
 
-int64_t ToolResultCap() { return EnvLong("UAGENT_TOOL_RESULT_CHARS", 8000); }
+int64_t ToolResultCap() { return LongSetting(Cfg("UAGENT_TOOL_RESULT_CHARS")); }
 
 int64_t ToolBatchResultCap() {
   int64_t per_result = ToolResultCap();
@@ -61,63 +53,63 @@ int64_t ToolBatchResultCap() {
 }
 
 int64_t ToolTraceProtectChars() {
-  return EnvBounded("UAGENT_TOOL_TRACE_PROTECT_CHARS", int64_t{64} * 1024, 0);
+  return LongSetting(Cfg("UAGENT_TOOL_TRACE_PROTECT_CHARS"));
 }
 
 int64_t ToolTracePruneMinChars() {
-  return EnvBounded("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", int64_t{32} * 1024, 0);
+  return LongSetting(Cfg("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS"));
 }
 
-int64_t AutoCompactPct() { return EnvLong("UAGENT_AUTO_COMPACT_PCT", 85); }
+int64_t AutoCompactPct() { return LongSetting(Cfg("UAGENT_AUTO_COMPACT_PCT")); }
 
 int64_t AutoCompactTokens() {
-  return EnvBounded("UAGENT_AUTO_COMPACT_TOKENS", 0, 0);
+  return LongSetting(Cfg("UAGENT_AUTO_COMPACT_TOKENS"));
 }
 
 int64_t ToolConcurrency() {
-  return EnvBounded("UAGENT_TOOL_CONCURRENCY", 4, 1, kFgMax);
+  return LongSetting(Cfg("UAGENT_TOOL_CONCURRENCY"));
 }
 
-int64_t AgentDepth() { return EnvBounded("UAGENT_DEPTH", 0, 0, kMaxMinusOne); }
+int64_t AgentDepth() { return LongSetting(Cfg("UAGENT_DEPTH")); }
 
 bool CanDelegate() {
-  return AgentDepth() < EnvBounded("UAGENT_SUBAGENT_DEPTH", 2, 0);
+  return AgentDepth() < LongSetting(Cfg("UAGENT_SUBAGENT_DEPTH"));
 }
 
-bool LeanToolset() { return EnvStr("UAGENT_TOOLSET") == "lean"; }
+bool LeanToolset() { return StringSetting(Cfg("UAGENT_TOOLSET")) == "lean"; }
 
 // The parent runs with no step ceiling at all (RuntimeConfig::max_steps), so a
 // child that reads a handful of files per step used to be cut off mid-review
 // while its parent was unbounded. Cost, wall clock and the parent's session
 // budget are the limits that actually protect a delegated run; these only stop
 // a child that has stopped making progress.
-int64_t SubagentMaxSteps() { return EnvLong("UAGENT_SUBAGENT_MAX_STEPS", 100); }
-
-int64_t SubagentMaxToolCalls() {
-  return EnvLong("UAGENT_SUBAGENT_MAX_TOOL_CALLS", 240);
+int64_t SubagentMaxSteps() {
+  return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_STEPS"));
 }
 
-std::string SubagentModel() { return EnvStr("UAGENT_SUBAGENT_MODEL"); }
+int64_t SubagentMaxToolCalls() {
+  return LongSetting(Cfg("UAGENT_SUBAGENT_MAX_TOOL_CALLS"));
+}
+
+std::string SubagentModel() {
+  return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
+}
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.
-int64_t MaxOutputTokens() { return EnvLong("UAGENT_MAX_TOKENS", -1); }
+int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
-bool SteeringEnabled() { return EnvStr("UAGENT_STEERING", "1") != "0"; }
+bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
 
-bool AdaptiveSystemEnabled() {
-  return EnvStr("UAGENT_ADAPT_SYSTEM", "0") != "0";
-}
+bool AdaptiveSystemEnabled() { return BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM")); }
 
-int64_t ReadFileLines() { return EnvLong("UAGENT_READ_FILE_LINES", 1000); }
+int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
 int64_t ReadFileMaxLines() {
-  return EnvBounded("UAGENT_READ_FILE_MAX_LINES", 10000, 1);
+  return LongSetting(Cfg("UAGENT_READ_FILE_MAX_LINES"));
 }
 
-int64_t ReadFileBytes() {
-  return EnvBounded("UAGENT_READ_FILE_BYTES", int64_t{32} * 1024, 1024);
-}
+int64_t ReadFileBytes() { return LongSetting(Cfg("UAGENT_READ_FILE_BYTES")); }
 
 int64_t ReadFileResultChars() {
   constexpr int64_t kHeaderAllowance = 2048;
@@ -126,253 +118,170 @@ int64_t ReadFileResultChars() {
   return bytes > kMax - kHeaderAllowance ? kMax : bytes + kHeaderAllowance;
 }
 
-int64_t EditFileBytes() {
-  return EnvLong("UAGENT_EDIT_FILE_BYTES", int64_t{10} * 1024 * 1024);
-}
+int64_t EditFileBytes() { return LongSetting(Cfg("UAGENT_EDIT_FILE_BYTES")); }
 
-int64_t ListDirEntries() {
-  return EnvBounded("UAGENT_LIST_DIR_ENTRIES", 1000, 1);
-}
+int64_t ListDirEntries() { return LongSetting(Cfg("UAGENT_LIST_DIR_ENTRIES")); }
 
 int64_t ListDirScanEntries() {
-  return EnvBounded("UAGENT_LIST_DIR_SCAN_ENTRIES", 100000, 1);
+  return LongSetting(Cfg("UAGENT_LIST_DIR_SCAN_ENTRIES"));
 }
 
-int64_t MemoryBytes() { return EnvBounded("UAGENT_MEMORY_BYTES", 2048, 256); }
+int64_t MemoryBytes() { return LongSetting(Cfg("UAGENT_MEMORY_BYTES")); }
 
-int64_t MaxMemories() { return EnvBounded("UAGENT_MEMORY_FILES", 32, 1); }
+int64_t MaxMemories() { return LongSetting(Cfg("UAGENT_MEMORY_FILES")); }
 
 int64_t MemoryIdleSeconds() {
-  return EnvBounded("UAGENT_MEMORY_IDLE_SECONDS", int64_t{6} * 60 * 60, 0,
-                    int64_t{48} * 60 * 60);
+  return LongSetting(Cfg("UAGENT_MEMORY_IDLE_SECONDS"));
 }
 
 int64_t MemoryExtractBytes() {
-  return EnvBounded("UAGENT_MEMORY_EXTRACT_BYTES", int64_t{32} * 1024, 4096,
-                    int64_t{256} * 1024);
+  return LongSetting(Cfg("UAGENT_MEMORY_EXTRACT_BYTES"));
 }
 
-int64_t SkillBodyBytes() {
-  return EnvBounded("UAGENT_SKILL_BYTES", int64_t{512} * 1024, 1024,
-                    int64_t{1024} * 1024);
-}
+int64_t SkillBodyBytes() { return LongSetting(Cfg("UAGENT_SKILL_BYTES")); }
 
 int64_t SkillDescriptionBytes() {
-  return EnvBounded("UAGENT_SKILL_DESC_BYTES", 1024, 16);
+  return LongSetting(Cfg("UAGENT_SKILL_DESC_BYTES"));
 }
 
-int64_t MaxSkills() { return EnvBounded("UAGENT_SKILLS", 64, 1); }
+int64_t MaxSkills() { return LongSetting(Cfg("UAGENT_SKILLS")); }
 
 // Defaults to the attachment budget: a document worth fetching is usually one
 // worth handing to the model, and a smaller cap here would refuse pages this
 // process is already willing to carry. A 2 MiB cap truncated an ordinary
 // arXiv paper.
 int64_t WebFetchBytes() {
-  return EnvBounded("UAGENT_WEB_FETCH_BYTES", AttachmentLimitMb() * 1024 * 1024,
-                    1024);
+  return LongSetting(Cfg("UAGENT_WEB_FETCH_BYTES"),
+                     AttachmentLimitMb() * 1024 * 1024);
 }
 
-int64_t GrepResults() {
-  return EnvBounded("UAGENT_GREP_RESULTS", 200, 1, kMaxMinusOne);
-}
+int64_t GrepResults() { return LongSetting(Cfg("UAGENT_GREP_RESULTS")); }
 
 int64_t GrepBytes() {
-  return EnvBounded("UAGENT_GREP_BYTES", ToolResultCap(), 1024);
+  return LongSetting(Cfg("UAGENT_GREP_BYTES"), ToolResultCap());
 }
 
-int64_t BashLogBytes() {
-  return EnvBounded("UAGENT_BASH_LOG_BYTES", int64_t{64} * 1024 * 1024, 1024);
-}
+int64_t BashLogBytes() { return LongSetting(Cfg("UAGENT_BASH_LOG_BYTES")); }
 
-int64_t RunDefaultYieldMs() {
-  return EnvBounded("UAGENT_RUN_YIELD_MS", 10000, 0, kMaxYieldMs);
-}
+int64_t RunDefaultYieldMs() { return LongSetting(Cfg("UAGENT_RUN_YIELD_MS")); }
 
 int64_t MaxBackgroundJobs() {
-  return EnvBounded("UAGENT_MAX_BACKGROUND_JOBS", 8, 1, kBgMax);
+  return LongSetting(Cfg("UAGENT_MAX_BACKGROUND_JOBS"));
 }
 
-int64_t McpConfigBytes() {
-  return EnvBounded("UAGENT_MCP_CONFIG_BYTES", int64_t{1024} * 1024, 1024);
-}
+int64_t McpConfigBytes() { return LongSetting(Cfg("UAGENT_MCP_CONFIG_BYTES")); }
 
-int64_t McpDescriptionChars() { return EnvLong("UAGENT_MCP_DESC_CHARS", 400); }
+int64_t McpDescriptionChars() {
+  return LongSetting(Cfg("UAGENT_MCP_DESC_CHARS"));
+}
 
 int64_t MaxPendingAttachments() {
-  return EnvBounded("UAGENT_PENDING_ATTACHMENTS", 8, 1);
+  return LongSetting(Cfg("UAGENT_PENDING_ATTACHMENTS"));
 }
 
-int64_t AttachmentLimitMb() {
-  return EnvBounded("UAGENT_ATTACHMENT_MB", 10, 1, kMaxMegabytes);
-}
+int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
 int64_t TerminalImageLimitMb() {
-  return EnvBounded("UAGENT_TERMINAL_IMAGE_MB", 10, 1, kMaxMegabytes);
+  return LongSetting(Cfg("UAGENT_TERMINAL_IMAGE_MB"));
 }
 
 int64_t ImageMaxColumns() {
-  return EnvBounded("UAGENT_IMAGE_MAX_COLUMNS", 200, 1);
+  return LongSetting(Cfg("UAGENT_IMAGE_MAX_COLUMNS"));
 }
 
 int64_t ImageColumns(int64_t available) {
-  return EnvLong("UAGENT_IMAGE_COLUMNS", available);
+  return LongSetting(Cfg("UAGENT_IMAGE_COLUMNS"), available);
 }
 
-int64_t ContextWindow() { return EnvLong("UAGENT_CONTEXT", 0); }
+int64_t ContextWindow() { return LongSetting(Cfg("UAGENT_CONTEXT")); }
 
-int64_t HistoryDays() { return EnvLong("UAGENT_HISTORY_DAYS", 30); }
+int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }
 
-int64_t HistoryFiles() { return EnvLong("UAGENT_HISTORY_FILES", 200); }
+int64_t HistoryFiles() { return LongSetting(Cfg("UAGENT_HISTORY_FILES")); }
 
-int64_t DebugDays() { return EnvLong("UAGENT_DEBUG_DAYS", 14); }
+int64_t DebugDays() { return LongSetting(Cfg("UAGENT_DEBUG_DAYS")); }
 
-int64_t DebugFiles() { return EnvLong("UAGENT_DEBUG_FILES", 50); }
+int64_t DebugFiles() { return LongSetting(Cfg("UAGENT_DEBUG_FILES")); }
 
-int64_t BgDays() { return EnvLong("UAGENT_BG_DAYS", 7); }
+int64_t BgDays() { return LongSetting(Cfg("UAGENT_BG_DAYS")); }
 
-int64_t BgFiles() { return EnvLong("UAGENT_BG_FILES", 200); }
+int64_t BgFiles() { return LongSetting(Cfg("UAGENT_BG_FILES")); }
 
-int64_t McpLogDays() { return EnvLong("UAGENT_MCP_LOG_DAYS", 7); }
+int64_t McpLogDays() { return LongSetting(Cfg("UAGENT_MCP_LOG_DAYS")); }
 
-int64_t McpLogFiles() { return EnvLong("UAGENT_MCP_LOG_FILES", 100); }
+int64_t McpLogFiles() { return LongSetting(Cfg("UAGENT_MCP_LOG_FILES")); }
 
 int64_t TerminalRecordDays() {
-  return EnvBounded("UAGENT_TERMINAL_DAYS", 7, 0);
+  return LongSetting(Cfg("UAGENT_TERMINAL_DAYS"));
 }
 
 namespace {
 
-constexpr int64_t kAnyMin = std::numeric_limits<int64_t>::min();
-constexpr int64_t kAnyMax = std::numeric_limits<int64_t>::max();
+// The typed tables now carry only what a descriptor cannot: which RuntimeConfig
+// member each setting writes. The descriptor pointer is resolved at compile
+// time, so config load does no lookup and a binding naming an unregistered
+// setting fails to build.
+template <typename T>
+struct FieldBinding {
+  const ConfigDescriptor* descriptor;
+  T RuntimeConfig::* field;
 
-// These tables are the single source of truth for the RuntimeConfig option
-// set: environment name, field name, target member, clamp/default, whether a
-// turn-boundary reload may replace the field, and whether the value must be
-// redacted in diagnostics. Adding an option means adding one row.
-struct LongOption {
-  const char* env;
-  const char* name;
-  int64_t RuntimeConfig::* field;
-  int64_t minimum;
-  int64_t maximum;
-  bool reloadable;
-};
-struct DoubleOption {
-  const char* env;
-  const char* name;
-  double RuntimeConfig::* field;
-  double minimum;
-  bool reloadable;
-};
-struct StringOption {
-  const char* env;
-  const char* name;
-  std::string RuntimeConfig::* field;
-  const char* default_value;
-  bool reloadable;
-  bool redact;
-};
-struct BoolOption {
-  const char* env;
-  const char* name;
-  bool RuntimeConfig::* field;
-  bool default_value;
-  bool reloadable;
+  const char* env() const { return descriptor->environment.data(); }
 };
 
-constexpr LongOption kLongOptions[] = {
-    {"UAGENT_FIRST_EVENT_TIMEOUT", "first_event_timeout_s",
-     &RuntimeConfig::first_event_timeout_s, kAnyMin, kAnyMax, true},
-    {"UAGENT_STREAM_IDLE_TIMEOUT", "stream_idle_timeout_s",
-     &RuntimeConfig::stream_idle_timeout_s, kAnyMin, kAnyMax, true},
-    {"UAGENT_REQUEST_TIMEOUT", "request_timeout_s",
-     &RuntimeConfig::request_timeout_s, kAnyMin, kAnyMax, true},
-    {"UAGENT_REQUEST_BYTES", "request_bytes", &RuntimeConfig::request_bytes,
-     1024, kAnyMax, true},
-    {"UAGENT_RESPONSE_BYTES", "response_bytes", &RuntimeConfig::response_bytes,
-     kAnyMin, kAnyMax, true},
-    {"UAGENT_MAX_STEPS", "max_steps", &RuntimeConfig::max_steps, 0, kAnyMax,
-     true},
-    {"UAGENT_MAX_TOOL_CALLS", "max_tool_calls", &RuntimeConfig::max_tool_calls,
-     0, kAnyMax, true},
-    {"UAGENT_MAX_TURN_SECONDS", "max_turn_seconds",
-     &RuntimeConfig::max_turn_seconds, 0, kAnyMax, true},
-    {"UAGENT_TOOL_TIMEOUT", "tool_timeout_s", &RuntimeConfig::tool_timeout_s, 0,
-     kAnyMax, true},
-    {"UAGENT_WEB_SEARCH_TIMEOUT", "web_search_timeout_s",
-     &RuntimeConfig::web_search_timeout_s, 1, kAnyMax, true},
-    {"UAGENT_WEB_SEARCH_MAX_TOKENS", "web_search_max_tokens",
-     &RuntimeConfig::web_search_max_tokens, 128, kAnyMax, true},
-    {"UAGENT_WEB_SEARCH_CALLS", "web_search_calls",
-     &RuntimeConfig::web_search_calls, 1, kAnyMax, true},
-    {"UAGENT_WEB_SEARCH_MAX_RESULTS", "web_search_max_results",
-     &RuntimeConfig::web_search_max_results, 1, 25, true},
-    {"UAGENT_WEB_SEARCH_MAX_USES", "web_search_max_uses",
-     &RuntimeConfig::web_search_max_uses, 1, 30, true},
-    {"UAGENT_MCP_TIMEOUT", "mcp_timeout_s", &RuntimeConfig::mcp_timeout_s, 1,
-     kAnyMax, false},
-    {"UAGENT_MCP_SERVERS", "mcp_servers", &RuntimeConfig::mcp_servers, 1,
-     kMcpMax, false},
-    {"UAGENT_MCP_PAGES", "mcp_pages", &RuntimeConfig::mcp_pages, 1, kAnyMax,
-     false},
-    {"UAGENT_MCP_TOOLS", "mcp_tools", &RuntimeConfig::mcp_tools, 1, kAnyMax,
-     false},
-    {"UAGENT_MCP_CONFIG_BYTES", "mcp_config_bytes",
-     &RuntimeConfig::mcp_config_bytes, 1024, kAnyMax, false},
-    {"UAGENT_MCP_RESPONSE_BYTES", "mcp_response_bytes",
-     &RuntimeConfig::mcp_response_bytes, 1024, kAnyMax, false},
-    {"UAGENT_MCP_SCHEMA_BYTES", "mcp_schema_bytes",
-     &RuntimeConfig::mcp_schema_bytes, 1024, kAnyMax, false},
-    {"UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", &RuntimeConfig::mcp_log_bytes,
-     1024, kAnyMax, false},
-    {"UAGENT_MEMORY_ALWAYS_BYTES", "memory_always_bytes",
-     &RuntimeConfig::memory_always_bytes, 0, int64_t{64} * 1024, false},
-    {"UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
-     &RuntimeConfig::project_doc_bytes, 0, kAnyMax, false},
-    {"UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",
-     &RuntimeConfig::session_archive_bytes, 0, kAnyMax, true},
+constexpr FieldBinding<int64_t> kLongOptions[] = {
+    {&Cfg("UAGENT_FIRST_EVENT_TIMEOUT"), &RuntimeConfig::first_event_timeout_s},
+    {&Cfg("UAGENT_STREAM_IDLE_TIMEOUT"), &RuntimeConfig::stream_idle_timeout_s},
+    {&Cfg("UAGENT_REQUEST_TIMEOUT"), &RuntimeConfig::request_timeout_s},
+    {&Cfg("UAGENT_REQUEST_BYTES"), &RuntimeConfig::request_bytes},
+    {&Cfg("UAGENT_RESPONSE_BYTES"), &RuntimeConfig::response_bytes},
+    {&Cfg("UAGENT_MAX_STEPS"), &RuntimeConfig::max_steps},
+    {&Cfg("UAGENT_MAX_TOOL_CALLS"), &RuntimeConfig::max_tool_calls},
+    {&Cfg("UAGENT_MAX_TURN_SECONDS"), &RuntimeConfig::max_turn_seconds},
+    {&Cfg("UAGENT_TOOL_TIMEOUT"), &RuntimeConfig::tool_timeout_s},
+    {&Cfg("UAGENT_WEB_SEARCH_TIMEOUT"), &RuntimeConfig::web_search_timeout_s},
+    {&Cfg("UAGENT_WEB_SEARCH_MAX_TOKENS"),
+     &RuntimeConfig::web_search_max_tokens},
+    {&Cfg("UAGENT_WEB_SEARCH_CALLS"), &RuntimeConfig::web_search_calls},
+    {&Cfg("UAGENT_WEB_SEARCH_MAX_RESULTS"),
+     &RuntimeConfig::web_search_max_results},
+    {&Cfg("UAGENT_WEB_SEARCH_MAX_USES"), &RuntimeConfig::web_search_max_uses},
+    {&Cfg("UAGENT_MCP_TIMEOUT"), &RuntimeConfig::mcp_timeout_s},
+    {&Cfg("UAGENT_MCP_SERVERS"), &RuntimeConfig::mcp_servers},
+    {&Cfg("UAGENT_MCP_PAGES"), &RuntimeConfig::mcp_pages},
+    {&Cfg("UAGENT_MCP_TOOLS"), &RuntimeConfig::mcp_tools},
+    {&Cfg("UAGENT_MCP_CONFIG_BYTES"), &RuntimeConfig::mcp_config_bytes},
+    {&Cfg("UAGENT_MCP_RESPONSE_BYTES"), &RuntimeConfig::mcp_response_bytes},
+    {&Cfg("UAGENT_MCP_SCHEMA_BYTES"), &RuntimeConfig::mcp_schema_bytes},
+    {&Cfg("UAGENT_MCP_LOG_BYTES"), &RuntimeConfig::mcp_log_bytes},
+    {&Cfg("UAGENT_MEMORY_ALWAYS_BYTES"), &RuntimeConfig::memory_always_bytes},
+    {&Cfg("UAGENT_PROJECT_DOC_BYTES"), &RuntimeConfig::project_doc_bytes},
+    {&Cfg("UAGENT_SESSION_ARCHIVE_BYTES"),
+     &RuntimeConfig::session_archive_bytes},
 };
-constexpr DoubleOption kDoubleOptions[] = {
-    {"UAGENT_MAX_TURN_COST", "max_turn_cost", &RuntimeConfig::max_turn_cost,
-     0.0, true},
-    {"UAGENT_SESSION_BUDGET", "session_budget", &RuntimeConfig::session_budget,
-     0.0, true},
+constexpr FieldBinding<double> kDoubleOptions[] = {
+    {&Cfg("UAGENT_MAX_TURN_COST"), &RuntimeConfig::max_turn_cost},
+    {&Cfg("UAGENT_SESSION_BUDGET"), &RuntimeConfig::session_budget},
 };
-constexpr StringOption kStringOptions[] = {
-    {"UAGENT_OPENROUTER_PROVIDER", "openrouter_provider",
-     &RuntimeConfig::openrouter_provider, "", true, false},
-    {"UAGENT_OPENROUTER_VARIANT", "openrouter_variant",
-     &RuntimeConfig::openrouter_variant, "", true, false},
-    {"UAGENT_WEB_SEARCH_BACKEND", "web_search_backend",
-     &RuntimeConfig::web_search_backend, "auto", false, false},
-    {"UAGENT_WEB_SEARCH_URL", "web_search_url", &RuntimeConfig::web_search_url,
-     "", false, false},
-    // A secret: reloading it mid-session is deferred, and diagnostics only
-    // report whether it is set.
-    {"UAGENT_WEB_SEARCH_API_KEY", "web_search_api_key",
-     &RuntimeConfig::web_search_api_key, "", false, true},
-    {"UAGENT_WEB_SEARCH_EFFORT", "web_search_effort",
-     &RuntimeConfig::web_search_effort, "", false, false},
-    {"UAGENT_WEB_SEARCH_MODEL", "web_search_model",
-     &RuntimeConfig::web_search_model, "", false, false},
-    {"UAGENT_WEB_SEARCH_ENGINE", "web_search_engine",
-     &RuntimeConfig::web_search_engine, "auto", false, false},
-    {"UAGENT_WEB_SEARCH_CONTEXT_SIZE", "web_search_context_size",
-     &RuntimeConfig::web_search_context_size, "", false, false},
-    {"UAGENT_IMAGE_MODEL", "image_model", &RuntimeConfig::image_model, "", true,
-     false},
-    {"UAGENT_PDF_ENGINE", "pdf_engine", &RuntimeConfig::pdf_engine,
-     "cloudflare-ai", false, false},
-    {"UAGENT_MCP_ROOTS", "mcp_roots", &RuntimeConfig::mcp_roots, "", false,
-     false},
+constexpr FieldBinding<std::string> kStringOptions[] = {
+    {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
+    {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
+    {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},
+    {&Cfg("UAGENT_WEB_SEARCH_URL"), &RuntimeConfig::web_search_url},
+    {&Cfg("UAGENT_WEB_SEARCH_API_KEY"), &RuntimeConfig::web_search_api_key},
+    {&Cfg("UAGENT_WEB_SEARCH_EFFORT"), &RuntimeConfig::web_search_effort},
+    {&Cfg("UAGENT_WEB_SEARCH_MODEL"), &RuntimeConfig::web_search_model},
+    {&Cfg("UAGENT_WEB_SEARCH_ENGINE"), &RuntimeConfig::web_search_engine},
+    {&Cfg("UAGENT_WEB_SEARCH_CONTEXT_SIZE"),
+     &RuntimeConfig::web_search_context_size},
+    {&Cfg("UAGENT_IMAGE_MODEL"), &RuntimeConfig::image_model},
+    {&Cfg("UAGENT_PDF_ENGINE"), &RuntimeConfig::pdf_engine},
+    {&Cfg("UAGENT_MCP_ROOTS"), &RuntimeConfig::mcp_roots},
 };
-constexpr BoolOption kBoolOptions[] = {
-    {"UAGENT_OPENROUTER_FALLBACKS", "openrouter_fallbacks",
-     &RuntimeConfig::openrouter_fallbacks, true, true},
-    {"UAGENT_MEMORY", "memory_enabled", &RuntimeConfig::memory_enabled, true,
-     false},
-    {"UAGENT_MEMORY_GENERATE", "memory_generate",
-     &RuntimeConfig::memory_generate, true, false},
+constexpr FieldBinding<bool> kBoolOptions[] = {
+    {&Cfg("UAGENT_OPENROUTER_FALLBACKS"), &RuntimeConfig::openrouter_fallbacks},
+    {&Cfg("UAGENT_MEMORY"), &RuntimeConfig::memory_enabled},
+    {&Cfg("UAGENT_MEMORY_GENERATE"), &RuntimeConfig::memory_generate},
 };
 
 void NormalizeRuntimeConfig(RuntimeConfig& config) {
@@ -394,37 +303,23 @@ void NormalizeRuntimeConfig(RuntimeConfig& config) {
 }  // namespace
 
 std::string RuntimeConfigField(std::string_view environment) {
-  for (const LongOption& option : kLongOptions) {
-    if (environment == option.env) return option.name;
-  }
-  for (const StringOption& option : kStringOptions) {
-    if (environment == option.env) return option.name;
-  }
-  for (const BoolOption& option : kBoolOptions) {
-    if (environment == option.env) return option.name;
-  }
-  for (const DoubleOption& option : kDoubleOptions) {
-    if (environment == option.env) return option.name;
-  }
-  return "";
+  const ConfigDescriptor* descriptor = FindConfigDescriptor(environment);
+  return descriptor ? std::string(descriptor->field) : std::string();
 }
 
 RuntimeConfig RuntimeConfig::FromEnvironment() {
   RuntimeConfig c;
-  for (const LongOption& option : kLongOptions) {
-    c.*option.field = std::clamp(EnvLong(option.env, c.*option.field),
-                                 option.minimum, option.maximum);
+  for (const auto& option : kLongOptions) {
+    c.*option.field = LongSetting(*option.descriptor, c.*option.field);
   }
-  for (const StringOption& option : kStringOptions) {
-    c.*option.field = EnvStr(option.env, option.default_value);
+  for (const auto& option : kStringOptions) {
+    c.*option.field = StringSetting(*option.descriptor);
   }
-  for (const BoolOption& option : kBoolOptions) {
-    c.*option.field =
-        EnvStr(option.env, option.default_value ? "1" : "0") != "0";
+  for (const auto& option : kBoolOptions) {
+    c.*option.field = BoolSetting(*option.descriptor);
   }
-  for (const DoubleOption& option : kDoubleOptions) {
-    c.*option.field =
-        std::max(option.minimum, EnvDouble(option.env, c.*option.field));
+  for (const auto& option : kDoubleOptions) {
+    c.*option.field = std::max(0.0, EnvDouble(option.env(), c.*option.field));
   }
   NormalizeRuntimeConfig(c);
   return c;
@@ -436,25 +331,30 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
     auto found = values.find(name);
     return found == values.end() ? nullptr : &found->second;
   };
-  for (const LongOption& option : kLongOptions) {
+  for (const auto& option : kLongOptions) {
     int64_t parsed = config.*option.field;
-    const std::string* selected = value(option.env);
+    const std::string* selected = value(option.env());
     if (selected) ParseInt64(selected->c_str(), parsed);
-    config.*option.field = std::clamp(parsed, option.minimum, option.maximum);
+    config.*option.field = std::clamp(parsed, option.descriptor->minimum,
+                                      option.descriptor->maximum);
   }
-  for (const StringOption& option : kStringOptions) {
-    const std::string* selected = value(option.env);
-    config.*option.field = selected ? *selected : option.default_value;
+  for (const auto& option : kStringOptions) {
+    const std::string* selected = value(option.env());
+    config.*option.field = selected ? *selected
+                                    : std::string(std::get<std::string_view>(
+                                          option.descriptor->default_value));
   }
-  for (const BoolOption& option : kBoolOptions) {
-    const std::string* selected = value(option.env);
-    config.*option.field = selected ? *selected != "0" : option.default_value;
+  for (const auto& option : kBoolOptions) {
+    const std::string* selected = value(option.env());
+    config.*option.field =
+        selected ? *selected != "0"
+                 : std::get<bool>(option.descriptor->default_value);
   }
-  for (const DoubleOption& option : kDoubleOptions) {
-    const std::string* selected = value(option.env);
+  for (const auto& option : kDoubleOptions) {
+    const std::string* selected = value(option.env());
     double parsed = 0;
     if (selected && ParseFiniteDouble(selected->c_str(), parsed)) {
-      config.*option.field = std::max(option.minimum, parsed);
+      config.*option.field = std::max(0.0, parsed);
     }
   }
   NormalizeRuntimeConfig(config);
@@ -464,15 +364,16 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
 std::vector<std::string> RuntimeConfig::ApplyTurnReload(
     const RuntimeConfig& next) {
   std::vector<std::string> changed;
-  // The tables carry the reloadable flag, so the applied set cannot drift from
-  // the option set the same tables define.
+  // Reloadability is a registry property, so the applied set cannot drift from
+  // the policy the descriptors publish.
   auto reload = [&](const auto& options) {
     for (const auto& option : options) {
-      if (!option.reloadable || this->*option.field == next.*option.field) {
+      if (option.descriptor->reload != ReloadPolicy::kNextUserTurn ||
+          this->*option.field == next.*option.field) {
         continue;
       }
       this->*option.field = next.*option.field;
-      changed.push_back(option.name);
+      changed.emplace_back(option.descriptor->field);
     }
   };
   reload(kLongOptions);
@@ -488,40 +389,41 @@ json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
     return env_sources.is_object() ? JsonValue(env_sources, env, "default")
                                    : std::string("default");
   };
-  for (const LongOption& option : kLongOptions) {
-    out[option.name] = source(option.env);
+  for (const auto& option : kLongOptions) {
+    out[option.descriptor->field] = source(option.env());
   }
-  for (const StringOption& option : kStringOptions) {
-    out[option.name] = source(option.env);
+  for (const auto& option : kStringOptions) {
+    out[option.descriptor->field] = source(option.env());
   }
-  for (const BoolOption& option : kBoolOptions) {
-    out[option.name] = source(option.env);
+  for (const auto& option : kBoolOptions) {
+    out[option.descriptor->field] = source(option.env());
   }
-  for (const DoubleOption& option : kDoubleOptions) {
-    out[option.name] = source(option.env);
+  for (const auto& option : kDoubleOptions) {
+    out[option.descriptor->field] = source(option.env());
   }
   return out;
 }
 
 json RuntimeConfig::DiagnosticJson() const {
   json out;
-  for (const LongOption& option : kLongOptions) {
-    out[option.name] = this->*option.field;
+  for (const auto& option : kLongOptions) {
+    out[option.descriptor->field] = this->*option.field;
   }
-  for (const StringOption& option : kStringOptions) {
+  for (const auto& option : kStringOptions) {
+    const ConfigDescriptor& descriptor = *option.descriptor;
     std::string value = this->*option.field;
-    if (option.redact) {
+    if (descriptor.sensitivity != Sensitivity::kPublic) {
       value = value.empty() ? "<unset>" : "<set>";
-    } else if (std::string_view(option.name).ends_with("_url")) {
+    } else if (descriptor.field.ends_with("_url")) {
       value = RedactedUrl(std::move(value));
     }
-    out[option.name] = std::move(value);
+    out[descriptor.field] = std::move(value);
   }
-  for (const BoolOption& option : kBoolOptions) {
-    out[option.name] = this->*option.field;
+  for (const auto& option : kBoolOptions) {
+    out[option.descriptor->field] = this->*option.field;
   }
-  for (const DoubleOption& option : kDoubleOptions) {
-    out[option.name] = this->*option.field;
+  for (const auto& option : kDoubleOptions) {
+    out[option.descriptor->field] = this->*option.field;
   }
   out.update({
       {"auto_compact_pct", AutoCompactPct()},

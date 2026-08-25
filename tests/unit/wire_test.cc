@@ -182,7 +182,7 @@ void TestWireStreams() {
   WireStreamState responses_state;
   std::string answer;
   std::string reasoning;
-  auto responses_event = [&](json value) {
+  auto responses_event = [&](const json& value) {
     WireStreamDelta delta = DecodeWireStreamEvent(
         WireApi::kResponses, JsonDump(value), responses_result, responses_calls,
         responses_state);
@@ -253,7 +253,7 @@ void TestWireStreams() {
   WireStreamState anthropic_state;
   std::string anthropic_answer;
   std::string anthropic_reasoning;
-  auto anthropic_event = [&](json value) {
+  auto anthropic_event = [&](const json& value) {
     WireStreamDelta delta = DecodeWireStreamEvent(
         WireApi::kAnthropicMessages, JsonDump(value), anthropic_result,
         anthropic_calls, anthropic_state);

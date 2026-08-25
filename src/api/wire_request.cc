@@ -88,8 +88,9 @@ json ResponsesContent(const json& content, bool assistant) {
       if (!file) continue;
       json block = {{"type", "input_file"}};
       if (file->contains("filename")) block["filename"] = (*file)["filename"];
-      if (file->contains("file_data"))
+      if (file->contains("file_data")) {
         block["file_data"] = (*file)["file_data"];
+      }
       if (block.size() > 1) blocks.push_back(std::move(block));
     }
   }
@@ -157,12 +158,12 @@ json ResponsesInput(const json& messages) {
 }
 
 bool DataUri(std::string_view uri, std::string& media_type, std::string& data) {
-  constexpr std::string_view marker = ";base64,";
+  constexpr std::string_view kMarker = ";base64,";
   if (!uri.starts_with("data:")) return false;
-  size_t split = uri.find(marker, 5);
+  size_t split = uri.find(kMarker, 5);
   if (split == std::string_view::npos || split == 5) return false;
   media_type = std::string(uri.substr(5, split - 5));
-  data = std::string(uri.substr(split + marker.size()));
+  data = std::string(uri.substr(split + kMarker.size()));
   return !data.empty();
 }
 
@@ -279,8 +280,9 @@ json AnthropicMessages(const json& canonical, std::string& system) {
             if (!function) continue;
             json input = json::parse(JsonValue(*function, "arguments", ""),
                                      nullptr, false);
-            if (input.is_discarded() || !input.is_object())
+            if (input.is_discarded() || !input.is_object()) {
               input = json::object();
+            }
             blocks.push_back({{"type", "tool_use"},
                               {"id", JsonValue(call, "id", "")},
                               {"name", JsonValue(*function, "name", "")},

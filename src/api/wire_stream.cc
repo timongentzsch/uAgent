@@ -42,8 +42,9 @@ void AddAnnotationsFromMessage(const json& item, ChatResult& result) {
   for (const json& part : *content) {
     const json* annotations = JsonArray(part, "annotations");
     if (!annotations) continue;
-    for (const json& annotation : *annotations)
+    for (const json& annotation : *annotations) {
       AddAnnotation(annotation, result);
+    }
   }
 }
 
@@ -135,8 +136,9 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     return delta;
   }
   if (type == "response.output_text.annotation.added") {
-    if (value.contains("annotation"))
+    if (value.contains("annotation")) {
       AddAnnotation(value["annotation"], result);
+    }
     delta.activity = true;
     return delta;
   }

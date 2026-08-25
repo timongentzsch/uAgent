@@ -23,6 +23,8 @@ void TestSkillDiscovery() {
 
   CHECK(LoadSkills(workspace).empty());
 
+  // The process-global value is mutated below; retain its original bytes.
+  // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
   const std::string original_executable = ExecutablePath();
   fs::path packaged = test.root / "package";
   fs::path decoy = test.root / "decoy";

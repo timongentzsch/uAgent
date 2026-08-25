@@ -1,0 +1,47 @@
+{
+  "schema": "uagent.eval.baseline.v1",
+  "generated_at": "2026-08-25T19:06:42Z",
+  "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
+  "scenarios": {
+    "cache_hit_diagnosis/compacted": {
+      "score": 10,
+      "checks_total": 10,
+      "model_requests": 4,
+      "tool_calls": 3,
+      "max_batch": 2,
+      "compactions": 1,
+      "max_estimated_request_chars": 16251,
+      "initial_schema_chars": 10923
+    },
+    "cache_hit_diagnosis/control": {
+      "score": 10,
+      "checks_total": 10,
+      "model_requests": 3,
+      "tool_calls": 3,
+      "max_batch": 2,
+      "compactions": 0,
+      "max_estimated_request_chars": 20950,
+      "initial_schema_chars": 10923
+    },
+    "parallel_batch/control": {
+      "score": 7,
+      "checks_total": 7,
+      "model_requests": 2,
+      "tool_calls": 3,
+      "max_batch": 3,
+      "compactions": 0,
+      "max_estimated_request_chars": 15456,
+      "initial_schema_chars": 10923
+    },
+    "repeated_read/control": {
+      "score": 7,
+      "checks_total": 7,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "compactions": 0,
+      "max_estimated_request_chars": 16247,
+      "initial_schema_chars": 10923
+    }
+  }
+}

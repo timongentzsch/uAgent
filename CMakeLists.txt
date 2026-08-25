@@ -195,13 +195,16 @@ if(BUILD_TESTING)
                      $<TARGET_FILE:uagent> --group ${group})
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
   endforeach()
-  add_test(NAME efficiency_smoke
+  # Behavioral scoreboard: every scenario is scored and compared against the
+  # committed baseline, so a harness change that costs rounds, batching or
+  # answer quality fails here rather than being noticed later.
+  add_test(NAME behavior_eval
            COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/agent_efficiency.py
-                   $<TARGET_FILE:uagent> --timeout 30)
-  # The harness enforces its own 45-second subprocess deadline. Leave enough
-  # wrapper headroom for loaded hosted macOS runners to report that diagnostic.
-  set_tests_properties(efficiency_smoke PROPERTIES TIMEOUT 60)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
+                   $<TARGET_FILE:uagent> --check --timeout 30)
+  # Each scenario enforces its own subprocess deadline. Leave enough wrapper
+  # headroom for loaded hosted macOS runners to report that diagnostic.
+  set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

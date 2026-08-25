@@ -48,7 +48,7 @@ const char* FailureRemedy(ChildAgentFailureStage stage) {
 
 std::string ChildAgentFailureReport(std::string_view route,
                                     ChildAgentFailureStage stage,
-                                    std::string diagnostics) {
+                                    std::string_view diagnostics) {
   HeadTailBuffer bounded(kChildDiagnosticBytes);
   bounded.Push(TerminalSafe(diagnostics));
   std::string partial = bounded.Snapshot();

@@ -31,7 +31,7 @@ enum class ChildAgentFailureStage {
 // hiding a provider/model fallback behind a retry.
 std::string ChildAgentFailureReport(std::string_view route,
                                     ChildAgentFailureStage stage,
-                                    std::string diagnostics = {});
+                                    std::string_view diagnostics = {});
 
 // Route, depth and usage ledger. Overrides are applied in order with the last
 // occurrence winning, so callers append their own policy after this.

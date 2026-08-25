@@ -930,9 +930,8 @@ std::vector<std::string> TakeCompleted(
                     : ParseActivityKind(job.kind, job.detached);
     if (activity_kind == ActivityKind::kSubagent &&
         !(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
-      output = ChildAgentFailureReport(job.display_label,
-                                       ChildAgentFailureStage::kExecution,
-                                       std::move(output));
+      output = ChildAgentFailureReport(
+          job.display_label, ChildAgentFailureStage::kExecution, output);
     }
     std::string formatted =
         BgResultHeader(job) + "\n" + output + FmtExit(status, /*show_ok=*/true);

@@ -238,8 +238,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                       result.status == CompletionStatus::kTimedOut
                   ? ChildAgentFailureStage::kExecution
                   : ChildAgentFailureStage::kSpawn;
-          result.output = ChildAgentFailureReport(route_label, stage,
-                                                  std::move(result.output));
+          result.output =
+              ChildAgentFailureReport(route_label, stage, result.output);
         }
         return result;
       });

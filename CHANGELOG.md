@@ -4,6 +4,26 @@
 
 ### Added
 
+- `benchmarks/eval.py` scores end-to-end agent behavior against declarative
+  scenarios in `benchmarks/scenarios/*.json` — answer content and shape, files
+  read, forbidden tools, model rounds, batch width, deduplication, request
+  bytes, workspace immutability — and compares the result with a committed
+  baseline. CTest gates it, so a change that costs rounds, drops a batch or
+  loses an answer fails the build instead of being argued about. The same
+  scenarios replay against a live route with `--run --model`.
+- `uagent --emit-reference` now also emits `system-prompt.md` and `tools.md`,
+  and the manifest carries a prompt and tool-schema digest. The bytes that
+  steer the model get the same drift gate as the bytes that configure it: a
+  reworded prompt section or a changed tool schema is a reviewable diff.
+- `UAGENT_PROMPT_OVERLAY` names a JSON file that replaces base-prompt sections
+  for an experiment, so two prompt variants can be measured without rebuilding.
+  It changes prompt text only — tools, approvals, capabilities and limits stay
+  host-owned — and an absent or malformed overlay leaves the shipped prompt
+  byte for byte.
+- `tests/integration.py` selects individual cases with `--test`, `-k` and
+  `--list`, and refuses to run when a test is defined but missing from
+  `TEST_ORDER`, because such a case would silently never run.
+
 - `uagent_configure` persists a change to µAgent's own configuration through a
   typed request against registered settings only. µAgent parses the current
   file line-preservingly, applies the edit, re-parses the candidate to confirm

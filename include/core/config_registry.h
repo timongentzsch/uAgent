@@ -490,6 +490,12 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Bul("UAGENT_ADAPT_SYSTEM", {}, false,
                   ReloadPolicy::kRestartRequired, "behaviour",
                   "expose adapt_system so the model may revise its directive"),
+    registry::Str("UAGENT_PROMPT_OVERLAY", {}, "",
+                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                  "behaviour",
+                  "experiment: JSON file replacing base prompt sections so a "
+                  "variant can be measured without a rebuild; prompt text "
+                  "only"),
     registry::Str("UAGENT_APPROVAL", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "behaviour",
                   "yolo approves ordinary mutations without asking"),

@@ -103,6 +103,10 @@ bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
 
 bool AdaptiveSystemEnabled() { return BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM")); }
 
+std::string PromptOverlayPath() {
+  return StringSetting(Cfg("UAGENT_PROMPT_OVERLAY"));
+}
+
 int64_t ReadFileLines() { return LongSetting(Cfg("UAGENT_READ_FILE_LINES")); }
 
 int64_t ReadFileMaxLines() {

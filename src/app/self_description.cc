@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/protocol.h"
 #include "include/api.h"
 #include "include/app/options.h"
 #include "include/cli.h"
@@ -15,6 +16,8 @@
 #include "include/core/env.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
+#include "include/tools/process.h"
+#include "include/tools/registry.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -58,10 +61,12 @@ json DescriptorJson(const ConfigDescriptor& descriptor) {
                 {"description", descriptor.description}};
   if (!descriptor.field.empty()) entry["field"] = descriptor.field;
   if (descriptor.type == ConfigType::kInt) {
-    if (descriptor.minimum != kConfigAnyMin)
+    if (descriptor.minimum != kConfigAnyMin) {
       entry["minimum"] = descriptor.minimum;
-    if (descriptor.maximum != kConfigAnyMax)
+    }
+    if (descriptor.maximum != kConfigAnyMax) {
       entry["maximum"] = descriptor.maximum;
+    }
   }
   return entry;
 }
@@ -198,6 +203,55 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["tools"] = std::move(tools);
       break;
     }
+  }
+  return out;
+}
+
+json PromptSurfaceJson() {
+  // Capability fragments are conditional on a registered tool, so each one is
+  // rendered against a probe registry naming just its trigger. Nothing here
+  // reads the environment or a live session: the emitted surface has to be a
+  // function of the source alone for the CI diff to mean anything.
+  auto probe = [](const char* name) {
+    return MakeTool(
+        name, "", json::object(),
+        [](const json&, const ToolContext&) { return ToolSuccess(""); });
+  };
+  json fragments = json::array();
+  for (const char* trigger :
+       {"activity", "web_search", "web_fetch", "adapt_system"}) {
+    std::vector<Tool> probes = {probe(trigger)};
+    fragments.push_back(
+        {{"trigger", trigger}, {"text", CapabilityPrompt(probes)}});
+  }
+  std::vector<Tool> research = {probe("web_search"), probe("subagent")};
+  fragments.push_back({{"trigger", "web_search+subagent"},
+                       {"text", CapabilityPrompt(research)}});
+  json sections = json::array();
+  for (std::string_view section : kPromptSections) sections.push_back(section);
+  std::string base = kSystemPrompt;
+  return {{"base", base},
+          {"base_chars", base.size()},
+          {"overlay_sections", std::move(sections)},
+          {"capability_fragments", std::move(fragments)},
+          {"text_protocol_preamble", TextProtocolPrompt({})}};
+}
+
+json ToolSurfaceJson() {
+  ProcessSupervisor supervisor;
+  AdaptiveSystemState adaptive_system;
+  std::vector<Tool> tools =
+      BuiltinTools(supervisor, CanonicalAccessPath("."),
+                   /*inline_images=*/false, &adaptive_system);
+  json out = json::array();
+  for (const Tool& tool : tools) {
+    // ToolDescription, not the raw field: the batching and budget suffixes are
+    // part of what the model reads.
+    out.push_back({{"name", tool.name},
+                   {"description", ToolDescription(tool)},
+                   {"parameters", ToolParameters(tool)},
+                   {"lean", tool.available_in_lean},
+                   {"parallel_safe", tool.parallel_safe}});
   }
   return out;
 }

@@ -50,6 +50,15 @@ json ConfigSchemaJson();
 json CliSchemaJson();
 json CommandSchemaJson();
 
+// The model-facing surface: the base prompt with its sections and every
+// capability fragment, and the built-in tool schemas as the model receives
+// them. Both are deterministic — no environment, no live session — so the
+// generated references gate a prompt or schema change the same way they gate a
+// configuration default. Per-session additions (host capabilities, runtime
+// context, the mutable directive) are recorded by `--debug` instead.
+json PromptSurfaceJson();
+json ToolSurfaceJson();
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_APP_SELF_DESCRIPTION_H_

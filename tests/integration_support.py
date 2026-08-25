@@ -667,6 +667,7 @@ TEST_ORDER = (
     "test_reasoning_modes_render_consistently",
     "test_config_reload_applies_only_at_turn_boundaries",
     "test_project_instructions_precede_first_turn",
+    "test_prompt_overlay_replaces_base_sections",
     "test_attach_tool_puts_bytes_in_context",
     "test_full_run_and_python_terminal_trace",
     "test_large_run_output_is_recoverable",

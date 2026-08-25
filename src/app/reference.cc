@@ -108,19 +108,91 @@ std::string ConfigMarkdown() {
   return out;
 }
 
+// The prompt is the one input to model behavior that no test can fully assert,
+// so it is emitted verbatim: a wording change becomes a reviewable diff here
+// exactly like a changed configuration default.
+std::string PromptMarkdown() {
+  json surface = PromptSurfaceJson();
+  std::string out = "# System prompt\n\n";
+  out += kGenerated;
+  out +=
+      "This is the immutable base every session starts from. Host "
+      "capabilities, runtime context, project instructions, the memory index "
+      "and any mutable self-directive are assembled per session and recorded "
+      "by `--debug`. `UAGENT_PROMPT_OVERLAY` may replace the sections listed "
+      "below for an experiment; it changes prompt text only.\n\n";
+  out += "## Base (" +
+         std::to_string(JsonValue(surface, "base_chars", int64_t{0})) +
+         " chars)\n\n```text\n" + JsonValue(surface, "base", std::string()) +
+         "\n```\n\n## Capability fragments\n\nEach fragment is appended only "
+         "when its trigger tool is registered.\n";
+  for (const json& fragment : surface["capability_fragments"]) {
+    out += "\n### " + JsonValue(fragment, "trigger", std::string()) +
+           "\n\n```text\n" + Trim(JsonValue(fragment, "text", std::string())) +
+           "\n```\n";
+  }
+  out +=
+      "\n## Text-protocol preamble\n\nSent only after a route rejects "
+      "native tool calls.\n\n```text\n" +
+      Trim(JsonValue(surface, "text_protocol_preamble", std::string())) +
+      "\n```\n";
+  return out;
+}
+
+std::string ToolsMarkdown() {
+  std::string out = "# Built-in tool surface\n\n";
+  out += kGenerated;
+  out +=
+      "Descriptions are what the model reads, including the batching and "
+      "budget suffixes the registry appends. `schema` is a digest of the "
+      "complete JSON parameter schema, so an argument or its description "
+      "cannot change without changing this table. Conditional and MCP tools "
+      "are session-dependent and appear in `/context` instead.\n\n";
+  out +=
+      "| Tool | Arguments | Lean | Batchable | Schema | Description |\n"
+      "| --- | --- | --- | --- | --- | --- |\n";
+  for (const json& tool : ToolSurfaceJson()) {
+    const json& parameters = tool["parameters"];
+    std::vector<std::string> required;
+    if (parameters.contains("required")) {
+      for (const json& name : parameters["required"]) {
+        required.push_back(name.get<std::string>());
+      }
+    }
+    std::string arguments;
+    for (const auto& [name, unused] : parameters["properties"].items()) {
+      if (!arguments.empty()) arguments += ", ";
+      arguments += name;
+      if (std::find(required.begin(), required.end(), name) == required.end()) {
+        arguments += "?";
+      }
+    }
+    out += "| `" + JsonValue(tool, "name", std::string()) + "` | " +
+           (arguments.empty() ? "\u2014" : "`" + Escape(arguments) + "`") +
+           " | " + (JsonValue(tool, "lean", false) ? "yes" : "no") + " | " +
+           (JsonValue(tool, "parallel_safe", false) ? "yes" : "no") + " | `" +
+           HashHex(JsonDump(parameters)).substr(0, 12) + "` | " +
+           Escape(JsonValue(tool, "description", std::string())) + " |\n";
+  }
+  return out;
+}
+
 }  // namespace
 
 std::string ReferenceManifest() {
   json settings = ConfigSchemaJson();
-  json manifest = {
-      {"version", kVersion},
-      {"settings", settings.size()},
-      {"flags", CliSchemaJson().size()},
-      {"commands", CommandSchemaJson().size()},
-      {"schema_digest",
-       HashHex(JsonDump(json{{"config", settings},
-                             {"cli", CliSchemaJson()},
-                             {"commands", CommandSchemaJson()}}))}};
+  json manifest = {{"version", kVersion},
+                   {"settings", settings.size()},
+                   {"flags", CliSchemaJson().size()},
+                   {"commands", CommandSchemaJson().size()},
+                   {"schema_digest",
+                    HashHex(JsonDump(json{{"config", settings},
+                                          {"cli", CliSchemaJson()},
+                                          {"commands", CommandSchemaJson()}}))},
+                   // The bytes that steer the model get the same drift gate as
+                   // the bytes that configure it.
+                   {"prompt_digest", HashHex(JsonDump(PromptSurfaceJson()))},
+                   {"tools_digest", HashHex(JsonDump(ToolSurfaceJson()))}};
   return JsonDump(manifest, 2) + "\n";
 }
 
@@ -128,6 +200,8 @@ std::vector<ReferenceFile> ReferenceFiles() {
   return {{"cli.md", CliMarkdown()},
           {"slash-commands.md", CommandsMarkdown()},
           {"configuration.md", ConfigMarkdown()},
+          {"system-prompt.md", PromptMarkdown()},
+          {"tools.md", ToolsMarkdown()},
           {"manifest.json", ReferenceManifest()}};
 }
 

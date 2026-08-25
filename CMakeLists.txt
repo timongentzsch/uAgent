@@ -99,10 +99,15 @@ add_library(
   src/app/application.cc
   src/app/bootstrap.cc
   src/app/commands.cc
+  src/app/config_proposal.cc
   src/app/options.cc
+  src/app/reference.cc
   src/app/runtime.cc
+  src/app/self_description.cc
   src/cli.cc
   src/core/child_env.cc
+  src/core/config_document.cc
+  src/core/config_registry.cc
   src/core/debug.cc
   src/core/effective_config.cc
   src/core/env.cc
@@ -125,7 +130,9 @@ add_library(
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
   src/tools/process_io.cc
+  src/tools/configure.cc
   src/tools/registry.cc
+  src/tools/self_info.cc
   src/tools/shell.cc
   src/tools/subagent.cc
   src/tools/web_fetch.cc
@@ -157,6 +164,8 @@ if(BUILD_TESTING)
     uagent_tests
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
+    tests/unit/config_proposal_test.cc
+    tests/unit/config_registry_test.cc
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
     tests/unit/events_test.cc
@@ -220,6 +229,12 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
+# The architecture narrative is authored once; the package carries a copy so
+# the skill can answer design questions without a source checkout.
+install(
+  FILES docs/ARCHITECTURE.md
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/uagent-config/references
+  RENAME architecture.md)
 set(UAGENT_GUIDES
     docs/ARCHITECTURE.md
     docs/OPERATIONS.md

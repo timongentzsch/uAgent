@@ -186,6 +186,16 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   if (rename(temp.c_str(), target.c_str()) != 0) {
     return fail("cannot replace " + path + ": " + strerror(errno));
   }
+  // The rename is already atomic; syncing the directory is what makes it
+  // durable, so a crash cannot leave the entry pointing at nothing. A failure
+  // here means the new contents may not survive power loss, not that the
+  // replacement was lost, so it is reported without unlinking the new file.
+  Fd directory(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
+  if (directory && fsync(directory.Get()) != 0) {
+    error = "replaced " + path +
+            " but could not sync its directory: " + strerror(errno);
+    return false;
+  }
   return true;
 }
 

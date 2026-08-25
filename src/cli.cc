@@ -56,6 +56,8 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kCompact, "/compact", "", "summarize active context"},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
     {SlashCommandId::kCost, "/cost", "", "show tokens and spend by route"},
+    {SlashCommandId::kDebugConfig, "/debug-config", "[SETTING]",
+     "show configuration layers, sources and restart-required fields"},
     {SlashCommandId::kEffort, "/effort", "LEVEL", "set reasoning effort"},
     {SlashCommandId::kHelp, "/help", "", "show this help"},
     {SlashCommandId::kMemory, "/memory", "", "show memory state and keys"},
@@ -66,6 +68,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kQuit, "/quit", "", "exit µAgent"},
     {SlashCommandId::kReset, "/reset", "", "start a fresh session"},
     {SlashCommandId::kSessions, "/sessions", "", "resume a saved session"},
+    {SlashCommandId::kStatus, "/status", "", "show version, route and budgets"},
     {SlashCommandId::kTools, "/tools", "", "show tools available right now"},
     {SlashCommandId::kTrace, "/trace", "", "show latest tool and search trace"},
     {SlashCommandId::kVariant, "/variant", "MODE",
@@ -79,6 +82,10 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kReset, "/new", "", ""},
     {SlashCommandId::kContext, "/ctx", "", ""},
 };
+
+std::span<const SlashCommandSpec> SlashCommandRegistry() {
+  return kSlashCommands;
+}
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input) {
   for (const SlashCommandSpec& command : kSlashCommands) {

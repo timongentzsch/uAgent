@@ -167,6 +167,11 @@ void Check(bool condition, const char* expression, int line);
   X(TestTerminalSafety)                   \
   X(TestTerminalInputDecoder)             \
   X(TestSseChunkPartitions)               \
+  X(TestConfigDocumentPreservesFile)      \
+  X(TestConfigProposalAndCommit)          \
+  X(TestProjectConfigTrustRestamp)        \
+  X(TestConfigRegistryContract)           \
+  X(TestSelfDescriptionSchemas)           \
   X(TestSseFraming)                       \
   X(TestWireAdapters)                     \
   X(TestWireStreams)                      \

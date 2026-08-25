@@ -124,6 +124,10 @@ std::string ModelPreferencePath();
 bool PersistableSelection(const std::string& selection);
 ModelPreference LoadModelPreference();
 bool SaveModelPreference(const ModelPreference& preference, std::string& error);
+// Rewrite the saved preference's routing suffixes in place, so an interactive
+// /effort or /variant survives a restart exactly like the /model that saved it.
+bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
+                         std::string& error);
 bool ValidEffort(const std::string& effort);
 ProviderCatalog LoadProviderCatalog();
 // The catalog a side model should resolve against: configured providers plus

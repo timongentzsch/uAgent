@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/self_description.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -196,6 +197,22 @@ void HandleModel(AppSession& session, const std::string& argument) {
   SaveSelectedModel(session, selected);
 }
 
+// /effort and /variant change the same saved selection /model owns, so an
+// interactive choice cannot silently evaporate on restart. A session with no
+// saved preference yet stays session-only and says so.
+void PersistSelectionSuffix(AppSession& session) {
+  const Api& api = session.ApiClient();
+  std::string error;
+  if (SaveSelectionSuffix(api.capabilities.model_variants
+                              ? api.config.openrouter_variant
+                              : std::string(),
+                          api.reasoning_effort, error)) {
+    return;
+  }
+  printf("%s· this session only — %s%s\n", DIM(), TerminalSafe(error).c_str(),
+         RST());
+}
+
 void HandleEffort(AppSession& session, const std::string& argument) {
   if (argument.empty()) {
     printf("%s· effort %s%s\n", DIM(),
@@ -207,6 +224,7 @@ void HandleEffort(AppSession& session, const std::string& argument) {
     session.ApiClient().reasoning_effort.clear();
     ActivateCurrentRoute(session);
     printf("%s· effort provider default%s\n", DIM(), RST());
+    PersistSelectionSuffix(session);
   } else if (!ValidEffort(argument)) {
     printf(
         "%s· effort must be none, minimal, low, medium, high, xhigh, or "
@@ -216,6 +234,7 @@ void HandleEffort(AppSession& session, const std::string& argument) {
     session.ApiClient().reasoning_effort = argument;
     ActivateCurrentRoute(session);
     printf("%s· effort %s%s\n", DIM(), argument.c_str(), RST());
+    PersistSelectionSuffix(session);
   }
 }
 
@@ -253,6 +272,7 @@ void HandleVariant(AppSession& session, const std::string& argument) {
                                {"model", session.ApiClient().RequestModel()}});
   std::string label = variant.empty() ? "default" : ":" + variant;
   printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
+  PersistSelectionSuffix(session);
 }
 
 void HandleCompact(AppSession& session) {
@@ -359,6 +379,88 @@ void HandleContext(AppSession& session) {
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
 // set mid-session, so this is the live view.
+
+// /context stays the deep "exact next request" view. /status answers the
+// everyday questions in one screen and /debug-config explains provenance.
+void HandleStatus(const AppSession& session) {
+  json status =
+      DescribeSelf(SelfTopic::kStatus, "",
+                   SelfDescriptionInputs{
+                       session.context.config_manager, session.Runtime().config,
+                       session.ApiClient(), session.context.tools,
+                       session.context.options.yolo});
+  auto row = [](const char* label, const std::string& value) {
+    printf("  %s%-16s%s %s\n", DIM(), label, RST(),
+           TerminalSafe(value).c_str());
+  };
+  printf("%s\u00b5Agent %s%s\n", BOLD(), kVersion, RST());
+  row("route", JsonValue(status, "route", std::string()));
+  row("wire api", JsonValue(status, "wire_api", std::string()));
+  row("endpoint", JsonValue(status, "base_url", std::string()));
+  row("effort", JsonValue(status, "effort", std::string()));
+  row("approval", JsonValue(status, "approval", std::string()));
+  row("web search", JsonValue(status, "web_search", std::string()));
+  row("memory", JsonValue(status, "memory", false) ? "on" : "off");
+  row("tools", std::to_string(JsonValue(status, "tools", int64_t{0})));
+  int64_t window = JsonValue(status, "context_window", int64_t{0});
+  row("context",
+      window > 0 ? FmtCount(window) : std::string("provider default"));
+  double budget = JsonValue(status, "session_budget", 0.0);
+  if (budget > 0) row("session budget", FmtCost(budget));
+  const json& restart = status["restart_required"];
+  if (restart.is_array() && !restart.empty()) {
+    std::string names;
+    for (const json& key : restart) {
+      names += (names.empty() ? "" : ", ") + key.get<std::string>();
+    }
+    row("restart needed", names);
+  }
+}
+
+void HandleDebugConfig(const AppSession& session, const std::string& argument) {
+  json described =
+      DescribeSelf(SelfTopic::kConfig, argument,
+                   SelfDescriptionInputs{
+                       session.context.config_manager, session.Runtime().config,
+                       session.ApiClient(), session.context.tools,
+                       session.context.options.yolo});
+  const json& settings = described["settings"];
+  if (settings.empty()) {
+    printf("%s\u00b7 no setting named %s%s\n", RED(),
+           TerminalSafe(argument).c_str(), RST());
+    return;
+  }
+  // Only settings the user actually influenced, unless one was named: the full
+  // schema belongs in the generated reference, not in a terminal dump.
+  bool named = !argument.empty();
+  printf("%sconfiguration%s\n", BOLD(), RST());
+  for (const json& setting : settings) {
+    std::string source = JsonValue(setting, "source", std::string("default"));
+    if (!named && source == "default") continue;
+    std::string name = JsonValue(setting, "name", std::string());
+    printf("  %s%s%s\n", BOLD(), TerminalSafe(name).c_str(), RST());
+    printf("    %ssource%s      %s\n", DIM(), RST(),
+           TerminalSafe(source).c_str());
+    if (setting.contains("active")) {
+      printf("    %sactive%s      %s\n", DIM(), RST(),
+             TerminalSafe(JsonDump(setting["active"])).c_str());
+    }
+    printf("    %sdefault%s     %s\n", DIM(), RST(),
+           TerminalSafe(JsonDump(setting["default"])).c_str());
+    printf("    %stakes effect%s %s\n", DIM(), RST(),
+           TerminalSafe(JsonValue(setting, "takes_effect", std::string()))
+               .c_str());
+  }
+  const json& restart = described["restart_required"];
+  if (restart.is_array() && !restart.empty()) {
+    printf("%s\u00b7 restart required for %zu changed setting%s%s\n", YEL(),
+           restart.size(), restart.size() == 1 ? "" : "s", RST());
+  }
+  printf(
+      "%s\u00b7 precedence: command line, process environment, trusted "
+      "project config, user config, built-in default%s\n",
+      DIM(), RST());
+}
 
 void HandleTools(const AppSession& session) {
   const std::vector<Tool>& tools = session.context.tools;
@@ -501,6 +603,12 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
       break;
     case SlashCommandId::kTools:
       HandleTools(session);
+      break;
+    case SlashCommandId::kStatus:
+      HandleStatus(session);
+      break;
+    case SlashCommandId::kDebugConfig:
+      HandleDebugConfig(session, command.argument);
       break;
     case SlashCommandId::kAttach:
       HandleAttach(session, command.argument);

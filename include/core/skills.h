@@ -92,7 +92,9 @@ inline std::filesystem::path InstalledSkillsPath() {
 // a skill installed for any of them is already on the machine and usable here.
 // User-level paths first, then the workspace's, and ours last in each group:
 // later wins, so a project overrides a user skill and µAgent's own overrides a
-// vendor copy of the same name. UAGENT_SKILL_PATH replaces the whole list.
+// vendor copy of the same name. The release-installed tree outranks the mutable
+// user directory because it is the only copy guaranteed to match this binary.
+// UAGENT_SKILL_PATH replaces the whole list.
 inline std::vector<std::filesystem::path> SkillSearchPath(
     const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
@@ -113,9 +115,9 @@ inline std::vector<std::filesystem::path> SkillSearchPath(
       path.push_back(fs::path(home) / vendor / "skills");
     }
   }
+  path.push_back(fs::path(GlobalBase()) / "skills");
   fs::path installed = InstalledSkillsPath();
   if (!installed.empty()) path.push_back(std::move(installed));
-  path.push_back(fs::path(GlobalBase()) / "skills");
   // Vendor-neutral project skills apply from every ancestor. Walk from the
   // filesystem root toward cwd so the nearest repository scope wins.
   std::vector<fs::path> ancestors;

@@ -19,11 +19,15 @@ next request.
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `scratch` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
+| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, or the live tool surface | always; inspect-only |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
 Filesystem and external-read approval follows the active path policy. Mutating
-and process tools require approval unless yolo mode is active. Child processes
-receive the sanitized environment described in [SECURITY.md](../SECURITY.md).
+and process tools require approval unless yolo mode is active. Editing µAgent's
+own configuration, the project trust store or `.mcp.json` is a stricter class:
+it always asks, yolo does not apply, and a run with no interactive terminal
+denies rather than assuming consent. Child processes receive the sanitized
+environment described in [SECURITY.md](../SECURITY.md).
 
 ## Activity tools
 
@@ -61,6 +65,7 @@ file notifications where available.
 | `subagent` | delegation is enabled and the current depth is below its limit |
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
+| `uagent_configure` | the process is not a delegated child; persists a typed change to a registered setting after an exact diff is approved by a person |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
 
 `web_fetch` needs no hosted route, so it does not follow `web_search`'s

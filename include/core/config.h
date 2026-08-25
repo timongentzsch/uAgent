@@ -12,6 +12,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -28,12 +29,10 @@ using EnvValues = std::map<std::string, std::string>;
 // Parse without mutating the process. Only agent-owned keys are exported later;
 // other entries remain available as interpolation sources without leaking every
 // config value into child processes.
-inline EnvValues ReadEnvValues(const std::string& path) {
+inline EnvValues ParseEnvValues(std::istream& input) {
   EnvValues values;
-  std::ifstream f(path);
-  if (!f) return values;
   std::string line;
-  while (std::getline(f, line)) {
+  while (std::getline(input, line)) {
     line = Trim(line);
     if (line.empty() || line[0] == '#') continue;
     if (line.starts_with("export ")) line = Trim(line.substr(7));
@@ -45,6 +44,17 @@ inline EnvValues ReadEnvValues(const std::string& path) {
     values[key] = Unquote(val);
   }
   return values;
+}
+
+inline EnvValues ParseEnvValues(const std::string& text) {
+  std::istringstream input(text);
+  return ParseEnvValues(input);
+}
+
+inline EnvValues ReadEnvValues(const std::string& path) {
+  std::ifstream f(path);
+  if (!f) return {};
+  return ParseEnvValues(f);
 }
 
 inline std::string ResolveEnvValue(const std::string& key,
@@ -193,6 +203,33 @@ inline bool ProjectConfigTrusted(json* trusted_mcp = nullptr) {
   }
   if (trusted_mcp) *trusted_mcp = std::move(snapshot["mcp"]);
   return true;
+}
+
+// Re-record trust after a person approved an exact change to
+// ./.uagent/.config. The .mcp.json half is carried over from the existing
+// record and re-checked against disk first, so this can never extend trust to
+// servers nobody approved. Failing leaves the workspace to be confirmed again,
+// which is the safe direction.
+inline bool RestampProjectConfigTrust(std::string& error) {
+  json store = ReadTrustStore();
+  std::string root = CanonicalCwd();
+  if (!store.contains(root)) {
+    error = "this workspace has no trust record to update";
+    return false;
+  }
+  json record = store[root];
+  json snapshot;
+  if (!ProjectTrustSnapshot(snapshot, error)) return false;
+  if (JsonValue(record, "format", 0) != 3 || !record.contains("mcp") ||
+      record["mcp"] != snapshot["mcp"]) {
+    error = "project .mcp.json changed, so trust must be granted again";
+    return false;
+  }
+  store[root] = {
+      {"format", 3}, {"mcp", record["mcp"]}, {"config", snapshot["config"]}};
+  std::string data = JsonDump(store, 2) + "\n";
+  return AtomicWriteFile(TrustStorePath(), data, kPrivateFileMode,
+                         /*preserve_mode=*/false, error);
 }
 
 inline bool TrustProjectConfig(std::string& error,

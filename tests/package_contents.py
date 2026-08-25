@@ -20,6 +20,8 @@ def main():
         relative = path.relative_to(source / "skills")
         if path.is_file() and not any(part.startswith(".") for part in relative.parts):
             expected_skills.add(relative.as_posix())
+    # Installed from docs/ARCHITECTURE.md rather than duplicated in the tree.
+    expected_skills.add("uagent-config/references/architecture.md")
     with tarfile.open(archive, "r:gz") as package:
         members = package.getmembers()
     if not members:

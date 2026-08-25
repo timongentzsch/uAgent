@@ -13,33 +13,6 @@
 namespace uagent {
 namespace {
 
-// One table drives both parsing and `--help`, so a flag cannot be accepted
-// without being documented or documented without being accepted.
-enum class FlagKind {
-  kToggle,     // sets a bool on Options
-  kConfig,     // takes a value, forwarded to the config layer as `key`
-  kConfigSet,  // takes none, forwards the fixed `preset` as `key`
-  kBudget,     // takes a validated dollar amount
-  kPrompt,     // takes the headless prompt
-  kAttach,     // takes a path, repeatable
-  kPrintVersion,
-  kHelp,
-};
-
-struct FlagSpec {
-  std::string_view flag;
-  FlagKind kind;
-  bool Options::* toggle = nullptr;
-  const char* key = nullptr;    // config key for kConfig/kConfigSet
-  const char* value = nullptr;  // metavar; nullptr means the flag takes none
-  const char* help = nullptr;   // empty help hides an alias from the listing
-  // The value is written as `--flag=VALUE` instead of a separate argument, is
-  // optional, and lands in `text` rather than the config layer.
-  bool optional_value = false;
-  std::string Options::* text = nullptr;
-  const char* preset = nullptr;  // config value for kConfigSet
-};
-
 constexpr FlagSpec kFlags[] = {
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
@@ -83,6 +56,13 @@ constexpr FlagSpec kFlags[] = {
      "pick a saved session to resume at startup"},
     {"--version", FlagKind::kPrintVersion, nullptr, nullptr, nullptr,
      "print the installed version"},
+    // Build-time documentation generation; hidden because it is a maintainer
+    // tool, not a way to run the agent.
+    {.flag = "--emit-reference",
+     .kind = FlagKind::kEmitReference,
+     .value = "DIR",
+     .help = "",
+     .text = &Options::reference_dir},
     {"--trust-project-config", FlagKind::kToggle, &Options::trust_project,
      nullptr, nullptr, "allow this workspace's .mcp.json and .uagent/.config"},
     {"-h", FlagKind::kHelp, nullptr, nullptr, nullptr, ""},
@@ -162,6 +142,10 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       case FlagKind::kPrintVersion:
         parsed.action = OptionsAction::kPrintVersion;
         return parsed;
+      case FlagKind::kEmitReference:
+        parsed.options.reference_dir = std::move(value);
+        parsed.action = OptionsAction::kEmitReference;
+        return parsed;
       case FlagKind::kHelp:
         parsed.action = OptionsAction::kHelp;
         return parsed;
@@ -175,6 +159,8 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
   }
   return parsed;
 }
+
+std::span<const FlagSpec> FlagRegistry() { return kFlags; }
 
 const char* UsageText() {
   static const std::string kText = [] {

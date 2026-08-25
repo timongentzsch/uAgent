@@ -31,7 +31,8 @@ citations, usage, retries, and rendering remain shared.
 tool output, processes, memory, context, and reported spend are bounded by
 default. Settings resolve from file, environment, and flags with visible
 provenance, validate against declared bounds, and reload only between turns —
-never underneath a running one. `/context` prints the effective configuration,
+never underneath a running one. `/status` prints version, route, effort, approval mode and budgets;
+`/debug-config` explains where each active value came from; `/context` prints the effective configuration,
 where each value came from, and the exact next request.
 
 **Processes are first-class, not fire-and-forget.** Commands run under a real

@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `uagent_configure` persists a change to µAgent's own configuration through a
+  typed request against registered settings only. µAgent parses the current
+  file line-preservingly, applies the edit, re-parses the candidate to confirm
+  every value reads back as written and no unrelated setting moved, then shows
+  an exact redacted diff. The commit is a compare-and-swap against the bytes
+  the human approved, so an external edit in between is rejected rather than
+  merged. Credentials are refused, unknown keys are refused, and project scope
+  cannot grant its own trust. A project-scope commit re-records the workspace
+  trust snapshot, carrying the previously approved `.mcp.json` over unchanged,
+  so an approved edit does not make µAgent forget trust it already has and
+  cannot silently extend trust to a swapped-in server list.
+- Atomic writes now fsync the parent directory after the rename, so a replaced
+  file survives power loss rather than only being replaced atomically.
+- One authoritative registry describes every `UAGENT_*` setting: default,
+  bounds, category, reload policy and sensitivity. Runtime getters, the config
+  loader, diagnostics and the generated documentation all read the same
+  descriptors, and a getter naming an unregistered setting fails to compile.
+- `uagent_info` answers questions about the running binary — status, flags,
+  slash commands, configuration schema with effective values and provenance,
+  and the live tool surface. It is inspect-only, assembled on demand, and
+  reports secrets only as set or unset.
+- `/status` gives the everyday view (version, route, effort, approval mode,
+  budgets, restart-required settings) and `/debug-config` explains where each
+  active value came from. `/context` remains the deep next-request view.
+- `uagent --emit-reference DIR` generates release-matched skill references from
+  the same registries, with a manifest naming the version and a schema hash.
+  CI regenerates and fails on drift, so documentation cannot silently rot.
+- Process hardening at startup: core dumps disabled, `PR_SET_DUMPABLE` cleared
+  on Linux, and `LD_*`/`DYLD_*` loader-injection variables removed before any
+  child process can inherit them.
+
+### Changed
+
+- `/effort` and `/variant` now persist to the same saved selection `/model`
+  writes. Previously both changed only the live session while the bundled skill
+  documented them as persistent; a session with nothing saved says so instead.
+- The release-installed skill tree outranks the mutable `~/.uagent/skills`
+  copy, so a stale user-level copy can no longer shadow release-matched
+  content. A workspace skill still overrides both.
+- The `uagent-config` skill is a router: it selects one generated reference or
+  `uagent_info` per question instead of loading a 243-line document every time.
+- Editing `~/.uagent/.config`, a project config, the trust store or `.mcp.json`
+  through the built-in file tools now requires an explicit human decision that
+  `--yolo`, `UAGENT_APPROVAL=yolo` and `/yolo` cannot bypass, and that a
+  headless or delegated run denies rather than assuming.
+
+### Performance
+
+- Turn-time hot paths are unchanged: across 15 interleaved Release runs every
+  benchmark delta sits inside the baseline's own interquartile spread.
+  Descriptors are `constexpr` and each binding resolves its descriptor at
+  compile time, so config load performs no lookups.
+- Startup is unchanged within measurement drift; repeated 120-sample
+  interleaved runs disagreed on the sign of a sub-0.25 ms difference, so no
+  regression is claimed. The binary grows 201 KB, of which 14 KB is
+  relocatable descriptor data. No static initializers were added.
+
 ## v0.8.0 - 2026-08-25
 
 ### Added

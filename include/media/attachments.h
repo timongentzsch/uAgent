@@ -19,6 +19,7 @@ struct Attachment {
   std::string path, name, mime;
   uintmax_t bytes = 0;
   bool image = false;
+  std::string source_call_id;
 };
 
 std::string ImageExtension(const std::string& mime);
@@ -39,7 +40,8 @@ const char* ModelImageInputInstruction(bool image_input_available,
 class AttachmentQueue {
  public:
   ToolResult Add(const std::string& path, bool image_input_available = true,
-                 bool image_fallback_available = false);
+                 bool image_fallback_available = false,
+                 std::string source_call_id = {});
   std::vector<Attachment> Take();
 
  private:

@@ -170,9 +170,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"}},"required":["path"]})json"),
       [](const json& a, const ToolContext& context) {
-        return Attachments().Add(JsonValue(a, "path", ""),
-                                 context.image_input_available,
-                                 context.image_fallback_available);
+        return Attachments().Add(
+            JsonValue(a, "path", ""), context.image_input_available,
+            context.image_fallback_available, context.call_id);
       }));
   attach.parallel_safe = true;
   attach.capabilities = Capability(ToolCapability::kInspect);

@@ -205,6 +205,7 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   int64_t timeout =
       task.tool->timeout_s >= 0 ? task.tool->timeout_s : global_timeout_s;
   ToolContext call_context = context.WithTimeout(timeout);
+  call_context.call_id = call.id;
   task.result = task.tool->run(task.args, call_context);
   task.result.output = CapResult(task.result.output, ResultCharLimit(task));
   if (SteeringState().Requested()) {

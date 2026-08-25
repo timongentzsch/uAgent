@@ -1291,6 +1291,12 @@ void TestAttachmentEncoding() {
   CHECK(error.empty());
   CHECK(content[0]["text"].get<std::string>().find(image_path.string()) !=
         std::string::npos);
+  image_attachment.source_call_id = "call_attach_2";
+  error.clear();
+  json attributed = AttachmentContent("inspect", {image_attachment}, error);
+  CHECK(error.empty());
+  CHECK(attributed[0]["text"].get<std::string>().find("call_attach_2") !=
+        std::string::npos);
   json messages =
       json::array({{{"role", "user"}, {"content", std::move(content)}}});
   CHECK(StripContentParts(messages, "image_url") == 1);
@@ -1324,14 +1330,23 @@ void TestAttachmentEncoding() {
   // bounds a runaway caller -- including an MCP server, which queues images
   // with no model call to budget against.
   setenv("UAGENT_PENDING_ATTACHMENTS", "2", 1);
-  CHECK(Attachments().Add(file.string()).Ok());
+  ProcessSupervisor attachment_processes;
+  std::vector<Tool> attachment_tools = BuiltinTools(attachment_processes, root);
+  const Tool* attach_tool = FindTool(attachment_tools, "attach");
+  ToolContext attach_context;
+  attach_context.call_id = "call_attach_1";
+  CHECK(attach_tool != nullptr);
+  CHECK(attach_tool &&
+        attach_tool->run({{"path", file.string()}}, attach_context).Ok());
   CHECK(Attachments().Add(file.string()).Ok());
   ToolResult refused_queue = Attachments().Add(file.string());
   CHECK(!refused_queue.Ok());
   CHECK(refused_queue.output.find("too many attachments pending") !=
         std::string::npos);
   // Draining the queue for the next request clears the ceiling again.
-  CHECK(Attachments().Take().size() == 2);
+  std::vector<Attachment> drained = Attachments().Take();
+  CHECK(drained.size() == 2);
+  CHECK(drained[0].source_call_id == "call_attach_1");
   CHECK(Attachments().Add(file.string()).Ok());
   CHECK(Attachments().Take().size() == 1);
   unsetenv("UAGENT_PENDING_ATTACHMENTS");

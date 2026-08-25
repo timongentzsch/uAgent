@@ -87,8 +87,12 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   std::string ext = AsciiLower(file.extension().string());
   for (const auto& [suffix, mime] : kTypes) {
     if (ext == suffix) {
-      out = {file.string(), file.filename().string(), mime, bytes,
-             std::string_view(mime).starts_with("image/")};
+      out = {file.string(),
+             file.filename().string(),
+             mime,
+             bytes,
+             std::string_view(mime).starts_with("image/"),
+             {}};
       return true;
     }
   }
@@ -266,7 +270,11 @@ json AttachmentContent(const std::string& prompt,
 
   std::string text = prompt + "\n\nAttached:";
   for (const Attachment& attachment : attachments) {
-    text += " " + attachment.path;
+    text += "\n- path " + JsonDump(attachment.path);
+    if (!attachment.source_call_id.empty()) {
+      text += " (from attach tool call " + JsonDump(attachment.source_call_id) +
+              ")";
+    }
   }
   json content = json::array({{{"type", "text"}, {"text", text}}});
   for (const Attachment& attachment : attachments) {
@@ -316,7 +324,8 @@ size_t StripContentParts(json& messages, std::string_view type) {
 
 ToolResult AttachmentQueue::Add(const std::string& path,
                                 bool image_input_available,
-                                bool image_fallback_available) {
+                                bool image_fallback_available,
+                                std::string source_call_id) {
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(path, attachment, error)) {
@@ -337,6 +346,7 @@ ToolResult AttachmentQueue::Add(const std::string& path,
                        "error: too many attachments pending for one step (" +
                            std::to_string(MaxPendingAttachments()) + ")");
   }
+  attachment.source_call_id = std::move(source_call_id);
   pending_.push_back(std::move(attachment));
   return ToolSuccess(std::move(result));
 }

@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/ui/interactive.h"
@@ -253,8 +254,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     const char* color = record.status == PresentationStatus::kFailed   ? RED()
                         : record.status == PresentationStatus::kWarned ? YEL()
                                                                        : DIM();
-    WriteTerminalRecord(std::string(color) + TerminalSafe(record.title) +
-                        RST() + "\n");
+    WriteTerminalRecord(StyledBlock(TerminalSafe(record.title), color));
     return;
   }
   if (record.kind == PresentationKind::kToolCall) {
@@ -265,20 +265,13 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
                           TerminalSafe(record.summary) + RST() + "\n");
       return;
     }
-    if (record.poll) return;  // rendered once, at result time
-    std::string prefix = "→ " + TerminalSafe(record.title);
-    if (record.multiline && !record.detail.empty()) {
-      prefix += '\n' + TerminalSafe(record.detail);
-      // Keep each physical line independently styled in copied transcripts.
-      size_t newline = 0;
-      while ((newline = prefix.find('\n', newline)) != std::string::npos) {
-        prefix.insert(++newline, CYAN());
-        newline += std::char_traits<char>::length(CYAN());
-      }
-    } else if (!record.summary.empty()) {
-      prefix += '(' + TerminalSafe(record.summary) + ')';
-    }
-    WriteTerminalRecord(std::string(CYAN()) + prefix + RST() + "\n");
+    if (record.poll) return;
+    std::string body = "→ " + TerminalSafe(record.title);
+    if (record.multiline && !record.detail.empty())
+      body += '\n' + TerminalSafe(record.detail);
+    else if (!record.summary.empty())
+      body += '(' + TerminalSafe(record.summary) + ')';
+    WriteTerminalRecord(StyledBlock(body, CYAN()));
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;

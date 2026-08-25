@@ -93,6 +93,16 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                JsonValue(a, "content", std::string()).size())) +
            ")";
   };
+  write.approval_preview = [](const json& a) {
+    std::string path = JsonValue(a, "path", "");
+    std::string content = JsonValue(a, "content", "");
+    std::error_code ec;
+    bool existed = std::filesystem::is_regular_file(path, ec);
+    std::optional<std::string> prev = DiffableContents(path);
+    if (!prev) prev.emplace();
+    std::string diff = WholeFileDiffDisplay(path, *prev, content, existed);
+    return diff.empty() ? "no changes" : diff;
+  };
 
   Tool& edit = path_tool(MakeTool(
       "edit_file",
@@ -125,6 +135,53 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     if (edits != a.end() && edits->is_array()) count = edits->size();
     return JsonValue(a, "path", "") + " (" + std::to_string(count) +
            (count == 1 ? " edit)" : " edits)");
+  };
+  edit.approval_preview = [](const json& a) {
+    std::string path = JsonValue(a, "path", "");
+    auto prev = DiffableContents(path);
+    if (!prev) return "edit " + DisplayPath(path);
+    std::string data = *prev;
+    for (const json& item : a["edits"]) {
+      std::string old_s = JsonValue(item, "old", "");
+      std::string new_s = JsonValue(item, "new", "");
+      bool all = JsonValue(item, "replace_all", false);
+      size_t pos = data.find(old_s);
+      if (pos == std::string::npos) break;
+      if (all) {
+        std::string out;
+        size_t cur = 0;
+        while (true) {
+          size_t m = data.find(old_s, cur);
+          if (m == std::string::npos) break;
+          out.append(data, cur, m - cur);
+          out += new_s;
+          cur = m + old_s.size();
+        }
+        out.append(data, cur, std::string::npos);
+        data.swap(out);
+      } else {
+        data.replace(pos, old_s.size(), new_s);
+      }
+    }
+    std::string diff = WholeFileDiffDisplay(path, *prev, data, true);
+    return diff.empty() ? "no effective changes" : diff;
+  };
+  Tool& remove = path_tool(MakeTool(
+      "delete_file",
+      "Delete a regular file and show its removed content as a red diff.",
+      schema(R"json({"type":"object","properties":{
+                  "path":{"type":"string"}},"required":["path"]})json"),
+      [](const json& a, const ToolContext&) {
+        return ToolDeleteFileWithDisplay(JsonValue(a, "path", ""));
+      }));
+  remove.mutating = true;
+  remove.capabilities = Capability(ToolCapability::kMutate);
+  remove.available_in_lean = false;
+  remove.approval_preview = [](const json& a) {
+    std::string path = JsonValue(a, "path", "");
+    auto prev = DiffableContents(path);
+    if (!prev || prev->empty()) return "delete " + DisplayPath(path);
+    return DeletedFileDiffDisplay(path, *prev);
   };
   Tool& grep = path_tool(MakeTool(
       "grep",

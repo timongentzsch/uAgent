@@ -191,6 +191,41 @@ def test_run_rejects_python_and_sudo_before_execution(root, home):
         assert_true(result.stdout.strip() == "guarded", result.stdout)
 
 
+def test_delete_file_removes_and_receipts(root, home):
+    """Deleting reports what was removed, and refuses what it must not touch.
+
+    The receipt is what a person reads before approving, so it carries the
+    removed lines rather than a count.
+    """
+    workspace = root / "delete-workspace"
+    workspace.mkdir(parents=True)
+    doomed = workspace / "stale.txt"
+    doomed.write_text("alpha\nbeta\n", encoding="utf-8")
+    keep = workspace / "keep.txt"
+    keep.write_text("KEEP\n", encoding="utf-8")
+
+    def remove(_, body):
+        assert_true("delete_file" in function_names(body), function_names(body))
+        return tool_call("delete_file", {"path": "stale.txt"})
+
+    def remove_missing(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("deleted" in result, result)
+        return tool_call("delete_file", {"path": "stale.txt"}, call_id="call-2")
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("error:" in result and "does not exist" in result, result)
+        return event({"content": "delete-ok"})
+
+    with Server([remove, remove_missing, finish]) as server:
+        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "remove it")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("delete-ok"), result.stdout)
+        assert_true(not doomed.exists(), "file was not deleted")
+        assert_true(keep.read_text() == "KEEP\n", "an unrelated file changed")
+
+
 def test_grep_tool_round_trip(root, home):
     workspace = root / "grep-workspace"
     workspace.mkdir()
@@ -768,6 +803,7 @@ TESTS = (
     test_self_configuration_asks_even_under_yolo,
     test_self_configuration_commits_after_approval,
     test_process_hardening_scrubs_loader_variables,
+    test_delete_file_removes_and_receipts,
     test_grep_tool_round_trip,
     test_skill_tool_offers_and_opens,
     test_tool_trace_repeated_rounds_are_telemetry_only,

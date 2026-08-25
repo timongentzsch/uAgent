@@ -248,7 +248,17 @@ class Application {
     saved_revision_ = agent_.Revision();
   }
 
+  // An improvement round ends by reinstalling, and this session is still the
+  // old build: nothing it reports about itself is true of the new one.
+  void ReportReplacedExecutable() {
+    if (!ExecutableReplaced()) return;
+    context_.observability.Emit(NoticeEvent(
+        PresentationStatus::kNeutral,
+        "· uagent was replaced on disk; restart to run the new build"));
+  }
+
   void RunPrompt(const std::string& input) {
+    ReportReplacedExecutable();
     json content;
     if (!attachments_.empty()) {
       std::string error;

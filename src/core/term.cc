@@ -13,6 +13,7 @@
 
 #include "include/core/env.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 
 namespace uagent {
 
@@ -44,12 +45,10 @@ struct TerminalActivityState {
   uint64_t next = 0;
   struct Entry {
     uint64_t id = 0;
-    std::string label;        // static fallback label
-    std::string roll_prefix;  // caller-owned label kept ahead of the window
-    std::string roll;         // bounded rolling ticker text
-    double roll_cursor = 0;   // fractional display-column cursor
-    double roll_edge = 0;     // last frame's live edge, to measure arrival
-    std::chrono::steady_clock::time_point roll_last{};  // last advance tick
+    std::string label;
+    std::string roll_prefix;
+    std::string roll;
+    EdgeChaser chaser;
     bool rolling = false;
     // The buffer as it is drawn, plus the caller's normalizer. Recomputing it
     // only when the buffer changes keeps whole-buffer work off the token path.
@@ -108,7 +107,7 @@ void UpdateTerminalActivity(uint64_t id, std::string label) {
   entry->roll_display.clear();
   entry->roll_transform = nullptr;
   entry->roll_stale = false;
-  entry->roll_cursor = 0;
+  entry->chaser = {};
 }
 
 // Put the activity into rolling-ticker mode with the current reasoning buffer.
@@ -127,9 +126,10 @@ void SetTerminalActivityRolling(uint64_t id, const std::string& prefix,
   entry->roll_transform = transform;
   entry->roll_stale = true;
   if (!entry->rolling) {
-    entry->roll_cursor = static_cast<double>(DisplayWidth(RollDisplay(*entry)));
-    entry->roll_edge = entry->roll_cursor;
-    entry->roll_last = std::chrono::steady_clock::now();
+    double w = static_cast<double>(DisplayWidth(RollDisplay(*entry)));
+    entry->chaser.cursor = w;
+    entry->chaser.edge = w;
+    entry->chaser.last = std::chrono::steady_clock::now();
   }
   entry->rolling = true;
 }
@@ -171,39 +171,12 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
   if (reserved >= columns) return entry.roll_prefix;
   columns -= reserved;
 
-  // Reasoning arrives far faster than any readable scroll rate, so a fixed
-  // rate falls behind without bound. The cursor chases the live edge instead,
-  // moving at least kRollColsPerSec and closing the gap within
-  // kCatchUpSeconds: staleness is bounded in time, not in columns.
-  //
-  // When the stream outruns the window no motion is readable, so the ticker
-  // follows the edge rather than sliding. That choice is made from the edge's
-  // speed, not the accumulated gap: deciding per gap drifts and then snaps by
-  // whole windows, which reads worse than either mode.
-  constexpr double kRollColsPerSec = 14.0;
-  constexpr double kCatchUpSeconds = 0.5;
-  constexpr double kReadableFraction = 0.5;
-  auto now = std::chrono::steady_clock::now();
-  double secs = std::chrono::duration<double>(now - entry.roll_last).count();
-  entry.roll_last = now;
-
   size_t total = DisplayWidth(text);
   size_t cols = columns > total ? total : columns;
   double target = static_cast<double>(total > cols ? total - cols : 0);
-  double arrived = target - entry.roll_edge;
-  entry.roll_edge = target;
-  double gap = target - entry.roll_cursor;
-  if (arrived > static_cast<double>(cols) * kReadableFraction) {
-    entry.roll_cursor = target;
-  } else if (gap > 0) {
-    double step = std::max(kRollColsPerSec, gap / kCatchUpSeconds) * secs;
-    entry.roll_cursor = std::min(target, entry.roll_cursor + step);
-  } else {
-    // Past the live edge: the first frame, or a buffer trimmed at the front.
-    entry.roll_cursor = target;
-  }
+  entry.chaser.advance(target, cols, std::chrono::steady_clock::now());
   return entry.roll_prefix +
-         DisplayWindow(text, static_cast<size_t>(entry.roll_cursor), cols);
+         DisplayWindow(text, static_cast<size_t>(entry.chaser.cursor), cols);
 }
 
 }  // namespace uagent

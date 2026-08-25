@@ -295,6 +295,37 @@ void TestFileTools() {
   std::error_code ec;
   fs::remove_all(root, ec);
   fs::remove_all(external, ec);
+
+  // Deleting: the receipt carries the removed lines, a missing file is a
+  // not-found rather than a silent success, and a directory is refused by the
+  // path policy rather than by remove().
+  fs::path doomed = root / "doomed.txt";
+  CHECK(ToolWriteFile(doomed.string(), "alpha\nbeta\n").Ok());
+  ToolResult deleted = ToolDeleteFileWithDisplay(doomed.string());
+  CHECK(deleted.Ok());
+  CHECK(!fs::exists(doomed));
+  CHECK(deleted.display.find("-alpha") != std::string::npos);
+  CHECK(deleted.display.find("-beta") != std::string::npos);
+  CHECK(deleted.display.find("(+0 -2)") != std::string::npos);
+  ToolResult twice = ToolDeleteFileWithDisplay(doomed.string());
+  CHECK(!twice.Ok());
+  CHECK(twice.error == ToolErrorCode::kNotFound);
+  fs::path guarded = root / "not-a-file";
+  fs::create_directories(guarded);
+  CHECK(!ToolDeleteFileWithDisplay(guarded.string()).Ok());
+  CHECK(fs::is_directory(guarded));
+
+  // A rebuild or reinstall replaces the file the process was started from, and
+  // that is what tells a running session it is now the old build.
+  fs::path binary = root / "stand-in-binary";
+  CHECK(ToolWriteFile(binary.string(), "first\n").Ok());
+  std::string first = FileIdentity(binary.string());
+  CHECK(!first.empty());
+  CHECK(FileIdentity(binary.string()) == first);
+  CHECK(FileIdentity((root / "never-existed").string()).empty());
+  fs::remove(binary);
+  CHECK(ToolWriteFile(binary.string(), "second body\n").Ok());
+  CHECK(FileIdentity(binary.string()) != first);
 }
 
 void TestTerminalSafety() {

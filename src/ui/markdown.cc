@@ -11,7 +11,9 @@
 #include <vector>
 
 #include "include/core/env.h"
+#include "include/core/math.h"
 #include "include/core/strings.h"
+#include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/ui/interactive.h"
@@ -107,146 +109,8 @@ size_t MathSpan(const std::string& text, size_t position) {
   return std::string::npos;
 }
 
-bool TakeGroup(const std::string& text, size_t& position, std::string& group) {
-  if (position >= text.size() || text[position] != '{') return false;
-  size_t original = position;
-  size_t begin = ++position;
-  int depth = 1;
-  while (position < text.size() && depth > 0) {
-    if (text[position] == '{') ++depth;
-    if (text[position] == '}') --depth;
-    ++position;
-  }
-  if (depth != 0) {
-    position = original;
-    return false;
-  }
-  group = text.substr(begin, position - begin - 1);
-  return true;
-}
-
-std::string PrettyMath(const std::string& text);
-
-std::string MathCommand(std::string_view command) {
-  static constexpr std::pair<std::string_view, std::string_view> kCommands[] = {
-      {"alpha", "α"},  {"beta", "β"},       {"gamma", "γ"},
-      {"delta", "δ"},  {"epsilon", "ε"},    {"theta", "θ"},
-      {"lambda", "λ"}, {"mu", "μ"},         {"pi", "π"},
-      {"rho", "ρ"},    {"sigma", "σ"},      {"phi", "φ"},
-      {"omega", "ω"},  {"Delta", "Δ"},      {"Gamma", "Γ"},
-      {"Lambda", "Λ"}, {"Pi", "Π"},         {"Sigma", "Σ"},
-      {"Phi", "Φ"},    {"Omega", "Ω"},      {"times", "×"},
-      {"cdot", "·"},   {"pm", "±"},         {"le", "≤"},
-      {"leq", "≤"},    {"ge", "≥"},         {"geq", "≥"},
-      {"ne", "≠"},     {"neq", "≠"},        {"approx", "≈"},
-      {"infty", "∞"},  {"sum", "∑"},        {"prod", "∏"},
-      {"int", "∫"},    {"partial", "∂"},    {"nabla", "∇"},
-      {"to", "→"},     {"rightarrow", "→"}, {"leftarrow", "←"},
-      {"in", "∈"},     {"notin", "∉"},      {"forall", "∀"},
-      {"exists", "∃"}, {"cup", "∪"},        {"cap", "∩"},
-  };
-  for (const auto& [name, value] : kCommands) {
-    if (name == command) return std::string(value);
-  }
-  return {};
-}
-
-std::string ScriptText(const std::string& text, bool superscript) {
-  static constexpr std::string_view kPlain = "0123456789+-=()ni";
-  static constexpr std::string_view kSuper[] = {"⁰", "¹", "²", "³", "⁴", "⁵",
-                                                "⁶", "⁷", "⁸", "⁹", "⁺", "⁻",
-                                                "⁼", "⁽", "⁾", "ⁿ", "ⁱ"};
-  static constexpr std::string_view kSub[] = {"₀", "₁", "₂", "₃", "₄", "₅",
-                                              "₆", "₇", "₈", "₉", "₊", "₋",
-                                              "₌", "₍", "₎", "ₙ", "ᵢ"};
-  std::string out;
-  for (char value : text) {
-    size_t index = kPlain.find(value);
-    if (index == std::string_view::npos) {
-      return std::string(superscript ? "^(" : "_(") + PrettyMath(text) + ")";
-    }
-    out += superscript ? kSuper[index] : kSub[index];
-  }
-  return out;
-}
-
 std::string PrettyMath(const std::string& text) {
-  std::string out;
-  bool spaced = false;
-  for (size_t i = 0; i < text.size();) {
-    unsigned char value = static_cast<unsigned char>(text[i]);
-    if (isspace(value) || text[i] == '~') {
-      if (!out.empty() && !spaced) out += ' ';
-      spaced = true;
-      ++i;
-      continue;
-    }
-    spaced = false;
-    if (text[i] == '\\') {
-      size_t begin = ++i;
-      while (i < text.size() && isalpha(static_cast<unsigned char>(text[i]))) {
-        ++i;
-      }
-      std::string command = text.substr(begin, i - begin);
-      if (command == "frac") {
-        size_t groups_begin = i;
-        std::string numerator, denominator;
-        if (TakeGroup(text, i, numerator) && TakeGroup(text, i, denominator)) {
-          out += "(" + PrettyMath(numerator) + ")⁄(" + PrettyMath(denominator) +
-                 ")";
-          continue;
-        }
-        i = groups_begin;
-      } else if (command == "sqrt") {
-        std::string radicand;
-        if (TakeGroup(text, i, radicand)) {
-          out += "√(" + PrettyMath(radicand) + ")";
-          continue;
-        }
-      } else if (command == "text" || command == "mathrm" ||
-                 command == "operatorname") {
-        std::string group;
-        if (TakeGroup(text, i, group)) {
-          out += group;
-          continue;
-        }
-      } else if (command == "left" || command == "right") {
-        continue;
-      } else if (command == "quad" || command == "qquad") {
-        if (!out.empty() && out.back() != ' ') out += ' ';
-        continue;
-      }
-      std::string rendered = MathCommand(command);
-      if (!rendered.empty()) {
-        out += rendered;
-      } else if (command.empty() && i < text.size()) {
-        out += text[i++];
-      } else {
-        out += '\\' + command;
-      }
-      continue;
-    }
-    if (text[i] == '^' || text[i] == '_') {
-      bool superscript = text[i++] == '^';
-      std::string script;
-      if (!TakeGroup(text, i, script) && i < text.size()) {
-        size_t begin = i++;
-        if (text[begin] == '\\') {
-          while (i < text.size() &&
-                 isalpha(static_cast<unsigned char>(text[i]))) {
-            ++i;
-          }
-        }
-        script = text.substr(begin, i - begin);
-      }
-      out += ScriptText(script, superscript);
-      continue;
-    }
-    out += text[i];
-    ++i;
-  }
-  while (!out.empty() && out.back() == ' ') out.pop_back();
-  return out;
+  return TransliterateMath(text);
 }
 
 std::string MathBody(const std::string& span) {
@@ -619,7 +483,7 @@ void MdStream::Classify(char c) {
   if (m == '`') {
     if (c == '`' && mk.size() < 3) {
       pre += c;
-      if (Marker() == "```") {  // fence opens
+      if (IsMarkdownFence(Marker())) {  // fence opens
         Put(DIM());
         Pv(pre);
         pre.clear();

@@ -1,15 +1,15 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-25T20:11:43Z",
+  "generated_at": "2026-08-25T20:35:29Z",
   "hardware": {
-    "binary_bytes": 7928632,
-    "peak_rss_bytes": 11862016
+    "binary_bytes": 7999256,
+    "peak_rss_bytes": 11796480
   },
   "token": {
     "system_chars": 2993,
-    "schema_chars": 8175,
-    "advertised_tools": 10,
-    "always_on_schema_bytes": 5124,
+    "schema_chars": 8486,
+    "advertised_tools": 11,
+    "always_on_schema_bytes": 5295,
     "largest_schemas": {
       "subagent": 1395,
       "uagent_info": 1115,
@@ -29,7 +29,7 @@
     }
   },
   "capability": {
-    "surface_tools": 18,
+    "surface_tools": 19,
     "scenarios": 7,
     "checks": 42,
     "tiers": {
@@ -49,23 +49,22 @@
     "largest_file": "src/tools/jobs.cc"
   },
   "representativeness": {
-    "real_calls": 4420,
+    "real_calls": 4424,
     "real_mix": {
       "run": 2508,
-      "edit_file": 531,
-      "read_path": 510,
-      "grep": 317,
-      "activity": 214,
-      "scratch": 86,
+      "edit_file": 543,
+      "read_path": 499,
+      "grep": 315,
+      "activity": 213,
+      "scratch": 89,
       "memory": 54,
-      "web_search": 49
+      "web_search": 51
     },
     "uncovered_above_floor": [],
     "retired_names_in_history": [
       "activity_output",
       "activity_wait",
       "advisor",
-      "delete_file",
       "list_dir",
       "read_file",
       "run_python"

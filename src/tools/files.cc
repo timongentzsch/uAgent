@@ -31,8 +31,10 @@ namespace uagent {
 
 namespace {
 
-constexpr size_t kMaxDiffDisplayLines = 80;
-constexpr size_t kMaxDiffDisplayLineBytes = 1000;
+// A receipt exists to be read before approving, so it shows whole lines and a
+// realistic edit in full. The cap is what keeps a ten-megabyte replace from
+// taking the scrollback with it.
+constexpr size_t kMaxDiffDisplayLines = 400;
 
 // Views borrow `text`, so every caller keeps the buffer alive past the diff.
 std::vector<std::string_view> DiffLines(std::string_view text) {
@@ -62,10 +64,8 @@ void AppendDisplayLine(EditDisplay& display, char marker,
     display.truncated = true;
     return;
   }
-  std::string shown = Utf8Prefix(std::string(text), kMaxDiffDisplayLineBytes);
-  if (shown.size() < text.size()) shown += "…";
   display.body += marker;
-  display.body += shown;
+  display.body += text;
   display.body += '\n';
   ++display.lines;
 }
@@ -632,6 +632,34 @@ std::optional<std::string> DiffableContents(const std::string& path) {
                      std::istreambuf_iterator<char>());
 }
 
+ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kDeletableFile)) {
+    return std::move(*invalid);
+  }
+  std::optional<std::string> previous = DiffableContents(path);
+  if (!previous) {
+    // Binary/oversized still deletes, just without a diff receipt.
+    previous.emplace();
+  }
+  // The path policy above already rejected a missing or non-regular target, so
+  // remove() reporting nothing removed means it vanished in between.
+  std::error_code ec;
+  if (!std::filesystem::remove(path, ec)) {
+    if (ec) {
+      return ToolFailure(FileToolError(ec), "error: cannot delete " + path);
+    }
+    return ToolFailure(ToolErrorCode::kNotFound,
+                       "error: path does not exist: " + path);
+  }
+  ToolResult result = ToolSuccess("deleted " + path);
+  if (previous->empty()) {
+    result.display = "Deleted " + DisplayPath(path) + "\n";
+  } else {
+    result.display = DeletedFileDiffDisplay(path, *previous);
+  }
+  return result;
+}
+
 ToolResult ToolWriteFileWithDisplay(const std::string& path,
                                     const std::string& content) {
   std::error_code ec;
@@ -662,6 +690,18 @@ std::string WholeFileDiffDisplay(const std::string& path,
                     " (+" + std::to_string(diff.new_end - diff.prefix) + " -" +
                     std::to_string(diff.old_end - diff.prefix) + ")\n" +
                     display.body;
+  return out;
+}
+
+std::string DeletedFileDiffDisplay(const std::string& path,
+                                   const std::string& previous) {
+  std::vector<std::string_view> old_lines = DiffLines(previous);
+  std::vector<std::string_view> new_lines;
+  LineDiff diff{0, old_lines.size(), 0};
+  EditDisplay display;
+  AppendLineDiff(display, old_lines, new_lines, diff);
+  std::string out = "Deleted " + DisplayPath(path) + " (+0 -" +
+                    std::to_string(old_lines.size()) + ")\n" + display.body;
   if (display.truncated) out += " … diff truncated\n";
   return out;
 }

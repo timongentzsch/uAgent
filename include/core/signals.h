@@ -23,6 +23,16 @@ extern volatile sig_atomic_t g_terminal_resized;
 void SetExecutablePath(std::string path);
 const std::string& ExecutablePath();
 
+// Identity of a file on disk: device, inode, size and modification time. A
+// rebuild or reinstall replaces the executable, and the running process keeps
+// the old inode, so comparing this against the value captured at startup is
+// how a session knows it is no longer the build it was launched from.
+std::string FileIdentity(const std::string& path);
+
+// True once the executable has been replaced since startup. Reports once per
+// change: the answer is a prompt to restart, not a repeating complaint.
+bool ExecutableReplaced();
+
 // The signal and steering domains use lock-free atomics so worker-thread clear
 // operations cannot race signal observation.
 extern std::atomic_flag g_signal_abort;

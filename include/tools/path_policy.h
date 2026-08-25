@@ -18,6 +18,7 @@ namespace uagent {
 enum class PathTarget {
   kReadableFile,
   kWritableFile,
+  kDeletableFile,
   kDirectory,
 };
 

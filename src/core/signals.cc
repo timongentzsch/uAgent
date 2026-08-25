@@ -3,6 +3,7 @@
 #include "include/core/signals.h"
 
 #include <poll.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <array>
@@ -121,10 +122,34 @@ std::string& MutableExecutablePath() {
   return path;
 }
 
+std::string& StartupExecutableIdentity() {
+  static std::string identity;
+  return identity;
+}
+
 }  // namespace
+
+std::string FileIdentity(const std::string& path) {
+  struct stat info{};
+  if (path.empty() || stat(path.c_str(), &info) != 0) return std::string();
+  return std::to_string(info.st_dev) + ":" + std::to_string(info.st_ino) + ":" +
+         std::to_string(info.st_size) + ":" + std::to_string(info.st_mtime);
+}
+
+bool ExecutableReplaced() {
+  const std::string& startup = StartupExecutableIdentity();
+  if (startup.empty()) return false;
+  std::string current = FileIdentity(ExecutablePath());
+  // A missing file is a move in flight, not a finished install; saying nothing
+  // is better than telling someone to restart into a binary that is not there.
+  if (current.empty() || current == startup) return false;
+  StartupExecutableIdentity() = current;
+  return true;
+}
 
 void SetExecutablePath(std::string path) {
   MutableExecutablePath() = std::move(path);
+  StartupExecutableIdentity() = FileIdentity(MutableExecutablePath());
 }
 
 const std::string& ExecutablePath() { return MutableExecutablePath(); }

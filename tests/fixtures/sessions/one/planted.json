@@ -1,0 +1,5 @@
+{"role":"user","content":[{"type":"text","text":"planted session, not a real one"}]}
+{"role":"assistant","content":[{"type":"tool_use","id":"call-ok","name":"read_path","input":{"path":"src/example.cc"}}]}
+{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-ok","content":[{"type":"text","text":"one\ntwo\n"}]}]}
+{"role":"assistant","content":[{"type":"tool_use","id":"call-fail","name":"edit_file","input":{"path":"src/example.cc"}}]}
+{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-fail","content":[{"type":"text","text":"error: edit 3 `old` not found in /tmp/planted/example.cc; nearby current line 212:\n  int example = 0;"}]}]}

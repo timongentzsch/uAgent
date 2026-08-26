@@ -1,0 +1,3 @@
+{"role":"user","content":[{"type":"text","text":"planted session, not a real one"}]}
+{"role":"assistant","content":[{"type":"tool_use","id":"call-other","name":"edit_file","input":{"path":"docs/example.md"}}]}
+{"role":"user","content":[{"type":"tool_result","tool_use_id":"call-other","content":[{"type":"text","text":"error: edit 1 `old` not found in /var/planted/other.md; nearby current line 7:\n# heading"}]}]}

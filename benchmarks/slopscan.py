@@ -11,9 +11,13 @@ Every check is a heuristic with a bias toward silence: it reports what a person
 should look at, and says why. Findings are counted, and the count is what a
 baseline can hold, so the tree can only get cleaner.
 
+A count above the baseline exits non-zero. A gate that has to be asked to fail
+is not a gate: the one caller who forgets the flag gets a silent pass, which is
+the only failure mode that matters here.
+
     python3 benchmarks/slopscan.py
     python3 benchmarks/slopscan.py --kind duplicate_block --verbose
-    python3 benchmarks/slopscan.py --check          # fail if worse than baseline
+    python3 benchmarks/slopscan.py --update         # accept the current counts
 """
 
 from __future__ import annotations
@@ -31,6 +35,24 @@ BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "slop.json"
 SOURCE_DIRS = ("src", "include")
 ALL_CODE_DIRS = ("src", "include", "tests", "benchmarks")
 DOC_FILES = ("README.md", "CONTRIBUTING.md", "CHANGELOG.md")
+# The fixture tree plants one instance of every check deliberately, so scanning
+# it as ordinary source would report those five forever. Matched against the
+# path relative to the scan root, so the fixtures are excluded from the real
+# tree and still visible when they are themselves the root.
+EXCLUDED_PART = "fixtures/slop"
+FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "slop"
+# Every count here is one. A fixture that plants two of anything is testing the
+# sliding window rather than the check, and stops being readable as intent.
+FIXTURE_EXPECTED = {
+    kind: 1
+    for kind in (
+        "duplicate_block",
+        "duplicate_sentence",
+        "stale_doc_path",
+        "unreachable",
+        "unused_declaration",
+    )
+}
 
 # A window shorter than this matches boilerplate; longer misses real copies.
 DUPLICATE_WINDOW = 6
@@ -38,25 +60,37 @@ DUPLICATE_WINDOW = 6
 SENTENCE_CHARS = 60
 
 
-def code_files(dirs=SOURCE_DIRS, suffixes=(".cc", ".h")) -> list[Path]:
+def excluded(path: Path, root: Path) -> bool:
+    return EXCLUDED_PART in path.relative_to(root).as_posix()
+
+
+def code_files(dirs=SOURCE_DIRS, suffixes=(".cc", ".h"), root: Path = ROOT) -> list[Path]:
     return sorted(
         path
         for directory in dirs
-        for path in (ROOT / directory).rglob("*")
-        if path.suffix in suffixes and path.is_file()
+        for path in (root / directory).rglob("*")
+        if path.suffix in suffixes and path.is_file() and not excluded(path, root)
     )
+
+
+def doc_files(root: Path = ROOT) -> list[Path]:
+    """Every prose file the doc checks read: root docs, docs/, and skills."""
+    docs = [root / name for name in DOC_FILES if (root / name).is_file()]
+    docs += sorted((root / "docs").rglob("*.md"))
+    docs += sorted((root / "skills").rglob("SKILL.md"))
+    return [doc for doc in docs if not excluded(doc, root)]
 
 
 def finding(kind: str, where: str, detail: str) -> dict[str, str]:
     return {"kind": kind, "where": where, "detail": detail}
 
 
-def unreachable_statements() -> list[dict[str, str]]:
+def unreachable_statements(root: Path = ROOT) -> list[dict[str, str]]:
     """Code after an unconditional return, the fossil a half-done move leaves."""
     out = []
     terminal = re.compile(r"^(\s*)(return\b[^;]*;|break;|continue;)\s*$")
     ignorable = re.compile(r"^\s*(//|/\*|\*|#|\}|$)")
-    for path in code_files(ALL_CODE_DIRS, (".cc", ".h")):
+    for path in code_files(ALL_CODE_DIRS, (".cc", ".h"), root):
         lines = path.read_text(errors="replace").splitlines()
         for index, line in enumerate(lines[:-1]):
             match = terminal.match(line)
@@ -72,21 +106,22 @@ def unreachable_statements() -> list[dict[str, str]]:
                 out.append(
                     finding(
                         "unreachable",
-                        f"{path.relative_to(ROOT)}:{index + 2}",
+                        f"{path.relative_to(root)}:{index + 2}",
                         f"follows `{line.strip()}`",
                     )
                 )
     return out
 
 
-def unused_declarations() -> list[dict[str, str]]:
+def unused_declarations(root: Path = ROOT) -> list[dict[str, str]]:
     """A header declares it, one place defines it, nobody calls it."""
     declaration = re.compile(r"^[A-Za-z_][\w:<>,&*\s]*?\b([A-Z]\w+)\s*\([^;]*\)\s*(const\s*)?;\s*$")
     corpus = {
-        path: path.read_text(errors="replace") for path in code_files(ALL_CODE_DIRS, (".cc", ".h"))
+        path: path.read_text(errors="replace")
+        for path in code_files(ALL_CODE_DIRS, (".cc", ".h"), root)
     }
     out = []
-    for path in code_files(("include",), (".h",)):
+    for path in code_files(("include",), (".h",), root):
         for line in corpus[path].splitlines():
             match = declaration.match(line)
             if not match:
@@ -105,7 +140,7 @@ def unused_declarations() -> list[dict[str, str]]:
                 out.append(
                     finding(
                         "unused_declaration",
-                        str(path.relative_to(ROOT)),
+                        str(path.relative_to(root)),
                         f"{name}() is declared and defined but never called",
                     )
                 )
@@ -116,10 +151,10 @@ def normalise(line: str) -> str:
     return re.sub(r"\s+", " ", line.strip())
 
 
-def duplicate_blocks() -> list[dict[str, str]]:
+def duplicate_blocks(root: Path = ROOT) -> list[dict[str, str]]:
     """The same lines in two files: what a shared helper was supposed to remove."""
     windows: dict[str, list[tuple[Path, int]]] = collections.defaultdict(list)
-    for path in code_files(ALL_CODE_DIRS, (".cc", ".h", ".py")):
+    for path in code_files(ALL_CODE_DIRS, (".cc", ".h", ".py"), root):
         lines = path.read_text(errors="replace").splitlines()
         kept = [
             (number, normalise(line))
@@ -136,7 +171,7 @@ def duplicate_blocks() -> list[dict[str, str]]:
         files = {path for path, _ in places}
         if len(files) < 2:
             continue
-        where = ", ".join(f"{path.relative_to(ROOT)}:{line}" for path, line in sorted(places)[:3])
+        where = ", ".join(f"{path.relative_to(root)}:{line}" for path, line in sorted(places)[:3])
         out.append(
             finding(
                 "duplicate_block",
@@ -147,7 +182,7 @@ def duplicate_blocks() -> list[dict[str, str]]:
     return out
 
 
-def stale_doc_paths() -> list[dict[str, str]]:
+def stale_doc_paths(root: Path = ROOT) -> list[dict[str, str]]:
     """A doc pointing at a file that no longer exists.
 
     A path CMake installs under a different name is absent from a source
@@ -155,10 +190,7 @@ def stale_doc_paths() -> list[dict[str, str]]:
     """
     reference = re.compile(r"`([\w./-]+\.(?:md|py|cc|h|json|sh|yml|txt))`")
     out = []
-    docs = [ROOT / name for name in DOC_FILES if (ROOT / name).is_file()]
-    docs += sorted((ROOT / "docs").rglob("*.md"))
-    docs += sorted((ROOT / "skills").rglob("SKILL.md"))
-    for doc in docs:
+    for doc in doc_files(root):
         text = doc.read_text(errors="replace")
         installed = {
             match
@@ -168,29 +200,31 @@ def stale_doc_paths() -> list[dict[str, str]]:
         }
         for target in sorted(set(reference.findall(text)) - installed):
             candidates = [
-                ROOT / target,
+                root / target,
                 doc.parent / target,
-                ROOT / "docs" / target,
+                root / "docs" / target,
             ]
             if any(candidate.exists() for candidate in candidates):
                 continue
             # Names that are generated, external or illustrative are not paths.
-            if "/" not in target and not (ROOT / target).exists():
+            if "/" not in target and not (root / target).exists():
                 continue
-            out.append(finding("stale_doc_path", str(doc.relative_to(ROOT)), f"{target} not found"))
+            out.append(finding("stale_doc_path", str(doc.relative_to(root)), f"{target} not found"))
     return out
 
 
-def duplicate_sentences() -> list[dict[str, str]]:
+def duplicate_sentences(root: Path = ROOT) -> list[dict[str, str]]:
     """The same explanation maintained in two places drifts in one of them."""
     sentence = re.compile(rf"[A-Z][^.`|\n]{{{SENTENCE_CHARS},}}?\.")
     seen: dict[str, list[str]] = collections.defaultdict(list)
-    docs = [ROOT / name for name in DOC_FILES if (ROOT / name).is_file()]
-    docs += sorted((ROOT / "docs").rglob("*.md"))
-    docs += sorted((ROOT / "skills").rglob("SKILL.md"))
-    for doc in docs:
-        for text in set(sentence.findall(doc.read_text(errors="replace"))):
-            seen[normalise(text)].append(str(doc.relative_to(ROOT)))
+    for doc in doc_files(root):
+        # Prose here wraps at about 79 columns, so a sentence long enough to be
+        # worth reporting is almost never on one line. Joining each paragraph
+        # first is the difference between this check working and it only ever
+        # seeing prose that happened to fit.
+        for paragraph in re.split(r"\n\s*\n", doc.read_text(errors="replace")):
+            for text in set(sentence.findall(normalise(paragraph))):
+                seen[normalise(text)].append(str(doc.relative_to(root)))
     return [
         finding("duplicate_sentence", ", ".join(sorted(set(places))), text[:70])
         for text, places in seen.items()
@@ -207,18 +241,42 @@ CHECKS = {
 }
 
 
-def scan(kinds: list[str]) -> list[dict[str, str]]:
-    return [item for kind in kinds for item in CHECKS[kind]()]
+def scan(kinds: list[str], root: Path = ROOT) -> list[dict[str, str]]:
+    return [item for kind in kinds for item in CHECKS[kind](root)]
+
+
+def self_test() -> int:
+    """Prove the checks still fire.
+
+    Every count against the real tree is zero, and a check that silently
+    returned nothing at all would look exactly the same. Each check runs
+    against a tree carrying one planted instance of the thing it looks for, so
+    a broken regex fails here instead of passing quietly for months.
+    """
+    counts = collections.Counter(item["kind"] for item in scan(sorted(CHECKS), FIXTURE_ROOT))
+    failures = []
+    for kind, expected in sorted(FIXTURE_EXPECTED.items()):
+        actual = counts[kind]
+        print(f"{kind:<20} {actual:>4} (expected {expected})")
+        if actual != expected:
+            failures.append(f"{kind}: expected {expected}, found {actual}")
+    for failure in failures:
+        print(f"SELF-TEST FAILED: {failure}")
+    return 1 if failures else 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kind", action="append", default=[], choices=sorted(CHECKS))
     parser.add_argument("--verbose", action="store_true", help="list every finding")
-    parser.add_argument("--check", action="store_true", help="fail if worse than baseline")
     parser.add_argument("--update", action="store_true", help="rewrite the baseline")
+    parser.add_argument(
+        "--self-test", action="store_true", help="check the checks against fixtures"
+    )
     parser.add_argument("--json", type=Path, help="write findings as JSON")
     arguments = parser.parse_args()
+    if arguments.self_test:
+        return self_test()
 
     kinds = arguments.kind or sorted(CHECKS)
     findings = scan(kinds)
@@ -249,7 +307,7 @@ def main() -> int:
     ]
     for regression in worse:
         print(f"REGRESSION: {regression}")
-    return 1 if worse and arguments.check else 0
+    return 1 if worse else 0
 
 
 if __name__ == "__main__":

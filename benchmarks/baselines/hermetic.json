@@ -1,6 +1,6 @@
 {
   "schema": "uagent.eval.baseline.v1",
-  "generated_at": "2026-08-26T09:09:26Z",
+  "generated_at": "2026-08-26T09:44:07Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
     "background_activity/control": {
@@ -11,8 +11,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15443,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 15798,
+      "initial_schema_chars": 9952
     },
     "cache_hit_diagnosis/compacted": {
       "score": 10,
@@ -22,8 +22,8 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 1,
-      "max_estimated_request_chars": 14401,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 14756,
+      "initial_schema_chars": 9952
     },
     "cache_hit_diagnosis/control": {
       "score": 10,
@@ -33,8 +33,8 @@
       "max_batch": 2,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 19100,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 19455,
+      "initial_schema_chars": 9952
     },
     "edit_and_verify/control": {
       "score": 6,
@@ -44,8 +44,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13800,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 14155,
+      "initial_schema_chars": 9952
     },
     "failed_call_recovery/control": {
       "score": 7,
@@ -55,8 +55,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13541,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 13896,
+      "initial_schema_chars": 9952
     },
     "live_survey/control": {
       "score": 5,
@@ -66,8 +66,8 @@
       "max_batch": 4,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13845,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 14200,
+      "initial_schema_chars": 9952
     },
     "parallel_batch/control": {
       "score": 7,
@@ -77,8 +77,8 @@
       "max_batch": 3,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13606,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 13961,
+      "initial_schema_chars": 9952
     },
     "repeated_grep/control": {
       "score": 7,
@@ -88,8 +88,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15018,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 15373,
+      "initial_schema_chars": 9952
     },
     "repeated_read/control": {
       "score": 7,
@@ -99,8 +99,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14397,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 14752,
+      "initial_schema_chars": 9952
     },
     "shell_probe/control": {
       "score": 6,
@@ -110,8 +110,8 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13200,
-      "initial_schema_chars": 9597
+      "max_estimated_request_chars": 13765,
+      "initial_schema_chars": 9952
     }
   }
 }

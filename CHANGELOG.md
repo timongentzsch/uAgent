@@ -100,6 +100,17 @@
 
 ### Fixed
 
+- An `activity` wait lasts as long as it was asked to. The tool inherited
+  `UAGENT_TOOL_TIMEOUT`, thirty seconds by default, so a `wait_ms` of five
+  minutes — which the schema offers and the caller chose — was cut at thirty
+  seconds and cost a model round every half minute; one session in this
+  repository's history spent fourteen rounds and seven minutes of wall clock
+  that way, in streaks of up to four. Waiting holds no process and no lock, so
+  the budget that stops a runaway command had nothing to protect here, while
+  `run` and `scratch`, which do occupy a process, were already exempt. The turn
+  deadline still bounds a wait, and Escape and queued steering still return
+  from one immediately; a truncation now names the deadline that caused it.
+
 - The `edit_file` approval prompt shows the edit that will happen. It applied
   the edits itself to render the diff, so it disagreed with the edit in six
   ways: it could not see a stripped line-number prefix or a normalised line

@@ -184,6 +184,13 @@ void TestGrepTool() {
   const Tool* activity = FindTool(lean_tools, "activity");
   CHECK(activity != nullptr);
   CHECK(activity && activity->blocking_wait_default_ms == 0);
+  // Waiting on an activity holds nothing, so the per-call budget that stops a
+  // runaway command must not truncate it: the schema offers five minutes and
+  // the caller's wait_ms is what decides. Same exemption as run and scratch,
+  // which at least occupy a process.
+  CHECK(activity && activity->timeout_s == 0);
+  CHECK(activity &&
+        activity->parameters["properties"]["wait_ms"]["maximum"] == 300000);
   CHECK(activity &&
         activity->parameters["required"] == json::array({"operation"}));
   CHECK(activity &&

@@ -196,6 +196,10 @@ jobs:
           enable-cache: true
       - run: uv run --frozen ruff check tests benchmarks
       - run: uv run --frozen ruff format --check tests benchmarks
+      - name: Check the slop checks against their fixtures
+        run: uv run --frozen python benchmarks/slopscan.py --self-test
+      - name: Scan the tree for slop
+        run: uv run --frozen python benchmarks/slopscan.py
 
   cpp-style:
     runs-on: ubuntu-24.04

@@ -77,6 +77,7 @@ python3 benchmarks/session_metrics.py --since 2026-08-01
 python3 benchmarks/audit.py build/debug/uagent --check
 python3 benchmarks/audit.py build/debug/uagent --update   # review the diff
 python3 benchmarks/slopscan.py --verbose
+python3 benchmarks/slopscan.py --self-test   # check the checks
 ```
 
 `slopscan.py` looks for slop that already exists rather than slop in the last
@@ -86,9 +87,15 @@ in two places. Centralising is what creates these, and none of them appear in
 the diff that introduces the next change. The checks are heuristics biased
 toward silence, so read the findings rather than the count; the counts are
 baselined in `benchmarks/baselines/slop.json` so the tree can only get cleaner.
+A count above its baseline exits non-zero on its own, with no flag to remember.
 
-The audit reads session journals and a configured build tree, so it is a local
-tool rather than a CI gate. The `self-improve` skill drives the whole loop.
+Every real count being zero is also what a scanner returning nothing at all
+would print, so `--self-test` runs the checks against `tests/fixtures/slop`,
+where one instance of each is planted on purpose, and fails unless each finds
+exactly its own. CI runs the self-test and the scan in that order.
+
+The audit reads session journals and a configured build tree, so it stays a
+local tool. The `self-improve` skill drives the whole loop.
 `--prompt-overlay` is what makes a before/after cohort comparable without
 rebuilding.
 

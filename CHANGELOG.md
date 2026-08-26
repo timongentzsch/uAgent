@@ -91,6 +91,20 @@
 
 ### Changed
 
+- `benchmarks/slopscan.py` exits non-zero on a count above its baseline without
+  being asked to. The old `--check` flag meant a caller who wired the scan into
+  a script and forgot it got a silent pass, which is the one failure a gate
+  cannot afford. CI now runs the scan, so the baseline holds without anyone
+  remembering to run it.
+- `slopscan.py --self-test` runs every check against `tests/fixtures/slop`,
+  which plants exactly one instance of each, and fails unless each check finds
+  precisely its own. Every real count is zero, and a check that had quietly
+  stopped matching anything would print the same thing.
+- The repeated-explanation check now joins each paragraph before looking for a
+  sentence. It matched within single lines, and prose here wraps at about 79
+  columns, so nearly nothing it was meant to catch could reach it.
+- `ruff` enforces `ARG` and `ERA` from `pyproject.toml`, the set the improvement
+  loop already applied by hand, so CI and the loop check the same thing.
 - Session journals record a digest of each tool call's arguments and the error
   code of each failed result. Values still never reach the journal, so a later
   reader can tell an identical repeated call from a new one, and name which

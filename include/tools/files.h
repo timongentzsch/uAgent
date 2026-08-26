@@ -7,6 +7,7 @@
 #include <sys/types.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -42,6 +43,12 @@ struct FileEdit {
 
 ToolResult ToolEditFile(const std::string& path,
                         const std::vector<FileEdit>& edits);
+// Apply `edits` to `data` in memory exactly as ToolEditFile would, returning
+// the refusal it would report. A caller that has to predict an edit — the
+// approval prompt — shows what will happen instead of its own guess at it.
+std::optional<ToolResult> ApplyFileEdits(std::string& data,
+                                         const std::string& path,
+                                         const std::vector<FileEdit>& edits);
 ToolResult ToolEditFile(const std::string& path, const std::string& old_text,
                         const std::string& new_text, bool replace_all = false);
 ToolResult ToolListDir(const std::string& path, int64_t offset = 0,

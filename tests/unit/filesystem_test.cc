@@ -246,6 +246,58 @@ void TestFileTools() {
                {"edits",
                 json::array({{{"old", "b b d\n"}, {"new", "b b d\nonce\n"}}})}})
               .find("unknown argument") != std::string::npos);
+
+    // What the human approves has to be what the edit then does. The preview
+    // is checked against the diff of the file before and after the real call,
+    // so it can only pass by predicting the outcome rather than resembling it.
+    int previewed = 0;
+    auto approves_what_it_does = [&](const std::string& body,
+                                     const json& requested) {
+      fs::path subject =
+          root / ("preview-" + std::to_string(++previewed) + ".txt");
+      CHECK(ToolWriteFile(subject.string(), body).output.starts_with("wrote "));
+      json arguments{{"path", subject.string()}, {"edits", requested}};
+      std::string before = contents(subject);
+      std::string preview = edit_tool->approval_preview(arguments);
+      ToolResult applied = edit_tool->run(arguments, {});
+      std::string after = contents(subject);
+      if (!applied.Ok()) {
+        CHECK(preview == applied.output);
+        CHECK(after == before);
+        return;
+      }
+      std::string happened =
+          WholeFileDiffDisplay(subject.string(), before, after, true);
+      CHECK(preview == (happened.empty() ? "no effective changes" : happened));
+    };
+    // `old` copied out of a line-numbering reader, which the edit strips.
+    approves_what_it_does(
+        "one\ntwo\n",
+        json::array({{{"old", "     1\tone"}, {"new", "ONE"}}}));
+    // CRLF body against LF `old`, which the edit normalises.
+    approves_what_it_does(
+        "one\r\ntwo\r\n",
+        json::array({{{"old", "one\ntwo\n"}, {"new", "ONE\ntwo\n"}}}));
+    // A later `old` that is absent refuses the whole batch, earlier edits
+    // included.
+    approves_what_it_does("one\ntwo\n",
+                          json::array({{{"old", "one"}, {"new", "ONE"}},
+                                       {{"old", "absent"}, {"new", "x"}}}));
+    // Several matches without `replace_all` refuse rather than take the first.
+    approves_what_it_does("same same\n",
+                          json::array({{{"old", "same"}, {"new", "other"}}}));
+    // An edit already applied is skipped, and the batch continues past it.
+    approves_what_it_does("done\ntwo\n",
+                          json::array({{{"old", "todo"}, {"new", "done"}},
+                                       {{"old", "two"}, {"new", "TWO"}}}));
+    // An edit larger than the byte limit refuses before it is written.
+    approves_what_it_does(
+        "one\ntwo\n",
+        json::array({{{"old", "one"},
+                      {"new", std::string(static_cast<size_t>(
+                                              EditFileBytes()) +
+                                              1,
+                                          'x')}}}));
   }
 
   fs::path private_file = root / "private";

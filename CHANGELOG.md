@@ -91,6 +91,16 @@
 
 ### Fixed
 
+- The `edit_file` approval prompt shows the edit that will happen. It applied
+  the edits itself to render the diff, so it disagreed with the edit in six
+  ways: it could not see a stripped line-number prefix or a normalised line
+  ending, it silently dropped an edit that was already applied and everything
+  after it, and where the edit refuses outright — an `old` that is absent, one
+  that matches several times without `replace_all`, a result past the byte
+  limit — it showed a diff of the preceding edits as though they would be
+  written. Both paths now go through one function, and a refusal is previewed
+  as the refusal.
+
 - An `activity` wait says what ended it. A tool call may not outlive
   `UAGENT_TOOL_TIMEOUT`, 30 seconds by default, so a longer `wait_ms` was cut
   short and still reported as a plain timeout — indistinguishable from the

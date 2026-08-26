@@ -76,7 +76,16 @@ scenario suite still resembles real usage — and fails on a baseline regression
 python3 benchmarks/session_metrics.py --since 2026-08-01
 python3 benchmarks/audit.py build/debug/uagent --check
 python3 benchmarks/audit.py build/debug/uagent --update   # review the diff
+python3 benchmarks/slopscan.py --verbose
 ```
+
+`slopscan.py` looks for slop that already exists rather than slop in the last
+diff: code after an unconditional return, a declaration nothing calls, the same
+block in two files, a doc naming a file that is gone, one sentence maintained
+in two places. Centralising is what creates these, and none of them appear in
+the diff that introduces the next change. The checks are heuristics biased
+toward silence, so read the findings rather than the count; the counts are
+baselined in `benchmarks/baselines/slop.json` so the tree can only get cleaner.
 
 The audit reads session journals and a configured build tree, so it is a local
 tool rather than a CI gate. The `self-improve` skill drives the whole loop.

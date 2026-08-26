@@ -70,28 +70,7 @@ void AppendDisplayLine(EditDisplay& display, char marker,
   ++display.lines;
 }
 
-struct LineDiff {
-  size_t prefix, old_end, new_end;
-};
-
-// Common-prefix/suffix trim, not a minimal (LCS) diff; good enough for a
-// human-scanned receipt and shared by every whole- or partial-file display.
-LineDiff TrimCommonLines(const std::vector<std::string_view>& old_lines,
-                         const std::vector<std::string_view>& new_lines) {
-  size_t prefix = 0;
-  while (prefix < old_lines.size() && prefix < new_lines.size() &&
-         old_lines[prefix] == new_lines[prefix]) {
-    ++prefix;
-  }
-  size_t suffix = 0;
-  while (suffix < old_lines.size() - prefix &&
-         suffix < new_lines.size() - prefix &&
-         old_lines[old_lines.size() - suffix - 1] ==
-             new_lines[new_lines.size() - suffix - 1]) {
-    ++suffix;
-  }
-  return {prefix, old_lines.size() - suffix, new_lines.size() - suffix};
-}
+using LineDiff = CommonLineSpan;
 
 void AppendLineDiff(EditDisplay& display,
                     const std::vector<std::string_view>& old_lines,

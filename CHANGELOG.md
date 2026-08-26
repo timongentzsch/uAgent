@@ -40,6 +40,11 @@
   evidence first, then Pareto-constrained proposals across hardware, tokens,
   readability, capability, timing and generality, a slop scan, and committed
   baselines as the gate.
+- `benchmarks/slopscan.py` finds slop that already exists in the tree — code
+  after an unconditional return, a declaration nothing calls, a block repeated
+  in two files, a doc naming a file that is gone — because centralising is what
+  creates those and none of them appear in the next diff. Counts are baselined
+  and the audit gates them.
 - `benchmarks/audit.py` prints that dashboard for one build and fails on a
   regression, including an anti-overfitting check that compares the scenario
   suite's tool mix with the mix real sessions actually used.

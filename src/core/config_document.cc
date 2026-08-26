@@ -154,33 +154,21 @@ std::string ConfigUnifiedDiff(const std::string& before,
                               const std::string& label) {
   std::vector<std::string> old_lines = SplitLines(before);
   std::vector<std::string> new_lines = SplitLines(after);
-  // Config files are small and edits are targeted, so a common-prefix/suffix
-  // trim produces the same hunk a full diff would, without the machinery.
-  size_t prefix = 0;
-  while (prefix < old_lines.size() && prefix < new_lines.size() &&
-         old_lines[prefix] == new_lines[prefix]) {
-    ++prefix;
-  }
-  size_t suffix = 0;
-  while (suffix < old_lines.size() - prefix &&
-         suffix < new_lines.size() - prefix &&
-         old_lines[old_lines.size() - 1 - suffix] ==
-             new_lines[new_lines.size() - 1 - suffix]) {
-    ++suffix;
-  }
+  const CommonLineSpan span = TrimCommonLines(old_lines, new_lines);
+  const size_t prefix = span.prefix;
   std::string diff = "--- " + label + "\n+++ " + label + "\n";
   size_t context = prefix > 0 ? 1 : 0;
   for (size_t index = prefix - context; index < prefix; ++index) {
     diff += "  " + old_lines[index] + "\n";
   }
-  for (size_t index = prefix; index < old_lines.size() - suffix; ++index) {
+  for (size_t index = prefix; index < span.old_end; ++index) {
     diff += "- " + old_lines[index] + "\n";
   }
-  for (size_t index = prefix; index < new_lines.size() - suffix; ++index) {
+  for (size_t index = prefix; index < span.new_end; ++index) {
     diff += "+ " + new_lines[index] + "\n";
   }
-  if (suffix > 0) {
-    diff += "  " + new_lines[new_lines.size() - suffix] + "\n";
+  if (span.new_end < new_lines.size()) {
+    diff += "  " + new_lines[span.new_end] + "\n";
   }
   return diff;
 }

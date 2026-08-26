@@ -60,14 +60,19 @@ std::string ModelPropertyDescription(
     prefixes.push_back(provider.name + "/MODEL");
   }
 
+  // Naming an alias here is an override, not the default. Spelling that out
+  // matters: a child sent to an unreachable alias fails outright rather than
+  // falling back, so the default must read as the safe choice.
   std::string description =
-      "Child model route. Omit for the delegated default shown in runtime "
-      "context.";
+      "Child model route. Omit to inherit the delegated default in runtime "
+      "context; name one only to override it for this subtask.";
   std::string configured = JoinSelections(std::move(aliases));
-  if (!configured.empty()) description += " Configured: " + configured + ".";
+  if (!configured.empty()) {
+    description += " Overrides: " + configured + ".";
+  }
   std::string dynamic = JoinSelections(std::move(prefixes));
   if (!dynamic.empty()) {
-    description += " Any model on a named provider: " + dynamic + ".";
+    description += " Or any model on a named provider: " + dynamic + ".";
   }
   return description;
 }

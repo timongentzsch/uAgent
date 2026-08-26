@@ -243,6 +243,33 @@ void TestActivitySessions() {
     (void)ToolActivityWait(non_tty, {id}, "all", 2000, context);
   }
 
+  // A wait the tool deadline cuts short has to say so. Reporting only that it
+  // timed out reads as though the requested wait elapsed, which invites the
+  // caller to conclude the activity is stuck and stop waiting on it.
+  ProcessSupervisor capped_wait;
+  CHECK(RunShellCommand(
+            capped_wait, context,
+            {.command = "sleep 10", .background = true, .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> capped_jobs = capped_wait.Snapshot();
+  CHECK(capped_jobs.size() == 1);
+  if (!capped_jobs.empty()) {
+    int64_t id = ActivityId(capped_jobs[0]);
+    ToolResult capped = ToolActivityWait(capped_wait, {id}, "all", 300000,
+                                         context.WithTimeout(1));
+    CHECK(capped.Ok());
+    CHECK(capped.output.find("requested, capped by the tool timeout") !=
+          std::string::npos);
+    CHECK(capped.output.find("call again to keep waiting") !=
+          std::string::npos);
+    // Reaching wait_ms on its own is a different fact and must not blame the
+    // timeout, or the caller learns to ignore the distinction.
+    ToolResult plain = ToolActivityWait(capped_wait, {id}, "all", 300, context);
+    CHECK(plain.Ok());
+    CHECK(plain.output.find("[waited ") != std::string::npos);
+    CHECK(plain.output.find("capped by the tool timeout") == std::string::npos);
+  }
+
   ProcessSupervisor closed_input;
   auto closed_session = std::make_shared<ActivitySession>();
   closed_session->tty = true;

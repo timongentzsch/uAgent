@@ -457,9 +457,10 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
     bool captured = !tail.empty();
     return done(std::move(tail), captured);
   }
-  auto deadline =
-      std::min(context.deadline, std::chrono::steady_clock::now() +
-                                     std::chrono::milliseconds(wait_ms));
+  auto poll_started = std::chrono::steady_clock::now();
+  auto poll_requested = poll_started + std::chrono::milliseconds(wait_ms);
+  auto deadline = std::min(context.deadline, poll_requested);
+  bool poll_capped = context.deadline < poll_requested;
   HeadTailBuffer collected(cap > 0 ? static_cast<size_t>(cap)
                                    : size_t{1024} * 1024);
   std::optional<std::chrono::steady_clock::time_point> quiet_deadline;
@@ -517,8 +518,15 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
       return finish(
           "[wait yielded for queued steering; process still running]");
     }
-    if (std::chrono::steady_clock::now() >= deadline) {
-      return finish("[wait timed out; process still running]");
+    auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      double waited = std::chrono::duration<double>(now - poll_started).count();
+      std::string note = "[waited " + FmtDuration(waited);
+      if (poll_capped) {
+        note += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
+                " requested, capped by the tool timeout";
+      }
+      return finish(note + "; process still running]");
     }
     auto wait_deadline =
         quiet_deadline ? std::min(deadline, *quiet_deadline) : deadline;
@@ -622,20 +630,41 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
     const int64_t read_cap = ToolResultCap();
     std::string current = ReadLogTail(watch_path, read_cap);
     if (wait_ms <= 0) return reply(std::move(current), false);
-    auto deadline =
-        std::min(context.deadline, std::chrono::steady_clock::now() +
-                                       std::chrono::milliseconds(wait_ms));
+    auto watch_started = std::chrono::steady_clock::now();
+    auto watch_requested = watch_started + std::chrono::milliseconds(wait_ms);
+    auto deadline = std::min(context.deadline, watch_requested);
+    bool watch_capped = context.deadline < watch_requested;
     std::string accumulated = current;
     for (;;) {
       bool steering_yield = SteeringYieldRequested();
-      if ((!until.empty() && accumulated.find(until) != std::string::npos) ||
-          std::chrono::steady_clock::now() >= deadline || AbortRequested() ||
-          steering_yield) {
+      bool found =
+          !until.empty() && accumulated.find(until) != std::string::npos;
+      auto now = std::chrono::steady_clock::now();
+      bool expired = now >= deadline;
+      if (found || expired || AbortRequested() || steering_yield) {
         bool no_change = accumulated == current && !steering_yield;
         if (steering_yield) {
           if (!accumulated.empty()) accumulated += "\n";
           accumulated +=
               "[wait yielded for queued steering; process still running]";
+        } else if (expired && !found) {
+          // Returning the log alone reads as "here is the state you asked
+          // for", when in fact the marker never appeared and the wait may have
+          // been cut short by the tool timeout rather than by wait_ms.
+          if (!accumulated.empty()) accumulated += "\n";
+          double waited =
+              std::chrono::duration<double>(now - watch_started).count();
+          accumulated += until.empty()
+                             ? "[waited " + FmtDuration(waited)
+                             : "[marker \"" + std::string(until) +
+                                   "\" not seen in " + FmtDuration(waited);
+          if (watch_capped) {
+            accumulated += " of " +
+                           FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
+                           " requested, capped by the tool timeout";
+          }
+          accumulated += "; process still running; call again to keep waiting]";
+          no_change = false;
         }
         return reply(std::move(accumulated), no_change);
       }
@@ -1004,9 +1033,14 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
 
   int64_t cap = ActivityOutputCap(max_output_chars);
 
-  auto deadline =
-      std::min(context.deadline, std::chrono::steady_clock::now() +
-                                     std::chrono::milliseconds(wait_ms));
+  // The caller's wait_ms is only half the story: a tool call may not outlive
+  // context.deadline, so a long wait is silently cut short by the tool timeout.
+  // Both ends are reported below, because "timed out" alone reads as though the
+  // requested wait elapsed and invites the caller to give up on the activity.
+  auto wait_started = std::chrono::steady_clock::now();
+  auto wait_requested = wait_started + std::chrono::milliseconds(wait_ms);
+  auto deadline = std::min(context.deadline, wait_requested);
+  bool wait_capped = context.deadline < wait_requested;
   std::string output;
   for (;;) {
     uint64_t generation = supervisor.Generation();
@@ -1034,10 +1068,17 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
                 std::to_string(running) + " activity(s) still running]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
-    if (std::chrono::steady_clock::now() >= deadline) {
+    auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
       if (!output.empty()) output += "\n\n";
-      output += "[wait timed out; " + std::to_string(running) +
-                " activity(s) still running]";
+      double waited = std::chrono::duration<double>(now - wait_started).count();
+      output += "[waited " + FmtDuration(waited);
+      if (wait_capped) {
+        output += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
+                  " requested, capped by the tool timeout";
+      }
+      output += "; " + std::to_string(running) +
+                " activity(s) still running; call again to keep waiting]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     // Process state changes, Escape, and queued steering all pair with Wake(),

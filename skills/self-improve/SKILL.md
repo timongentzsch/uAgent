@@ -55,6 +55,9 @@ Three to five changes, each naming its clause, its expected effect, its risk,
 and the measurement that will confirm or refute it. Prefer the smallest diff
 that reuses existing infrastructure. Present the plan and wait for approval.
 
+Read **Carried items** below first: a hypothesis already argued once, with its
+measurement named, is a cheaper candidate than a fresh one.
+
 ### 4. Implement
 
 One concern per commit. Keep unrelated working-tree changes out of the index;
@@ -145,3 +148,34 @@ thing. Guard it:
 - New scenarios start in the `capability` tier, which reports but does not
   gate. When one holds green, graduate it to `regression`.
 - Prefer a scenario drawn from a real failure in step 1 over an invented one.
+
+## Carried items
+
+Candidates argued from evidence but not yet implemented. Take one in step 3,
+or refute it there. Delete the entry either way — a list that only grows stops
+being read.
+
+### Browser round amortisation and snapshot budget (clauses b, e)
+
+Published measurements say the page representation, not the driver, is the
+browser token bill: UI representations are 80-99% of prompt tokens on Mind2Web
+and AndroidControl (arXiv 2512.13438), and returning only interactive elements
+rather than every node cuts an untruncated accessibility snapshot by 51-79%
+(dev.to/kuroko1t, Feb 2026, Playwright MCP 14.5-19.4k tokens per step against
+3.0-7.8k for the same pages). Anthropic's Chrome extension answers the round
+half with `browser_batch`, one call carrying several actions.
+
+`skills/browser-use/SKILL.md` already spends tokens well — `find`, subtree and
+`--depth` snapshots, `--raw`, screenshots only on demand. It says nothing about
+rounds. Several `playwright-cli` commands chained in one `run` call share the
+session daemon and work today, verified against a live page; the skill simply
+never tells the model so, and one `run` per click is the result.
+
+Measure before writing anything: `session_metrics.py` for how many real turns
+spend consecutive rounds on `playwright-cli`, and a scenario scoring rounds
+rather than the chaining syntax, so the gate cannot reward the mechanism over
+the outcome. A live A/B already refuted one batching overlay this way.
+
+Risk: chained commands report one exit status, so a failure mid-chain is
+harder to attribute than a failed single call. Weigh that against the rounds
+saved rather than assuming it.

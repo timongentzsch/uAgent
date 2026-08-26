@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -50,17 +51,43 @@ from slopscan import scan as slop_scan  # noqa: E402
 COVERAGE_FLOOR = 0.05
 
 
-def probe_session(binary: Path) -> dict[str, Any]:
+def profile_copies(home: Path) -> bool:
+    """Copy the machine's memories and skills into a throwaway HOME.
+
+    The hermetic probe runs with an empty HOME and no memory, which is the
+    floor: a session on a machine someone uses carries stored memories and
+    installed skills, and both are charged on every request. Copying rather
+    than pointing at the real directories keeps the probe unable to write to
+    them, and leaves this measurement absent rather than wrong on a fresh
+    checkout.
+    """
+    source = Path.home() / ".uagent"
+    copied = False
+    for name in ("memory", "skills"):
+        origin = source / name
+        if not origin.is_dir():
+            continue
+        shutil.copytree(origin, home / ".uagent" / name, dirs_exist_ok=True)
+        copied = True
+    return copied
+
+
+def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
     """One hermetic turn, to read the surface the model is actually charged for."""
     with tempfile.TemporaryDirectory(prefix="uagent-audit-") as temp:
         root = Path(temp)
         home = root / "home"
         home.mkdir()
+        if with_profile and not profile_copies(home):
+            return {}
         trace = root / "trace.jsonl"
+        flags = ["--json", f"--debug={trace}", "-p", "hi"]
+        if not with_profile:
+            flags.insert(1, "--no-memory")
         with Server([lambda *_: event({"content": "ok"})]) as server:
             env = base_env(home, server.url)
             process = subprocess.run(
-                measured_command(binary, ["--json", "--no-memory", f"--debug={trace}", "-p", "hi"]),
+                measured_command(binary, flags),
                 cwd=root,
                 env=env,
                 stdin=subprocess.DEVNULL,
@@ -226,6 +253,7 @@ def lint_probes() -> dict[str, int]:
 
 def collect(binary: Path, arguments) -> dict[str, Any]:
     session = probe_session(binary)
+    profile = probe_session(binary, with_profile=True)
     surface = tool_surface()
     always = sum(int(row["bytes"]) for row in surface if row["when"] == "always")
     coverage = scenario_coverage()
@@ -254,6 +282,16 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
             "advertised_tools": session["advertised_tools"],
             "always_on_schema_bytes": always,
             "largest_schemas": dict(list(session["per_tool_bytes"].items())[:5]),
+        },
+        # Reported, never gated: it depends on what this machine has stored,
+        # so a baseline built from it would fail on someone else's memories.
+        "profile_token": {
+            "system_chars": profile.get("system_chars", 0),
+            "schema_chars": profile.get("schema_chars", 0),
+            "advertised_tools": profile.get("advertised_tools", 0),
+            "only_with_profile": sorted(
+                set(profile.get("per_tool_bytes", {})) - set(session["per_tool_bytes"])
+            ),
         },
         "speed": {"rebuild_fanout": rebuild_fanout()},
         "capability": {
@@ -310,6 +348,14 @@ def render(report: dict[str, Any]) -> None:
         f"({token['always_on_schema_bytes']:,} B always-on)"
     )
     print(f"              largest: {token['largest_schemas']}")
+    profile = report.get("profile_token", {})
+    if profile.get("system_chars"):
+        print(
+            f"              this machine's profile: system {profile['system_chars']:,} + "
+            f"schemas {profile['schema_chars']:,} chars over "
+            f"{profile['advertised_tools']} tools"
+            + (f", added: {profile['only_with_profile']}" if profile["only_with_profile"] else "")
+        )
     fanout = report["speed"]["rebuild_fanout"]
     print(f"speed         rebuild fanout (TUs per header): {fanout}")
     capability = report["capability"]

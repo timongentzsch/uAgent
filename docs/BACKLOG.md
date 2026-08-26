@@ -6,6 +6,27 @@ leaves the file the moment it is implemented or refuted. Published numbers here
 motivate a candidate — they never substitute for a measurement taken in the
 loop.
 
+## Near-duplicate detection in slopscan
+
+Clause g (slop).
+
+`duplicate_block` hashes six normalised lines exactly, so a copy with one
+renamed variable is invisible — and a renamed copy is precisely what a
+half-finished extraction leaves. Normalising identifiers to positional
+placeholders would catch those.
+
+It was proposed and dropped in the round that added the fixtures, on the design
+questions rather than on a measurement. Two blocks with the same shape and
+different policy are not duplication, and consolidating them invents a policy
+neither had; a standing findings list of "these look alike" applies steady
+pressure toward exactly that merge. Its true-positive rate on this tree is
+unknown, and unknown is the wrong basis for a new baseline.
+
+What would settle it: implement the pass as a throwaway, run it once, and hand-
+review every finding. If most are real extractions someone abandoned, it earns
+code and a report-only baseline. If most are shape collisions, this entry is
+refuted and should be deleted rather than carried.
+
 ## Browser round amortisation and snapshot budget
 
 Clauses b (tokens) and e (timing).

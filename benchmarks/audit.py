@@ -40,6 +40,8 @@ sys.path.insert(0, str(ROOT / "benchmarks"))
 # isort: off
 from integration_support import Server, base_env, event  # noqa: E402
 from eval import load_scenarios, measured_command, peak_rss, read_trace  # noqa: E402
+from slopscan import CHECKS as SLOP_CHECKS  # noqa: E402
+from slopscan import scan as slop_scan  # noqa: E402
 
 # isort: on
 
@@ -171,7 +173,13 @@ def real_tool_mix(history: Path, days: int) -> dict[str, int]:
 
 
 def lint_probes() -> dict[str, int]:
-    """Cheap slop signals: unused arguments, dead code, leftover markers."""
+    """Slop signals, in the whole tree rather than in the last diff.
+
+    Centralising is how slop appears: the old body stays behind, a caller keeps
+    its copy, a doc keeps the old name. None of that shows up in the diff that
+    introduces the next change.
+    """
+    slop = collections.Counter(item["kind"] for item in slop_scan(sorted(SLOP_CHECKS)))
     probe = subprocess.run(
         [
             "uv",
@@ -208,6 +216,8 @@ def lint_probes() -> dict[str, int]:
     )
     return {
         "lint_findings": len(findings),
+        "slop_findings": sum(slop.values()),
+        "slop": {kind: slop[kind] for kind in sorted(SLOP_CHECKS)},
         "marker_files": len([line for line in markers.stdout.splitlines() if line]),
         "largest_file_lines": sizes[0][0] if sizes else 0,
         "largest_file": sizes[0][1] if sizes else "",
@@ -268,6 +278,7 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
         ("token", "schema_chars", 1.05),
         ("token", "always_on_schema_bytes", 1.05),
         ("readability", "lint_findings", 1.0),
+        ("readability", "slop_findings", 1.0),
     ):
         before = baseline.get(axis, {}).get(field)
         after = current.get(axis, {}).get(field)
@@ -310,6 +321,7 @@ def render(report: dict[str, Any]) -> None:
     readability = report["readability"]
     print(
         f"readability   {readability['lint_findings']} lint findings, "
+        f"{readability['slop_findings']} slop findings {readability['slop']}, "
         f"{readability['marker_files']} files with TODO/FIXME, largest "
         f"{readability['largest_file']} at {readability['largest_file_lines']} lines"
     )

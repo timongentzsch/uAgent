@@ -132,6 +132,35 @@ bool OpenrouterUrl(std::string url);
 
 bool OpenaiUrl(std::string url);
 
+// The lines two sequences share at each end, and therefore the span that
+// actually changed. Not a minimal (LCS) diff: every receipt in this codebase
+// shows a small targeted edit, where the trimmed span is the same hunk a full
+// diff would produce, without the machinery. Templated because callers hold
+// their lines as either strings or views.
+struct CommonLineSpan {
+  size_t prefix = 0;
+  size_t old_end = 0;
+  size_t new_end = 0;
+};
+
+template <typename Lines>
+inline CommonLineSpan TrimCommonLines(const Lines& old_lines,
+                                      const Lines& new_lines) {
+  size_t prefix = 0;
+  while (prefix < old_lines.size() && prefix < new_lines.size() &&
+         old_lines[prefix] == new_lines[prefix]) {
+    ++prefix;
+  }
+  size_t suffix = 0;
+  while (suffix < old_lines.size() - prefix &&
+         suffix < new_lines.size() - prefix &&
+         old_lines[old_lines.size() - 1 - suffix] ==
+             new_lines[new_lines.size() - 1 - suffix]) {
+    ++suffix;
+  }
+  return {prefix, old_lines.size() - suffix, new_lines.size() - suffix};
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_STRINGS_H_

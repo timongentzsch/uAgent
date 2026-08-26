@@ -1,9 +1,9 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-26T05:13:14Z",
+  "generated_at": "2026-08-26T05:29:04Z",
   "hardware": {
-    "binary_bytes": 7999256,
-    "peak_rss_bytes": 11812864
+    "binary_bytes": 8000088,
+    "peak_rss_bytes": 11829248
   },
   "token": {
     "system_chars": 2993,
@@ -46,18 +46,26 @@
   },
   "readability": {
     "lint_findings": 1,
+    "slop_findings": 0,
+    "slop": {
+      "duplicate_block": 0,
+      "duplicate_sentence": 0,
+      "stale_doc_path": 0,
+      "unreachable": 0,
+      "unused_declaration": 0
+    },
     "marker_files": 0,
     "largest_file_lines": 1094,
     "largest_file": "src/tools/jobs.cc"
   },
   "representativeness": {
-    "real_calls": 4426,
+    "real_calls": 4423,
     "real_mix": {
-      "run": 2512,
-      "edit_file": 545,
+      "run": 2509,
+      "edit_file": 543,
       "read_path": 498,
       "grep": 315,
-      "activity": 208,
+      "activity": 210,
       "scratch": 89,
       "memory": 54,
       "web_search": 51

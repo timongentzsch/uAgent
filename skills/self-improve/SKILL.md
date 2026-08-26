@@ -22,7 +22,7 @@ conflict, say so, measure both sides, and let the human decide.
 | d | **Capability** — what the agent can do, and how reliably | `eval.py` scores, new scenarios |
 | e | **Timing** — wall clock for a turn and for the dev loop | `eval.py` wall, rebuild time, `ctest` time |
 | f | **Generality** — no overfitting to the suite | `audit.py` representativeness row |
-| g | **No slop** — no bloat in code, comments or docs | the scan in step 6 |
+| g | **No slop** — no bloat in code, comments or docs, new or old | `slopscan.py`, plus the diff pass in step 6 |
 
 Ruling a clause out is a result. If a measurement shows no headroom, report the
 number and propose nothing there.
@@ -73,12 +73,22 @@ not vacuous: break the thing on purpose, watch the score drop, restore it.
 
 ### 6. Scan for slop
 
-Not optional, and run on your own diff first — that is where the bloat is.
+Not optional. Two passes, because they find different things: your own diff is
+where new bloat is, and the tree is where *your centralising left bloat behind*
+— the old body under a return that can no longer be reached, the caller that
+kept its copy, the doc still naming the old file. None of that appears in the
+diff that introduces the next change.
 
 ```sh
+uv run --frozen python benchmarks/slopscan.py --verbose   # the whole tree
 uv run --frozen ruff check --select ARG,ERA,F401,F841 tests benchmarks
 git diff | grep -E '^\+\s*(//|#)'          # every comment you added
 ```
+
+`slopscan.py` is heuristic and biased toward silence, so read what it reports
+rather than trusting the count: a name with no body can be a deliberate
+link-time trap, and two similar blocks are only duplication when they are the
+same policy. Its counts are baselined, so the tree can only get cleaner.
 
 Reject: comments that restate the code instead of explaining why; unused
 parameters, symbols and imports; filler and AI-tell phrasing; stale references
@@ -115,7 +125,7 @@ Breaking one of these is a bug, not a trade-off.
 - Host authority stays with the host: prompts, overlays and directives change
   text only, never permissions, tools or limits.
 - The base prompt is byte-stable across refactors; `prompt_digest` in
-  `references/manifest.json` proves it.
+  `skills/uagent-config/references/manifest.json` proves it.
 - Generated references match the binary. CI diffs them.
 - Every integration case is in `TEST_ORDER`; the suite refuses to run otherwise.
 - Evals are hermetic and key-free by default. Live runs need `--run` and a

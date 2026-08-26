@@ -154,7 +154,11 @@ def duplicate_blocks(root: Path = ROOT) -> list[dict[str, str]]:
             (number, normalise(line))
             for number, line in enumerate(lines, start=1)
             # Braces, comments and imports repeat everywhere and mean nothing.
-            if len(normalise(line)) > 12 and not normalise(line).startswith(("//", "#", "*", "/*"))
+            # `#include` is caught by the comment prefixes; a python import is
+            # not, and two files that import the same six modules are not a
+            # helper someone failed to extract.
+            if len(normalise(line)) > 12
+            and not normalise(line).startswith(("//", "#", "*", "/*", "import ", "from "))
         ]
         for start in range(len(kept) - DUPLICATE_WINDOW + 1):
             block = kept[start : start + DUPLICATE_WINDOW]

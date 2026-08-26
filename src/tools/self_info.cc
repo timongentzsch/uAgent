@@ -49,8 +49,11 @@ Tool SelfInfoTool(SelfDescriptionProvider describe) {
         json described = describe(topic, name);
         return ToolSuccess(JsonDump(described, 2));
       });
-  // Inspect-only: safe in a lean subagent and never a workspace mutation.
+  // Inspect-only and never a workspace mutation. Withheld from lean children
+  // all the same: a delegated task is briefed, not left to introspect the
+  // harness, and the schema is a kilobyte on every one of its requests.
   tool.capabilities = 0;
+  tool.available_in_lean = false;
   tool.parallel_safe = true;
   tool.summary = [](const json& arguments) {
     std::string topic = Trim(JsonValue(arguments, "topic", ""));

@@ -86,6 +86,13 @@
 
 ### Changed
 
+- Session journals record a digest of each tool call's arguments and the error
+  code of each failed result. Values still never reach the journal, so a later
+  reader can tell an identical repeated call from a new one, and name which
+  failure a tool hit, without anything leaking.
+- `uagent_info` is withheld from lean delegated children, which saves about a
+  kilobyte of schema on every one of their requests. A child is briefed for a
+  task rather than left to introspect the harness.
 - Diff receipts show whole lines and a realistic edit in full, capped at 400
   lines rather than 80, so a review is not truncated where it matters while a
   very large replace still cannot take the scrollback with it.

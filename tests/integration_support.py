@@ -673,6 +673,7 @@ TEST_ORDER = (
     "test_large_run_output_is_recoverable",
     "test_multiline_bracketed_paste",
     "test_resume_picker_accepts_enter_when_icrnl_was_disabled",
+    "test_session_journal_records_digests_not_argument_values",
     "test_session_title_replaces_initial_greeting",
     "test_input_redraw_focus_switch_preserves_multiline_draft",
     "test_input_redraw_bare_escape_still_clears_idle_draft",

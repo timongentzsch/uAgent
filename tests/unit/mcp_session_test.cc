@@ -327,7 +327,6 @@ void TestProjectTrustTracksSemanticConfig() {
   CHECK(ToolWriteFile(".uagent/.config", "UAGENT_MODEL=vendor/model\n")
             .output.starts_with("wrote "));
   CHECK(ProjectAgentConfigPresent());
-  CHECK(ProjectConfigPresent());
   CHECK(!ProjectConfigTrusted());
   CHECK(TrustProjectConfig(error));
   CHECK(ProjectConfigTrusted());

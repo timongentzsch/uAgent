@@ -89,6 +89,17 @@
   on Linux, and `LD_*`/`DYLD_*` loader-injection variables removed before any
   child process can inherit them.
 
+### Fixed
+
+- An `activity` wait says what ended it. A tool call may not outlive
+  `UAGENT_TOOL_TIMEOUT`, 30 seconds by default, so a longer `wait_ms` was cut
+  short and still reported as a plain timeout — indistinguishable from the
+  requested wait elapsing, and an invitation to give up on an activity that was
+  running normally. All three wait paths now report how long they actually
+  waited, whether the tool timeout truncated it, and that calling again
+  continues. The readiness-marker path was the worst of them: on expiry it
+  returned the log with no indication that the marker had never appeared.
+
 ### Changed
 
 - `benchmarks/slopscan.py` exits non-zero on a count above its baseline without
@@ -100,9 +111,12 @@
   which plants exactly one instance of each, and fails unless each check finds
   precisely its own. Every real count is zero, and a check that had quietly
   stopped matching anything would print the same thing.
-- The repeated-explanation check now joins each paragraph before looking for a
-  sentence. It matched within single lines, and prose here wraps at about 79
-  columns, so nearly nothing it was meant to catch could reach it.
+- The repeated-explanation check now joins each run of prose before looking for
+  a sentence. It matched within single lines, and prose here wraps at about 79
+  columns, so nearly nothing it was meant to catch could reach it. A run ends
+  at a blank line or at any list item, heading, table row or quote, because
+  joining a bullet list produces sentences spanning two bullets that nobody
+  wrote, and fenced code is skipped rather than read as prose.
 - `ruff` enforces `ARG` and `ERA` from `pyproject.toml`, the set the improvement
   loop already applied by hand, so CI and the loop check the same thing.
 - Session journals record a digest of each tool call's arguments and the error

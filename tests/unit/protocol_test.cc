@@ -375,7 +375,9 @@ void TestRegistries() {
       "activity", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string activity_prompt = CapabilityPrompt(capability_tools);
-  CHECK(activity_prompt.find("does not start a model turn") !=
+  // The schema already says completion never starts a turn; the prompt says
+  // only what the schema does not.
+  CHECK(activity_prompt.find("does not start a model turn") ==
         std::string::npos);
   CHECK(activity_prompt.find("wait only when the next step needs the result") !=
         std::string::npos);
@@ -392,13 +394,13 @@ void TestRegistries() {
   CHECK(research_prompt.find("Use web_search directly") != std::string::npos);
   CHECK(research_prompt.find("do not scrape") != std::string::npos);
   CHECK(research_prompt.find("single search") != std::string::npos);
-  CHECK(research_prompt.find("source-cited findings") != std::string::npos);
+  CHECK(research_prompt.find("source-cited findings") == std::string::npos);
   capability_tools.push_back(MakeTool(
       "web_fetch", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
-  std::string fetch_prompt = CapabilityPrompt(capability_tools);
-  CHECK(fetch_prompt.find("Read a named page with web_fetch") !=
-        std::string::npos);
+  // web_fetch's own description covers when to read a page and what a login
+  // or a scripted page needs, so the prompt adds nothing for it.
+  CHECK(CapabilityPrompt(capability_tools) == research_prompt);
 
   // An absent, empty or malformed overlay must leave the shipped prompt byte
   // for byte: the experiment path may not change the default build.
@@ -439,17 +441,15 @@ void TestRegistries() {
   CHECK(middle.find("## Tools\nUse tools.\n\n## Changes") != std::string::npos);
   CHECK(middle.find("Prefer a dedicated tool over run") == std::string::npos);
   CHECK(middle.find("Inquiries do not authorize") != std::string::npos);
-  CHECK(fetch_prompt.find("browser skill's job") != std::string::npos);
   capability_tools.push_back(MakeTool(
       "adapt_system", "", json::object(),
       [](const json&, const ToolContext&) { return ToolSuccess(""); }));
   std::string adaptive_prompt = CapabilityPrompt(capability_tools);
   CHECK(adaptive_prompt.find("mutable part") != std::string::npos);
-  CHECK(adaptive_prompt.find("exception, not a planning ritual") !=
+  CHECK(adaptive_prompt.find("exception, not a planning ritual") ==
         std::string::npos);
   CHECK(adaptive_prompt.find("concrete observation") != std::string::npos);
-  CHECK(adaptive_prompt.find("materially different behavior") !=
-        std::string::npos);
+  CHECK(adaptive_prompt.find("stops earning its place") != std::string::npos);
   // Capability guidance is its own section, not a tail of the answer rules.
   CHECK(adaptive_prompt.starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());

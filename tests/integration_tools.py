@@ -600,7 +600,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         state["child"] = int(child_file.read_text(encoding="utf-8"))
         return tool_call("run", {"command": f"kill -KILL {state['pid']}"})
 
-    def inspect_group(_, body):
+    def inspect_group(_, _body):
         return tool_call("activity", {"operation": "poll", "id": state["pid"]})
 
     def stop_group(_, body):

@@ -21,6 +21,20 @@
 #include "include/tools/shell.h"
 
 namespace uagent {
+namespace {
+
+// The preview and the edit itself read the same arguments; parsing them twice
+// is how the two drifted apart in the first place.
+std::vector<FileEdit> RequestedEdits(const json& arguments) {
+  std::vector<FileEdit> edits;
+  for (const json& item : arguments["edits"]) {
+    edits.push_back({JsonValue(item, "old", ""), JsonValue(item, "new", ""),
+                     JsonValue(item, "replace_all", false)});
+  }
+  return edits;
+}
+
+}  // namespace
 
 std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                const std::filesystem::path& workspace,
@@ -118,13 +132,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                       "required":["old","new"],"additionalProperties":false}}},
                   "required":["path","edits"]})json"),
       [](const json& a, const ToolContext&) {
-        std::vector<FileEdit> edits;
-        for (const json& item : a["edits"]) {
-          edits.push_back({JsonValue(item, "old", ""),
-                           JsonValue(item, "new", ""),
-                           JsonValue(item, "replace_all", false)});
-        }
-        return ToolEditFile(JsonValue(a, "path", ""), edits);
+        return ToolEditFile(JsonValue(a, "path", ""), RequestedEdits(a));
       }));
   edit.mutating = true;
   edit.capabilities = Capability(ToolCapability::kMutate);
@@ -141,27 +149,10 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     auto prev = DiffableContents(path);
     if (!prev) return "edit " + DisplayPath(path);
     std::string data = *prev;
-    for (const json& item : a["edits"]) {
-      std::string old_s = JsonValue(item, "old", "");
-      std::string new_s = JsonValue(item, "new", "");
-      bool all = JsonValue(item, "replace_all", false);
-      size_t pos = data.find(old_s);
-      if (pos == std::string::npos) break;
-      if (all) {
-        std::string out;
-        size_t cur = 0;
-        while (true) {
-          size_t m = data.find(old_s, cur);
-          if (m == std::string::npos) break;
-          out.append(data, cur, m - cur);
-          out += new_s;
-          cur = m + old_s.size();
-        }
-        out.append(data, cur, std::string::npos);
-        data.swap(out);
-      } else {
-        data.replace(pos, old_s.size(), new_s);
-      }
+    // Refusing is part of what the human is approving: show the error the
+    // edit would return rather than a diff of the edits that precede it.
+    if (auto refusal = ApplyFileEdits(data, path, RequestedEdits(a))) {
+      return refusal->output;
     }
     std::string diff = WholeFileDiffDisplay(path, *prev, data, true);
     return diff.empty() ? "no effective changes" : diff;

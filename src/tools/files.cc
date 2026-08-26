@@ -415,14 +415,89 @@ ResolvedEdit ResolveEditText(const std::string& data, const FileEdit& edit,
   return resolved;
 }
 
-}  // namespace
+// What a batch of edits did to a buffer: the counts the receipt reports and
+// the diff it renders.
+struct EditRun {
+  EditDisplay display;
+  int64_t replacements = 0;
+  int64_t already_applied = 0;
+};
 
-ToolResult ToolEditFile(const std::string& path,
-                        const std::vector<FileEdit>& edits) {
+// Apply `edits` to `data`, or return the refusal the caller should report.
+// The approval preview and the edit itself both come through here, so what a
+// human approves is what gets written.
+std::optional<ToolResult> ApplyEdits(std::string& data, const std::string& path,
+                                     const std::vector<FileEdit>& edits,
+                                     int64_t max_bytes, EditRun& run) {
   if (edits.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: at least one edit is required");
   }
+  for (size_t i = 0; i < edits.size(); ++i) {
+    const FileEdit& edit = edits[i];
+    if (edit.old_text.empty()) {
+      return ToolFailure(
+          ToolErrorCode::kInvalidArguments,
+          "error: edit " + std::to_string(i + 1) + " has an empty `old` value");
+    }
+    const bool file_crlf = MostlyCrLf(data);
+    ResolvedEdit resolved = ResolveEditText(data, edit, file_crlf);
+    const std::string& old_eff = resolved.old_text;
+    const int64_t count = resolved.found.count;
+    if (count == 0) {
+      std::string normalized_new =
+          FileLineEnding(edit.new_text, file_crlf, /*normalize_crlf=*/true);
+      if (!edit.new_text.empty() &&
+          (data.find(edit.new_text) != std::string::npos ||
+           data.find(normalized_new) != std::string::npos)) {
+        ++run.already_applied;
+        continue;
+      }
+      return ToolFailure(ToolErrorCode::kNotFound,
+                         "error: edit " + std::to_string(i + 1) +
+                             " `old` not found in " + path +
+                             EditRecoveryHint(data, old_eff));
+    }
+    if (!edit.replace_all && count > 1) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: edit " + std::to_string(i + 1) +
+                             " `old` matches " + std::to_string(count) +
+                             " times in " + path +
+                             "; add surrounding context or set `replace_all`");
+    }
+    size_t match = resolved.found.first;
+    bool replacement_crlf =
+        count == 1 ? CrLfAtMatch(data, match, old_eff.size(), file_crlf)
+                   : file_crlf;
+    std::string new_eff = FileLineEnding(edit.new_text, replacement_crlf,
+                                         resolved.normalized_old);
+    if (old_eff == new_eff) {
+      ++run.already_applied;
+      continue;
+    }
+    int64_t applied = edit.replace_all ? count : 1;
+    size_t next_size = 0;
+    if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
+                    max_bytes, next_size)) {
+      return ToolFailure(ToolErrorCode::kLimitExceeded,
+                         "error: edit " + std::to_string(i + 1) +
+                             " would exceed the edit byte limit");
+    }
+    AppendEditDisplay(run.display, data, match, old_eff, new_eff, applied);
+    if (edit.replace_all) {
+      ReplaceAllOccurrences(data, old_eff, new_eff, next_size);
+    } else {
+      data.replace(match, old_eff.size(), new_eff);
+    }
+    run.replacements += applied;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
+ToolResult ToolEditFile(const std::string& path,
+                        const std::vector<FileEdit>& edits) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
   }
@@ -448,87 +523,38 @@ ToolResult ToolEditFile(const std::string& path,
   }
 
   const size_t original_size = data.size();
-  int64_t replacements = 0;
-  int64_t already_applied = 0;
-  EditDisplay display;
-  for (size_t i = 0; i < edits.size(); ++i) {
-    const FileEdit& edit = edits[i];
-    if (edit.old_text.empty()) {
-      return ToolFailure(
-          ToolErrorCode::kInvalidArguments,
-          "error: edit " + std::to_string(i + 1) + " has an empty `old` value");
-    }
-    const bool file_crlf = MostlyCrLf(data);
-    ResolvedEdit resolved = ResolveEditText(data, edit, file_crlf);
-    const std::string& old_eff = resolved.old_text;
-    const int64_t count = resolved.found.count;
-    if (count == 0) {
-      std::string normalized_new =
-          FileLineEnding(edit.new_text, file_crlf, /*normalize_crlf=*/true);
-      if (!edit.new_text.empty() &&
-          (data.find(edit.new_text) != std::string::npos ||
-           data.find(normalized_new) != std::string::npos)) {
-        ++already_applied;
-        continue;
-      }
-      return ToolFailure(ToolErrorCode::kNotFound,
-                         "error: edit " + std::to_string(i + 1) +
-                             " `old` not found in " + path +
-                             EditRecoveryHint(data, old_eff));
-    }
-    if (!edit.replace_all && count > 1) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: edit " + std::to_string(i + 1) +
-                             " `old` matches " + std::to_string(count) +
-                             " times in " + path +
-                             "; add surrounding context or set `replace_all`");
-    }
-    size_t match = resolved.found.first;
-    bool replacement_crlf =
-        count == 1 ? CrLfAtMatch(data, match, old_eff.size(), file_crlf)
-                   : file_crlf;
-    std::string new_eff = FileLineEnding(edit.new_text, replacement_crlf,
-                                         resolved.normalized_old);
-    if (old_eff == new_eff) {
-      ++already_applied;
-      continue;
-    }
-    int64_t applied = edit.replace_all ? count : 1;
-    size_t next_size = 0;
-    if (!EditedSize(data.size(), old_eff.size(), new_eff.size(), applied,
-                    max_bytes, next_size)) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: edit " + std::to_string(i + 1) +
-                             " would exceed the edit byte limit");
-    }
-    AppendEditDisplay(display, data, match, old_eff, new_eff, applied);
-    if (edit.replace_all) {
-      ReplaceAllOccurrences(data, old_eff, new_eff, next_size);
-    } else {
-      data.replace(match, old_eff.size(), new_eff);
-    }
-    replacements += applied;
+  EditRun run;
+  if (auto refusal = ApplyEdits(data, path, edits, max_bytes, run)) {
+    return std::move(*refusal);
   }
-  if (replacements == 0) {
+  if (run.replacements == 0) {
     return ToolSuccess("already applied " + path + " (" +
-                       std::to_string(already_applied) +
-                       (already_applied == 1 ? " edit)" : " edits)"));
+                       std::to_string(run.already_applied) +
+                       (run.already_applied == 1 ? " edit)" : " edits)"));
   }
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
   ToolResult result = ToolSuccess(
-      "edited " + path + " (" + std::to_string(replacements) +
-      (replacements == 1 ? " replacement across " : " replacements across ") +
+      "edited " + path + " (" + std::to_string(run.replacements) +
+      (run.replacements == 1 ? " replacement across " : " replacements across ") +
       std::to_string(edits.size()) +
       (edits.size() == 1 ? " edit; " : " edits; ") +
       std::to_string(original_size) + " -> " + std::to_string(data.size()) +
       " bytes)");
   result.display = "Edited " + DisplayPath(path) + " (+" +
-                   std::to_string(display.added) + " -" +
-                   std::to_string(display.removed) + ")\n" + display.body;
-  if (display.truncated) result.display += " … diff truncated\n";
+                   std::to_string(run.display.added) + " -" +
+                   std::to_string(run.display.removed) + ")\n" +
+                   run.display.body;
+  if (run.display.truncated) result.display += " … diff truncated\n";
   return result;
+}
+
+std::optional<ToolResult> ApplyFileEdits(std::string& data,
+                                         const std::string& path,
+                                         const std::vector<FileEdit>& edits) {
+  EditRun run;
+  return ApplyEdits(data, path, edits, EditFileBytes(), run);
 }
 
 ToolResult ToolEditFile(const std::string& path, const std::string& old_s,

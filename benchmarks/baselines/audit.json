@@ -1,28 +1,37 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-26T05:29:04Z",
+  "generated_at": "2026-08-26T08:18:55Z",
   "hardware": {
-    "binary_bytes": 8000088,
-    "peak_rss_bytes": 11829248
+    "binary_bytes": 8001640,
+    "peak_rss_bytes": 11780096
   },
   "token": {
-    "system_chars": 2993,
-    "schema_chars": 8486,
+    "system_chars": 2712,
+    "schema_chars": 8193,
     "advertised_tools": 11,
-    "always_on_schema_bytes": 5295,
+    "always_on_schema_bytes": 5101,
     "largest_schemas": {
-      "subagent": 1395,
-      "uagent_info": 1115,
+      "subagent": 1296,
       "run": 1052,
+      "uagent_info": 921,
       "scratch": 812,
       "read_path": 663
     }
   },
+  "profile_token": {
+    "system_chars": 2712,
+    "schema_chars": 10444,
+    "advertised_tools": 13,
+    "only_with_profile": [
+      "memory",
+      "skill"
+    ]
+  },
   "speed": {
     "rebuild_fanout": {
       "include/core/strings.h": 56,
-      "include/core/json.h": 52,
       "include/core/checked.h": 52,
+      "include/core/json.h": 52,
       "include/core/env.h": 45,
       "include/core/time.h": 41,
       "include/core/platform.h": 39
@@ -45,7 +54,7 @@
     }
   },
   "readability": {
-    "lint_findings": 1,
+    "lint_findings": 0,
     "slop_findings": 0,
     "slop": {
       "duplicate_block": 0,
@@ -55,20 +64,20 @@
       "unused_declaration": 0
     },
     "marker_files": 0,
-    "largest_file_lines": 1094,
+    "largest_file_lines": 1135,
     "largest_file": "src/tools/jobs.cc"
   },
   "representativeness": {
-    "real_calls": 4423,
+    "real_calls": 4561,
     "real_mix": {
-      "run": 2509,
-      "edit_file": 543,
-      "read_path": 498,
-      "grep": 315,
-      "activity": 210,
-      "scratch": 89,
+      "run": 2553,
+      "edit_file": 548,
+      "read_path": 524,
+      "grep": 327,
+      "activity": 227,
+      "scratch": 99,
       "memory": 54,
-      "web_search": 51
+      "web_search": 53
     },
     "uncovered_above_floor": [],
     "retired_names_in_history": [

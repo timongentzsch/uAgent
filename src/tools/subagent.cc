@@ -161,19 +161,14 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "integer"},
         {"minimum", 1},
         {"maximum", 3600},
-        {"description",
-         "wall-clock ceiling for a foreground child; omit to let it run to "
-         "its other limits"}}},
+        {"description", "wall-clock ceiling for a foreground child"}}},
       {"max_cost",
        {{"type", "number"},
         {"minimum", 0},
-        {"description",
-         "reported-cost ceiling for this child; clamped to what remains of "
-         "the session budget"}}},
+        {"description", "cost ceiling; clamped to the session's remainder"}}},
       {"memory",
        {{"type", "boolean"},
-        {"description",
-         "default inherits this session; false denies the child memory"}}}};
+        {"description", "false denies the child memory; default inherits"}}}};
   Tool tool = MakeTool(
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "

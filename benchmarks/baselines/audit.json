@@ -1,17 +1,17 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-26T09:09:16Z",
+  "generated_at": "2026-08-26T09:43:56Z",
   "hardware": {
-    "binary_bytes": 2439272,
-    "peak_rss_bytes": 10403840
+    "binary_bytes": 2456584,
+    "peak_rss_bytes": 10272768
   },
   "token": {
     "system_chars": 2712,
-    "schema_chars": 8304,
+    "schema_chars": 8659,
     "advertised_tools": 11,
     "always_on_schema_bytes": 5213,
     "largest_schemas": {
-      "subagent": 1296,
+      "subagent": 1612,
       "run": 1052,
       "uagent_info": 1033,
       "scratch": 812,
@@ -20,7 +20,7 @@
   },
   "profile_token": {
     "system_chars": 2712,
-    "schema_chars": 10555,
+    "schema_chars": 10910,
     "advertised_tools": 13,
     "only_with_profile": [
       "memory",
@@ -64,18 +64,18 @@
       "unused_declaration": 0
     },
     "marker_files": 0,
-    "largest_file_lines": 1135,
+    "largest_file_lines": 1149,
     "largest_file": "src/tools/jobs.cc"
   },
   "representativeness": {
-    "real_calls": 4662,
+    "real_calls": 4752,
     "real_mix": {
-      "run": 2629,
-      "edit_file": 559,
-      "read_path": 531,
-      "grep": 327,
-      "activity": 241,
-      "scratch": 97,
+      "run": 2642,
+      "read_path": 571,
+      "edit_file": 564,
+      "grep": 351,
+      "activity": 247,
+      "scratch": 98,
       "web_search": 54,
       "memory": 54
     },

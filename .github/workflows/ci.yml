@@ -220,7 +220,8 @@ jobs:
       - name: Check Google style
         run: >-
           uvx --from cpplint==2.0.2 cpplint
-          --recursive --exclude=third_party --extensions=h,cc
+          --recursive --exclude=third_party --exclude=tests/fixtures
+          --extensions=h,cc
           --filter=-build/c++17,-build/header_guard,-whitespace/indent_namespace,-readability/check
           include src tests benchmarks
       - name: Configure clang-tidy

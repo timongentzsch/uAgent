@@ -3,6 +3,8 @@
 #ifndef UAGENT_TESTS_UNIT_TEST_SUPPORT_H_
 #define UAGENT_TESTS_UNIT_TEST_SUPPORT_H_
 
+#include <unistd.h>
+
 #include <chrono>
 #include <clocale>
 #include <cstdio>
@@ -149,6 +151,39 @@ inline bool WaitForActivityDrain(
 
 extern int failures;
 void Check(bool condition, const char* expression, int line);
+
+template <typename Writer>
+std::string CaptureStdout(Writer&& writer, bool color = false,
+                          bool tty = true) {
+  fflush(stdout);
+  int saved = dup(STDOUT_FILENO);
+  FILE* capture = tmpfile();
+  if (saved < 0 || !capture) {
+    if (saved >= 0) close(saved);
+    if (capture) fclose(capture);
+    return {};
+  }
+  dup2(fileno(capture), STDOUT_FILENO);
+  bool prior_tty = g_tty;
+  bool prior_color = g_color;
+  g_tty = tty;
+  g_color = color;
+  std::forward<Writer>(writer)();
+  fflush(stdout);
+  g_tty = prior_tty;
+  g_color = prior_color;
+  dup2(saved, STDOUT_FILENO);
+  close(saved);
+  fseek(capture, 0, SEEK_END);
+  long bytes = ftell(capture);
+  fseek(capture, 0, SEEK_SET);
+  std::string output(bytes > 0 ? static_cast<size_t>(bytes) : 0, '\0');
+  if (!output.empty()) {
+    (void)fread(output.data(), 1, output.size(), capture);
+  }
+  fclose(capture);
+  return output;
+}
 
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                   \

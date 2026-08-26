@@ -1,0 +1,6 @@
+{"type":"turn.started","data":{"origin":"user","turn":1}}
+{"type":"tool.call","data":{"id":"legacy-read-1","name":"read_path","turn":1,"step":1,"arguments_digest":"same"}}
+{"type":"tool.result","data":{"id":"legacy-read-1","name":"read_path","turn":1,"step":1,"status":"ok","duration_ms":1,"result_chars":12}}
+{"type":"tool.call","data":{"id":"legacy-read-2","name":"read_path","turn":1,"step":2,"arguments_digest":"same"}}
+{"type":"tool.result","data":{"id":"legacy-read-2","name":"read_path","turn":1,"step":2,"status":"ok","duration_ms":1,"result_chars":12}}
+{"type":"turn.completed","data":{"turn":1,"steps":2,"outcome":"error","duration_ms":10,"messages":6,"context_tokens":250,"usage":{"input":5,"output":1,"cache_read":0,"cost":0,"cost_reported":false}}}

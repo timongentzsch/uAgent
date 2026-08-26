@@ -1,0 +1,44 @@
+{
+  "name": "cumulative_context",
+  "description": "Sequential long outputs make cumulative request and tool-result accounting observable; maxima alone cannot detect this trajectory cost.",
+  "tier": "regression",
+  "variants": ["control"],
+  "prompt": "Read all four consecutive sections of long_history.txt, then report the final marker. Keep each read to 100 lines.",
+  "files": {
+    "long_history.txt": {
+      "text": "CUMULATIVE-CONTEXT-FIXTURE\n",
+      "repeat_text": "record {index:03d}: deterministic context payload abcdefghijklmnopqrstuvwxyz 0123456789\n",
+      "repeat": 398
+    }
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {"tool_calls": [{"id": "part-1", "name": "read_path", "arguments": {"path": "long_history.txt", "offset": 1, "limit": 100}}]}
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {"tool_calls": [{"id": "part-2", "name": "read_path", "arguments": {"path": "long_history.txt", "offset": 101, "limit": 100}}]}
+    },
+    {
+      "when": {"tool_results": 2},
+      "respond": {"tool_calls": [{"id": "part-3", "name": "read_path", "arguments": {"path": "long_history.txt", "offset": 201, "limit": 100}}]}
+    },
+    {
+      "when": {"tool_results": 3},
+      "respond": {"tool_calls": [{"id": "part-4", "name": "read_path", "arguments": {"path": "long_history.txt", "offset": 301, "limit": 100}}]}
+    },
+    {
+      "respond": {"content": "Read the complete fixture; final record is 397 and marker CUMULATIVE-CONTEXT-FIXTURE."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["CUMULATIVE-CONTEXT-FIXTURE", "397"],
+    "min_cumulative_request_chars": 90000,
+    "min_tool_result_chars": 20000,
+    "no_repeated_calls": true,
+    "max_requests": 5,
+    "max_tool_calls": 4
+  }
+}

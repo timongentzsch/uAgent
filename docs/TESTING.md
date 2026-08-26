@@ -33,13 +33,16 @@ The SSE framing fuzz target runs in CI.
 `benchmarks/eval.py` scores end-to-end agent behavior against declarative
 scenarios in `benchmarks/scenarios/*.json`: workspace fixture, prompt, scripted
 provider, and the checks that define a good run — answer content and shape,
-files read, forbidden tools, model rounds, batch width, deduplication, request
-bytes, and workspace immutability. Results are compared with the committed
-baseline in `benchmarks/baselines/hermetic.json`, and CTest runs that gate:
+files read, forbidden tools, model rounds, batch width, deduplication, cumulative
+request/tool-result characters, active-schema recovery, and workspace
+immutability. Results are compared with the committed baseline in
+`benchmarks/baselines/hermetic.json`, and CTest runs that gate:
 
 ```sh
 python3 benchmarks/eval.py build/debug/uagent --check
 python3 benchmarks/eval.py build/debug/uagent --scenario parallel_batch
+python3 benchmarks/eval.py build/debug/uagent --scenario CASE --trials 5 --pass-k 3
+python3 benchmarks/eval.py --self-test
 python3 benchmarks/eval.py build/debug/uagent --update   # review the diff
 ```
 
@@ -49,15 +52,36 @@ bytes there; whether it moves *quality* is only visible live:
 
 ```sh
 python3 benchmarks/eval.py build/release/uagent --run \
-  --model provider/model --report /tmp/uagent-eval.json
+  --model provider/model --scenario browser_outcome_rounds --trials 5 \
+  --cost-authority /path/to/authority.json --report /tmp/uagent-eval.json
 python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
-  --prompt-overlay experiment.json
+  --scenario CASE --prompt-overlay experiment.json \
+  --cost-authority /path/to/authority.json
 ```
 
-Live runs are billable, require `--run`, and apply `--max-cost` (default
-`$0.10`) to each isolated run. Providers that do not report cost cannot make a
-dollar cap authoritative. A compacted run fails if its score is below its
-control, hermetically and live.
+Live runs are billable and require `--run`. Repeated runs require an explicit
+scenario and get a fresh workspace and HOME in deterministic seeded order. The
+report groups route/model/provenance cohorts and includes pass@1, pass@k,
+pass^k, a Wilson 95% interval, rounds, cumulative context, result characters,
+latency and normalized usage.
+
+`--max-cost` (default `$0.10`) is one aggregate ceiling, not a per-run
+allowance. Before making any call, live mode requires a `--cost-authority` JSON
+file with schema `uagent.eval.cost-authority.v1`; every selected route must set
+both `reports_cost` and `enforces_hard_budget` to true, for example:
+
+```json
+{
+  "schema": "uagent.eval.cost-authority.v1",
+  "routes": {
+    "provider/model": {"reports_cost": true, "enforces_hard_budget": true}
+  }
+}
+```
+
+A route without that explicit metadata is blocked rather than tried
+optimistically. A compacted run fails if its score is below its control,
+hermetically and live.
 
 Scenarios carry a `tier`. A `capability` scenario is reported but does not gate
 the build — it is a hill to climb — and graduates to `regression` once it holds
@@ -68,12 +92,17 @@ say what broke.
 ## Improvement iterations
 
 `benchmarks/session_metrics.py` reports what real sessions did and where they
-spent time, tokens and turns; `benchmarks/audit.py` prints the six-clause
+spent time, tokens and turns. It cohorts canonical, allowlisted
+`session.ready` provenance (`legacy` is explicit), supports `--cohort`, and
+derives failed-call recovery, identical repeats, argument issues, quiet/terminal
+activity polls and turn outcomes offline. `benchmarks/audit.py` prints the
 dashboard — hardware, token, speed, capability, readability, and whether the
 scenario suite still resembles real usage — and fails on a baseline regression:
 
 ```sh
 python3 benchmarks/session_metrics.py --since 2026-08-01
+python3 benchmarks/session_metrics.py --cohort legacy
+python3 benchmarks/session_metrics.py --self-test
 python3 benchmarks/audit.py build/debug/uagent --check
 python3 benchmarks/audit.py build/debug/uagent --update   # review the diff
 python3 benchmarks/slopscan.py --verbose

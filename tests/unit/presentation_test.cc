@@ -3,7 +3,9 @@
 #include <chrono>
 #include <string>
 
+#include "include/tools/child_agent.h"
 #include "include/ui/display.h"
+#include "include/ui/presentation.h"
 #include "include/ui/tool_output.h"
 #include "tests/unit/test_support.h"
 
@@ -34,6 +36,24 @@ Tool PollingActivityTool() {
 // ordinary result line when it did. These pin that split and the elapsed
 // clock, which only advances while an id stays quiet.
 void TestPollCollapse() {
+  const std::string failure_report = ChildAgentFailureReport(
+      "provider/child @ child.example", ChildAgentFailureStage::kExecution,
+      "connection error: Couldn't connect to server\n"
+      "api_key=child-secret-must-not-enter-row");
+  PresentationRecord failed_child;
+  failed_child.kind = PresentationKind::kToolResult;
+  failed_child.status = PresentationStatus::kFailed;
+  failed_child.title = "subagent 1073741866";
+  failed_child.summary = FirstLine(failure_report);
+  std::string failed_row =
+      CaptureStdout([&] { PrintPresentation(failed_child); });
+  CHECK(failed_row.find(
+            "← subagent 1073741866: error: child execution: connection "
+            "error: Couldn't connect to server") != std::string::npos);
+  CHECK(failed_row.find("delegated child failed") == std::string::npos);
+  CHECK(failed_row.find("child-secret-must-not-enter-row") ==
+        std::string::npos);
+
   Tool tool = PollingActivityTool();
   ToolCall call;
   call.id = "call-1";

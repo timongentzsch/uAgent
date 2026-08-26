@@ -8,13 +8,16 @@ change that makes the agent spend more rounds, drop a batch, stop deduplicating
 or lose its answer fails a gate instead of being argued about.
 
 The hermetic suite scripts the provider, so it measures *harness* behavior — the
-part this repository owns — not model quality. `--run --model` replays the same
-scenarios against a real route as the periodic reality check; those runs are
-billable and bounded by `--max-cost`.
+part this repository owns — not model quality. `--run --model` replays the
+same scenarios against a real route as the periodic reality check. Live runs
+require explicit route metadata proving both cost reporting and hard-budget
+enforcement; `--max-cost` is one aggregate ceiling across all isolated trials.
 
     python3 benchmarks/eval.py build/debug/uagent --check
     python3 benchmarks/eval.py build/debug/uagent --update
-    python3 benchmarks/eval.py build/release/uagent --run --model provider/model
+    python3 benchmarks/eval.py build/debug/uagent --scenario CASE --trials 5
+    python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
+        --scenario CASE --trials 5 --cost-authority authority.json
 """
 
 from __future__ import annotations
@@ -23,7 +26,9 @@ import argparse
 import collections
 import hashlib
 import json
+import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -36,6 +41,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "benchmarks" / "scenarios"
 BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "hermetic.json"
+SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "alternating_trials.json"
 
 # One HTTP/SSE fixture serves the integration suite and this harness; a second
 # copy would drift from the transport the tests actually exercise.
@@ -43,6 +49,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 # isort: off
 from integration_support import Server, event  # noqa: E402
+from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 
 # isort: on
 
@@ -241,19 +248,36 @@ def read_trace(path: Path) -> list[dict[str, Any]]:
 
 
 def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Per-step batching comes from ordering: calls follow the request that asked for them."""  # noqa: E501
+    """Reconstruct per-request context and privacy-safe trajectory aggregates."""
     events: collections.Counter[str] = collections.Counter()
     batches: list[int] = []
     calls: list[dict[str, Any]] = []
     request_chars: list[int] = []
+    result_chars_by_tool: collections.Counter[str] = collections.Counter()
+    issue_codes: collections.Counter[str] = collections.Counter()
     current_messages = 0
     first: dict[str, Any] = {}
     compactions = 0
+    model_duration_ms = 0.0
+    request_preparation_ms = 0.0
+    tool_result_chars = 0
+    tool_result_texts: list[str] = []
+    browser_snapshot_chars = 0
+    browser_calls: set[str] = set()
+    pending_failures: collections.Counter[tuple[Any, str]] = collections.Counter()
+    failed_call_recoveries = 0
+    failed_calls = 0
+    usage: collections.Counter[str] = collections.Counter()
+    provenance = None
+    route = ""
     for record in records:
         name = str(record.get("event", ""))
-        data = record.get("data", {})
+        data = record.get("data", {}) or {}
         events[name] += 1
-        if name == "model_request":
+        if name == "session_ready":
+            provenance = safe_provenance(data.get("provenance"))
+            route = str(data.get("route") or "")
+        elif name == "model_request":
             first = first or data
             batches.append(0)
             if data.get("projected_context"):
@@ -266,6 +290,9 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
                 message_chars = current_messages
             schema_chars = int(data.get("schema_chars") or 0) if data.get("native_tools") else 0
             request_chars.append(message_chars + schema_chars)
+        elif name == "model_response":
+            model_duration_ms += float(data.get("end_to_end_ms") or data.get("duration_ms") or 0)
+            request_preparation_ms += float(data.get("request_preparation_ms") or 0)
         elif name == "tool_call":
             arguments = data.get("arguments", {})
             if isinstance(arguments, str):
@@ -273,15 +300,58 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
                     arguments = json.loads(arguments)
                 except json.JSONDecodeError:
                     arguments = {}
-            calls.append({"name": data.get("name"), "arguments": arguments})
+            call = {
+                "id": str(data.get("id") or ""),
+                "turn": data.get("turn"),
+                "step": data.get("step"),
+                "name": data.get("name"),
+                "arguments": arguments,
+            }
+            calls.append(call)
+            if call["name"] == "run" and isinstance(arguments, dict):
+                if "playwright-cli" in str(arguments.get("command", "")):
+                    browser_calls.add(call["id"])
             if batches:
                 batches[-1] += 1
+        elif name == "tool_result":
+            chars = int(data.get("result_chars") or 0)
+            tool_result_texts.append(str(data.get("result") or ""))
+            tool_name = str(data.get("name") or "?")
+            tool_result_chars += chars
+            result_chars_by_tool[tool_name] += chars
+            if str(data.get("id") or "") in browser_calls:
+                browser_snapshot_chars += chars
+            issue = str(data.get("issue_code") or "")
+            if issue:
+                issue_codes[issue] += 1
+            key = (data.get("turn"), tool_name)
+            status = str(data.get("status") or "")
+            if status not in ("ok", "succeeded", "success"):
+                failed_calls += 1
+                pending_failures[key] += 1
+            elif pending_failures[key]:
+                failed_call_recoveries += 1
+                pending_failures[key] = 0
+        elif name == "turn_end":
+            turn_usage = data.get("usage") or {}
+            if isinstance(turn_usage, dict):
+                for field in (
+                    "input",
+                    "output",
+                    "cache_read",
+                    "cache_write",
+                    "reasoning",
+                    "web_searches",
+                ):
+                    usage[field] += int(turn_usage.get(field) or 0)
+                usage["cost"] += float(turn_usage.get("cost") or 0)
+                if turn_usage.get("cost_reported"):
+                    usage["cost_reported_turns"] += 1
         elif name == "compact_end" and data.get("outcome") == "ok":
             compactions += 1
-    # A round that asked for nothing and answered nothing is wasted latency and
-    # wasted tokens; counting them separately from the round total is what makes
-    # "fewer rounds" a claim rather than an impression.
     no_action = max(len([count for count in batches[:-1] if count == 0]), 0)
+    cohort = provenance_cohort(provenance)
+    cumulative_request_chars = sum(request_chars)
     return {
         "model_requests": len(batches),
         "tool_calls": len(calls),
@@ -290,9 +360,26 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "no_action_rounds": no_action,
         "compactions": compactions,
         "events": events,
-        "estimated_request_chars": sum(request_chars),
+        "estimated_request_chars": cumulative_request_chars,
+        "cumulative_estimated_request_chars": cumulative_request_chars,
+        "estimated_request_chars_progression": request_chars,
         "max_estimated_request_chars": max(request_chars, default=0),
         "initial_schema_chars": int(first.get("schema_chars") or 0),
+        "tool_result_chars": tool_result_chars,
+        "tool_result_text": "\n".join(tool_result_texts),
+        "tool_result_chars_by_tool": result_chars_by_tool,
+        "model_duration_ms": model_duration_ms,
+        "request_preparation_ms": request_preparation_ms,
+        "usage": usage,
+        "issue_codes": issue_codes,
+        "failed_calls": failed_calls,
+        "failed_call_recoveries": failed_call_recoveries,
+        "unrecovered_failed_calls": sum(pending_failures.values()),
+        "browser_commands": len(browser_calls),
+        "browser_snapshot_chars": browser_snapshot_chars,
+        "provenance": provenance,
+        "cohort": cohort,
+        "route": route,
     }
 
 
@@ -339,7 +426,17 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
     return env
 
 
-def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, arguments):
+def run_case(
+    binary: Path,
+    scenario: dict[str, Any],
+    variant: str,
+    model: str,
+    arguments,
+    *,
+    trial: int = 1,
+    trial_seed: int = 0,
+    budget: float | None = None,
+):
     with tempfile.TemporaryDirectory(prefix="uagent-eval-") as temp:
         root = Path(temp)
         workspace = root / "workspace"
@@ -360,6 +457,9 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
         try:
             env = case_environment(scenario, variant, arguments, mock)
             env["HOME"] = str(home)
+            prompt = str(scenario["prompt"])
+            prompt = prompt.replace("${workspace}", str(workspace))
+            prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
             cli = [
                 "--json",
                 "--no-memory",
@@ -368,9 +468,9 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
                 "--model",
                 model,
                 "--budget",
-                str(arguments.max_cost),
+                str(arguments.max_cost if budget is None else budget),
                 "-p",
-                scenario["prompt"],
+                prompt,
             ]
             started = time.monotonic()
             process = subprocess.run(
@@ -413,6 +513,11 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "live_only": bool(scenario.get("live_only")),
             "variant": variant,
             "model": model,
+            "trial": trial,
+            "trial_seed": trial_seed,
+            "route": metrics["route"] if arguments.run else model,
+            "cohort": metrics["cohort"],
+            "provenance": metrics["provenance"],
             "elapsed_seconds": round(elapsed, 3),
             "peak_rss_bytes": peak_rss(process.stderr),
             "usage": envelope.get("usage", {}),
@@ -425,8 +530,21 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "tools_used": sorted({call["name"] for call in metrics["calls"]}),
             "compactions": metrics["compactions"],
             "estimated_request_chars": metrics["estimated_request_chars"],
+            "cumulative_estimated_request_chars": metrics["cumulative_estimated_request_chars"],
+            "estimated_request_chars_progression": metrics["estimated_request_chars_progression"],
             "max_estimated_request_chars": metrics["max_estimated_request_chars"],
             "initial_schema_chars": metrics["initial_schema_chars"],
+            "tool_result_chars": metrics["tool_result_chars"],
+            "model_duration_ms": round(metrics["model_duration_ms"], 3),
+            "request_preparation_ms": round(metrics["request_preparation_ms"], 3),
+            "input_tokens": int(metrics["usage"]["input"]),
+            "cache_read_tokens": int(metrics["usage"]["cache_read"]),
+            "issue_codes": dict(metrics["issue_codes"]),
+            "failed_calls": metrics["failed_calls"],
+            "failed_call_recoveries": metrics["failed_call_recoveries"],
+            "unrecovered_failed_calls": metrics["unrecovered_failed_calls"],
+            "browser_commands": metrics["browser_commands"],
+            "browser_snapshot_chars": metrics["browser_snapshot_chars"],
             "checks": checks,
             "score": sum(1 for value in checks.values() if value),
             "checks_total": len(checks),
@@ -443,6 +561,22 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "error": envelope.get("error")
             or (process.stderr.strip()[-400:] if process.returncode else None),
         }
+        scoring = scenario.get("scoring", {})
+        if scoring:
+            outcome_checks = as_list(scoring.get("outcome_checks", ["process_ok"]))
+            outcome = all(checks.get(name, False) for name in outcome_checks)
+            target_rounds = max(1, int(scoring.get("target_rounds", 1)))
+            rounds = max(1, metrics["model_requests"])
+            result["experiment"] = {
+                "outcome": outcome,
+                "rounds": metrics["model_requests"],
+                "round_adjusted_score": round(
+                    (min(1.0, target_rounds / rounds) if outcome else 0.0), 4
+                ),
+                "cumulative_context_chars": metrics["cumulative_estimated_request_chars"],
+                "snapshot_chars": metrics["browser_snapshot_chars"],
+                "recovered_failures": metrics["failed_call_recoveries"],
+            }
         return result
 
 
@@ -499,6 +633,25 @@ def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodie
             checks[name] = metrics["tool_calls"] <= int(value)
         elif name == "min_batch":
             checks[name] = metrics["max_batch"] >= int(value)
+        elif name == "min_cumulative_request_chars":
+            checks[name] = metrics["cumulative_estimated_request_chars"] >= int(value)
+        elif name == "min_tool_result_chars":
+            checks[name] = metrics["tool_result_chars"] >= int(value)
+        elif name == "min_recovered_failures":
+            checks[name] = metrics["failed_call_recoveries"] >= int(value)
+        elif name == "min_argument_issues":
+            checks[name] = sum(metrics["issue_codes"].values()) >= int(value)
+        elif name == "argument_issue_codes":
+            checks[name] = set(as_list(value)) <= set(metrics["issue_codes"])
+        elif name == "min_browser_commands":
+            checks[name] = metrics["browser_commands"] >= int(value)
+        elif name == "min_browser_snapshot_chars":
+            checks[name] = metrics["browser_snapshot_chars"] >= int(value)
+        elif name == "recovery_markers":
+            positions = [metrics["tool_result_text"].find(part) for part in as_list(value)]
+            checks[name] = all(position >= 0 for position in positions) and positions == sorted(
+                positions
+            )
         elif name == "events":
             checks[name] = all(metrics["events"][key] >= int(count) for key, count in value.items())
         elif name in ("request_ordered", "request_absent_repeats"):
@@ -600,13 +753,14 @@ def variant_comparisons(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     control run of the same scenario and model is the reference.
     """
     by_case = {
-        (result["scenario"], result["model"], result["variant"]): result for result in results
+        (result["scenario"], result["model"], result.get("trial", 1), result["variant"]): result
+        for result in results
     }
     comparisons = []
-    for (scenario, model, variant), result in by_case.items():
+    for (scenario, model, trial, variant), result in by_case.items():
         if variant != "compacted":
             continue
-        control = by_case.get((scenario, model, "control"))
+        control = by_case.get((scenario, model, trial, "control"))
         if control is None:
             continue
         regressions = []
@@ -614,7 +768,7 @@ def variant_comparisons(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
             regressions.append(f"compacted score {control['score']} → {result['score']}")
         comparisons.append(
             {
-                "key": f"{scenario}/{model}/compacted-vs-control",
+                "key": f"{scenario}/{model}/trial-{trial}/compacted-vs-control",
                 "status": "regression" if regressions else "ok",
                 "regressions": regressions,
                 "passed": not regressions,
@@ -638,6 +792,8 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
                 "no_action_rounds": result["no_action_rounds"],
                 "compactions": result["compactions"],
                 "max_estimated_request_chars": result["max_estimated_request_chars"],
+                "cumulative_estimated_request_chars": result["cumulative_estimated_request_chars"],
+                "tool_result_chars": result["tool_result_chars"],
                 "initial_schema_chars": result["initial_schema_chars"],
             }
             for result in sorted(results, key=baseline_key)
@@ -648,22 +804,204 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
     print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)} ({len(results)} cases)")
 
 
+# --- repeated trials and live cost authority --------------------------------
+
+
+def wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
+    if trials <= 0:
+        return (0.0, 0.0)
+    probability = successes / trials
+    denominator = 1 + z * z / trials
+    center = (probability + z * z / (2 * trials)) / denominator
+    radius = (
+        z
+        * math.sqrt(probability * (1 - probability) / trials + z * z / (4 * trials * trials))
+        / denominator
+    )
+    return (max(0.0, center - radius), min(1.0, center + radius))
+
+
+def pass_probabilities(successes: int, trials: int, requested_k: int) -> dict[str, Any]:
+    if trials <= 0:
+        return {
+            "trials": 0,
+            "successes": 0,
+            "k": 0,
+            "pass@1": 0.0,
+            "pass@k": 0.0,
+            "pass^k": 0.0,
+            "pass@1_ci95": [0.0, 0.0],
+        }
+    k = min(max(1, requested_k), trials)
+    denominator = math.comb(trials, k)
+    pass_at_k = 1.0
+    if trials - successes >= k:
+        pass_at_k -= math.comb(trials - successes, k) / denominator
+    pass_power_k = math.comb(successes, k) / denominator if successes >= k else 0.0
+    low, high = wilson_interval(successes, trials)
+    return {
+        "trials": trials,
+        "successes": successes,
+        "k": k,
+        "pass@1": round(successes / trials, 6),
+        "pass@k": round(pass_at_k, 6),
+        "pass^k": round(pass_power_k, 6),
+        "pass@1_ci95": [round(low, 6), round(high, 6)],
+    }
+
+
+def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str, str, str], list[dict[str, Any]]] = collections.defaultdict(
+        list
+    )
+    for result in results:
+        key = (
+            str(result.get("scenario") or "?"),
+            str(result.get("variant") or "control"),
+            str(result.get("model") or "?"),
+            str(result.get("route") or result.get("model") or "?"),
+            str(result.get("cohort") or "legacy"),
+        )
+        grouped[key].append(result)
+    summaries = []
+    for key, trials in sorted(grouped.items()):
+        scenario, variant, model, route, cohort = key
+        successful = sum(bool(result.get("passed")) for result in trials)
+        statistics = pass_probabilities(successful, len(trials), requested_k)
+        statistics.update(
+            {
+                "scenario": scenario,
+                "variant": variant,
+                "model": model,
+                "route": route,
+                "cohort": cohort,
+                "mean_model_requests": round(
+                    sum(int(result.get("model_requests") or 0) for result in trials) / len(trials),
+                    3,
+                ),
+                "mean_cumulative_context_chars": round(
+                    sum(
+                        int(result.get("cumulative_estimated_request_chars") or 0)
+                        for result in trials
+                    )
+                    / len(trials)
+                ),
+                "mean_tool_result_chars": round(
+                    sum(int(result.get("tool_result_chars") or 0) for result in trials)
+                    / len(trials)
+                ),
+            }
+        )
+        summaries.append(statistics)
+    return summaries
+
+
+class LiveCostBlocker(RuntimeError):
+    """The runner cannot prove that another billable call stays under its cap."""
+
+
+def load_cost_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
+    if path is None:
+        raise LiveCostBlocker(
+            "live evaluation blocked: --cost-authority is required; the route must explicitly "
+            "declare reported costs and a hard per-session budget"
+        )
+    try:
+        authority = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise LiveCostBlocker(
+            f"live evaluation blocked: invalid cost authority: {error}"
+        ) from error
+    if authority.get("schema") != "uagent.eval.cost-authority.v1":
+        raise LiveCostBlocker("live evaluation blocked: unknown cost-authority schema")
+    routes = authority.get("routes")
+    if not isinstance(routes, dict):
+        raise LiveCostBlocker("live evaluation blocked: cost authority has no routes object")
+    for model in models:
+        declaration = routes.get(model)
+        if (
+            not isinstance(declaration, dict)
+            or not declaration.get("reports_cost")
+            or not declaration.get("enforces_hard_budget")
+        ):
+            raise LiveCostBlocker(
+                f"live evaluation blocked: {model} does not explicitly declare both "
+                "reports_cost and enforces_hard_budget"
+            )
+    return authority
+
+
+def account_live_cost(result: dict[str, Any], spent: float, cap: float) -> float:
+    usage = result.get("usage") or {}
+    if not isinstance(usage, dict) or not usage.get("cost_reported"):
+        raise LiveCostBlocker(
+            f"live evaluation blocked after {result.get('model')}: provider cost was unavailable"
+        )
+    cost = float(usage.get("cost") or 0)
+    if cost < 0:
+        raise LiveCostBlocker("live evaluation blocked: provider reported a negative cost")
+    updated = spent + cost
+    if updated > cap + 1e-9:
+        raise LiveCostBlocker(
+            f"live evaluation stopped: reported aggregate cost ${updated:.6f} exceeded "
+            f"the ${cap:.6f} ceiling"
+        )
+    return updated
+
+
+def deterministic_jobs(jobs: list[tuple[Any, ...]], seed: int, trial: int) -> list[tuple[Any, ...]]:
+    ordered = list(jobs)
+    random.Random(seed + trial).shuffle(ordered)
+    return ordered
+
+
+def eval_self_test() -> int:
+    fixture = json.loads(SELF_TEST_PATH.read_text(encoding="utf-8"))
+    summary = trial_summaries(fixture["results"], fixture["k"])
+    failures = []
+    if len(summary) != 1:
+        failures.append(f"produced {len(summary)} trial groups, want 1")
+    else:
+        for field, expected in fixture["expected"].items():
+            if summary[0].get(field) != expected:
+                failures.append(f"{field}={summary[0].get(field)}, want {expected}")
+    for planted in fixture["blocked_cost_cases"]:
+        try:
+            account_live_cost(planted["result"], planted["spent"], planted["cap"])
+        except LiveCostBlocker:
+            continue
+        failures.append(f"cost guard accepted planted case {planted['name']}")
+    jobs = [("a",), ("b",), ("c",)]
+    if deterministic_jobs(jobs, 17, 2) != deterministic_jobs(jobs, 17, 2):
+        failures.append("trial ordering was not deterministic")
+    print(f"planted alternating trials  {summary}")
+    print(f"planted cost blocks         {len(fixture['blocked_cost_cases'])}")
+    for failure in failures:
+        print(f"SELF-TEST FAILED: {failure}")
+    return 1 if failures else 0
+
+
 # --- reporting ---------------------------------------------------------------
 
 
-def print_results(results, comparisons):
+def print_results(results, comparisons, summaries):
     print(
-        f"{'scenario/variant':<34} {'score':>7} {'req':>4} {'idle':>5} {'tools':>6} "
-        f"{'batch':>5} {'chars':>7} {'wall':>7}"
+        f"{'scenario/variant':<38} {'score':>7} {'req':>4} {'idle':>5} {'tools':>6} "
+        f"{'batch':>5} {'maxctx':>7} {'cumctx':>8} {'results':>8} {'wall':>7}"
     )
+    repeated = any(int(result.get("trial") or 1) > 1 for result in results)
     for result in results:
+        label = baseline_key(result)
+        if repeated:
+            label += f"#t{result['trial']}"
         print(
-            f"{baseline_key(result):<34} "
+            f"{label:<38} "
             f"{result['score']}/{result['checks_total']:<5} "
             f"{result['model_requests']:>4} {result['no_action_rounds']:>5} "
             f"{result['tool_calls']:>6} "
             f"{result['max_batch']:>5} {result['max_estimated_request_chars']:>7} "
-            f"{result['elapsed_seconds']:>6.1f}s"
+            f"{result['cumulative_estimated_request_chars']:>8} "
+            f"{result['tool_result_chars']:>8} {result['elapsed_seconds']:>6.1f}s"
         )
         if result["failures"]:
             print(f"    failed: {', '.join(result['failures'])} [{result['tier']}]")
@@ -676,11 +1014,21 @@ def print_results(results, comparisons):
         print(f"{comparison['status'].upper()}: {comparison['key']}: {detail}")
     for note in graduation_notes(results):
         print(f"GRADUATE: {note}")
+    for summary in summaries:
+        print(
+            "TRIALS: "
+            f"{summary['scenario']}/{summary['variant']} {summary['model']} "
+            f"cohort={summary['cohort']} n={summary['trials']} "
+            f"pass@1={summary['pass@1']:.3f} "
+            f"pass@{summary['k']}={summary['pass@k']:.3f} "
+            f"pass^{summary['k']}={summary['pass^k']:.3f} "
+            f"CI95={summary['pass@1_ci95']} rounds={summary['mean_model_requests']:.2f}"
+        )
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", type=Path, help="uagent binary to evaluate")
+    parser.add_argument("binary", nargs="?", type=Path, help="uagent binary to evaluate")
     parser.add_argument("--scenario", action="append", default=[], help="name; repeatable")
     parser.add_argument("--variant", action="append", default=[], help="name; repeatable")
     parser.add_argument("--check", action="store_true", help="fail on baseline regressions")
@@ -689,21 +1037,55 @@ def parse_args():
     parser.add_argument("--prompt-overlay", type=Path, help="UAGENT_PROMPT_OVERLAY for every run")
     parser.add_argument("--run", action="store_true", help="allow opt-in live provider calls")
     parser.add_argument("--model", action="append", default=[], help="model route; repeatable")
-    parser.add_argument("--max-cost", type=float, default=0.10, help="reported USD cap per run")
+    parser.add_argument(
+        "--cost-authority",
+        type=Path,
+        help="route metadata proving reported cost and a hard budget",
+    )
+    parser.add_argument("--max-cost", type=float, default=0.10, help="aggregate reported USD cap")
+    parser.add_argument("--trials", type=int, default=1, help="fresh isolated runs per case")
+    parser.add_argument("--pass-k", type=int, default=0, help="k for pass@k and pass^k")
+    parser.add_argument("--seed", type=int, default=0, help="deterministic trial ordering seed")
     parser.add_argument("--timeout", type=int, default=120, help="seconds per run")
     parser.add_argument("--toolset", choices=("full", "lean"), default="full")
+    parser.add_argument(
+        "--self-test", action="store_true", help="validate trial statistics and cost guards"
+    )
     arguments = parser.parse_args()
+    if arguments.self_test:
+        return arguments
+    if arguments.binary is None:
+        parser.error("binary is required unless --self-test is used")
     arguments.binary = arguments.binary.resolve()
     if not arguments.binary.is_file():
         parser.error(f"binary does not exist: {arguments.binary}")
     if arguments.max_cost <= 0:
         parser.error("--max-cost must be positive")
+    if arguments.trials <= 0:
+        parser.error("--trials must be positive")
+    if arguments.pass_k < 0:
+        parser.error("--pass-k cannot be negative")
+    if arguments.pass_k == 0:
+        arguments.pass_k = min(3, arguments.trials)
+    if arguments.trials > 1 and not arguments.scenario:
+        parser.error("repeated trials require at least one explicit --scenario")
     if arguments.run and not arguments.model:
         parser.error("--run requires at least one --model")
     if arguments.model and not arguments.run:
         parser.error("--model makes provider calls and therefore requires --run")
     if arguments.update and arguments.run:
         parser.error("baselines are hermetic; --update cannot use live runs")
+    if arguments.update and arguments.trials != 1:
+        parser.error("baseline updates require --trials 1")
+    if arguments.cost_authority and not arguments.run:
+        parser.error("--cost-authority is only used with --run")
+    if arguments.run:
+        try:
+            arguments.cost_authority_data = load_cost_authority(
+                arguments.cost_authority, arguments.model
+            )
+        except LiveCostBlocker as error:
+            parser.error(str(error))
     return arguments
 
 
@@ -724,25 +1106,63 @@ def graduation_notes(results: list[dict[str, Any]]) -> list[str]:
 
 def main() -> int:
     arguments = parse_args()
+    if arguments.self_test:
+        return eval_self_test()
     scenarios = load_scenarios(arguments.scenario)
     models = arguments.model if arguments.run else ["eval"]
-    results = []
+    jobs = []
     for scenario in scenarios:
         variants = scenario.get("variants", ["control"])
         if arguments.variant:
             variants = [name for name in variants if name in arguments.variant]
         for model in models:
             for variant in variants:
-                results.append(run_case(arguments.binary, scenario, variant, model, arguments))
+                jobs.append((scenario, variant, model))
+    if not jobs:
+        raise SystemExit("no scenario variants selected")
+
+    results = []
+    spent = 0.0
+    blocker = None
+    for trial in range(1, arguments.trials + 1):
+        for scenario, variant, model in deterministic_jobs(jobs, arguments.seed, trial):
+            remaining = arguments.max_cost - spent if arguments.run else arguments.max_cost
+            if arguments.run and remaining <= 1e-9:
+                blocker = LiveCostBlocker(
+                    f"live evaluation stopped at the ${arguments.max_cost:.6f} aggregate ceiling"
+                )
+                break
+            result = run_case(
+                arguments.binary,
+                scenario,
+                variant,
+                model,
+                arguments,
+                trial=trial,
+                trial_seed=arguments.seed + trial,
+                budget=remaining,
+            )
+            results.append(result)
+            if arguments.run:
+                try:
+                    spent = account_live_cost(result, spent, arguments.max_cost)
+                except LiveCostBlocker as error:
+                    blocker = error
+                    break
+        if blocker:
+            break
 
     comparisons = variant_comparisons(results)
     if not arguments.run:
         comparisons += compare(results, load_baseline())
-    print_results(results, comparisons)
+    summaries = trial_summaries(results, arguments.pass_k)
+    print_results(results, comparisons, summaries)
+    if blocker:
+        print(f"BLOCKED: {blocker}", file=sys.stderr)
     if arguments.update:
         write_baseline(results)
     report = {
-        "schema": "uagent.eval.v1",
+        "schema": "uagent.eval.v2",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "live": arguments.run,
         "binary": {
@@ -752,12 +1172,26 @@ def main() -> int:
         },
         "toolset": arguments.toolset,
         "prompt_overlay": str(arguments.prompt_overlay) if arguments.prompt_overlay else None,
+        "trial_policy": {
+            "trials": arguments.trials,
+            "pass_k": arguments.pass_k,
+            "seed": arguments.seed,
+        },
+        "aggregate_cost": {
+            "ceiling": arguments.max_cost if arguments.run else None,
+            "reported": round(spent, 9) if arguments.run else None,
+            "authoritative": bool(arguments.run and not blocker),
+        },
+        "blocker": str(blocker) if blocker else None,
         "results": results,
+        "trial_summaries": summaries,
         "comparisons": comparisons,
     }
     if arguments.report:
         arguments.report.parent.mkdir(parents=True, exist_ok=True)
         arguments.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    if blocker:
+        return 2
     if not all(result["passed"] for result in results if result["tier"] == "regression"):
         return 1
     if arguments.check and not all(item["passed"] for item in comparisons):

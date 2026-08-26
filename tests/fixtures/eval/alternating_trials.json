@@ -1,0 +1,79 @@
+{
+  "k": 2,
+  "results": [
+    {
+      "scenario": "alternating",
+      "variant": "control",
+      "model": "fixture/model",
+      "route": "fixture/model",
+      "cohort": "fixture-cohort",
+      "trial": 1,
+      "passed": true,
+      "model_requests": 2,
+      "cumulative_estimated_request_chars": 100,
+      "tool_result_chars": 20
+    },
+    {
+      "scenario": "alternating",
+      "variant": "control",
+      "model": "fixture/model",
+      "route": "fixture/model",
+      "cohort": "fixture-cohort",
+      "trial": 2,
+      "passed": false,
+      "model_requests": 4,
+      "cumulative_estimated_request_chars": 300,
+      "tool_result_chars": 40
+    },
+    {
+      "scenario": "alternating",
+      "variant": "control",
+      "model": "fixture/model",
+      "route": "fixture/model",
+      "cohort": "fixture-cohort",
+      "trial": 3,
+      "passed": true,
+      "model_requests": 3,
+      "cumulative_estimated_request_chars": 200,
+      "tool_result_chars": 30
+    },
+    {
+      "scenario": "alternating",
+      "variant": "control",
+      "model": "fixture/model",
+      "route": "fixture/model",
+      "cohort": "fixture-cohort",
+      "trial": 4,
+      "passed": false,
+      "model_requests": 3,
+      "cumulative_estimated_request_chars": 200,
+      "tool_result_chars": 30
+    }
+  ],
+  "expected": {
+    "trials": 4,
+    "successes": 2,
+    "k": 2,
+    "pass@1": 0.5,
+    "pass@k": 0.833333,
+    "pass^k": 0.166667,
+    "pass@1_ci95": [0.150036, 0.849964],
+    "mean_model_requests": 3.0,
+    "mean_cumulative_context_chars": 200,
+    "mean_tool_result_chars": 30
+  },
+  "blocked_cost_cases": [
+    {
+      "name": "missing-cost-report",
+      "spent": 0.0,
+      "cap": 0.1,
+      "result": {"model": "fixture/model", "usage": {"cost": 0.0, "cost_reported": false}}
+    },
+    {
+      "name": "aggregate-cap-exceeded",
+      "spent": 0.09,
+      "cap": 0.1,
+      "result": {"model": "fixture/model", "usage": {"cost": 0.02, "cost_reported": true}}
+    }
+  ]
+}

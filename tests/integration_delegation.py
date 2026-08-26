@@ -512,20 +512,27 @@ def test_subagent_foreground_outlives_the_per_call_budget(root, home):
 
 
 def test_subagent_clamps_are_reported_not_silent(root, home):
-    """Loosening past a host ceiling is clamped, and the caller is told."""
+    """A background launch and its completion both retain host clamps."""
 
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
             return event({"content": "clamped-child-result"})
         results = tool_results(messages)
-        if results:
-            report = results[-1]
+        if any("clamped-child-result" in result for result in results):
+            report = next(
+                result for result in reversed(results) if "clamped-child-result" in result
+            )
             assert_true("clamped max_seconds to 2" in report, report)
             return event({"content": "clamp-reported-ok"})
+        if any("[started] subagent id " in result for result in results):
+            receipt = next(result for result in results if "[started] subagent id " in result)
+            assert_true("clamped max_seconds to 2" in receipt, receipt)
+            assert_true("produced no result envelope" not in receipt, receipt)
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return tool_call(
             "subagent",
-            {"prompt": "child", "background": False, "max_seconds": 600},
+            {"prompt": "child", "background": True, "max_seconds": 600},
         )
 
     with Server([route]) as server:

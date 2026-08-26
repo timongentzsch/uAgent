@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "include/core/json.h"
+
 namespace uagent {
 
 struct ReferenceFile {
@@ -17,6 +19,8 @@ struct ReferenceFile {
 };
 
 std::vector<ReferenceFile> ReferenceFiles();
+json ReferenceManifestJson();
+json BuildProvenanceJson();
 std::string ReferenceManifest();
 bool WriteReferenceFiles(const std::string& directory, std::string& error);
 

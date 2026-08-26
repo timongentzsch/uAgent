@@ -175,8 +175,9 @@ completion is added once to the next naturally occurring model call, capped at
 Use `subagent(background=false)` when the next step requires the child result;
 background children notify the agent automatically on exit. A failed child
 reports its configured route, failure stage, bounded partial diagnostics, and a
-remedy; the harness never silently changes provider, model, pricing, or privacy
-policy. `activity(operation=wait, wait_ms=..., mode=...)` is an intentional
+remedy; its one-line completion row shows only a bounded category-safe
+stage/reason, while the full report and captured artifact remain retained. The
+harness never silently changes provider, model, pricing, or privacy policy. `activity(operation=wait, wait_ms=..., mode=...)` is an intentional
 join when no useful parent work remains.
 `activity_stop(id)` sends TERM, then KILL if needed, to the complete process
 group and removes its records and logs. Persistent TUI and headless runs

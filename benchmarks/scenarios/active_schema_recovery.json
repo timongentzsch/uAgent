@@ -1,0 +1,50 @@
+{
+  "name": "active_schema_recovery",
+  "description": "A malformed call against the active read_path schema must expose a structured issue and recover with a corrected call. This guards current schema behavior rather than historical tool shapes.",
+  "tier": "regression",
+  "variants": ["control"],
+  "prompt": "Read note.txt and report its marker. If a tool call is rejected, correct it from the active schema rather than repeating it.",
+  "files": {
+    "note.txt": "MARKER-ACTIVE-SCHEMA\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "malformed",
+            "name": "read_path",
+            "arguments": {"path": "note.txt", "offset": "not-an-integer"}
+          }
+        ]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "corrected",
+            "name": "read_path",
+            "arguments": {"path": "note.txt", "offset": 1, "limit": 20}
+          }
+        ]
+      }
+    },
+    {
+      "respond": {"content": "The note contains MARKER-ACTIVE-SCHEMA."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["MARKER-ACTIVE-SCHEMA"],
+    "result_contains": ["invalid tool argument", "MARKER-ACTIVE-SCHEMA"],
+    "min_argument_issues": 1,
+    "argument_issue_codes": ["schema.type"],
+    "min_recovered_failures": 1,
+    "no_repeated_calls": true,
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

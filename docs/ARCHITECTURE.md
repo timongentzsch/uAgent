@@ -317,7 +317,12 @@ lands in the log its parent polls — the same durable events are echoed as one
 stderr line each, so a delegated run is traceable while it works; the stdout
 answer contract is unchanged. Turn, tool,
 capability, config, notice, and session lifecycle events append bounded
-metadata to a private sidecar journal without entering model context.
+metadata to a private sidecar journal without entering model context. A
+`session.ready` provenance object uses the generated prompt/surface identities
+plus allowlisted behavior settings, so offline reports can cohort builds without
+paths, hosts, prompts or secrets. Structured argument issues, activity
+no-change/terminal facts, turn resources and usage stay factual in the journal;
+recovery and repetition labels are derived offline.
 
 User-facing notices — interruptions, budget failures, compaction, degraded
 capability — are events, not prints. The agent loop owns no terminal: severity
@@ -333,7 +338,9 @@ branches. Tool registry metadata produces provider-independent presentation
 records shared by live output, history, `/trace`, debug, and journal records.
 Parallel results are observed in completion order while protocol messages stay
 in call order. Background completion is observational: command output updates
-UI and retained activity state but never starts or enters a model turn. Bounded
+UI and retained activity state but never starts or enters a model turn. A failed
+delegated-child row uses a bounded category-only stage/reason; the complete
+route, remedy, diagnostics and artifact stay in the retained result. Bounded
 task completion is added once to the next naturally occurring model call
 without triggering one; multiple task completions share a 12 KiB message. Explicit `activity`
 can replay a retained bounded transcript.

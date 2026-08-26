@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "include/core/child_env.h"
 #include "include/core/json.h"
@@ -34,6 +35,7 @@ struct ShellCommand {
   std::string activity_label = {};
   std::string receipt_path = {};
   std::string source_id = {};
+  std::vector<std::string> completion_notes = {};
   EnvironmentOverrides environment = {};
   ChildEnvironmentPolicy environment_policy =
       ChildEnvironmentPolicy::kSanitized;

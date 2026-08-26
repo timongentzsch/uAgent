@@ -564,12 +564,12 @@ void Agent::DeliverActivityCompletions(
                      "· bg job finished " + header + " · " +
                          std::to_string(running) + " still running"));
 
+    const bool succeeded =
+        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
     PresentationRecord record;
     record.kind = PresentationKind::kToolResult;
-    record.status =
-        WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0
-            ? PresentationStatus::kSucceeded
-            : PresentationStatus::kFailed;
+    record.status = succeeded ? PresentationStatus::kSucceeded
+                              : PresentationStatus::kFailed;
     record.title = (completion.kind == ActivityKind::kSubagent
                         ? completion.kind_label + " "
                         : std::string("activity ")) +

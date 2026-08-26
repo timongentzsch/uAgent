@@ -969,10 +969,13 @@ std::vector<std::string> TakeCompleted(
         job.session ? job.session->kind
                     : ParseActivityKind(job.kind, job.detached);
     if (activity_kind == ActivityKind::kSubagent) {
-      output = failed ? ChildAgentFailureReport(
-                            job.display_label,
-                            ChildAgentFailureStage::kExecution, output)
-                      : ChildAgentAnswer(std::move(output), {});
+      if (failed) {
+        output = ChildAgentFailureReport(
+            job.display_label, ChildAgentFailureStage::kExecution, output);
+        output += ChildAgentConstraintNotes(job.completion_notes);
+      } else {
+        output = ChildAgentAnswer(std::move(output), job.completion_notes);
+      }
     }
     output += artifact_note;
     std::string formatted =

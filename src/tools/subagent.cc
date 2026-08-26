@@ -161,13 +161,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "
       "parent rounds; for a broad request with orthogonal parts, issue one "
-      "task per part in a single batch. The child has no conversation; "
-      "include every required path, constraint, and success condition. "
-      "Independent tasks may select different model routes. Keep "
-      "background=true when useful parent work can continue; set it false "
-      "when the next step requires the result immediately. Web-research "
-      "briefs must state focused questions and require source URLs in the "
-      "final answer.",
+      "task per part in a single batch. The child has no conversation: "
+      "include every required path, constraint and success condition, and "
+      "for research, focused questions and a demand for source URLs. Keep "
+      "background=true when useful parent work can continue.",
       {{"type", "object"},
        {"properties", std::move(properties)},
        {"required", json::array({"prompt"})}},

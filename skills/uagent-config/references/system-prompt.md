@@ -34,7 +34,7 @@ Each fragment is appended only when its trigger tool is registered.
 
 ```text
 ## Capabilities
-Background completion is observational and does not start a model turn. Inspect activity output for progress; wait only when the next step needs the result. To wait on several pending activities, omit id and use mode=any/all in one call instead of polling each id separately. Before starting a detached service, list activities and reuse a viable instance or stop a superseded one. A readiness timeout alone does not prove failure.
+Inspect activity output for progress; wait only when the next step needs the result. To wait on several, omit id and use mode=any/all in one call rather than polling each. Before starting a detached service, list activities and reuse a viable instance or stop a superseded one. A readiness timeout alone does not prove failure.
 ```
 
 ### web_search
@@ -47,22 +47,21 @@ Use web_search directly for current or external facts; do not scrape result page
 ### web_fetch
 
 ```text
-## Capabilities
-Read a named page with web_fetch instead of relying on someone's summary of it. It returns text only, so a page behind a login or built by scripting is the browser skill's job.
+
 ```
 
 ### adapt_system
 
 ```text
 ## Capabilities
-adapt_system revises the mutable part of this message — an exception, not a planning ritual. Call it when a concrete observation not already reflected here warrants materially different behavior later, stating that observation and the delta in reason. Not for restating the request, installing a generic inspect/edit/test workflow, or announcing completion. Clear it when the specialization stops earning its place.
+adapt_system revises the mutable part of this message. Call it on a concrete observation not already reflected here, and clear it when the specialization stops earning its place.
 ```
 
 ### web_search+subagent
 
 ```text
 ## Capabilities
-Use web_search directly for current or external facts; do not scrape result pages with run. When it cannot confirm a specific page, escalate to an installed browser skill rather than reporting the fact as unverifiable. Delegate research only for independent multi-step synthesis, not a single search, and require source-cited findings.
+Use web_search directly for current or external facts; do not scrape result pages with run. When it cannot confirm a specific page, escalate to an installed browser skill rather than reporting the fact as unverifiable. Delegate research only for independent multi-step synthesis, not a single search.
 ```
 
 ## Text-protocol preamble

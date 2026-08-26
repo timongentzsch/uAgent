@@ -110,6 +110,9 @@ json PromptOverlay(std::string* digest) {
   return parsed.is_object() ? parsed : json::object();
 }
 
+// Only what the tool's own schema does not already say. A sentence that
+// appears in both is charged twice on every request and read where the tool
+// is not being chosen; the schema sits next to the call and wins.
 std::string CapabilityPrompt(const std::vector<Tool>& tools) {
   std::string prompt;
   auto add = [&prompt](const char* text) {
@@ -117,13 +120,11 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools) {
     prompt += text;
   };
   if (FindTool(tools, "activity")) {
-    add("Background completion is observational and does not start a model "
-        "turn. Inspect activity output for progress; wait only when the next "
-        "step needs the result. To wait on several pending activities, omit "
-        "id and use mode=any/all in one call instead of polling each id "
-        "separately. Before starting a detached service, list activities and "
-        "reuse a viable instance or stop a superseded one. A readiness "
-        "timeout alone does not prove failure.");
+    add("Inspect activity output for progress; wait only when the next step "
+        "needs the result. To wait on several, omit id and use mode=any/all "
+        "in one call rather than polling each. Before starting a detached "
+        "service, list activities and reuse a viable instance or stop a "
+        "superseded one. A readiness timeout alone does not prove failure.");
   }
   if (FindTool(tools, "web_search")) {
     add("Use web_search directly for current or external facts; do not scrape "
@@ -132,21 +133,12 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools) {
         "fact as unverifiable.");
     if (FindTool(tools, "subagent")) {
       add("Delegate research only for independent multi-step synthesis, not a "
-          "single search, and require source-cited findings.");
+          "single search.");
     }
   }
-  if (FindTool(tools, "web_fetch")) {
-    add("Read a named page with web_fetch instead of relying on someone's "
-        "summary of it. It returns text only, so a page behind a login or "
-        "built by scripting is the browser skill's job.");
-  }
   if (FindTool(tools, "adapt_system")) {
-    add("adapt_system revises the mutable part of this message — an "
-        "exception, not a planning ritual. Call it when a concrete "
-        "observation not already reflected here warrants materially different "
-        "behavior later, stating that observation and the delta in reason. "
-        "Not for restating the request, installing a generic "
-        "inspect/edit/test workflow, or announcing completion. Clear it when "
+    add("adapt_system revises the mutable part of this message. Call it on a "
+        "concrete observation not already reflected here, and clear it when "
         "the specialization stops earning its place.");
   }
   // Its own section: appended to the last one, this guidance would read as

@@ -23,12 +23,14 @@ Tool SelfInfoTool(SelfDescriptionProvider describe) {
         {{"topic",
           {{"type", "string"},
            {"enum", json::array({"status", "cli", "commands", "config", "tools",
-                                 "prompt"})},
+                                 "prompt", "routes"})},
            {"description",
             "status: version, route, effort, approval mode and budgets; cli: "
             "flags; commands: slash commands; config: settings with defaults, "
             "active values, source and reload policy; tools: the live tool "
-            "surface; prompt: the system prompt actually in effect"}}},
+            "surface; prompt: the system prompt actually in effect; routes: "
+            "the model routes and providers this build can reach, and the "
+            "selection grammar for naming one"}}},
          {"name",
           {{"type", "string"},
            {"description",

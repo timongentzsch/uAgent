@@ -112,6 +112,21 @@
 
 ### Changed
 
+- The request carries less of itself. Memory moved out of the system message —
+  the prefix a provider caches, and the place authority lives — into the
+  runtime context, where a change costs only what follows it. The Capabilities
+  section stopped restating the tool schemas it introduces, and `adapt_system`,
+  `uagent_info` and `subagent` stopped saying the same thing twice in one
+  description. Hermetic system prompt 2,993 to 2,712 chars, schemas 8,534 to
+  8,193, always-on 5,295 to 5,101 B; every scenario sends 1,139 fewer
+  characters at an unchanged score. What a shorter description does to a
+  model's behaviour is not visible to a scripted scenario and needs a live A/B.
+- `benchmarks/audit.py` reports the bill a used machine pays beside the
+  hermetic floor. The probe runs with `--no-memory` in an empty HOME, so stored
+  memories and installed skills — charged on every real request — were
+  invisible to it. A second probe copies them into a throwaway HOME; the row is
+  reported and never gated, because one machine's memories cannot baseline
+  another's.
 - `benchmarks/slopscan.py` exits non-zero on a count above its baseline without
   being asked to. The old `--check` flag meant a caller who wired the scan into
   a script and forgot it got a silent pass, which is the one failure a gate

@@ -1,0 +1,71 @@
+{
+  "name": "live_survey",
+  "description": "A neutral inspection task with four independent files. The prompt does not say how to read them, so this measures rounds rather than mechanism: live, the model answered with a single directory read, which beats a four-way batch. Scoring batch width here would have punished the better strategy.",
+  "tier": "capability",
+  "live_only": true,
+  "variants": [
+    "control"
+  ],
+  "prompt": "Four files in this directory each define one limit. Report all four names and values as a list. Do not modify anything.",
+  "files": {
+    "alpha.conf": "alpha_limit = 11\n",
+    "beta.conf": "beta_limit = 22\n",
+    "gamma.conf": "gamma_limit = 33\n",
+    "delta.conf": "delta_limit = 44\n"
+  },
+  "script": [
+    {
+      "when": {
+        "tool_results": 0
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "a",
+            "name": "read_path",
+            "arguments": {
+              "path": "alpha.conf"
+            }
+          },
+          {
+            "id": "b",
+            "name": "read_path",
+            "arguments": {
+              "path": "beta.conf"
+            }
+          },
+          {
+            "id": "c",
+            "name": "read_path",
+            "arguments": {
+              "path": "gamma.conf"
+            }
+          },
+          {
+            "id": "d",
+            "name": "read_path",
+            "arguments": {
+              "path": "delta.conf"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "respond": {
+        "content": "- alpha_limit 11\n- beta_limit 22\n- gamma_limit 33\n- delta_limit 44"
+      }
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": [
+      "11",
+      "22",
+      "33",
+      "44"
+    ],
+    "max_requests": 2,
+    "max_tool_calls": 6
+  }
+}

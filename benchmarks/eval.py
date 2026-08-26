@@ -102,8 +102,12 @@ class Script:
     recorded and reported rather than silently answered.
     """
 
-    def __init__(self, rules: list[dict[str, Any]]) -> None:
+    def __init__(self, rules: list[dict[str, Any]], capture: dict[str, str]) -> None:
         self.rules = rules
+        # Some arguments only exist at run time - a process id, a session id -
+        # so a scenario names a pattern and later calls refer to ${name}.
+        self.capture = {name: re.compile(pattern) for name, pattern in capture.items()}
+        self.captured: dict[str, str] = {}
         self.misses: list[str] = []
         self.bodies: list[dict[str, Any]] = []
 
@@ -115,11 +119,33 @@ class Script:
             1 for item in messages if isinstance(item, dict) and item.get("role") == "tool"
         )
         last = str(messages[-1].get("content", "")) if messages else ""
+        for name, pattern in self.capture.items():
+            found = pattern.search(serialized)
+            if found:
+                self.captured[name] = found.group(1)
         for rule in self.rules:
             if self.matches(rule.get("when", {}), body, serialized, results, last):
-                return self.payload(rule["respond"])
+                return self.payload(self.resolve(rule["respond"]))
         self.misses.append(last[:160])
         return event({"content": "SCRIPT-MISS"})
+
+    def resolve(self, respond: dict[str, Any]) -> dict[str, Any]:
+        def substitute(value: Any) -> Any:
+            if not isinstance(value, str):
+                return value
+            for name, captured in self.captured.items():
+                token = "${" + name + "}"
+                if value == token:
+                    return int(captured) if captured.isdigit() else captured
+                value = value.replace(token, captured)
+            return value
+
+        resolved = json.loads(json.dumps(respond))
+        for call in resolved.get("tool_calls", []):
+            call["arguments"] = {
+                key: substitute(value) for key, value in call.get("arguments", {}).items()
+            }
+        return resolved
 
     @staticmethod
     def matches(
@@ -327,7 +353,7 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
         script = None
         mock = None
         if not arguments.run:
-            script = Script(scenario.get("script", []))
+            script = Script(scenario.get("script", []), scenario.get("capture", {}))
             mock = Server([script])
         else:
             copy_user_config(home)
@@ -384,6 +410,7 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             # A capability scenario is a hill to climb and does not gate the
             # build; it graduates into the regression tier once it holds green.
             "tier": scenario.get("tier", "regression"),
+            "live_only": bool(scenario.get("live_only")),
             "variant": variant,
             "model": model,
             "elapsed_seconds": round(elapsed, 3),
@@ -393,6 +420,9 @@ def run_case(binary: Path, scenario: dict[str, Any], variant: str, model: str, a
             "tool_calls": metrics["tool_calls"],
             "max_batch": metrics["max_batch"],
             "no_action_rounds": metrics["no_action_rounds"],
+            # Which tools a live run reached for, which is the whole question
+            # when the scenario does not script them.
+            "tools_used": sorted({call["name"] for call in metrics["calls"]}),
             "compactions": metrics["compactions"],
             "estimated_request_chars": metrics["estimated_request_chars"],
             "max_estimated_request_chars": metrics["max_estimated_request_chars"],
@@ -678,12 +708,17 @@ def parse_args():
 
 
 def graduation_notes(results: list[dict[str, Any]]) -> list[str]:
-    """A capability scenario that holds green belongs in the regression tier."""
+    """A capability scenario that holds green belongs in the regression tier.
+
+    A live-only scenario never does: hermetically its script hands it the
+    answer, so gating it would assert nothing. Suggesting it every run would
+    only teach the reader to skip these lines.
+    """
     return [
         f"{baseline_key(result)}: capability scenario is green — set "
         f'"tier": "regression" to gate it'
         for result in results
-        if result["tier"] == "capability" and result["passed"]
+        if result["tier"] == "capability" and result["passed"] and not result["live_only"]
     ]
 
 

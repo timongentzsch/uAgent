@@ -40,8 +40,10 @@ def journal_metrics(path):
         "failures": collections.Counter(),
         "duration_ms": collections.Counter(),
         "result_chars": collections.Counter(),
+        "repeats": collections.Counter(),
         "results": 0,
     }
+    signatures = collections.Counter()
     with open(path, encoding="utf-8") as journal:
         for line in journal:
             try:
@@ -53,13 +55,23 @@ def journal_metrics(path):
             if record.get("type") == "tool.call":
                 summary["batches"][(data.get("turn"), data.get("step"))] += 1
                 summary["names"][name] += 1
+                # The journal keeps a digest, never the argument values, which
+                # is enough to see the same call issued twice in one session.
+                digest = data.get("arguments_digest")
+                if digest:
+                    signatures[(name, digest)] += 1
             elif record.get("type") == "tool.result":
                 summary["results"] += 1
                 status = data.get("status", "?")
                 if status not in ("ok", "succeeded"):
-                    summary["failures"][(name, status)] += 1
+                    # error_code names the failure; older journals predate it.
+                    kind = data.get("error_code") or status
+                    summary["failures"][(name, kind)] += 1
                 summary["duration_ms"][name] += float(data.get("duration_ms") or 0)
                 summary["result_chars"][name] += int(data.get("result_chars") or 0)
+    for (name, _), count in signatures.items():
+        if count > 1:
+            summary["repeats"][name] += count - 1
     return summary
 
 
@@ -79,6 +91,7 @@ def collect(history, since):
         "failures": collections.Counter(),
         "duration_ms": collections.Counter(),
         "result_chars": collections.Counter(),
+        "repeats": collections.Counter(),
     }
     for journal in journals:
         if os.path.getmtime(journal) < since:
@@ -91,7 +104,7 @@ def collect(history, since):
         total["results"] += summary["results"]
         total["batch_total"] += len(summary["batches"])
         total["sizes"].update(summary["batches"].values())
-        for field in ("names", "failures", "duration_ms", "result_chars"):
+        for field in ("names", "failures", "duration_ms", "result_chars", "repeats"):
             total[field].update(summary[field])
     return total
 
@@ -125,6 +138,14 @@ def report(total):
     print("\ncontext filled by tool results (chars)")
     for name, chars in total["result_chars"].most_common(6):
         print(f"  {name:<20} {chars:>10,}")
+
+    repeats = sum(total["repeats"].values())
+    if repeats:
+        print(f"\nrepeated identical calls within a session   {repeats}")
+        for name, count in total["repeats"].most_common(6):
+            print(f"  {name:<20} {count:>5}")
+    else:
+        print("\nrepeated identical calls   not recorded in these journals")
 
 
 def serialisable(total):

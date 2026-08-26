@@ -83,8 +83,8 @@ json PublicProjection(const Event& event) {
   if (event.id != EventId::kToolCall) return event.data;
 
   json data = json::object();
-  for (const char* field : {"turn", "step", "id", "name", "text_protocol",
-                            "issue_code", "issue_field"}) {
+  for (const char* field : {"turn", "step", "id", "name", "arguments_digest",
+                            "text_protocol", "issue_code", "issue_field"}) {
     if (event.data.contains(field)) data[field] = event.data[field];
   }
 
@@ -203,6 +203,7 @@ json JournalProjection(const Event& event) {
       copy("step");
       copy("id");
       copy("name");
+      copy("arguments_digest");
       copy("text_protocol");
       break;
     case EventId::kToolResult:
@@ -211,6 +212,9 @@ json JournalProjection(const Event& event) {
       copy("id");
       copy("name");
       copy("status");
+      // Which failure, not just that one happened: a journal that cannot name
+      // the category cannot tell the next iteration what to fix.
+      copy("error_code");
       copy("duration_ms");
       copy("result_chars");
       copy("artifact_path");

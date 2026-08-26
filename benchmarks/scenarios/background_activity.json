@@ -1,0 +1,54 @@
+{
+  "name": "background_activity",
+  "description": "Detach a command, then read its output through the activity it reported. Background work is 4.6% of real tool calls and 3332s of real wall time, and no other scenario touches it.",
+  "tier": "regression",
+  "variants": ["control"],
+  "yolo": true,
+  "prompt": "Start ./slow.sh in the background, then report the marker it prints.",
+  "files": {
+    "slow.sh": "#!/bin/sh\nsleep 0.4\necho 'MARKER-BACKGROUND done'\n"
+  },
+  "capture": {"activity_id": "activity id (\\d+)"},
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "start",
+            "name": "run",
+            "arguments": {"command": "sh slow.sh", "detach": true}
+          }
+        ]
+      }
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "poll",
+            "name": "activity",
+            "arguments": {
+              "operation": "poll",
+              "id": "${activity_id}",
+              "wait_ms": 5000,
+              "until": "MARKER-BACKGROUND"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "respond": {"content": "The background job printed MARKER-BACKGROUND done."}
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": ["MARKER-BACKGROUND"],
+    "result_contains": ["MARKER-BACKGROUND done"],
+    "no_repeated_calls": true,
+    "max_requests": 3,
+    "max_tool_calls": 2
+  }
+}

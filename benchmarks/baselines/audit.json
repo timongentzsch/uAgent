@@ -1,9 +1,9 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-25T20:35:29Z",
+  "generated_at": "2026-08-26T05:13:14Z",
   "hardware": {
     "binary_bytes": 7999256,
-    "peak_rss_bytes": 11796480
+    "peak_rss_bytes": 11812864
   },
   "token": {
     "system_chars": 2993,
@@ -21,8 +21,8 @@
   "speed": {
     "rebuild_fanout": {
       "include/core/strings.h": 56,
-      "include/core/checked.h": 52,
       "include/core/json.h": 52,
+      "include/core/checked.h": 52,
       "include/core/env.h": 45,
       "include/core/time.h": 41,
       "include/core/platform.h": 39
@@ -30,16 +30,18 @@
   },
   "capability": {
     "surface_tools": 19,
-    "scenarios": 7,
-    "checks": 42,
+    "scenarios": 9,
+    "checks": 52,
     "tiers": {
-      "regression": 7
+      "regression": 8,
+      "capability": 1
     },
     "tool_calls": {
-      "read_path": 13,
+      "run": 2,
+      "activity": 1,
+      "read_path": 17,
       "edit_file": 1,
-      "grep": 2,
-      "run": 1
+      "grep": 2
     }
   },
   "readability": {
@@ -49,13 +51,13 @@
     "largest_file": "src/tools/jobs.cc"
   },
   "representativeness": {
-    "real_calls": 4424,
+    "real_calls": 4426,
     "real_mix": {
-      "run": 2508,
-      "edit_file": 543,
-      "read_path": 499,
+      "run": 2512,
+      "edit_file": 545,
+      "read_path": 498,
       "grep": 315,
-      "activity": 213,
+      "activity": 208,
       "scratch": 89,
       "memory": 54,
       "web_search": 51

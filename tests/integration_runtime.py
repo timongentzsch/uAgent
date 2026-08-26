@@ -397,6 +397,57 @@ def test_project_instructions_precede_first_turn(root, home):
         assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
 
 
+def test_session_journal_records_digests_not_argument_values(root, home):
+    """The journal must say what happened without saying what was in it.
+
+    Argument values stay out by design, which also meant a later reader could
+    not tell an identical repeated call from a new one, or say which failure a
+    tool hit. A digest and the error code answer both and leak neither.
+    """
+    secret = root / "canary-argument-name.txt"
+    secret.write_text("body\n", encoding="utf-8")
+
+    def read_once(_, __):
+        return tool_call("read_path", {"path": secret.name})
+
+    def read_again(_, __):
+        return tool_call("read_path", {"path": secret.name}, call_id="call-2")
+
+    def read_missing(_, __):
+        return tool_call("read_path", {"path": "absent.txt"}, call_id="call-3")
+
+    responders = [read_once, read_again, read_missing, event({"content": "journal-ok"})]
+    with Server(responders) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [(b"inspect\n", b"journal-ok"), b"", b"/q\n"],
+        )
+        assert_true(code == 0, output)
+
+    sessions = list((home / ".uagent" / "history").rglob("*.json"))
+    journal = pathlib.Path(str(sessions[0]) + ".events.jsonl")
+    text = journal.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in text.splitlines()]
+    calls = [r["data"] for r in records if r["type"] == "tool.call"]
+    results = [r["data"] for r in records if r["type"] == "tool.result"]
+    assert_true(len(calls) == 3, calls)
+
+    digests = [call.get("arguments_digest", "") for call in calls]
+    assert_true(all(len(digest) == 12 for digest in digests), digests)
+    # The repeat matches; the different path does not.
+    assert_true(digests[0] == digests[1], digests)
+    assert_true(digests[2] != digests[0], digests)
+
+    failed = [r for r in results if r.get("status") != "ok"]
+    assert_true(len(failed) == 1, results)
+    assert_true(failed[0].get("error_code") == "not_found", failed)
+
+    # The value itself never reaches the journal, digest or not.
+    assert_true("canary-argument-name" not in text, "argument value leaked")
+    assert_true("absent.txt" not in text, "argument value leaked")
+
+
 def test_session_title_replaces_initial_greeting(root, home):
     with Server([event({"content": "hello-ok"}), event({"content": "task-ok"})]) as server:
         code, output = run_pty(
@@ -1481,6 +1532,7 @@ def test_headless_reaps_timed_out_process(root, home):
 
 TESTS = (
     test_prompt_overlay_replaces_base_sections,
+    test_session_journal_records_digests_not_argument_values,
     test_plain_turn,
     test_adaptive_system_revises_replaces_and_clears,
     test_stream_error_is_not_an_empty_response,

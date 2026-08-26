@@ -1,8 +1,19 @@
 {
   "schema": "uagent.eval.baseline.v1",
-  "generated_at": "2026-08-25T20:35:28Z",
+  "generated_at": "2026-08-26T05:13:50Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
+    "background_activity/control": {
+      "score": 7,
+      "checks_total": 7,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 16471,
+      "initial_schema_chars": 10105
+    },
     "cache_hit_diagnosis/compacted": {
       "score": 10,
       "checks_total": 10,
@@ -11,7 +22,7 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 1,
-      "max_estimated_request_chars": 15433,
+      "max_estimated_request_chars": 15429,
       "initial_schema_chars": 10105
     },
     "cache_hit_diagnosis/control": {
@@ -22,7 +33,7 @@
       "max_batch": 2,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 20132,
+      "max_estimated_request_chars": 20128,
       "initial_schema_chars": 10105
     },
     "edit_and_verify/control": {
@@ -33,7 +44,7 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14832,
+      "max_estimated_request_chars": 14828,
       "initial_schema_chars": 10105
     },
     "failed_call_recovery/control": {
@@ -44,7 +55,18 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14573,
+      "max_estimated_request_chars": 14569,
+      "initial_schema_chars": 10105
+    },
+    "live_survey/control": {
+      "score": 5,
+      "checks_total": 5,
+      "model_requests": 2,
+      "tool_calls": 4,
+      "max_batch": 4,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 14873,
       "initial_schema_chars": 10105
     },
     "parallel_batch/control": {
@@ -55,7 +77,7 @@
       "max_batch": 3,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14638,
+      "max_estimated_request_chars": 14634,
       "initial_schema_chars": 10105
     },
     "repeated_grep/control": {
@@ -66,7 +88,7 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 16050,
+      "max_estimated_request_chars": 16046,
       "initial_schema_chars": 10105
     },
     "repeated_read/control": {
@@ -77,7 +99,7 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15429,
+      "max_estimated_request_chars": 15425,
       "initial_schema_chars": 10105
     },
     "shell_probe/control": {
@@ -88,7 +110,7 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14232,
+      "max_estimated_request_chars": 14228,
       "initial_schema_chars": 10105
     }
   }

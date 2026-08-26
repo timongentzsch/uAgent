@@ -172,9 +172,15 @@ inline void EmitToolResultObservation(const CallTask& task,
 
 inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step,
                          bool text_protocol) {
-  return {{"turn", turn},           {"step", step},
-          {"id", call.id},          {"name", call.name},
-          {"arguments", call.args}, {"text_protocol", text_protocol}};
+  // A digest, never the arguments: the journal deliberately keeps values out,
+  // and a fingerprint is enough to see that the same call was made twice.
+  return {{"turn", turn},
+          {"step", step},
+          {"id", call.id},
+          {"name", call.name},
+          {"arguments", call.args},
+          {"arguments_digest", HashHex(call.args).substr(0, 12)},
+          {"text_protocol", text_protocol}};
 }
 
 inline void CancelCall(CallTask& task) {

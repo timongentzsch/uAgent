@@ -57,9 +57,6 @@ class HeadTailBuffer {
     return output;
   }
 
-  size_t RetainedBytes() const { return head_.size() + tail_.size(); }
-  size_t OmittedBytes() const { return omitted_; }
-
  private:
   size_t head_budget_;
   size_t tail_budget_;

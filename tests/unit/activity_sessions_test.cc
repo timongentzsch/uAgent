@@ -88,8 +88,6 @@ void TestActivitySessions() {
   HeadTailBuffer buffer(10);
   buffer.Push("abcdefghij");
   buffer.Push("klmnop");
-  CHECK(buffer.RetainedBytes() == 10);
-  CHECK(buffer.OmittedBytes() == 6);
   CHECK(buffer.Snapshot().starts_with("abcde"));
   CHECK(buffer.Snapshot().ends_with("lmnop"));
   CHECK(buffer.Snapshot().find("6 bytes omitted") != std::string::npos);

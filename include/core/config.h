@@ -130,11 +130,6 @@ inline bool ProjectAgentConfigPresent() {
   return !path.empty() && std::filesystem::is_regular_file(path, ec);
 }
 
-// Either surface a workspace can use to reconfigure the agent.
-inline bool ProjectConfigPresent() {
-  return ProjectMcpPresent() || ProjectAgentConfigPresent();
-}
-
 inline bool ProjectMcpSnapshot(json& snapshot, std::string& error) {
   std::error_code ec;
   uintmax_t bytes = std::filesystem::file_size(".mcp.json", ec);

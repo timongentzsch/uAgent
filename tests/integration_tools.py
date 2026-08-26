@@ -397,6 +397,47 @@ def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, 
         assert_true(len(server.requests) == 4, len(server.requests))
 
 
+def test_activity_wait_outlives_the_per_call_budget(root, home):
+    """A wait is bounded by wait_ms, not by the budget meant for running work."""
+    workspace = root / "wait-budget-workspace"
+    workspace.mkdir()
+    marker = "slow-activity-finished"
+    waited = 3
+
+    def launch(*_):
+        # Yielding to the background is what leaves a waitable activity; a
+        # detached one is deliberately not waitable.
+        return tool_call(
+            "run",
+            {"command": f"sleep {waited}; echo {marker}", "yield_ms": 250},
+        )
+
+    def wait_for_it(*_):
+        return tool_call(
+            "activity",
+            {"operation": "wait", "mode": "all", "wait_ms": waited * 1000 + 4000},
+            call_id="call-2",
+        )
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        # The activity ran past the one-second per-call budget, so a truncated
+        # wait would report the cap and leave the marker unseen.
+        assert_true(marker in result, result)
+        assert_true("capped by" not in result, result)
+        return event({"content": "wait-budget-ok"})
+
+    with Server([launch, wait_for_it, finish]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_TOOL_TIMEOUT"] = "1"
+        started = time.time()
+        result = run(workspace, env, "--yolo", "-p", "wait for it", timeout=60)
+        elapsed = time.time() - started
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "wait-budget-ok", result.stdout)
+        assert_true(elapsed > waited, f"returned in {elapsed:.1f}s, before the activity ended")
+
+
 def test_parallel_run_overlaps(root, home):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
     sleep, count = 3, 4
@@ -809,6 +850,7 @@ TESTS = (
     test_tool_trace_repeated_rounds_are_telemetry_only,
     test_invalid_tool_rejection_loop_stops_before_fourth_round,
     test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard,
+    test_activity_wait_outlives_the_per_call_budget,
     test_parallel_run_overlaps,
     test_detached_terminal_survives_and_is_readable,
     test_detached_terminal_tracks_group_after_wrapper_exit,

@@ -741,6 +741,7 @@ TEST_ORDER = (
     "test_subagent_foreground_returns_result_without_wait_round",
     "test_parallel_subagents_auto_join",
     "test_subagent_interrupt_reaps_child",
+    "test_activity_wait_outlives_the_per_call_budget",
     "test_parallel_run_overlaps",
     "test_subagent_uses_selected_model_route",
     "test_subagent_failure_reports_route_stage_and_bounded_diagnostics",

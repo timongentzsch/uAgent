@@ -524,7 +524,7 @@ std::string CollectSessionOutput(const ProcessSupervisor& supervisor,
       std::string note = "[waited " + FmtDuration(waited);
       if (poll_capped) {
         note += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                " requested, capped by the tool timeout";
+                " requested, capped by the turn deadline";
       }
       return finish(note + "; process still running]");
     }
@@ -650,7 +650,7 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
         } else if (expired && !found) {
           // Returning the log alone reads as "here is the state you asked
           // for", when in fact the marker never appeared and the wait may have
-          // been cut short by the tool timeout rather than by wait_ms.
+          // been cut short by the turn deadline rather than by wait_ms.
           if (!accumulated.empty()) accumulated += "\n";
           double waited =
               std::chrono::duration<double>(now - watch_started).count();
@@ -661,7 +661,7 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
           if (watch_capped) {
             accumulated += " of " +
                            FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                           " requested, capped by the tool timeout";
+                           " requested, capped by the turn deadline";
           }
           accumulated += "; process still running; call again to keep waiting]";
           no_change = false;
@@ -1034,9 +1034,10 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   int64_t cap = ActivityOutputCap(max_output_chars);
 
   // The caller's wait_ms is only half the story: a tool call may not outlive
-  // context.deadline, so a long wait is silently cut short by the tool timeout.
-  // Both ends are reported below, because "timed out" alone reads as though the
-  // requested wait elapsed and invites the caller to give up on the activity.
+  // context.deadline, which for this tool is the turn's rather than the
+  // per-call budget. Both ends are reported below, because "timed out" alone
+  // reads as though the requested wait elapsed and invites the caller to give
+  // up on an activity that is running normally.
   auto wait_started = std::chrono::steady_clock::now();
   auto wait_requested = wait_started + std::chrono::milliseconds(wait_ms);
   auto deadline = std::min(context.deadline, wait_requested);
@@ -1075,7 +1076,7 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
       output += "[waited " + FmtDuration(waited);
       if (wait_capped) {
         output += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
-                  " requested, capped by the tool timeout";
+                  " requested, capped by the turn deadline";
       }
       output += "; " + std::to_string(running) +
                 " activity(s) still running; call again to keep waiting]";

@@ -243,9 +243,11 @@ void TestActivitySessions() {
     (void)ToolActivityWait(non_tty, {id}, "all", 2000, context);
   }
 
-  // A wait the tool deadline cuts short has to say so. Reporting only that it
+  // A wait the turn deadline cuts short has to say so. Reporting only that it
   // timed out reads as though the requested wait elapsed, which invites the
-  // caller to conclude the activity is stuck and stop waiting on it.
+  // caller to conclude the activity is stuck and stop waiting on it. The
+  // per-call budget no longer truncates a wait at all — the tool declares
+  // timeout_s 0 — so an explicit WithTimeout stands in for the turn's.
   ProcessSupervisor capped_wait;
   CHECK(RunShellCommand(
             capped_wait, context,
@@ -258,16 +260,16 @@ void TestActivitySessions() {
     ToolResult capped = ToolActivityWait(capped_wait, {id}, "all", 300000,
                                          context.WithTimeout(1));
     CHECK(capped.Ok());
-    CHECK(capped.output.find("requested, capped by the tool timeout") !=
+    CHECK(capped.output.find("requested, capped by the turn deadline") !=
           std::string::npos);
     CHECK(capped.output.find("call again to keep waiting") !=
           std::string::npos);
     // Reaching wait_ms on its own is a different fact and must not blame the
-    // timeout, or the caller learns to ignore the distinction.
+    // deadline, or the caller learns to ignore the distinction.
     ToolResult plain = ToolActivityWait(capped_wait, {id}, "all", 300, context);
     CHECK(plain.Ok());
     CHECK(plain.output.find("[waited ") != std::string::npos);
-    CHECK(plain.output.find("capped by the tool timeout") == std::string::npos);
+    CHECK(plain.output.find("capped by") == std::string::npos);
   }
 
   ProcessSupervisor closed_input;

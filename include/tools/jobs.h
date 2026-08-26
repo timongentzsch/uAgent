@@ -56,7 +56,11 @@ std::string ReadLogTail(const std::string& path, int64_t cap);
 uint64_t LogFileBytes(const std::string& path);
 void RemoveLog(const std::string& path);
 ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes);
-CollectedLog CollectCompletedLog(const std::string& path, int64_t cap);
+// `failed` keeps the log as an artifact whatever its size: a failure is
+// summarised on the way back, so deleting the log discards the detail exactly
+// when someone needs it.
+CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
+                                 bool failed);
 int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);

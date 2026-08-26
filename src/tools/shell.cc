@@ -374,7 +374,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       status = session->wait_status.value_or(0);
       output = LimitOutput(session->transcript.Snapshot(), interaction_cap);
     }
-    CollectedLog collected = CollectCompletedLog(log, ToolResultCap());
+    CollectedLog collected = CollectCompletedLog(
+        log, ToolResultCap(),
+        /*failed=*/!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
     if (collected.artifact) output = std::move(collected.output);
     ToolResult result = build(std::move(output), status);
     result.artifact = std::move(collected.artifact);

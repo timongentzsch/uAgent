@@ -438,8 +438,109 @@ def test_subagent_recursion_is_depth_bounded(root, home):
         assert_true(result.stdout.strip() == "False", result.stdout)
 
 
+def test_subagent_reports_the_limit_that_stopped_the_child(root, home):
+    """A child that hits a ceiling says which one, so the caller can decide."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            # Two calls in one round against a ceiling of one: the child
+            # refuses the batch and stops on max_tool_calls.
+            return event(
+                {
+                    "tool_calls": [
+                        {
+                            "index": i,
+                            "id": f"child-call-{i}",
+                            "function": {
+                                "name": "run",
+                                "arguments": json.dumps({"command": "echo child-work"}),
+                            },
+                        }
+                        for i in range(2)
+                    ]
+                },
+                finish="tool_calls",
+            )
+        results = tool_results(messages)
+        if results:
+            report = results[-1]
+            assert_true("max_tool_calls" in report, report)
+            assert_true("child stopped" in report, report)
+            # The parent gets the child's answer and reason, not its envelope.
+            assert_true("uagent.headless.v1" not in report, report)
+            # And a pointer to everything the child printed.
+            assert_true("captured log:" in report, report)
+            return event({"content": "limit-reported-ok"})
+        return tool_call(
+            "subagent",
+            {"prompt": "child", "background": False, "max_tool_calls": 1},
+        )
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "limit-reported-ok", result.stdout)
+
+
+def test_subagent_foreground_outlives_the_per_call_budget(root, home):
+    """A child the caller waits for is bounded by max_seconds, not by the
+    budget that stops a runaway command.
+
+    The child spends its time working rather than stalling, so this measures
+    the parent's per-call budget and not the child's first-event timeout.
+    """
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            child_results = tool_results(messages)
+            if any("child-slept" in result for result in child_results):
+                return event({"content": "slow-child-result"})
+            return tool_call("run", {"command": "sleep 2; echo child-slept"})
+        results = tool_results(messages)
+        if any("slow-child-result" in result for result in results):
+            return event({"content": "slow-child-ok"})
+        return tool_call("subagent", {"prompt": "child", "background": False})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_TOOL_TIMEOUT"] = "1"
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=40)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "slow-child-ok", result.stdout)
+
+
+def test_subagent_clamps_are_reported_not_silent(root, home):
+    """Loosening past a host ceiling is clamped, and the caller is told."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            return event({"content": "clamped-child-result"})
+        results = tool_results(messages)
+        if results:
+            report = results[-1]
+            assert_true("clamped max_seconds to 2" in report, report)
+            return event({"content": "clamp-reported-ok"})
+        return tool_call(
+            "subagent",
+            {"prompt": "child", "background": False, "max_seconds": 600},
+        )
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_SUBAGENT_TIMEOUT"] = "2"
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=30)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "clamp-reported-ok", result.stdout)
+
+
 TESTS = (
     test_subagent_auto_join_continues_turn,
+    test_subagent_reports_the_limit_that_stopped_the_child,
+    test_subagent_foreground_outlives_the_per_call_budget,
+    test_subagent_clamps_are_reported_not_silent,
     test_subagent_foreground_returns_result_without_wait_round,
     test_parallel_subagents_auto_join,
     test_subagent_interrupt_reaps_child,

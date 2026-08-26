@@ -77,6 +77,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_DEPTH` | integer | `2` | restart-required | deepest delegation level allowed |
 | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | restart-required | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
+| `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
 

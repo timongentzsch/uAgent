@@ -4,6 +4,20 @@
 
 ### Added
 
+- A delegated child reports why it stopped. The headless envelope gained a
+  `stop` object — the reason in a vocabulary a caller can branch on
+  (`max_steps`, `max_tool_calls`, `turn_deadline`, `turn_cost`,
+  `session_budget`, `repeated_calls`, `completed`), what it consumed, and the
+  limits that were in force. `subagent` runs its child with `--json` and
+  renders that, so a parent sees `[child stopped: max_tool_calls after 1
+  step(s) … rerun with that ceiling raised, or use this partial result as it
+  is]` instead of guessing from prose. A child that produces no envelope has
+  its raw output returned and labelled as raw.
+- `subagent` takes `max_seconds`, `max_cost` and `memory`. A caller may tighten
+  any of them freely; loosening is bounded by the host ceiling
+  (`UAGENT_SUBAGENT_TIMEOUT`, the session budget, the session's memory switch)
+  and a clamp is reported in the result rather than applied silently. Memory
+  can be denied to a child but never granted beyond what the session allows.
 - `uagent_info topic=routes` reports the model routes and named providers this
   build can reach, the selection grammar that names one, and whether each
   carries a credential — never the credential itself. The route table was the
@@ -100,6 +114,20 @@
 
 ### Fixed
 
+- A failed process keeps its log. Completed logs under the result cap were
+  deleted as disposable, which holds only when the caller received the whole
+  thing — and a failure is summarised on its way back, bounded to 2,048 bytes
+  for a delegated child. A child failing with 2–8 KB of output therefore had
+  the remainder destroyed at the moment someone needed it. Failure is now a
+  second reason to keep the log as a private artifact, whatever its size, and
+  the pointer to it is printed outside the summarised diagnostics rather than
+  inside them, where it was being squeezed away.
+- A foreground `subagent` is no longer cut off after 30 seconds. It inherited
+  `UAGENT_TOOL_TIMEOUT` like any other call, so `background=false` died at the
+  per-call budget however long the work took, which made the `max_steps` and
+  `max_tool_calls` ceilings unreachable: no child runs 100 model rounds in
+  thirty seconds. It is now bounded by `max_seconds` when given and by the turn
+  otherwise, as `run`, `scratch` and `activity` already were.
 - An `activity` wait lasts as long as it was asked to. The tool inherited
   `UAGENT_TOOL_TIMEOUT`, thirty seconds by default, so a `wait_ms` of five
   minutes — which the schema offers and the caller chose — was cut at thirty

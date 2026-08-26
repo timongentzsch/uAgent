@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "include/api.h"
 #include "include/core/child_env.h"
@@ -38,8 +39,18 @@ std::string ChildAgentFailureReport(std::string_view route,
 EnvironmentOverrides ChildAgentEnvironment(SideRoute route);
 
 // The child is always headless and self-approving; it has only the tools its
-// toolset grants it.
+// toolset grants it. It reports in the headless JSON envelope, so the parent
+// reads an answer and a stop reason rather than guessing from prose.
 std::string ChildAgentCommand(bool debug, const std::string& prompt);
+
+// The child's answer, followed by what the caller has to know to decide: any
+// ceiling that was clamped on the way in, and the limit that ended the child
+// if one did. Raw output is returned verbatim when no envelope is found,
+// labelled as raw rather than passed off as an answer.
+std::string ChildAgentAnswer(std::string output,
+                             const std::vector<std::string>& clamped);
+std::optional<json> ChildAgentEnvelope(const std::string& output);
+std::string ChildAgentStopNote(const json& stop);
 
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the

@@ -38,6 +38,7 @@ bool LeanToolset();
 // flailing subagent cannot spend the whole turn.
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
+int64_t SubagentTimeoutSeconds();
 std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();

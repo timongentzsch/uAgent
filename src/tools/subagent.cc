@@ -156,7 +156,24 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "integer"},
         {"minimum", 1},
         {"maximum", 500},
-        {"description", "optional tool-call ceiling for this child"}}}};
+        {"description", "optional tool-call ceiling for this child"}}},
+      {"max_seconds",
+       {{"type", "integer"},
+        {"minimum", 1},
+        {"maximum", 3600},
+        {"description",
+         "wall-clock ceiling for a foreground child; omit to let it run to "
+         "its other limits"}}},
+      {"max_cost",
+       {{"type", "number"},
+        {"minimum", 0},
+        {"description",
+         "reported-cost ceiling for this child; clamped to what remains of "
+         "the session budget"}}},
+      {"memory",
+       {{"type", "boolean"},
+        {"description",
+         "default inherits this session; false denies the child memory"}}}};
   Tool tool = MakeTool(
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "
@@ -203,12 +220,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         int64_t tool_calls =
             JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls());
         bool background = JsonValue(arguments, "background", true);
+        // A caller may deny memory but not grant it: the session decides what
+        // this process may read, and a child cannot widen that.
+        bool child_memory = api.config.memory_enabled &&
+                            JsonValue(arguments, "memory", true);
         environment.insert(
             environment.end(),
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
              {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
              {"UAGENT_TOOLSET", std::move(mode)},
-             {"UAGENT_MEMORY", api.config.memory_enabled ? "1" : "0"},
+             {"UAGENT_MEMORY", child_memory ? "1" : "0"},
              // The parent brief is standalone. Re-inlining every always-on
              // memory in each child only duplicates context and emits a
              // misleading truncation warning when that optional cache is full.
@@ -219,14 +240,42 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (background) {
           environment.emplace_back("UAGENT_HEADLESS_PROGRESS", "1");
         }
+        // Tightening is the caller's to do; loosening is not. A requested
+        // budget above what the session has left is clamped, and the clamp is
+        // reported rather than applied behind the caller's back.
+        std::vector<std::string> clamped;
+        double child_budget = JsonValue(arguments, "max_cost", 0.0);
         if (api.config.session_budget > 0) {
-          environment.emplace_back("UAGENT_SESSION_BUDGET",
-                                   std::to_string(remaining_budget));
+          if (child_budget <= 0 || child_budget > remaining_budget) {
+            if (child_budget > remaining_budget) {
+              clamped.push_back("max_cost to " + FmtCost(remaining_budget) +
+                                ", the session's remainder");
+            }
+            child_budget = remaining_budget;
+          }
         }
+        if (child_budget > 0) {
+          environment.emplace_back("UAGENT_SESSION_BUDGET",
+                                   std::to_string(child_budget));
+        }
+        // The per-call budget bounds a command that might run away. A child
+        // the caller chose to wait for is supervised, so it is bounded by
+        // max_seconds when given and by the turn otherwise.
+        ToolContext child_context = context;
+        int64_t max_seconds = JsonValue(arguments, "max_seconds", int64_t{0});
+        int64_t ceiling = SubagentTimeoutSeconds();
+        if (ceiling > 0 && (max_seconds <= 0 || max_seconds > ceiling)) {
+          if (max_seconds > ceiling) {
+            clamped.push_back("max_seconds to " + std::to_string(ceiling) +
+                              ", this build's ceiling");
+          }
+          max_seconds = ceiling;
+        }
+        if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
         std::string command =
             ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
         ToolResult result =
-            RunShellCommand(processes, context,
+            RunShellCommand(processes, child_context,
                             {.command = std::move(command),
                              .background = background,
                              .immediate = background,
@@ -234,6 +283,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                              .activity_label = route_label,
                              .environment = std::move(environment)})
                 .result;
+        if (result.Ok()) {
+          result.output = ChildAgentAnswer(std::move(result.output), clamped);
+        }
         if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
           ChildAgentFailureStage stage =
               result.error == ToolErrorCode::kProcessFailed ||
@@ -245,7 +297,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         return result;
       });
-  tool.clamped_arguments = {"max_steps", "max_tool_calls"};
+  tool.clamped_arguments = {"max_steps", "max_tool_calls", "max_seconds"};
+  // Same reasoning as run, scratch and activity: the per-call budget stops a
+  // command running away, and a child the caller is waiting for is neither
+  // unsupervised nor unbounded — max_seconds and the turn bound it, and
+  // Escape still returns immediately.
+  tool.timeout_s = 0;
   tool.mutating = true;
   tool.capabilities = Capability(ToolCapability::kDelegate);
   tool.delegates = true;

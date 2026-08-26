@@ -198,6 +198,8 @@ jobs:
       - run: uv run --frozen ruff format --check tests benchmarks
       - name: Check the slop checks against their fixtures
         run: uv run --frozen python benchmarks/slopscan.py --self-test
+      - name: Check the session failure join against its fixtures
+        run: uv run --frozen python benchmarks/session_metrics.py --self-test
       - name: Scan the tree for slop
         run: uv run --frozen python benchmarks/slopscan.py
 

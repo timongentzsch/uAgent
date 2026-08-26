@@ -192,10 +192,27 @@ void TestToolExecutionPolicy() {
     std::ofstream output(small_log);
     output << "small";
   }
-  CollectedLog small_log_result = CollectCompletedLog(small_log.string(), 16);
+  CollectedLog small_log_result =
+      CollectCompletedLog(small_log.string(), 16, /*failed=*/false);
   CHECK(small_log_result.output == "small");
   CHECK(!small_log_result.artifact);
   CHECK(!fs::exists(small_log));
+
+  // A small log from a process that failed is not disposable: the failure is
+  // summarised on the way back, so this is the only full copy.
+  fs::path failed_log = log_root / "failed.log";
+  {
+    std::ofstream output(failed_log);
+    output << "failure detail worth keeping";
+  }
+  CollectedLog failed_result = [&] {
+    ScopedEnv scoped_home("HOME", log_root.c_str());
+    return CollectCompletedLog(failed_log.string(), 4096, /*failed=*/true);
+  }();
+  CHECK(failed_result.artifact.has_value());
+  CHECK(failed_result.artifact && failed_result.artifact->bytes == 28);
+  CHECK(failed_result.artifact && fs::exists(failed_result.artifact->path));
+  CHECK(!fs::exists(failed_log));
 
   fs::path large_log = log_root / "large.log";
   {
@@ -204,7 +221,7 @@ void TestToolExecutionPolicy() {
   }
   CollectedLog large_log_result = [&] {
     ScopedEnv scoped_home("HOME", log_root.c_str());
-    return CollectCompletedLog(large_log.string(), 16);
+    return CollectCompletedLog(large_log.string(), 16, /*failed=*/false);
   }();
   CHECK(large_log_result.artifact.has_value());
   CHECK(large_log_result.artifact &&
@@ -241,7 +258,7 @@ void TestToolExecutionPolicy() {
   }
   CollectedLog fallback_result = [&] {
     ScopedEnv scoped_home("HOME", fallback_home.c_str());
-    return CollectCompletedLog(fallback_log.string(), 16);
+    return CollectCompletedLog(fallback_log.string(), 16, /*failed=*/false);
   }();
   CHECK(fallback_result.artifact.has_value());
   CHECK(fallback_result.artifact &&

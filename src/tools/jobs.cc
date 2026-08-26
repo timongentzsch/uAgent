@@ -204,10 +204,16 @@ ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
 // private artifacts so the model can inspect only the relevant slice instead
 // of paying to keep the entire stream in context. Non-detached process logs
 // are single files; rotating detached logs have their own persistent lifecycle.
-CollectedLog CollectCompletedLog(const std::string& path, int64_t cap) {
+//
+// A failed process's log is never disposable, whatever its size. "Small"
+// stands in for "already fully reported", which holds only when the caller
+// keeps the whole thing: a failure is summarised on its way back, so deleting
+// the log destroys the detail the caller needs precisely when it needs it.
+CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
+                                 bool failed) {
   uint64_t bytes = LogFileBytes(path);
   CollectedLog collected{ReadLogTail(path, cap), std::nullopt};
-  if (cap > 0 && bytes > static_cast<uint64_t>(cap)) {
+  if (bytes > 0 && (failed || (cap > 0 && bytes > static_cast<uint64_t>(cap)))) {
     collected.artifact = PromoteLogArtifact(path, bytes);
   } else {
     RemoveLog(path);
@@ -940,10 +946,11 @@ std::vector<std::string> TakeCompleted(
     if (job.detached) unlink(DetachedRecordPath(job.pid).c_str());
     std::string incremental =
         job.session ? DrainIncremental(job, output_cap) : std::string();
+    bool failed = !(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     CollectedLog collected =
         job.detached
             ? CollectedLog{ReadLogTail(job.log, output_cap), std::nullopt}
-            : CollectCompletedLog(job.log, output_cap);
+            : CollectCompletedLog(job.log, output_cap, failed);
     if (job.detached) RemoveLog(job.log);
     std::string output;
     if (job.session) {
@@ -953,15 +960,21 @@ std::vector<std::string> TakeCompleted(
     } else {
       output = std::move(collected.output);
     }
-    if (collected.artifact) output += ArtifactHint(*collected.artifact);
+    // Appended after any failure report, not before: inside it the hint would
+    // be squeezed out with the rest of the diagnostics, and the pointer to the
+    // full log is the one line that must survive.
+    std::string artifact_note =
+        collected.artifact ? ArtifactHint(*collected.artifact) : std::string();
     ActivityKind activity_kind =
         job.session ? job.session->kind
                     : ParseActivityKind(job.kind, job.detached);
-    if (activity_kind == ActivityKind::kSubagent &&
-        !(WIFEXITED(status) && WEXITSTATUS(status) == 0)) {
-      output = ChildAgentFailureReport(
-          job.display_label, ChildAgentFailureStage::kExecution, output);
+    if (activity_kind == ActivityKind::kSubagent) {
+      output = failed ? ChildAgentFailureReport(
+                            job.display_label,
+                            ChildAgentFailureStage::kExecution, output)
+                      : ChildAgentAnswer(std::move(output), {});
     }
+    output += artifact_note;
     std::string formatted =
         BgResultHeader(job) + "\n" + output + FmtExit(status, /*show_ok=*/true);
     notes.push_back(formatted);

@@ -1,11 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/app/reference.h"
 #include "include/core/events.h"
 
 #include <sys/stat.h>
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 
 #include "tests/unit/test_support.h"
@@ -13,6 +15,13 @@
 namespace uagent {
 
 void TestObservabilityEvents() {
+  json manifest = ReferenceManifestJson();
+  json provenance = BuildProvenanceJson();
+  CHECK(JsonValue(provenance, "format", 0) == 1);
+  CHECK(provenance["binary_version"] == manifest["version"]);
+  CHECK(provenance["prompt_digest"] == manifest["prompt_digest"]);
+  CHECK(JsonValue(provenance, "build_id", "").size() == 16);
+
   // The public_type strings are the --json-stream contract that external
   // consumers parse, so they are pinned here rather than left to the table.
   CHECK(std::string(PolicyFor(EventId::kTurnStarted).public_type) ==
@@ -48,6 +57,41 @@ void TestObservabilityEvents() {
   CHECK(notices.Size() == 1);
 
   TestWorkspace workspace("events");
+  SessionJournal projections;
+  Event ready{EventId::kSessionReady,
+              {{"model", "fixture-model"},
+               {"toolset", "lean"},
+               {"provenance",
+                {{"format", 1},
+                 {"build_id", "fixture-build"},
+                 {"prompt_digest", "fixture-prompt"}}},
+               {"effective_config", {{"api_key", "secret-must-not-leak"}}}}};
+  projections.Append(ready, PolicyFor(ready.id));
+  Event result{EventId::kToolResult,
+               {{"turn", 1},
+                {"step", 1},
+                {"id", "poll"},
+                {"name", "activity"},
+                {"status", "ok"},
+                {"issue_code", "schema.type"},
+                {"issue_field", "wait_ms"},
+                {"activity_operation", "poll"},
+                {"no_change", true},
+                {"activity_terminal", false}}};
+  projections.Append(result, PolicyFor(result.id));
+  std::string projection_path =
+      (workspace.root / "projections.jsonl").string();
+  std::string projection_error;
+  CHECK(projections.Flush(projection_path, projection_error));
+  std::ifstream projection_input(projection_path);
+  std::string projection_text{std::istreambuf_iterator<char>(projection_input),
+                              std::istreambuf_iterator<char>()};
+  CHECK(projection_text.find("fixture-build") != std::string::npos);
+  CHECK(projection_text.find("secret-must-not-leak") == std::string::npos);
+  CHECK(projection_text.find("schema.type") != std::string::npos);
+  CHECK(projection_text.find("activity_operation") != std::string::npos);
+  CHECK(projection_text.find("no_change") != std::string::npos);
+
   SessionJournal journal;
   for (int64_t sequence = 1; sequence <= 600; ++sequence) {
     Event event{EventId::kTurnCompleted,

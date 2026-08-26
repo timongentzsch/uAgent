@@ -81,7 +81,7 @@ struct BgJob {
         int64_t activity_id = 0,
         std::shared_ptr<ActivitySession> activity = nullptr,
         std::string label = {}, std::string receipt = {},
-        std::string source = {});
+        std::string source = {}, std::vector<std::string> notes = {});
 
   pid_t pid;
   std::string log, cmd;
@@ -92,6 +92,7 @@ struct BgJob {
   std::string display_label;
   std::string receipt_path;
   std::string source_id;
+  std::vector<std::string> completion_notes;
 };
 
 inline int64_t ActivityId(const BgJob& job) {

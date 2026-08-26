@@ -173,6 +173,8 @@ json JournalProjection(const Event& event) {
       copy("route");
       copy("context_window");
       copy("capabilities");
+      copy("toolset");
+      copy("provenance");
       if (event.data.contains("base_url") &&
           event.data["base_url"].is_string()) {
         data["host"] = UrlHost(event.data["base_url"].get<std::string>());
@@ -190,13 +192,24 @@ json JournalProjection(const Event& event) {
     case EventId::kTurnStarted:
       copy("turn");
       copy("origin");
+      copy("messages");
+      copy("context_tokens");
       break;
     case EventId::kTurnStopped:
     case EventId::kTurnCompleted:
       copy("turn");
       copy("outcome");
       copy("steps");
+      copy("tool_calls");
+      copy("duration_ms");
+      copy("ttt_ms");
+      copy("tokens_per_second");
+      copy("generation_ms");
+      copy("generated_tokens");
       copy("usage");
+      copy("session_usage");
+      copy("messages");
+      copy("context_tokens");
       break;
     case EventId::kToolCall:
       copy("turn");
@@ -205,6 +218,8 @@ json JournalProjection(const Event& event) {
       copy("name");
       copy("arguments_digest");
       copy("text_protocol");
+      copy("issue_code");
+      copy("issue_field");
       break;
     case EventId::kToolResult:
       copy("turn");
@@ -212,9 +227,15 @@ json JournalProjection(const Event& event) {
       copy("id");
       copy("name");
       copy("status");
+      copy("completion_status");
       // Which failure, not just that one happened: a journal that cannot name
       // the category cannot tell the next iteration what to fix.
       copy("error_code");
+      copy("issue_code");
+      copy("issue_field");
+      copy("activity_operation");
+      copy("no_change");
+      copy("activity_terminal");
       copy("duration_ms");
       copy("result_chars");
       copy("artifact_path");

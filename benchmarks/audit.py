@@ -40,7 +40,13 @@ sys.path.insert(0, str(ROOT / "benchmarks"))
 
 # isort: off
 from integration_support import Server, base_env, event  # noqa: E402
-from eval import load_scenarios, measured_command, peak_rss, read_trace  # noqa: E402
+from eval import (  # noqa: E402
+    load_scenarios,
+    measured_command,
+    peak_rss,
+    read_trace,
+    trace_metrics,
+)
 from slopscan import CHECKS as SLOP_CHECKS  # noqa: E402
 from slopscan import scan as slop_scan  # noqa: E402
 
@@ -97,6 +103,7 @@ def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
                 check=False,
             )
         records = read_trace(trace)
+    metrics = trace_metrics(records)
     request = next((r.get("data", {}) for r in records if r.get("event") == "model_request"), {})
     schemas = request.get("schema_snapshot") or []
     per_tool = {}
@@ -110,6 +117,9 @@ def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
         "schema_chars": int(request.get("schema_chars") or 0),
         "advertised_tools": len(schemas),
         "per_tool_bytes": dict(sorted(per_tool.items(), key=lambda item: -item[1])),
+        "cumulative_request_chars": metrics["cumulative_estimated_request_chars"],
+        "tool_result_chars": metrics["tool_result_chars"],
+        "model_duration_ms": metrics["model_duration_ms"],
     }
 
 
@@ -177,6 +187,26 @@ def scenario_coverage() -> dict[str, Any]:
         "checks": checks,
         "tiers": dict(tiers),
         "tool_calls": dict(tools),
+    }
+
+
+def evaluation_resources() -> dict[str, Any]:
+    """Committed scenario telemetry, descriptive rather than a global gate."""
+    baseline = ROOT / "benchmarks" / "baselines" / "hermetic.json"
+    if not baseline.is_file():
+        return {}
+    scenarios = json.loads(baseline.read_text(encoding="utf-8")).get("scenarios", {})
+    values = list(scenarios.values())
+    return {
+        "cases": len(values),
+        "cumulative_request_chars": sum(
+            int(value.get("cumulative_estimated_request_chars") or 0) for value in values
+        ),
+        "tool_result_chars": sum(int(value.get("tool_result_chars") or 0) for value in values),
+        "max_request_chars": max(
+            (int(value.get("max_estimated_request_chars") or 0) for value in values),
+            default=0,
+        ),
     }
 
 
@@ -257,6 +287,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
     surface = tool_surface()
     always = sum(int(row["bytes"]) for row in surface if row["when"] == "always")
     coverage = scenario_coverage()
+    resources = evaluation_resources()
     real = real_tool_mix(Path(arguments.history).expanduser(), arguments.since)
     # History outlives releases: a journal can name a tool this build no longer
     # has, and that is a rename to acknowledge, not a coverage gap to chase.
@@ -297,6 +328,14 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         "capability": {
             "surface_tools": len(surface),
             **coverage,
+        },
+        "trajectory": {
+            "probe": {
+                "cumulative_request_chars": session.get("cumulative_request_chars", 0),
+                "tool_result_chars": session.get("tool_result_chars", 0),
+                "model_duration_ms": session.get("model_duration_ms", 0),
+            },
+            "hermetic_baseline": resources,
         },
         "readability": lint_probes(),
         "representativeness": {
@@ -364,6 +403,17 @@ def render(report: dict[str, Any]) -> None:
         f"{capability['scenarios']} scenarios {capability['tiers']} with "
         f"{capability['checks']} checks over {sorted(capability['tool_calls'])}"
     )
+    trajectory = report.get("trajectory", {})
+    baseline_trajectory = trajectory.get("hermetic_baseline", {})
+    probe_trajectory = trajectory.get("probe", {})
+    if baseline_trajectory:
+        print(
+            "trajectory    {cases} cases · cumulative request "
+            "{cumulative_request_chars:,} chars · tool results "
+            "{tool_result_chars:,} chars · probe model "
+            f"{probe_trajectory.get('model_duration_ms', 0):.0f}ms "
+            "(descriptive, no global ceiling)".format(**baseline_trajectory)
+        )
     readability = report["readability"]
     print(
         f"readability   {readability['lint_findings']} lint findings, "

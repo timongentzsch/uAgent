@@ -269,26 +269,34 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
         std::string command =
             ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
-        ToolResult result =
-            RunShellCommand(processes, child_context,
-                            {.command = std::move(command),
-                             .background = background,
-                             .immediate = background,
-                             .job_kind = "subagent",
-                             .activity_label = route_label,
-                             .environment = std::move(environment)})
-                .result;
+        ShellCommandResult child = RunShellCommand(
+            processes, child_context,
+            {.command = std::move(command),
+             .background = background,
+             .immediate = background,
+             .job_kind = "subagent",
+             .activity_label = route_label,
+             .completion_notes = clamped,
+             .environment = std::move(environment)});
+        ToolResult result = std::move(child.result);
         if (result.Ok()) {
-          result.output = ChildAgentAnswer(std::move(result.output), clamped);
+          // A launch receipt is process-supervisor output, not a malformed
+          // child answer. Only a process that actually completed can have a
+          // headless envelope to unwrap; retained completion notes travel with
+          // a background job and are added again to its final result.
+          result.output = child.wait_status
+                              ? ChildAgentAnswer(std::move(result.output),
+                                                 clamped)
+                              : std::move(result.output) +
+                                    ChildAgentConstraintNotes(clamped);
         }
         if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
           ChildAgentFailureStage stage =
-              result.error == ToolErrorCode::kProcessFailed ||
-                      result.status == CompletionStatus::kTimedOut
-                  ? ChildAgentFailureStage::kExecution
-                  : ChildAgentFailureStage::kSpawn;
+              child.wait_status ? ChildAgentFailureStage::kExecution
+                                : ChildAgentFailureStage::kSpawn;
           result.output =
-              ChildAgentFailureReport(route_label, stage, result.output);
+              ChildAgentFailureReport(route_label, stage, result.output) +
+              ChildAgentConstraintNotes(clamped);
         }
         return result;
       });

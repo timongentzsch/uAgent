@@ -198,6 +198,14 @@ if(BUILD_TESTING)
                      $<TARGET_FILE:uagent> --group ${group})
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
   endforeach()
+  add_test(NAME session_metrics_self_test
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
+                   --self-test)
+  add_test(NAME eval_harness_self_test
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
+                   --self-test)
   # Behavioral scoreboard: every scenario is scored and compared against the
   # committed baseline, so a harness change that costs rounds, batching or
   # answer quality fails here rather than being noticed later.

@@ -1,0 +1,37 @@
+{
+  "name": "browser_outcome_rounds",
+  "description": "A deterministic local browser task scores successful outcome, rounds, cumulative context/snapshot characters, and recovery after one intermediate failure; it never rewards command chaining itself.",
+  "tier": "capability",
+  "live_only": true,
+  "variants": ["control"],
+  "yolo": true,
+  "prompt": "Use the browser-use skill on ${workspace_uri}/browser_fixture.html. Enter code 314, submit it, recover from the page's first TEMPORARY-FAILURE, and report the final BROWSER-OUTCOME marker. Do not read the HTML source as a substitute for operating the page.",
+  "files": {
+    "browser_fixture.html": "<!doctype html><meta charset=\"utf-8\"><title>Browser recovery fixture</title><label>Code <input id=\"code\"></label><button id=\"submit\">Submit</button><pre id=\"status\">READY</pre><script>let attempts=0;document.querySelector('#submit').onclick=()=>{attempts++;const status=document.querySelector('#status');if(attempts===1){status.textContent='TEMPORARY-FAILURE: retry once';return;}status.textContent=document.querySelector('#code').value==='314'?'BROWSER-OUTCOME-731':'WRONG-CODE';};</script>\n",
+    "playwright-cli-fixture": "case \"$1\" in\n  first) echo 'TEMPORARY-FAILURE: retry once' >&2; exit 7 ;;\n  recover) echo 'snapshot: BROWSER-OUTCOME-731' ;;\n  *) exit 2 ;;\nesac\n"
+  },
+  "script": [
+    {
+      "when": {"tool_results": 0},
+      "respond": {"tool_calls": [{"id": "browser-first", "name": "run", "arguments": {"command": "sh playwright-cli-fixture first"}}]}
+    },
+    {
+      "when": {"tool_results": 1},
+      "respond": {"tool_calls": [{"id": "browser-recover", "name": "run", "arguments": {"command": "sh playwright-cli-fixture recover"}}]}
+    },
+    {
+      "respond": {"content": "Recovered and reached BROWSER-OUTCOME-731."}
+    }
+  ],
+  "checks": {
+    "answer_contains": ["BROWSER-OUTCOME-731"],
+    "result_contains": ["TEMPORARY-FAILURE", "BROWSER-OUTCOME-731"],
+    "recovery_markers": ["TEMPORARY-FAILURE", "BROWSER-OUTCOME-731"],
+    "min_browser_commands": 2,
+    "min_browser_snapshot_chars": 20
+  },
+  "scoring": {
+    "outcome_checks": ["process_ok", "answer_contains", "recovery_markers", "min_browser_commands"],
+    "target_rounds": 3
+  }
+}

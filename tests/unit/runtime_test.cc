@@ -450,6 +450,14 @@ void TestChildEnvironmentPolicy() {
   CHECK(report.find("fallback: none") != std::string::npos);
   CHECK(report.find("diagnostic-head") != std::string::npos);
   CHECK(report.find("diagnostic-tail") != std::string::npos);
+  std::string connection_report = ChildAgentFailureReport(
+      "provider/child @ child.example", ChildAgentFailureStage::kExecution,
+      "connection error: Couldn't connect to server\nBearer secret-value");
+  CHECK(FirstLine(connection_report) ==
+        "error: child execution: connection error: Couldn't connect to "
+        "server");
+  CHECK(FirstLine(connection_report).find("secret-value") ==
+        std::string::npos);
 }
 
 void TestModelPreference() {

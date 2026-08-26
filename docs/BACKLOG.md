@@ -31,10 +31,17 @@ arrives in streaks where each consecutive round carries a single call: streaks
 of 2, 3, 6, 14, 23, 27, 38, 41 and 94. That is the cost; whether guidance
 moves it is not measured, and a live A/B already refuted one batching overlay.
 
-Still needed before writing any: a scenario scoring rounds rather than chaining
-syntax, so the gate cannot reward the mechanism over the outcome, and
-`eval.py --run` against a live route, because scripted scenarios measure the
-harness rather than whether the wording persuades a model.
+The measurement prerequisite now exists: `browser_outcome_rounds` uses a
+local deterministic page and scores outcome, model rounds, cumulative
+context/snapshot characters, and recovery after an intermediate failure.
+`eval.py` can repeat fresh trials and reports pass@1/pass@k/pass^k by
+route/model/provenance cohort. The scripted fixture proves the grader, not that
+new wording persuades a model.
+
+No browser guidance changes until a live A/B wins on outcome-adjusted rounds.
+The currently available local route does not report enforceable dollar cost,
+so the live run is blocked rather than launched without an authoritative
+aggregate cap.
 
 Risk: a chain reports one exit status, so a mid-chain failure is harder to
 attribute than a failed single call. Weigh that against the rounds saved.

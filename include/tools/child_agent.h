@@ -49,6 +49,8 @@ std::string ChildAgentCommand(bool debug, const std::string& prompt);
 // labelled as raw rather than passed off as an answer.
 std::string ChildAgentAnswer(std::string output,
                              const std::vector<std::string>& clamped);
+std::string ChildAgentConstraintNotes(
+    const std::vector<std::string>& clamped);
 std::optional<json> ChildAgentEnvelope(const std::string& output);
 std::string ChildAgentStopNote(const json& stop);
 

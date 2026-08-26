@@ -207,21 +207,40 @@ std::string ToolsMarkdown() {
 
 }  // namespace
 
-std::string ReferenceManifest() {
+json ReferenceManifestJson() {
   json settings = ConfigSchemaJson();
-  json manifest = {{"version", kVersion},
-                   {"settings", settings.size()},
-                   {"flags", CliSchemaJson().size()},
-                   {"commands", CommandSchemaJson().size()},
-                   {"schema_digest",
-                    HashHex(JsonDump(json{{"config", settings},
-                                          {"cli", CliSchemaJson()},
-                                          {"commands", CommandSchemaJson()}}))},
-                   // The bytes that steer the model get the same drift gate as
-                   // the bytes that configure it.
-                   {"prompt_digest", HashHex(JsonDump(PromptSurfaceJson()))},
-                   {"tools_digest", HashHex(JsonDump(ToolSurfaceJson()))}};
-  return JsonDump(manifest, 2) + "\n";
+  return {{"version", kVersion},
+          {"settings", settings.size()},
+          {"flags", CliSchemaJson().size()},
+          {"commands", CommandSchemaJson().size()},
+          {"schema_digest",
+           HashHex(JsonDump(json{{"config", settings},
+                                 {"cli", CliSchemaJson()},
+                                 {"commands", CommandSchemaJson()}}))},
+          // The bytes that steer the model get the same drift gate as the
+          // bytes that configure it.
+          {"prompt_digest", HashHex(JsonDump(PromptSurfaceJson()))},
+          {"tools_digest", HashHex(JsonDump(ToolSurfaceJson()))}};
+}
+
+json BuildProvenanceJson() {
+  const json manifest = ReferenceManifestJson();
+  json surface = {{"schema", manifest["schema_digest"]},
+                  {"tools", manifest["tools_digest"]}};
+  json provenance = {
+      {"format", 1},
+      {"binary_version", manifest["version"]},
+      {"prompt_digest", manifest["prompt_digest"]},
+      {"surface_digest", HashHex(JsonDump(surface))},
+  };
+  // A deterministic release identity, not a host, path, timestamp or other
+  // value that can split equivalent cohorts or disclose local state.
+  provenance["build_id"] = HashHex(JsonDump(provenance));
+  return provenance;
+}
+
+std::string ReferenceManifest() {
+  return JsonDump(ReferenceManifestJson(), 2) + "\n";
 }
 
 std::vector<ReferenceFile> ReferenceFiles() {

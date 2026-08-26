@@ -1,0 +1,9 @@
+{"type":"session.ready","data":{"model":"fixture","toolset":"lean","provenance":{"format":1,"binary_version":"0.fixture","build_id":"fixture-b","prompt_digest":"prompt-b","surface_digest":"surface-b","active_schema_digest":"active-b","toolset":"lean","behavior":{"memory":false,"max_tokens":600}}}}
+{"type":"turn.started","data":{"origin":"user","turn":1,"messages":2,"context_tokens":120}}
+{"type":"tool.call","data":{"id":"call-other","name":"edit_file","turn":1,"step":1,"arguments_digest":"c3","issue_code":"schema.type","issue_field":"offset"}}
+{"type":"tool.result","data":{"id":"call-other","name":"edit_file","turn":1,"step":1,"status":"failed","error_code":"invalid_arguments","issue_code":"schema.type","issue_field":"offset","duration_ms":2,"result_chars":90}}
+{"type":"tool.call","data":{"id":"poll","name":"activity","turn":1,"step":2,"arguments_digest":"p1"}}
+{"type":"tool.result","data":{"id":"poll","name":"activity","turn":1,"step":2,"status":"ok","activity_operation":"poll","no_change":true,"activity_terminal":false,"duration_ms":1,"result_chars":15}}
+{"type":"tool.call","data":{"id":"wait","name":"activity","turn":1,"step":3,"arguments_digest":"w1"}}
+{"type":"tool.result","data":{"id":"wait","name":"activity","turn":1,"step":3,"status":"ok","activity_operation":"wait","no_change":false,"activity_terminal":true,"duration_ms":5,"result_chars":30}}
+{"type":"turn.completed","data":{"turn":1,"steps":3,"outcome":"answered","duration_ms":30,"messages":9,"context_tokens":400,"usage":{"input":20,"output":3,"cache_read":0,"cost":0,"cost_reported":false}}}

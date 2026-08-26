@@ -1,8 +1,21 @@
 {
   "schema": "uagent.eval.baseline.v1",
-  "generated_at": "2026-08-26T09:44:07Z",
+  "generated_at": "2026-08-26T12:11:19Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
+    "active_schema_recovery/control": {
+      "score": 10,
+      "checks_total": 10,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 13997,
+      "cumulative_estimated_request_chars": 40962,
+      "tool_result_chars": 101,
+      "initial_schema_chars": 9952
+    },
     "background_activity/control": {
       "score": 7,
       "checks_total": 7,
@@ -11,7 +24,22 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15798,
+      "max_estimated_request_chars": 15802,
+      "cumulative_estimated_request_chars": 44366,
+      "tool_result_chars": 374,
+      "initial_schema_chars": 9952
+    },
+    "browser_outcome_rounds/control": {
+      "score": 6,
+      "checks_total": 6,
+      "model_requests": 3,
+      "tool_calls": 2,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 14390,
+      "cumulative_estimated_request_chars": 41959,
+      "tool_result_chars": 74,
       "initial_schema_chars": 9952
     },
     "cache_hit_diagnosis/compacted": {
@@ -22,7 +50,9 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 1,
-      "max_estimated_request_chars": 14756,
+      "max_estimated_request_chars": 14760,
+      "cumulative_estimated_request_chars": 47444,
+      "tool_result_chars": 5070,
       "initial_schema_chars": 9952
     },
     "cache_hit_diagnosis/control": {
@@ -33,7 +63,22 @@
       "max_batch": 2,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 19455,
+      "max_estimated_request_chars": 19459,
+      "cumulative_estimated_request_chars": 51841,
+      "tool_result_chars": 5070,
+      "initial_schema_chars": 9952
+    },
+    "cumulative_context/control": {
+      "score": 8,
+      "checks_total": 8,
+      "model_requests": 5,
+      "tool_calls": 4,
+      "max_batch": 1,
+      "no_action_rounds": 0,
+      "compactions": 0,
+      "max_estimated_request_chars": 46540,
+      "cumulative_estimated_request_chars": 149643,
+      "tool_result_chars": 32052,
       "initial_schema_chars": 9952
     },
     "edit_and_verify/control": {
@@ -44,7 +89,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14155,
+      "max_estimated_request_chars": 14159,
+      "cumulative_estimated_request_chars": 41166,
+      "tool_result_chars": 237,
       "initial_schema_chars": 9952
     },
     "failed_call_recovery/control": {
@@ -55,7 +102,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13896,
+      "max_estimated_request_chars": 13900,
+      "cumulative_estimated_request_chars": 40653,
+      "tool_result_chars": 150,
       "initial_schema_chars": 9952
     },
     "live_survey/control": {
@@ -66,7 +115,9 @@
       "max_batch": 4,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14200,
+      "max_estimated_request_chars": 14204,
+      "cumulative_estimated_request_chars": 27507,
+      "tool_result_chars": 178,
       "initial_schema_chars": 9952
     },
     "parallel_batch/control": {
@@ -77,7 +128,9 @@
       "max_batch": 3,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13961,
+      "max_estimated_request_chars": 13965,
+      "cumulative_estimated_request_chars": 27249,
+      "tool_result_chars": 118,
       "initial_schema_chars": 9952
     },
     "repeated_grep/control": {
@@ -88,7 +141,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15373,
+      "max_estimated_request_chars": 15377,
+      "cumulative_estimated_request_chars": 43673,
+      "tool_result_chars": 3114,
       "initial_schema_chars": 9952
     },
     "repeated_read/control": {
@@ -99,7 +154,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14752,
+      "max_estimated_request_chars": 14756,
+      "cumulative_estimated_request_chars": 42434,
+      "tool_result_chars": 1836,
       "initial_schema_chars": 9952
     },
     "shell_probe/control": {
@@ -110,7 +167,9 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 13765,
+      "max_estimated_request_chars": 13769,
+      "cumulative_estimated_request_chars": 27006,
+      "tool_result_chars": 63,
       "initial_schema_chars": 9952
     }
   }

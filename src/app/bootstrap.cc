@@ -16,7 +16,9 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/prompt.h"
 #include "include/api.h"
+#include "include/app/reference.h"
 #include "include/cli.h"
 #include "include/core/config.h"
 #include "include/core/debug.h"
@@ -426,10 +428,40 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
 void LogReady(const AppContext& context) {
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
+  const std::string toolset = LeanToolset() ? "lean" : "full";
+  const std::string run_mode =
+      context.options.prompt.empty() ? "interactive" : "headless";
+  std::string overlay_digest;
+  (void)PromptOverlay(&overlay_digest);
+  json provenance = BuildProvenanceJson();
+  provenance["toolset"] = toolset;
+  provenance["active_schema_digest"] =
+      HashHex(JsonDump(ToolSchemas(context.tools)));
+  provenance["behavior"] = {
+      {"reasoning_effort", api.reasoning_effort},
+      {"openrouter_variant", config.openrouter_variant},
+      {"context_window", api.ctx_window},
+      {"memory", config.memory_enabled},
+      {"memory_generate", config.memory_generate},
+      {"run_mode", run_mode},
+      {"approval", context.options.yolo ? "yolo" : "prompt"},
+      {"auto_compact_pct", AutoCompactPct()},
+      {"auto_compact_tokens", AutoCompactTokens()},
+      {"tool_concurrency", ToolConcurrency()},
+      {"tool_result_chars", ToolResultCap()},
+      {"tool_batch_result_chars", ToolBatchResultCap()},
+      {"steering", SteeringEnabled()},
+      {"adaptive_system", AdaptiveSystemEnabled()},
+      {"max_tokens", MaxOutputTokens()},
+      {"prompt_overlay",
+       overlay_digest.empty() ? json(nullptr) : json(overlay_digest)},
+  };
   Emit(Event{
       EventId::kSessionReady,
       {{"base_url", RedactedUrl(api.base_url)},
        {"model", api.RequestModel()},
+       {"route", RouteSelection(api, context.provider.providers)},
+       {"provenance", std::move(provenance)},
        {"reasoning_effort", api.reasoning_effort},
        {"openrouter_variant", config.openrouter_variant},
        {"openrouter_compatible", api.capabilities.OpenRouter()},
@@ -437,11 +469,10 @@ void LogReady(const AppContext& context) {
        {"configured_models", context.provider.routes.size()},
        {"context_window", api.ctx_window},
        {"tools", context.tools.size()},
-       {"toolset", LeanToolset() ? "lean" : "full"},
+       {"toolset", toolset},
        {"memory", config.memory_enabled},
        {"memory_generate", config.memory_generate},
-       {"run_mode",
-        context.options.prompt.empty() ? "interactive" : "headless"},
+       {"run_mode", run_mode},
        {"output_mode", context.options.json_stream
                            ? "json-stream"
                            : (context.options.json ? "json" : "text")},

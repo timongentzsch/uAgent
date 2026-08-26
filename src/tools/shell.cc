@@ -320,7 +320,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                    session,
                    std::move(spec.activity_label),
                    std::move(spec.receipt_path),
-                   std::move(spec.source_id)};
+                   std::move(spec.source_id),
+                   std::move(spec.completion_notes)};
   std::optional<int64_t> registered = reservation->Register(foreground);
   if (!registered) {
     KillProcess(pid);

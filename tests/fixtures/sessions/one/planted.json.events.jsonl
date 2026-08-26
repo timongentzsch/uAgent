@@ -1,0 +1,9 @@
+{"type":"session.ready","data":{"model":"fixture","toolset":"full","provenance":{"format":1,"binary_version":"0.fixture","build_id":"fixture-a","prompt_digest":"prompt-a","surface_digest":"surface-a","active_schema_digest":"active-a","toolset":"full","behavior":{"memory":false,"max_tokens":1200}}}}
+{"type":"turn.started","data":{"origin":"user","turn":1,"messages":2,"context_tokens":100}}
+{"type":"tool.call","data":{"id":"call-ok","name":"read_path","turn":1,"step":1,"arguments_digest":"a1"}}
+{"type":"tool.result","data":{"id":"call-ok","name":"read_path","turn":1,"step":1,"status":"ok","duration_ms":4,"result_chars":120}}
+{"type":"tool.call","data":{"id":"call-fail","name":"edit_file","turn":1,"step":2,"arguments_digest":"b2"}}
+{"type":"tool.result","data":{"id":"call-fail","name":"edit_file","turn":1,"step":2,"status":"failed","error_code":"process_failed","duration_ms":3,"result_chars":88}}
+{"type":"tool.call","data":{"id":"call-recover","name":"edit_file","turn":1,"step":3,"arguments_digest":"b3"}}
+{"type":"tool.result","data":{"id":"call-recover","name":"edit_file","turn":1,"step":3,"status":"ok","duration_ms":2,"result_chars":44}}
+{"type":"turn.completed","data":{"turn":1,"steps":3,"outcome":"answered","duration_ms":20,"messages":8,"context_tokens":300,"usage":{"input":10,"output":2,"cache_read":5,"cost":0.001,"cost_reported":true}}}

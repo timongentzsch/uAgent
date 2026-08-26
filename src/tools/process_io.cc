@@ -70,7 +70,8 @@ bool ActivityTerminal(ActivityState state) {
 BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
              bool is_detached, std::string job_kind, int64_t activity_id,
              std::shared_ptr<ActivitySession> activity, std::string label,
-             std::string receipt, std::string source)
+             std::string receipt, std::string source,
+             std::vector<std::string> notes)
     : pid(process_pid),
       log(std::move(log_path)),
       cmd(std::move(command)),
@@ -80,7 +81,8 @@ BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
       session(std::move(activity)),
       display_label(std::move(label)),
       receipt_path(std::move(receipt)),
-      source_id(std::move(source)) {}
+      source_id(std::move(source)),
+      completion_notes(std::move(notes)) {}
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 

@@ -2,6 +2,7 @@
 
 #include "include/tools/child_agent.h"
 
+#include <cctype>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -42,6 +43,77 @@ const char* FailureRemedy(ChildAgentFailureStage stage) {
              "model before retrying";
   }
   return "inspect the partial diagnostics before retrying";
+}
+
+std::string KnownFailureReason(std::string_view report) {
+  const std::string lower = AsciiLower(std::string(report));
+  // These are fixed transport/provider categories. Do not fall back to an
+  // arbitrary diagnostic line: it can contain a credential, URL query, child
+  // command or user data even after terminal escaping.
+  if (lower.find("couldn't connect to server") != std::string::npos) {
+    return "connection error: Couldn't connect to server";
+  }
+  if (lower.find("could not resolve host") != std::string::npos) {
+    return "connection error: Could not resolve host";
+  }
+  if (lower.find("ssl connect error") != std::string::npos) {
+    return "connection error: SSL connect error";
+  }
+  if (lower.find("timeout was reached") != std::string::npos ||
+      lower.find("request timed out") != std::string::npos) {
+    return "request timed out";
+  }
+  if (lower.find("model_not_found") != std::string::npos ||
+      lower.find("model not found") != std::string::npos ||
+      lower.find("unsupported-model") != std::string::npos ||
+      lower.find("unsupported model") != std::string::npos) {
+    return "configured model was rejected";
+  }
+  if (lower.find("rate limited") != std::string::npos ||
+      lower.find("rate_limit") != std::string::npos) {
+    return "provider rate limited the request";
+  }
+  if (lower.find("provider does not report cost") != std::string::npos ||
+      lower.find("dollar budget is not enforceable") != std::string::npos) {
+    return "provider cost unavailable";
+  }
+  if (lower.find("session cost limit reached") != std::string::npos ||
+      lower.find("session budget") != std::string::npos) {
+    return "session cost limit reached";
+  }
+  if (lower.find("max_tool_calls") != std::string::npos ||
+      lower.find("tool call limit") != std::string::npos) {
+    return "tool-call limit reached";
+  }
+  if (lower.find("max_steps") != std::string::npos ||
+      lower.find("step limit") != std::string::npos) {
+    return "step limit reached";
+  }
+  if (lower.find("no provider configured") != std::string::npos ||
+      lower.find("no usable model") != std::string::npos ||
+      lower.find("unknown model route") != std::string::npos) {
+    return "route is not usable";
+  }
+  if (lower.find("cannot spawn shell") != std::string::npos ||
+      lower.find("process spawn") != std::string::npos) {
+    return "process could not be spawned";
+  }
+  size_t http = lower.find("http ");
+  if (http != std::string::npos && http + 8 <= lower.size() &&
+      std::isdigit(Byte(lower[http + 5])) &&
+      std::isdigit(Byte(lower[http + 6])) &&
+      std::isdigit(Byte(lower[http + 7]))) {
+    return "provider HTTP " + lower.substr(http + 5, 3);
+  }
+  return {};
+}
+
+std::string FailureSummary(ChildAgentFailureStage stage,
+                           std::string_view diagnostics) {
+  std::string reason = KnownFailureReason(diagnostics);
+  if (reason.empty()) reason = "failed; see retained diagnostics";
+  return Utf8Trunc(std::string(FailureStageName(stage)) + ": " + reason,
+                   size_t{180});
 }
 
 }  // namespace
@@ -87,7 +159,11 @@ std::string ChildAgentFailureReport(std::string_view route,
   std::string partial = bounded.Snapshot();
   if (Trim(partial).empty()) partial = "(none captured)";
   std::string configured = route.empty() ? "(unresolved)" : TerminalSafe(route);
-  std::string report = "error: delegated child failed\nconfigured route: " +
+  std::string summary_source = reported;
+  if (!summary_source.empty()) summary_source += '\n';
+  summary_source.append(diagnostics);
+  std::string report = "error: " + FailureSummary(stage, summary_source) +
+                       "\ndelegated child failed\nconfigured route: " +
                        configured + "\nfailure stage: " +
                        FailureStageName(stage);
   if (!reported.empty()) report += "\nchild reported: " + TerminalSafe(reported);
@@ -170,12 +246,16 @@ std::string ChildAgentStopNote(const json& stop) {
   return note;
 }
 
+std::string ChildAgentConstraintNotes(
+    const std::vector<std::string>& clamped) {
+  std::string notes;
+  for (const std::string& one : clamped) notes += "\n[clamped " + one + "]";
+  return notes;
+}
+
 std::string ChildAgentAnswer(std::string output,
                              const std::vector<std::string>& clamped) {
-  std::string note;
-  for (const std::string& one : clamped) {
-    note += "\n[clamped " + one + "]";
-  }
+  std::string note = ChildAgentConstraintNotes(clamped);
   std::optional<json> envelope = ChildAgentEnvelope(output);
   if (!envelope) {
     // Saying so beats presenting the raw stream as though it were the answer.

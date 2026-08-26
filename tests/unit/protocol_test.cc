@@ -21,36 +21,13 @@
 namespace uagent {
 
 std::string RenderMarkdownChunks(const std::vector<std::string>& chunks) {
-  fflush(stdout);
-  int saved = dup(STDOUT_FILENO);
-  FILE* capture = tmpfile();
-  if (saved < 0 || !capture) {
-    if (saved >= 0) close(saved);
-    if (capture) fclose(capture);
-    return "";
-  }
-  dup2(fileno(capture), STDOUT_FILENO);
-  bool prior_tty = g_tty;
-  bool prior_color = g_color;
-  g_tty = true;
-  g_color = true;
-  MdStream stream;
-  for (const std::string& chunk : chunks) stream.Feed(chunk);
-  stream.Flush();
-  fflush(stdout);
-  g_tty = prior_tty;
-  g_color = prior_color;
-  dup2(saved, STDOUT_FILENO);
-  close(saved);
-  fseek(capture, 0, SEEK_END);
-  int64_t bytes = ftell(capture);
-  fseek(capture, 0, SEEK_SET);
-  std::string output(static_cast<size_t>(bytes), '\0');
-  if (bytes > 0) {
-    CHECK(fread(output.data(), 1, output.size(), capture) == output.size());
-  }
-  fclose(capture);
-  return output;
+  return CaptureStdout(
+      [&] {
+        MdStream stream;
+        for (const std::string& chunk : chunks) stream.Feed(chunk);
+        stream.Flush();
+      },
+      /*color=*/true);
 }
 
 std::string RenderMarkdown(const std::string& markdown) {
@@ -100,36 +77,15 @@ void TestTableRetroErasesRenderedRows() {
 }
 
 void TestInteractiveTranscriptFraming() {
-  fflush(stdout);
-  int saved = dup(STDOUT_FILENO);
-  FILE* capture = tmpfile();
-  CHECK(saved >= 0 && capture != nullptr);
-  if (saved < 0 || !capture) {
-    if (saved >= 0) close(saved);
-    if (capture) fclose(capture);
-    return;
-  }
-
-  dup2(fileno(capture), STDOUT_FILENO);
-  bool prior = PersistentComposer();
-  SetPersistentComposer(true);
-  WriteTerminalRecord("record-one\n");
-  WriteTerminalTail("par");
-  WriteTerminalTail("tial\nnext");
-  WriteTerminalRecord("record-two\n");
-  fflush(stdout);
-  SetPersistentComposer(prior);
-  dup2(saved, STDOUT_FILENO);
-  close(saved);
-
-  fseek(capture, 0, SEEK_END);
-  int64_t bytes = ftell(capture);
-  fseek(capture, 0, SEEK_SET);
-  std::string wire(static_cast<size_t>(bytes), '\0');
-  if (bytes > 0) {
-    CHECK(fread(wire.data(), 1, wire.size(), capture) == wire.size());
-  }
-  fclose(capture);
+  std::string wire = CaptureStdout([] {
+    bool prior = PersistentComposer();
+    SetPersistentComposer(true);
+    WriteTerminalRecord("record-one\n");
+    WriteTerminalTail("par");
+    WriteTerminalTail("tial\nnext");
+    WriteTerminalRecord("record-two\n");
+    SetPersistentComposer(prior);
+  }, /*color=*/false, /*tty=*/g_tty);
 
   InteractiveTranscript transcript;
   std::string committed;

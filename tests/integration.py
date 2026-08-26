@@ -4,33 +4,44 @@ import pathlib
 import sys
 import tempfile
 
-from integration_delegation import TESTS as DELEGATION_TESTS
-from integration_mcp import TESTS as MCP_TESTS
-from integration_providers import TESTS as PROVIDERS_TESTS
-from integration_runtime import TESTS as RUNTIME_TESTS
-from integration_support import TEST_ORDER, integration_group
-from integration_tools import TESTS as TOOLS_TESTS
-from integration_ui import TESTS as UI_TESTS
+import integration_delegation
+import integration_mcp
+import integration_providers
+import integration_runtime
+import integration_tools
+import integration_ui
+from integration_support import TEST_ORDER
 
+TEST_MODULES = (
+    ("runtime", integration_runtime),
+    ("tools", integration_tools),
+    ("ui", integration_ui),
+    ("providers", integration_providers),
+    ("mcp", integration_mcp),
+    ("delegation", integration_delegation),
+)
 ALL_TESTS = {
-    test.__name__: test
-    for test in (
-        *RUNTIME_TESTS,
-        *TOOLS_TESTS,
-        *UI_TESTS,
-        *PROVIDERS_TESTS,
-        *MCP_TESTS,
-        *DELEGATION_TESTS,
-    )
+    name: test
+    for _, module in TEST_MODULES
+    for name, test in vars(module).items()
+    if name.startswith("test_")
+    and callable(test)
+    and getattr(test, "__module__", None) == module.__name__
+}
+TEST_GROUPS = {
+    name: group
+    for group, module in TEST_MODULES
+    for name, test in ALL_TESTS.items()
+    if test.__module__ == module.__name__
 }
 
 
 def check_registration():
     """Execution is driven by TEST_ORDER alone.
 
-    A case added to a module's TESTS but not to TEST_ORDER would never run and
-    nothing would say so, which is exactly the failure a regression test is
-    supposed to prevent. Refuse to run instead.
+    A top-level test_ function added to an integration module but not to
+    TEST_ORDER would never run and nothing would say so, which is exactly the
+    failure a regression test is supposed to prevent. Refuse to run instead.
     """
     unordered = sorted(set(ALL_TESTS) - set(TEST_ORDER))
     undefined = sorted(set(TEST_ORDER) - set(ALL_TESTS))
@@ -59,7 +70,7 @@ def select(arguments):
     names = [
         name
         for name in TEST_ORDER
-        if arguments.group == "all" or integration_group(name) == arguments.group
+        if arguments.group == "all" or TEST_GROUPS[name] == arguments.group
     ]
     if arguments.test:
         unknown = sorted(set(arguments.test) - set(ALL_TESTS))
@@ -77,7 +88,7 @@ def main():
     names = select(arguments)
     if arguments.list:
         for name in names:
-            print(f"{integration_group(name)}\t{name}")
+            print(f"{TEST_GROUPS[name]}\t{name}")
         return
     if not names:
         raise SystemExit(f"no integration tests selected (group={arguments.group})")

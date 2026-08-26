@@ -588,25 +588,3 @@ def test_context_command_shows_memory_and_skills(root, home):
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
         assert_true(b"memory on" in output, output)
-
-
-TESTS = (
-    test_command_help,
-    test_reasoning_modes_render_consistently,
-    test_multiline_bracketed_paste,
-    test_resume_picker_accepts_enter_when_icrnl_was_disabled,
-    test_input_redraw_focus_switch_preserves_multiline_draft,
-    test_input_redraw_bare_escape_still_clears_idle_draft,
-    test_input_redraw_history_restores_current_draft,
-    test_input_redraw_approval_does_not_pollute_history,
-    test_multiline_run_keeps_action_color,
-    test_multiline_rejected_call_shows_arguments,
-    test_input_redraw_enter_then_escape_same_packet_interrupts_turn,
-    test_input_redraw_streaming_tail_survives_resize,
-    test_input_redraw_status_animation_does_not_repaint_draft,
-    test_suspend_restores_and_rearms_terminal,
-    test_signal_exit_restores_terminal,
-    test_input_redraw_survives_terminal_resize_and_delete,
-    test_resize_replaces_the_status_row_instead_of_appending,
-    test_context_command_shows_memory_and_skills,
-)

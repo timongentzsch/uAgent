@@ -19,7 +19,7 @@ next request.
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `scratch` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
-| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, or the live tool surface | always; inspect-only |
+| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | always; inspect-only |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
 Filesystem and external-read approval follows the active path policy. Mutating

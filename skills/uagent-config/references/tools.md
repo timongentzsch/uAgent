@@ -5,7 +5,7 @@
 
 Descriptions are what the model reads, including the batching and budget suffixes the registry appends. `bytes` is what one schema costs in every request that advertises it, and `when` says which sessions pay it. `schema` digests the complete JSON parameters, so an argument or its description cannot change without changing this table. Conditionally registered tools are rendered from empty dependencies: the route- and skill-catalogue text a live session splices in, and MCP tools, appear in `/context` instead.
 
-Advertised schema text totals 11595 bytes, of which 5101 bytes are sent by every session.
+Advertised schema text totals 11707 bytes, of which 5213 bytes are sent by every session.
 
 | Tool | Bytes | Arguments | Lean | Batchable | When | Schema | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -22,7 +22,7 @@ Advertised schema text totals 11595 bytes, of which 5101 bytes are sent by every
 | `activity_stop` | 196 | `id` | yes | no | detached activity | `1df59cd54ae3` | Stop an activity's complete process group and clean its log. |
 | `memory` | 721 | `action, content?, key?` | no | no | memory enabled | `e397f5100891` | List or search memory when the startup index is insufficient; get a body only when relevant. Set or forget only when the user asks, except that the dedicated background extractor may set one native memory. Never save task progress, guesses, secrets, commands, or permissions. Codex and Claude memories are read-only. |
 | `show_image` | 163 | `path` | yes | no | terminal images | `248d9b4cfbdb` | Display a local image using the native terminal protocol. |
-| `uagent_info` | 833 | `name?, topic` | no | yes | always | `a20776f808a5` | Describe this running µAgent build. Answers come from the installed binary, so prefer it over documentation or memory for actual behaviour, a setting's default, why a value is active, or whether a change needs a restart. Secrets read as set or unset. One topic per call. Batchable with independent calls. |
+| `uagent_info` | 945 | `name?, topic` | no | yes | always | `2a5dfdc6b804` | Describe this running µAgent build. Answers come from the installed binary, so prefer it over documentation or memory for actual behaviour, a setting's default, why a value is active, or whether a change needs a restart. Secrets read as set or unset. One topic per call. Batchable with independent calls. |
 | `uagent_configure` | 982 | `changes, scope` | no | no | interactive terminal | `128692658315` | Persist a change to µAgent's own configuration. Accepts only registered UAGENT_* settings; use uagent_info topic=config first to read the current value, its source and whether a change needs a restart. The user is shown an exact diff and must approve it: --yolo does not apply, and a headless or delegated run cannot commit. Credentials are rejected here and must be entered by the user. |
 | `web_search` | 421 | `queries` | yes | yes | search route | `752a292270b0` | Search the web with cited sources; batch related queries up to the schema limit. Include dates or cutoffs in recency queries. Independent calls overlap. Do not repeat. Batchable with independent calls. Limit: 4/turn. |
 | `web_fetch` | 398 | `url` | yes | yes | always | `c135f537a144` | Read one http(s) URL as text. Use it when a specific page is the answer — a search result worth verifying, a doc page, a changelog — not to crawl. Pages needing a login or scripting need the browser skill instead. Batchable with independent calls. |

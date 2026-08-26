@@ -40,6 +40,7 @@ constexpr TopicName kTopics[] = {
     {SelfTopic::kStatus, "status"},     {SelfTopic::kCli, "cli"},
     {SelfTopic::kCommands, "commands"}, {SelfTopic::kConfig, "config"},
     {SelfTopic::kPrompt, "prompt"},     {SelfTopic::kTools, "tools"},
+    {SelfTopic::kRoutes, "routes"},
 };
 
 json DefaultJson(const ConfigDescriptor& descriptor) {
@@ -198,6 +199,49 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       }
       out["settings"] = std::move(settings);
       out["restart_required"] = diagnostics["restart_required"];
+      break;
+    }
+    case SelfTopic::kRoutes: {
+      // Which routes exist, never their credentials. A model that cannot read
+      // this guesses a selection, and a guess that resolves to the wrong
+      // endpoint fails as an authentication error rather than as a typo.
+      ProviderCatalog catalog = SessionProviderCatalog();
+      json models = json::array();
+      for (const ModelRoute& route : catalog.models) {
+        if (!name.empty() && route.name != name) continue;
+        models.push_back({{"name", route.name},
+                          {"model", route.model},
+                          {"base_url", RedactedUrl(route.base_url)},
+                          {"protocol", ProviderProtocolName(route.protocol)},
+                          {"wire_api", WireApiName(route.wire_api)},
+                          {"context", route.context},
+                          {"effort", route.effort},
+                          {"hosted_web_search", route.hosted_web_search},
+                          {"credential", route.api_key.empty() ? "unset"
+                                                               : "set"}});
+      }
+      json providers = json::array();
+      for (const NamedProvider& provider : catalog.providers) {
+        if (!name.empty() && provider.name != name) continue;
+        providers.push_back(
+            {{"name", provider.name},
+             {"base_url", RedactedUrl(provider.base_url)},
+             {"protocol", ProviderProtocolName(provider.protocol)},
+             {"wire_api", WireApiName(provider.wire_api)},
+             {"context", provider.context},
+             {"hosted_web_search", provider.hosted_web_search},
+             {"credential", provider.api_key.empty() ? "unset" : "set"}});
+      }
+      out["active"] = RouteSelection(inputs.api, catalog.providers);
+      out["models"] = std::move(models);
+      out["providers"] = std::move(providers);
+      out["selection"] = "[provider/]model[:variant][:effort]";
+      out["efforts"] = json::array();
+      for (const char* effort : kReasoningEfforts) out["efforts"].push_back(effort);
+      out["note"] =
+          "A named model route resolves by its own name; any other id resolves "
+          "against a provider scope. Ids a provider serves are not enumerated "
+          "here — only what this build is configured to reach.";
       break;
     }
     case SelfTopic::kPrompt: {

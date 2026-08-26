@@ -4,6 +4,15 @@
 
 ### Added
 
+- `uagent_info topic=routes` reports the model routes and named providers this
+  build can reach, the selection grammar that names one, and whether each
+  carries a credential — never the credential itself. The route table was the
+  one part of the configuration the agent could not read: `UAGENT_PROVIDERS` is
+  a composite secret, so `topic=config` returns its metadata and withholds its
+  value, leaving a model to guess a selection. A guess that resolves to the
+  wrong endpoint fails as an authentication error rather than as the typo it
+  is, which is what 37 `invalid local API key` and 12 `unknown provider`
+  failures in this machine's history look like.
 - `delete_file` removes a regular file and reports the removed lines as a
   receipt, so an approval prompt shows what is about to be lost. Directories,
   non-regular files and missing paths are refused by the same path policy the

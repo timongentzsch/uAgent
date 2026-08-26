@@ -840,7 +840,25 @@ def test_self_info_reports_live_configuration(root, home):
         status = json.loads(tool_results(body["messages"])[-1])
         assert_true(status["version"], status)
         assert_true(status["approval"] == "yolo", status)
-        return tool_call("uagent_info", {"topic": "prompt"}, call_id="call-3")
+        return tool_call("uagent_info", {"topic": "routes"}, call_id="call-3")
+
+    def ask_routes(_, body):
+        # A model that cannot read the route table guesses a selection, and a
+        # guess resolving to the wrong endpoint fails as an auth error rather
+        # than as the typo it is.
+        described = json.loads(tool_results(body["messages"])[-1])
+        named = {route["name"]: route for route in described["models"]}
+        route = named.get("fixture-provider/fixture-route")
+        assert_true(route is not None, described)
+        assert_true(route["model"] == "fixture-model", described)
+        assert_true(route["credential"] == "set", described)
+        scoped = {provider["name"] for provider in described["providers"]}
+        assert_true("fixture-provider" in scoped, described)
+        assert_true(described["selection"] == "[provider/]model[:variant][:effort]", described)
+        assert_true("high" in described["efforts"], described)
+        # The table names routes; it never carries what authenticates them.
+        assert_true("canary-route-key" not in json.dumps(described), described)
+        return tool_call("uagent_info", {"topic": "prompt"}, call_id="call-4")
 
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -867,18 +885,28 @@ def test_self_info_reports_live_configuration(root, home):
         assert_true("canary-api-key" not in serialized, "secret leaked into transcript")
         return event({"content": "self-info-ok"})
 
-    with Server([ask_config, ask_status, ask_prompt, finish]) as server:
+    with Server([ask_config, ask_status, ask_prompt, ask_routes, finish]) as server:
         env = base_env(home, server.url)
         env.update(
             {
                 "UAGENT_API_KEY": "canary-api-key",
                 "UAGENT_WEB_SEARCH_API_KEY": "canary-search-key",
+                "UAGENT_PROVIDERS": json.dumps(
+                    {
+                        "fixture-provider": {
+                            "base_url": server.url,
+                            "api_key": "canary-route-key",
+                            "models": {"fixture-route": "fixture-model"},
+                        }
+                    }
+                ),
             }
         )
         result = run(root, env, "--yolo", "-p", "describe yourself")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("self-info-ok"), result.stdout)
         assert_true("canary-search-key" not in result.stdout, result.stdout)
+        assert_true("canary-route-key" not in result.stdout, result.stdout)
 
 
 def test_effort_and_variant_persist_like_model(root, home):

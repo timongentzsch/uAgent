@@ -15,21 +15,17 @@ Tool AdaptSystemTool(AdaptiveSystemState& state) {
   Tool tool = MakeTool(
       "adapt_system",
       "Replace your free-form mutable system directive only when a concrete "
-      "task-specific observation warrants materially different behavior on "
-      "subsequent model requests. Treat revision as an exception, not a "
-      "planning ritual: first compare the proposed guidance with the current "
-      "effective strategy, and do not call if they imply the same behavior. "
-      "The complete instructions replace the prior directive; send an empty "
-      "string to clear it. The revision affects subsequent model requests and "
-      "persists until changed. Keep it concise. Useful changes include a "
-      "newly justified decomposition, expert perspective, evidence standard, "
-      "phase priority, or recovery after a failed assumption. The initial "
-      "request alone justifies a revision only when it exposes a specific "
-      "specialization beyond existing user and system instructions. Never "
-      "call solely to repeat the request, install a generic inspect/edit/test "
-      "workflow, or announce completion. In reason, name both the triggering "
-      "observation and the material strategy delta. It cannot change user "
-      "authority, permissions, available tools, or host-enforced limits.",
+      "task-specific observation warrants materially different behavior "
+      "later. Treat revision as an exception, not a planning ritual: do not "
+      "call when the proposed guidance implies the same behavior as the "
+      "current one. The instructions replace the directive whole and persist "
+      "until changed; an empty string clears it. Useful changes include a new "
+      "decomposition, expert perspective, evidence standard, phase priority, "
+      "or recovery from a failed assumption. Never call to repeat the "
+      "request, install a generic inspect/edit/test workflow, or announce "
+      "completion. In reason, name the triggering observation and the "
+      "strategy delta. It cannot change user authority, permissions, tools, "
+      "or host-enforced limits.",
       {{"type", "object"},
        {"properties",
         {{"instructions",

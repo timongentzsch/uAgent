@@ -33,12 +33,12 @@ version they match.
 1. Establish scope: one command, the global user config, or a trusted project.
 2. Read the live value before proposing a change; `uagent_info` reports the
    source of each active setting and whether a restart is required.
-3. Inspect the relevant existing file and preserve unrelated settings. Never
-   print secret values; report only whether they are set.
-4. Prefer `~/.uagent/.config` for persistent user settings. Use
-   `./.uagent/.config` only when project-specific behavior is intended, and
-   explain that the project must be trusted. Use process exports for a one-off
-   command.
+3. Persist a setting with `uagent_configure`, which merges into the existing
+   file and shows the user the exact diff. Never print secret values; report
+   only whether they are set.
+4. Prefer scope `user` for persistent settings. Use `project` only when
+   project-specific behavior is intended, and explain that the project must be
+   trusted. Use process exports for a one-off command.
 5. Change only the settings needed for the requested outcome. Keep limits at
    defaults unless there is a measured reason to raise them.
 6. Validate without a billable model call: `uagent --help`, `uagent --version`,
@@ -62,3 +62,6 @@ version they match.
   explicit.
 - Do not invent settings. `uagent_info` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
+- Never write a config file with the file tools. `uagent_configure` is offered
+  only on an interactive terminal, so when it is absent the answer is an edit
+  for the user to apply, not one made on their behalf.

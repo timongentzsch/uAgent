@@ -1,8 +1,14 @@
 # Changing µAgent configuration
 
-µAgent has no tool that writes its own configuration. Persisting a setting is a
-file edit the user must approve, and the agent's role is to propose it
-precisely.
+`uagent_configure` persists a setting. It accepts only registered `UAGENT_*`
+names, shows the user an exact diff, and commits nothing until they approve it.
+`--yolo` does not apply, and a headless or delegated run cannot commit at all,
+so in those sessions the tool is not offered and the answer is a proposal for
+the user to apply themselves.
+
+Do not hand-edit `~/.uagent/.config` with the file tools. The tool merges into
+the existing file and holds the approved bytes; a `write_file` over the same
+path discards unrelated settings and skips the approval diff.
 
 ## Procedure
 
@@ -10,16 +16,17 @@ precisely.
    `config`, `name` set to the exact setting. Report which layer currently
    wins: a command-line flag or process variable keeps shadowing a config file
    after it is edited.
-2. Confirm the setting exists and that its `takes_effect` field says whether
-   the change applies at the next user turn or needs a restart.
-3. Read the target file and preserve every unrelated line, comment and blank
-   line. `~/.uagent/.config` is the user layer; `./.uagent/.config` applies
-   only in a workspace the user has already trusted.
-4. Propose the smallest edit that achieves the outcome, and state the effect
-   plainly: what changes now, what changes at the next launch, and what stays
-   shadowed.
-5. Never write a secret through a tool argument. Ask the user to enter
-   credentials themselves, and never echo an existing one.
+2. Check the `takes_effect` field. Saying a change is live when it needs a
+   restart is the failure this step exists to prevent.
+3. Call `uagent_configure` with `scope` `user` for `~/.uagent/.config`, or
+   `project` for `./.uagent/.config`, which requires a workspace the user has
+   already trusted. Pass one entry per setting, each `set` with a value or
+   `unset`.
+4. State the effect plainly: what changes now, what changes at the next launch,
+   and what stays shadowed by a higher layer.
+
+Credentials are rejected by the tool. Ask the user to enter them, and never
+echo one that is already set.
 
 ## Layers
 
@@ -32,12 +39,3 @@ built-in default      the registry default reported by uagent_info
 ```
 
 `UAGENT_CONFIG_FILE` replaces both config-file layers.
-
-## What the agent must not do
-
-- Grant project trust. Trust is a user decision made with
-  `--trust-project-config` after reviewing the workspace.
-- Enable `--yolo` or `UAGENT_APPROVAL=yolo` to make its own work easier.
-- Widen `UAGENT_TOOL_CAPABILITIES`, raise budgets, or disable memory redaction
-  without saying that authority is being changed.
-- Claim a change is active when the reference says it needs a restart.

@@ -8,8 +8,8 @@ argument-hint: [focus, e.g. "token", "capability", or "another iteration"]
 
 Improve the harness against evidence, not impressions. Every claim about an
 effect is a number produced by a command in this file, or it is not made.
-Whether that effect is worth having is the one judgement no command returns;
-clause h is where that argument goes, and it is argued in the open.
+Whether that effect is worth having is the one judgement no command returns,
+and clause h is where it goes.
 
 ## Constitution
 
@@ -32,17 +32,14 @@ number and propose nothing there.
 
 Clause h is not a tiebreaker applied once the numbers are in. A change can
 improve every measurable clause and still be the wrong thing to build, and h
-can reject it on that ground alone. No measurement overrules h; a measurement
-is evidence about the world, and h is a claim about what we should do with it.
+can reject it on that ground alone.
 
 ## The instruments are in scope
 
 `eval.py`, `audit.py`, `slopscan.py`, the scenarios and their fixtures are part
 of the harness, not neutral observers of it. A blind instrument hides the work
-worth doing, so a round spent entirely on measurement is a legitimate round:
-sharper tests give sharper insight, and insight is what the next change is made
-of. Improving an instrument needs no separate justification — it competes for a
-slot in step 3 like anything else.
+worth doing, so improving one competes for a slot in step 3 like anything else
+and needs no separate justification.
 
 Three rules stop that from turning into self-congratulation.
 
@@ -92,11 +89,12 @@ implemented or refuted.
 Numbers say whether a change works. They never say whether it should exist, and
 they are actively misleading about it: a saving of 96% is compelling until you
 ask how often the thing runs. Answer these per surviving candidate, in writing,
-before any code is written. An answer of "I don't know" is a stop, not a shrug.
+before any code is written.
 
-- **Necessity.** What breaks if this never ships? Name the person or the run
-  that hits it. If the honest answer is a number nobody can feel, drop the
-  candidate and report the number as the result.
+- **Necessity.** What breaks if this never ships, and who would miss it if it
+  vanished six months from now? Name the person or the run that hits it. If
+  the honest answer is a number nobody can feel, drop the candidate and report
+  the number as the result.
 - **Size.** Does the abstraction have two real callers with the *same* policy?
   One caller is a wrapper wearing a helper's clothes; two callers that merely
   look alike are not duplication, and merging them invents a policy neither
@@ -109,8 +107,6 @@ before any code is written. An answer of "I don't know" is a stop, not a shrug.
 - **Ossification.** A gate turns today's judgement into tomorrow's rule, and
   rules outlive their reasons. Name the policy it freezes and say plainly
   whether it is worth defending when it fires on someone else's work.
-- **Deletion.** If it vanished in six months, who notices, and how? Something
-  nobody would miss should not be built now.
 
 The proposer is the worst reviewer of a proposal: by step 3 the case is already
 argued and the reasoning is anchored. Get the questions answered by something
@@ -119,9 +115,6 @@ or the plan and these questions and no argument in favour. When neither is
 reachable, answer them yourself in writing and say that no independent review
 happened, because an unreviewed judgement recorded as reviewed is worse than an
 open one.
-
-Rejections are the cheapest result this loop produces and the easiest to lose.
-Carry them into step 8.
 
 ### 5. Implement
 
@@ -149,7 +142,7 @@ diff that introduces the next change.
 
 ```sh
 uv run --frozen python benchmarks/slopscan.py --verbose   # the whole tree
-uv run --frozen ruff check --select ARG,ERA,F401,F841 tests benchmarks
+uv run --frozen ruff check tests benchmarks
 git diff | grep -E '^\+\s*(//|#)'          # every comment you added
 ```
 

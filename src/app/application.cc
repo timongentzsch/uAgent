@@ -140,7 +140,8 @@ class Application {
     if (context_.options.json_stream || context_.options.json) {
       json envelope = HeadlessResult(
           std::move(answer), std::move(error), agent_.LatestToolTrace(),
-          agent_.SessionUsage(), agent_.RouteUsageJson(), exit_code);
+          agent_.SessionUsage(), agent_.RouteUsageJson(), exit_code,
+          agent_.LastStop());
       if (context_.options.json_stream) {
         Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
                    std::move(envelope)});

@@ -64,11 +64,15 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                           Observability& observability);
 int RunApplication(AppContext& context);
 
+// `stop` is additive: the schema string is what consumers match on, and a
+// field they do not know is cheaper for them than a version they must handle.
 inline json HeadlessResult(std::string answer, std::string error, json trace,
-                           const Usage& usage, json routes, int exit_code) {
+                           const Usage& usage, json routes, int exit_code,
+                           json stop = nullptr) {
   return {{"schema", "uagent.headless.v1"},
           {"answer", std::move(answer)},
           {"error", error.empty() ? json(nullptr) : json(std::move(error))},
+          {"stop", stop.is_null() ? json(nullptr) : std::move(stop)},
           {"trace", std::move(trace)},
           {"usage", UsageJson(usage)},
           {"routes", std::move(routes)},

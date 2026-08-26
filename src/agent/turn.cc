@@ -60,21 +60,28 @@ struct Agent::TurnState {
   std::string last_single_tool;
   int64_t same_tool_rounds = 0;
   std::string outcome = "step_limit";
+  // Which bound ended the turn, in a vocabulary a caller can branch on. The
+  // prose in last_error_ is for a human; a delegating parent needs to know
+  // whether raising a ceiling would change the outcome.
+  std::string stop_reason;
 };
 
 // Every bound the turn enforces ends the same way: record why, mark the turn,
 // and say so in red.
-void Agent::FailBudget(TurnState& state, std::string message) {
+void Agent::FailBudget(TurnState& state, std::string reason,
+                       std::string message) {
   last_error_ = std::move(message);
   state.outcome = "budget_exceeded";
+  state.stop_reason = std::move(reason);
   Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
 }
 
 bool Agent::TurnDeadlineExceeded(TurnState& state,
                                  std::chrono::seconds reserve) {
   if (std::chrono::steady_clock::now() + reserve < state.deadline) return false;
-  FailBudget(state, "turn time limit reached (" +
-                        std::to_string(state.max_turn_seconds) + "s)");
+  FailBudget(state, "turn_deadline",
+             "turn time limit reached (" +
+                 std::to_string(state.max_turn_seconds) + "s)");
   return true;
 }
 
@@ -88,7 +95,8 @@ bool Agent::TurnCostExceeded(TurnState& state) {
     scope = "session";
   }
   if (limit <= 0 || spent <= limit) return false;
-  FailBudget(state, scope + " cost limit exceeded (" + FmtCost(limit) + ")");
+  FailBudget(state, scope == "session" ? "session_budget" : "turn_cost",
+             scope + " cost limit exceeded (" + FmtCost(limit) + ")");
   return true;
 }
 
@@ -138,8 +146,9 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
   if (calls.empty()) return true;
   if (max_tool_calls > 0 &&
       state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
-    FailBudget(state, "tool call limit reached (" +
-                          std::to_string(max_tool_calls) + ")");
+    FailBudget(state, "max_tool_calls",
+               "tool call limit reached (" + std::to_string(max_tool_calls) +
+                   ")");
     return false;
   }
   bool repeated = false;
@@ -163,7 +172,8 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     repeated = repeated || repeated_calls > 3;
   }
   if (!repeated) return true;
-  FailBudget(state, "model repeated the same tool call more than 3 times");
+  FailBudget(state, "repeated_calls",
+             "model repeated the same tool call more than 3 times");
   return false;
 }
 
@@ -829,12 +839,36 @@ std::string Agent::TurnStatsLine(const TurnState& state, double seconds,
 }
 
 void Agent::FinishTurn(TurnState& state, int64_t step) {
-  if (state.max_steps > 0 && step >= state.max_steps) {
+  bool step_limited = state.max_steps > 0 && step >= state.max_steps;
+  if (step_limited) {
     last_error_ =
         "step limit (" + std::to_string(state.max_steps) + ") reached";
+    state.stop_reason = "max_steps";
     Emit(NoticeEvent(PresentationStatus::kFailed,
                      last_error_ + " — stopping this turn"));
   }
+  // One record of why this turn ended and what was in force, so a parent
+  // reading a child's envelope can tell "raise this ceiling and retry" from
+  // "the work is done" without parsing prose.
+  int64_t steps_used = step_limited ? state.max_steps : step + 1;
+  last_stop_ = {
+      {"reason", state.stop_reason.empty()
+                     ? (state.outcome == "complete"     ? "completed"
+                        : state.outcome == "interrupted" ? "cancelled"
+                        : state.outcome == "error"       ? "error"
+                                                         : state.outcome)
+                     : state.stop_reason},
+      {"detail", last_error_},
+      {"steps", steps_used},
+      {"tool_calls", state.tool_count},
+      {"cost", state.usage.cost},
+      {"limits",
+       {{"max_steps", state.max_steps},
+        {"max_tool_calls", api_.config.max_tool_calls},
+        {"max_turn_seconds", state.max_turn_seconds},
+        {"max_turn_cost", state.max_turn_cost},
+        {"session_budget", state.session_budget}}},
+      {"session_cost", session_usage_.cost}};
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
   PruneOldToolResults();

@@ -50,6 +50,9 @@ class Agent {
   const Usage& SessionUsage() const { return session_usage_; }
   json RouteUsageJson() const { return uagent::RouteUsageJson(route_usage_); }
   const std::string& LastError() const { return last_error_; }
+  // Why the last turn ended, in a vocabulary a caller can branch on, with the
+  // limits that were in force. Empty before the first turn completes.
+  const json& LastStop() const { return last_stop_; }
   const std::string& SessionId() const { return session_id_; }
   uint64_t Revision() const { return revision_; }
 
@@ -168,7 +171,7 @@ class Agent {
   void AddRouteUsage(const Usage& usage);
   Usage AccountModelUsage(const json& reported);
 
-  void FailBudget(TurnState& state, std::string message);
+  void FailBudget(TurnState& state, std::string reason, std::string message);
   bool TurnDeadlineExceeded(TurnState& state,
                             std::chrono::seconds reserve = {});
   bool TurnCostExceeded(TurnState& state);
@@ -324,6 +327,7 @@ class Agent {
   std::chrono::steady_clock::time_point active_deadline_ =
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;
+  json last_stop_;
 };
 
 }  // namespace uagent

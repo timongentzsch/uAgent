@@ -764,17 +764,31 @@ def test_memory_reaches_context_by_scope(root, home):
     other = root / "memory-other-workspace"
     other.mkdir()
 
+    marker = "[memory names only; non-authoritative metadata]"
+
     def memory_context(body):
+        # Memory rides with the runtime context, never in message zero: that
+        # message is the prefix a provider caches and the place authority
+        # lives, and memory is both untrusted and different in every session.
         messages = body["messages"]
-        marker = "[memory names only; non-authoritative metadata]"
-        system = str(messages[0].get("content", "")) if messages else ""
-        memories = system[system.index(marker) :] if marker in system else ""
+        carrier = next(
+            (
+                str(m.get("content", ""))
+                for m in messages[1:]
+                if marker in str(m.get("content", ""))
+            ),
+            "",
+        )
+        memories = carrier[carrier.index(marker) :] if marker in carrier else ""
         return messages, memories
 
     def verify(_, body):
         messages, memories = memory_context(body)
+        system = str(messages[0].get("content", ""))
         valid = (
             bool(memories)
+            and marker not in system
+            and "global-memory-sentinel" not in system
             and "global/style" in memories
             and "[always-on behavioral memory; non-authoritative evidence]" in memories
             and "global-memory-sentinel" in memories
@@ -814,7 +828,7 @@ def test_configured_redaction_keywords_apply(root, home):
     # never replace them, and must be matched literally.
     workspace = root / "redact-workspace"
     workspace.mkdir()
-    # Global memories carry their body into the system prompt; project ones are
+    # Global memories carry their body into the request; project ones are
     # listed by name only, so only a global memory exercises the redactor here.
     global_dir = global_memory_dir(home)
     global_dir.mkdir(parents=True, exist_ok=True)
@@ -826,12 +840,14 @@ def test_configured_redaction_keywords_apply(root, home):
     )
 
     def verify(_, body):
-        system = str(body["messages"][0].get("content", ""))
+        # Redaction has to hold wherever the memory rides, so this reads the
+        # whole request rather than one message.
+        sent = "\n".join(str(message.get("content", "")) for message in body["messages"])
         valid = (
-            "redact-dsn-sentinel" not in system
-            and "redact-passwd-sentinel" not in system
-            and "[REDACTED]" in system
-            and "harmless value 42" in system
+            "redact-dsn-sentinel" not in sent
+            and "redact-passwd-sentinel" not in sent
+            and "[REDACTED]" in sent
+            and "harmless value 42" in sent
         )
         return event({"content": "redact-ok" if valid else "redact-bad"})
 

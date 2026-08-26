@@ -485,15 +485,19 @@ static bool HasMemoryContent(const ProjectInstructions& p) {
 
 // One system message carries every static baseline fact. The OpenAI convention
 // allows a single system message and only at index zero; strict chat templates
-// reject a second one outright, so project instructions and the memory index
-// are folded in here instead of riding as separate messages.
+// reject a second one outright, so project instructions are folded in here
+// instead of riding as a separate message.
+//
+// Memory is not folded in. It is the one part of the baseline that differs
+// between two sessions on the same build, and message zero is the prefix a
+// provider caches: a memory written mid-session, or simply a different
+// project, would otherwise re-bill the whole prompt. It also carries no
+// authority — the prompt says so — and the system message is where authority
+// lives, so it rides with the runtime context instead.
 json Agent::SysMsg() const {
   std::string content = SystemPrompt();
   if (!project_instructions_.text.empty()) {
     content += "\n\n" + ProjectInstructionText();
-  }
-  if (HasMemoryContent(project_instructions_)) {
-    content += "\n\n" + MemoryText();
   }
   return {{"role", "system"}, {"content", std::move(content)}};
 }
@@ -520,6 +524,9 @@ std::string Agent::RuntimeContextText() const {
   if (std::any_of(tools_.begin(), tools_.end(),
                   [](const Tool& tool) { return tool.delegates; })) {
     content += DelegationRuntimeContext(api_);
+  }
+  if (HasMemoryContent(project_instructions_)) {
+    content += "\n\n" + MemoryText();
   }
   return content;
 }

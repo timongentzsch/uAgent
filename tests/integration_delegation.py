@@ -534,17 +534,3 @@ def test_subagent_clamps_are_reported_not_silent(root, home):
         result = run(root, env, "--yolo", "-p", "delegate", timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "clamp-reported-ok", result.stdout)
-
-
-TESTS = (
-    test_subagent_auto_join_continues_turn,
-    test_subagent_reports_the_limit_that_stopped_the_child,
-    test_subagent_foreground_outlives_the_per_call_budget,
-    test_subagent_clamps_are_reported_not_silent,
-    test_subagent_foreground_returns_result_without_wait_round,
-    test_parallel_subagents_auto_join,
-    test_subagent_interrupt_reaps_child,
-    test_subagent_uses_selected_model_route,
-    test_subagent_failure_reports_route_stage_and_bounded_diagnostics,
-    test_subagent_recursion_is_depth_bounded,
-)

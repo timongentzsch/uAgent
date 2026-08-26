@@ -937,21 +937,3 @@ def test_effort_and_variant_persist_like_model(root, home):
         session = run_dialog(root, env, "/effort high\n/quit\n")
         assert_true("this session only" in session.stdout, session.stdout)
         assert_true(not preference.exists(), "must not invent a preference")
-
-
-TESTS = (
-    test_streamed_search_citations,
-    test_openrouter_named_search_contract_and_errors,
-    test_openrouter_reasoning_details_survive_tool_step,
-    test_provider_context_overflow_compacts_once,
-    test_provider_background_completion_does_not_trigger_model_turns,
-    test_provider_text_protocol_preserves_reasoning_and_trace,
-    test_provider_responses_native_search_and_function_replay,
-    test_provider_anthropic_native_search_pause_turn_replay,
-    test_self_info_reports_live_configuration,
-    test_effort_and_variant_persist_like_model,
-    test_model_route_switch,
-    test_openrouter_variant_is_scoped_to_openrouter,
-    test_dynamic_provider_catalog_and_model,
-    test_model_preference_survives_restart,
-)

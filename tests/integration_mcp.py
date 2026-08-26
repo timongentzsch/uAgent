@@ -164,10 +164,3 @@ def test_mcp_tool_round_trip(root, home):
         assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
         names = function_names(server.requests[0][1])
         assert_true("probe_echo" in names, names)
-
-
-TESTS = (
-    test_mcp_image_reaches_the_model,
-    test_invalid_mcp_config_not_executed,
-    test_mcp_tool_round_trip,
-)

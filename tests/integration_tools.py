@@ -833,25 +833,3 @@ def test_self_configuration_commits_after_approval(root, home):
         assert_true("UAGENT_MAX_TOOL_CALLS=120" in written, written)
         assert_true("# keep me" in written, written)
         assert_true("UNKNOWN_KEY=kept" in written, written)
-
-
-TESTS = (
-    test_attach_tool_puts_bytes_in_context,
-    test_full_run_and_python_terminal_trace,
-    test_large_run_output_is_recoverable,
-    test_run_rejects_python_and_sudo_before_execution,
-    test_self_configuration_requires_a_person,
-    test_self_configuration_asks_even_under_yolo,
-    test_self_configuration_commits_after_approval,
-    test_process_hardening_scrubs_loader_variables,
-    test_delete_file_removes_and_receipts,
-    test_grep_tool_round_trip,
-    test_skill_tool_offers_and_opens,
-    test_tool_trace_repeated_rounds_are_telemetry_only,
-    test_invalid_tool_rejection_loop_stops_before_fourth_round,
-    test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard,
-    test_activity_wait_outlives_the_per_call_budget,
-    test_parallel_run_overlaps,
-    test_detached_terminal_survives_and_is_readable,
-    test_detached_terminal_tracks_group_after_wrapper_exit,
-)

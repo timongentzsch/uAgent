@@ -76,8 +76,9 @@ Tool ConfigureTool(const ConfigProposalFactory& prepare,
       "registered UAGENT_* settings; use uagent_info topic=config first to "
       "read the current value, its source and whether a change needs a "
       "restart. The user is shown an exact diff and must approve it: --yolo "
-      "does not apply, and a headless or delegated run cannot commit. "
-      "Credentials are rejected here and must be entered by the user.",
+      "does not apply, and a headless or delegated run cannot commit. Literal "
+      "credentials are rejected. Composite settings may reference credentials "
+      "only through environment variables.",
       {{"type", "object"},
        {"properties",
         {{"scope",
@@ -126,6 +127,7 @@ Tool ConfigureTool(const ConfigProposalFactory& prepare,
         return ToolSuccess(report);
       });
   tool.mutating = true;
+  tool.redact_invalid_arguments = true;
   tool.approval_class = [](const json&) {
     return ApprovalClass::kMandatoryHuman;
   };
@@ -133,17 +135,17 @@ Tool ConfigureTool(const ConfigProposalFactory& prepare,
       [prepare](const json& arguments) -> std::optional<ToolArgumentIssue> {
     ConfigProposalScope scope = ConfigProposalScope::kUser;
     if (!ParseScope(Trim(JsonValue(arguments, "scope", "")), scope)) {
-      return ToolArgumentIssue{"scope", "config.scope",
-                               "scope must be user or project"};
+      return ArgumentIssue("config.scope", "scope must be user or project",
+                           "scope");
     }
     std::vector<ConfigChange> changes;
     std::string error;
     if (!ParseChanges(arguments, changes, error)) {
-      return ToolArgumentIssue{"changes", "config.changes", error};
+      return ArgumentIssue("config.changes", error, "changes");
     }
     ConfigProposal proposal = prepare(scope, changes);
     if (!proposal.ok) {
-      return ToolArgumentIssue{"changes", "config.rejected", proposal.error};
+      return ArgumentIssue("config.rejected", proposal.error, "changes");
     }
     return std::nullopt;
   };

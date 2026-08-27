@@ -4,12 +4,15 @@
 
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "include/core/config_document.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
+#include "include/providers.h"
+#include "include/tools/configure.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -85,11 +88,16 @@ void TestConfigProposalAndCommit() {
   const std::string original =
       "# keep me\n"
       "UAGENT_MAX_TOOL_CALLS=40\n"
-      "UAGENT_WEB_SEARCH_API_KEY=canary-secret\n";
+      "UAGENT_WEB_SEARCH_API_KEY=canary-secret\n"
+      "QWEN_GPU_API_KEY=adjacent-provider-secret\n"
+      "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
+      "\"api_key\":\"existing-provider-secret\"},\"gpu\":{\"base_url\":"
+      "\"https://gpu.example/v1\",\"api_key\":\"$QWEN_GPU_API_KEY\"}}'\n";
   Write(config, original);
 
   ScopedEnv no_custom("UAGENT_CONFIG_FILE");
   ScopedEnv no_override("UAGENT_MAX_TOOL_CALLS");
+  ScopedEnv no_providers("UAGENT_PROVIDERS");
   ConfigManager manager = ConfigManager::Capture(false, {});
   RuntimeConfig active = manager.Initialize();
 
@@ -106,6 +114,71 @@ void TestConfigProposalAndCommit() {
       {{"UAGENT_WEB_SEARCH_API_KEY", "leaked", false}}, manager, active, false);
   CHECK(!secret.ok);
   CHECK(secret.error.find("credential") != std::string::npos);
+
+  // Removing a credential does not carry one through the tool arguments.
+  ConfigProposal unset_secret = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_WEB_SEARCH_API_KEY", "", true}},
+      manager, active, false);
+  CHECK(unset_secret.ok);
+  CHECK(unset_secret.Preview().find("canary-secret") == std::string::npos);
+
+  // Composite credentials may be named only by an exact environment reference.
+  const std::string providers =
+      R"({"codex-local":{"base_url":"http://127.0.0.1:8787/openai/v1","api_key":"$CODEX_LOCAL_PROXY_API_KEY","wire_api":"responses","hosted_tools":["web_search"]}})";
+  ConfigProposal composite = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", providers, false}},
+      manager, active, false);
+  CHECK(composite.ok);
+  CHECK(composite.Preview().find("$CODEX_LOCAL_PROXY_API_KEY") !=
+        std::string::npos);
+  CHECK(composite.Preview().find("existing-provider-secret") ==
+        std::string::npos);
+  CHECK(composite.Preview().find("adjacent-provider-secret") ==
+        std::string::npos);
+  CHECK(composite.Preview().find("<redacted>") != std::string::npos);
+  CHECK(composite.Preview().find("configured: {") == std::string::npos);
+  CHECK(composite.Preview().find("\"wire_api\": \"responses\"") !=
+        std::string::npos);
+  CHECK(composite.Preview().find("-   \"gpu\":") != std::string::npos);
+  CHECK(composite.Preview().find("+   \"codex-local\":") != std::string::npos);
+  CHECK(Read(config) == original);
+
+  // The accepted reference resolves before provider selection.
+  std::string error;
+  CHECK(CommitConfigProposal(composite, error));
+  ScopedEnv provider_key("CODEX_LOCAL_PROXY_API_KEY", "resolved-local-key");
+  unsetenv("UAGENT_PROVIDERS");
+  ConfigManager resolved_manager = ConfigManager::Capture(false, {});
+  resolved_manager.Initialize();
+  ProviderCatalog catalog = LoadProviderCatalog();
+  const NamedProvider* resolved =
+      FindNamedProvider(catalog.providers, "codex-local");
+  CHECK(resolved && resolved->api_key == "resolved-local-key");
+
+  for (const std::string& credential : {"literal-secret", "Bearer secret",
+                                        "prefix-$API_KEY", "$API_KEY-suffix"}) {
+    const std::string unsafe =
+        "{\"bad\":{\"base_url\":\"https://example.com/v1\",\"api_key\":\"" +
+        credential + "\"}}";
+    ConfigProposal rejected = PrepareConfigProposal(
+        ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", unsafe, false}},
+        manager, active, false);
+    CHECK(!rejected.ok);
+    CHECK(rejected.error.find("environment-variable reference") !=
+          std::string::npos);
+  }
+
+  for (const std::string& url : {"https://user:secret@example.com/v1",
+                                 "https://example.com/v1?api_key=secret",
+                                 "https://example.com/v1#secret"}) {
+    const std::string unsafe =
+        "{\"bad\":{\"base_url\":\"" + url + "\",\"api_key\":\"$API_KEY\"}}";
+    ConfigProposal rejected = PrepareConfigProposal(
+        ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", unsafe, false}},
+        manager, active, false);
+    CHECK(!rejected.ok);
+    CHECK(rejected.error.find("without credentials") != std::string::npos);
+  }
 
   // Out-of-range values are refused against the registry's own bounds.
   ConfigProposal invalid = PrepareConfigProposal(
@@ -127,12 +200,13 @@ void TestConfigProposalAndCommit() {
   CHECK(proposal.effects.size() == 1);
   CHECK(proposal.effects[0].effect == ConfigEffect::kActiveNextUserTurn);
   // Preparing writes nothing.
-  CHECK(Read(config) == original);
+  CHECK(Read(config) == composite.candidate);
   // A neighbouring secret is redacted out of the preview.
   CHECK(proposal.Preview().find("canary-secret") == std::string::npos);
+  CHECK(proposal.Preview().find("adjacent-provider-secret") ==
+        std::string::npos);
   CHECK(proposal.diff.find("+ UAGENT_MAX_TOOL_CALLS=120") != std::string::npos);
 
-  std::string error;
   CHECK(CommitConfigProposal(proposal, error));
   std::string written = Read(config);
   CHECK(written.find("UAGENT_MAX_TOOL_CALLS=120") != std::string::npos);
@@ -175,6 +249,22 @@ void TestConfigProposalAndCommit() {
   CHECK(store.Take("key", arguments).ok);
   CHECK(!store.Take("key", arguments).ok);
   CHECK(!store.Take("never-prepared", arguments).ok);
+
+  Tool configure = ConfigureTool(
+      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+        ConfigProposal rejected;
+        rejected.error = "specific rejection";
+        return rejected;
+      },
+      std::make_shared<ConfigProposalStore>());
+  auto issue = configure.validate({{"scope", "user"},
+                                   {"changes",
+                                    {{{"key", "UAGENT_MAX_STEPS"},
+                                      {"operation", "set"},
+                                      {"value", "7"}}}}});
+  CHECK(issue && issue->code == "config.rejected");
+  CHECK(issue && issue->field == "changes");
+  CHECK(issue && issue->message == "specific rejection");
 }
 
 void TestProjectConfigTrustRestamp() {

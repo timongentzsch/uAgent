@@ -2,7 +2,7 @@
 
 #include "include/app/config_proposal.h"
 
-#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <set>
 #include <string>
@@ -32,8 +32,198 @@ std::string ReadFileBytes(const std::string& path, bool& existed) {
 }
 
 // A neighbouring line in the diff may assign a secret this change does not
-// touch, so both sides are redacted before any hunk is built.
-std::string RedactSecretAssignments(const std::string& bytes) {
+// touch, so both sides are sanitized before any hunk is built.
+bool EnvironmentReference(const std::string& value) {
+  size_t begin = 0;
+  size_t end = value.size();
+  if (value.size() >= 4 && value[0] == '$' && value[1] == '{' &&
+      value.back() == '}') {
+    begin = 2;
+    --end;
+  } else if (value.size() >= 2 && value[0] == '$') {
+    begin = 1;
+  } else {
+    return false;
+  }
+  if (begin == end ||
+      !(std::isalpha(static_cast<unsigned char>(value[begin])) ||
+        value[begin] == '_')) {
+    return false;
+  }
+  for (size_t i = begin; i < end; ++i) {
+    unsigned char c = static_cast<unsigned char>(value[i]);
+    if (!std::isalnum(c) && c != '_') return false;
+  }
+  return true;
+}
+
+bool ValidateProviderNode(const json& node, const std::string& path,
+                          bool api_key, std::string& error) {
+  if (api_key) {
+    if (!node.is_string() || !EnvironmentReference(node.get<std::string>())) {
+      error =
+          path + " must be an environment-variable reference such as $API_KEY";
+      return false;
+    }
+    return true;
+  }
+  if (node.is_string()) {
+    const std::string value = node.get<std::string>();
+    if (value.find('$') != std::string::npos) {
+      error = path + " may not interpolate an environment variable";
+      return false;
+    }
+    return true;
+  }
+  if (node.is_array()) {
+    for (size_t i = 0; i < node.size(); ++i) {
+      if (!ValidateProviderNode(node[i], path + "[" + std::to_string(i) + "]",
+                                false, error)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  if (!node.is_object()) return true;
+  for (const auto& [key, value] : node.items()) {
+    if (!ValidateProviderNode(value, path + "." + key, key == "api_key",
+                              error)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ValidateProviderProposal(const std::string& value, std::string& error) {
+  json providers = json::parse(value, nullptr, false);
+  if (!providers.is_object()) {
+    error = "UAGENT_PROVIDERS expects a JSON object";
+    return false;
+  }
+  for (const auto& [name, provider] : providers.items()) {
+    if (!provider.is_object()) {
+      error = "UAGENT_PROVIDERS." + name + " must be an object";
+      return false;
+    }
+    auto base = provider.find("base_url");
+    if (base != provider.end()) {
+      if (!base->is_string()) {
+        error = "UAGENT_PROVIDERS." + name + ".base_url must be a string";
+        return false;
+      }
+      const std::string url = base->get<std::string>();
+      size_t scheme = url.find("://");
+      size_t authority_end =
+          scheme == std::string::npos ? 0 : url.find('/', scheme + 3);
+      std::string authority =
+          scheme == std::string::npos
+              ? std::string()
+              : url.substr(scheme + 3, authority_end - (scheme + 3));
+      if ((scheme != 4 && scheme != 5) ||
+          (scheme == 4 && !url.starts_with("http://")) ||
+          (scheme == 5 && !url.starts_with("https://")) || authority.empty() ||
+          authority.find('@') != std::string::npos ||
+          url.find('?') != std::string::npos ||
+          url.find('#') != std::string::npos) {
+        error = "UAGENT_PROVIDERS." + name +
+                ".base_url must be an http(s) URL without credentials, a "
+                "query, or a fragment";
+        return false;
+      }
+    }
+  }
+  return ValidateProviderNode(providers, "UAGENT_PROVIDERS", false, error);
+}
+
+void SanitizeCompositeNode(json& node, bool& changed) {
+  if (node.is_array()) {
+    for (json& item : node) SanitizeCompositeNode(item, changed);
+    return;
+  }
+  if (!node.is_object()) return;
+  for (auto& [key, child] : node.items()) {
+    if (key == "api_key" && (!child.is_string() ||
+                             !EnvironmentReference(child.get<std::string>()))) {
+      child = "<redacted>";
+      changed = true;
+    } else {
+      SanitizeCompositeNode(child, changed);
+    }
+  }
+}
+
+std::string SanitizeCompositeValue(const std::string& value) {
+  json parsed = json::parse(value, nullptr, false);
+  if (!parsed.is_object()) return "<redacted>";
+  bool changed = false;
+  SanitizeCompositeNode(parsed, changed);
+  return changed ? JsonDump(parsed) : value;
+}
+
+std::string DisplayValue(const ConfigDescriptor& descriptor,
+                         const std::string& value) {
+  if (descriptor.sensitivity == Sensitivity::kPublic) return value;
+  if (descriptor.sensitivity == Sensitivity::kCompositeSecret) {
+    return SanitizeCompositeValue(value);
+  }
+  return "<redacted>";
+}
+
+bool CredentialLikeKey(const std::string& key) {
+  std::string upper;
+  upper.reserve(key.size());
+  for (char c : key) {
+    upper += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  }
+  return upper.find("API_KEY") != std::string::npos ||
+         upper.find("TOKEN") != std::string::npos ||
+         upper.find("SECRET") != std::string::npos ||
+         upper.find("PASSWORD") != std::string::npos ||
+         upper.find("CREDENTIAL") != std::string::npos ||
+         upper.find("AUTH") != std::string::npos;
+}
+
+void CollectCredentialReferences(const json& node,
+                                 std::set<std::string>& keys) {
+  if (node.is_array()) {
+    for (const json& item : node) CollectCredentialReferences(item, keys);
+    return;
+  }
+  if (!node.is_object()) return;
+  for (const auto& [key, child] : node.items()) {
+    if (key == "api_key" && child.is_string()) {
+      const std::string value = child.get<std::string>();
+      if (EnvironmentReference(value)) {
+        size_t begin = value.starts_with("${") ? 2 : 1;
+        size_t end = value.ends_with('}') ? value.size() - 1 : value.size();
+        keys.insert(value.substr(begin, end - begin));
+      }
+    } else {
+      CollectCredentialReferences(child, keys);
+    }
+  }
+}
+
+std::set<std::string> CredentialAssignmentKeys(const EnvValues& before,
+                                               const EnvValues& after) {
+  std::set<std::string> keys;
+  for (const EnvValues* values : {&before, &after}) {
+    auto providers = values->find("UAGENT_PROVIDERS");
+    if (providers == values->end()) continue;
+    json parsed = json::parse(providers->second, nullptr, false);
+    if (!parsed.is_discarded()) CollectCredentialReferences(parsed, keys);
+  }
+  return keys;
+}
+
+std::string PrettyCompositeValue(const std::string& value) {
+  json parsed = json::parse(value, nullptr, false);
+  return parsed.is_discarded() ? value : JsonDump(parsed, 2);
+}
+
+std::string RedactSecretAssignments(
+    const std::string& bytes, const std::set<std::string>& credential_keys,
+    bool omit_composites) {
   std::string out;
   size_t start = 0;
   while (start <= bytes.size()) {
@@ -46,8 +236,29 @@ std::string RedactSecretAssignments(const std::string& bytes) {
     if (equals != std::string::npos && equals > 0) {
       std::string key = Trim(text.substr(0, equals));
       const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
-      if (descriptor && descriptor->sensitivity != Sensitivity::kPublic) {
+      if (omit_composites && descriptor &&
+          descriptor->sensitivity == Sensitivity::kCompositeSecret) {
+        if (end == std::string::npos) break;
+        start = end + 1;
+        continue;
+      }
+      if (credential_keys.count(key) || CredentialLikeKey(key)) {
         line = key + "=<redacted>";
+      } else if (descriptor &&
+                 descriptor->sensitivity != Sensitivity::kPublic) {
+        if (descriptor->sensitivity == Sensitivity::kCompositeSecret) {
+          std::string value = Unquote(Trim(text.substr(equals + 1)));
+          std::string literal;
+          std::string error;
+          if (ConfigValueLiteral(DisplayValue(*descriptor, value), literal,
+                                 error)) {
+            line = key + "=" + literal;
+          } else {
+            line = key + "=<redacted>";
+          }
+        } else {
+          line = key + "=<redacted>";
+        }
       }
     }
     out += line;
@@ -125,13 +336,26 @@ std::string ConfigProposal::Preview() const {
   std::string preview = "target: " + target + "\n";
   for (const ConfigChangeEffect& effect : effects) {
     preview += "\n  " + effect.key + "\n";
-    preview += "    configured: " + effect.configured + "\n";
-    preview += "    proposed:   " + effect.proposed + "\n";
-    preview += "    now active from: " + effect.source + "\n";
-    preview +=
-        "    effect: " + std::string(ConfigEffectName(effect.effect)) + "\n";
+    const ConfigDescriptor* descriptor = FindConfigDescriptor(effect.key);
+    bool composite =
+        descriptor && descriptor->sensitivity == Sensitivity::kCompositeSecret;
+    if (composite) {
+      preview += "    now active from: " + effect.source + "\n";
+      preview += "    effect: " + std::string(ConfigEffectName(effect.effect)) +
+                 "\n\n";
+      preview +=
+          ConfigUnifiedDiff(PrettyCompositeValue(effect.configured),
+                            PrettyCompositeValue(effect.proposed), effect.key);
+    } else {
+      preview += "    configured: " + effect.configured + "\n";
+      preview += "    proposed:   " + effect.proposed + "\n";
+      preview += "    now active from: " + effect.source + "\n";
+      preview +=
+          "    effect: " + std::string(ConfigEffectName(effect.effect)) + "\n";
+    }
   }
-  return preview + "\n" + diff;
+  if (!diff.empty()) preview += "\n" + diff;
+  return preview;
 }
 
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
@@ -182,11 +406,16 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
       proposal.error = change.key + " appears twice in one request";
       return proposal;
     }
-    if (descriptor->sensitivity != Sensitivity::kPublic) {
+    if (!change.unset && descriptor->sensitivity == Sensitivity::kSecret) {
       proposal.error =
           change.key +
-          " holds a credential and cannot be set through a tool argument; ask "
-          "the user to enter it directly";
+          " holds a credential and cannot be set through a tool argument; "
+          "unset it here or enter the replacement directly";
+      return proposal;
+    }
+    if (!change.unset &&
+        descriptor->sensitivity == Sensitivity::kCompositeSecret &&
+        !ValidateProviderProposal(change.value, proposal.error)) {
       return proposal;
     }
     unsigned wanted =
@@ -207,8 +436,11 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
     ConfigChangeEffect effect;
     effect.key = change.key;
     auto existing = before.find(change.key);
-    effect.configured = existing == before.end() ? "<unset>" : existing->second;
-    effect.proposed = change.unset ? "<unset>" : change.value;
+    effect.configured = existing == before.end()
+                            ? "<unset>"
+                            : DisplayValue(*descriptor, existing->second);
+    effect.proposed =
+        change.unset ? "<unset>" : DisplayValue(*descriptor, change.value);
     effect.source = JsonValue(sources, change.key.c_str(), "default");
     effect.effect = ClassifyEffect(*descriptor, effect.source,
                                    scope == ConfigProposalScope::kUser);
@@ -248,9 +480,18 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
     }
   }
 
-  proposal.diff = ConfigUnifiedDiff(RedactSecretAssignments(proposal.snapshot),
-                                    RedactSecretAssignments(proposal.candidate),
-                                    proposal.target);
+  const std::set<std::string> credential_keys =
+      CredentialAssignmentKeys(before, after);
+  const std::string redacted_before =
+      RedactSecretAssignments(proposal.snapshot, credential_keys,
+                              /*omit_composites=*/true);
+  const std::string redacted_after =
+      RedactSecretAssignments(proposal.candidate, credential_keys,
+                              /*omit_composites=*/true);
+  if (redacted_before != redacted_after) {
+    proposal.diff =
+        ConfigUnifiedDiff(redacted_before, redacted_after, proposal.target);
+  }
   proposal.expires = std::chrono::steady_clock::now() + kProposalLifetime;
   proposal.ok = true;
   return proposal;

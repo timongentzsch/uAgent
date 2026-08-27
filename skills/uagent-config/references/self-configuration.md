@@ -25,8 +25,10 @@ path discards unrelated settings and skips the approval diff.
 4. State the effect plainly: what changes now, what changes at the next launch,
    and what stays shadowed by a higher layer.
 
-Credentials are rejected by the tool. Ask the user to enter them, and never
-echo one that is already set.
+Literal credentials are rejected by the tool. Composite settings such as
+`UAGENT_PROVIDERS` may use exact environment-variable references; the approval
+preview shows the reference and redacts any existing literal credential. Ask
+the user to enter direct credentials, and never echo one that is already set.
 
 ## Layers
 

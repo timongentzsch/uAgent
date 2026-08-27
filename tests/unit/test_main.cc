@@ -25,12 +25,12 @@ struct TestCase {
 };
 
 const std::vector<TestCase>& Tests() {
-  static const std::vector<TestCase> tests = {
-#define UAGENT_TEST_CASE(name) {#name, &name},
+  static const std::vector<TestCase> kCases = {
+#define UAGENT_TEST_CASE(name) {#name, &(name)},
       UAGENT_TESTS(UAGENT_TEST_CASE)
 #undef UAGENT_TEST_CASE
   };
-  return tests;
+  return kCases;
 }
 
 int RunTests(int argc, char** argv) {

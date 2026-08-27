@@ -220,7 +220,15 @@ void TestActivityDescriptorAndInputPolicy() {
       }
     }
     // Retained activities keep their transcript, never their descriptors.
-    CHECK(open_descriptors() <= settled + 2);
+    // The supervisor closes them as it reaps, which an instrumented build can
+    // lag a few milliseconds behind, so the count is given time to come back
+    // down. A real leak never does, and still fails here.
+    size_t open_now = open_descriptors();
+    for (int attempt = 0; attempt < 500 && open_now > settled + 2; ++attempt) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      open_now = open_descriptors();
+    }
+    CHECK(open_now <= settled + 2);
   }
 
   ProcessSupervisor non_tty;

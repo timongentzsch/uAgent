@@ -155,8 +155,8 @@ void TestConfigProposalAndCommit() {
       FindNamedProvider(catalog.providers, "codex-local");
   CHECK(resolved && resolved->api_key == "resolved-local-key");
 
-  for (const std::string& credential : {"literal-secret", "Bearer secret",
-                                        "prefix-$API_KEY", "$API_KEY-suffix"}) {
+  for (const std::string credential : {"literal-secret", "Bearer secret",
+                                       "prefix-$API_KEY", "$API_KEY-suffix"}) {
     const std::string unsafe =
         "{\"bad\":{\"base_url\":\"https://example.com/v1\",\"api_key\":\"" +
         credential + "\"}}";
@@ -168,9 +168,9 @@ void TestConfigProposalAndCommit() {
           std::string::npos);
   }
 
-  for (const std::string& url : {"https://user:secret@example.com/v1",
-                                 "https://example.com/v1?api_key=secret",
-                                 "https://example.com/v1#secret"}) {
+  for (const std::string url : {"https://user:secret@example.com/v1",
+                                "https://example.com/v1?api_key=secret",
+                                "https://example.com/v1#secret"}) {
     const std::string unsafe =
         "{\"bad\":{\"base_url\":\"" + url + "\",\"api_key\":\"$API_KEY\"}}";
     ConfigProposal rejected = PrepareConfigProposal(

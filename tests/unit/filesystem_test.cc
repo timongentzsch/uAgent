@@ -266,18 +266,18 @@ void TestFileTools() {
           root / ("preview-" + std::to_string(++previewed) + ".txt");
       CHECK(ToolWriteFile(subject.string(), body).output.starts_with("wrote "));
       json arguments{{"path", subject.string()}, {"edits", requested}};
-      std::string before = contents(subject);
-      std::string preview = edit_tool->approval_preview(arguments);
+      std::string before_edit = contents(subject);
+      std::string approval = edit_tool->approval_preview(arguments);
       ToolResult applied = edit_tool->run(arguments, {});
-      std::string after = contents(subject);
+      std::string after_edit = contents(subject);
       if (!applied.Ok()) {
-        CHECK(preview == applied.output);
-        CHECK(after == before);
+        CHECK(approval == applied.output);
+        CHECK(after_edit == before_edit);
         return;
       }
       std::string happened =
-          WholeFileDiffDisplay(subject.string(), before, after, true);
-      CHECK(preview == (happened.empty() ? "no effective changes" : happened));
+          WholeFileDiffDisplay(subject.string(), before_edit, after_edit, true);
+      CHECK(approval == (happened.empty() ? "no effective changes" : happened));
     };
     // `old` copied out of a line-numbering reader, which the edit strips.
     approves_what_it_does(

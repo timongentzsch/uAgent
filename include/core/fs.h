@@ -330,8 +330,15 @@ inline bool TakePrivateText(const std::string& path, std::string& content,
 inline std::filesystem::path CanonicalAccessPath(const std::string& path) {
   std::error_code ec;
   std::filesystem::path p = path.empty() ? "." : path;
-  auto canonical = std::filesystem::weakly_canonical(p, ec);
-  return ec ? std::filesystem::absolute(p, ec) : canonical;
+  // Made absolute before resolving, because the two standard libraries
+  // disagree about a relative path whose target does not exist: libc++
+  // returns it absolute, libstdc++ returns it unchanged and reports no
+  // error. Every caller compares the answer against an absolute root, so a
+  // relative one reads as outside the workspace.
+  std::filesystem::path rooted = std::filesystem::absolute(p, ec);
+  if (ec) return p.lexically_normal();
+  auto canonical = std::filesystem::weakly_canonical(rooted, ec);
+  return ec ? rooted.lexically_normal() : canonical;
 }
 
 inline std::string DisplayPath(const std::string& path) {

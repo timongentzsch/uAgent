@@ -437,7 +437,6 @@ class Application {
     bool interrupting = false;
     bool exit_when_idle = false;
     bool quit_hint = false;
-    std::chrono::steady_clock::time_point quit_hint_at{};
     bool answering = false;
     std::optional<std::string> next_input;
     std::string saved_draft;
@@ -577,15 +576,12 @@ class Application {
         if (ready < 0 && errno != EINTR) break;
         SetQuitGesture(false);
         if (TakeIdleInterrupt() && !working) {
-          auto now = std::chrono::steady_clock::now();
-          if (quit_hint && now - quit_hint_at < std::chrono::seconds(2)) {
-            // Leave the way an unhandled SIGINT always left: signal-safe
-            // restore, and the shell still sees 130.
-            SetQuitGesture(false);
-            raise(SIGINT);
-          }
+          // The row is the contract: while it offers the exit, the next press
+          // takes it. Any other key retracts the offer. Leaving through
+          // raise() is how an unhandled SIGINT always left, so the terminal is
+          // restored the same way and the shell still sees 130.
+          if (quit_hint) raise(SIGINT);
           quit_hint = true;
-          quit_hint_at = now;
           RefreshStatus();
         }
         if (g_terminal_resized) {

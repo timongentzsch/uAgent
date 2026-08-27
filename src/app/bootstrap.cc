@@ -28,6 +28,7 @@
 #include "include/core/json.h"
 #include "include/core/project.h"
 #include "include/core/skills.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/mcp/register.h"
@@ -56,14 +57,13 @@ void PrintWarning(const std::string& warning) {
   }
 }
 
-// A y/N (or Y/n) prompt. EOF always declines: an unattended run must never
+// A y/N prompt. Silence and EOF both decline: an unattended run must never
 // grant trust or approval by accident.
-bool Confirm(const std::string& question, bool default_yes) {
+bool Confirm(const std::string& question) {
   bool eof = false;
   std::string answer =
       Trim(ReadInputLine(question, &eof, /*keep_history=*/false));
   if (eof) return false;
-  if (answer.empty()) return default_yes;
   return answer == "y" || answer == "Y" || answer == "yes";
 }
 
@@ -98,8 +98,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
               "project .uagent/.config is untrusted and was ignored; rerun "
               "with --trust-project-config after reviewing it\n");
     } else {
-      trusted = Confirm("Trust this workspace's " + surfaces + "? [y/N] ",
-                        /*default_yes=*/false);
+      trusted = Confirm("Trust this workspace's " + surfaces + "? [y/N] ");
       if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
         error = "cannot save project trust: " + error;
         return false;
@@ -145,9 +144,16 @@ void PrintProjectContext(const ProjectInstructions& instructions,
     std::vector<std::string> sources = instructions.sources;
     sources.insert(sources.end(), instructions.memory_sources.begin(),
                    instructions.memory_sources.end());
+    // The count is the answer; the paths are a spot check.
+    constexpr size_t kShownSources = 3;
     std::vector<std::string> display;
-    display.reserve(sources.size());
+    display.reserve(std::min(sources.size(), kShownSources + 1));
     for (const std::string& source : sources) {
+      if (display.size() == kShownSources) {
+        display.push_back("+" + std::to_string(sources.size() - kShownSources) +
+                          " more");
+        break;
+      }
       display.push_back(source.starts_with(cwd) ? source.substr(cwd.size())
                                                 : Tilde(source));
     }
@@ -162,6 +168,19 @@ void PrintProjectContext(const ProjectInstructions& instructions,
     PrintWarning("memory context truncated at " +
                  std::to_string(instructions.memory_limit) +
                  " bytes; consolidate or shorten global memories");
+  }
+}
+
+// The few commands worth knowing before the first turn.
+void PrintStartupHints() {
+  static constexpr const char* kHints[] = {"/help", "/model", "/status",
+                                           "/init", "/review"};
+  printf("%s  To get started, describe a task or try one of these:%s\n", DIM(),
+         RST());
+  for (const char* name : kHints) {
+    const SlashCommandSpec* command = ParseSlashCommand(name).spec;
+    printf("  %s%s%s %s%s%s\n", BOLD(), command->name, RST(), DIM(),
+           command->description, RST());
   }
 }
 
@@ -329,7 +348,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                                        app->runtime.config,
                                        app->options.trust_project);
         },
-        std::move(proposals)));
+        proposals));
   }
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
@@ -373,11 +392,25 @@ std::vector<Tool> BuildTools(AppContext& context,
 // drift apart from the debug record of what was granted. A mandatory-human
 // call ignores every automatic-approval switch and denies when no human can
 // answer, so the agent cannot widen its own authority unattended.
+// What "always" remembers: the tool, plus a shell call's first word, so
+// allowing `git` never allows `rm`.
+std::string ApprovalKey(const Tool& tool, const json& arguments) {
+  std::string command = Trim(JsonValue(arguments, "command", ""));
+  size_t end = command.find_first_of(" \t\n");
+  if (end != std::string::npos) command.resize(end);
+  return command.empty() ? tool.name : tool.name + " " + command;
+}
+
 Agent::Approver MakeApprover(AppContext* app) {
   return [app](const Tool& tool, const json& arguments) {
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
-    bool automatic = app->options.yolo && !mandatory;
+    std::string key = ApprovalKey(tool, arguments);
+    bool remembered =
+        !mandatory &&
+        std::find(app->session_approvals.begin(), app->session_approvals.end(),
+                  key) != app->session_approvals.end();
+    bool automatic = (app->options.yolo || remembered) && !mandatory;
     bool granted = true;
     if (!automatic) {
       // Print the full command/payload before asking, so long commands are
@@ -399,11 +432,29 @@ Agent::Approver MakeApprover(AppContext* app) {
                 "interactive terminal is attached%s\n",
                 RED(), RST());
         granted = false;
-      } else {
+      } else if (mandatory) {
         std::string question = std::string(YEL()) + "allow " +
-                               TerminalSafe(tool.name) +
-                               (mandatory ? "? [y/N] " : "? [Y/n] ") + RST();
-        granted = Confirm(question, /*default_yes=*/!mandatory);
+                               TerminalSafe(tool.name) + "? [y/N] " + RST();
+        granted = Confirm(question);
+      } else {
+        // Anything else is guidance: denied, and queued as steering.
+        std::string question =
+            std::string(YEL()) + "allow " + TerminalSafe(tool.name) +
+            "? [y] once  [a] always " + TerminalSafe(key) +
+            " this session  [n] no — or say what to do instead: " + RST();
+        bool cancelled = false;
+        bool eof = false;
+        std::string answer = Trim(ReadChoiceLine(question, cancelled, eof));
+        std::string choice = AsciiLower(answer);
+        bool always = choice == "a" || choice == "always";
+        granted =
+            !cancelled && !eof &&
+            (choice.empty() || choice == "y" || choice == "yes" || always);
+        if (granted && always) app->session_approvals.push_back(key);
+        if (!granted && !cancelled && !eof && !answer.empty() &&
+            choice != "n" && choice != "no") {
+          SteeringState().Queue(answer);
+        }
       }
     }
     DebugLog("approval", {{"tool", tool.name},
@@ -594,7 +645,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
   ProjectInstructions instructions = LoadInstructions(
       workspace, context->runtime.config, memory_child, project_limit);
-  printf("%s%sµAgent%s\n", RST(), BOLD(), RST());
+  printf("%s%sµAgent%s %sv%s · %s%s\n", RST(), BOLD(), RST(), DIM(), kVersion,
+         TerminalSafe(Tilde(CanonicalCwd())).c_str(), RST());
   PrintProjectContext(instructions, project_limit);
   std::vector<Skill> skills =
       memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
@@ -618,6 +670,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->tool_policy = ToolPolicyFromEnvironment();
   PrintWarning(context->tool_policy.error);
   context->tools = BuildTools(*context, workspace, trusted_snapshot, skills);
+  if (context->options.prompt.empty()) PrintStartupHints();
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

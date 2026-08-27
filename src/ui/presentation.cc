@@ -267,10 +267,11 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     }
     if (record.poll) return;
     std::string body = "→ " + TerminalSafe(record.title);
-    if (record.multiline && !record.detail.empty())
+    if (record.multiline && !record.detail.empty()) {
       body += '\n' + TerminalSafe(record.detail);
-    else if (!record.summary.empty())
+    } else if (!record.summary.empty()) {
       body += '(' + TerminalSafe(record.summary) + ')';
+    }
     WriteTerminalRecord(StyledBlock(body, CYAN()));
     return;
   }

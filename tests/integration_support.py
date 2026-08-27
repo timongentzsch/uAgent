@@ -222,7 +222,6 @@ def run_pty(
     cwd,
     env,
     payload=b"",
-    interrupt=False,
     timeout=10,
     columns=80,
     args=(),
@@ -316,46 +315,48 @@ def run_pty(
             raise
     if suspend is not None:
         suspend(process, master)
-    if interrupt:
-        process.send_signal(signal.SIGINT)
-    else:
-        payloads = [payload] if isinstance(payload, bytes) else payload
-        for index, item in enumerate(payloads):
-            marker = None
-            resized_columns = None
-            if isinstance(item, tuple):
-                if len(item) == 3:
-                    item, marker, resized_columns = item
-                else:
-                    item, marker = item
-                    resized_columns = None
-            start = len(output)
-            try:
+    payloads = [payload] if isinstance(payload, bytes) else payload
+    for index, item in enumerate(payloads):
+        marker = None
+        resized_columns = None
+        if isinstance(item, tuple):
+            if len(item) == 3:
+                item, marker, resized_columns = item
+            else:
+                item, marker = item
+                resized_columns = None
+        start = len(output)
+        try:
+            # A callable acts on the child instead of typing at it: this
+            # PTY is not its controlling terminal, so ^C cannot be typed.
+            if callable(item):
+                item(process)
+            else:
                 fragments = item if isinstance(item, list) else [item]
                 for fragment in fragments:
                     write_fragment(fragment)
                     if len(fragments) > 1:
                         time.sleep(0.01)
-            except OSError as error:
-                if error.errno != errno.EIO:
-                    raise
-                read_until()
+        except OSError as error:
+            if error.errno != errno.EIO:
+                raise
+            read_until()
+            break
+        if resized_columns:
+            fcntl.ioctl(
+                master,
+                termios.TIOCSWINSZ,
+                struct.pack("HHHH", 24, resized_columns, 0, 0),
+            )
+            # This PTY is not the child's controlling terminal, so mirror
+            # the SIGWINCH a real terminal sends to its foreground group.
+            process.send_signal(signal.SIGWINCH)
+            time.sleep(0.05)
+        if index + 1 < len(payloads):
+            if marker is not None and not read_until(marker, start):
                 break
-            if resized_columns:
-                fcntl.ioctl(
-                    master,
-                    termios.TIOCSWINSZ,
-                    struct.pack("HHHH", 24, resized_columns, 0, 0),
-                )
-                # This PTY is not the child's controlling terminal, so mirror
-                # the SIGWINCH a real terminal sends to its foreground group.
-                process.send_signal(signal.SIGWINCH)
-                time.sleep(0.05)
-            if index + 1 < len(payloads):
-                if marker is not None and not read_until(marker, start):
-                    break
-                if marker is None:
-                    read_prompt(start)
+            if marker is None:
+                read_prompt(start)
     read_until()
     if process.poll() is None:
         process.kill()
@@ -615,6 +616,9 @@ TEST_ORDER = (
     "test_input_idle_background_completion_is_observational",
     "test_input_redraw_streaming_tail_survives_resize",
     "test_input_redraw_status_animation_does_not_repaint_draft",
+    "test_input_slash_suggestions_and_tab_completion",
+    "test_input_shift_enter_keeps_the_draft_open",
+    "test_input_ctrl_c_asks_once_then_quits",
     "test_suspend_restores_and_rearms_terminal",
     "test_signal_exit_restores_terminal",
     "test_input_redraw_survives_terminal_resize_and_delete",
@@ -622,6 +626,7 @@ TEST_ORDER = (
     "test_run_rejects_python_and_sudo_before_execution",
     "test_self_configuration_requires_a_person",
     "test_self_configuration_asks_even_under_yolo",
+    "test_approval_remembers_always_and_forwards_a_refusal",
     "test_self_configuration_commits_after_approval",
     "test_process_hardening_scrubs_loader_variables",
     "test_streamed_search_citations",

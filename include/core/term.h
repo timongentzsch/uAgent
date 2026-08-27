@@ -95,11 +95,24 @@ bool CurrentTerminalActivityRolling();
 // Render the newest activity for one animation frame, bounded to `columns`.
 std::string RenderCurrentTerminalActivity(size_t columns);
 
+// Names what a blocking call waits on, for as long as it blocks.
+class TerminalActivityLabel {
+ public:
+  explicit TerminalActivityLabel(std::string label)
+      : id_(BeginTerminalActivity(std::move(label))) {}
+  ~TerminalActivityLabel() { EndTerminalActivity(id_); }
+  TerminalActivityLabel(const TerminalActivityLabel&) = delete;
+  TerminalActivityLabel& operator=(const TerminalActivityLabel&) = delete;
+
+ private:
+  uint64_t id_;
+};
+
 // Animates while a call blocks with nothing to print. stop() is idempotent and
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true, std::string label = "working",
+  explicit TerminalSpinner(bool enabled = true, std::string label = "Working",
                            std::chrono::steady_clock::time_point started =
                                std::chrono::steady_clock::now())
       : started_(started == std::chrono::steady_clock::time_point()

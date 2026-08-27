@@ -456,8 +456,7 @@ void TestChildEnvironmentPolicy() {
   CHECK(FirstLine(connection_report) ==
         "error: child execution: connection error: Couldn't connect to "
         "server");
-  CHECK(FirstLine(connection_report).find("secret-value") ==
-        std::string::npos);
+  CHECK(FirstLine(connection_report).find("secret-value") == std::string::npos);
 }
 
 void TestModelPreference() {

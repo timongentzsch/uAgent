@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <clocale>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -175,7 +176,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   dup2(saved, STDOUT_FILENO);
   close(saved);
   fseek(capture, 0, SEEK_END);
-  long bytes = ftell(capture);
+  const int64_t bytes = static_cast<int64_t>(ftell(capture));
   fseek(capture, 0, SEEK_SET);
   std::string output(bytes > 0 ? static_cast<size_t>(bytes) : 0, '\0');
   if (!output.empty()) {

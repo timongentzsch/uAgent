@@ -616,6 +616,12 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
     case SlashCommandId::kProcesses:
       HandleProcesses(session);
       break;
+    case SlashCommandId::kDiff:
+    case SlashCommandId::kInit:
+    case SlashCommandId::kReview:
+      // SlashCommandPrompt turns these into an ordinary turn before the
+      // dispatcher ever sees them.
+      break;
   }
   // Notices above are written with bare printf; the interactive composer owns
   // stdout and only sees what has left the buffer.

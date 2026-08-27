@@ -123,6 +123,7 @@ enum class SequenceAction {
   kPreviousWord,
   kNextWord,
   kDeletePreviousWord,
+  kInsertNewline,
 };
 
 struct SequenceBinding {
@@ -154,7 +155,27 @@ constexpr SequenceBinding kSequenceBindings[] = {
     {"\x1b[1;5C", SequenceAction::kNextWord},
     {"\x1b\x7f", SequenceAction::kDeletePreviousWord},
     {"\x1b\x08", SequenceAction::kDeletePreviousWord},
+    // Draft newline: Shift+Enter as terminals spell it, plus Alt+Enter.
+    {"\x1b\r", SequenceAction::kInsertNewline},
+    {"\x1b\n", SequenceAction::kInsertNewline},
+    {"\x1b[13;2u", SequenceAction::kInsertNewline},
 };
+
+// What a partially typed "/word" could still become; aliases stay hidden.
+std::vector<const SlashCommandSpec*> SlashMatches(const std::string& buffer) {
+  std::vector<const SlashCommandSpec*> matches;
+  if (buffer.empty() || buffer[0] != '/' ||
+      buffer.find(' ') != std::string::npos) {
+    return matches;
+  }
+  for (const SlashCommandSpec& command : SlashCommandRegistry()) {
+    if (!*command.description) continue;
+    if (std::string_view(command.name).starts_with(buffer)) {
+      matches.push_back(&command);
+    }
+  }
+  return matches;
+}
 
 // One character back/forward from a boundary, over the shared scanners.
 size_t PreviousUtf8(const std::string& text, size_t at) {
@@ -422,6 +443,7 @@ InteractiveInputEvent RawComposer::Read() {
       continue;
     }
     unsigned char ch = static_cast<unsigned char>(token->text[0]);
+    // Both spellings submit: a piped script sends the bare newline.
     if (ch == '\r' || ch == '\n') {
       std::string line = std::move(buffer_);
       buffer_.clear();
@@ -463,7 +485,25 @@ InteractiveInputEvent RawComposer::Read() {
     } else if (ch == 0x15) {
       buffer_.erase(0, cursor_);
       cursor_ = 0;
-    } else if (ch >= 0x20 || ch == '\t') {
+    } else if (ch == '\t') {  // completes a command, else a plain tab
+      std::vector<const SlashCommandSpec*> matches = SlashMatches(buffer_);
+      if (matches.empty()) {
+        Insert("\t");
+      } else {
+        std::string name = matches.front()->name;
+        for (const SlashCommandSpec* match : matches) {
+          std::string_view candidate = match->name;
+          name.resize(static_cast<size_t>(
+              std::mismatch(name.begin(), name.end(), candidate.begin(),
+                            candidate.end())
+                  .first -
+              name.begin()));
+        }
+        if (matches.size() == 1 && *matches.front()->argument) name += " ";
+        buffer_ = name;
+        cursor_ = buffer_.size();
+      }
+    } else if (ch >= 0x20) {
       if (!Insert(std::string(1, static_cast<char>(ch))) &&
           !input_limit_bell_) {
         output_.Write("\a");
@@ -494,6 +534,16 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
     ++row;
   }
   size_t caret_col = std::min(before_width, DisplayWidth(rows[row]));
+  // Below the draft, inside the erased block. Plain text: these rows are
+  // measured, and an SGR escape is not width.
+  std::vector<const SlashCommandSpec*> matches = SlashMatches(buffer_);
+  constexpr size_t kShownMatches = 5;
+  for (size_t index = 0; index < matches.size() && index < kShownMatches;
+       ++index) {
+    rows.push_back(DisplayTrunc("  " + std::string(matches[index]->name) +
+                                    "  " + matches[index]->description,
+                                AvailableColumns()));
+  }
   return {std::move(rows), row, caret_col};
 }
 
@@ -622,6 +672,9 @@ void RawComposer::ApplySequence(const std::string& sequence) {
         if (cursor_ < buffer_.size()) {
           buffer_.erase(cursor_, NextUtf8(buffer_, cursor_) - cursor_);
         }
+        break;
+      case SequenceAction::kInsertNewline:
+        if (!Insert("\n")) output_.Write("\a");
         break;
       case SequenceAction::kPreviousWord:
         PreviousWord();

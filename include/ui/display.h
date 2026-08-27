@@ -32,6 +32,13 @@ inline std::string CacheSummary(const Usage& usage) {
              : std::string();
 }
 
+// Headroom as a percentage; empty when the window is unknown.
+inline std::string ContextLeftSummary(int64_t used, int64_t window) {
+  if (window <= 0) return {};
+  int64_t left = std::clamp<int64_t>(window - used, 0, window);
+  return std::to_string(left * 100 / window) + "% left";
+}
+
 inline std::string ContextSummary(int64_t used, int64_t window = 0) {
   std::string context = "ctx " + FmtCount(used);
   if (window > 0) context += "/" + FmtCount(window);
@@ -70,6 +77,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
 
   add(0, view.host.empty() ? view.model : view.model + " @ " + view.host);
   add(1, ContextSummary(view.context_used, api.ctx_window));
+  add(3, ContextLeftSummary(view.context_used, api.ctx_window));
   if (usage.input || usage.output) add(4, TokenSummary(usage));
   add(5, CacheSummary(usage));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
@@ -78,6 +86,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
     add(3, std::to_string(view.attachments) + " attached");
   }
   if (view.verbose) add(6, "verbose");
+  add(7, "/help for shortcuts");
   add(2, view.yolo ? "YOLO" : std::string());
 
   auto join = [&segments] {
@@ -136,8 +145,8 @@ inline std::string ActivityBar(const ActivityView& view) {
   std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
   prefix += " ";
   std::string state = view.interrupting
-                          ? "interrupting"
-                          : (activity.empty() ? "working" : activity);
+                          ? "Interrupting"
+                          : (activity.empty() ? "Working" : activity);
   std::string route = view.model.empty() ? std::string() : " · " + view.model;
   std::string suffix = " · " + seconds;
   suffix += " · " + ContextSummary(view.context_used, view.context_window);
@@ -163,7 +172,7 @@ inline std::string ActivityBar(const ActivityView& view) {
   }
   suffix = route + suffix;
   if (SteeringEnabled()) {
-    std::string hint = " · Esc interrupt";
+    std::string hint = " · Esc to interrupt";
     // A rolling ticker always holds more text than fits, so it asks for
     // the full cap instead of the width of its idle fallback label.
     size_t desired = std::min<size_t>(

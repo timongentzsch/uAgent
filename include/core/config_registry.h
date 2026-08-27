@@ -49,6 +49,11 @@ using ConfigDefault =
     std::variant<std::monostate, int64_t, double, bool, std::string_view>;
 
 struct ConfigDescriptor {
+  const char* EnvName() const {
+    return environment
+        .data();  // NOLINT(bugprone-suspicious-stringview-data-usage)
+  }
+
   std::string_view environment;
   std::string_view field;  // RuntimeConfig member; empty for direct getters
   ConfigType type = ConfigType::kInt;
@@ -248,11 +253,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "characters kept from one tool result"),
-    registry::Int("UAGENT_TOOL_TRACE_PROTECT_CHARS", {}, 64 * 1024, 0,
+    registry::Int("UAGENT_TOOL_TRACE_PROTECT_CHARS", {}, int64_t{64} * 1024, 0,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "recent tool output never pruned from the trace"),
-    registry::Int("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", {}, 32 * 1024, 0,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
+    registry::Int("UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS", {}, int64_t{32} * 1024,
+                  0, kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "smallest tool result the trace pruner will drop"),
     registry::Int("UAGENT_READ_FILE_LINES", {}, 1000, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
@@ -260,8 +265,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_READ_FILE_MAX_LINES", {}, 10000, 1, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "tools",
                   "maximum lines one read_path call may request"),
-    registry::Int("UAGENT_READ_FILE_BYTES", {}, 32 * 1024, 1024, kConfigAnyMax,
-                  ReloadPolicy::kRestartRequired, "tools",
+    registry::Int("UAGENT_READ_FILE_BYTES", {}, int64_t{32} * 1024, 1024,
+                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "maximum bytes returned by read_path"),
     registry::Int("UAGENT_EDIT_FILE_BYTES", {}, 10 * registry::kMb,
                   kConfigAnyMin, kConfigAnyMax, ReloadPolicy::kRestartRequired,
@@ -358,7 +363,7 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   ReloadPolicy::kRestartRequired, "memory",
                   "run the background memory extractor"),
     registry::Int("UAGENT_MEMORY_ALWAYS_BYTES", "memory_always_bytes", 2048, 0,
-                  64 * 1024, ReloadPolicy::kRestartRequired, "memory",
+                  int64_t{64} * 1024, ReloadPolicy::kRestartRequired, "memory",
                   "always-on memory slice injected into the prompt"),
     registry::Int("UAGENT_MEMORY_BYTES", {}, 2048, 256, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "memory",
@@ -366,19 +371,19 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Int("UAGENT_MEMORY_FILES", {}, 32, 1, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "memory",
                   "memories retained"),
-    registry::Int("UAGENT_MEMORY_IDLE_SECONDS", {}, 6 * 60 * 60, 0,
-                  48 * 60 * 60, ReloadPolicy::kRestartRequired, "memory",
-                  "idle seconds before background extraction runs"),
-    registry::Int("UAGENT_MEMORY_EXTRACT_BYTES", {}, 32 * 1024, 4096,
-                  256 * 1024, ReloadPolicy::kRestartRequired, "memory",
+    registry::Int("UAGENT_MEMORY_IDLE_SECONDS", {}, int64_t{6} * 60 * 60, 0,
+                  int64_t{48} * 60 * 60, ReloadPolicy::kRestartRequired,
+                  "memory", "idle seconds before background extraction runs"),
+    registry::Int("UAGENT_MEMORY_EXTRACT_BYTES", {}, int64_t{32} * 1024, 4096,
+                  int64_t{256} * 1024, ReloadPolicy::kRestartRequired, "memory",
                   "transcript bytes handed to the extractor"),
     registry::Str("UAGENT_MEMORY_MODEL", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "memory",
                   "model route for background memory extraction"),
 
     // Skills.
-    registry::Int("UAGENT_SKILL_BYTES", {}, 512 * 1024, 1024, 1024 * 1024,
-                  ReloadPolicy::kRestartRequired, "skills",
+    registry::Int("UAGENT_SKILL_BYTES", {}, int64_t{512} * 1024, 1024,
+                  registry::kMb, ReloadPolicy::kRestartRequired, "skills",
                   "largest skill body loaded when opened"),
     registry::Int("UAGENT_SKILL_DESC_BYTES", {}, 1024, 16, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "skills",
@@ -413,8 +418,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                   16 * registry::kMb, 1024, kConfigAnyMax,
                   ReloadPolicy::kRestartRequired, "mcp",
                   "largest MCP response accepted"),
-    registry::Int("UAGENT_MCP_SCHEMA_BYTES", "mcp_schema_bytes", 256 * 1024,
-                  1024, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
+    registry::Int("UAGENT_MCP_SCHEMA_BYTES", "mcp_schema_bytes",
+                  int64_t{256} * 1024, 1024, kConfigAnyMax,
+                  ReloadPolicy::kRestartRequired, "mcp",
                   "largest MCP tool schema accepted"),
     registry::Int("UAGENT_MCP_LOG_BYTES", "mcp_log_bytes", 16 * registry::kMb,
                   1024, kConfigAnyMax, ReloadPolicy::kRestartRequired, "mcp",
@@ -453,8 +459,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
                       "terminal image width; defaults to the available width"),
 
     // Session and artifact retention.
-    registry::Int("UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes", 32 * 1024, 0,
-                  kConfigAnyMax, ReloadPolicy::kRestartRequired, "retention",
+    registry::Int("UAGENT_PROJECT_DOC_BYTES", "project_doc_bytes",
+                  int64_t{32} * 1024, 0, kConfigAnyMax,
+                  ReloadPolicy::kRestartRequired, "retention",
                   "AGENTS.md bytes injected into the prompt"),
     registry::Int("UAGENT_SESSION_ARCHIVE_BYTES", "session_archive_bytes",
                   16 * registry::kMb, 0, kConfigAnyMax,

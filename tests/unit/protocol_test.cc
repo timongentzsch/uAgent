@@ -77,15 +77,17 @@ void TestTableRetroErasesRenderedRows() {
 }
 
 void TestInteractiveTranscriptFraming() {
-  std::string wire = CaptureStdout([] {
-    bool prior = PersistentComposer();
-    SetPersistentComposer(true);
-    WriteTerminalRecord("record-one\n");
-    WriteTerminalTail("par");
-    WriteTerminalTail("tial\nnext");
-    WriteTerminalRecord("record-two\n");
-    SetPersistentComposer(prior);
-  }, /*color=*/false, /*tty=*/g_tty);
+  std::string wire = CaptureStdout(
+      [] {
+        bool prior = PersistentComposer();
+        SetPersistentComposer(true);
+        WriteTerminalRecord("record-one\n");
+        WriteTerminalTail("par");
+        WriteTerminalTail("tial\nnext");
+        WriteTerminalRecord("record-two\n");
+        SetPersistentComposer(prior);
+      },
+      /*color=*/false, /*tty=*/g_tty);
 
   InteractiveTranscript transcript;
   std::string committed;
@@ -438,6 +440,21 @@ void TestRegistries() {
   command = ParseSlashCommand("/ps");
   CHECK(command.spec && command.spec->id == SlashCommandId::kProcesses);
   CHECK(!ParseSlashCommand("/unknown").spec);
+  command = ParseSlashCommand("/resume");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kSessions);
+
+  // Prompt commands: the spelling is local, the work is an ordinary turn, and
+  // /review carries whatever the caller named as its target.
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/init")).find("AGENTS.md") !=
+        std::string::npos);
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/review"))
+            .find("my uncommitted changes") != std::string::npos);
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/review origin/main"))
+            .find("origin/main") != std::string::npos);
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/diff")).find("git") !=
+        std::string::npos);
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/status")).empty());
+  CHECK(SlashCommandPrompt(ParseSlashCommand("/unknown")).empty());
   CHECK(ValidEffort("xhigh"));
   CHECK(!ValidEffort("extreme"));
   CHECK(DisplayTrunc("abcdef", 4) == "abc…");

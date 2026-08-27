@@ -55,6 +55,11 @@ inline bool AbortRequested() {
 
 void RequestAbort();
 void ClearAbort();
+// An idle SIGINT, read once: the first half of the quit gesture.
+bool TakeIdleInterrupt();
+// Armed only while an interactive session is idle; elsewhere SIGINT still
+// kills.
+void SetQuitGesture(bool enabled);
 // Drain a stale abort byte only while the flag is clear, then re-arm if a
 // concurrent request arrived during the drain.
 void NormalizeAbortWake();

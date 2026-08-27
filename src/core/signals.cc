@@ -215,7 +215,23 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
   }
 }
 
+std::atomic_flag g_signal_idle_interrupt = ATOMIC_FLAG_INIT;
+volatile sig_atomic_t g_quit_gesture = 0;
+
+void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
+
+bool TakeIdleInterrupt() {
+  bool seen = g_signal_idle_interrupt.test(std::memory_order_relaxed);
+  g_signal_idle_interrupt.clear(std::memory_order_relaxed);
+  return seen;
+}
+
 void SigintHandler(int signal_number) {
+  if (signal_number == SIGINT && !g_streaming && g_quit_gesture) {
+    // Nothing to kill: the composer asks before the next press exits.
+    g_signal_idle_interrupt.test_and_set(std::memory_order_relaxed);
+    return;
+  }
   if (signal_number == SIGINT && g_streaming) {
     g_signal_abort.test_and_set(std::memory_order_relaxed);
     WakeDescriptor(g_abort_wake_write);

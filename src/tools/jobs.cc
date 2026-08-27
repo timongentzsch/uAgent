@@ -34,6 +34,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/term.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/files.h"
 
@@ -213,7 +214,8 @@ CollectedLog CollectCompletedLog(const std::string& path, int64_t cap,
                                  bool failed) {
   uint64_t bytes = LogFileBytes(path);
   CollectedLog collected{ReadLogTail(path, cap), std::nullopt};
-  if (bytes > 0 && (failed || (cap > 0 && bytes > static_cast<uint64_t>(cap)))) {
+  if (bytes > 0 &&
+      (failed || (cap > 0 && bytes > static_cast<uint64_t>(cap)))) {
     collected.artifact = PromoteLogArtifact(path, bytes);
   } else {
     RemoveLog(path);
@@ -345,6 +347,10 @@ std::optional<json> FindDetachedRecord(int64_t pid) {
   if (pid <= 0 || pid > std::numeric_limits<pid_t>::max()) return std::nullopt;
   return LoadDetachedRecord(DetachedRecordPath(static_cast<pid_t>(pid)),
                             DetachedRecordCutoff());
+}
+
+std::string ActivityCount(size_t count) {
+  return std::to_string(count) + (count == 1 ? " activity" : " activities");
 }
 
 ToolResult ActivityNotFound(int64_t pid) {
@@ -599,6 +605,8 @@ ToolResult ToolActivityOutput(const ProcessSupervisor& supervisor, int64_t id,
                               int64_t max_output_chars) {
   int64_t cap = ActivityOutputCap(max_output_chars);
   if (id <= 0) return LimitOutput(ToolActivityOutput(supervisor, id), cap);
+  // " · " is the prefix ActivityLabel keeps when it has to clip.
+  TerminalActivityLabel waiting("wait · activity " + std::to_string(id));
   std::optional<BgJob> job = supervisor.Find(id);
   if (!job || !job->session) {
     // Persistent detached activities intentionally remain rotating-log based.
@@ -1047,6 +1055,10 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
   }
   if (ids.empty()) return ToolSuccess("(no waitable activities running)");
 
+  TerminalActivityLabel waiting(
+      ids.size() == 1 ? "wait · activity " + std::to_string(ids.front())
+                      : "wait · " + ActivityCount(ids.size()));
+
   int64_t cap = ActivityOutputCap(max_output_chars);
 
   // The caller's wait_ms is only half the story: a tool call may not outlive
@@ -1076,13 +1088,13 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
       return ToolSuccess(LimitOutput(std::move(result), cap));
     }
     if (AbortRequested()) {
-      return ToolCancelled("wait interrupted; " + std::to_string(running) +
-                           " activity(s) still running");
+      return ToolCancelled("wait interrupted; " + ActivityCount(running) +
+                           " still running");
     }
     if (SteeringYieldRequested()) {
       if (!output.empty()) output += "\n\n";
-      output += "[wait yielded for queued steering; " +
-                std::to_string(running) + " activity(s) still running]";
+      output += "[wait yielded for queued steering; " + ActivityCount(running) +
+                " still running]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     auto now = std::chrono::steady_clock::now();
@@ -1094,8 +1106,8 @@ ToolResult ToolActivityWait(ProcessSupervisor& supervisor,
         output += " of " + FmtDuration(static_cast<double>(wait_ms) / 1000.0) +
                   " requested, capped by the turn deadline";
       }
-      output += "; " + std::to_string(running) +
-                " activity(s) still running; call again to keep waiting]";
+      output += "; " + ActivityCount(running) +
+                " still running; call again to keep waiting]";
       return ToolSuccess(LimitOutput(std::move(output), cap));
     }
     // Process state changes, Escape, and queued steering all pair with Wake(),

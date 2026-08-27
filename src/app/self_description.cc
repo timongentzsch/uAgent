@@ -209,16 +209,16 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       json models = json::array();
       for (const ModelRoute& route : catalog.models) {
         if (!name.empty() && route.name != name) continue;
-        models.push_back({{"name", route.name},
-                          {"model", route.model},
-                          {"base_url", RedactedUrl(route.base_url)},
-                          {"protocol", ProviderProtocolName(route.protocol)},
-                          {"wire_api", WireApiName(route.wire_api)},
-                          {"context", route.context},
-                          {"effort", route.effort},
-                          {"hosted_web_search", route.hosted_web_search},
-                          {"credential", route.api_key.empty() ? "unset"
-                                                               : "set"}});
+        models.push_back(
+            {{"name", route.name},
+             {"model", route.model},
+             {"base_url", RedactedUrl(route.base_url)},
+             {"protocol", ProviderProtocolName(route.protocol)},
+             {"wire_api", WireApiName(route.wire_api)},
+             {"context", route.context},
+             {"effort", route.effort},
+             {"hosted_web_search", route.hosted_web_search},
+             {"credential", route.api_key.empty() ? "unset" : "set"}});
       }
       json providers = json::array();
       for (const NamedProvider& provider : catalog.providers) {
@@ -237,7 +237,9 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["providers"] = std::move(providers);
       out["selection"] = "[provider/]model[:variant][:effort]";
       out["efforts"] = json::array();
-      for (const char* effort : kReasoningEfforts) out["efforts"].push_back(effort);
+      for (const char* effort : kReasoningEfforts) {
+        out["efforts"].push_back(effort);
+      }
       out["note"] =
           "A named model route resolves by its own name; any other id resolves "
           "against a provider scope. Ids a provider serves are not enumerated "

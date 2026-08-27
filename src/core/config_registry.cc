@@ -24,20 +24,19 @@ int64_t LongSetting(const ConfigDescriptor& descriptor) {
 }
 
 int64_t LongSetting(const ConfigDescriptor& descriptor, int64_t fallback) {
-  return std::clamp(EnvLong(descriptor.environment.data(), fallback),
-                    descriptor.minimum, descriptor.maximum);
+  return std::clamp(EnvLong(descriptor.EnvName(), fallback), descriptor.minimum,
+                    descriptor.maximum);
 }
 
 bool BoolSetting(const ConfigDescriptor& descriptor) {
   const bool* value = std::get_if<bool>(&descriptor.default_value);
-  return EnvStr(descriptor.environment.data(), value && *value ? "1" : "0") !=
-         "0";
+  return EnvStr(descriptor.EnvName(), value && *value ? "1" : "0") != "0";
 }
 
 std::string StringSetting(const ConfigDescriptor& descriptor) {
   const std::string_view* value =
       std::get_if<std::string_view>(&descriptor.default_value);
-  return EnvStr(descriptor.environment.data(),
+  return EnvStr(descriptor.EnvName(),
                 value ? std::string(*value) : std::string());
 }
 

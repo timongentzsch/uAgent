@@ -21,8 +21,8 @@ using ConfigProposalFactory = std::function<ConfigProposal(
 // Requests a persistent configuration change. The tool prepares and previews;
 // the mandatory-human approval lane decides, and only an approved proposal can
 // be committed. There is deliberately no commit argument the model can set.
-Tool ConfigureTool(ConfigProposalFactory prepare,
-                   std::shared_ptr<ConfigProposalStore> store);
+Tool ConfigureTool(const ConfigProposalFactory& prepare,
+                   const std::shared_ptr<ConfigProposalStore>& store);
 
 }  // namespace uagent
 

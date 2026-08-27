@@ -174,7 +174,7 @@ std::string RenderCurrentTerminalActivity(size_t columns) {
   size_t total = DisplayWidth(text);
   size_t cols = columns > total ? total : columns;
   double target = static_cast<double>(total > cols ? total - cols : 0);
-  entry.chaser.advance(target, cols, std::chrono::steady_clock::now());
+  entry.chaser.Advance(target, cols, std::chrono::steady_clock::now());
   return entry.roll_prefix +
          DisplayWindow(text, static_cast<size_t>(entry.chaser.cursor), cols);
 }

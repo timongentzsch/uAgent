@@ -15,8 +15,10 @@ enum class SlashCommandId {
   kAttach,
   kCompact,
   kContext,
+  kDiff,
   kEffort,
   kHelp,
+  kInit,
   kMemory,
   kModel,
   kModels,
@@ -24,6 +26,7 @@ enum class SlashCommandId {
   kProcesses,
   kQuit,
   kReset,
+  kReview,
   kSessions,
   kStatus,
   kTools,
@@ -47,6 +50,8 @@ struct ParsedSlashCommand {
 };
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input);
+// The turn a prompt command stands for; empty for a local action.
+std::string SlashCommandPrompt(const ParsedSlashCommand& command);
 void PrintCommandHelp();
 // The same rows the parser and help output use; an alias carries an empty
 // description and is hidden from listings.

@@ -48,6 +48,9 @@ struct AppContext {
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
+  // What "don't ask again" granted, as tool name plus, for a shell call, the
+  // first word of the command. Session-scoped by construction: it dies here.
+  std::vector<std::string> session_approvals;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

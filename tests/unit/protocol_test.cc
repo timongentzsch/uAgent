@@ -420,18 +420,16 @@ void TestRegistries() {
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;
-  Tool subagent = SubagentTool(
-      delegation_api, delegation_processes, {},
-      {NamedProvider{.name = "codex-local"}}, false);
+  Tool subagent = SubagentTool(delegation_api, delegation_processes, {},
+                               {NamedProvider{.name = "codex-local"}}, false);
   const json& subagent_properties = subagent.parameters["properties"];
   CHECK(subagent_properties["background"]["type"] == "boolean");
-  CHECK(subagent_properties["background"]["description"]
-            .get<std::string>()
-            .find("final result directly") != std::string::npos);
+  CHECK(
+      subagent_properties["background"]["description"].get<std::string>().find(
+          "final result directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
-  CHECK(subagent_properties["model"]["description"]
-            .get<std::string>()
-            .find("codex-local/MODEL") != std::string::npos);
+  CHECK(subagent_properties["model"]["description"].get<std::string>().find(
+            "codex-local/MODEL") != std::string::npos);
 
   std::string host_prompt = HostCapabilityPrompt(capability_tools);
   CHECK(host_prompt.find("web_search=available") != std::string::npos);

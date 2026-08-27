@@ -238,7 +238,7 @@ std::optional<json> ChildAgentEnvelope(const std::string& output) {
 }
 
 std::string ChildAgentRecoverEnvelope(std::string output,
-                                     const std::string& log_path) {
+                                      const std::string& log_path) {
   if (log_path.empty() || ChildAgentEnvelope(output)) return output;
   std::ifstream file(log_path, std::ios::binary | std::ios::ate);
   if (!file) return output;

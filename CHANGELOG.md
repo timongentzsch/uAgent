@@ -4,6 +4,21 @@
 
 ### Added
 
+- The composer answers the two gestures every other agent CLI has: Shift+Enter
+  (or Alt+Enter) keeps a draft open on a new line, and Tab completes a command
+  from the rows that appear under the draft as soon as it starts with `/`. The
+  rows live inside the block the composer erases, so they never reach
+  scrollback, and Enter still submits whichever way the terminal spells it.
+- `/init`, `/review [TARGET]` and `/diff` run as ordinary turns, with `/resume`
+  and `/permissions` as aliases for `/sessions` and `/yolo`.
+- A call that needs approval offers three answers instead of yes or no: once,
+  always for this tool — and, for a shell call, that command's first word —
+  for the rest of the session, or a refusal in words, which denies the call and
+  reaches the model as steering rather than a bare no.
+- An idle Ctrl+C asks before it exits: the status row says `ctrl+c again to
+  quit`, and the confirming press still leaves through the signal path, so the
+  terminal is restored the same way and the shell still sees 130. While a turn
+  or a child process is running, SIGINT keeps killing what it always killed.
 - A delegated child reports why it stopped. The headless envelope gained a
   `stop` object — the reason in a vocabulary a caller can branch on
   (`max_steps`, `max_tool_calls`, `turn_deadline`, `turn_cost`,
@@ -160,6 +175,17 @@
 
 ### Changed
 
+- The interactive surface reads like the tools it sits beside. The banner
+  states the version and working directory, the startup context row shows three
+  sources and a count instead of every path it knows, and the first prompt is
+  preceded by the few commands worth knowing. The idle row carries the
+  headroom as `NN% left` and a `/help for shortcuts` hint, the working row says
+  `Working` and `Esc to interrupt`, and command descriptions took the wording
+  Codex and opencode already share.
+- A blocking wait names what it waits on. The working row shows `wait ·
+  activity 42` for as long as the call blocks, `N activity(s)` became `1
+  activity` or `2 activities`, and a detached command says it keeps running
+  while you work rather than that its completion is observational.
 - The request carries less of itself. Memory moved out of the system message —
   the prefix a provider caches, and the place authority lives — into the
   runtime context, where a change costs only what follows it. The Capabilities

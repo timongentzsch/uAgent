@@ -744,7 +744,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   }
 
   const std::string activity =
-      web_available ? "working · web available" : "working";
+      web_available ? "Working · web available" : "Working";
   ResponseObservation observation(render_stream && render_output,
                                   full_reasoning, activity, turn_started);
 

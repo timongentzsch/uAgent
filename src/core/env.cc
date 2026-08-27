@@ -234,7 +234,7 @@ struct FieldBinding {
   const ConfigDescriptor* descriptor;
   T RuntimeConfig::* field;
 
-  const char* env() const { return descriptor->environment.data(); }
+  const char* Env() const { return descriptor->EnvName(); }
 };
 
 constexpr FieldBinding<int64_t> kLongOptions[] = {
@@ -327,7 +327,7 @@ RuntimeConfig RuntimeConfig::FromEnvironment() {
     c.*option.field = BoolSetting(*option.descriptor);
   }
   for (const auto& option : kDoubleOptions) {
-    c.*option.field = std::max(0.0, EnvDouble(option.env(), c.*option.field));
+    c.*option.field = std::max(0.0, EnvDouble(option.Env(), c.*option.field));
   }
   NormalizeRuntimeConfig(c);
   return c;
@@ -341,25 +341,25 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
   };
   for (const auto& option : kLongOptions) {
     int64_t parsed = config.*option.field;
-    const std::string* selected = value(option.env());
+    const std::string* selected = value(option.Env());
     if (selected) ParseInt64(selected->c_str(), parsed);
     config.*option.field = std::clamp(parsed, option.descriptor->minimum,
                                       option.descriptor->maximum);
   }
   for (const auto& option : kStringOptions) {
-    const std::string* selected = value(option.env());
+    const std::string* selected = value(option.Env());
     config.*option.field = selected ? *selected
                                     : std::string(std::get<std::string_view>(
                                           option.descriptor->default_value));
   }
   for (const auto& option : kBoolOptions) {
-    const std::string* selected = value(option.env());
+    const std::string* selected = value(option.Env());
     config.*option.field =
         selected ? *selected != "0"
                  : std::get<bool>(option.descriptor->default_value);
   }
   for (const auto& option : kDoubleOptions) {
-    const std::string* selected = value(option.env());
+    const std::string* selected = value(option.Env());
     double parsed = 0;
     if (selected && ParseFiniteDouble(selected->c_str(), parsed)) {
       config.*option.field = std::max(0.0, parsed);
@@ -398,16 +398,16 @@ json RuntimeConfig::ProvenanceJson(const json& env_sources) const {
                                    : std::string("default");
   };
   for (const auto& option : kLongOptions) {
-    out[option.descriptor->field] = source(option.env());
+    out[option.descriptor->field] = source(option.Env());
   }
   for (const auto& option : kStringOptions) {
-    out[option.descriptor->field] = source(option.env());
+    out[option.descriptor->field] = source(option.Env());
   }
   for (const auto& option : kBoolOptions) {
-    out[option.descriptor->field] = source(option.env());
+    out[option.descriptor->field] = source(option.Env());
   }
   for (const auto& option : kDoubleOptions) {
-    out[option.descriptor->field] = source(option.env());
+    out[option.descriptor->field] = source(option.Env());
   }
   return out;
 }

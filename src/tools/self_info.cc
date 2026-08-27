@@ -13,7 +13,8 @@ namespace uagent {
 Tool SelfInfoTool(SelfDescriptionProvider describe) {
   Tool tool = MakeTool(
       "uagent_info",
-      "Describe this running \u00b5Agent build. Answers come from the installed "
+      "Describe this running \u00b5Agent build. Answers come from the "
+      "installed "
       "binary, so prefer it over documentation or memory for actual "
       "behaviour, a setting's default, why a value is active, or whether a "
       "change needs a restart. Secrets read as set or unset. One topic per "

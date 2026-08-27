@@ -146,9 +146,9 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
   if (calls.empty()) return true;
   if (max_tool_calls > 0 &&
       state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
-    FailBudget(state, "max_tool_calls",
-               "tool call limit reached (" + std::to_string(max_tool_calls) +
-                   ")");
+    FailBudget(
+        state, "max_tool_calls",
+        "tool call limit reached (" + std::to_string(max_tool_calls) + ")");
     return false;
   }
   bool repeated = false;
@@ -851,24 +851,23 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   // reading a child's envelope can tell "raise this ceiling and retry" from
   // "the work is done" without parsing prose.
   int64_t steps_used = step_limited ? state.max_steps : step + 1;
-  last_stop_ = {
-      {"reason", state.stop_reason.empty()
-                     ? (state.outcome == "complete"     ? "completed"
-                        : state.outcome == "interrupted" ? "cancelled"
-                        : state.outcome == "error"       ? "error"
-                                                         : state.outcome)
-                     : state.stop_reason},
-      {"detail", last_error_},
-      {"steps", steps_used},
-      {"tool_calls", state.tool_count},
-      {"cost", state.usage.cost},
-      {"limits",
-       {{"max_steps", state.max_steps},
-        {"max_tool_calls", api_.config.max_tool_calls},
-        {"max_turn_seconds", state.max_turn_seconds},
-        {"max_turn_cost", state.max_turn_cost},
-        {"session_budget", state.session_budget}}},
-      {"session_cost", session_usage_.cost}};
+  last_stop_ = {{"reason", state.stop_reason.empty()
+                               ? (state.outcome == "complete"      ? "completed"
+                                  : state.outcome == "interrupted" ? "cancelled"
+                                  : state.outcome == "error" ? "error"
+                                                             : state.outcome)
+                               : state.stop_reason},
+                {"detail", last_error_},
+                {"steps", steps_used},
+                {"tool_calls", state.tool_count},
+                {"cost", state.usage.cost},
+                {"limits",
+                 {{"max_steps", state.max_steps},
+                  {"max_tool_calls", api_.config.max_tool_calls},
+                  {"max_turn_seconds", state.max_turn_seconds},
+                  {"max_turn_cost", state.max_turn_cost},
+                  {"session_budget", state.session_budget}}},
+                {"session_cost", session_usage_.cost}};
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
   PruneOldToolResults();

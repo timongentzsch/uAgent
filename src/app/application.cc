@@ -138,10 +138,10 @@ class Application {
   int FinishHeadless(std::string answer, std::string error, int exit_code) {
     Teardown(exit_code == 0 ? "headless_complete" : "headless_error");
     if (context_.options.json_stream || context_.options.json) {
-      json envelope = HeadlessResult(
-          std::move(answer), std::move(error), agent_.LatestToolTrace(),
-          agent_.SessionUsage(), agent_.RouteUsageJson(), exit_code,
-          agent_.LastStop());
+      json envelope =
+          HeadlessResult(std::move(answer), std::move(error),
+                         agent_.LatestToolTrace(), agent_.SessionUsage(),
+                         agent_.RouteUsageJson(), exit_code, agent_.LastStop());
       if (context_.options.json_stream) {
         Emit(Event{exit_code == 0 ? EventId::kAnswer : EventId::kError,
                    std::move(envelope)});
@@ -281,6 +281,10 @@ class Application {
     if (input.empty()) return false;
     if (input[0] == '/') DebugLog("command", {{"command", input}});
     ParsedSlashCommand command = ParseSlashCommand(input);
+    if (std::string prompt = SlashCommandPrompt(command); !prompt.empty()) {
+      RunPrompt(prompt);
+      return false;
+    }
     if (command.spec) {
       AppSession session = Session();
       if (!RunSlashCommand(session, command)) return false;
@@ -303,6 +307,7 @@ class Application {
         : app(owner), composer(output) {}
 
     std::string Status() {
+      if (quit_hint) return "ctrl+c again to quit";
       if (!working) {
         return StatusBar(app.api_, app.agent_.SessionUsage(),
                          SessionStatusView(app.Session()));
@@ -431,6 +436,8 @@ class Application {
     std::atomic<bool> worker_quit{false};
     bool interrupting = false;
     bool exit_when_idle = false;
+    bool quit_hint = false;
+    std::chrono::steady_clock::time_point quit_hint_at{};
     bool answering = false;
     std::optional<std::string> next_input;
     std::string saved_draft;
@@ -445,6 +452,7 @@ class Application {
     size_t status_columns = 0;
 
     void HandleInputEvent(InteractiveInputEvent event) {
+      quit_hint = false;  // any other key ends the quit gesture
       if (event.kind == InteractiveInputKind::kLine && !answering) {
         // Submission has already printed the prompt below the status row.
         // Replace both regions so the transient working row does not enter
@@ -562,9 +570,24 @@ class Application {
           }
         }
 
+        // Idle is the only state where SIGINT asks rather than kills.
+        SetQuitGesture(!working && !answering);
         int ready =
             poll(events.data(), static_cast<nfds_t>(events.size()), timeout_ms);
         if (ready < 0 && errno != EINTR) break;
+        SetQuitGesture(false);
+        if (TakeIdleInterrupt() && !working) {
+          auto now = std::chrono::steady_clock::now();
+          if (quit_hint && now - quit_hint_at < std::chrono::seconds(2)) {
+            // Leave the way an unhandled SIGINT always left: signal-safe
+            // restore, and the shell still sees 130.
+            SetQuitGesture(false);
+            raise(SIGINT);
+          }
+          quit_hint = true;
+          quit_hint_at = now;
+          RefreshStatus();
+        }
         if (g_terminal_resized) {
           g_terminal_resized = 0;
           // Dragging an edge emits a burst of SIGWINCH. The flag already

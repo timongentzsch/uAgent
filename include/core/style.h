@@ -50,7 +50,7 @@ struct EdgeChaser {
   static constexpr double kCatchUpSeconds = 0.5;
   static constexpr double kReadableFraction = 0.5;
 
-  double advance(double target, size_t cols,
+  double Advance(double target, size_t cols,
                  std::chrono::steady_clock::time_point now) {
     double seconds = std::chrono::duration<double>(now - last).count();
     last = now;

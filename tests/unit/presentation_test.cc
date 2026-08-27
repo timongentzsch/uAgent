@@ -1,11 +1,12 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/ui/presentation.h"
+
 #include <chrono>
 #include <string>
 
 #include "include/tools/child_agent.h"
 #include "include/ui/display.h"
-#include "include/ui/presentation.h"
 #include "include/ui/tool_output.h"
 #include "tests/unit/test_support.h"
 
@@ -161,6 +162,13 @@ void TestActivityBar() {
         std::string::npos);
   CHECK(first.find("ctx 12.0K/1.3M") != std::string::npos);
 
+  // Headroom reads as a percentage on the idle row; an unknown window has no
+  // percentage to state and says nothing rather than guessing.
+  CHECK(ContextLeftSummary(0, 1000) == "100% left");
+  CHECK(ContextLeftSummary(250, 1000) == "75% left");
+  CHECK(ContextLeftSummary(2000, 1000) == "0% left");
+  CHECK(ContextLeftSummary(10, 0).empty());
+
   ActivityView unknown = Working(std::chrono::milliseconds(0));
   unknown.context_window = 0;
   std::string unknown_bar = ActivityBar(unknown);
@@ -196,11 +204,11 @@ void TestActivityBar() {
   busy.foreground = 2;
   CHECK(ActivityBar(busy).find("2 commands") != std::string::npos);
 
-  // Interrupting replaces the idle "working" label.
+  // Interrupting replaces the idle "Working" label.
   ActivityView interrupting = Working(std::chrono::milliseconds(0));
   interrupting.interrupting = true;
-  CHECK(ActivityBar(interrupting).find("interrupting") != std::string::npos);
-  CHECK(first.find("working") != std::string::npos);
+  CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
+  CHECK(first.find("Working") != std::string::npos);
 
   g_tty = prior;
   g_color = prior_color;

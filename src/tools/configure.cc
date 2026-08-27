@@ -68,8 +68,8 @@ std::string ProposalKey(const json& arguments) {
 
 }  // namespace
 
-Tool ConfigureTool(ConfigProposalFactory prepare,
-                   std::shared_ptr<ConfigProposalStore> store) {
+Tool ConfigureTool(const ConfigProposalFactory& prepare,
+                   const std::shared_ptr<ConfigProposalStore>& store) {
   Tool tool = MakeTool(
       "uagent_configure",
       "Persist a change to \u00b5Agent's own configuration. Accepts only "

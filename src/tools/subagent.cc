@@ -217,8 +217,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         bool background = JsonValue(arguments, "background", true);
         // A caller may deny memory but not grant it: the session decides what
         // this process may read, and a child cannot widen that.
-        bool child_memory = api.config.memory_enabled &&
-                            JsonValue(arguments, "memory", true);
+        bool child_memory =
+            api.config.memory_enabled && JsonValue(arguments, "memory", true);
         environment.insert(
             environment.end(),
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
@@ -269,26 +269,26 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
         std::string command =
             ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
-        ShellCommandResult child = RunShellCommand(
-            processes, child_context,
-            {.command = std::move(command),
-             .background = background,
-             .immediate = background,
-             .job_kind = "subagent",
-             .activity_label = route_label,
-             .completion_notes = clamped,
-             .environment = std::move(environment)});
+        ShellCommandResult child =
+            RunShellCommand(processes, child_context,
+                            {.command = std::move(command),
+                             .background = background,
+                             .immediate = background,
+                             .job_kind = "subagent",
+                             .activity_label = route_label,
+                             .completion_notes = clamped,
+                             .environment = std::move(environment)});
         ToolResult result = std::move(child.result);
         if (result.Ok()) {
           // A launch receipt is process-supervisor output, not a malformed
           // child answer. Only a process that actually completed can have a
           // headless envelope to unwrap; retained completion notes travel with
           // a background job and are added again to its final result.
-          result.output = child.wait_status
-                              ? ChildAgentAnswer(std::move(result.output),
-                                                 clamped)
-                              : std::move(result.output) +
-                                    ChildAgentConstraintNotes(clamped);
+          result.output =
+              child.wait_status
+                  ? ChildAgentAnswer(std::move(result.output), clamped)
+                  : std::move(result.output) +
+                        ChildAgentConstraintNotes(clamped);
         }
         if (!result.Ok() && result.status != CompletionStatus::kCancelled) {
           ChildAgentFailureStage stage =

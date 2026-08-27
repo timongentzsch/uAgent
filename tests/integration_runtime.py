@@ -486,7 +486,7 @@ def test_input_steering_yields_activity_wait(root, home):
         results = tool_results(messages)
         if has_message(messages, "user", "change course"):
             yielded = any("wait yielded for queued steering" in result for result in results)
-            still_running = any("activity(s) still running" in result for result in results)
+            still_running = any("1 activity still running" in result for result in results)
             return event(
                 {
                     "content": (

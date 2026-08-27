@@ -124,26 +124,25 @@ inline std::vector<std::string> ModelFacingToolResults(
 
 inline json ToolResultData(const CallTask& task, const ToolCall& call,
                            int64_t turn, int64_t step) {
-  json data = {{"turn", turn},
-               {"step", step},
-               {"id", call.id},
-               {"name", call.name},
-               {"status", task.trace_status},
-               {"completion_status", CompletionStatusName(task.result.status)},
-               {"error_code", ToolErrorCodeName(task.result.error)},
-               {"issue_code", task.issue ? task.issue->code : std::string()},
-               {"issue_field", task.issue ? task.issue->field : std::string()},
-               {"duration_ms", task.duration_ms},
-               {"result", task.result.output},
-               {"result_chars", task.result.output.size()},
-               {"no_change", task.result.no_change},
-               {"activity_terminal", task.result.activity_terminal},
-               {"artifact_path",
-                task.result.artifact ? task.result.artifact->path
-                                     : std::string()},
-               {"artifact_bytes",
-                task.result.artifact ? task.result.artifact->bytes
-                                     : uint64_t{0}}};
+  json data = {
+      {"turn", turn},
+      {"step", step},
+      {"id", call.id},
+      {"name", call.name},
+      {"status", task.trace_status},
+      {"completion_status", CompletionStatusName(task.result.status)},
+      {"error_code", ToolErrorCodeName(task.result.error)},
+      {"issue_code", task.issue ? task.issue->code : std::string()},
+      {"issue_field", task.issue ? task.issue->field : std::string()},
+      {"duration_ms", task.duration_ms},
+      {"result", task.result.output},
+      {"result_chars", task.result.output.size()},
+      {"no_change", task.result.no_change},
+      {"activity_terminal", task.result.activity_terminal},
+      {"artifact_path",
+       task.result.artifact ? task.result.artifact->path : std::string()},
+      {"artifact_bytes",
+       task.result.artifact ? task.result.artifact->bytes : uint64_t{0}}};
   // The operation is a schema enum, not an argument value. It is enough to
   // distinguish a quiet poll from a wait without journalling ids or input.
   if (call.name == "activity" && task.args.is_object()) {

@@ -7,6 +7,7 @@ from integration_support import (
     detached_pid,
     event,
     function_names,
+    has_message,
     json,
     json_sentinel_command,
     large_json_command,
@@ -833,3 +834,49 @@ def test_self_configuration_commits_after_approval(root, home):
         assert_true("UAGENT_MAX_TOOL_CALLS=120" in written, written)
         assert_true("# keep me" in written, written)
         assert_true("UNKNOWN_KEY=kept" in written, written)
+
+
+def test_approval_remembers_always_and_forwards_a_refusal(root, home):
+    """Three answers: once, always for this command, and a refusal that talks.
+
+    "always" is keyed on the tool plus the shell command's first word, so the
+    second `git` call is silent and `rm` still has to ask.
+    """
+    refusal = {}
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "use git log instead"):
+            refusal["steered"] = True
+            return event({"content": "approval-done"})
+        results = tool_results(messages)
+        if not results:
+            return tool_call("run", {"command": "git status --short"})
+        if len(results) == 1:
+            return tool_call("run", {"command": "git log -1 --oneline"})
+        return tool_call("run", {"command": "rm -rf /tmp/uagent-nothing"})
+
+    with Server([route]) as server:
+        status, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"go\n", b"always run git this session"),
+                (b"a\n", b"always run rm this session"),
+                (b"use git log instead\n", b"approval-done"),
+                b"/quit\n",
+            ],
+            timeout=25,
+        )
+        assert_true(status == 0, output)
+        assert_true(b"[y] once" in output and b"[n] no" in output, output)
+        # "always" named the command it was granted for, and the second git
+        # call ran between its own header and rm's without asking again.
+        assert_true(b"always run git this session" in output, output)
+        assert_true(b"always run rm this session" in output, output)
+        granted = output.index(b"run(git log -1 --oneline)")
+        asked_again = output.index(b"run(rm -rf /tmp/uagent-nothing)")
+        assert_true(b"allow run?" not in output[granted:asked_again], output)
+        # The refusal reached the model as guidance rather than a bare denial.
+        assert_true(refusal.get("steered"), (refusal, output))
+        assert_true(b"approval-done" in output, output)

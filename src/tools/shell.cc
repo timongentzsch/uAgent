@@ -437,8 +437,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   std::string output = "[running] activity " + std::to_string(activity_id) +
                        (handed_off ? " moved to background; " : "; ") +
-                       "completion is observational; use activity output to "
-                       "inspect it";
+                       "it keeps running while you work; poll or wait on it "
+                       "for output";
   if (!initial_output.empty()) output += "\n" + initial_output;
   return {ToolSuccess(std::move(output))};
 }
@@ -695,11 +695,11 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
   // truncated at a cap, so an unordered search returns an arbitrary subset, and
   // a repeated search looks changed when nothing changed. Path order costs
   // ripgrep's parallelism and buys a result the agent can compare and reuse.
-  const char* kSorted = " --sort path";
+  const char* sorted = " --sort path";
   std::string command;
   if (files_only) {
     if (ripgrep) {
-      command = std::string("rg --files --color=never") + kSorted;
+      command = std::string("rg --files --color=never") + sorted;
       if (!glob.empty()) command += " --glob " + ShellQuote(glob);
       command += " -- " + ShellQuote(target) +
                  " | rg --line-number --color=never -- " + ShellQuote(pattern);
@@ -712,7 +712,7 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
     command = ripgrep ? std::string(
                             "rg --line-number --column --no-heading "
                             "--color=never") +
-                            kSorted
+                            sorted
                       : std::string("grep -r -E -n -H -I --exclude-dir=.git");
     if (context_lines > 0) {
       command += ripgrep ? " --context " : " -C ";

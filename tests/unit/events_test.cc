@@ -1,6 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/reference.h"
 #include "include/core/events.h"
 
 #include <sys/stat.h>
@@ -10,6 +9,7 @@
 #include <iterator>
 #include <string>
 
+#include "include/app/reference.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -79,8 +79,7 @@ void TestObservabilityEvents() {
                 {"no_change", true},
                 {"activity_terminal", false}}};
   projections.Append(result, PolicyFor(result.id));
-  std::string projection_path =
-      (workspace.root / "projections.jsonl").string();
+  std::string projection_path = (workspace.root / "projections.jsonl").string();
   std::string projection_error;
   CHECK(projections.Flush(projection_path, projection_error));
   std::ifstream projection_input(projection_path);

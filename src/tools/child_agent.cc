@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -131,8 +132,8 @@ std::string ChildAgentFailureReport(std::string_view route,
           ChildAgentEnvelope(std::string(diagnostics))) {
     stopped = ChildAgentStopNote(JsonValue(*envelope, "stop", json()));
     answer = JsonValue(*envelope, "answer", std::string());
-    if (const json* error = envelope->contains("error") ? &(*envelope)["error"]
-                                                        : nullptr;
+    if (const json* error =
+            envelope->contains("error") ? &(*envelope)["error"] : nullptr;
         error && error->is_string()) {
       reported = error->get<std::string>();
     }
@@ -162,11 +163,13 @@ std::string ChildAgentFailureReport(std::string_view route,
   std::string summary_source = reported;
   if (!summary_source.empty()) summary_source += '\n';
   summary_source.append(diagnostics);
-  std::string report = "error: " + FailureSummary(stage, summary_source) +
-                       "\ndelegated child failed\nconfigured route: " +
-                       configured + "\nfailure stage: " +
-                       FailureStageName(stage);
-  if (!reported.empty()) report += "\nchild reported: " + TerminalSafe(reported);
+  std::string report =
+      "error: " + FailureSummary(stage, summary_source) +
+      "\ndelegated child failed\nconfigured route: " + configured +
+      "\nfailure stage: " + FailureStageName(stage);
+  if (!reported.empty()) {
+    report += "\nchild reported: " + TerminalSafe(reported);
+  }
   if (!stopped.empty()) report += "\n" + stopped;
   if (!answer.empty()) {
     report += "\npartial answer:\n" + TerminalSafe(answer);
@@ -211,9 +214,7 @@ std::optional<json> ChildAgentEnvelope(const std::string& output) {
     size_t start = output.rfind('\n', end - 1);
     std::string_view line(output);
     line = line.substr(start == std::string::npos ? 0 : start + 1,
-                       start == std::string::npos
-                           ? end
-                           : end - start - 1);
+                       start == std::string::npos ? end : end - start - 1);
     if (line.starts_with('{')) {
       json envelope = json::parse(line, nullptr, false);
       if (!envelope.is_discarded() && envelope.is_object() &&
@@ -246,8 +247,7 @@ std::string ChildAgentStopNote(const json& stop) {
   return note;
 }
 
-std::string ChildAgentConstraintNotes(
-    const std::vector<std::string>& clamped) {
+std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped) {
   std::string notes;
   for (const std::string& one : clamped) notes += "\n[clamped " + one + "]";
   return notes;

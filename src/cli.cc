@@ -53,22 +53,31 @@ class ScopedCookedInput {
 constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
      "attach a file to the next turn"},
-    {SlashCommandId::kCompact, "/compact", "", "summarize active context"},
+    {SlashCommandId::kCompact, "/compact", "",
+     "summarize conversation to prevent hitting the context limit"},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
+    {SlashCommandId::kDiff, "/diff", "",
+     "show git diff (including untracked files)"},
     {SlashCommandId::kCost, "/cost", "", "show tokens and spend by route"},
     {SlashCommandId::kDebugConfig, "/debug-config", "[SETTING]",
      "show configuration layers, sources and restart-required fields"},
-    {SlashCommandId::kEffort, "/effort", "LEVEL", "set reasoning effort"},
+    {SlashCommandId::kEffort, "/effort", "LEVEL",
+     "choose how much reasoning effort to use"},
     {SlashCommandId::kHelp, "/help", "", "show this help"},
+    {SlashCommandId::kInit, "/init", "",
+     "create an AGENTS.md file with instructions for \u00b5Agent"},
     {SlashCommandId::kMemory, "/memory", "", "show memory state and keys"},
-    {SlashCommandId::kModel, "/model", "NAME", "switch model or route"},
+    {SlashCommandId::kModel, "/model", "NAME", "choose what model to use"},
     {SlashCommandId::kModels, "/models", "[QUERY]",
      "search and select across providers"},
-    {SlashCommandId::kProcesses, "/ps", "", "show active background work"},
+    {SlashCommandId::kProcesses, "/ps", "", "list background work"},
     {SlashCommandId::kQuit, "/quit", "", "exit µAgent"},
-    {SlashCommandId::kReset, "/reset", "", "start a fresh session"},
-    {SlashCommandId::kSessions, "/sessions", "", "resume a saved session"},
-    {SlashCommandId::kStatus, "/status", "", "show version, route and budgets"},
+    {SlashCommandId::kReset, "/reset", "", "start a new chat"},
+    {SlashCommandId::kReview, "/review", "[TARGET]",
+     "review my current changes and find issues"},
+    {SlashCommandId::kSessions, "/sessions", "", "resume a saved chat"},
+    {SlashCommandId::kStatus, "/status", "",
+     "show current session configuration and token usage"},
     {SlashCommandId::kTools, "/tools", "", "show tools available right now"},
     {SlashCommandId::kTrace, "/trace", "", "show latest tool and search trace"},
     {SlashCommandId::kVariant, "/variant", "MODE",
@@ -81,10 +90,36 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kReset, "/clear", "", ""},
     {SlashCommandId::kReset, "/new", "", ""},
     {SlashCommandId::kContext, "/ctx", "", ""},
+    {SlashCommandId::kSessions, "/resume", "", ""},
+    {SlashCommandId::kYolo, "/permissions", "", ""},
 };
 
 std::span<const SlashCommandSpec> SlashCommandRegistry() {
   return kSlashCommands;
+}
+
+std::string SlashCommandPrompt(const ParsedSlashCommand& command) {
+  if (!command.spec) return {};
+  switch (command.spec->id) {
+    case SlashCommandId::kInit:
+      return "Write AGENTS.md in the repository root with instructions for an "
+             "agent working here. Read the build files, tests and existing "
+             "docs first, and keep it to the commands, layout and conventions "
+             "this project actually uses. Update the file if it exists.";
+    case SlashCommandId::kReview:
+      return "Review " +
+             (command.argument.empty() ? std::string("my uncommitted changes")
+                                       : command.argument) +
+             " and find issues: defects first, then missing tests and "
+             "anything that contradicts this project's conventions. Cite "
+             "path:line and report the most severe finding first.";
+    case SlashCommandId::kDiff:
+      return "Show my current changes: run `git --no-pager diff --stat`, "
+             "`git --no-pager diff` and `git status --short` (untracked files "
+             "included), and report the output. Change nothing.";
+    default:
+      return {};
+  }
 }
 
 ParsedSlashCommand ParseSlashCommand(const std::string& input) {

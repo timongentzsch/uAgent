@@ -3,6 +3,7 @@ from integration_support import (
     assert_true,
     base_env,
     event,
+    json,
     re,
     run_dialog,
     run_pty,
@@ -338,11 +339,11 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(b"work\n\x1b", b"interrupting"), b"/q\n"],
+            [(b"work\n\x1b", b"Interrupting"), b"/q\n"],
             timeout=8,
         )
         assert_true(code == 0, output)
-        assert_true(b"interrupting" in output, output)
+        assert_true(b"Interrupting" in output, output)
         assert_true(b"too-late" not in output, output)
 
 
@@ -385,7 +386,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
             root,
             base_env(home, server.url),
             [
-                (b"work\n", b"working"),
+                (b"work\n", b"Working"),
                 (b"pending draft", b"status-redraw-ok"),
                 b"\x15/q\n",
             ],
@@ -422,7 +423,12 @@ def test_suspend_restores_and_rearms_terminal(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            interrupt=True,
+            # An idle SIGINT asks first now, so ending the session is two
+            # presses; the second one still leaves through the signal path.
+            [
+                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                lambda process: process.send_signal(signal.SIGINT),
+            ],
             configure_terminal=cooked,
             suspend=suspend,
         )
@@ -456,7 +462,10 @@ def test_signal_exit_restores_terminal(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            interrupt=True,
+            [
+                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                lambda process: process.send_signal(signal.SIGINT),
+            ],
             configure_terminal=cooked,
             after_exit=capture,
         )
@@ -588,3 +597,72 @@ def test_context_command_shows_memory_and_skills(root, home):
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
         assert_true(b"memory on" in output, output)
+
+
+def test_input_slash_suggestions_and_tab_completion(root, home):
+    """Typing a command shows what it could still become; Tab commits it.
+
+    The rows hang below the draft inside the composer's own block, so they are
+    erased with it and never reach scrollback.
+    """
+    with Server([event({"content": "unused"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"/mod", b"/models"),
+                (b"\t", b"/model "),
+                b"\x15/q\n",
+            ],
+        )
+        assert_true(code == 0, output)
+        # Both candidates are offered, with the same description /help prints.
+        assert_true(b"/models  search and select across providers" in output, output)
+        assert_true(b"/model  choose what model to use" in output, output)
+        # Tab commits the shared prefix and, once one row is left, the space
+        # its argument needs.
+        assert_true(b"/model " in output, output)
+        assert_true(not server.get_requests, server.get_requests)
+
+
+def test_input_shift_enter_keeps_the_draft_open(root, home):
+    """Shift+Enter is a newline in the draft; Enter is still the submission."""
+
+    def route(_, body):
+        text = json.dumps(body["messages"])
+        assert_true("first line\\nsecond line" in text, text)
+        return event({"content": "multiline-ok"})
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"first line\x1b\rsecond line", b"\xe2\x86\xb5"),
+                (b"\n", b"multiline-ok"),
+                b"/q\n",
+            ],
+        )
+        assert_true(code == 0, output)
+        # The draft newline renders as the glyph the echo also uses.
+        assert_true(b"first line\xe2\x86\xb5second line" in output, output)
+        assert_true(b"multiline-ok" in output, output)
+
+
+def test_input_ctrl_c_asks_once_then_quits(root, home):
+    """An idle SIGINT is half a gesture: the row says so, the second one exits."""
+    with Server([event({"content": "unused"})]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                lambda process: process.send_signal(signal.SIGINT),
+            ],
+            timeout=10,
+        )
+        # The confirmed press leaves through the signal path, so the shell
+        # still sees the interrupt status it always saw.
+        assert_true(code == 130, (code, output))
+        assert_true(b"ctrl+c again to quit" in output, output)
+        assert_true(not server.get_requests, server.get_requests)

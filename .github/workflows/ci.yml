@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build-and-test:
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +62,12 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -DUAGENT_WARNINGS_AS_ERRORS=ON
       - name: Build
-        run: cmake --build build --parallel
+        # Bounded to the cores actually present. `--parallel` with no count
+        # hands Make an unlimited `-j`, and this tree's translation units are
+        # heavy enough that a smaller runner swaps instead of compiling: the
+        # same build takes minutes on Linux and outlived a 20 minute budget on
+        # macOS.
+        run: cmake --build build --parallel "$(getconf _NPROCESSORS_ONLN)"
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test

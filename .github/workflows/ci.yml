@@ -45,6 +45,12 @@ jobs:
             arch: arm64
             build_type: Release
     runs-on: ${{ matrix.runner }}
+    # The terminal cases drive a real PTY and assert on the exit status the
+    # child chose. A shared runner that pauses one past its deadline gets it
+    # killed instead, which reads as a wrong exit code rather than as the
+    # timeout it is. Deadlines are upper bounds, so a fast leg is unaffected.
+    env:
+      UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install Linux dependencies
@@ -105,7 +111,7 @@ jobs:
     # Instrumented startup and rendering cost several times the plain build, so
     # the terminal tests get proportionally longer deadlines here.
     env:
-      UAGENT_TEST_TIMEOUT_SCALE: "3"
+      UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies

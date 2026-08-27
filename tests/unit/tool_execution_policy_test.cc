@@ -82,10 +82,18 @@ void TestToolExecutionPolicy() {
       {"items", {{"type", "integer"}, {"minimum", 1}}}};
   CHECK(InvalidToolArgument(tool, {{"ids", {1, "bad"}}}) ==
         "`ids[1]` must be integer");
+  // The value and the bound both appear: a caller that guessed too high can
+  // correct the next call without guessing again.
   CHECK(InvalidToolArgument(tool, {{"ids", {0}}}) ==
-        "`ids[0]` is below its minimum");
+        "`ids[0]` is 0, below its minimum 1");
   CHECK(InvalidToolArgument(tool, {{"ids", {1, 2, 3}}}) ==
-        "`ids` has too many items");
+        "`ids` has 3 items, above its maximum 2");
+  // The bound real calls actually cross: a scalar maximum on a pacing hint.
+  // `grep`'s context and `run`'s yield_ms are rejected this way in history.
+  tool.parameters["properties"]["context"] = {
+      {"type", "integer"}, {"minimum", 0}, {"maximum", 10}};
+  CHECK(InvalidToolArgument(tool, {{"context", 40}}) ==
+        "`context` is 40, above its maximum 10");
   tool.parameters["properties"]["mode"] = {{"type", "string"},
                                            {"enum", {"any", "all"}}};
   CHECK(!InvalidToolArgument(tool, {{"mode", "some"}}).empty());
@@ -93,7 +101,7 @@ void TestToolExecutionPolicy() {
                                             {"maxLength", 3}};
   CHECK(InvalidToolArgument(tool, {{"label", nullptr}}).empty());
   CHECK(InvalidToolArgument(tool, {{"label", "long"}}) ==
-        "`label` exceeds its maximum length");
+        "`label` is 4 characters, above its maximum length 3");
   tool.parameters["properties"]["nested"] = {
       {"type", "object"},
       {"properties", {{"value", {{"type", "boolean"}}}}},

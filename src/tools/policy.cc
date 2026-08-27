@@ -79,13 +79,19 @@ std::optional<ToolArgumentIssue> InvalidArrayValue(const json& schema,
                                                    const std::string& path) {
   if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minItems");
       minimum && value.size() < *minimum) {
-    return ArgumentIssue("schema.min_items", "`" + path + "` has too few items",
+    return ArgumentIssue("schema.min_items",
+                         "`" + path + "` has " + std::to_string(value.size()) +
+                             " items, below its minimum " +
+                             std::to_string(*minimum),
                          path);
   }
   if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxItems");
       maximum && value.size() > *maximum) {
     return ArgumentIssue("schema.max_items",
-                         "`" + path + "` has too many items", path);
+                         "`" + path + "` has " + std::to_string(value.size()) +
+                             " items, above its maximum " +
+                             std::to_string(*maximum),
+                         path);
   }
   auto items = schema.find("items");
   if (items == schema.end() || !items->is_object()) return std::nullopt;
@@ -165,17 +171,24 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
 
   if (value.is_number()) {
     const double number = value.get<double>();
+    // A rejected bound is only actionable if the caller can see both numbers:
+    // the value it sent and the limit it crossed. Without them the next
+    // attempt is a guess, and the guess is what the history is full of.
     auto minimum = schema.find("minimum");
     if (minimum != schema.end() && minimum->is_number() &&
         number < minimum->get<double>()) {
       return ArgumentIssue("schema.minimum",
-                           "`" + path + "` is below its minimum", path);
+                           "`" + path + "` is " + JsonDump(value) +
+                               ", below its minimum " + JsonDump(*minimum),
+                           path);
     }
     auto maximum = schema.find("maximum");
     if (maximum != schema.end() && maximum->is_number() &&
         number > maximum->get<double>()) {
       return ArgumentIssue("schema.maximum",
-                           "`" + path + "` is above its maximum", path);
+                           "`" + path + "` is " + JsonDump(value) +
+                               ", above its maximum " + JsonDump(*maximum),
+                           path);
     }
   }
   if (value.is_string()) {
@@ -183,13 +196,18 @@ std::optional<ToolArgumentIssue> InvalidSchemaValue(const json& schema,
     if (std::optional<size_t> minimum = JsonSchemaSize(schema, "minLength");
         minimum && size < *minimum) {
       return ArgumentIssue("schema.min_length",
-                           "`" + path + "` is shorter than its minimum length",
+                           "`" + path + "` is " + std::to_string(size) +
+                               " characters, below its minimum length " +
+                               std::to_string(*minimum),
                            path);
     }
     if (std::optional<size_t> maximum = JsonSchemaSize(schema, "maxLength");
         maximum && size > *maximum) {
       return ArgumentIssue("schema.max_length",
-                           "`" + path + "` exceeds its maximum length", path);
+                           "`" + path + "` is " + std::to_string(size) +
+                               " characters, above its maximum length " +
+                               std::to_string(*maximum),
+                           path);
     }
   }
   if (value.is_array()) return InvalidArrayValue(schema, value, path);

@@ -141,9 +141,12 @@ working directory reuses its process group.
 an activity; `UAGENT_RUN_YIELD_MS` changes that default. Explicit `yield_ms=0`
 waits until the command exits or an explicitly configured turn
 limit/interruption applies; 250 through 30,000 select another initial wait. A
-pacing hint beyond its bound—`yield_ms`, `context`, `wait_ms`, or an output
-cap—is capped rather than rejected. Set `tty=true` only when interactive input
-is required. A PTY retains merged output, writable input, process-group
+pacing hint outside its declared bound — `yield_ms`, `context`, `wait_ms`, an
+output cap — is rejected, and the rejection names both the value given and the
+bound it crossed. A hint inside its bound can still be cut short by a limit
+that outranks it, such as the turn deadline, and that reduction is reported
+with the effective and the requested figure rather than applied in silence.
+Set `tty=true` only when interactive input is required. A PTY retains merged output, writable input, process-group
 interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
 interactively reattached after the harness exits. Waiting log readers use

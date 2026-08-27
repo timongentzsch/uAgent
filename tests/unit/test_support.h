@@ -180,7 +180,9 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   fseek(capture, 0, SEEK_SET);
   std::string output(bytes > 0 ? static_cast<size_t>(bytes) : 0, '\0');
   if (!output.empty()) {
-    (void)fread(output.data(), 1, output.size(), capture);
+    // Short reads are the caller's business: resizing to what arrived keeps
+    // the captured text honest instead of padding it with the NULs above.
+    output.resize(fread(output.data(), 1, output.size(), capture));
   }
   fclose(capture);
   return output;

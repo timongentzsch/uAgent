@@ -420,8 +420,10 @@ void TestRegistries() {
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;
-  Tool subagent = SubagentTool(delegation_api, delegation_processes, {},
-                               {NamedProvider{.name = "codex-local"}}, false);
+  Tool subagent = SubagentTool(
+      delegation_api, delegation_processes, {},
+      {NamedProvider{.name = "codex-local", .base_url = "", .api_key = ""}},
+      false);
   const json& subagent_properties = subagent.parameters["properties"];
   CHECK(subagent_properties["background"]["type"] == "boolean");
   CHECK(

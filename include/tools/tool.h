@@ -351,12 +351,16 @@ inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
 }
 
 // Pull the tool's `clamped_arguments` back inside their schema bounds. Runs
-// before validation, so an overshooting hint is honoured at the bound.
-void ClampToolArguments(const Tool& tool, json& args);
+// before validation, so an overshooting hint is honoured at the bound. Each
+// reduction is appended to `clamped` when given, because a caller that asked
+// for more than it got is owed both numbers rather than a quiet substitution.
+void ClampToolArguments(const Tool& tool, json& args,
+                        std::vector<std::string>* clamped = nullptr);
 
 // Apply a tool's provider-materialization cleanup and numeric clamps to the
 // separate execution copy of its arguments.
-void CanonicalizeToolArguments(const Tool& tool, json& args);
+void CanonicalizeToolArguments(const Tool& tool, json& args,
+                               std::vector<std::string>* clamped = nullptr);
 
 // A tool's `stable_argument` must keep the same value for a whole turn.
 // `values` carries that per-turn memory for the caller.

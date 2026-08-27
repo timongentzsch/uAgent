@@ -140,6 +140,13 @@
 
 ### Fixed
 
+- A clamped pacing hint says so. `grep`'s `context`, `run`'s `yield_ms` and
+  output cap, `activity`'s `wait_ms` and `subagent`'s ceilings are pulled to
+  their bound before validation, which spares a wasted round, but the
+  substitution was silent: a call asking for 40 lines of context received 10
+  and read as though 40 had been honoured. The result now leads with `[clamped
+  context to 10 of 40 requested]`. `subagent` already reported the clamps it
+  applies against host ceilings; the schema clamps beneath it did not.
 - An argument rejected for crossing a bound names both numbers. `` `context`
   is above its maximum `` said neither what was sent nor what the limit was,
   so the corrected call was a guess. Minima, maxima, string lengths and item

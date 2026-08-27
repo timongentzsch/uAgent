@@ -108,7 +108,7 @@ bool Agent::RunCalls(
     task.args = task.raw_args;
     task.tool = FindTool(tools_, call.name);
     const Tool* tool = task.tool;
-    if (tool) CanonicalizeToolArguments(*tool, task.args);
+    if (tool) CanonicalizeToolArguments(*tool, task.args, &task.clamped);
     const json& arguments = task.args;
     bool valid = false;
     if (arguments.is_discarded() || !arguments.is_object()) {

@@ -271,9 +271,8 @@ request. Complete replacement avoids accumulating stale prompt fragments.
 The model-facing contract treats revision as an exceptional response to a
 concrete observation and requires the reason to identify the corresponding
 strategy delta, discouraging an automatic generic rewrite at turn start.
-Host code continues to own permissions, approvals, capabilities, and limits.
-Debug telemetry records revisions and forces a full request snapshot after an
-in-place system-message change.
+Host code still owns permissions, approvals, capabilities, and limits. Debug
+telemetry records each revision and a full snapshot of the next request.
 
 Active messages and the removed-trace archive remain separate. Automatic
 memory extraction writes a per-activity private receipt and a bounded private
@@ -374,10 +373,8 @@ Add tools through `MakeTool`, route behavior through
 through a versioned atomic store. Tool behavior that affects scheduling or
 presentation belongs in tool metadata, not string comparisons against tool
 names. Live environment access is limited to intentionally dynamic route and
-delegation state. Every new
-boundary needs a focused unit test and externally visible behavior needs a
-hermetic integration test. Behavior that the model is supposed to exhibit —
-batching, deduplication, round count, answer shape — gets a scored scenario in
-`benchmarks/scenarios/` so a change to it is measured against a committed
-baseline rather than argued. See [CONTRIBUTING.md](../CONTRIBUTING.md) and
-[TESTING.md](TESTING.md).
+delegation state. Every new boundary needs a focused unit test; externally visible behavior
+needs a hermetic integration test. Model behavior—batching, deduplication,
+round count, and answer shape—gets a scored scenario in
+`benchmarks/scenarios/` and comparison against a committed baseline. See
+[CONTRIBUTING.md](../CONTRIBUTING.md) and [TESTING.md](TESTING.md).

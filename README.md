@@ -3,23 +3,22 @@
 [![CI](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/timongentzsch/uAgent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-µAgent is a coding agent that ships as one native binary. No language runtime,
-no application framework, no plugin system. It streams Chat Completions,
-OpenAI Responses, and Anthropic Messages through explicit route adapters,
-supervises its own child processes, and emits every action as a typed event you
-can log, replay, and assert on.
+µAgent is a coding agent shipped as one native binary, without a language
+runtime, application framework, or plugin system. Explicit route adapters
+stream Chat Completions, OpenAI Responses, and Anthropic Messages. The agent
+supervises its child processes and emits typed events for logging, replay, and
+assertions.
 
 A release build is about a 2 MB executable linking `libcurl`, `libc++`, and
-`libSystem`. The only vendored source dependency is a single `json.hpp`.
-Linux and macOS.
+`libSystem`. Its only vendored source dependency is `json.hpp`. Linux and macOS
+are supported.
 
 ## Why µAgent
 
-**Nothing to install underneath it.** Most coding agents are a Node or Python
-application that happens to call a model, so the agent inherits a package
-manager, a dependency tree, and a runtime you have to keep alive. µAgent is a
-C++20 binary built with CMake and `-fno-exceptions`. Optional tools reach for
-`uv` or Playwright when you use them; the agent itself never does.
+**No runtime to maintain.** Most coding agents depend on Node or Python,
+adding a package manager, dependency tree, and runtime. µAgent is a C++20
+binary built with CMake and `-fno-exceptions`. Optional tools use `uv` or
+Playwright only when invoked.
 
 **Provider neutrality is an invariant, not a setting.** A canonical
 conversation and tool protocol feed explicit Chat Completions, Responses, and
@@ -29,11 +28,11 @@ citations, usage, retries, and rendering remain shared.
 
 **Every limit is explicit, bounded, and inspectable.** Requests, idle streams,
 tool output, processes, memory, context, and reported spend are bounded by
-default. Settings resolve from file, environment, and flags with visible
-provenance, validate against declared bounds, and reload only between turns —
-never underneath a running one. `/status` prints version, route, effort, approval mode and budgets;
-`/debug-config` explains where each active value came from; `/context` prints the effective configuration,
-where each value came from, and the exact next request.
+default. Settings resolve from files, environment, and flags with visible
+provenance, validate against declared bounds, and reload only between turns.
+`/status` summarizes version, route, effort, approval mode, and budgets;
+`/debug-config` explains active values; `/context` shows effective configuration,
+provenance, and the exact next request.
 
 **Processes are first-class, not fire-and-forget.** Commands run under a real
 supervisor with opaque activity IDs: optional PTYs, writable stdin, resize,
@@ -60,6 +59,9 @@ Node.js 20+ and `npm install -g @playwright/cli@latest`.
 ```sh
 ./install.sh
 ```
+
+The installer uses `build/release` and reuses an existing preset build instead
+of compiling the binary a second time.
 
 Create `~/.uagent/.config`:
 
@@ -129,12 +131,11 @@ The core registry includes:
 | conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
-the active schemas. In the interactive UI, compact reasoning updates only the
-transient activity row; tool calls are always shown in full, and `/verbose`
-restores the full muted reasoning stream and expanded bounded tool output. `/context` also reports redacted effective
-configuration, provenance, restart-required fields, and negotiated route
-capabilities before showing the exact next request. See [the tool reference](docs/TOOLS.md), or run `/context`
-to inspect the exact registry for the next request.
+the active schemas. Compact reasoning updates only the transient activity row;
+tool calls remain fully visible. `/verbose` restores full muted reasoning and
+expanded bounded tool output. `/context` reports redacted configuration,
+provenance, restart-required fields, route capabilities, and the exact next
+request. See [the tool reference](docs/TOOLS.md).
 
 ## Interactive controls
 
@@ -155,11 +156,11 @@ to inspect the exact registry for the next request.
 | `/memory` | Show saved memory action, time, source, and redacted preview |
 | `/verbose` | Toggle full reasoning and expanded bounded tool output |
 | `/yolo` | Toggle automatic approval |
-
-A call that needs approval offers three answers: `y` allows it once, `a` allows
-that tool — and, for a shell call, that command's first word — for the rest of
-the session, and anything else denies it and reaches the model as steering.
 | `/help`, `/quit` | Show help or exit |
+
+Approval prompts accept `y` once or `a` for that tool—and, for shell calls, the
+command's first word—for the rest of the session. Any other answer denies the
+call and sends the denial to the model as steering.
 
 Successful historical `show_image` calls are retransmitted at their original
 position when a session resumes, provided the recorded local file still exists.

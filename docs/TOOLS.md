@@ -71,25 +71,19 @@ file notifications where available.
 | `uagent_configure` | the process is not a delegated child; persists a typed change to a registered setting after an exact diff is approved by a person |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
 
-`web_fetch` needs no hosted route, so it does not follow `web_search`'s
-availability. It returns text only: it decodes markup, JSON, XML and plain
-text, and refuses anything else rather than handing over bytes. A page behind a
-login or assembled by scripting belongs to the browser skill. Bodies larger
-than `UAGENT_WEB_FETCH_BYTES` are read up to the cap and marked partial; that
-cap follows the attachment budget, so anything the model could be handed is
-also large enough to fetch. A PDF or an image is not a dead end either: it is
-not markup, so `web_fetch` refuses it and says to download the bytes with `run`
-and read them with `attach`, which the model understands directly.
-Only public Internet destinations are accepted: every IPv4 or IPv6 address
-libcurl resolves for the initial URL and each redirect is checked before the
-socket opens, so a redirect or a rebound name cannot reach what the URL could
-not. Loopback, private, carrier-NAT, link-local, reserved and multicast
-destinations are refused, including their IPv4-mapped, NAT64, Teredo and 6to4
-spellings. Fetches connect directly and ignore proxy environment variables so a
-proxy cannot resolve an unchecked destination on the tool's behalf.
+`web_fetch` is independent of hosted-route support. It decodes markup, JSON,
+XML, and plain text, and refuses other content. Use the browser skill for pages
+behind a login or assembled by scripts. Oversized bodies are truncated at
+`UAGENT_WEB_FETCH_BYTES` and marked partial. For PDFs and images, download with
+`run` and inspect with `attach`.
 
-Every tool call is printed in full — the trace shows exactly what was
-requested — while results are summarised outside `/verbose`.
+Only public Internet destinations are accepted. Before each initial or redirect
+connection, µAgent checks every resolved IPv4 and IPv6 address. It rejects
+loopback, private, carrier-NAT, link-local, reserved, and multicast addresses,
+including IPv4-mapped, NAT64, Teredo, and 6to4 forms. Direct connections ignore
+proxy environment variables so a proxy cannot resolve an unchecked address.
+
+Every tool call is printed in full; results are summarized outside `/verbose`.
 
 `web_search` is always one named model-facing function. The host implementation
 calls OpenRouter's hosted `openrouter:web_search` server tool on a route of its

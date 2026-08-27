@@ -51,6 +51,14 @@ std::string ChildAgentAnswer(std::string output,
                              const std::vector<std::string>& clamped);
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped);
 std::optional<json> ChildAgentEnvelope(const std::string& output);
+// A tool result is read through a cap sized for what a reader can absorb, and
+// a tail that begins inside the child's record leaves half a JSON object,
+// which parses nowhere: a child that answered is then reported as having
+// produced nothing at all. When the capped text no longer carries the record,
+// it is recovered whole from the retained log.
+std::string ChildAgentRecoverEnvelope(std::string output,
+                                      const std::string& log_path);
+
 std::string ChildAgentStopNote(const json& stop);
 
 // Under a session budget children run one at a time: two concurrent ones would

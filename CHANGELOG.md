@@ -141,13 +141,12 @@
 ### Fixed
 
 - An argument rejected for crossing a bound names both numbers. `` `context`
-  is above its maximum `` said neither what was sent nor what the limit was, so
-  the corrected call was a guess: 14 of them in this machine's history, split
-  between `grep`'s `context` and `run`'s `yield_ms`. Minima, maxima, string
-  lengths and item counts now read `` `context` is 40, above its maximum 10 ``.
-  `docs/OPERATIONS.md` claimed a pacing hint past its bound was capped rather
-  than rejected, which was never true of a bound the schema declares; it now
-  separates the bounds that reject from the limits that reduce and report.
+  is above its maximum `` said neither what was sent nor what the limit was,
+  so the corrected call was a guess. Minima, maxima, string lengths and item
+  counts now read `` `context` is 40, above its maximum 10 ``. The pacing hints
+  that once failed this way are clamped rather than rejected now, so this
+  serves the bounds that still reject: lengths, item counts, and the ceilings
+  a caller cannot clamp past.
 - `adapt_system` enforces the length its own schema advertises. The declared
   `maxLength` was never checked against the directive it received, and an
   oversized one was accepted into memory and only rejected later, by the

@@ -385,6 +385,13 @@ def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) -> dict[str, str]:
     env = dict(os.environ)
+    if mock is not None:
+        # A mocked scenario declares its inputs; it never inherits them. Run
+        # from inside a live session the shell carries that session's route --
+        # UAGENT_WIRE_API alone makes the binary speak a dialect this mock does
+        # not serve -- and every case fails for a reason the scenario is not
+        # about. Names this function sets below are reapplied deliberately.
+        env = {key: value for key, value in env.items() if not key.startswith("UAGENT_")}
     env.update(
         {
             "UAGENT_MEMORY": "0",

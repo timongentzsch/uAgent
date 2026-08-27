@@ -784,8 +784,8 @@ def test_composite_configuration_requires_exact_human_approval(root, home):
     original = (
         "# keep me\n"
         "LOCAL_PROXY_API_KEY=adjacent-integration-secret\n"
-        "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
-        "\"api_key\":\"$LOCAL_PROXY_API_KEY\"}}'\n"
+        'UAGENT_PROVIDERS=\'{"old":{"base_url":"https://old.example/v1",'
+        '"api_key":"$LOCAL_PROXY_API_KEY"}}\'\n'
     )
     config.write_text(original)
     proposed = json.dumps(
@@ -805,9 +805,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home):
             "uagent_configure",
             {
                 "scope": "user",
-                "changes": [
-                    {"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}
-                ],
+                "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
         )
 
@@ -860,9 +858,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home):
             "uagent_configure",
             {
                 "scope": "user",
-                "changes": [
-                    {"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}
-                ],
+                "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
         )
 

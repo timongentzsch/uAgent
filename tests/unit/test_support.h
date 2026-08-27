@@ -214,12 +214,12 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSseFraming)                       \
   X(TestWireAdapters)                     \
   X(TestWireStreams)                      \
-  X(TestBackgroundValidation)              \
-  X(TestSignalAndFileWatch)                \
-  X(TestActivityBufferAndAdmission)        \
-  X(TestActivitySessions)                  \
-  X(TestActivityDescriptorAndInputPolicy)  \
-  X(TestActivityWaitAndDelivery)           \
+  X(TestBackgroundValidation)             \
+  X(TestSignalAndFileWatch)               \
+  X(TestActivityBufferAndAdmission)       \
+  X(TestActivitySessions)                 \
+  X(TestActivityDescriptorAndInputPolicy) \
+  X(TestActivityWaitAndDelivery)          \
   X(TestToolExecutionPolicy)              \
   X(TestOpenRouterServerSearch)           \
   X(TestAttachmentEncoding)               \

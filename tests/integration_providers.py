@@ -110,9 +110,7 @@ def test_openrouter_named_search_contract_and_errors(root, home):
         assert_true("web_search OpenRouter HTTP 429: rate limited" in result, result)
         return event({"content": "search-contract-ok"})
 
-    with Server(
-        [successful_search, rejected_search], repeat_last=True
-    ) as search_server:
+    with Server([successful_search, rejected_search], repeat_last=True) as search_server:
         with Server(
             [
                 tool_call("web_search", {"queries": ["current fact"]}),

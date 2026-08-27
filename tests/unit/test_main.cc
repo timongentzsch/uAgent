@@ -41,12 +41,12 @@ int RunTests(int argc, char** argv) {
     const std::string_view argument = argv[index];
     if (argument == "--list") {
       list = true;
-    } else if ((argument == "--test" || argument == "-k") &&
-               index + 1 < argc) {
+    } else if ((argument == "--test" || argument == "-k") && index + 1 < argc) {
       std::string& target = argument == "--test" ? exact : match;
       target = argv[++index];
     } else {
-      std::cerr << "usage: uagent_tests [--list] [--test NAME] [-k SUBSTRING]\n";
+      std::cerr
+          << "usage: uagent_tests [--list] [--test NAME] [-k SUBSTRING]\n";
       return 2;
     }
   }

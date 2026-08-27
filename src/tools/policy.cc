@@ -265,8 +265,8 @@ void ClampToolArguments(const Tool& tool, json& args,
       *value = bounded;
     }
     if (clamped) {
-      clamped->push_back(name + " to " + JsonDump(*value) + " of " +
-                         requested + " requested");
+      clamped->push_back(name + " to " + JsonDump(*value) + " of " + requested +
+                         " requested");
     }
   }
 }

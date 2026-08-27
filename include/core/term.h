@@ -192,13 +192,11 @@ class TerminalSpinner {
 };
 
 // code colors (256-color, readable on dark and light themes; glamour-inspired)
-inline const char* CODE() {
-  return g_tty ? "\033[38;5;203m" : "";
-}  // inline `code`
+inline const char* CODE() { return Sgr("\033[38;5;203m"); }  // inline `code`
 inline const char* CodeBlk() {
-  return g_tty ? "\033[38;5;110m" : "";
+  return Sgr("\033[38;5;110m");
 }  // fenced block body
-inline const char* MATH() { return g_tty ? "\033[38;5;141m" : ""; }  // LaTeX
+inline const char* MATH() { return Sgr("\033[38;5;141m"); }  // LaTeX
 
 }  // namespace uagent
 

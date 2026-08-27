@@ -153,9 +153,11 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     ++spawned;
   }
 
-  auto startup_deadline = DeadlineAfter(timeout);
   for (auto& b : boots) {
     McpServer& s = *b.s;
+    // Per server, like McpRefreshTools: a slow neighbour must not consume the
+    // handshake window of a server whose reply is already buffered.
+    auto startup_deadline = DeadlineAfter(timeout);
     int64_t remaining = SecondsUntil(startup_deadline);
     if (remaining <= 0) {
       McpError(s.name, "startup deadline exceeded");

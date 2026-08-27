@@ -140,6 +140,37 @@
 
 ### Fixed
 
+- `adapt_system` enforces the length its own schema advertises. The declared
+  `maxLength` was never checked against the directive it received, and an
+  oversized one was accepted into memory and only rejected later, by the
+  session store, as incomplete state — so every save for the rest of the run
+  was refused and the transcript went with it. The call is now rejected on
+  arrival, naming the size given and the limit.
+- `NO_COLOR` silences the markdown renderer too. Inline code, fenced block
+  bodies and math asked whether stdout was a terminal, while every other colour
+  accessor asks whether colour is enabled, so those three still painted under
+  `NO_COLOR=1` — and since the reset that closes them does honour the setting,
+  entering a code span opened a colour that nothing closed. All three now
+  follow the one rule the rest already followed.
+- A turn that fails to compact says why. After `· provider context limit
+  reached — compacting once`, a failed compaction recorded the provider's
+  reason and ended the turn without ever emitting it, so the screen simply
+  stopped. It now reports the failure like every other error exit.
+- One slow MCP server no longer takes its neighbours with it. A single startup
+  deadline was shared across every server's handshake and tool listing, so a
+  server that hung spent the budget of servers whose replies were already
+  waiting in their pipes, and those were shut down for exceeding a deadline
+  they had never used. Each server now gets its own, as tool refresh already
+  did.
+- Waiting on one activity no longer blocks behind another. The completion
+  sweep took each candidate's interaction lock before testing whether the
+  caller had asked about that activity at all, so a wait could sit behind an
+  unrelated tool interaction for as long as that interaction ran. The id and
+  kind tests read fields fixed when the id is assigned, and now happen first.
+- `read_path` says when it returned fewer lines than were asked for. A `limit`
+  above the configured ceiling was reduced in silence and the header said only
+  `more available`, which is exactly what a genuine end of range looks like. It
+  now names the effective and the requested count.
 - `read_path` no longer decodes bytes that are not text. A PNG or an object
   file was read line by line and answered with pages of replacement characters
   that cost context and said nothing. It is now refused by name, and the

@@ -182,6 +182,9 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
   }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   int64_t max_lines = ReadFileMaxLines();
+  // A negative limit is the internal "as much as allowed" idiom; only a
+  // positive request that the cap reduces is worth reporting back.
+  int64_t requested_lines = limit;
   if (limit <= 0 || limit > max_lines) limit = max_lines;
   int64_t max_bytes = ReadFileBytes();
   if (offset < 1) offset = 1;
@@ -233,6 +236,10 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
     header += "; more available";
   } else {
     header += " of " + std::to_string(total);
+  }
+  if (requested_lines > max_lines) {
+    header += "; limit " + std::to_string(max_lines) + " of " +
+              std::to_string(requested_lines) + " requested";
   }
   return ToolSuccess(header + "]\n" + out);
 }

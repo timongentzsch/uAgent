@@ -366,6 +366,7 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
     }
     state.outcome = "error";
     last_error_ = response.error;
+    Emit(NoticeEvent(PresentationStatus::kFailed, response.error));
     return StepFlow::kEndTurn;
   }
   if (response.remote_error_kind == RemoteErrorKind::kContextLengthExceeded) {

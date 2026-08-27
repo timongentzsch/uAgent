@@ -48,6 +48,15 @@ Tool AdaptSystemTool(AdaptiveSystemState& state) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "error: reason must not be blank");
         }
+        // The schema declares maxLength; enforce it here too, or an oversized
+        // directive makes every later session save fail as incomplete.
+        if (instructions.size() > kAdaptiveSystemBytes) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: instructions are " +
+                                 std::to_string(instructions.size()) +
+                                 " bytes; the limit is " +
+                                 std::to_string(kAdaptiveSystemBytes));
+        }
         if (instructions == state.instructions) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "error: mutable system directive is unchanged");

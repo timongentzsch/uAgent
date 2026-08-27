@@ -233,7 +233,7 @@ def test_grep_tool_round_trip(root, home):
     (workspace / "one.cpp").write_text("alpha\nproject_wide_symbol\nomega\n", encoding="utf-8")
     (workspace / "ignored.txt").write_text("project_wide_symbol\n", encoding="utf-8")
 
-    def final(_, body):
+    def overshoot(_, body):
         result = tool_results(body["messages"])[0]
         valid = (
             "one.cpp" in result
@@ -242,7 +242,20 @@ def test_grep_tool_round_trip(root, home):
             and "alpha" in result
             and "omega" in result
         )
-        return event({"content": "grep-ok" if valid else "grep-bad"})
+        if not valid:
+            return event({"content": "grep-bad"})
+        return tool_call(
+            "grep",
+            {"pattern": "project_wide_symbol", "path": ".", "context": 40},
+            call_id="call-2",
+        )
+
+    def final(_, body):
+        # A pacing hint past its bound is clamped rather than rejected, and the
+        # result leads with the reduction instead of implying it got 40.
+        result = tool_results(body["messages"])[-1]
+        clamped = result.startswith("[clamped context to 10 of 40 requested]")
+        return event({"content": "grep-ok" if clamped else f"grep-bad {result[:120]}"})
 
     with Server(
         [
@@ -255,6 +268,7 @@ def test_grep_tool_round_trip(root, home):
                     "context": 1,
                 },
             ),
+            overshoot,
             final,
         ]
     ) as server:

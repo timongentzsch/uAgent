@@ -144,7 +144,9 @@ limit/interruption applies; 250 through 30,000 select another initial wait. A
 pacing hint past its bound — `run`'s `yield_ms` and output cap, `grep`'s
 `context`, `activity`'s `wait_ms`, `subagent`'s ceilings — is pulled to that
 bound before validation rather than rejected, since asking for more than the
-maximum means the maximum. Every other bound rejects, and the rejection names
+maximum means the maximum. The result then leads with the reduction, as
+`[clamped context to 10 of 40 requested]`, so a caller is never left assuming
+it got the figure it sent. Every other bound rejects, and the rejection names
 the value given and the limit it crossed. Set `tty=true` only when interactive
 input is required. A PTY retains merged output, writable input, process-group
 interruption, and resize support.

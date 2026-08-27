@@ -233,7 +233,8 @@ void ReadStringArray(const char* name, std::vector<std::string>& values,
 
 }  // namespace
 
-void ClampToolArguments(const Tool& tool, json& args) {
+void ClampToolArguments(const Tool& tool, json& args,
+                        std::vector<std::string>* clamped) {
   if (tool.clamped_arguments.empty() || !args.is_object()) return;
   const auto properties = tool.parameters.find("properties");
   if (properties == tool.parameters.end() || !properties->is_object()) return;
@@ -255,6 +256,7 @@ void ClampToolArguments(const Tool& tool, json& args) {
       bounded = std::min(bounded, maximum->get<double>());
     }
     if (bounded == given) continue;
+    const std::string requested = JsonDump(*value);
     // A fractional value for an integer property is still a type error, and
     // clamping must not hide it.
     if (value->is_number_integer()) {
@@ -262,13 +264,18 @@ void ClampToolArguments(const Tool& tool, json& args) {
     } else {
       *value = bounded;
     }
+    if (clamped) {
+      clamped->push_back(name + " to " + JsonDump(*value) + " of " +
+                         requested + " requested");
+    }
   }
 }
 
-void CanonicalizeToolArguments(const Tool& tool, json& args) {
+void CanonicalizeToolArguments(const Tool& tool, json& args,
+                               std::vector<std::string>* clamped) {
   if (!args.is_object()) return;
   if (tool.canonicalize) tool.canonicalize(args);
-  ClampToolArguments(tool, args);
+  ClampToolArguments(tool, args, clamped);
 }
 
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,

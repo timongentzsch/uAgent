@@ -30,6 +30,7 @@ struct CallTask {
   const Tool* tool = nullptr;
   json raw_args;
   json args;
+  std::vector<std::string> clamped;  // pacing hints pulled to their bound
   ToolResult result;
   std::optional<ToolArgumentIssue> issue;
   std::string trace_status;
@@ -223,6 +224,15 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
   call_context.call_id = call.id;
   task.result = task.tool->run(task.args, call_context);
   task.result.output = CapResult(task.result.output, ResultCharLimit(task));
+  // A hint pulled to its bound is still a reduced request. Leading the result
+  // with the reduction keeps it out of reach of the cap that trims the tail.
+  if (!task.clamped.empty()) {
+    std::string notes;
+    for (const std::string& one : task.clamped) {
+      notes += "[clamped " + one + "]\n";
+    }
+    task.result.output = notes + task.result.output;
+  }
   if (SteeringState().Requested()) {
     task.result.status = CompletionStatus::kCancelled;
     task.result.error = ToolErrorCode::kNone;

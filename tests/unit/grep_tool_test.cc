@@ -257,19 +257,34 @@ void TestGrepTool() {
                             .rfind("await ready", 0) == 0);
 
   json overshoot = {{"operation", "poll"}, {"id", 3}, {"wait_ms", 900000}};
-  if (activity) ClampToolArguments(*activity, overshoot);
+  std::vector<std::string> clamped;
+  if (activity) ClampToolArguments(*activity, overshoot, &clamped);
   CHECK(overshoot["wait_ms"] == 300000);
   CHECK(overshoot["id"] == 3);
   CHECK(activity && InvalidToolArgument(*activity, overshoot).empty());
+  // The reduction carries both numbers: a caller that asked for more than it
+  // got can tell which limit answered it.
+  CHECK(clamped.size() == 1 &&
+        clamped[0] == "wait_ms to 300000 of 900000 requested");
   const Tool* grep_tool = FindTool(lean_tools, "grep");
   json wide = {{"pattern", "x"}, {"context", 40}};
   CHECK(grep_tool != nullptr);
-  if (grep_tool) ClampToolArguments(*grep_tool, wide);
+  clamped.clear();
+  if (grep_tool) ClampToolArguments(*grep_tool, wide, &clamped);
   CHECK(wide["context"] == 10);
+  CHECK(clamped.size() == 1 && clamped[0] == "context to 10 of 40 requested");
+  // A hint already inside its bound is not a reduction and says nothing.
+  json in_range = {{"pattern", "x"}, {"context", 3}};
+  clamped.clear();
+  if (grep_tool) ClampToolArguments(*grep_tool, in_range, &clamped);
+  CHECK(in_range["context"] == 3 && clamped.empty());
   const Tool* run_tool = FindTool(lean_tools, "run");
   json slow = {{"command", "ls"}, {"yield_ms", 60000}};
-  if (run_tool) ClampToolArguments(*run_tool, slow);
+  clamped.clear();
+  if (run_tool) ClampToolArguments(*run_tool, slow, &clamped);
   CHECK(slow["yield_ms"] == 30000);
+  CHECK(clamped.size() == 1 &&
+        clamped[0] == "yield_ms to 30000 of 60000 requested");
   // A fractional value stays a type error: clamping never masks one.
   json fractional = {{"command", "ls"}, {"yield_ms", 1.5}};
   if (run_tool) ClampToolArguments(*run_tool, fractional);

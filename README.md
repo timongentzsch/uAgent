@@ -123,7 +123,7 @@ The core registry includes:
 | inspect | `read_path`, `grep` |
 | mutate | `write_file`, `edit_file` |
 | execute | `run`, `scratch` |
-| activities | `activity`, `activity_stop` |
+| activities | `activity` |
 | evidence and state | `attach`, `show_image`, `memory` |
 | web | `web_fetch` |
 | conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
@@ -143,14 +143,22 @@ to inspect the exact registry for the next request.
 | Enter while working | Queue steering; passive activity waits yield at once |
 | Ctrl+B during a command | Move the foreground command batch to background supervision |
 | Escape | Interrupt the foreground operation and apply queued steering |
+| Shift+Enter, Alt+Enter | Keep the draft open on a new line; Enter still submits |
+| Tab after `/` | Complete the command being typed from the rows below the draft |
+| Ctrl+C while idle | Ask first; a second press within two seconds exits |
 | `/models`, `/model` | Search or change model route |
 | `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |
 | `/attach` | Queue or clear an attachment |
 | `/context`, `/trace`, `/cost`, `/ps`, `/tools` | Inspect active state |
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
+| `/init`, `/review`, `/diff` | Write AGENTS.md, review changes, or show the git diff |
 | `/memory` | Show saved memory action, time, source, and redacted preview |
 | `/verbose` | Toggle full reasoning and expanded bounded tool output |
 | `/yolo` | Toggle automatic approval |
+
+A call that needs approval offers three answers: `y` allows it once, `a` allows
+that tool — and, for a shell call, that command's first word — for the rest of
+the session, and anything else denies it and reaches the model as steering.
 | `/help`, `/quit` | Show help or exit |
 
 Successful historical `show_image` calls are retransmitted at their original

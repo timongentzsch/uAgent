@@ -22,6 +22,9 @@ next request.
 | `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | always; inspect-only |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
+`read_path` decodes text only: a file whose first bytes are not text is refused
+with a pointer to `attach` rather than decoded into replacement characters.
+
 Filesystem and external-read approval follows the active path policy. Mutating
 and process tools require approval unless yolo mode is active. Editing µAgent's
 own configuration, the project trust store or `.mcp.json` is a stricter class:
@@ -35,18 +38,18 @@ These tools are advertised when supervised background work makes them useful:
 
 | Tool | Purpose |
 | --- | --- |
-| `activity` | List activities, drain or wait for bounded output, write raw characters to a retained PTY, interrupt or resize it |
-| `activity_stop` | Terminate an owned process group and clean its activity state and logs |
+| `activity` | List activities, drain or wait for bounded output, write raw characters to a retained PTY, interrupt or resize it, or stop it |
 
 `run` waits up to `UAGENT_RUN_YIELD_MS` (10 seconds by default) before a
 still-running command becomes an activity. Explicit `yield_ms=0` waits to the
 turn deadline; values from 250 through 30,000 override the initial wait. Set
 `tty=true` only when the process needs interactive input.
-Every `activity` call names one operation: `list`, `poll`, `wait`, `write`, or
-`resize`. `poll`, `write`, and `resize` require an `id`; `wait` requires a
-bounded `wait_ms` and optionally chooses `mode=any|all`. An empty `chars` value
-is a valid write with no input bytes, while `\u0003` interrupts the process
-group. A resize requires `rows` and `cols` in 1..1000. Normal input to a non-TTY
+Every `activity` call names one operation: `list`, `poll`, `wait`, `write`,
+`resize`, or `stop`. `poll`, `write`, `resize`, and `stop` require an `id`;
+`wait` requires a bounded `wait_ms` and optionally chooses `mode=any|all`.
+`stop` terminates the complete process group and cleans its records and logs.
+An empty `chars` value is a valid write with no input bytes, while `\u0003`
+interrupts the process group. A resize requires `rows` and `cols` in 1..1000. Normal input to a non-TTY
 activity is rejected. `run` and `activity` accept `max_output_chars` to lower
 the host-capped output budget for one interaction.
 

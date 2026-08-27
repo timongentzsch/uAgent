@@ -601,7 +601,8 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 {"content": "terminal-stop-ok" if "stopped process group" in result else result}
             )
 
-        with Server([tool_call("activity_stop", {"id": pid}), verify_stop]) as stop_server:
+        stop_call = tool_call("activity", {"operation": "stop", "id": pid})
+        with Server([stop_call, verify_stop]) as stop_server:
             stop_env = base_env(home, stop_server.url)
             stopped = run(
                 workspace,
@@ -621,7 +622,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
             except ProcessLookupError:
                 pass
             else:
-                raise AssertionError(f"detached process group {pid} survived activity_stop")
+                raise AssertionError(f"detached process group {pid} survived activity stop")
             pid = None
     finally:
         signal_process_group(pid)
@@ -650,7 +651,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         os.kill(state["child"], 0)
         tracked = result.startswith(f"[detached · activity {state['pid']} ")
         return (
-            tool_call("activity_stop", {"id": state["pid"]})
+            tool_call("activity", {"operation": "stop", "id": state["pid"]})
             if tracked
             else event({"content": "group-tracking-bad"})
         )

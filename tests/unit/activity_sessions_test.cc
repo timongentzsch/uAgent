@@ -26,7 +26,7 @@
 
 namespace uagent {
 
-void TestActivitySessions() {
+void TestSignalAndFileWatch() {
   RequestAbort();
   ClearAbort();
   pollfd stale_abort = {AbortWakeFd(), POLLIN, 0};
@@ -84,7 +84,9 @@ void TestActivitySessions() {
     close(watched_fd);
     unlink(watched_path);
   }
+}
 
+void TestActivityBufferAndAdmission() {
   HeadTailBuffer buffer(10);
   buffer.Push("abcdefghij");
   buffer.Push("klmnop");
@@ -117,7 +119,9 @@ void TestActivitySessions() {
   }
   CHECK(!retained.Find(retained_ids.front()).has_value());
   CHECK(retained.Find(retained_ids.back()).has_value());
+}
 
+void TestActivitySessions() {
   ToolContext context{std::chrono::steady_clock::now() +
                       std::chrono::seconds(10)};
   ProcessSupervisor automatic_yield;
@@ -180,6 +184,11 @@ void TestActivitySessions() {
     CHECK(completed.Ok());
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
+}
+
+void TestActivityDescriptorAndInputPolicy() {
+  ToolContext context{std::chrono::steady_clock::now() +
+                      std::chrono::seconds(10)};
 
   // Descriptor ownership is a type, but only a count proves it. A PTY run and
   // a pipe run each take a log, an output end and (for a PTY) an input end;
@@ -240,6 +249,11 @@ void TestActivitySessions() {
     CHECK(ToolActivityInput(non_tty, id, "\x03", 0, context).Ok());
     (void)ToolActivityWait(non_tty, {id}, "all", 2000, context);
   }
+}
+
+void TestActivityWaitAndDelivery() {
+  ToolContext context{std::chrono::steady_clock::now() +
+                      std::chrono::seconds(10)};
 
   // A wait the turn deadline cuts short has to say so. Reporting only that it
   // timed out reads as though the requested wait elapsed, which invites the

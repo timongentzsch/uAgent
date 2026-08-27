@@ -5,11 +5,20 @@ The default suite is hermetic and needs no API key:
 ```sh
 cmake --preset debug
 cmake --build --preset debug
-ctest --preset debug --output-on-failure
+ctest --preset debug -j6 --output-on-failure
 ```
 
-One case can be run on its own; the suite refuses to start when a test is
-defined but missing from `TEST_ORDER`, because such a case would never run:
+Run one C++ case with `--test` or filter cases with `-k`:
+
+```sh
+build/debug/uagent_tests --list
+build/debug/uagent_tests --test TestActivitySessions
+build/debug/uagent_tests -k Activity
+```
+
+Run one integration case with `--test` or filter cases with `-k`. Integration
+cases are discovered from each module in source order, so adding a top-level
+`test_` function registers it automatically:
 
 ```sh
 python3 tests/integration.py build/debug/uagent --list
@@ -17,16 +26,14 @@ python3 tests/integration.py build/debug/uagent --test test_plain_turn
 python3 tests/integration.py build/debug/uagent -k compaction
 ```
 
-`tests/unit/` covers local policy and protocols, including activity IDs,
-head/tail buffering and LRU retention, status-row assembly, atomic pre-spawn admission, default
-yielding, event-driven PTY and pipe input/output, split readiness markers, exactly-once completion delivery,
-200 Ctrl+B/exit races, parallel foreground handoff, PTY input/resize, non-TTY
-rejection, resumed-image matching, the public-destination policy behind
-`web_fetch`, and request-payload byte stability across history mutations. Provider fixtures cover structured and
-proxy-wrapped error classes, one-shot context compaction, observational
-background completion, bounded task delivery, and no-replay failure paths. One shared HTTP/PTY fixture drives isolated
-`runtime`, `tools`, `ui`, `providers`, `mcp`, and `delegation` CTest processes.
-The SSE framing fuzz target runs in CI.
+`tests/unit/` covers local policy and protocols: activity IDs, bounded output
+and retention, admission, yielding, PTY/pipe I/O, readiness markers,
+exactly-once completion, Ctrl+B/exit races, foreground handoff, non-TTY
+rejection, resumed images, public-destination policy, and request-payload
+stability. Provider fixtures cover errors, context compaction, observational
+background completion, bounded task delivery, and no-replay failures. One
+shared HTTP/PTY fixture drives isolated `runtime`, `tools`, `ui`, `providers`,
+`mcp`, and `delegation` CTest processes. CI runs the SSE framing fuzz target.
 
 ## Behavioral evaluation
 
@@ -109,19 +116,15 @@ python3 benchmarks/slopscan.py --verbose
 python3 benchmarks/slopscan.py --self-test   # check the checks
 ```
 
-`slopscan.py` looks for slop that already exists rather than slop in the last
-diff: code after an unconditional return, a declaration nothing calls, the same
-block in two files, a doc naming a file that is gone, one sentence maintained
-in two places. Centralising is what creates these, and none of them appear in
-the diff that introduces the next change. The checks are heuristics biased
-toward silence, so read the findings rather than the count; the counts are
-baselined in `benchmarks/baselines/slop.json` so the tree can only get cleaner.
-A count above its baseline exits non-zero on its own, with no flag to remember.
+`slopscan.py` scans the tree, not only the latest diff, for unreachable code,
+unused declarations, duplicated blocks, stale file references, and duplicated
+documentation. Its low-noise heuristics are baselined in
+`benchmarks/baselines/slop.json`; exceeding a baseline exits nonzero. Review
+findings, not just counts.
 
-Every real count being zero is also what a scanner returning nothing at all
-would print, so `--self-test` runs the checks against `tests/fixtures/slop`,
-where one instance of each is planted on purpose, and fails unless each finds
-exactly its own. CI runs the self-test and the scan in that order.
+Because a broken scanner could also report zero, `--self-test` checks
+`tests/fixtures/slop`, which contains one intentional instance of each defect.
+CI runs the self-test before the scan.
 
 The audit reads session journals and a configured build tree, so it stays a
 local tool. The `self-improve` skill drives the whole loop.

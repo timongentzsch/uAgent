@@ -10,7 +10,6 @@ import integration_providers
 import integration_runtime
 import integration_tools
 import integration_ui
-from integration_support import TEST_ORDER
 
 TEST_MODULES = (
     ("runtime", integration_runtime),
@@ -34,24 +33,7 @@ TEST_GROUPS = {
     for name, test in ALL_TESTS.items()
     if test.__module__ == module.__name__
 }
-
-
-def check_registration():
-    """Execution is driven by TEST_ORDER alone.
-
-    A top-level test_ function added to an integration module but not to
-    TEST_ORDER would never run and nothing would say so, which is exactly the
-    failure a regression test is supposed to prevent. Refuse to run instead.
-    """
-    unordered = sorted(set(ALL_TESTS) - set(TEST_ORDER))
-    undefined = sorted(set(TEST_ORDER) - set(ALL_TESTS))
-    problems = []
-    if unordered:
-        problems.append(f"defined but missing from TEST_ORDER (would never run): {unordered}")
-    if undefined:
-        problems.append(f"listed in TEST_ORDER but not defined: {undefined}")
-    if problems:
-        raise SystemExit("integration registration is inconsistent:\n  " + "\n  ".join(problems))
+ORDERED_TESTS = tuple(ALL_TESTS)
 
 
 def parse_args():
@@ -69,7 +51,7 @@ def parse_args():
 def select(arguments):
     names = [
         name
-        for name in TEST_ORDER
+        for name in ORDERED_TESTS
         if arguments.group == "all" or TEST_GROUPS[name] == arguments.group
     ]
     if arguments.test:
@@ -83,7 +65,6 @@ def select(arguments):
 
 
 def main():
-    check_registration()
     arguments = parse_args()
     names = select(arguments)
     if arguments.list:

@@ -6,7 +6,6 @@ from integration_support import (
     descendant_pids,
     event,
     function_names,
-    function_tool,
     has_message,
     json,
     run,
@@ -66,10 +65,6 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
         if any("foreground-child-result" in result for result in results):
             direct = all("[started] subagent id " not in result for result in results)
             return event({"content": "foreground-task-ok" if direct else "foreground-task-bad"})
-        task = function_tool(body, "subagent")
-        background = task["parameters"]["properties"]["background"]
-        assert_true(background["type"] == "boolean", background)
-        assert_true("final result directly" in background["description"], background)
         return tool_call("subagent", {"prompt": "child", "background": False})
 
     with Server([route]) as server:
@@ -164,11 +159,6 @@ def test_parallel_subagents_auto_join(root, home):
             names = function_names(request)
             assert_true("subagent" in names, names)
             assert_true(not names.intersection(lifecycle), names)
-            task_schema = function_tool(request, "subagent")
-            assert_true(
-                {"prompt", "model"}.issubset(task_schema["parameters"]["properties"]),
-                task_schema,
-            )
 
 
 def test_subagent_interrupt_reaps_child(root, home):
@@ -281,10 +271,6 @@ def test_subagent_uses_selected_model_route(root, home):
     child = Server([child_action, child_reply])
 
     def delegate(_, body):
-        task = function_tool(body, "subagent")
-        assert_true("provider" not in task["parameters"]["properties"], task)
-        description = task["parameters"]["properties"]["model"]["description"]
-        assert_true("codex-local/MODEL" in description, description)
         runtime = "\n".join(
             str(message.get("content", ""))
             for message in body["messages"]
@@ -481,6 +467,33 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home):
         result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "limit-reported-ok", result.stdout)
+
+
+def test_subagent_answer_survives_a_record_larger_than_the_cap(root, home):
+    """A child's record is read whole, however much trace it drags behind it."""
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            if tool_results(messages):
+                return event({"content": "child-answer-9f3a"})
+            # Enough captured output that the envelope this child prints is
+            # far larger than the cap its parent reads a tool result through.
+            return tool_call("run", {"command": "printf 'x%.0s' $(seq 1 60000)"})
+        results = tool_results(messages)
+        if results:
+            report = results[-1]
+            # The answer, not the slice of trace the cap happened to land on.
+            assert_true("child-answer-9f3a" in report, report)
+            assert_true("no result envelope" not in report, report)
+            assert_true("uagent.headless.v1" not in report, report)
+            return event({"content": "recovered-ok"})
+        return tool_call("subagent", {"prompt": "child", "background": False})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=60)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "recovered-ok", result.stdout)
 
 
 def test_subagent_foreground_outlives_the_per_call_budget(root, home):

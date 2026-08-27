@@ -120,6 +120,7 @@ int64_t ActivityOutputCap(int64_t requested) {
   return requested > 0 ? std::min(requested, ToolResultCap()) : ToolResultCap();
 }
 
+
 // Over-cap text keeps its head and its tail: the middle is what a reader can
 // most afford to lose.
 std::string LimitOutput(std::string text, int64_t cap) {
@@ -977,6 +978,9 @@ std::vector<std::string> TakeCompleted(
         job.session ? job.session->kind
                     : ParseActivityKind(job.kind, job.detached);
     if (activity_kind == ActivityKind::kSubagent) {
+      output = ChildAgentRecoverEnvelope(
+          std::move(output),
+          collected.artifact ? collected.artifact->path : job.log);
       if (failed) {
         output = ChildAgentFailureReport(
             job.display_label, ChildAgentFailureStage::kExecution, output);

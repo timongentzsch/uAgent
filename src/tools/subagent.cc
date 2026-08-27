@@ -279,6 +279,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                              .completion_notes = clamped,
                              .environment = std::move(environment)});
         ToolResult result = std::move(child.result);
+        if (child.wait_status && result.artifact) {
+          // The child ran long enough for its log to outgrow the cap, so the
+          // text here may begin inside the record it ends with.
+          result.output = ChildAgentRecoverEnvelope(std::move(result.output),
+                                                    result.artifact->path);
+        }
         if (result.Ok()) {
           // A launch receipt is process-supervisor output, not a malformed
           // child answer. Only a process that actually completed can have a

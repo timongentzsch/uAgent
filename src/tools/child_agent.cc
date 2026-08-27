@@ -2,8 +2,11 @@
 
 #include "include/tools/child_agent.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -19,6 +22,11 @@ namespace uagent {
 namespace {
 
 constexpr size_t kChildDiagnosticBytes = 2048;
+
+// How far back a child's result record may begin. It is one line at the end of
+// the log and mostly trace, so it routinely dwarfs the cap a tool result is
+// read through.
+constexpr int64_t kEnvelopeRecoveryBytes = int64_t{8} * 1024 * 1024;
 
 const char* FailureStageName(ChildAgentFailureStage stage) {
   switch (stage) {
@@ -227,6 +235,23 @@ std::optional<json> ChildAgentEnvelope(const std::string& output) {
     end = start;
   }
   return std::nullopt;
+}
+
+std::string ChildAgentRecoverEnvelope(std::string output,
+                                     const std::string& log_path) {
+  if (log_path.empty() || ChildAgentEnvelope(output)) return output;
+  std::ifstream file(log_path, std::ios::binary | std::ios::ate);
+  if (!file) return output;
+  auto size = static_cast<int64_t>(file.tellg());
+  file.seekg(std::max(int64_t{0}, size - kEnvelopeRecoveryBytes));
+  std::string whole((std::istreambuf_iterator<char>(file)),
+                    std::istreambuf_iterator<char>());
+  if (std::optional<json> envelope = ChildAgentEnvelope(whole)) {
+    // Recovered, not re-read: the diagnostics keep the cap they were given,
+    // and only the record the caller is owed is added back.
+    output += "\n" + JsonDump(*envelope);
+  }
+  return output;
 }
 
 std::string ChildAgentStopNote(const json& stop) {

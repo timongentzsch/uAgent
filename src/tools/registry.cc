@@ -331,13 +331,14 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       MakeTool(
           "activity",
           "Inspect or drive activities with an explicit operation: list, poll "
-          "one, wait for any/all, write to one, or resize its PTY. Completion "
-          "never starts a model turn.",
+          "one, wait for any/all, write to one, resize its PTY, or stop one "
+          "— stop terminates its complete process group and cleans its log. "
+          "Completion never starts a model turn.",
           schema(
               R"json({"type":"object","additionalProperties":false,"properties":{
-                  "operation":{"type":"string","enum":["list","poll","wait","write","resize"]},
+                  "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
                   "id":{"type":"integer","minimum":1,"maximum":2147483647,
-                    "description":"activity for poll, write, or resize"},
+                    "description":"activity for poll, write, resize, or stop"},
                   "chars":{"type":"string","maxLength":65536,
                     "description":"bytes for write; empty is intentional"},
                   "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
@@ -378,22 +379,23 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                   context, JsonValue(a, "rows", int64_t{0}),
                   JsonValue(a, "cols", int64_t{0}), cap);
             }
+            if (operation == "stop") return ToolActivityStop(supervisor, id);
             return ToolFailure(ToolErrorCode::kInvalidArguments,
                                "error: unknown activity operation");
           }));
   activity.canonicalize = [](json& a) {
     std::string operation = JsonValue(a, "operation", "");
     if (operation != "list" && operation != "poll" && operation != "wait" &&
-        operation != "write" && operation != "resize") {
+        operation != "write" && operation != "resize" && operation != "stop") {
       return;
     }
     auto relevant = [&](std::string_view field) {
       if (field == "id") {
         return operation == "poll" || operation == "write" ||
-               operation == "resize";
+               operation == "resize" || operation == "stop";
       }
       if (field == "chars") return operation == "write";
-      if (field == "wait_ms") return operation != "list";
+      if (field == "wait_ms") return operation != "list" && operation != "stop";
       if (field == "until") return operation == "poll";
       if (field == "mode") return operation == "wait";
       if (field == "rows" || field == "cols") return operation == "resize";
@@ -424,15 +426,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                           Capability(ToolCapability::kMutate);
   activity.mutates = [](const json& a) {
     std::string operation = JsonValue(a, "operation", "");
-    return operation == "write" || operation == "resize";
+    return operation == "write" || operation == "resize" || operation == "stop";
   };
   activity.result_chars = kActivityResultChars;
   activity.blocking_wait_default_ms = 0;
   activity.visibility = Tool::Visibility::kDetachedTerminal;
   activity.validate = [](const json& a) -> std::optional<ToolArgumentIssue> {
     std::string operation = JsonValue(a, "operation", "");
-    if ((operation == "poll" || operation == "write" ||
-         operation == "resize") &&
+    if ((operation == "poll" || operation == "write" || operation == "resize" ||
+         operation == "stop") &&
         !a.contains("id")) {
       return ArgumentIssue("activity.missing_id", operation + " requires id",
                            "id");
@@ -492,6 +494,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
              "×" + std::to_string(JsonValue(a, "cols", int64_t{0})) + " → " +
              target + wait;
     }
+    if (operation == "stop") return "stop " + target;
     if (operation == "poll" && a.contains("until")) {
       return "await " + TerminalSafe(JsonValue(a, "until", "")) + " · " +
              target + wait;
@@ -499,25 +502,6 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     if (operation == "poll") return "poll " + target + wait;
     return std::string("activity");
   };
-  Tool& activity_stop = AddTool(
-      tools,
-      MakeTool("activity_stop",
-               "Stop an activity's complete process group and clean its log.",
-               schema(R"json({"type":"object","properties":{
-                    "id":{"type":"integer","minimum":1,"maximum":2147483647}},
-                    "required":["id"]})json"),
-               [&supervisor](const json& a, const ToolContext&) {
-                 return ToolActivityStop(supervisor,
-                                         JsonValue(a, "id", int64_t{0}));
-               }));
-  activity_stop.mutating = true;
-  activity_stop.capabilities = Capability(ToolCapability::kExecute) |
-                               Capability(ToolCapability::kMutate);
-  activity_stop.visibility = Tool::Visibility::kDetachedTerminal;
-  activity_stop.summary = [](const json& a) {
-    return "activity " + std::to_string(JsonValue(a, "id", int64_t{0}));
-  };
-
   json memory_schema = schema(R"json({"type":"object","properties":{
                     "action":{"type":"string","enum":["get","set","forget","list","search"]},
                     "key":{"type":"string",

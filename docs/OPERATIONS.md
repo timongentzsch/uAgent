@@ -179,8 +179,8 @@ remedy; its one-line completion row shows only a bounded category-safe
 stage/reason, while the full report and captured artifact remain retained. The
 harness never silently changes provider, model, pricing, or privacy policy. `activity(operation=wait, wait_ms=..., mode=...)` is an intentional
 join when no useful parent work remains.
-`activity_stop(id)` sends TERM, then KILL if needed, to the complete process
-group and removes its records and logs. Persistent TUI and headless runs
+`activity(operation=stop, id=...)` sends TERM, then KILL if needed, to the
+complete process group and removes its records and logs. Persistent TUI and headless runs
 publish completion without polling or starting a model turn.
 
 Configured MCP servers start once and expose their discovered tools directly.

@@ -6,20 +6,23 @@
 | Command | Description |
 | --- | --- |
 | `/attach PATH|clear` | attach a file to the next turn |
-| `/compact` | summarize active context |
+| `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
+| `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
 | `/debug-config [SETTING]` | show configuration layers, sources and restart-required fields |
-| `/effort LEVEL` | set reasoning effort |
+| `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
+| `/init` | create an AGENTS.md file with instructions for µAgent |
 | `/memory` | show memory state and keys |
-| `/model NAME` | switch model or route |
+| `/model NAME` | choose what model to use |
 | `/models [QUERY]` | search and select across providers |
-| `/ps` | show active background work |
+| `/ps` | list background work |
 | `/quit` | exit µAgent |
-| `/reset` | start a fresh session |
-| `/sessions` | resume a saved session |
-| `/status` | show version, route and budgets |
+| `/reset` | start a new chat |
+| `/review [TARGET]` | review my current changes and find issues |
+| `/sessions` | resume a saved chat |
+| `/status` | show current session configuration and token usage |
 | `/tools` | show tools available right now |
 | `/trace` | show latest tool and search trace |
 | `/variant MODE` | set OpenRouter provider routing |

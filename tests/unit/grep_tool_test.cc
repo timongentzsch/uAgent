@@ -195,7 +195,7 @@ void TestGrepTool() {
         activity->parameters["required"] == json::array({"operation"}));
   CHECK(activity &&
         activity->parameters["properties"]["operation"]["enum"] ==
-            json::array({"list", "poll", "wait", "write", "resize"}));
+            json::array({"list", "poll", "wait", "write", "resize", "stop"}));
 
   json materialized_poll = {
       {"operation", "poll"}, {"id", 3},          {"chars", ""},
@@ -274,7 +274,19 @@ void TestGrepTool() {
   json fractional = {{"command", "ls"}, {"yield_ms", 1.5}};
   if (run_tool) ClampToolArguments(*run_tool, fractional);
   CHECK(run_tool && !InvalidToolArgument(*run_tool, fractional).empty());
-  CHECK(FindTool(lean_tools, "activity_stop") != nullptr);
+  // Stopping an activity is one more operation on the tool that already owns
+  // the id, not a second name for the same domain.
+  CHECK(FindTool(lean_tools, "activity_stop") == nullptr);
+  json materialized_stop = raw_poll;
+  materialized_stop["operation"] = "stop";
+  if (activity) CanonicalizeToolArguments(*activity, materialized_stop);
+  CHECK(materialized_stop == json({{"operation", "stop"}, {"id", 3}}));
+  CHECK(activity && !activity->validate(materialized_stop));
+  CHECK(activity && activity->mutates(materialized_stop));
+  auto stop_id_issue =
+      activity ? activity->validate({{"operation", "stop"}}) : std::nullopt;
+  CHECK(stop_id_issue && stop_id_issue->code == "activity.missing_id");
+  CHECK(activity && activity->summary(materialized_stop) == "stop activity 3");
   for (const auto& registered : ToolSchemas(lean_tools)) {
     CHECK(registered["function"]["parameters"]["additionalProperties"] ==
           false);

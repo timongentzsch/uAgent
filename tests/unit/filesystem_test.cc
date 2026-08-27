@@ -60,6 +60,15 @@ void TestFileTools() {
   std::string read = ToolReadFile(file.string(), 1, 1).output;
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
+  // Bytes that are not text are not read as text: the refusal names the tool
+  // that can carry them instead of filling context with mojibake.
+  fs::path binary_file = root / "payload.bin";
+  CHECK(ToolWriteFile(binary_file.string(), std::string("PNG\x89\0\x1f", 6))
+            .output.starts_with("wrote "));
+  ToolResult binary_read = ToolReadFile(binary_file.string(), 1, 1);
+  CHECK(!binary_read.Ok());
+  CHECK(binary_read.output.find("not a text file") != std::string::npos);
+  CHECK(binary_read.output.find("attach") != std::string::npos);
   fs::path long_line = root / "long-line.txt";
   CHECK(ToolWriteFile(long_line.string(), std::string(size_t{40} * 1024, 'x'))
             .output.starts_with("wrote "));
@@ -272,8 +281,7 @@ void TestFileTools() {
     };
     // `old` copied out of a line-numbering reader, which the edit strips.
     approves_what_it_does(
-        "one\ntwo\n",
-        json::array({{{"old", "     1\tone"}, {"new", "ONE"}}}));
+        "one\ntwo\n", json::array({{{"old", "     1\tone"}, {"new", "ONE"}}}));
     // CRLF body against LF `old`, which the edit normalises.
     approves_what_it_does(
         "one\r\ntwo\r\n",
@@ -293,11 +301,10 @@ void TestFileTools() {
     // An edit larger than the byte limit refuses before it is written.
     approves_what_it_does(
         "one\ntwo\n",
-        json::array({{{"old", "one"},
-                      {"new", std::string(static_cast<size_t>(
-                                              EditFileBytes()) +
-                                              1,
-                                          'x')}}}));
+        json::array(
+            {{{"old", "one"},
+              {"new",
+               std::string(static_cast<size_t>(EditFileBytes()) + 1, 'x')}}}));
   }
 
   fs::path private_file = root / "private";

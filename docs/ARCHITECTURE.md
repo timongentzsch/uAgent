@@ -176,11 +176,11 @@ thread feeds the private log, an incremental 1 MiB head/tail buffer, and an
 aggregate bounded transcript, and it is the sole owner of process reaping and
 I/O-FD closure. The buffer preserves the oldest and newest bytes
 and reports an omitted middle. Each `activity` call explicitly selects list,
-poll, wait, write, or resize; the operation, rather than the presence of an
-optional field, controls execution and approval. Interactions against one
+poll, wait, write, resize, or stop; the operation, rather than the presence of
+an optional field, controls execution and approval. Interactions against one
 activity serialize PTY writes, polling, interruption, and resize. An id-less
 wait joins blocked work and yields on queued steering without cancelling it,
-while `activity_stop` terminates the complete process group.
+while `operation=stop` terminates the complete process group.
 An exact live detached command and working-directory match returns the existing
 activity rather than spawning a duplicate. Results arrive at model-step
 boundaries. The persistent interactive loop and headless runner drain

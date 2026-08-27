@@ -129,6 +129,10 @@
 
 ### Fixed
 
+- `read_path` no longer decodes bytes that are not text. A PNG or an object
+  file was read line by line and answered with pages of replacement characters
+  that cost context and said nothing. It is now refused by name, and the
+  refusal points at `attach`, which hands the same bytes over as an attachment.
 - A failed process keeps its log. Completed logs under the result cap were
   deleted as disposable, which holds only when the caller received the whole
   thing — and a failure is summarised on its way back, bounded to 2,048 bytes
@@ -175,6 +179,12 @@
 
 ### Changed
 
+- Stopping an activity is an operation, not a tool. `activity_stop(id)` became
+  `activity(operation=stop, id=...)`, beside the list, poll, wait, write and
+  resize operations that already own the same id, capability set and detached
+  visibility. It was the last part of the domain reachable under a second name,
+  and one schema fewer is one fewer to choose wrongly between. Stop is still a
+  mutation and is still approved as one.
 - The interactive surface reads like the tools it sits beside. The banner
   states the version and working directory, the startup context row shows three
   sources and a count instead of every path it knows, and the first prompt is

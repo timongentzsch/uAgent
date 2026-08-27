@@ -130,6 +130,9 @@ ToolResult FileOpenFailure(const std::string& path) {
   return ToolFailure(FileToolError(error), "error: cannot open " + path);
 }
 
+// Defined below, beside the directory preview that shares it.
+bool LikelyTextFile(const std::filesystem::path& path);
+
 // Atomic write: temp file in the same directory, then rename — a disk-full or
 // crash mid-write can never leave the target truncated. Keeps an existing
 // file's permissions.
@@ -169,6 +172,13 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
                         int64_t limit) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
+  }
+  // A PNG decoded as lines is pages of replacement characters that answer
+  // nothing. `attach` carries those bytes, so the refusal names it.
+  if (!LikelyTextFile(path)) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: not a text file: " + path +
+                           "; use attach to put its bytes in model context");
   }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   int64_t max_lines = ReadFileMaxLines();
@@ -535,13 +545,14 @@ ToolResult ToolEditFile(const std::string& path,
   ToolResult write =
       ToolWriteFile(path, data);  // atomic replace, keeps permissions
   if (!write.Ok()) return write;
-  ToolResult result = ToolSuccess(
-      "edited " + path + " (" + std::to_string(run.replacements) +
-      (run.replacements == 1 ? " replacement across " : " replacements across ") +
-      std::to_string(edits.size()) +
-      (edits.size() == 1 ? " edit; " : " edits; ") +
-      std::to_string(original_size) + " -> " + std::to_string(data.size()) +
-      " bytes)");
+  ToolResult result =
+      ToolSuccess("edited " + path + " (" + std::to_string(run.replacements) +
+                  (run.replacements == 1 ? " replacement across "
+                                         : " replacements across ") +
+                  std::to_string(edits.size()) +
+                  (edits.size() == 1 ? " edit; " : " edits; ") +
+                  std::to_string(original_size) + " -> " +
+                  std::to_string(data.size()) + " bytes)");
   result.display = "Edited " + DisplayPath(path) + " (+" +
                    std::to_string(run.display.added) + " -" +
                    std::to_string(run.display.removed) + ")\n" +

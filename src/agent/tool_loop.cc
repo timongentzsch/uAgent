@@ -164,7 +164,10 @@ bool Agent::RunCalls(
     if (!valid) {
       const json& shown =
           task.raw_args.is_discarded() ? task.args : task.raw_args;
-      task.label = shown.is_discarded() ? call.args : JsonDump(shown);
+      task.label = tool && tool->redact_invalid_arguments
+                       ? ToolSummary(*tool, arguments)
+                   : shown.is_discarded() ? call.args
+                                          : JsonDump(shown);
     }
     Event call_event{EventId::kToolCall,
                      ToolCallData(call, turn_id_, step, text_mode)};

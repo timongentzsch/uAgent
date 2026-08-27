@@ -208,10 +208,11 @@ struct Tool {
   bool mutating = false;  // gated behind user approval
   Approval mutates;       // argument-dependent mutation (e.g. memory save)
   Run run;
-  Canonicalize canonicalize;   // materialized provider args -> operation args
-  Validate validate;           // semantic issue before approval/execution
-  Summary summary;             // args -> one-line display
-  bool parallel_safe = false;  // safe beside another tool call
+  Canonicalize canonicalize;  // materialized provider args -> operation args
+  Validate validate;          // semantic issue before approval/execution
+  Summary summary;            // args -> one-line display
+  bool redact_invalid_arguments = false;  // hide raw rejected arguments
+  bool parallel_safe = false;             // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
   Approval needs_approval;          // dynamic policy (e.g. external read)
   Classify approval_class;          // escalates specific arguments

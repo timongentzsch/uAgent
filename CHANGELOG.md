@@ -42,6 +42,15 @@
   wrong endpoint fails as an authentication error rather than as the typo it
   is, which is what 37 `invalid local API key` and 12 `unknown provider`
   failures in this machine's history look like.
+- `uagent_configure` can write `UAGENT_PROVIDERS`, the one composite secret,
+  without a credential ever passing through a tool argument. An `api_key` must
+  be an exact environment-variable reference, which the config loader expands
+  at startup; `base_url` must be an http(s) endpoint carrying no credential,
+  query or fragment; any other interpolation is refused. The approval preview
+  diffs the pretty-printed JSON with every literal key already on disk
+  redacted, so a route can be added or renamed while the secret stays where the
+  user put it. Setting a plain secret is still refused, but unsetting one is
+  not: removing a credential needs no credential.
 - `delete_file` removes a regular file and reports the removed lines as a
   receipt, so an approval prompt shows what is about to be lost. Directories,
   non-regular files and missing paths are refused by the same path policy the

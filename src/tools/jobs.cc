@@ -924,16 +924,19 @@ std::vector<std::string> TakeCompleted(
   std::vector<BgJob> jobs = supervisor.Snapshot();
   std::vector<std::string> notes;
   for (BgJob& candidate : jobs) {
-    std::unique_lock<std::mutex> interaction;
-    if (candidate.session) {
-      interaction =
-          std::unique_lock<std::mutex>(candidate.session->interaction);
-    }
+    // Filter before locking: both tests read fields that are immutable once the
+    // id is assigned, and `interaction` is held for a whole tool interaction,
+    // so taking it first blocks this wait on an unrelated activity.
     if (ids && std::find(ids->begin(), ids->end(), ActivityId(candidate)) ==
                    ids->end()) {
       continue;
     }
     if (!kind.empty() && candidate.kind != kind) continue;
+    std::unique_lock<std::mutex> interaction;
+    if (candidate.session) {
+      interaction =
+          std::unique_lock<std::mutex>(candidate.session->interaction);
+    }
 
     int status = 0;
     bool completed = false;

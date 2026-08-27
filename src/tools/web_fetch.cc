@@ -263,15 +263,17 @@ Tool WebFetchTool(Api& api) {
         }
         bool html = page.content_type.find("html") != std::string::npos;
         if (!html && !Textual(page.content_type)) {
-          // A document is not a dead end: this tool only turns markup into
-          // text, while the model reads PDFs and images directly once the
-          // bytes are on disk.
+          // This tool turns markup into text and nothing else. Whether the
+          // route can read the bytes some other way is not knowable here, so
+          // the remedy names the tools that always work rather than a
+          // capability that may not be there.
           return ToolFailure(
               ToolErrorCode::kUnavailable,
               "error: web_fetch cannot read " +
                   (page.content_type.empty() ? "this content type"
                                              : page.content_type) +
-                  "; download it with run and read it with attach");
+                  "; download it and extract its text locally with run or "
+                  "scratch");
         }
         // Non-markup arrives readable; reflowing it would only destroy the
         // indentation that carries meaning in JSON, XML and plain text.

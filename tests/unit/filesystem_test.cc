@@ -329,6 +329,15 @@ void TestFileTools() {
                    CanonicalAccessPath(root.string())));
   CHECK(!PathWithin(CanonicalAccessPath(root.parent_path().string()),
                     CanonicalAccessPath(root.string())));
+  // A target that does not exist yet still belongs to the directory it names.
+  // libstdc++ answers `weakly_canonical` relatively for a missing relative
+  // path while libc++ answers absolutely, and a relative answer compares as
+  // outside every workspace: reading a typo asked for approval instead of
+  // reporting the miss, and writing a new file asked too. Both checks above
+  // pass either way because both paths exist.
+  CHECK(CanonicalAccessPath("uagent-absent-probe.txt").is_absolute());
+  CHECK(PathWithin(CanonicalAccessPath("uagent-absent-probe.txt"),
+                   CanonicalAccessPath(".")));
 
   fs::path fifo = root / "pipe";
   CHECK(mkfifo(fifo.c_str(), 0600) == 0);

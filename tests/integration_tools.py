@@ -763,6 +763,118 @@ def test_self_configuration_asks_even_under_yolo(root, home):
         assert_true("# keep me" in written, written)
 
 
+def test_composite_configuration_requires_exact_human_approval(root, home):
+    """Safe credential references reach a redacted prompt, even under --yolo."""
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    original = (
+        "# keep me\n"
+        "LOCAL_PROXY_API_KEY=adjacent-integration-secret\n"
+        "UAGENT_PROVIDERS='{\"old\":{\"base_url\":\"https://old.example/v1\","
+        "\"api_key\":\"$LOCAL_PROXY_API_KEY\"}}'\n"
+    )
+    config.write_text(original)
+    proposed = json.dumps(
+        {
+            "codex-local": {
+                "base_url": "http://127.0.0.1:8787/openai/v1",
+                "api_key": "$CODEX_LOCAL_PROXY_API_KEY",
+                "wire_api": "responses",
+                "hosted_tools": ["web_search"],
+            }
+        },
+        separators=(",", ":"),
+    )
+
+    def request_change(_, __):
+        return tool_call(
+            "uagent_configure",
+            {
+                "scope": "user",
+                "changes": [
+                    {"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}
+                ],
+            },
+        )
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("wrote" in result and "needs a restart" in result, result)
+        return event({"content": "composite-config-ok"})
+
+    with Server([request_change, finish]) as server:
+        status, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                b"configure providers\n",
+                (b"y\n", b"allow uagent_configure? "),
+                (b"/quit\n", b"composite-config-ok"),
+            ],
+            args=("--yolo",),
+            timeout=25,
+        )
+        assert_true(status == 0, output)
+        assert_true(b"allow uagent_configure? " in output, output)
+        assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
+        assert_true(b"adjacent-integration-secret" not in output, output)
+        assert_true(b'\r\n+   "codex-local": {' in output, output)
+        written = config.read_text()
+        assert_true(proposed in written, written)
+        assert_true("# keep me" in written, written)
+
+
+def test_composite_configuration_rejects_literal_credentials(root, home):
+    """A literal credential is rejected without a prompt or terminal leak."""
+    config = home / ".uagent" / ".config"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    original = "# unchanged\n"
+    config.write_text(original)
+    literal = "literal-provider-secret"
+    proposed = json.dumps(
+        {
+            "bad": {
+                "base_url": "https://example.com/v1",
+                "api_key": literal,
+            }
+        },
+        separators=(",", ":"),
+    )
+
+    def request_change(_, __):
+        return tool_call(
+            "uagent_configure",
+            {
+                "scope": "user",
+                "changes": [
+                    {"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}
+                ],
+            },
+        )
+
+    def finish(_, body):
+        result = tool_results(body["messages"])[-1]
+        assert_true("environment-variable reference" in result, result)
+        assert_true(literal not in result, result)
+        return event({"content": "literal-config-rejected"})
+
+    with Server([request_change, finish]) as server:
+        status, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                b"configure providers\n",
+                (b"/quit\n", b"literal-config-rejected"),
+            ],
+            args=("--yolo",),
+            timeout=20,
+        )
+        assert_true(status == 0, output)
+        assert_true(b"allow uagent_configure? " not in output, output)
+        assert_true(literal.encode() not in output, output)
+        assert_true(config.read_text() == original, config.read_text())
+
+
 def test_self_configuration_requires_a_person(root, home):
     """With nobody to ask, the tool is not offered and the file is untouched.
 

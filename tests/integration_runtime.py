@@ -8,7 +8,6 @@ from integration_support import (
     budget,
     event,
     function_names,
-    function_tool,
     has_message,
     json,
     midturn_compaction_env,
@@ -47,8 +46,6 @@ def test_plain_turn(root, home):
 def test_adaptive_system_revises_replaces_and_clears(root, home):
     def initial(_, body):
         assert_true("adapt_system" in function_names(body), function_names(body))
-        schema = function_tool(body, "adapt_system")["parameters"]
-        assert_true(set(schema["required"]) == {"instructions", "reason"}, schema)
         assert_true("MUTABLE SELF-DIRECTIVE" not in body["messages"][0]["content"], body)
         return tool_call(
             "adapt_system",
@@ -119,7 +116,10 @@ def test_adaptive_system_revises_replaces_and_clears(root, home):
 
 
 def test_stream_error_is_not_an_empty_response(root, home):
-    with Server([{"error": {"message": "upstream overloaded", "type": "server_error"}}]) as server:
+    with Server(
+        [{"error": {"message": "upstream overloaded", "type": "server_error"}}],
+        repeat_last=True,
+    ) as server:
         result = run(root, base_env(home, server.url), "-p", "reply")
         assert_true(result.returncode != 0, result.stdout)
         assert_true("upstream overloaded" in result.stderr, result.stderr)

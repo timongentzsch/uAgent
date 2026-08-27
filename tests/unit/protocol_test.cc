@@ -14,6 +14,7 @@
 #include "include/api/retry.h"
 #include "include/cli.h"
 #include "include/md.h"
+#include "include/tools/adapt_system.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "tests/unit/test_support.h"
@@ -411,6 +412,27 @@ void TestRegistries() {
   // Capability guidance is its own section, not a tail of the answer rules.
   CHECK(adaptive_prompt.starts_with("\n\n## Capabilities\n"));
   CHECK(CapabilityPrompt({}).empty());
+
+  AdaptiveSystemState adaptive_state;
+  Tool adaptive = AdaptSystemTool(adaptive_state);
+  CHECK(adaptive.parameters["required"] ==
+        json::array({"instructions", "reason"}));
+
+  Api delegation_api(RuntimeConfig{});
+  ProcessSupervisor delegation_processes;
+  Tool subagent = SubagentTool(
+      delegation_api, delegation_processes, {},
+      {NamedProvider{.name = "codex-local"}}, false);
+  const json& subagent_properties = subagent.parameters["properties"];
+  CHECK(subagent_properties["background"]["type"] == "boolean");
+  CHECK(subagent_properties["background"]["description"]
+            .get<std::string>()
+            .find("final result directly") != std::string::npos);
+  CHECK(!subagent_properties.contains("provider"));
+  CHECK(subagent_properties["model"]["description"]
+            .get<std::string>()
+            .find("codex-local/MODEL") != std::string::npos);
+
   std::string host_prompt = HostCapabilityPrompt(capability_tools);
   CHECK(host_prompt.find("web_search=available") != std::string::npos);
   CHECK(host_prompt.find("web_fetch=available") != std::string::npos);
@@ -419,7 +441,9 @@ void TestRegistries() {
   CHECK(host_prompt.find("registry is authoritative") != std::string::npos);
   CHECK(HostCapabilityPrompt({}).find("web_search=unavailable") !=
         std::string::npos);
+}
 
+void TestCommandAndDisplayRegistries() {
   ParsedSlashCommand command = ParseSlashCommand("/model vendor/model");
   CHECK(command.spec && command.spec->id == SlashCommandId::kModel);
   CHECK(command.argument == "vendor/model");
@@ -508,7 +532,9 @@ void TestRegistries() {
         "[environment: date today; cwd /workspace; shell bash]");
   std::error_code cleanup_error;
   fs::remove_all(bin, cleanup_error);
+}
 
+void TestModelCatalogParsing() {
   auto models = ParseModels(
       {{"data",
         json::array({{{"id", "vendor/beta"}},

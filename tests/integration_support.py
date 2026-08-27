@@ -108,9 +108,18 @@ def two_route_providers(first_url, second_url):
 
 
 class Server:
-    def __init__(self, responders, get_response=None):
+    def __init__(self, responders, get_response=None, *, repeat_last=False):
         self.responders = list(responders)
+        if not self.responders:
+            raise ValueError("Server requires at least one responder")
+        # A single callable is an explicit router and may handle any number of
+        # requests. A response sequence is finite: exhausting it is a test
+        # failure rather than silently replaying its final response.
+        self.repeat_last = repeat_last or (
+            len(self.responders) == 1 and callable(self.responders[0])
+        )
         self.requests = []
+        self.unexpected_requests = []
         self.get_requests = []
         owner = self
 
@@ -127,6 +136,14 @@ class Server:
                 body = json.loads(self.rfile.read(size))
                 owner.requests.append((dict(self.headers), body))
                 index = len(owner.requests) - 1
+                if index >= len(owner.responders) and not owner.repeat_last:
+                    owner.unexpected_requests.append(body)
+                    write_json_response(
+                        self,
+                        {"error": {"message": f"unexpected request #{index + 1}"}},
+                        status=500,
+                    )
+                    return
                 response = owner.responders[min(index, len(owner.responders) - 1)]
                 if callable(response):
                     response = response(self, body)
@@ -159,13 +176,17 @@ class Server:
     def __enter__(self):
         return self
 
-    def __exit__(self, *_):
-        self.close()
+    def __exit__(self, exc_type, *_):
+        self.close(check_unexpected=exc_type is None)
 
-    def close(self):
+    def close(self, *, check_unexpected=True):
         self.httpd.shutdown()
         self.httpd.server_close()
         self.thread.join(timeout=2)
+        if check_unexpected and self.unexpected_requests:
+            raise AssertionError(
+                f"server received {len(self.unexpected_requests)} unexpected request(s)"
+            )
 
 
 def base_env(home, url):
@@ -584,107 +605,3 @@ def wait_for_echo(master, wanted, timeout=10):
             return lflag
         time.sleep(0.05)
     return termios.tcgetattr(master)[3]
-
-
-TEST_ORDER = (
-    "test_plain_turn",
-    "test_adaptive_system_revises_replaces_and_clears",
-    "test_stream_error_is_not_an_empty_response",
-    "test_empty_response_after_tools_recovers",
-    "test_foreign_tool_markup_recovers_as_prose",
-    "test_transient_stream_errors_retry_before_progress",
-    "test_command_help",
-    "test_reasoning_modes_render_consistently",
-    "test_config_reload_applies_only_at_turn_boundaries",
-    "test_project_instructions_precede_first_turn",
-    "test_prompt_overlay_replaces_base_sections",
-    "test_attach_tool_puts_bytes_in_context",
-    "test_full_run_and_python_terminal_trace",
-    "test_large_run_output_is_recoverable",
-    "test_multiline_bracketed_paste",
-    "test_resume_picker_accepts_enter_when_icrnl_was_disabled",
-    "test_session_journal_records_digests_not_argument_values",
-    "test_session_title_replaces_initial_greeting",
-    "test_input_redraw_focus_switch_preserves_multiline_draft",
-    "test_input_redraw_bare_escape_still_clears_idle_draft",
-    "test_input_redraw_history_restores_current_draft",
-    "test_input_redraw_approval_does_not_pollute_history",
-    "test_multiline_run_keeps_action_color",
-    "test_multiline_rejected_call_shows_arguments",
-    "test_input_redraw_enter_then_escape_same_packet_interrupts_turn",
-    "test_input_steering_yields_activity_wait",
-    "test_input_idle_background_completion_is_observational",
-    "test_input_redraw_streaming_tail_survives_resize",
-    "test_input_redraw_status_animation_does_not_repaint_draft",
-    "test_input_slash_suggestions_and_tab_completion",
-    "test_input_shift_enter_keeps_the_draft_open",
-    "test_input_ctrl_c_asks_once_then_quits",
-    "test_suspend_restores_and_rearms_terminal",
-    "test_signal_exit_restores_terminal",
-    "test_input_redraw_survives_terminal_resize_and_delete",
-    "test_resize_replaces_the_status_row_instead_of_appending",
-    "test_run_rejects_python_and_sudo_before_execution",
-    "test_self_configuration_requires_a_person",
-    "test_self_configuration_asks_even_under_yolo",
-    "test_approval_remembers_always_and_forwards_a_refusal",
-    "test_self_configuration_commits_after_approval",
-    "test_process_hardening_scrubs_loader_variables",
-    "test_streamed_search_citations",
-    "test_openrouter_named_search_contract_and_errors",
-    "test_openrouter_reasoning_details_survive_tool_step",
-    "test_provider_context_overflow_compacts_once",
-    "test_provider_background_completion_does_not_trigger_model_turns",
-    "test_provider_text_protocol_preserves_reasoning_and_trace",
-    "test_provider_responses_native_search_and_function_replay",
-    "test_provider_anthropic_native_search_pause_turn_replay",
-    "test_self_info_reports_live_configuration",
-    "test_effort_and_variant_persist_like_model",
-    "test_headless_json_envelope_contains_trace_usage_and_exit",
-    "test_headless_json_stream_emits_lifecycle_events",
-    "test_session_budget_stops_before_the_next_call",
-    "test_turn_cost_is_unlimited_by_default",
-    "test_tool_policy_scopes_schema_and_runtime",
-    "test_delete_file_removes_and_receipts",
-    "test_grep_tool_round_trip",
-    "test_project_agent_config_trust",
-    "test_memory_reaches_context_by_scope",
-    "test_configured_redaction_keywords_apply",
-    "test_context_command_shows_memory_and_skills",
-    "test_memory_background_extractor_is_bounded",
-    "test_memory_background_extractor_releases_failed_claims",
-    "test_no_memory_hides_index_and_tool",
-    "test_skill_tool_offers_and_opens",
-    "test_mcp_image_reaches_the_model",
-    "test_invalid_mcp_config_not_executed",
-    "test_mcp_tool_round_trip",
-    "test_model_route_switch",
-    "test_openrouter_variant_is_scoped_to_openrouter",
-    "test_dynamic_provider_catalog_and_model",
-    "test_model_preference_survives_restart",
-    "test_first_event_timeout",
-    "test_midturn_compaction_preserves_progress_and_usage",
-    "test_absolute_compaction_ceiling",
-    "test_tool_trace_repeated_rounds_are_telemetry_only",
-    "test_invalid_tool_rejection_loop_stops_before_fourth_round",
-    "test_activity_progress_polls_do_not_trip_identical_call_guard",
-    "test_activity_no_change_polls_are_steered_then_stopped",
-    "test_activity_poll_in_productive_batches_does_not_form_a_loop",
-    "test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard",
-    "test_tool_call_budget_is_unlimited_by_default",
-    "test_subagent_auto_join_continues_turn",
-    "test_subagent_foreground_returns_result_without_wait_round",
-    "test_subagent_reports_the_limit_that_stopped_the_child",
-    "test_subagent_foreground_outlives_the_per_call_budget",
-    "test_subagent_clamps_are_reported_not_silent",
-    "test_parallel_subagents_auto_join",
-    "test_subagent_interrupt_reaps_child",
-    "test_activity_wait_outlives_the_per_call_budget",
-    "test_parallel_run_overlaps",
-    "test_subagent_uses_selected_model_route",
-    "test_subagent_failure_reports_route_stage_and_bounded_diagnostics",
-    "test_image_fallback_reaches_another_provider",
-    "test_subagent_recursion_is_depth_bounded",
-    "test_headless_reaps_timed_out_process",
-    "test_detached_terminal_survives_and_is_readable",
-    "test_detached_terminal_tracks_group_after_wrapper_exit",
-)

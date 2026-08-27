@@ -80,9 +80,11 @@
   It changes prompt text only — tools, approvals, capabilities and limits stay
   host-owned — and an absent or malformed overlay leaves the shipped prompt
   byte for byte.
-- `tests/integration.py` selects individual cases with `--test`, `-k` and
-  `--list`, and refuses to run when a test is defined but missing from
-  `TEST_ORDER`, because such a case would silently never run.
+- `tests/integration.py` and `uagent_tests` both select cases with `--test`,
+  `-k` and `--list`, and a failing `CHECK` names its file as well as its line.
+  Integration cases are discovered from their module in source order and core
+  cases from the one list that declares them, so a case that exists runs, and
+  no second registration can disagree with the first.
 - The `self-improve` skill runs one measured improvement iteration: real-session
   evidence first, then Pareto-constrained proposals across hardware, tokens,
   readability, capability, timing and generality, a slop scan, and committed

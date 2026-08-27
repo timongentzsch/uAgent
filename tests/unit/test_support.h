@@ -151,7 +151,7 @@ inline bool WaitForActivityDrain(
 }
 
 extern int failures;
-void Check(bool condition, const char* expression, int line);
+void Check(bool condition, const char* expression, const char* file, int line);
 
 template <typename Writer>
 std::string CaptureStdout(Writer&& writer, bool color = false,
@@ -191,6 +191,8 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestTextToolProtocol)                 \
   X(TestToolResults)                      \
   X(TestRegistries)                       \
+  X(TestCommandAndDisplayRegistries)      \
+  X(TestModelCatalogParsing)              \
   X(TestOptions)                          \
   X(TestMarkdownBlankLines)               \
   X(TestTableRetroErasesRenderedRows)     \
@@ -212,8 +214,12 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSseFraming)                       \
   X(TestWireAdapters)                     \
   X(TestWireStreams)                      \
-  X(TestBackgroundValidation)             \
-  X(TestActivitySessions)                 \
+  X(TestBackgroundValidation)              \
+  X(TestSignalAndFileWatch)                \
+  X(TestActivityBufferAndAdmission)        \
+  X(TestActivitySessions)                  \
+  X(TestActivityDescriptorAndInputPolicy)  \
+  X(TestActivityWaitAndDelivery)           \
   X(TestToolExecutionPolicy)              \
   X(TestOpenRouterServerSearch)           \
   X(TestAttachmentEncoding)               \
@@ -242,6 +248,7 @@ UAGENT_TESTS(UAGENT_DECLARE_TEST)
 
 }  // namespace uagent
 
-#define CHECK(expression) ::uagent::Check((expression), #expression, __LINE__)
+#define CHECK(expression) \
+  ::uagent::Check((expression), #expression, __FILE__, __LINE__)
 
 #endif  // UAGENT_TESTS_UNIT_TEST_SUPPORT_H_

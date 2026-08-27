@@ -54,20 +54,17 @@ untrusted model evidence even when you trust a server to run.
   permissions of the original process, so treat every write, interrupt, and
   resize as process control. Ordinary input to non-TTY activities is rejected.
   Detached persistent activities retain logs but no reattachable stdin channel.
-- Automatic memory extraction runs only against one idle saved session. Its
-  child receives the configured model credential but exposes only the memory
-  tool: no shell, filesystem, web, MCP, skill, or delegation tools. Transcript
-  text and event previews pass through deterministic secret redaction. A private
-  per-activity receipt reports the result; the bounded private
-  `~/.uagent/memory/events.jsonl` audit stores only action/key/time/source and a
-  redacted 160-character preview, never the complete memory body. Transcript
-  fields are filtered and known credential forms are redacted before the model
-  request and again before any memory write. `UAGENT_MEMORY_REDACT_KEYWORDS`
-  adds site-specific assignment keywords; entries are matched literally and only
-  ever extend the built-in set, so a configuration mistake cannot switch
-  redaction off. Codex and Claude memories are exposed read-only and remain
-  untrusted evidence. This is defense in depth, not a guarantee that arbitrary
-  secrets can always be recognized.
+- Automatic memory extraction processes at most one idle saved session. Its
+  child receives the configured model credential but only the memory tool—no
+  shell, filesystem, web, MCP, skill, or delegation tools. Transcript text and
+  event previews undergo deterministic secret redaction. A private receipt
+  reports the result; `~/.uagent/memory/events.jsonl` stores only action, key,
+  time, source, and a redacted 160-character preview. Known credential forms
+  are redacted before model requests and memory writes.
+  `UAGENT_MEMORY_REDACT_KEYWORDS` adds literal site-specific assignment
+  keywords but cannot disable the built-in set. Codex and Claude memories are
+  read-only, untrusted evidence. This is defense in depth, not a guarantee that
+  every secret can be recognized.
 - Model, MCP, and tool text is terminal-sanitized.
 
 Approval grants the current user's filesystem and network permissions. Use a
@@ -75,7 +72,11 @@ container, VM, or restricted account for untrusted code.
 
 Playwright's isolated mode uses a separate profile. CDP attach can inspect and
 control authenticated tabs after Chrome's remote-debugging approval; close
-sensitive tabs or use isolated mode when that access is unnecessary.
+sensitive tabs or use isolated mode when that access is unnecessary. Its
+snapshots report form field values verbatim — including password,
+credit-card, and one-time-code inputs that autofill has populated — and expose
+no flag to suppress them, so the redaction above covers µAgent's own
+transcripts, not page content a snapshot pulls into context.
 
 ## Sensitive data
 

@@ -1,11 +1,13 @@
 #!/bin/sh
 set -eu
 root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-build=${UAGENT_BUILD_DIR:-"$root/build-install"}
+build=${UAGENT_BUILD_DIR:-"$root/build/release"}
 prefix=${UAGENT_PREFIX:-"$HOME/.local"}
 build_jobs=${UAGENT_BUILD_JOBS:-${CMAKE_BUILD_PARALLEL_LEVEL:-4}}
-cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-cmake --build "$build" --parallel "$build_jobs"
+if [ ! -f "$build/CMakeCache.txt" ]; then
+  cmake -S "$root" -B "$build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+fi
+cmake --build "$build" --target uagent --parallel "$build_jobs"
 cmake --install "$build" --prefix "$prefix"
 
 # Refresh µAgent's bundled skills on every install. The runtime loads this

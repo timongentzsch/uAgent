@@ -1,7 +1,7 @@
 # Operations
 
-µAgent is a local single-user POSIX CLI for macOS and Linux, not an OS sandbox
-or multi-tenant service.
+µAgent is a local, single-user POSIX CLI for macOS and Linux. It is neither an
+OS sandbox nor a multi-tenant service.
 
 ## Bounds
 
@@ -54,10 +54,10 @@ Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 Use `--no-memory` to remove memory recall and writes from the coordinator and
 delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
 environment setting. `/memory` shows the active policy and saved keys without
-calling a model. `/status` answers the everyday questions in one screen and
-`/debug-config` shows why a value is active. `/context` shows active and configured runtime values, source
-provenance, restart-required changes, the redacted route, and negotiated route
-capabilities before the exact model request shape.
+calling a model. `/status` summarizes active state; `/debug-config` explains
+why each value is active. `/context` shows active and configured values,
+provenance, restart-required changes, the redacted route, route capabilities,
+and the exact next request.
 
 Trusted global/project config files are stamp-checked at user and harness turn
 boundaries. Changed files are fully reparsed first, then request/turn-scoped
@@ -113,7 +113,7 @@ with the remaining allowance.
 
 The typed observational spine fans semantic lifecycle events to four fixed
 consumers: terminal presentation, versioned `uagent.event.v2`, the sensitive
-sensitive debug trace, and a bounded metadata-only session journal. Events
+debug trace, and a bounded metadata-only session journal. Events
 return no result and cannot affect agent control flow. Reasoning/answer token
 deltas are transient and never enter the journal. There is no dynamic sink
 registry and no linked OpenTelemetry dependency; deployments can consume the
@@ -141,11 +141,10 @@ working directory reuses its process group.
 an activity; `UAGENT_RUN_YIELD_MS` changes that default. Explicit `yield_ms=0`
 waits until the command exits or an explicitly configured turn
 limit/interruption applies; 250 through 30,000 select another initial wait. A
-pacing hint past its bound — `yield_ms`, `context`, `wait_ms`, an output cap —
-is clamped to that bound rather than rejected, since asking for more than the
-maximum means the maximum. Set `tty=true` only when the process needs
-interactive input. A PTY activity retains merged output, writable input,
-process-group interruption, and resize support.
+pacing hint beyond its bound—`yield_ms`, `context`, `wait_ms`, or an output
+cap—is capped rather than rejected. Set `tty=true` only when interactive input
+is required. A PTY retains merged output, writable input, process-group
+interruption, and resize support.
 Persistent `detach=true` activities remain rotating-log based and cannot be
 interactively reattached after the harness exits. Waiting log readers use
 kqueue on macOS and inotify on Linux; unsupported POSIX targets retain a
@@ -223,9 +222,9 @@ state, skill, delegation, and MCP filtering.
 
 ```sh
 cmake --preset release
-cmake --build --preset release
+cmake --build --preset release --parallel
 ctest --preset release --output-on-failure
-UAGENT_BUILD_DIR=/tmp/uagent-build UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
+UAGENT_PREFIX=/tmp/uagent-prefix ./install.sh
 /tmp/uagent-prefix/bin/uagent --version
 ```
 
@@ -233,10 +232,11 @@ CI adds warnings-as-errors, sanitizers, TSan, parser fuzzing, coverage, Google
 C++ style, CodeQL, and native Linux/macOS builds. Binary archives include the
 bundled skill tree and run `tests/package_contents.py` against the final tarball.
 Before a tag, verify the installed archive, one real turn per supported wire
-API, Playwright isolated and user attach, one private debug trace, and the
-hermetic suite.
-`install.sh` defaults to four build workers; set `UAGENT_BUILD_JOBS` for the
-host when a different resource limit is appropriate.
+API, both Playwright modes, one private debug trace, and the hermetic suite.
+`install.sh` reuses `build/release` when it already exists and builds only the
+installable binary target. It defaults to four build workers; set
+`UAGENT_BUILD_JOBS` for the host when a different resource limit is
+appropriate.
 
 For new releases, the composite Action verifies GitHub artifact attestations
 for both the selected archive and its `SHA256SUMS` manifest before extraction,

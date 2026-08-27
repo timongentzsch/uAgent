@@ -192,7 +192,8 @@ Breaking one of these is a bug, not a trade-off.
 - The base prompt is byte-stable across refactors; `prompt_digest` in
   `skills/uagent-config/references/manifest.json` proves it.
 - Generated references match the binary. CI diffs them.
-- Every integration case is in `TEST_ORDER`; the suite refuses to run otherwise.
+- Every integration case runs: the suite discovers top-level `test_` functions
+  from their module rather than from a second list that could omit one.
 - Evals are hermetic and key-free by default. Live runs need `--run` and a
   cost cap.
 - Baselines are updated deliberately, in a reviewed commit, never to make a

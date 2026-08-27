@@ -20,25 +20,22 @@ model output, tool results, paths, and usage.
 | project trust | `~/.uagent/config/trusted-projects.json` |
 | preferred model | `~/.uagent/config/model-preference.json` |
 
-Session format 3 persists active messages, their structured kinds, the bounded
-archive, usage, provider session identity, and any active mutable system
-directive and revision. Its format remains unchanged. A private sidecar journal
-uses `uagent.session.event.v1` JSONL and retains at most 512 lifecycle records
-or 256 KiB. It contains bounded turn/tool/capability/config metadata and
-presentation status/artifact metadata, never prompts, reasoning deltas, answer deltas, or
-full tool results. The journal is observational: corrupt or absent journal data
-is reported or ignored without preventing the format-3 conversation from
-loading, and it is never a replay authority or model-context source.
+Session format 3 persists active messages, structured kinds, the bounded
+archive, usage, provider session identity, and the mutable system directive and
+revision. A private `uagent.session.event.v1` JSONL sidecar retains at most 512
+lifecycle records or 256 KiB. It contains bounded turn, tool, capability,
+configuration, presentation, and artifact metadata—never prompts, reasoning or
+answer deltas, or full tool results. Corrupt or absent journal data does not
+prevent the format-3 conversation from loading; the journal is neither replay
+authority nor model context.
 
-The session snapshot also retains tool calls and results used to rebuild
-the visible timeline. Successful `show_image` entries are retransmitted on
-resume from their recorded paths; image bytes are not copied into the session.
-Replay therefore requires the original file to remain available, and a missing
-or invalid path is skipped safely. Only the current
-format is accepted: incompatible, incomplete, or corrupt records are reported
-without mutating live state or rewriting the source file. Missing files are a
-normal empty state. Saves validate the complete record, then use a private
-same-directory temporary file, `fsync`, and atomic rename.
+The session snapshot retains tool calls and results used to rebuild the visible
+timeline. Successful `show_image` entries are retransmitted from their recorded
+paths; image bytes are not stored. Missing or invalid paths are skipped safely.
+Only the current format is accepted: incompatible, incomplete, or corrupt
+records are reported without changing live state or the source file. Missing
+files are a normal empty state. Saves validate the complete record, then use a
+private same-directory temporary file, `fsync`, and atomic rename.
 
 There is deliberately no implicit schema migration. A future format change
 must ship an explicit, tested conversion or start a new session. Interrupted
@@ -59,10 +56,10 @@ redacted preview so `/memory` can explain when and why an entry changed. Each
 automatic extractor also uses a private per-activity receipt that is removed
 after its parent renders the maintenance notification.
 
-Completed process logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the
-private artifact directory instead of entering model context whole. Each is
-bounded by `UAGENT_BASH_LOG_BYTES` and pruned during startup using
-`UAGENT_BG_DAYS` and `UAGENT_BG_FILES`; a returned path can therefore expire.
+Completed logs larger than `UAGENT_TOOL_RESULT_CHARS` move to the private
+artifact directory instead of entering model context whole. Each is bounded by
+`UAGENT_BASH_LOG_BYTES` and pruned at startup according to `UAGENT_BG_DAYS` and
+`UAGENT_BG_FILES`, so returned paths can expire.
 Session-lifetime supervised activities have opaque IDs, bounded incremental
 head/tail output, and optional PTY state only in memory. They cannot be resumed
 after µAgent exits. Persistent detached records remain PID-backed, rotating-log

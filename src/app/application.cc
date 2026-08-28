@@ -645,6 +645,21 @@ class Application {
           app.SaveSession();
           if (worker_quit) exit_when_idle = true;
           interrupting = false;
+          // Guidance the finished work never read is still something the user
+          // typed. `working` stays true until the worker returns, so a line
+          // submitted the moment a slash command prints its result is queued
+          // as steering for work that never looks at the queue, and a turn
+          // already past its last steering check is on the same footing.
+          // Promoting it here is the difference between running late and
+          // being dropped with the status bar still counting it.
+          if (!exit_when_idle) {
+            std::string promoted = TakeStrandedSteering();
+            if (!promoted.empty()) {
+              // Anything typed after the queue closed was typed later still.
+              if (next_input) promoted += "\n" + *next_input;
+              next_input = std::move(promoted);
+            }
+          }
           if (!exit_when_idle && next_input) {
             StartWork(std::move(*next_input));
             next_input.reset();

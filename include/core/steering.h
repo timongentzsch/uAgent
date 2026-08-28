@@ -36,6 +36,12 @@ class Steering {
 
 Steering& SteeringState();
 
+// Guidance that no turn consumed, drained and joined into one prompt. A slash
+// command never reads the queue and a turn past its last steering check can no
+// longer act on it, so without this the line stays queued and is never run.
+// Empty when nothing was stranded.
+std::string TakeStrandedSteering();
+
 // Passive waits use queued guidance as a soft-yield condition. The input owner
 // must publish the queue entry before waking the process supervisor.
 bool SteeringYieldRequested();

@@ -35,6 +35,15 @@ bool Steering::Take() {
   return value;
 }
 
+std::string TakeStrandedSteering() {
+  std::string prompt;
+  for (std::string& stranded : SteeringState().TakeQueued()) {
+    if (!prompt.empty()) prompt += "\n";
+    prompt += std::move(stranded);
+  }
+  return prompt;
+}
+
 void Steering::Queue(std::string input) {
   size_t queued = 0;
   {

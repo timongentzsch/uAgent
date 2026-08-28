@@ -81,6 +81,17 @@ void TestSignalAndFileWatch() {
     CHECK(steering_changed == FileWaitResult::kSteering);
     std::vector<std::string> watch_steering = SteeringState().TakeQueued();
     CHECK(watch_steering.size() == 1 && watch_steering[0] == "watch steering");
+
+    // A line submitted while a slash command is still running is queued as
+    // steering, and that command never reads the queue. Draining it here is
+    // what turns it into the next prompt instead of a line the status bar
+    // counts forever and nothing ever runs.
+    CHECK(TakeStrandedSteering().empty());
+    SteeringState().Queue("first");
+    SteeringState().Queue("second");
+    CHECK(TakeStrandedSteering() == "first\nsecond");
+    CHECK(SteeringState().QueuedCount() == 0);
+    CHECK(TakeStrandedSteering().empty());
     close(watched_fd);
     unlink(watched_path);
   }

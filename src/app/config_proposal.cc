@@ -169,20 +169,6 @@ std::string DisplayValue(const ConfigDescriptor& descriptor,
   return "<redacted>";
 }
 
-bool CredentialLikeKey(const std::string& key) {
-  std::string upper;
-  upper.reserve(key.size());
-  for (char c : key) {
-    upper += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  }
-  return upper.find("API_KEY") != std::string::npos ||
-         upper.find("TOKEN") != std::string::npos ||
-         upper.find("SECRET") != std::string::npos ||
-         upper.find("PASSWORD") != std::string::npos ||
-         upper.find("CREDENTIAL") != std::string::npos ||
-         upper.find("AUTH") != std::string::npos;
-}
-
 void CollectCredentialReferences(const json& node,
                                  std::set<std::string>& keys) {
   if (node.is_array()) {

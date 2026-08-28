@@ -122,6 +122,14 @@ std::string Hex64(uint64_t value);
 // Stable short digest for session and workspace identity.
 std::string HashHex(const std::string& data);
 
+// The one list of key stems that name a secret. Redaction policies differ by
+// input -- prose, config lines, URLs -- but they must agree on what a secret
+// is called, or a stem added for one leaks through the others.
+const std::vector<std::string>& CredentialKeyStems();
+
+// True when a key name contains any stem, case-insensitively.
+bool CredentialLikeKey(const std::string& key);
+
 std::string UrlHost(std::string url);
 std::string RedactedUrl(std::string url);
 

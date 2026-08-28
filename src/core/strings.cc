@@ -433,6 +433,22 @@ std::string UrlHost(std::string url) {
   return host;
 }
 
+const std::vector<std::string>& CredentialKeyStems() {
+  static const std::vector<std::string> kStems = {
+      "api_key", "api-key",   "apikey",     "access_token",
+      "token",   "auth",      "authorization", "password",
+      "passwd",  "secret",    "credential"};
+  return kStems;
+}
+
+bool CredentialLikeKey(const std::string& key) {
+  const std::string lowered = AsciiLower(key);
+  for (const std::string& stem : CredentialKeyStems()) {
+    if (lowered.find(stem) != std::string::npos) return true;
+  }
+  return false;
+}
+
 std::string RedactedUrl(std::string url) {
   size_t authority = url.find("://");
   authority = authority == std::string::npos ? 0 : authority + 3;

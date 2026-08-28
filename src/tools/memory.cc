@@ -56,11 +56,12 @@ std::optional<std::string> FirstLine(const std::filesystem::path& path) {
 // invites catastrophic backtracking over every memory body.
 const std::vector<std::string>& RedactKeywords() {
   static const std::vector<std::string> kKeywords = [] {
-    std::vector<std::string> all = {
-        "api_key",      "api-key",     "apikey",     "access_token",
-        "access-token", "accesstoken", "auth_token", "auth-token",
-        "authtoken",    "password",    "passwd",     "secret",
-        "authorization"};
+    std::vector<std::string> all = CredentialKeyStems();
+    for (const char* variant : {"api-key", "apikey", "access-token",
+                                "accesstoken", "auth_token", "auth-token",
+                                "authtoken"}) {
+      all.emplace_back(variant);
+    }
     constexpr size_t kMaxExtra = 32;
     constexpr size_t kMaxKeywordBytes = 64;
     std::string configured = EnvStr("UAGENT_MEMORY_REDACT_KEYWORDS");

@@ -371,11 +371,13 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             if (operation == "write") {
               return ToolActivityInput(
                   supervisor, id, JsonValue(a, "chars", ""),
-                  a.contains("wait_ms") ? wait_ms : 250, context, 0, 0, cap);
+                  a.contains("wait_ms") ? wait_ms : kActivityInputSettleMs,
+                  context, 0, 0, cap);
             }
             if (operation == "resize") {
               return ToolActivityInput(
-                  supervisor, id, "", a.contains("wait_ms") ? wait_ms : 250,
+                  supervisor, id, "",
+                  a.contains("wait_ms") ? wait_ms : kActivityInputSettleMs,
                   context, JsonValue(a, "rows", int64_t{0}),
                   JsonValue(a, "cols", int64_t{0}), cap);
             }

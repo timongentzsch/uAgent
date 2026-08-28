@@ -174,11 +174,26 @@ def validate_review(value: Any) -> None:
         value,
         "experiment.review",
         {"reviewed_at", "verdict", "success", "guardrails", "spent_usd"},
+        {"guardrail_mode", "pairs"},
     )
     if review["verdict"] not in ("pass", "reject", "inconclusive"):
         raise ExperimentError("experiment.review.verdict is invalid")
     if not isinstance(review["reviewed_at"], str) or len(review["reviewed_at"]) > 40:
         raise ExperimentError("experiment.review.reviewed_at is invalid")
+    if review.get("guardrail_mode", "all-trials") not in ("all-trials", "paired-success"):
+        raise ExperimentError("experiment.review.guardrail_mode is invalid")
+    pairs = review.get("pairs")
+    if pairs is not None:
+        pairs = require_keys(
+            pairs,
+            "experiment.review.pairs",
+            {"control_only", "treatment_only", "both_pass", "both_fail", "compared"},
+        )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in pairs.values()
+        ):
+            raise ExperimentError("experiment.review.pairs is invalid")
     success = require_keys(
         review["success"],
         "experiment.review.success",
@@ -197,6 +212,7 @@ def validate_review(value: Any) -> None:
             raw,
             f"experiment.review.guardrails.{name}",
             {"control_mean", "treatment_mean", "regression_pct", "passed"},
+            {"compared_pairs"},
         )
         require_number(guardrail["control_mean"], f"{name}.control_mean", 0, 100_000_000)
         require_number(guardrail["treatment_mean"], f"{name}.treatment_mean", 0, 100_000_000)
@@ -205,6 +221,13 @@ def validate_review(value: Any) -> None:
             require_number(regression, f"{name}.regression_pct", -100.0, 100_000_000)
         if not isinstance(guardrail["passed"], bool):
             raise ExperimentError(f"experiment.review.guardrails.{name}.passed is invalid")
+        compared_pairs = guardrail.get("compared_pairs")
+        if compared_pairs is not None and (
+            isinstance(compared_pairs, bool)
+            or not isinstance(compared_pairs, int)
+            or compared_pairs < 0
+        ):
+            raise ExperimentError(f"experiment.review.guardrails.{name}.compared_pairs is invalid")
     require_number(review["spent_usd"], "experiment.review.spent_usd", 0, MAX_COST_USD)
 
 
@@ -317,7 +340,11 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
         manifest.get("decision"),
         "experiment.decision",
         {"min_success_delta", "max_guardrail_regression_pct"},
+        {"guardrail_mode"},
     )
+    guardrail_mode = decision.get("guardrail_mode", "all-trials")
+    if guardrail_mode not in ("all-trials", "paired-success"):
+        raise ExperimentError("experiment.decision.guardrail_mode is invalid")
     minimum_delta = decision.get("min_success_delta")
     if (
         isinstance(minimum_delta, bool)
@@ -575,6 +602,7 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
         "decision": {
             "min_success_delta": min_delta,
             "max_guardrail_regression_pct": max_regression,
+            "guardrail_mode": arguments.guardrail_mode,
         },
         "overlay": {
             "candidate_file": "candidate-overlay.json",
@@ -676,6 +704,29 @@ def regression_pct(control: float, treatment: float) -> float:
     return (treatment - control) * 100.0 / control
 
 
+def guardrail_results(
+    controls: list[dict[str, Any]],
+    treatments: list[dict[str, Any]],
+    allowed: float,
+    *,
+    include_pair_count: bool,
+) -> dict[str, Any]:
+    compared = len(controls)
+    guardrails = {}
+    for field in ("tokens", "wall_ms", "tool_failures"):
+        baseline = mean(controls, field) if controls else 0.0
+        treatment = mean(treatments, field) if treatments else 0.0
+        change = regression_pct(baseline, treatment)
+        guardrails[field] = {
+            "control_mean": baseline,
+            "treatment_mean": treatment,
+            "regression_pct": None if change == float("inf") else change,
+            "passed": change <= allowed,
+            **({"compared_pairs": compared} if include_pair_count else {}),
+        }
+    return guardrails
+
+
 def review_round(manifest: dict[str, Any], results: dict[str, Any]) -> dict[str, Any]:
     expected = manifest["limits"]["trials_per_variant"]
     groups = {
@@ -696,25 +747,50 @@ def review_round(manifest: dict[str, Any], results: dict[str, Any]) -> dict[str,
     treatment_success = sum(record["success"] for record in groups["treatment"])
     delta = treatment_success - control_success
     allowed = float(manifest["decision"]["max_guardrail_regression_pct"])
-    guardrails = {}
-    for field in ("tokens", "wall_ms", "tool_failures"):
-        baseline = mean(groups["control"], field)
-        treatment = mean(groups["treatment"], field)
-        change = regression_pct(baseline, treatment)
-        guardrails[field] = {
-            "control_mean": baseline,
-            "treatment_mean": treatment,
-            "regression_pct": None if change == float("inf") else change,
-            "passed": change <= allowed,
-        }
+    mode = manifest["decision"].get("guardrail_mode", "all-trials")
+    pairs = {
+        "control_only": 0,
+        "treatment_only": 0,
+        "both_pass": 0,
+        "both_fail": 0,
+        "compared": 0,
+    }
+    guardrail_controls = groups["control"]
+    guardrail_treatments = groups["treatment"]
+    if mode == "paired-success":
+        guardrail_controls = []
+        guardrail_treatments = []
+        for trial in range(1, expected + 1):
+            control = control_by_trial[trial]
+            treatment = treatment_by_trial[trial]
+            if control["success"] and treatment["success"]:
+                pairs["both_pass"] += 1
+                pairs["compared"] += 1
+                guardrail_controls.append(control)
+                guardrail_treatments.append(treatment)
+            elif control["success"]:
+                pairs["control_only"] += 1
+            elif treatment["success"]:
+                pairs["treatment_only"] += 1
+            else:
+                pairs["both_fail"] += 1
+    else:
+        pairs["compared"] = expected
+    guardrails = guardrail_results(
+        guardrail_controls,
+        guardrail_treatments,
+        allowed,
+        include_pair_count=mode == "paired-success",
+    )
     guardrails_passed = all(value["passed"] for value in guardrails.values())
-    if delta < 0 or not guardrails_passed:
+    capability_regressed = mode == "paired-success" and pairs["control_only"] > 0
+    if delta < 0 or capability_regressed or not guardrails_passed:
         verdict = "reject"
     elif delta >= manifest["decision"]["min_success_delta"]:
         verdict = "pass"
     else:
         verdict = "inconclusive"
-    return {
+    review = {
         "reviewed_at": now(),
         "verdict": verdict,
         "success": {
@@ -725,6 +801,10 @@ def review_round(manifest: dict[str, Any], results: dict[str, Any]) -> dict[str,
         "guardrails": guardrails,
         "spent_usd": sum(float(record["cost_usd"]) for record in results["records"]),
     }
+    if mode == "paired-success":
+        review["guardrail_mode"] = mode
+        review["pairs"] = pairs
+    return review
 
 
 def command_review(arguments: argparse.Namespace) -> dict[str, Any]:
@@ -891,6 +971,11 @@ def parser() -> argparse.ArgumentParser:
     init.add_argument("--cost-authority", type=pathlib.Path)
     init.add_argument("--max-cost", type=float, required=True)
     init.add_argument("--min-success-delta", type=int, default=1)
+    init.add_argument(
+        "--guardrail-mode",
+        choices=("all-trials", "paired-success"),
+        default="all-trials",
+    )
     init.add_argument("--max-guardrail-regression-pct", type=float, default=10.0)
     init.add_argument("--config-scope", choices=("user", "project"), default="user")
     init.add_argument("--previous-setting")

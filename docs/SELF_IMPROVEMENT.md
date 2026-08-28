@@ -80,6 +80,7 @@ in experiment state.
 - one explicit live authority basis: reported cost with an aggregate ceiling of
   at most $100, or operator-declared non-billable cheap mode with a zero cost
   field and eval-enforced resource limits;
+- pre-registered guardrail population: `all-trials` or `paired-success`;
 - minimum treatment success-count delta;
 - allowed percentage regression for tokens, wall time, and tool failures;
 - candidate-overlay digest and byte count;
@@ -116,6 +117,15 @@ JSON records contain metrics and digests, not trial prompts or session text.
 The candidate and rollback files necessarily contain the experiment artifact
 and its prior bytes; they are private local artifacts and are never export
 evidence.
+
+The guardrail population is part of the immutable decision:
+
+- `all-trials` preserves the original aggregate comparison over every run.
+- `paired-success` prevents a fast failure from looking cheaper than a slower
+  success. Treatment-only successes count as capability gains but do not enter
+  resource means; control-only successes reject; both-success pairs enter the
+  token, wall-time, and tool-failure comparison; both-fail pairs contribute
+  neither gain nor resource evidence.
 
 ### 3. Compare
 
@@ -161,7 +171,9 @@ experiment runner does not duplicate that harness or retain its task inputs.
 
 - control and treatment success counts;
 - success-count delta;
-- mean token, wall-time, and tool-failure values;
+- mean token, wall-time, and tool-failure values over the pre-registered
+  comparison population;
+- paired outcome counts when `paired-success` is selected;
 - percentage guardrail regressions;
 - aggregate reported cost, or an explicit non-billable cheap basis with zero
   monetary spend.
@@ -170,8 +182,8 @@ The verdict is deterministic:
 
 | Verdict | Rule |
 | --- | --- |
-| `pass` | Success delta reaches the declared minimum and every guardrail passes |
-| `reject` | Success worsens or any guardrail exceeds its ceiling |
+| `pass` | Success delta reaches the declared minimum, no paired capability regresses, and every applicable guardrail passes |
+| `reject` | Success worsens, a paired control succeeds where treatment fails, or an applicable guardrail exceeds its ceiling |
 | `inconclusive` | No regression, but the declared improvement is not reached |
 
 Thresholds cannot be changed after results are recorded. A mechanical `pass`
@@ -236,7 +248,8 @@ python3 "$runner" init --id pilot \
   --target-overlay "$HOME/.uagent/improve/active/pilot.json" \
   --model provider/model --effort high \
   --trials 5 --cost-basis reported-cost --max-cost 5 \
-  --min-success-delta 1 --max-guardrail-regression-pct 10
+  --min-success-delta 1 --guardrail-mode all-trials \
+  --max-guardrail-regression-pct 10
 
 python3 "$runner" record --id pilot --variant control --trial 1 \
   --task-id task-1 --model provider/model --effort high --success yes \
@@ -270,6 +283,8 @@ The focused test covers:
 - exact restoration of a pre-existing target's bytes and permission mode;
 - removal of a target that did not previously exist;
 - restoration proposals for prior set and unset config values;
+- all five paired-success branches: treatment-only gain, control-only
+  regression, both-success within and above the ceiling, and both-fail;
 - cohort and paired-task drift rejection;
 - invalid trial bounds, reported-cost caps, and explicit zero-cost cheap-mode
   enforcement;

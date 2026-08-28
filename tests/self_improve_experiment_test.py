@@ -47,6 +47,7 @@ class ExperimentTest(unittest.TestCase):
         max_cost="2",
         cost_basis="reported-cost",
         cost_authority=None,
+        guardrail_mode="all-trials",
         previous_setting="/previous/overlay.json",
         ok=True,
     ):
@@ -70,6 +71,8 @@ class ExperimentTest(unittest.TestCase):
             max_cost,
             "--cost-basis",
             cost_basis,
+            "--guardrail-mode",
+            guardrail_mode,
         ]
         if cost_authority is not None:
             arguments.extend(("--cost-authority", str(cost_authority)))
@@ -85,6 +88,7 @@ class ExperimentTest(unittest.TestCase):
         *,
         cost="0.10",
         tokens="100",
+        wall_ms="1000",
         failures="0",
         task_id=None,
         model="provider/model",
@@ -113,7 +117,7 @@ class ExperimentTest(unittest.TestCase):
             "--tokens",
             tokens,
             "--wall-ms",
-            "1000",
+            wall_ms,
             "--tool-failures",
             failures,
         ]
@@ -149,6 +153,58 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(status["cohort"]["cost_basis"], "non-billable-cheap")
         self.assertEqual(status["spent_usd"], 0)
 
+    def test_paired_success_guardrail_branches(self):
+        cases = [
+            (
+                "treatment-gain",
+                [("no", "yes", "100", "10000")],
+                "pass",
+                {"treatment_only": 1, "control_only": 0, "both_pass": 0, "both_fail": 0},
+            ),
+            (
+                "capability-regression",
+                [("yes", "no", "100", "100")],
+                "reject",
+                {"treatment_only": 0, "control_only": 1, "both_pass": 0, "both_fail": 0},
+            ),
+            (
+                "both-pass-above",
+                [("no", "yes", "100", "10000"), ("yes", "yes", "1000", "1200")],
+                "reject",
+                {"treatment_only": 1, "control_only": 0, "both_pass": 1, "both_fail": 0},
+            ),
+            (
+                "both-pass-within",
+                [("no", "yes", "100", "10000"), ("yes", "yes", "1000", "1050")],
+                "pass",
+                {"treatment_only": 1, "control_only": 0, "both_pass": 1, "both_fail": 0},
+            ),
+            (
+                "both-fail",
+                [("no", "no", "100", "10000")],
+                "inconclusive",
+                {"treatment_only": 0, "control_only": 0, "both_pass": 0, "both_fail": 1},
+            ),
+        ]
+        for name, pairs, verdict, expected_pairs in cases:
+            with self.subTest(name=name):
+                self.state = self.base / f"state-{name}"
+                self.initialize(trials=str(len(pairs)), guardrail_mode="paired-success")
+                for trial, (control, treatment, control_wall, treatment_wall) in enumerate(
+                    pairs, start=1
+                ):
+                    self.record("control", trial, control, wall_ms=control_wall)
+                    self.record("treatment", trial, treatment, wall_ms=treatment_wall)
+                review = json.loads(self.run_command("review", "--id", "pilot").stdout)["review"]
+                self.assertEqual(review["verdict"], verdict)
+                self.assertEqual(review["guardrail_mode"], "paired-success")
+                for key, value in expected_pairs.items():
+                    self.assertEqual(review["pairs"][key], value)
+                self.assertEqual(
+                    review["guardrails"]["wall_ms"]["compared_pairs"],
+                    expected_pairs["both_pass"],
+                )
+
     def test_passing_lifecycle_restores_exact_snapshot(self):
         previous = b'{"replace":{"Changes":"Original bytes."}}\n'
         self.target.write_bytes(previous)
@@ -161,6 +217,9 @@ class ExperimentTest(unittest.TestCase):
 
         review = json.loads(self.run_command("review", "--id", "pilot").stdout)
         self.assertEqual(review["review"]["verdict"], "pass")
+        self.assertNotIn("guardrail_mode", review["review"])
+        self.assertNotIn("pairs", review["review"])
+        self.assertNotIn("compared_pairs", review["review"]["guardrails"]["wall_ms"])
         self.assertEqual(review["activation_proposal"]["tool"], "uagent_configure")
 
         blocked = self.run_command("activate", "--id", "pilot", ok=False)

@@ -460,17 +460,19 @@ def main() -> int:
     render(report)
     if arguments.json:
         arguments.json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if arguments.update:
-        BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)}")
-        return 0
+    regressions = []
     if BASELINE_PATH.exists():
         regressions = compare(report, json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
         for regression in regressions:
             print(f"REGRESSION: {regression}")
-        if regressions and arguments.check:
-            return 1
+    if arguments.update:
+        # After reporting, so rewriting the baseline still shows what moved.
+        BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        BASELINE_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)}")
+        return 0
+    if regressions and arguments.check:
+        return 1
     return 0
 
 

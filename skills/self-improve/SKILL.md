@@ -27,6 +27,11 @@ the design; it does not calculate the verdict or write µAgent configuration.
   hard session, model-call, tool-call, output-token, and wall-clock limits.
   Missing cost data alone is never `$0`, and cheapness is never inferred from a
   model name.
+- The guardrail population is pre-registered. `all-trials` compares every run;
+  `paired-success` compares resources only where both matched tasks succeed.
+  A control-only success always rejects, a treatment-only success counts as
+  capability gain without rewarding the control for failing quickly, and a
+  both-fail pair contributes neither gain nor a resource comparison.
 - The treatment must improve success by the pre-registered amount and keep all
   guardrails within their declared regression ceiling.
 - Activation requires two approvals: `activate --approve` may write the overlay
@@ -112,10 +117,21 @@ python3 "${SKILL_DIR}/scripts/experiment.py" init \
   --cost-basis reported-cost \
   --max-cost 5.00 \
   --min-success-delta 1 \
+  --guardrail-mode all-trials \
   --max-guardrail-regression-pct 10 \
   --config-scope user \
   --previous-setting 'EXACT_PREVIOUS_VALUE'
 ```
+
+Choose the guardrail population before any trial:
+
+- `all-trials` preserves the original behavior and compares aggregate resources
+  across every control and treatment run.
+- `paired-success` is appropriate when a failed task can terminate much faster
+  than a successful one. Matched treatment-only successes count toward the
+  success delta but are excluded from resource comparisons; control-only
+  successes reject; both-success pairs are compared; both-fail pairs are
+  excluded from both gain and comparison.
 
 For an explicitly authorized non-billable cheap route, use
 `--cost-basis non-billable-cheap --max-cost 0 --cost-authority
@@ -179,11 +195,17 @@ operator-declared billing basis; it is not presented as provider telemetry.
 python3 "${SKILL_DIR}/scripts/experiment.py" review --id ROUND
 ```
 
-The deterministic verdict is:
+The deterministic verdict uses the pre-registered guardrail mode:
 
-- `pass`: treatment reaches the success delta and every guardrail passes;
-- `reject`: success worsens or a guardrail exceeds its ceiling;
+- `pass`: treatment reaches the success delta, no matched capability regresses,
+  and every applicable guardrail passes;
+- `reject`: aggregate success worsens, a paired control succeeds where treatment
+  fails, or an applicable guardrail exceeds its ceiling;
 - `inconclusive`: no regression, but the required improvement was not reached.
+
+In `paired-success`, the report includes the counts for treatment-only,
+control-only, both-success, and both-fail pairs, plus the number of pairs that
+contributed to each resource comparison.
 
 Do not activate `reject` or `inconclusive`. For a `pass`, answer before asking
 to activate:

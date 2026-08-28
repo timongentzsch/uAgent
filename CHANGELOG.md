@@ -14,6 +14,10 @@
   operator must attest the exact route as both cheap and non-billable; the eval
   never infers that from its name and enforces global-bounded session,
   model-call, tool-call, output-token, and wall-clock limits in each child.
+- Self-improvement rounds can pre-register `paired-success` guardrails. Resource
+  comparisons then use only matched tasks where both variants succeed, while a
+  control-only success still rejects and a treatment-only success counts as a
+  capability gain without rewarding fast failure.
 
 ## v0.9.0 - 2026-08-27
 

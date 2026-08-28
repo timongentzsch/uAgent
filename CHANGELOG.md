@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `self-improve` now runs one bounded personal prompt-overlay experiment instead
+  of proposing broad repository changes from incomplete session evidence. Its
+  installed runner pre-registers control/treatment limits, rejects cohort and
+  cost drift, calculates the verdict, emits human-approved configuration
+  proposals, and restores exact overlay snapshots without retaining trial
+  prompts or session text.
+
 ## v0.9.0 - 2026-08-27
 
 ### Added

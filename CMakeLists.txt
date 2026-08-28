@@ -202,6 +202,9 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
                    --self-test)
+  add_test(NAME self_improve_experiment
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/self_improve_experiment_test.py)
   add_test(NAME eval_harness_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
@@ -243,6 +246,9 @@ install(
   DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills
   PATTERN ".*" EXCLUDE
   PATTERN "__pycache__" EXCLUDE)
+install(
+  PROGRAMS skills/self-improve/scripts/experiment.py
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/uagent/skills/self-improve/scripts)
 # The architecture narrative is authored once; the package carries a copy so
 # the skill can answer design questions without a source checkout.
 install(
@@ -253,6 +259,7 @@ set(UAGENT_GUIDES
     docs/ARCHITECTURE.md
     docs/OPERATIONS.md
     docs/PERSISTENCE.md
+    docs/SELF_IMPROVEMENT.md
     docs/TESTING.md
     docs/TOOLS.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE ${UAGENT_GUIDES}

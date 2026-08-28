@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+"""Focused lifecycle tests for the installed self-improvement runner."""
+
+import json
+import pathlib
+import subprocess
+import sys
+import tempfile
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+RUNNER = ROOT / "skills" / "self-improve" / "scripts" / "experiment.py"
+
+
+class ExperimentTest(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.base = pathlib.Path(self.temporary.name)
+        self.state = self.base / "state"
+        self.candidate = self.base / "candidate.json"
+        self.target = self.base / "active.json"
+        self.candidate.write_text('{"append":"Test narrowly."}\n')
+
+    def run_command(self, *arguments, ok=True):
+        result = subprocess.run(
+            [sys.executable, str(RUNNER), "--root", str(self.state), *arguments],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if ok and result.returncode != 0:
+            self.fail(f"command failed: {result.stderr}\n{result.stdout}")
+        if not ok and result.returncode == 0:
+            self.fail(f"command unexpectedly passed: {result.stdout}")
+        return result
+
+    def initialize(
+        self,
+        *,
+        trials="2",
+        max_cost="2",
+        previous_setting="/previous/overlay.json",
+        ok=True,
+    ):
+        arguments = [
+            "init",
+            "--id",
+            "pilot",
+            "--hypothesis",
+            "The treatment increases held-out task success.",
+            "--overlay",
+            str(self.candidate),
+            "--target-overlay",
+            str(self.target),
+            "--model",
+            "provider/model",
+            "--effort",
+            "high",
+            "--trials",
+            trials,
+            "--max-cost",
+            max_cost,
+        ]
+        if previous_setting is not None:
+            arguments.extend(("--previous-setting", previous_setting))
+        return self.run_command(*arguments, ok=ok)
+
+    def record(
+        self,
+        variant,
+        trial,
+        success,
+        *,
+        cost="0.10",
+        tokens="100",
+        failures="0",
+        task_id=None,
+        model="provider/model",
+        effort="high",
+        ok=True,
+    ):
+        return self.run_command(
+            "record",
+            "--id",
+            "pilot",
+            "--variant",
+            variant,
+            "--trial",
+            str(trial),
+            "--task-id",
+            task_id or f"task-{trial}",
+            "--model",
+            model,
+            "--effort",
+            effort,
+            "--success",
+            success,
+            "--cost",
+            cost,
+            "--tokens",
+            tokens,
+            "--wall-ms",
+            "1000",
+            "--tool-failures",
+            failures,
+            ok=ok,
+        )
+
+    def test_passing_lifecycle_restores_exact_snapshot(self):
+        previous = b'{"replace":{"Changes":"Original bytes."}}\n'
+        self.target.write_bytes(previous)
+        self.target.chmod(0o1640)
+        self.initialize()
+        self.record("control", 1, "yes")
+        self.record("control", 2, "no")
+        self.record("treatment", 1, "yes")
+        self.record("treatment", 2, "yes")
+
+        review = json.loads(self.run_command("review", "--id", "pilot").stdout)
+        self.assertEqual(review["review"]["verdict"], "pass")
+        self.assertEqual(review["activation_proposal"]["tool"], "uagent_configure")
+
+        blocked = self.run_command("activate", "--id", "pilot", ok=False)
+        self.assertIn("requires --approve", blocked.stderr)
+        activated = json.loads(self.run_command("activate", "--id", "pilot", "--approve").stdout)
+        self.assertEqual(activated["status"], "overlay_written")
+        self.assertEqual(self.target.read_bytes(), self.candidate.read_bytes())
+        self.assertIn("did not change", activated["warning"])
+
+        rolled_back = json.loads(self.run_command("rollback", "--id", "pilot").stdout)
+        self.assertEqual(self.target.read_bytes(), previous)
+        self.assertEqual(self.target.stat().st_mode & 0o7777, 0o1640)
+        change = rolled_back["configuration_proposal"]["changes"][0]
+        self.assertEqual(change["value"], "/previous/overlay.json")
+        status = json.loads(self.run_command("status", "--id", "pilot").stdout)
+        self.assertEqual(status["status"], "rolled_back")
+
+    def test_absent_target_is_removed_on_rollback(self):
+        self.initialize(trials="1", previous_setting=None)
+        self.record("control", 1, "no")
+        self.record("treatment", 1, "yes")
+        self.run_command("review", "--id", "pilot")
+        self.run_command("activate", "--id", "pilot", "--approve")
+        self.assertTrue(self.target.exists())
+        rolled_back = json.loads(self.run_command("rollback", "--id", "pilot").stdout)
+        self.assertFalse(self.target.exists())
+        self.assertEqual(rolled_back["configuration_proposal"]["changes"][0]["operation"], "unset")
+
+    def test_rejects_invalid_bounds_cost_and_schema(self):
+        self.candidate.write_text('{"append":{"wrong":"shape"}}\n')
+        invalid_overlay = self.initialize(ok=False)
+        self.assertIn("overlay.append must be a nonempty string", invalid_overlay.stderr)
+        self.candidate.write_text('{"append":"Test narrowly."}\n')
+
+        invalid = self.initialize(trials="51", ok=False)
+        self.assertNotEqual(invalid.returncode, 0)
+        self.assertIn("trials must be between 1 and 50", invalid.stderr)
+
+        self.state = self.base / "cost-state"
+        self.initialize(trials="1", max_cost="0.1")
+        drift = self.record("control", 1, "yes", model="other/model", ok=False)
+        self.assertIn("model differs", drift.stderr)
+        costly = self.record("control", 1, "yes", cost="0.11", ok=False)
+        self.assertNotEqual(costly.returncode, 0)
+        self.assertIn("exceeds $0.100000", costly.stderr)
+
+        manifest = self.state / "rounds" / "pilot" / "experiment.json"
+        body = json.loads(manifest.read_text())
+        body["schema"] = "future.v99"
+        manifest.write_text(json.dumps(body))
+        bad_schema = self.run_command("status", "--id", "pilot", ok=False)
+        self.assertIn("unsupported experiment schema", bad_schema.stderr)
+
+    def test_rejects_symbolic_link_target(self):
+        real_target = self.base / "real.json"
+        real_target.write_text('{"append":"Existing."}\n')
+        self.target.symlink_to(real_target)
+        result = self.initialize(ok=False)
+        self.assertIn("may not be a symbolic link", result.stderr)
+        self.assertFalse((self.state / "rounds" / "pilot").exists())
+        self.assertEqual(real_target.read_text(), '{"append":"Existing."}\n')
+
+    def test_review_rejects_mismatched_task_pair(self):
+        self.initialize(trials="1")
+        self.record("control", 1, "no", task_id="task-a")
+        self.record("treatment", 1, "yes", task_id="task-b")
+        result = self.run_command("review", "--id", "pilot", ok=False)
+        self.assertIn("task_id differ", result.stderr)
+
+    def test_unknown_state_fields_are_rejected(self):
+        self.initialize(trials="1")
+        results_path = self.state / "rounds" / "pilot" / "results.json"
+        results = json.loads(results_path.read_text())
+        results["raw_prompt"] = "must never be retained"
+        results_path.write_text(json.dumps(results))
+        result = self.run_command("status", "--id", "pilot", ok=False)
+        self.assertIn("unknown=['raw_prompt']", result.stderr)
+
+    def test_oversized_state_file_is_rejected(self):
+        self.initialize(trials="1")
+        results_path = self.state / "rounds" / "pilot" / "results.json"
+        results_path.write_bytes(b" " * (256 * 1024 + 1))
+        result = self.run_command("status", "--id", "pilot", ok=False)
+        self.assertIn("state file exceeds 262144 bytes", result.stderr)
+
+    def test_permission_change_blocks_destructive_rollback(self):
+        self.initialize(trials="1")
+        self.record("control", 1, "no")
+        self.record("treatment", 1, "yes")
+        self.run_command("review", "--id", "pilot")
+        self.run_command("activate", "--id", "pilot", "--approve")
+        self.target.chmod(0o640)
+        result = self.run_command("rollback", "--id", "pilot", ok=False)
+        self.assertIn("mode changed externally", result.stderr)
+
+    def test_external_change_blocks_destructive_rollback(self):
+        self.initialize(trials="1")
+        self.record("control", 1, "no")
+        self.record("treatment", 1, "yes")
+        self.run_command("review", "--id", "pilot")
+        self.run_command("activate", "--id", "pilot", "--approve")
+        self.target.write_text('{"append":"External edit."}\n')
+        result = self.run_command("rollback", "--id", "pilot", ok=False)
+        self.assertIn("changed externally", result.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

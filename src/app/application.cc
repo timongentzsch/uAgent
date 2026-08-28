@@ -231,11 +231,8 @@ class Application {
           UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) + "/" +
           UtcStamp("%Y%m%dT%H%M%SZ") + "-" + std::to_string(getpid()) + ".json";
     }
-    std::error_code error_code;
-    std::filesystem::path directory =
-        std::filesystem::path(session_file_).parent_path();
-    std::filesystem::create_directories(directory, error_code);
-    chmod(directory.c_str(), kPrivateDirMode);
+    CreatePrivateDirectories(
+        std::filesystem::path(session_file_).parent_path());
     std::string error;
     if (!agent_.Save(session_file_, error)) {
       fprintf(stderr, "cannot save session: %s\n", error.c_str());

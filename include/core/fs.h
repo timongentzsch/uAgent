@@ -199,13 +199,28 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   return true;
 }
 
-inline std::string MakePrivateDir(const std::string& base, const char* sub) {
-  std::string dir = base + "/" + sub;
+// create_directories() applies the ambient umask, so hardening only the leaf
+// leaves every directory it had to create along the way world-traversable.
+// Every private path is built through here so the whole chain is owner-only.
+inline void CreatePrivateDirectories(const std::filesystem::path& dir) {
+  namespace fs = std::filesystem;
   std::error_code ec;
-  std::filesystem::create_directories(base, ec);
-  chmod(base.c_str(), kPrivateDirMode);
-  std::filesystem::create_directories(dir, ec);
-  chmod(dir.c_str(), kPrivateDirMode);
+  std::vector<fs::path> missing;
+  for (fs::path walk = dir; !walk.empty() && !fs::exists(walk, ec);
+       walk = walk.parent_path()) {
+    missing.push_back(walk);
+    if (!walk.has_relative_path()) break;
+  }
+  fs::create_directories(dir, ec);
+  for (auto it = missing.rbegin(); it != missing.rend(); ++it) {
+    chmod(it->c_str(), kPrivateDirMode);
+  }
+}
+
+inline std::string MakePrivateDir(const std::string& base, const char* sub) {
+  CreatePrivateDirectories(base);
+  std::string dir = base + "/" + sub;
+  CreatePrivateDirectories(dir);
   return dir;
 }
 

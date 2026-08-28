@@ -493,12 +493,18 @@ bool Agent::HandleActivityPollResults(
   }
   ++loop.quiet_activity_polls;
 
+  // A slow activity answers "(no new output)" honestly, so quiet polls steer
+  // rather than end the turn that owns the work. The ceiling still bounds a
+  // model that ignores every escalation: UAGENT_MAX_STEPS defaults to off.
   constexpr int64_t kAdviseAfter = 2;
-  constexpr int64_t kStopAfter = 3;
+  constexpr int64_t kDirectAfter = 4;
+  constexpr int64_t kStopAfter = 12;
   if (loop.quiet_activity_polls >= kStopAfter) {
     state.outcome = "error";
-    last_error_ = "activity " + std::to_string(poll.id) +
-                  " produced no new output across 3 consecutive polls";
+    last_error_ = "activity " + std::to_string(poll.id) + " is still running, "
+                  "but the model polled it " +
+                  std::to_string(loop.quiet_activity_polls) +
+                  " times without new output and without waiting on it";
     Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
     DebugLog("activity_poll_loop", {{"turn", turn_id_},
                                     {"step", loop.step},
@@ -506,22 +512,30 @@ bool Agent::HandleActivityPollResults(
                                     {"polls", loop.quiet_activity_polls}});
     return true;
   }
-  if (loop.quiet_activity_polls == kAdviseAfter &&
-      !loop.quiet_activity_advisory_sent) {
-    loop.quiet_activity_advisory_sent = true;
-    conversation_.Push(
-        HarnessMessage(
-            "[activity poll advisory] Activity " + std::to_string(poll.id) +
-            " returned no new output twice. Do not poll it again immediately. "
-            "If completion blocks the next step, issue one bounded activity "
-            "call with operation=wait, mode=any, and wait_ms; otherwise "
-            "continue independent work."),
-        MessageKind::kInternal);
+  if (loop.quiet_activity_polls == kAdviseAfter ||
+      loop.quiet_activity_polls == kDirectAfter) {
+    const bool mandatory = loop.quiet_activity_polls == kDirectAfter;
+    std::string note = "[activity poll advisory] Activity " +
+                       std::to_string(poll.id) + " is still running and has "
+                       "returned no new output " +
+                       std::to_string(loop.quiet_activity_polls) + " times. ";
+    note += mandatory ? "Stop polling it: this turn ends in an error if you "
+                        "keep polling without waiting. Either issue one "
+                        "activity call with operation=wait, mode=any and "
+                        "wait_ms, or read the output it writes elsewhere, or "
+                        "do independent work and revisit it later."
+                      : "Do not poll it again immediately. If completion "
+                        "blocks the next step, issue one bounded activity "
+                        "call with operation=wait, mode=any, and wait_ms; "
+                        "otherwise continue independent work.";
+    conversation_.Push(HarnessMessage(note), MessageKind::kInternal);
     loop.pending_note = conversation_.Size() - 1;
+    loop.quiet_activity_advisory_sent = true;
     DebugLog("activity_poll_advisory", {{"turn", turn_id_},
                                         {"step", loop.step},
                                         {"activity_id", poll.id},
-                                        {"polls", loop.quiet_activity_polls}});
+                                        {"polls", loop.quiet_activity_polls},
+                                        {"mandatory", mandatory}});
   }
   return false;
 }

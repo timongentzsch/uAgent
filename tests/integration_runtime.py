@@ -1365,19 +1365,22 @@ def test_activity_no_change_polls_are_steered_then_stopped(root, home):
         if state["requests"] == 4:
             combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
             assert_true("[activity poll advisory]" in combined, combined)
-        if state["requests"] <= 4:
+        if state["requests"] == 6:
+            combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
+            assert_true("this turn ends in an error" in combined, combined)
+        if state["requests"] <= 13:
             return tool_call("activity", {"operation": "poll", "id": state["id"]})
-        return event({"content": "fifth-round-should-not-run"})
+        return event({"content": "fourteenth-round-should-not-run"})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "monitor", timeout=8)
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "monitor", timeout=20)
         assert_true(result.returncode != 0, result.stdout)
         assert_true(
-            f"activity {state['id']} produced no new output across 3 consecutive polls"
+            f"activity {state['id']} is still running, but the model polled it 12 times"
             in result.stderr,
             result.stderr,
         )
-        assert_true(len(server.requests) == 4, len(server.requests))
+        assert_true(len(server.requests) == 13, len(server.requests))
 
 
 def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home):

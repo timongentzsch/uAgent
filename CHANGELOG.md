@@ -10,6 +10,10 @@
   cost drift, calculates the verdict, emits human-approved configuration
   proposals, and restores exact overlay snapshots without retaining trial
   prompts or session text.
+- Live eval authority now has an explicit non-billable cheap-route mode. The
+  operator must attest the exact route as both cheap and non-billable; the eval
+  never infers that from its name and enforces global-bounded session,
+  model-call, tool-call, output-token, and wall-clock limits in each child.
 
 ## v0.9.0 - 2026-08-27
 

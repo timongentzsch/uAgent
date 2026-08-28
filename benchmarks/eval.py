@@ -10,8 +10,10 @@ or lose its answer fails a gate instead of being argued about.
 The hermetic suite scripts the provider, so it measures *harness* behavior — the
 part this repository owns — not model quality. `--run --model` replays the
 same scenarios against a real route as the periodic reality check. Live runs
-require explicit route metadata proving both cost reporting and hard-budget
-enforcement; `--max-cost` is one aggregate ceiling across all isolated trials.
+require explicit route authority: either reported cost with a hard USD budget,
+or an operator-declared non-billable cheap route with hard session, model-call,
+tool-call, output-token, and wall-clock limits. Cheapness is never inferred from
+a model name.
 
     python3 benchmarks/eval.py build/debug/uagent --check
     python3 benchmarks/eval.py build/debug/uagent --update
@@ -42,13 +44,20 @@ ROOT = Path(__file__).resolve().parent.parent
 SCENARIO_DIR = ROOT / "benchmarks" / "scenarios"
 BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "hermetic.json"
 SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "alternating_trials.json"
+CHEAP_AUTHORITY_SELF_TEST_PATH = ROOT / "tests" / "fixtures" / "eval" / "cheap_authority.json"
 
 # One HTTP/SSE fixture serves the integration suite and this harness; a second
 # copy would drift from the transport the tests actually exercise.
 sys.path.insert(0, str(ROOT / "tests"))
+sys.path.insert(0, str(ROOT / "skills" / "self-improve" / "scripts"))
 
 # isort: off
 from integration_support import Server, event  # noqa: E402
+from live_authority import (  # noqa: E402
+    AuthorityError,
+    load_authority,
+    normalize_route_authority,
+)
 from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 
 # isort: on
@@ -433,6 +442,12 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
     return env
 
 
+def timeout_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    return value.decode(errors="replace") if isinstance(value, bytes) else value
+
+
 def run_case(
     binary: Path,
     scenario: dict[str, Any],
@@ -464,6 +479,9 @@ def run_case(
         try:
             env = case_environment(scenario, variant, arguments, mock)
             env["HOME"] = str(home)
+            authority = arguments.cost_authority_data["routes"][model] if arguments.run else None
+            if authority is not None:
+                apply_live_authority(env, authority)
             prompt = str(scenario["prompt"])
             prompt = prompt.replace("${workspace}", str(workspace))
             prompt = prompt.replace("${workspace_uri}", workspace.as_uri())
@@ -474,22 +492,33 @@ def run_case(
                 *(["--yolo"] if scenario.get("yolo") else []),
                 "--model",
                 model,
-                "--budget",
-                str(arguments.max_cost if budget is None else budget),
-                "-p",
-                prompt,
             ]
+            if not arguments.run or authority["mode"] == "reported-cost":
+                cli.extend(["--budget", str(arguments.max_cost if budget is None else budget)])
+            cli.extend(["-p", prompt])
+            process_timeout = arguments.timeout + 15
+            if authority is not None and authority["mode"] == "non-billable-cheap":
+                process_timeout = min(arguments.timeout, authority["limits"]["max_session_seconds"])
             started = time.monotonic()
-            process = subprocess.run(
-                measured_command(binary, cli),
-                cwd=workspace,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                capture_output=True,
-                timeout=arguments.timeout + 15,
-                check=False,
-            )
+            try:
+                process = subprocess.run(
+                    measured_command(binary, cli),
+                    cwd=workspace,
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    text=True,
+                    capture_output=True,
+                    timeout=process_timeout,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired as error:
+                process = subprocess.CompletedProcess(
+                    error.cmd,
+                    124,
+                    stdout=timeout_text(error.stdout),
+                    stderr=timeout_text(error.stderr)
+                    + f"\nhard session timeout after {process_timeout}s",
+                )
             elapsed = time.monotonic() - started
         finally:
             if mock is not None:
@@ -520,6 +549,7 @@ def run_case(
             "live_only": bool(scenario.get("live_only")),
             "variant": variant,
             "model": model,
+            "authority_mode": authority["mode"] if authority is not None else "hermetic",
             "trial": trial,
             "trial_seed": trial_seed,
             "route": metrics["route"] if arguments.run else model,
@@ -904,38 +934,79 @@ def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dic
 
 
 class LiveCostBlocker(RuntimeError):
-    """The runner cannot prove that another billable call stays under its cap."""
+    """The runner cannot prove that a live route stays inside its authority."""
 
 
 def load_cost_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
-    if path is None:
-        raise LiveCostBlocker(
-            "live evaluation blocked: --cost-authority is required; the route must explicitly "
-            "declare reported costs and a hard per-session budget"
-        )
     try:
-        authority = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
-        raise LiveCostBlocker(
-            f"live evaluation blocked: invalid cost authority: {error}"
-        ) from error
-    if authority.get("schema") != "uagent.eval.cost-authority.v1":
-        raise LiveCostBlocker("live evaluation blocked: unknown cost-authority schema")
-    routes = authority.get("routes")
-    if not isinstance(routes, dict):
-        raise LiveCostBlocker("live evaluation blocked: cost authority has no routes object")
-    for model in models:
-        declaration = routes.get(model)
-        if (
-            not isinstance(declaration, dict)
-            or not declaration.get("reports_cost")
-            or not declaration.get("enforces_hard_budget")
-        ):
+        return load_authority(path, models)
+    except AuthorityError as error:
+        raise LiveCostBlocker(f"live evaluation blocked: {error}") from error
+
+
+def validate_live_plan(authority: dict[str, Any], jobs: list[tuple[Any, ...]], trials: int) -> None:
+    sessions = collections.Counter(model for _, _, model in jobs)
+    for model, count in sessions.items():
+        declaration = authority["routes"][model]
+        if declaration["mode"] != "non-billable-cheap":
+            continue
+        planned = count * trials
+        maximum = declaration["limits"]["max_sessions"]
+        if planned > maximum:
             raise LiveCostBlocker(
-                f"live evaluation blocked: {model} does not explicitly declare both "
-                "reports_cost and enforces_hard_budget"
+                f"live evaluation blocked: {model} plans {planned} sessions, above its cheap "
+                f"authority limit of {maximum}"
             )
-    return authority
+
+
+def apply_live_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
+    if declaration["mode"] != "non-billable-cheap":
+        return
+    limits = declaration["limits"]
+    env.update(
+        {
+            "UAGENT_MAX_STEPS": str(limits["max_model_calls"]),
+            "UAGENT_MAX_TOOL_CALLS": str(limits["max_tool_calls"]),
+            "UAGENT_MAX_TOKENS": str(limits["max_output_tokens_per_call"]),
+            "UAGENT_MAX_TURN_SECONDS": str(limits["max_session_seconds"]),
+            "UAGENT_REQUEST_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_FIRST_EVENT_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_STREAM_IDLE_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_MAX_TURN_COST": "0",
+            "UAGENT_SESSION_BUDGET": "0",
+            "UAGENT_OPENROUTER_FALLBACKS": "0",
+        }
+    )
+
+
+def account_live_result(
+    result: dict[str, Any], declaration: dict[str, Any], spent: float, cap: float
+) -> float:
+    if declaration["mode"] == "reported-cost":
+        return account_live_cost(result, spent, cap)
+    limits = declaration["limits"]
+    usage = result.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+    checks = {
+        "model calls": (int(result.get("model_requests") or 0), limits["max_model_calls"]),
+        "tool calls": (int(result.get("tool_calls") or 0), limits["max_tool_calls"]),
+        "output tokens": (
+            int(usage.get("output") or 0),
+            limits["max_model_calls"] * limits["max_output_tokens_per_call"],
+        ),
+        "session milliseconds": (
+            int(float(result.get("elapsed_seconds") or 0) * 1000),
+            limits["max_session_seconds"] * 1000,
+        ),
+    }
+    for name, (used, maximum) in checks.items():
+        if used > maximum:
+            raise LiveCostBlocker(
+                f"live evaluation blocked after {result.get('model')}: {name} {used} exceeded "
+                f"the enforced cheap-route limit {maximum}"
+            )
+    return spent
 
 
 def account_live_cost(result: dict[str, Any], spent: float, cap: float) -> float:
@@ -978,11 +1049,88 @@ def eval_self_test() -> int:
         except LiveCostBlocker:
             continue
         failures.append(f"cost guard accepted planted case {planted['name']}")
+    cheap_document = json.loads(CHEAP_AUTHORITY_SELF_TEST_PATH.read_text(encoding="utf-8"))
+    cheap = normalize_route_authority("provider/model", cheap_document["routes"]["provider/model"])
+    if cheap["mode"] != "non-billable-cheap":
+        failures.append("valid cheap authority did not normalize")
+    reported = normalize_route_authority(
+        "fixture/reported", {"reports_cost": True, "enforces_hard_budget": True}
+    )
+    if reported["mode"] != "reported-cost":
+        failures.append("valid reported-cost authority did not normalize")
+    blocked_authorities = [
+        {
+            "name": "cheap-without-explicit-cheap-flag",
+            "value": {"non_billable": True, "limits": cheap["limits"]},
+        },
+        {
+            "name": "string-false-authority-flags",
+            "value": {
+                "non_billable": "false",
+                "cheap": "false",
+                "limits": cheap["limits"],
+            },
+        },
+        {
+            "name": "cheap-limit-above-global-ceiling",
+            "value": {
+                "non_billable": True,
+                "cheap": True,
+                "limits": {**cheap["limits"], "max_model_calls": 9},
+            },
+        },
+    ]
+    for planted in blocked_authorities:
+        try:
+            normalize_route_authority("provider/model", planted["value"])
+        except AuthorityError:
+            continue
+        failures.append(f"authority guard accepted planted case {planted['name']}")
+    env = {}
+    apply_live_authority(env, cheap)
+    expected_env = {
+        "UAGENT_MAX_STEPS": "3",
+        "UAGENT_MAX_TOOL_CALLS": "4",
+        "UAGENT_MAX_TOKENS": "512",
+        "UAGENT_MAX_TURN_SECONDS": "30",
+        "UAGENT_OPENROUTER_FALLBACKS": "0",
+    }
+    for name, expected in expected_env.items():
+        if env.get(name) != expected:
+            failures.append(f"cheap authority env {name}={env.get(name)}, want {expected}")
+    try:
+        validate_live_plan(
+            {"routes": {"provider/model": cheap}},
+            [(None, None, "provider/model")],
+            3,
+        )
+    except LiveCostBlocker:
+        pass
+    else:
+        failures.append("cheap session-count guard accepted 3 sessions above limit 2")
+    try:
+        account_live_result(
+            {
+                "model": "provider/model",
+                "model_requests": 4,
+                "tool_calls": 0,
+                "elapsed_seconds": 1,
+                "usage": {"output": 1, "cost_reported": False},
+            },
+            cheap,
+            0.0,
+            0.0,
+        )
+    except LiveCostBlocker:
+        pass
+    else:
+        failures.append("cheap post-run guard accepted excess model calls")
     jobs = [("a",), ("b",), ("c",)]
     if deterministic_jobs(jobs, 17, 2) != deterministic_jobs(jobs, 17, 2):
         failures.append("trial ordering was not deterministic")
     print(f"planted alternating trials  {summary}")
     print(f"planted cost blocks         {len(fixture['blocked_cost_cases'])}")
+    print(f"planted authority blocks    {len(blocked_authorities) + 2}")
     for failure in failures:
         print(f"SELF-TEST FAILED: {failure}")
     return 1 if failures else 0
@@ -1047,7 +1195,7 @@ def parse_args():
     parser.add_argument(
         "--cost-authority",
         type=Path,
-        help="route metadata proving reported cost and a hard budget",
+        help="route authority for reported-cost or explicitly non-billable cheap live runs",
     )
     parser.add_argument("--max-cost", type=float, default=0.10, help="aggregate reported USD cap")
     parser.add_argument("--trials", type=int, default=1, help="fresh isolated runs per case")
@@ -1066,8 +1214,10 @@ def parse_args():
     arguments.binary = arguments.binary.resolve()
     if not arguments.binary.is_file():
         parser.error(f"binary does not exist: {arguments.binary}")
-    if arguments.max_cost <= 0:
-        parser.error("--max-cost must be positive")
+    if arguments.max_cost < 0:
+        parser.error("--max-cost cannot be negative")
+    if arguments.timeout <= 0:
+        parser.error("--timeout must be positive")
     if arguments.trials <= 0:
         parser.error("--trials must be positive")
     if arguments.pass_k < 0:
@@ -1091,6 +1241,14 @@ def parse_args():
             arguments.cost_authority_data = load_cost_authority(
                 arguments.cost_authority, arguments.model
             )
+            if (
+                any(
+                    declaration["mode"] == "reported-cost"
+                    for declaration in arguments.cost_authority_data["routes"].values()
+                )
+                and arguments.max_cost <= 0
+            ):
+                parser.error("reported-cost live routes require a positive --max-cost")
         except LiveCostBlocker as error:
             parser.error(str(error))
     return arguments
@@ -1127,14 +1285,21 @@ def main() -> int:
                 jobs.append((scenario, variant, model))
     if not jobs:
         raise SystemExit("no scenario variants selected")
+    if arguments.run:
+        try:
+            validate_live_plan(arguments.cost_authority_data, jobs, arguments.trials)
+        except LiveCostBlocker as error:
+            raise SystemExit(str(error)) from error
 
     results = []
     spent = 0.0
     blocker = None
     for trial in range(1, arguments.trials + 1):
         for scenario, variant, model in deterministic_jobs(jobs, arguments.seed, trial):
-            remaining = arguments.max_cost - spent if arguments.run else arguments.max_cost
-            if arguments.run and remaining <= 1e-9:
+            declaration = arguments.cost_authority_data["routes"][model] if arguments.run else None
+            reported = declaration is not None and declaration["mode"] == "reported-cost"
+            remaining = arguments.max_cost - spent if reported else None
+            if reported and remaining <= 1e-9:
                 blocker = LiveCostBlocker(
                     f"live evaluation stopped at the ${arguments.max_cost:.6f} aggregate ceiling"
                 )
@@ -1152,7 +1317,7 @@ def main() -> int:
             results.append(result)
             if arguments.run:
                 try:
-                    spent = account_live_cost(result, spent, arguments.max_cost)
+                    spent = account_live_result(result, declaration, spent, arguments.max_cost)
                 except LiveCostBlocker as error:
                     blocker = error
                     break
@@ -1168,6 +1333,20 @@ def main() -> int:
         print(f"BLOCKED: {blocker}", file=sys.stderr)
     if arguments.update:
         write_baseline(results)
+    selected_authorities = arguments.cost_authority_data["routes"] if arguments.run else {}
+    reported_selected = any(
+        declaration["mode"] == "reported-cost" for declaration in selected_authorities.values()
+    )
+    cheap_routes = {
+        model: declaration["limits"]
+        for model, declaration in selected_authorities.items()
+        if declaration["mode"] == "non-billable-cheap"
+    }
+    cheap_sessions = collections.Counter(
+        result["model"]
+        for result in results
+        if result.get("authority_mode") == "non-billable-cheap"
+    )
     report = {
         "schema": "uagent.eval.v2",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -1184,10 +1363,21 @@ def main() -> int:
             "pass_k": arguments.pass_k,
             "seed": arguments.seed,
         },
+        "live_authority": {
+            "sha256": (arguments.cost_authority_data.get("sha256") if arguments.run else None),
+            "routes": {
+                model: declaration["mode"] for model, declaration in selected_authorities.items()
+            },
+        },
         "aggregate_cost": {
-            "ceiling": arguments.max_cost if arguments.run else None,
-            "reported": round(spent, 9) if arguments.run else None,
-            "authoritative": bool(arguments.run and not blocker),
+            "ceiling": arguments.max_cost if arguments.run and reported_selected else None,
+            "reported": round(spent, 9) if arguments.run and reported_selected else None,
+            "authoritative": bool(arguments.run and reported_selected and not blocker),
+        },
+        "non_billable_cheap": {
+            "routes": cheap_routes,
+            "sessions": dict(sorted(cheap_sessions.items())),
+            "authoritative": bool(arguments.run and cheap_routes and not blocker),
         },
         "blocker": str(blocker) if blocker else None,
         "results": results,

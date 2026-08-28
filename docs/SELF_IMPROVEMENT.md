@@ -77,7 +77,9 @@ in experiment state.
 - one falsifiable hypothesis, bounded to 1,000 characters;
 - exact model and effort cohort;
 - 1–50 trials per variant;
-- aggregate cost ceiling of at most $100;
+- one explicit live authority basis: reported cost with an aggregate ceiling of
+  at most $100, or operator-declared non-billable cheap mode with a zero cost
+  field and eval-enforced resource limits;
 - minimum treatment success-count delta;
 - allowed percentage regression for tokens, wall time, and tool failures;
 - candidate-overlay digest and byte count;
@@ -139,10 +141,19 @@ malformed records, unsupported schemas, and aggregate spend above the
 pre-registered limit. Task IDs identify pairs without storing task content.
 Trials should be interleaved to reduce time and route drift.
 
+`cost_basis` distinguishes provider-reported money from explicit
+`non-billable-cheap` authority. In the latter mode, `cost_usd: 0` records the
+operator-declared billing basis; it is not represented as provider-reported
+cost. A cheap round must use `max_cost_usd: 0`, while a reported-cost round must
+use a positive cap.
+
 The source checkout's live eval harness is preferred when private tasks can be
-represented as sanitized scenarios; it already supports prompt overlays,
-repeated trials, and hard aggregate cost enforcement. The experiment runner
-does not duplicate that harness or retain its task inputs.
+represented as sanitized scenarios. It supports prompt overlays, repeated
+trials, hard aggregate cost enforcement for reported-cost routes, and explicit
+non-billable cheap authority. Cheapness is never inferred from model names: the
+operator must name the exact route and the eval injects hard session,
+model-call, tool-call, output-token, and wall-clock limits into every child. The
+experiment runner does not duplicate that harness or retain its task inputs.
 
 ### 4. Review
 
@@ -152,7 +163,8 @@ does not duplicate that harness or retain its task inputs.
 - success-count delta;
 - mean token, wall-time, and tool-failure values;
 - percentage guardrail regressions;
-- aggregate reported cost.
+- aggregate reported cost, or an explicit non-billable cheap basis with zero
+  monetary spend.
 
 The verdict is deterministic:
 
@@ -223,7 +235,7 @@ python3 "$runner" init --id pilot \
   --overlay /tmp/candidate-overlay.json \
   --target-overlay "$HOME/.uagent/improve/active/pilot.json" \
   --model provider/model --effort high \
-  --trials 5 --max-cost 5 \
+  --trials 5 --cost-basis reported-cost --max-cost 5 \
   --min-success-delta 1 --max-guardrail-regression-pct 10
 
 python3 "$runner" record --id pilot --variant control --trial 1 \
@@ -235,6 +247,16 @@ python3 "$runner" review --id pilot
 python3 "$runner" activate --id pilot --approve
 python3 "$runner" rollback --id pilot
 ```
+
+For a cheap non-billable round, use
+`--cost-basis non-billable-cheap --max-cost 0 --cost-authority
+/path/to/reviewed-authority.json` and record `--cost 0` only after the live eval
+accepted that authority for the exact model. The runner uses the same authority
+validator as the eval and stores the authority SHA-256 and normalized hard
+limits in the round; a bare CLI assertion is insufficient. Every cheap trial
+must pass that digest back as `--authority-sha256`, using
+`live_authority.sha256` from the eval report, so results cannot be recorded
+under a different declaration.
 
 Installed invocations use `${SKILL_DIR}/scripts/experiment.py` as documented in
 the skill.
@@ -249,7 +271,8 @@ The focused test covers:
 - removal of a target that did not previously exist;
 - restoration proposals for prior set and unset config values;
 - cohort and paired-task drift rejection;
-- invalid trial bounds and aggregate cost rejection;
+- invalid trial bounds, reported-cost caps, and explicit zero-cost cheap-mode
+  enforcement;
 - unsupported schemas, unknown state fields, and oversized state-file rejection;
 - refusal to follow a symbolic-link target or overwrite externally changed
   content or permission mode.

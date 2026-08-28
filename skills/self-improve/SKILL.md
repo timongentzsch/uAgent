@@ -1,216 +1,225 @@
 ---
 name: self-improve
-description: Self-improve µAgent: run one measured iteration — scan recent sessions for waste, propose Pareto-optimal changes (hardware, tokens, readability, capability, timing, generality), verify against committed baselines, scan for slop.
-argument-hint: [focus, e.g. "token", "capability", or "another iteration"]
+description: Run one bounded personal prompt-overlay experiment: pre-register a hypothesis, compare control and treatment trials, activate only a measured winner with human approval, and preserve exact rollback.
+argument-hint: [start|status ROUND|review ROUND|rollback ROUND]
+requires-tools: run, uagent_info, uagent_configure
 ---
 
-# One improvement iteration
+# One personal improvement experiment
 
-Improve the harness against evidence, not impressions. Every claim about an
-effect is a number produced by a command in this file, or it is not made.
-Whether that effect is worth having is the one judgement no command returns,
-and clause h is where it goes.
+Improve this user's agent against evidence, not impressions. This version does
+one thing: test one reversible prompt overlay. It does not mine private
+transcripts automatically, rewrite memory, edit its own skill, or open a PR.
 
-## Constitution
-
-A change must improve at least one clause and regress none. When two clauses
-conflict, say so, measure both sides, and let the human decide.
-
-| | Clause | Measured by |
-| --- | --- | --- |
-| a | **Hardware cost** — memory, binary size, CPU | `audit.py` hardware row |
-| b | **Token cost** — bytes charged to every request | `audit.py` token row, `eval.py` chars |
-| c | **Readability and modularity** — coupling, file size, slop | `audit.py` readability row, rebuild fanout |
-| d | **Capability** — what the agent can do, and how reliably | `eval.py` scores, new scenarios |
-| e | **Timing** — wall clock for a turn and for the dev loop | `eval.py` wall, rebuild time, `ctest` time |
-| f | **Generality** — no overfitting to the suite | `audit.py` representativeness row |
-| g | **No slop** — no bloat in code, comments or docs, new or old | `slopscan.py`, plus the diff pass in step 7 |
-| h | **Design sense** — should this exist, at this size, in this place | step 4; argued, never a number |
-
-Ruling a clause out is a result. If a measurement shows no headroom, report the
-number and propose nothing there.
-
-Clause h is not a tiebreaker applied once the numbers are in. A change can
-improve every measurable clause and still be the wrong thing to build, and h
-can reject it on that ground alone.
-
-## The instruments are in scope
-
-`eval.py`, `audit.py`, `slopscan.py`, the scenarios and their fixtures are part
-of the harness, not neutral observers of it. A blind instrument hides the work
-worth doing, so improving one competes for a slot in step 3 like anything else
-and needs no separate justification.
-
-Three rules stop that from turning into self-congratulation.
-
-- **An instrument must be able to fail.** Prove it with fixtures or a planted
-  defect before trusting a green result. A gate that cannot go red measures
-  nothing and looks exactly like a clean tree.
-- **Never change an instrument and the thing it scores in the same commit.**
-  That is how a regression gets laundered into a baseline.
-- **When a check cannot fire on this repository's real style, fix the check.**
-  Narrowing the fixture until it passes encodes the blind spot as intent.
-
-## The loop
-
-### 1. Measure reality first
-
-```sh
-uv run --frozen python benchmarks/session_metrics.py --since 2026-08-01
-```
-
-Real sessions say which paths are hot, which tools fail, which fill the
-context, and which are slow. Improvements to a path nobody uses are noise.
-Treat retired tool names in the output as renames, not as regressions.
-
-### 2. Measure the build
-
-```sh
-uv run --frozen python benchmarks/audit.py build/debug/uagent
-uv run --frozen python benchmarks/eval.py build/debug/uagent --check
-```
-
-The audit prints its six rows and flags baseline regressions. The eval scores
-end-to-end behaviour against committed scenarios.
-
-### 3. Propose
-
-Three to five changes, each naming its clause, its expected effect, its risk,
-and the measurement that will confirm or refute it. Prefer the smallest diff
-that reuses existing infrastructure. Present the plan and wait for approval.
-
-A hypothesis argued in an earlier round and deferred is a legitimate candidate,
-but it does not inherit its old justification: re-measure it in step 1 like any
-other. `docs/BACKLOG.md` carries those, and an entry leaves it the moment it is
-implemented or refuted.
-
-### 4. Judge the design
-
-Numbers say whether a change works. They never say whether it should exist, and
-they are actively misleading about it: a saving of 96% is compelling until you
-ask how often the thing runs. Answer these per surviving candidate, in writing,
-before any code is written.
-
-- **Necessity.** What breaks if this never ships, and who would miss it if it
-  vanished six months from now? Name the person or the run that hits it. If
-  the honest answer is a number nobody can feel, drop the candidate and report
-  the number as the result.
-- **Size.** Does the abstraction have two real callers with the *same* policy?
-  One caller is a wrapper wearing a helper's clothes; two callers that merely
-  look alike are not duplication, and merging them invents a policy neither
-  had.
-- **Reversibility.** If this is wrong three rounds from now, what does undoing
-  it cost? A one-way door — a schema, a baseline others fork from, a file
-  everything imports — needs evidence proportional to the door.
-- **Second order.** What does this make easier to do *badly*? What will be
-  built next because this now exists, and do we want that thing?
-- **Ossification.** A gate turns today's judgement into tomorrow's rule, and
-  rules outlive their reasons. Name the policy it freezes and say plainly
-  whether it is worth defending when it fires on someone else's work.
-
-The proposer is the worst reviewer of a proposal: by step 3 the case is already
-argued and the reasoning is anchored. Get the questions answered by something
-without that stake — the `review-agent` skill, or a `subagent` given the diff
-or the plan and these questions and no argument in favour. When neither is
-reachable, answer them yourself in writing and say that no independent review
-happened, because an unreviewed judgement recorded as reviewed is worse than an
-open one.
-
-### 5. Implement
-
-One concern per commit. Keep unrelated working-tree changes out of the index;
-if a file mixes your change with someone else's, stage only your hunks.
-
-### 6. Verify
-
-```sh
-cmake --build --preset debug -j 12 && ctest --preset debug -j 4
-uv run --frozen python tests/integration.py build/debug/uagent --test NAME   # one case
-./build/debug/uagent --emit-reference skills/uagent-config/references        # then diff
-```
-
-A behavioural change needs a scenario that fails without it. Prove the gate is
-not vacuous: break the thing on purpose, watch the score drop, restore it.
-
-### 7. Scan for slop
-
-Not optional. Two passes, because they find different things: your own diff is
-where new bloat is, and the tree is where *your centralising left bloat behind*
-— the old body under a return that can no longer be reached, the caller that
-kept its copy, the doc still naming the old file. None of that appears in the
-diff that introduces the next change.
-
-```sh
-uv run --frozen python benchmarks/slopscan.py --verbose   # the whole tree
-uv run --frozen ruff check tests benchmarks
-git diff | grep -E '^\+\s*(//|#)'          # every comment you added
-```
-
-`slopscan.py` is heuristic and biased toward silence, so read what it reports
-rather than trusting the count: a name with no body can be a deliberate
-link-time trap, and two similar blocks are only duplication when they are the
-same policy. Its counts are baselined, so the tree can only get cleaner.
-
-Reject: comments that restate the code instead of explaining why; unused
-parameters, symbols and imports; filler and AI-tell phrasing; stale references
-to renamed or deleted files; the same sentence repeated across code, CHANGELOG
-and docs; generated prose longer than the thing it documents; abstractions that
-do not remove real duplication. Report what you found, including what you chose
-not to fix.
-
-### 8. Report and decide
-
-Lead with the numbers, then the trade-offs, then a merge verdict. Name every
-known gap. The human decides the merge.
-
-Report every candidate rejected in step 4 with the question that killed it, and
-every candidate the numbers favoured that judgement changed the shape of. A
-round that only reports what shipped hides its most transferable finding.
-
-### 9. Install, then say so
-
-A merged round changes nothing until the binary is replaced, and the running
-session is still the old build — nothing it reports about itself is true of the
-new one. After the merge is agreed:
-
-```sh
-cmake --build --preset release -j 12 && ./install.sh
-```
-
-Installing is automatable and belongs in this step. Restarting is not: ending
-the session the human is talking to would be a decision taken on their behalf.
-Say plainly that a restart is needed, and let them choose the moment. The next
-turn of any still-running session prints the same reminder on its own, because
-`uagent` notices when the file it was launched from has been replaced.
+`${SKILL_DIR}/scripts/experiment.py` is the deterministic authority for state,
+bounds, scoring, activation files, and rollback. The model proposes and judges
+the design; it does not calculate the verdict or write µAgent configuration.
 
 ## Invariants
 
-Breaking one of these is a bug, not a trade-off.
+- Raw user prompts, session text, tool output, private code, and workspace file
+  contents never enter experiment state.
+- One round changes one artifact and declares one hypothesis before trials.
+- Control and treatment use the same model, effort, tasks, tool policy, memory
+  policy, and budgets. Only the overlay differs.
+- Live trials have an aggregate cost ceiling. Missing cost data is not zero.
+- The treatment must improve success by the pre-registered amount and keep all
+  guardrails within their declared regression ceiling.
+- Activation requires two approvals: `activate --approve` may write the overlay
+  file, then `uagent_configure` asks the human before changing configuration.
+- Rollback restores the exact bytes and permission mode that existed before the
+  round. If another actor changed the target, the runner refuses to overwrite
+  it.
+- Prompt text changes host text only. They never change permissions, tools,
+  approval, or resource limits.
+- An inconclusive result is a result. Do not tune thresholds after seeing data.
 
-- Host authority stays with the host: prompts, overlays and directives change
-  text only, never permissions, tools or limits.
-- The base prompt is byte-stable across refactors; `prompt_digest` in
-  `skills/uagent-config/references/manifest.json` proves it.
-- Generated references match the binary. CI diffs them.
-- Every integration case runs: the suite discovers top-level `test_` functions
-  from their module rather than from a second list that could omit one.
-- Evals are hermetic and key-free by default. Live runs need `--run` and a
-  cost cap.
-- Baselines are updated deliberately, in a reviewed commit, never to make a
-  red run green.
+## Interpret the request
 
-## Anti-overfitting
+- No argument or `start`: run the complete procedure below.
+- `status ROUND`: run the runner's `status` command and explain it.
+- `review ROUND`: run `review`; do not activate without a later explicit yes.
+- `rollback ROUND`: run `rollback`, present its configuration proposal, and use
+  `uagent_configure` only after the human approves that exact change.
 
-The suite is a proxy, and a proxy optimised hard enough stops measuring the
-thing. Guard it:
+## 1. Choose one falsifiable problem
 
-- Keep scenario tool mix within reach of the real mix from step 1. `audit.py`
-  fails when a tool above 5% of real calls has no scenario.
-- Scripted scenarios measure the harness, not model quality. For prompt
-  wording, use `--prompt-overlay` with `eval.py --run` against a live route.
-- New scenarios start in the `capability` tier, which reports but does not
-  gate. When one holds green, graduate it to `regression`.
-- Prefer a scenario drawn from a real failure in step 1 over an invented one.
-- Published numbers motivate a hypothesis; they never stand in for a
-  measurement taken here. Cite them to argue a candidate, not to justify a
-  merge.
+Use a problem the user explicitly names or evidence they explicitly authorize
+you to inspect. Current metadata-only journals contain no user messages, so do
+not claim they reveal corrections, restatements, skill misses, or preferences.
+Never send a foreign-agent transcript to another model as part of this skill.
+
+Write down:
+
+- observed failure;
+- one overlay change expected to prevent it;
+- held-out tasks that could refute the claim;
+- minimum success-count improvement;
+- acceptable percentage regression for tokens, wall time, and tool failures;
+- trial count and aggregate dollar cap.
+
+Reject a candidate when the outcome depends only on taste, there is no held-out
+task, or no affordable trial can distinguish it from the control.
+
+## 2. Inspect the cohort before writing anything
+
+Use `uagent_info` to read the active route/status and the exact
+`UAGENT_PROMPT_OVERLAY` configuration, including scope and provenance. Choose
+the writable config layer that will actually be effective. Record the exact
+prior value in that selected layer—not merely the effective value—for rollback;
+if the key is absent in that layer, record it as unset. If a higher-precedence
+CLI flag or environment variable owns the setting, `uagent_configure` cannot
+make the proposed value effective: limit the work to isolated
+control/treatment subprocesses and stop before activation. Do not infer support
+or cost reporting from a model name.
+
+Draft a small valid overlay JSON file in an approved scratch location. Prefer
+one localized `append` or `replace` entry. Do not regenerate the whole base
+prompt. Read the effective prompt reference if the target section is unclear.
+
+Present the hypothesis, overlay diff, trial count, cost cap, and refutation rule.
+Wait for approval before initializing the round.
+
+## 3. Pre-register
+
+Use a stable, non-identifying round ID. The state root defaults to
+`~/.uagent/improve`; it is private and bounded per round.
+
+```sh
+python3 "${SKILL_DIR}/scripts/experiment.py" init \
+  --id ROUND \
+  --hypothesis 'ONE FALSIFIABLE SENTENCE' \
+  --overlay /approved/scratch/candidate-overlay.json \
+  --target-overlay "$HOME/.uagent/improve/active/ROUND.json" \
+  --model 'EXACT_PROVIDER/MODEL' \
+  --effort 'EXACT_EFFORT' \
+  --trials 5 \
+  --max-cost 5.00 \
+  --min-success-delta 1 \
+  --max-guardrail-regression-pct 10 \
+  --config-scope user \
+  --previous-setting 'EXACT_PREVIOUS_VALUE'
+```
+
+Omit `--previous-setting` only when the key is genuinely absent from the
+selected `--config-scope` layer. Do not pass a lower-precedence effective value
+as though it lived in that layer. The runner copies and hashes the candidate,
+snapshots an existing target byte-for-byte, and creates versioned
+`experiment.json` and `results.json`. It stores no task prompts or session text.
+
+## 4. Run control and treatment trials
+
+Prefer a source checkout's live eval harness when the tasks can be expressed as
+sanitized scenarios. It already supports `--prompt-overlay`, explicit trials,
+and aggregate live-cost enforcement. Otherwise run user-approved isolated
+trials, but keep task content outside experiment state.
+
+Interleave trials rather than running all control trials first. Keep every
+cohort setting fixed. For each trial, record only:
+
+- exact same opaque task ID in control and treatment for each trial number;
+- binary task success;
+- provider-reported cost;
+- total tokens;
+- wall-clock milliseconds;
+- tool-failure count.
+
+```sh
+python3 "${SKILL_DIR}/scripts/experiment.py" record \
+  --id ROUND --variant control --trial 1 --task-id task-1 \
+  --model 'EXACT_PROVIDER/MODEL' --effort 'EXACT_EFFORT' --success yes \
+  --cost 0.12 --tokens 3200 --wall-ms 18400 --tool-failures 0
+
+python3 "${SKILL_DIR}/scripts/experiment.py" record \
+  --id ROUND --variant treatment --trial 1 --task-id task-1 \
+  --model 'EXACT_PROVIDER/MODEL' --effort 'EXACT_EFFORT' --success yes \
+  --cost 0.11 --tokens 3000 --wall-ms 17200 --tool-failures 0
+```
+
+The runner rejects cohort drift, mismatched control/treatment task IDs,
+duplicate/out-of-range trials, and any record that crosses the aggregate cap.
+Do not record an estimated cost when the provider did not report one; stop the
+round instead.
+
+## 5. Review mechanically, then judge the design
+
+```sh
+python3 "${SKILL_DIR}/scripts/experiment.py" review --id ROUND
+```
+
+The deterministic verdict is:
+
+- `pass`: treatment reaches the success delta and every guardrail passes;
+- `reject`: success worsens or a guardrail exceeds its ceiling;
+- `inconclusive`: no regression, but the required improvement was not reached.
+
+Do not activate `reject` or `inconclusive`. For a `pass`, answer before asking
+to activate:
+
+- Is the result spread across tasks rather than one lucky trial?
+- Is always-on prompt text the smallest appropriate artifact, or should this be
+  an on-demand skill/workspace instruction instead?
+- What bad behavior does this guidance make easier?
+- Is the measured gain worth the prompt bytes on every affected request?
+
+Present the exact candidate and runner-produced configuration proposal. Wait
+for an explicit yes.
+
+## 6. Activate without bypassing host approval
+
+After explicit approval:
+
+```sh
+python3 "${SKILL_DIR}/scripts/experiment.py" activate --id ROUND --approve
+```
+
+This writes only the candidate overlay file. It prints a structured
+`uagent_configure` proposal and explicitly states that configuration was not
+changed. Submit that exact proposal through `uagent_configure`; do not edit a
+config file with `write_file`, Python, or shell. If the configuration proposal
+is denied, say that the overlay file exists but is inactive.
+
+A changed config applies according to its reported reload policy. State plainly
+whether a new turn or restart is needed.
+
+## 7. Observe and decide
+
+The controlled result establishes evidence, not permanence. Use the treatment
+for a short user-approved trial, then ask for an explicit outcome: helped,
+hurt, neutral, or inconclusive. Version one does not pretend metadata-only
+journals can infer that judgement.
+
+A successful overlay is still an experiment. Promotion to `AGENTS.md`, a
+workspace skill, memory, or source code is a separate reviewed change outside
+this round.
+
+## 8. Roll back
+
+On harm, expiry, user request, or failed activation:
+
+```sh
+python3 "${SKILL_DIR}/scripts/experiment.py" rollback --id ROUND
+```
+
+The runner restores the exact previous overlay bytes and permission mode or
+removes a target that did not exist before. It refuses when the active file
+changed externally. Then present its rollback configuration proposal and call
+`uagent_configure` only after human approval. Report separately whether file
+restoration and config restoration both succeeded.
+
+## Stop conditions
+
+Stop and report, without improvising, when:
+
+- there is no falsifiable hypothesis or held-out task;
+- route metadata does not prove cost reporting and hard budget enforcement;
+- the user will not approve the declared maximum spend;
+- a trial cannot be scored without retaining private text;
+- cohort settings drift;
+- the candidate, target, snapshot, result schema, or cost bound fails validation;
+- another actor changed the active overlay;
+- a CLI flag or environment variable owns `UAGENT_PROMPT_OVERLAY`;
+- the result is inconclusive.
+
+Do not respond to a stopped round by expanding scope to foreign logs, automatic
+memory, source changes, or upstream PR preparation.

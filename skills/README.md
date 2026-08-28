@@ -22,8 +22,10 @@ to the model when it opens the skill. Optional comma-separated
 runtime, install, and integration environment reference. It keeps that detail
 out of the base system prompt and loads it only for configuration work.
 
-`self-improve` runs one measured improvement iteration: real-session evidence,
-Pareto-constrained proposals, a slop scan, and committed baseline gates.
+`self-improve` runs one bounded personal prompt-overlay experiment. It
+pre-registers the hypothesis and limits, records control and treatment trials,
+calculates a deterministic verdict, requires human-approved activation, and
+preserves exact rollback without storing session text.
 
 `browser-use` drives Playwright CLI through the existing approved `run` tool.
 Its daemon reuses one browser across concise calls while snapshots stay outside

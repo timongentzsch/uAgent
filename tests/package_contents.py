@@ -44,6 +44,13 @@ def main():
     if f"{root}/bin/uagent" not in files:
         fail("bin/uagent is missing")
 
+    runner = f"{root}/share/uagent/skills/self-improve/scripts/experiment.py"
+    runner_member = next((member for member in members if member.name == runner), None)
+    if runner_member is None or not runner_member.isfile():
+        fail("self-improve experiment runner is missing")
+    if runner_member.mode & 0o111 == 0:
+        fail("self-improve experiment runner is not executable")
+
     prefix = f"{root}/share/uagent/skills/"
     packaged_skills = {name.removeprefix(prefix) for name in files if name.startswith(prefix)}
     if packaged_skills != expected_skills:

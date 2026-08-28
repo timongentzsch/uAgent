@@ -28,6 +28,10 @@ inline constexpr int kSharedFileMode = 0644;
 inline constexpr int64_t kMinYieldMs = 250;
 inline constexpr int64_t kMaxYieldMs = 30000;
 
+// Settle time for an activity write or resize that named no wait_ms: long
+// enough for the child to echo, short enough not to feel like a wait.
+inline constexpr int64_t kActivityInputSettleMs = 250;
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_LIMITS_H_

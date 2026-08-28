@@ -46,8 +46,7 @@ inline std::vector<SessionInfo> ListSessions() {
   std::string current = CanonicalCwd();
   std::string base = UagentDir(kHistoryDir);
   std::string scoped = base + "/" + WorkspaceId(current);
-  fs::create_directories(scoped, ec);
-  chmod(scoped.c_str(), kPrivateDirMode);
+  CreatePrivateDirectories(scoped);
   for (const std::string& dir : {scoped, base}) {
     for (auto& e : fs::directory_iterator(dir, ec)) {
       if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;

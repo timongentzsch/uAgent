@@ -1,0 +1,16 @@
+{
+  "schema": "uagent.eval.cost-authority.v1",
+  "routes": {
+    "provider/model": {
+      "non_billable": true,
+      "cheap": true,
+      "limits": {
+        "max_sessions": 2,
+        "max_model_calls": 3,
+        "max_tool_calls": 4,
+        "max_output_tokens_per_call": 512,
+        "max_session_seconds": 30
+      }
+    }
+  }
+}

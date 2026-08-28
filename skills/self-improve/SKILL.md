@@ -22,7 +22,11 @@ the design; it does not calculate the verdict or write µAgent configuration.
 - One round changes one artifact and declares one hypothesis before trials.
 - Control and treatment use the same model, effort, tasks, tool policy, memory
   policy, and budgets. Only the overlay differs.
-- Live trials have an aggregate cost ceiling. Missing cost data is not zero.
+- Live trials use one explicit authority mode. Reported-cost routes need a hard
+  aggregate USD ceiling. An operator-declared non-billable cheap route needs
+  hard session, model-call, tool-call, output-token, and wall-clock limits.
+  Missing cost data alone is never `$0`, and cheapness is never inferred from a
+  model name.
 - The treatment must improve success by the pre-registered amount and keep all
   guardrails within their declared regression ceiling.
 - Activation requires two approvals: `activate --approve` may write the overlay
@@ -56,7 +60,8 @@ Write down:
 - held-out tasks that could refute the claim;
 - minimum success-count improvement;
 - acceptable percentage regression for tokens, wall time, and tool failures;
-- trial count and aggregate dollar cap.
+- trial count and either an aggregate dollar cap or explicit non-billable cheap
+  limits.
 
 Reject a candidate when the outcome depends only on taste, there is no held-out
 task, or no affordable trial can distinguish it from the control.
@@ -70,8 +75,18 @@ prior value in that selected layer—not merely the effective value—for rollba
 if the key is absent in that layer, record it as unset. If a higher-precedence
 CLI flag or environment variable owns the setting, `uagent_configure` cannot
 make the proposed value effective: limit the work to isolated
-control/treatment subprocesses and stop before activation. Do not infer support
-or cost reporting from a model name.
+control/treatment subprocesses and stop before activation. Do not infer support,
+cost reporting, non-billable status, or cheapness from a model name.
+
+Before a live run, require a reviewed `uagent.eval.cost-authority.v1` file for
+the exact route. It must choose one mode:
+
+- `reported-cost`: `reports_cost` and `enforces_hard_budget` are both true;
+- `non-billable-cheap`: an operator explicitly sets `non_billable` and `cheap`
+  true and supplies every hard limit required by `benchmarks/eval.py`.
+
+The cheap declaration is authority, not a pricing guess. Do not create it from
+session logs, provider names, or a zero-valued unreported cost.
 
 Draft a small valid overlay JSON file in an approved scratch location. Prefer
 one localized `append` or `replace` entry. Do not regenerate the whole base
@@ -94,12 +109,20 @@ python3 "${SKILL_DIR}/scripts/experiment.py" init \
   --model 'EXACT_PROVIDER/MODEL' \
   --effort 'EXACT_EFFORT' \
   --trials 5 \
+  --cost-basis reported-cost \
   --max-cost 5.00 \
   --min-success-delta 1 \
   --max-guardrail-regression-pct 10 \
   --config-scope user \
   --previous-setting 'EXACT_PREVIOUS_VALUE'
 ```
+
+For an explicitly authorized non-billable cheap route, use
+`--cost-basis non-billable-cheap --max-cost 0 --cost-authority
+/path/to/reviewed-authority.json`. The runner validates the exact route with the
+same shared policy as the eval and stores only its SHA-256 plus normalized
+limits. A pre-existing reported-cost round cannot be silently converted; start
+a new round so its authority basis is pre-registered.
 
 Omit `--previous-setting` only when the key is genuinely absent from the
 selected `--config-scope` layer. Do not pass a lower-precedence effective value
@@ -110,16 +133,19 @@ snapshots an existing target byte-for-byte, and creates versioned
 ## 4. Run control and treatment trials
 
 Prefer a source checkout's live eval harness when the tasks can be expressed as
-sanitized scenarios. It already supports `--prompt-overlay`, explicit trials,
-and aggregate live-cost enforcement. Otherwise run user-approved isolated
-trials, but keep task content outside experiment state.
+sanitized scenarios. It supports `--prompt-overlay`, explicit trials, and both
+live authority modes. Pass the reviewed `--cost-authority` file. The eval
+injects cheap-route limits into every child process and rejects a planned
+session count above the declaration before the first call. Otherwise run
+user-approved isolated trials, but keep task content outside experiment state.
 
 Interleave trials rather than running all control trials first. Keep every
 cohort setting fixed. For each trial, record only:
 
 - exact same opaque task ID in control and treatment for each trial number;
 - binary task success;
-- provider-reported cost;
+- provider-reported cost, or literal `0` only when the round was pre-registered
+  as `non-billable-cheap` under a valid authority;
 - total tokens;
 - wall-clock milliseconds;
 - tool-failure count.
@@ -136,10 +162,16 @@ python3 "${SKILL_DIR}/scripts/experiment.py" record \
   --cost 0.11 --tokens 3000 --wall-ms 17200 --tool-failures 0
 ```
 
+For a non-billable cheap round, take `live_authority.sha256` from the eval
+report and pass it as `--authority-sha256` on every `record` command. The runner
+rejects a missing or different digest, so trials cannot be recorded under a
+weaker authority than the one pre-registered.
+
 The runner rejects cohort drift, mismatched control/treatment task IDs,
 duplicate/out-of-range trials, and any record that crosses the aggregate cap.
-Do not record an estimated cost when the provider did not report one; stop the
-round instead.
+For reported-cost rounds, do not record an estimated cost when the provider did
+not report one. For a pre-registered non-billable cheap round, `0` records the
+operator-declared billing basis; it is not presented as provider telemetry.
 
 ## 5. Review mechanically, then judge the design
 
@@ -212,8 +244,11 @@ restoration and config restoration both succeeded.
 Stop and report, without improvising, when:
 
 - there is no falsifiable hypothesis or held-out task;
-- route metadata does not prove cost reporting and hard budget enforcement;
-- the user will not approve the declared maximum spend;
+- route authority proves neither reported cost with a hard USD budget nor an
+  explicit non-billable cheap declaration with complete limits;
+- a proposed cheap declaration exceeds the eval's global ceilings or does not
+  apply to the exact route;
+- the user will not approve the declared maximum spend or cheap-route limits;
 - a trial cannot be scored without retaining private text;
 - cohort settings drift;
 - the candidate, target, snapshot, result schema, or cost bound fails validation;

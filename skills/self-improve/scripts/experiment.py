@@ -14,6 +14,8 @@ import tempfile
 from datetime import UTC, datetime
 from typing import Any
 
+from live_authority import AuthorityError, load_authority, normalize_route_authority
+
 SCHEMA = "uagent.improvement.experiment.v1"
 RESULTS_SCHEMA = "uagent.improvement.results.v1"
 MAX_HYPOTHESIS_CHARS = 1_000
@@ -271,6 +273,7 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
         manifest.get("cohort"),
         "experiment.cohort",
         {"model", "effort"},
+        {"cost_basis", "authority"},
     )
     if (
         not isinstance(cohort.get("model"), str)
@@ -279,6 +282,37 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or not 1 <= len(cohort["effort"]) <= 64
     ):
         raise ExperimentError("experiment.cohort is invalid")
+    cost_basis = cohort.get("cost_basis", "reported-cost")
+    if cost_basis not in ("reported-cost", "non-billable-cheap"):
+        raise ExperimentError("experiment.cohort.cost_basis is invalid")
+    authority_receipt = cohort.get("authority")
+    if cost_basis == "reported-cost":
+        if authority_receipt is not None:
+            raise ExperimentError("reported-cost experiment has a cheap authority receipt")
+    else:
+        receipt = require_keys(
+            authority_receipt,
+            "experiment.cohort.authority",
+            {"route", "mode", "limits", "sha256"},
+        )
+        if receipt["route"] != cohort["model"] or receipt["mode"] != "non-billable-cheap":
+            raise ExperimentError("experiment.cohort.authority route or mode is invalid")
+        sha256 = receipt["sha256"]
+        if (
+            not isinstance(sha256, str)
+            or len(sha256) != 64
+            or any(character not in "0123456789abcdef" for character in sha256)
+        ):
+            raise ExperimentError("experiment.cohort.authority sha256 is invalid")
+        try:
+            normalized = normalize_route_authority(
+                receipt["route"],
+                {"non_billable": True, "cheap": True, "limits": receipt["limits"]},
+            )
+        except AuthorityError as error:
+            raise ExperimentError(f"experiment.cohort.authority is invalid: {error}") from error
+        if normalized["limits"] != receipt["limits"]:
+            raise ExperimentError("experiment.cohort.authority limits are not normalized")
     decision = require_keys(
         manifest.get("decision"),
         "experiment.decision",
@@ -298,6 +332,10 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
         100.0,
     )
     max_cost = float(limits["max_cost_usd"])
+    if cost_basis == "reported-cost" and max_cost <= 0:
+        raise ExperimentError("reported-cost experiments require a positive max_cost_usd")
+    if cost_basis == "non-billable-cheap" and max_cost != 0:
+        raise ExperimentError("non-billable-cheap experiments require max_cost_usd=0")
     if len(records) > trials * len(VARIANTS):
         raise ExperimentError("results contain more records than the declared trial limit")
     seen = set()
@@ -317,6 +355,7 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
                 "wall_ms",
                 "tool_failures",
             },
+            {"authority_sha256"},
         )
         trial = record.get("trial")
         if isinstance(trial, bool) or not isinstance(trial, int) or not 1 <= trial <= trials:
@@ -331,6 +370,12 @@ def load_round(path: pathlib.Path) -> tuple[dict[str, Any], dict[str, Any]]:
             raise ExperimentError("results contain an invalid task_id") from error
         if not isinstance(record.get("success"), bool):
             raise ExperimentError("results contain an invalid success value")
+        recorded_authority = record.get("authority_sha256")
+        if cost_basis == "non-billable-cheap":
+            if recorded_authority != cohort["authority"]["sha256"]:
+                raise ExperimentError("cheap result authority digest does not match the round")
+        elif recorded_authority is not None:
+            raise ExperimentError("reported-cost result has a cheap authority digest")
         require_number(record.get("cost_usd"), "record.cost_usd", 0.0, MAX_COST_USD)
         require_number(record.get("tokens"), "record.tokens", 0, 100_000_000)
         require_number(record.get("wall_ms"), "record.wall_ms", 0, 86_400_000)
@@ -452,6 +497,31 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
         raise ExperimentError("previous_setting exceeds 4096 characters")
     trials = int(require_number(arguments.trials, "trials", 1, MAX_TRIALS))
     max_cost = require_number(arguments.max_cost, "max_cost", 0.0, MAX_COST_USD)
+    if arguments.cost_basis == "reported-cost" and max_cost <= 0:
+        raise ExperimentError("reported-cost experiments require a positive max_cost")
+    if arguments.cost_basis == "non-billable-cheap" and max_cost != 0:
+        raise ExperimentError("non-billable-cheap experiments require max_cost=0")
+    authority_receipt = None
+    if arguments.cost_basis == "non-billable-cheap":
+        if arguments.cost_authority is None:
+            raise ExperimentError("non-billable-cheap experiments require --cost-authority")
+        try:
+            authority = load_authority(
+                arguments.cost_authority.expanduser().resolve(), [arguments.model]
+            )
+        except AuthorityError as error:
+            raise ExperimentError(f"invalid cheap-route authority: {error}") from error
+        declaration = authority["routes"][arguments.model]
+        if declaration["mode"] != "non-billable-cheap":
+            raise ExperimentError("cost authority does not declare this route non-billable-cheap")
+        authority_receipt = {
+            "route": arguments.model,
+            "mode": declaration["mode"],
+            "limits": declaration["limits"],
+            "sha256": authority["sha256"],
+        }
+    elif arguments.cost_authority is not None:
+        raise ExperimentError("--cost-authority is only stored for non-billable-cheap rounds")
     min_delta = int(require_number(arguments.min_success_delta, "min_success_delta", 1, trials))
     max_regression = require_number(
         arguments.max_guardrail_regression_pct,
@@ -491,7 +561,12 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
         "status": "proposed",
         "hypothesis": arguments.hypothesis,
         "primary_metric": "success",
-        "cohort": {"model": arguments.model, "effort": arguments.effort},
+        "cohort": {
+            "model": arguments.model,
+            "effort": arguments.effort,
+            "cost_basis": arguments.cost_basis,
+            **({"authority": authority_receipt} if authority_receipt is not None else {}),
+        },
         "limits": {
             "trials_per_variant": trials,
             "max_cost_usd": max_cost,
@@ -549,6 +624,15 @@ def command_record(arguments: argparse.Namespace) -> dict[str, Any]:
     if not 1 <= arguments.trial <= maximum:
         raise ExperimentError(f"trial must be between 1 and {maximum}")
     cost = require_number(arguments.cost, "cost", 0.0, MAX_COST_USD)
+    cost_basis = manifest["cohort"].get("cost_basis", "reported-cost")
+    if cost_basis == "non-billable-cheap":
+        expected_authority = manifest["cohort"]["authority"]["sha256"]
+        if arguments.authority_sha256 != expected_authority:
+            raise ExperimentError("trial authority digest differs from the pre-registered round")
+    elif arguments.authority_sha256 is not None:
+        raise ExperimentError("reported-cost trials may not supply --authority-sha256")
+    if cost_basis == "non-billable-cheap" and cost != 0:
+        raise ExperimentError("non-billable-cheap trial cost must be 0")
     tokens = int(require_number(arguments.tokens, "tokens", 0, 100_000_000))
     wall_ms = int(require_number(arguments.wall_ms, "wall_ms", 0, 86_400_000))
     failures = int(require_number(arguments.tool_failures, "tool_failures", 0, 1_000_000))
@@ -570,6 +654,11 @@ def command_record(arguments: argparse.Namespace) -> dict[str, Any]:
         "tokens": tokens,
         "wall_ms": wall_ms,
         "tool_failures": failures,
+        **(
+            {"authority_sha256": arguments.authority_sha256}
+            if arguments.authority_sha256 is not None
+            else {}
+        ),
     }
     results["records"].append(record)
     results["records"].sort(key=lambda item: (VARIANTS.index(item["variant"]), item["trial"]))
@@ -794,6 +883,12 @@ def parser() -> argparse.ArgumentParser:
     init.add_argument("--model", required=True)
     init.add_argument("--effort", default="provider-default")
     init.add_argument("--trials", type=int, default=5)
+    init.add_argument(
+        "--cost-basis",
+        choices=("reported-cost", "non-billable-cheap"),
+        default="reported-cost",
+    )
+    init.add_argument("--cost-authority", type=pathlib.Path)
     init.add_argument("--max-cost", type=float, required=True)
     init.add_argument("--min-success-delta", type=int, default=1)
     init.add_argument("--max-guardrail-regression-pct", type=float, default=10.0)
@@ -815,6 +910,7 @@ def parser() -> argparse.ArgumentParser:
     record.add_argument("--effort", required=True)
     record.add_argument("--success", choices=("yes", "no"), required=True)
     record.add_argument("--cost", type=float, required=True)
+    record.add_argument("--authority-sha256")
     record.add_argument("--tokens", type=int, required=True)
     record.add_argument("--wall-ms", type=int, required=True)
     record.add_argument("--tool-failures", type=int, required=True)

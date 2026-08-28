@@ -66,16 +66,20 @@ python3 benchmarks/eval.py build/release/uagent --run --model provider/model \
   --cost-authority /path/to/authority.json
 ```
 
-Live runs are billable and require `--run`. Repeated runs require an explicit
+Live runs make real provider calls and require `--run`; they may be billable or
+explicitly operator-declared non-billable. Repeated runs require an explicit
 scenario and get a fresh workspace and HOME in deterministic seeded order. The
 report groups route/model/provenance cohorts and includes pass@1, pass@k,
 pass^k, a Wilson 95% interval, rounds, cumulative context, result characters,
 latency and normalized usage.
 
-`--max-cost` (default `$0.10`) is one aggregate ceiling, not a per-run
-allowance. Before making any call, live mode requires a `--cost-authority` JSON
-file with schema `uagent.eval.cost-authority.v1`; every selected route must set
-both `reports_cost` and `enforces_hard_budget` to true, for example:
+`--max-cost` (default `$0.10`) is one aggregate ceiling for routes that
+report cost, not a per-run allowance. Before making any call, live mode requires
+a `--cost-authority` JSON file with schema `uagent.eval.cost-authority.v1`.
+Each selected route chooses exactly one authority mode.
+
+A normal billable route must explicitly report costs and enforce the hard USD
+budget:
 
 ```json
 {
@@ -86,9 +90,46 @@ both `reports_cost` and `enforces_hard_budget` to true, for example:
 }
 ```
 
-A route without that explicit metadata is blocked rather than tried
-optimistically. A compacted run fails if its score is below its control,
-hermetically and live.
+An operator may instead declare an exact route both non-billable and cheap.
+This is an explicit policy statement, never a model-name heuristic. All five
+limits are mandatory:
+
+```json
+{
+  "schema": "uagent.eval.cost-authority.v1",
+  "routes": {
+    "local/cheap-model": {
+      "non_billable": true,
+      "cheap": true,
+      "limits": {
+        "max_sessions": 6,
+        "max_model_calls": 3,
+        "max_tool_calls": 8,
+        "max_output_tokens_per_call": 4096,
+        "max_session_seconds": 120
+      }
+    }
+  }
+}
+```
+
+The eval rejects declarations above global cheap-mode ceilings: 12 sessions,
+8 model calls per session, 32 tool calls per session, 8192 output tokens per
+model call, and 300 seconds per session. It enforces those limits in the child
+process through `UAGENT_MAX_STEPS`, `UAGENT_MAX_TOOL_CALLS`,
+`UAGENT_MAX_TOKENS`, `UAGENT_MAX_TURN_SECONDS`, request/stream deadlines, and a
+matching subprocess deadline. OpenRouter fallback is disabled for cheap-authority
+children so the exact attested route cannot silently escape to a different
+billing path. The planned session count is rejected before the first call.
+Results are checked against the same limits afterward.
+
+A route without one complete declaration is blocked rather than tried
+optimistically. `--max-cost` applies only to reported-cost routes; a
+non-billable declaration does not turn unavailable provider cost into a
+reported `$0`. The report records `live_authority.sha256` and each route's
+normalized authority mode so downstream experiment records can bind themselves
+to the exact reviewed file. A compacted run fails if its score is below its
+control, hermetically and live.
 
 Scenarios carry a `tier`. A `capability` scenario is reported but does not gate
 the build — it is a hill to climb — and graduates to `regression` once it holds

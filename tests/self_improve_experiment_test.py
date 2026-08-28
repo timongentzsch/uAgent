@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused lifecycle tests for the installed self-improvement runner."""
 
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -20,7 +21,11 @@ class ExperimentTest(unittest.TestCase):
         self.state = self.base / "state"
         self.candidate = self.base / "candidate.json"
         self.target = self.base / "active.json"
+        self.authority = self.base / "authority.json"
         self.candidate.write_text('{"append":"Test narrowly."}\n')
+        fixture = ROOT / "tests" / "fixtures" / "eval" / "cheap_authority.json"
+        self.authority.write_bytes(fixture.read_bytes())
+        self.authority_sha256 = hashlib.sha256(self.authority.read_bytes()).hexdigest()
 
     def run_command(self, *arguments, ok=True):
         result = subprocess.run(
@@ -40,6 +45,8 @@ class ExperimentTest(unittest.TestCase):
         *,
         trials="2",
         max_cost="2",
+        cost_basis="reported-cost",
+        cost_authority=None,
         previous_setting="/previous/overlay.json",
         ok=True,
     ):
@@ -61,7 +68,11 @@ class ExperimentTest(unittest.TestCase):
             trials,
             "--max-cost",
             max_cost,
+            "--cost-basis",
+            cost_basis,
         ]
+        if cost_authority is not None:
+            arguments.extend(("--cost-authority", str(cost_authority)))
         if previous_setting is not None:
             arguments.extend(("--previous-setting", previous_setting))
         return self.run_command(*arguments, ok=ok)
@@ -78,9 +89,10 @@ class ExperimentTest(unittest.TestCase):
         task_id=None,
         model="provider/model",
         effort="high",
+        authority_sha256=None,
         ok=True,
     ):
-        return self.run_command(
+        arguments = [
             "record",
             "--id",
             "pilot",
@@ -104,8 +116,38 @@ class ExperimentTest(unittest.TestCase):
             "1000",
             "--tool-failures",
             failures,
-            ok=ok,
+        ]
+        if authority_sha256 is not None:
+            arguments.extend(("--authority-sha256", authority_sha256))
+        return self.run_command(*arguments, ok=ok)
+
+    def test_non_billable_cheap_requires_explicit_zero_cost(self):
+        missing = self.initialize(
+            trials="1", max_cost="0", cost_basis="non-billable-cheap", ok=False
         )
+        self.assertIn("require --cost-authority", missing.stderr)
+        self.initialize(
+            trials="1",
+            max_cost="0",
+            cost_basis="non-billable-cheap",
+            cost_authority=self.authority,
+        )
+        rejected = self.record(
+            "control",
+            1,
+            "yes",
+            cost="0.01",
+            authority_sha256=self.authority_sha256,
+            ok=False,
+        )
+        self.assertIn("trial cost must be 0", rejected.stderr)
+        missing_digest = self.record("control", 1, "no", cost="0", ok=False)
+        self.assertIn("authority digest differs", missing_digest.stderr)
+        self.record("control", 1, "no", cost="0", authority_sha256=self.authority_sha256)
+        self.record("treatment", 1, "yes", cost="0", authority_sha256=self.authority_sha256)
+        status = json.loads(self.run_command("status", "--id", "pilot").stdout)
+        self.assertEqual(status["cohort"]["cost_basis"], "non-billable-cheap")
+        self.assertEqual(status["spent_usd"], 0)
 
     def test_passing_lifecycle_restores_exact_snapshot(self):
         previous = b'{"replace":{"Changes":"Original bytes."}}\n'
@@ -148,6 +190,9 @@ class ExperimentTest(unittest.TestCase):
         self.assertEqual(rolled_back["configuration_proposal"]["changes"][0]["operation"], "unset")
 
     def test_rejects_invalid_bounds_cost_and_schema(self):
+        zero_reported = self.initialize(max_cost="0", ok=False)
+        self.assertIn("reported-cost experiments require a positive max_cost", zero_reported.stderr)
+
         self.candidate.write_text('{"append":{"wrong":"shape"}}\n')
         invalid_overlay = self.initialize(ok=False)
         self.assertIn("overlay.append must be a nonempty string", invalid_overlay.stderr)

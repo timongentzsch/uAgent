@@ -121,12 +121,27 @@ def test_legacy_mcp_server_is_rejected_without_initialize_fallback(root, home):
         f"marker = pathlib.Path({str(marker)!r})\n"
         "for line in sys.stdin:\n"
         "    message = json.loads(line)\n"
-        "    if message.get('method') == 'initialize':\n"
+        "    method = message.get('method')\n"
+        "    if 'id' not in message:\n"
+        "        continue\n"
+        # The legacy lifecycle works here, so a tool would appear if uagent
+        # fell back to it. Only server/discover is refused.
+        "    if method == 'initialize':\n"
         "        marker.write_text('called', encoding='utf-8')\n"
-        "    if 'id' in message:\n"
+        "        result = {'protocolVersion': '2025-11-25', "
+        "'capabilities': {'tools': {}}, "
+        "'serverInfo': {'name': 'old', 'version': '1'}}\n"
+        "        reply = {'jsonrpc': '2.0', 'id': message['id'], "
+        "'result': result}\n"
+        "    elif method == 'tools/list':\n"
+        "        tools = [{'name': 'echo', 'description': 'legacy echo', "
+        "'inputSchema': {'type': 'object', 'properties': {}}}]\n"
+        "        reply = {'jsonrpc': '2.0', 'id': message['id'], "
+        "'result': {'tools': tools}}\n"
+        "    else:\n"
         "        reply = {'jsonrpc': '2.0', 'id': message['id'], "
         "'error': {'code': -32601, 'message': 'method not found'}}\n"
-        "        print(json.dumps(reply), flush=True)\n",
+        "    print(json.dumps(reply), flush=True)\n",
         encoding="utf-8",
     )
     (workspace / ".mcp.json").write_text(

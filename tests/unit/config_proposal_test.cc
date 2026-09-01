@@ -87,6 +87,7 @@ void TestConfigProposalAndCommit() {
   const std::filesystem::path config = test.home / ".uagent" / ".config";
   const std::string original =
       "# keep me\n"
+      "# COMMENT_API_KEY=not-an-assignment\n"
       "UAGENT_MAX_TOOL_CALLS=40\n"
       "UAGENT_WEB_SEARCH_API_KEY=canary-secret\n"
       "QWEN_GPU_API_KEY=adjacent-provider-secret\n"
@@ -204,6 +205,8 @@ void TestConfigProposalAndCommit() {
   // A neighbouring secret is redacted out of the preview.
   CHECK(proposal.Preview().find("canary-secret") == std::string::npos);
   CHECK(proposal.Preview().find("adjacent-provider-secret") ==
+        std::string::npos);
+  CHECK(proposal.Preview().find("# COMMENT_API_KEY=not-an-assignment") !=
         std::string::npos);
   CHECK(proposal.diff.find("+ UAGENT_MAX_TOOL_CALLS=120") != std::string::npos);
 

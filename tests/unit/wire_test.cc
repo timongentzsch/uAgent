@@ -370,6 +370,49 @@ void TestWireStreams() {
   CHECK(CollectToolCalls(anthropic_calls, anthropic_result));
   CHECK(anthropic_result.tool_calls.size() == 1);
   CHECK(anthropic_result.tool_calls[0].args == R"({"path":"x"})");
+
+  // Chunk-boundary equivalence: the decoders are always fed by SseParser in
+  // production, so the same bytes framed differently must decode identically.
+  auto decode_split = [](WireApi api, const std::string& wire, size_t split) {
+    SseParser parser;
+    CHECK(parser.Feed(std::string_view(wire).substr(0, split)));
+    CHECK(parser.Feed(std::string_view(wire).substr(split)));
+    CHECK(parser.Finish());
+    ChatResult result;
+    std::map<int, ToolCall> calls;
+    WireStreamState state;
+    std::string text;
+    for (const SseEvent& event : parser.TakeEvents()) {
+      text +=
+          DecodeWireStreamEvent(api, event.data, result, calls, state).content;
+    }
+    return text;
+  };
+
+  const std::string responses_wire =
+      "event: response.output_text.delta\n"
+      R"(data: {"type":"response.output_text.delta","delta":"al"})"
+      "\n\n"
+      R"(data: {"type":"response.output_text.delta","delta":"pha"})"
+      "\n\n";
+  for (size_t split = 0; split <= responses_wire.size(); ++split) {
+    CHECK(decode_split(WireApi::kResponses, responses_wire, split) == "alpha");
+  }
+
+  const std::string anthropic_wire =
+      R"(data: {"type":"content_block_start","index":0,)"
+      R"("content_block":{"type":"text","text":""}})"
+      "\n\n"
+      R"(data: {"type":"content_block_delta","index":0,)"
+      R"("delta":{"type":"text_delta","text":"be"}})"
+      "\n\n"
+      R"(data: {"type":"content_block_delta","index":0,)"
+      R"("delta":{"type":"text_delta","text":"ta"}})"
+      "\n\n";
+  for (size_t split = 0; split <= anthropic_wire.size(); ++split) {
+    CHECK(decode_split(WireApi::kAnthropicMessages, anthropic_wire, split) ==
+          "beta");
+  }
 }
 
 }  // namespace uagent

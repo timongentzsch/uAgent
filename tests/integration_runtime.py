@@ -395,12 +395,8 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_prompt_overlay_replaces_base_sections(root, home):
-    """The experiment overlay may reword the base prompt and nothing else.
-
-    Rebuilding to compare two prompt variants is what stops prompt work from
-    being measured, so the swap is a file; authority stays with the host.
-    """
+def test_prompt_overlay_reaches_the_live_prompt(root, home):
+    """The overlay file reaches the request; its semantics are protocol_test.cc's."""
     workspace = root / "overlay-workspace"
     workspace.mkdir(parents=True)
     overlay = workspace / "overlay.json"
@@ -416,16 +412,8 @@ def test_prompt_overlay_replaces_base_sections(root, home):
 
     def verify(_, body):
         prompt = body["messages"][0].get("content", "")
-        valid = (
-            "OVERLAY-ANSWER-RULE" in prompt
-            and "OVERLAY-TAIL" in prompt
-            # The replaced section is gone, its neighbours are intact, and the
-            # host-owned sections still follow the overlaid base.
-            and "Cite code as path:line" not in prompt
-            and "## Delegation" in prompt
-            and "Inquiries do not authorize" in prompt
-            and "[HOST CAPABILITIES]" in prompt
-            and prompt.index("OVERLAY-TAIL") < prompt.index("[HOST CAPABILITIES]")
+        valid = "OVERLAY-ANSWER-RULE" in prompt and prompt.index("OVERLAY-TAIL") < prompt.index(
+            "[HOST CAPABILITIES]"
         )
         return event({"content": "overlay-ok" if valid else f"overlay-bad: {prompt[:400]}"})
 
@@ -435,19 +423,6 @@ def test_prompt_overlay_replaces_base_sections(root, home):
         result = run(workspace, env, "-p", "reply")
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "overlay-ok", result.stdout)
-
-    # An unreadable or malformed overlay is ignored rather than fatal: an
-    # experiment must not be able to break a session.
-    def baseline(_, body):
-        prompt = body["messages"][0].get("content", "")
-        return event({"content": "base-ok" if "Cite code as path:line" in prompt else "base-bad"})
-
-    overlay.write_text("{not json", encoding="utf-8")
-    with Server([baseline]) as server:
-        env = base_env(home, server.url)
-        env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
-        result = run(workspace, env, "-p", "reply")
-        assert_true(result.stdout.strip() == "base-ok", result.stdout)
 
 
 def test_project_instructions_precede_first_turn(root, home):

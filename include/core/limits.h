@@ -33,10 +33,11 @@ inline constexpr int64_t kMaxYieldMs = 30000;
 inline constexpr int64_t kActivityInputSettleMs = 250;
 
 // Background slots held back from delegated children. Subagents, foreground
-// commands, background jobs and detached terminals all draw on the single
-// UAGENT_MAX_BACKGROUND_JOBS pool, so an unrestricted fan-out of children
-// leaves the parent unable to build, test or search -- the very work it needs
-// in order to check what those children produced.
+// commands and background jobs share the UAGENT_MAX_BACKGROUND_JOBS pool
+// (detached terminals are counted separately), so an unbounded fan-out of
+// children would leave the parent unable to build, test or search -- the very
+// work it needs in order to check what those children produced. The guarantee
+// only bites once the pool exceeds this headroom.
 inline constexpr int64_t kDelegatedJobHeadroom = 2;
 
 }  // namespace uagent

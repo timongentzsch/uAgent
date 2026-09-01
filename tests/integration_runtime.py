@@ -424,6 +424,19 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "overlay-ok", result.stdout)
 
+    # An overlay file that cannot be parsed is ignored rather than fatal. Only
+    # the loader sees this: ApplyPromptOverlay is handed parsed json.
+    def baseline(_, body):
+        prompt = body["messages"][0].get("content", "")
+        return event({"content": "base-ok" if "Cite code as path:line" in prompt else "base-bad"})
+
+    overlay.write_text("{not json", encoding="utf-8")
+    with Server([baseline]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
+        result = run(workspace, env, "-p", "reply")
+        assert_true(result.stdout.strip() == "base-ok", result.stdout)
+
 
 def test_project_instructions_precede_first_turn(root, home):
     workspace = root / "instructions-workspace"

@@ -178,13 +178,15 @@ ToolResult JobLimitError(int64_t max_jobs) {
 
 // A child refused for headroom must not read as the pool being full: the
 // parent can still run its own commands, and that is the point.
-ToolResult DelegatedJobLimitError(int64_t max_children) {
+ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
   return ToolFailure(ToolErrorCode::kLimitExceeded,
-                     "error: delegated child limit reached (" +
+                     "error: no free background slot for a delegated child (at "
+                     "most " +
                          std::to_string(max_children) +
-                         " concurrent children); the remaining background "
-                         "slots stay reserved for this agent's own commands. "
-                         "Wait for a child to finish before starting another");
+                         " concurrent children of " +
+                         std::to_string(max_jobs) +
+                         " background slots; the rest stay reserved for this "
+                         "agent's own commands). Wait for a child to finish");
 }
 
 // A detached terminal outlives the turn that starts it: its output goes to a
@@ -278,10 +280,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
   int64_t max_children =
       std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
-  std::optional<ActivityReservation> reservation =
-      supervisor.ReserveActivity(is_subagent ? max_children : max_jobs);
+  std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
+      max_jobs, is_subagent ? max_children : 0);
   if (!reservation) {
-    return {is_subagent ? DelegatedJobLimitError(max_children)
+    return {is_subagent ? DelegatedJobLimitError(max_children, max_jobs)
                         : JobLimitError(max_jobs)};
   }
   int64_t window =

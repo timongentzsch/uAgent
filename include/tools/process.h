@@ -113,10 +113,11 @@ class ActivityReservation {
 
  private:
   friend class ProcessSupervisor;
-  explicit ActivityReservation(ProcessSupervisor* supervisor)
-      : supervisor_(supervisor) {}
+  ActivityReservation(ProcessSupervisor* supervisor, bool subagent)
+      : supervisor_(supervisor), subagent_(subagent) {}
   void Reset();
   ProcessSupervisor* supervisor_ = nullptr;
+  bool subagent_ = false;
 };
 
 class ProcessSupervisor {
@@ -129,7 +130,9 @@ class ProcessSupervisor {
   // Takes ownership of output_fd, input_fd, and log_fd.
   void RegisterIo(const std::shared_ptr<ActivitySession>& session,
                   int output_fd, int input_fd, int log_fd, int64_t log_limit);
-  std::optional<ActivityReservation> ReserveActivity(int64_t max_pending);
+  // max_subagents caps delegated children only; 0 means no per-kind cap.
+  std::optional<ActivityReservation> ReserveActivity(int64_t max_pending,
+                                                     int64_t max_subagents = 0);
   std::optional<BgJob> RemoveForeground(pid_t pid);
   std::optional<BgJob> MoveForegroundToBackground(pid_t pid);
   size_t ForegroundCount() const;
@@ -160,8 +163,8 @@ class ProcessSupervisor {
 
  private:
   friend class ActivityReservation;
-  std::optional<int64_t> CommitReservation(BgJob job);
-  void ReleaseReservation();
+  std::optional<int64_t> CommitReservation(BgJob job, bool subagent);
+  void ReleaseReservation(bool subagent);
   std::optional<BgJob> TakeForegroundLocked(pid_t pid) UAGENT_REQUIRES(mutex_);
   void AssignId(BgJob& job) UAGENT_REQUIRES(mutex_);
   size_t IndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
@@ -188,6 +191,7 @@ class ProcessSupervisor {
   bool child_wake_registered_ = false;
   bool stopping_ UAGENT_GUARDED_BY(mutex_) = false;
   int64_t reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
+  int64_t subagent_reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t generation_ UAGENT_GUARDED_BY(mutex_) = 0;
   int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;
 };

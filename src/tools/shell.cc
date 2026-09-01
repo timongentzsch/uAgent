@@ -176,6 +176,17 @@ ToolResult JobLimitError(int64_t max_jobs) {
       "error: background job limit reached (" + std::to_string(max_jobs) + ")");
 }
 
+// A child refused for headroom must not read as the pool being full: the
+// parent can still run its own commands, and that is the point.
+ToolResult DelegatedJobLimitError(int64_t max_children) {
+  return ToolFailure(ToolErrorCode::kLimitExceeded,
+                     "error: delegated child limit reached (" +
+                         std::to_string(max_children) +
+                         " concurrent children); the remaining background "
+                         "slots stay reserved for this agent's own commands. "
+                         "Wait for a child to finish before starting another");
+}
+
 // A detached terminal outlives the turn that starts it: its output goes to a
 // rotating log through a pump child, it has no session, no pipe and no
 // deadline, and an identical live command is reused rather than started twice.
@@ -263,9 +274,16 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
 
   // Everything below is the supervised foreground lifecycle.
   int64_t max_jobs = MaxBackgroundJobs();
+  bool is_subagent =
+      ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
+  int64_t max_children =
+      std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
   std::optional<ActivityReservation> reservation =
-      supervisor.ReserveActivity(max_jobs);
-  if (!reservation) return {JobLimitError(max_jobs)};
+      supervisor.ReserveActivity(is_subagent ? max_children : max_jobs);
+  if (!reservation) {
+    return {is_subagent ? DelegatedJobLimitError(max_children)
+                        : JobLimitError(max_jobs)};
+  }
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
   std::string log;
@@ -421,8 +439,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
 
-  bool is_subagent =
-      ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
   std::string subagent_label =
       spec.job_kind.empty() ? "subagent" : spec.job_kind;
   std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);

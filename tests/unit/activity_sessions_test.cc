@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/core/file_watch.h"
+#include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/tools/jobs.h"
@@ -126,10 +127,44 @@ void TestActivityBufferAndAdmission() {
     retained_ids.push_back(id);
     std::optional<BgJob> completed = retained.Take(id);
     CHECK(completed.has_value());
+    if (completed) {
+      std::lock_guard<std::mutex> lock(session->mutex);
+      CHECK(TransitionActivityLocked(*session, ActivityState::kExited));
+      CHECK(TransitionActivityLocked(*session, ActivityState::kDrained));
+    }
     if (completed) retained.Retain(std::move(*completed));
   }
   CHECK(!retained.Find(retained_ids.front()).has_value());
   CHECK(retained.Find(retained_ids.back()).has_value());
+}
+
+void TestActivityStateGraph() {
+  ActivitySession session;
+  {
+    std::lock_guard<std::mutex> lock(session.mutex);
+    CHECK(TransitionActivityLocked(session, ActivityState::kRunning));
+    CHECK(!TransitionActivityLocked(session, ActivityState::kDrained));
+    CHECK(session.state == ActivityState::kRunning);
+    CHECK(TransitionActivityLocked(session, ActivityState::kExited));
+    CHECK(TransitionActivityLocked(session, ActivityState::kDrained));
+    CHECK(TransitionActivityLocked(session, ActivityState::kDelivered));
+    CHECK(!TransitionActivityLocked(session, ActivityState::kStopped));
+  }
+
+  auto stopped = std::make_shared<ActivitySession>();
+  {
+    std::lock_guard<std::mutex> stopped_lock(stopped->mutex);
+    CHECK(TransitionActivityLocked(*stopped, ActivityState::kRunning));
+    CHECK(TransitionActivityLocked(*stopped, ActivityState::kStopped));
+    CHECK(!TransitionActivityLocked(*stopped, ActivityState::kDelivered));
+  }
+  ProcessSupervisor supervisor;
+  CHECK(supervisor.TryAdd({899990, "", "stopped", false, "", 0, stopped}, 1));
+  int64_t id = ActivityId(supervisor.Snapshot().front());
+  std::optional<BgJob> job = supervisor.Take(id);
+  CHECK(job.has_value());
+  if (job) supervisor.Retain(std::move(*job));
+  CHECK(!supervisor.Find(id).has_value());
 }
 
 void TestActivitySessions() {
@@ -194,6 +229,47 @@ void TestActivitySessions() {
         ToolActivityWait(pty_processes, {id}, "all", 2000, context);
     CHECK(completed.Ok());
     CHECK(completed.output.find("exit code 0") != std::string::npos);
+  }
+
+  // A persisted PID must never authorize signalling a different process that
+  // later acquired the same numeric id. Corrupt the recorded start identity,
+  // drop in-memory ownership, and prove stop cleans metadata without killing
+  // the still-live process group.
+  CHECK(!ProcessIdentity(getpid()).empty());
+  CHECK(ProcessIdentity(pid_t{99999999}).empty());
+  TestWorkspace detached_workspace("detached-identity");
+  ProcessSupervisor detached_launcher;
+  ShellCommandResult detached = RunShellCommand(
+      detached_launcher, context,
+      {.command = "sleep 20", .detach = true, .immediate = true});
+  CHECK(detached.result.Ok());
+  std::vector<BgJob> detached_jobs = detached_launcher.Snapshot();
+  CHECK(detached_jobs.size() == 1);
+  if (!detached_jobs.empty()) {
+    pid_t pid = detached_jobs.front().pid;
+    std::optional<BgJob> released = detached_launcher.Take(pid);
+    CHECK(released.has_value());
+    std::string record_path = DetachedRecordPath(pid);
+    std::ifstream input(record_path);
+    json record = json::parse(input, nullptr, false);
+    CHECK(record.is_object());
+    record["process_identity"] = "not-the-live-process";
+    input.close();
+    std::ofstream output(record_path, std::ios::trunc);
+    output << JsonDump(record, 2) << '\n';
+    output.close();
+
+    ProcessSupervisor detached_reader;
+    ToolResult poll = ToolActivityOutput(detached_reader, pid);
+    CHECK(poll.Ok());
+    CHECK(poll.activity_terminal);
+    CHECK(poll.output.starts_with("[exited · activity "));
+    ToolResult stopped = ToolActivityStop(detached_reader, pid);
+    CHECK(stopped.Ok());
+    CHECK(stopped.output.find("already exited") != std::string::npos);
+    CHECK(ProcessGroupAlive(pid));
+    CHECK(!std::filesystem::exists(record_path));
+    KillProcess(pid);
   }
 }
 

@@ -26,7 +26,7 @@ namespace uagent {
 enum class TerminalImageProtocol { kNone, kIterm, kItty };
 
 inline TerminalImageProtocol DetectTerminalImageProtocol() {
-  std::string forced = EnvStr("UAGENT_IMAGE_PROTOCOL");
+  std::string forced = ImageProtocol();
   if (forced == "iterm") return TerminalImageProtocol::kIterm;
   if (forced == "kitty") return TerminalImageProtocol::kItty;
   if (forced == "ascii" || forced == "none") {

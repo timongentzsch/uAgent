@@ -99,6 +99,10 @@ int64_t SubagentTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
 }
 
+int64_t SubagentCallsPerTurn() {
+  return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
+}
+
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would
 // also clamp any thinking budget derived from it.
 int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
@@ -197,6 +201,10 @@ int64_t ImageMaxColumns() {
   return LongSetting(Cfg("UAGENT_IMAGE_MAX_COLUMNS"));
 }
 
+std::string ImageProtocol() {
+  return StringSetting(Cfg("UAGENT_IMAGE_PROTOCOL"));
+}
+
 int64_t ImageColumns(int64_t available) {
   return LongSetting(Cfg("UAGENT_IMAGE_COLUMNS"), available);
 }
@@ -223,6 +231,10 @@ int64_t TerminalRecordDays() {
   return LongSetting(Cfg("UAGENT_TERMINAL_DAYS"));
 }
 
+std::string ShellEnvironmentAllowlist() {
+  return StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
+}
+
 namespace {
 
 // The typed tables now carry only what a descriptor cannot: which RuntimeConfig
@@ -246,6 +258,9 @@ constexpr FieldBinding<int64_t> kLongOptions[] = {
     {&Cfg("UAGENT_MAX_STEPS"), &RuntimeConfig::max_steps},
     {&Cfg("UAGENT_MAX_TOOL_CALLS"), &RuntimeConfig::max_tool_calls},
     {&Cfg("UAGENT_MAX_TURN_SECONDS"), &RuntimeConfig::max_turn_seconds},
+    {&Cfg("UAGENT_MAX_TURN_TOKENS"), &RuntimeConfig::max_turn_tokens},
+    {&Cfg("UAGENT_SESSION_TOKEN_BUDGET"),
+     &RuntimeConfig::session_token_budget},
     {&Cfg("UAGENT_TOOL_TIMEOUT"), &RuntimeConfig::tool_timeout_s},
     {&Cfg("UAGENT_WEB_SEARCH_TIMEOUT"), &RuntimeConfig::web_search_timeout_s},
     {&Cfg("UAGENT_WEB_SEARCH_MAX_TOKENS"),
@@ -255,6 +270,7 @@ constexpr FieldBinding<int64_t> kLongOptions[] = {
      &RuntimeConfig::web_search_max_results},
     {&Cfg("UAGENT_WEB_SEARCH_MAX_USES"), &RuntimeConfig::web_search_max_uses},
     {&Cfg("UAGENT_MCP_TIMEOUT"), &RuntimeConfig::mcp_timeout_s},
+    {&Cfg("UAGENT_MCP_STARTUP_GRACE"), &RuntimeConfig::mcp_startup_grace_s},
     {&Cfg("UAGENT_MCP_SERVERS"), &RuntimeConfig::mcp_servers},
     {&Cfg("UAGENT_MCP_PAGES"), &RuntimeConfig::mcp_pages},
     {&Cfg("UAGENT_MCP_TOOLS"), &RuntimeConfig::mcp_tools},

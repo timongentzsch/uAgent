@@ -435,9 +435,9 @@ std::string UrlHost(std::string url) {
 
 const std::vector<std::string>& CredentialKeyStems() {
   static const std::vector<std::string> kStems = {
-      "api_key", "api-key",   "apikey",     "access_token",
-      "token",   "auth",      "authorization", "password",
-      "passwd",  "secret",    "credential"};
+      "api_key", "api-key", "apikey",        "access_token",
+      "token",   "auth",    "authorization", "password",
+      "passwd",  "secret",  "credential"};
   return kStems;
 }
 

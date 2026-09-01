@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <chrono>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -30,20 +31,20 @@ void TestOpenRouterServerSearch() {
          {{"name", "read_file"}, {"parameters", json::object()}}}}});
 
   bool web_available = false;
-  json body = api.BuildChatBody(json::array(), schemas, "", &web_available);
+  json body = api.BuildRequestBody(json::array(), schemas, "", &web_available);
   CHECK(body["tools"].size() == 2);
   CHECK(body["tools"][0]["function"]["name"] == "web_search");
   CHECK(web_available);
 
   web_available = true;
-  body = api.BuildChatBody(json::array(), json::array({schemas[1]}), "",
-                           &web_available);
+  body = api.BuildRequestBody(json::array(), json::array({schemas[1]}), "",
+                              &web_available);
   CHECK(body["tools"].size() == 1);
   CHECK(body["tools"][0]["function"]["name"] == "read_file");
   CHECK(!web_available);
 
   auto check_native_search = [&] {
-    body = api.BuildChatBody(json::array(), schemas);
+    body = api.BuildRequestBody(json::array(), schemas);
     CHECK(body["tools"].size() == 2);
     CHECK(body["tools"][0]["function"]["name"] == "web_search");
   };
@@ -60,7 +61,7 @@ void TestOpenRouterServerSearch() {
   api.base_url = "https://openrouter.ai/api/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
-  body = api.BuildChatBody(json::array(), json::array());
+  body = api.BuildRequestBody(json::array(), json::array());
   CHECK(!body.contains("tools"));  // compact/title requests stay tool-free
 
   Usage usage;
@@ -78,6 +79,35 @@ void TestOpenRouterServerSearch() {
   usage.Add({{"cost", 0.0}});
   CHECK(usage.cost_reported);
   CHECK(UsageFromJson(UsageJson(usage)).cost_reported);
+
+  // Provider and persisted usage are untrusted accounting inputs. Negative
+  // values cannot reduce a budget, and huge totals saturate instead of
+  // wrapping into negative numbers.
+  Usage hostile;
+  hostile.Add({{"prompt_tokens", -10},
+               {"completion_tokens", -20},
+               {"cache_read_input_tokens", -30},
+               {"cost", -4.0},
+               {"server_tool_use_details", {{"web_search_requests", -5}}}});
+  CHECK(hostile.input == 0);
+  CHECK(hostile.output == 0);
+  CHECK(hostile.cache_read == 0);
+  CHECK(hostile.web_searches == 0);
+  CHECK(hostile.cost == 0);
+  CHECK(!hostile.cost_reported);
+  Usage enormous;
+  enormous.output = std::numeric_limits<int64_t>::max();
+  enormous.reasoning = std::numeric_limits<int64_t>::max();
+  enormous.input = std::numeric_limits<int64_t>::max();
+  enormous.cache_read = std::numeric_limits<int64_t>::max();
+  CHECK(enormous.GeneratedTokens() == std::numeric_limits<int64_t>::max());
+  CHECK(enormous.CacheHitPercent() == 50);
+  enormous.Merge(enormous);
+  CHECK(enormous.output == std::numeric_limits<int64_t>::max());
+  Usage restored = UsageFromJson(
+      {{"input", -1}, {"output", -2}, {"cost", -3.0}, {"web_searches", -4}});
+  CHECK(restored.input == 0 && restored.output == 0);
+  CHECK(restored.cost == 0 && restored.web_searches == 0);
 
   // Every OpenAI-compatible spelling must land on the same invariant: `input`
   // excludes the cached part, so input + cache_read is the whole prompt, and

@@ -959,12 +959,8 @@ def test_self_configuration_commits_after_approval(root, home):
         assert_true("UNKNOWN_KEY=kept" in written, written)
 
 
-def test_approval_remembers_always_and_forwards_a_refusal(root, home):
-    """Three answers: once, always for this command, and a refusal that talks.
-
-    "always" is keyed on the tool plus the shell command's first word, so the
-    second `git` call is silent and `rm` still has to ask.
-    """
+def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home):
+    """An exact command is remembered; a different command still asks."""
     refusal = {}
 
     def route(_, body):
@@ -976,7 +972,7 @@ def test_approval_remembers_always_and_forwards_a_refusal(root, home):
         if not results:
             return tool_call("run", {"command": "git status --short"})
         if len(results) == 1:
-            return tool_call("run", {"command": "git log -1 --oneline"})
+            return tool_call("run", {"command": "git status --short"})
         return tool_call("run", {"command": "rm -rf /tmp/uagent-nothing"})
 
     with Server([route]) as server:
@@ -984,8 +980,13 @@ def test_approval_remembers_always_and_forwards_a_refusal(root, home):
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"always run git this session"),
-                (b"a\n", b"always run rm this session"),
+                (b"go\n", b"always this exact command this session"),
+                (
+                    b"a\n",
+                    b"run(rm -rf /tmp/uagent-nothing)",
+                    b"always this exact command this session",
+                    None,
+                ),
                 (b"use git log instead\n", b"approval-done"),
                 b"/quit\n",
             ],
@@ -993,13 +994,9 @@ def test_approval_remembers_always_and_forwards_a_refusal(root, home):
         )
         assert_true(status == 0, output)
         assert_true(b"[y] once" in output and b"[n] no" in output, output)
-        # "always" named the command it was granted for, and the second git
-        # call ran between its own header and rm's without asking again.
-        assert_true(b"always run git this session" in output, output)
-        assert_true(b"always run rm this session" in output, output)
-        granted = output.index(b"run(git log -1 --oneline)")
-        asked_again = output.index(b"run(rm -rf /tmp/uagent-nothing)")
-        assert_true(b"allow run?" not in output[granted:asked_again], output)
+        # Reaching rm proves the exact repeat ran without consuming the refusal;
+        # rm is a different command, so that refusal is delivered there.
+        assert_true(b"run(rm -rf /tmp/uagent-nothing)" in output, output)
         # The refusal reached the model as guidance rather than a bare denial.
         assert_true(refusal.get("steered"), (refusal, output))
         assert_true(b"approval-done" in output, output)

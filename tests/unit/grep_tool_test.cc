@@ -47,8 +47,6 @@ void TestGrepTool() {
   CHECK(filenames.Ok());
   CHECK(filenames.output.find("one.cpp") != std::string::npos);
   CHECK(filenames.output.find("needle one") == std::string::npos);
-  CHECK(ToolGrep(supervisor, "one", root.string(), "", 1, {}, true).error ==
-        ToolErrorCode::kInvalidArguments);
   ToolResult contextual =
       ToolGrep(supervisor, "needle two", source.string(), "", 1);
   CHECK(contextual.output.find("needle one") != std::string::npos);
@@ -145,6 +143,13 @@ void TestGrepTool() {
     CHECK(ValidationMessage(*run, {{"command", "sudo tlmgr install tcolorbox"}})
               .find("privileged commands") != std::string::npos);
   }
+  const Tool* grep = FindTool(lean_tools, "grep");
+  json file_search = {
+      {"pattern", "one\\.cpp$"}, {"mode", "files"}, {"context", 7}};
+  if (grep) CanonicalizeToolArguments(*grep, file_search);
+  CHECK(grep != nullptr);
+  CHECK(!file_search.contains("context"));
+  CHECK(grep && !FindToolArgumentIssue(*grep, file_search));
   auto evaluator_tools = BuiltinTools(supervisor, root, false);
   ApplyToolPolicy(evaluator_tools,
                   {.allowed = Capability(ToolCapability::kInspect),

@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -51,6 +52,27 @@ BootstrapResult Failure(std::string error, int exit_code = 1) {
   return {nullptr, std::move(error), exit_code};
 }
 
+class ScopedChannelInput {
+ public:
+  explicit ScopedChannelInput(ApplicationChannel* channel)
+      : active_(channel != nullptr) {
+    if (!channel) return;
+    SetInteractiveReadHandler(
+        [channel](const InteractionRequest& request, bool* eof) {
+          return channel->ReadInteraction(request, eof);
+        });
+  }
+
+  ~ScopedChannelInput() {
+    if (active_) SetInteractiveReadHandler({});
+  }
+
+  void Transfer() { active_ = false; }
+
+ private:
+  bool active_;
+};
+
 void PrintWarning(const std::string& warning) {
   if (!warning.empty()) {
     fprintf(stderr, "%s%s%s\n", YEL(), TerminalSafe(warning).c_str(), RST());
@@ -59,18 +81,19 @@ void PrintWarning(const std::string& warning) {
 
 // A y/N prompt. Silence and EOF both decline: an unattended run must never
 // grant trust or approval by accident.
-bool Confirm(const std::string& question) {
+bool Confirm(InteractionRequest request) {
+  bool cancelled = false;
   bool eof = false;
-  std::string answer =
-      Trim(ReadInputLine(question, &eof, /*keep_history=*/false));
-  if (eof) return false;
-  return answer == "y" || answer == "Y" || answer == "yes";
+  std::string answer = ReadChoiceLine(std::move(request), cancelled, eof);
+  return !cancelled && !eof &&
+         (answer == "y" || answer == "Y" || answer == "yes");
 }
 
 // A mandatory-human decision needs a real person on the other end. Headless
 // runs, delegated children and piped input cannot supply one.
 bool InteractiveApprovalAvailable() {
-  return isatty(STDIN_FILENO) && AgentDepth() == 0;
+  return (isatty(STDIN_FILENO) || InteractiveReadAvailable()) &&
+         AgentDepth() == 0;
 }
 
 bool ResolveProjectTrust(const Options& options, bool& trusted,
@@ -98,7 +121,11 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
               "project .uagent/.config is untrusted and was ignored; rerun "
               "with --trust-project-config after reviewing it\n");
     } else {
-      trusted = Confirm("Trust this workspace's " + surfaces + "? [y/N] ");
+      trusted = Confirm(
+          {.kind = "project.trust",
+           .prompt = "Trust this workspace's " + surfaces + "? [y/N] ",
+           .options = json::array({{{"value", "y"}, {"label", "Trust"}},
+                                   {{"value", "n"}, {"label", "Decline"}}})});
       if (trusted && !TrustProjectConfig(error, &trusted_snapshot)) {
         error = "cannot save project trust: " + error;
         return false;
@@ -304,7 +331,7 @@ ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
 std::vector<Tool> BuildTools(AppContext& context,
                              const std::filesystem::path& workspace,
                              const json& trusted_snapshot,
-                             std::vector<Skill> skills) {
+                             std::vector<Skill> skills, std::string& error) {
   Api& api = context.runtime.api;
   AppRuntime& runtime = context.runtime;
   // One read of the toolset selector: the three shapes it can take are one
@@ -359,7 +386,13 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
-  McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
+  // The default lean child is an isolation and context-efficiency boundary:
+  // do not clone the parent's entire MCP fleet into every delegation. A root
+  // lean session and an explicitly requested full child still get MCP.
+  if (AgentDepth() == 0 || toolset != "lean") {
+    error = McpRegister(tools, runtime.mcp, runtime.config, trusted_snapshot);
+    if (!error.empty()) return {};
+  }
   if (CanDelegate()) {
     tools.push_back(
         SubagentTool(api, runtime.processes, context.provider.routes,
@@ -378,13 +411,15 @@ std::vector<Tool> BuildTools(AppContext& context,
       std::vector<std::string> skill_names;
       skill_names.reserve(skills.size());
       for (const Skill& skill : skills) skill_names.push_back(skill.name);
-      PrintNameRow("Skills", skill_names);
+      if (!context.channel) PrintNameRow("Skills", skill_names);
       tool_names.push_back(skill_tool.front().name);
       tools.push_back(std::move(skill_tool.front()));
     }
   }
-  PrintNameRow("Tools", tool_names);
-  PrintRoutes(runtime.config);
+  if (!context.channel) {
+    PrintNameRow("Tools", tool_names);
+    PrintRoutes(runtime.config);
+  }
   return tools;
 }
 
@@ -392,26 +427,45 @@ std::vector<Tool> BuildTools(AppContext& context,
 // drift apart from the debug record of what was granted. A mandatory-human
 // call ignores every automatic-approval switch and denies when no human can
 // answer, so the agent cannot widen its own authority unattended.
-// What "always" remembers: the tool, plus a shell call's first word, so
-// allowing `git` never allows `rm`.
-std::string ApprovalKey(const Tool& tool, const json& arguments) {
+// Shells and interpreters can execute arbitrary payloads after the first word,
+// so reusable approval is exact-command scoped. Every grant also includes the
+// policy/schema generation: refreshing an MCP definition can never inherit
+// authority merely because its public name stayed the same.
+std::string ApprovalKey(const Tool& tool, const json& arguments,
+                        ApprovalClass required) {
+  json policy = {{"name", tool.name},
+                 {"provider", tool.provider},
+                 {"parameters", ToolParameters(tool)},
+                 {"mutating", tool.mutating},
+                 {"capabilities", tool.capabilities},
+                 {"approval_class", static_cast<int>(required)}};
+  if (!tool.output_schema.is_null())
+    policy["output_schema"] = tool.output_schema;
   std::string command = Trim(JsonValue(arguments, "command", ""));
-  size_t end = command.find_first_of(" \t\n");
-  if (end != std::string::npos) command.resize(end);
-  return command.empty() ? tool.name : tool.name + " " + command;
+  std::string scope = command.empty() ? tool.name : tool.name + " " + command;
+  return HashHex(JsonDump(policy)) + "\n" + scope;
+}
+
+std::string ApprovalScope(const Tool& tool, const json& arguments) {
+  return Trim(JsonValue(arguments, "command", "")).empty()
+             ? tool.name
+             : "this exact command";
 }
 
 Agent::Approver MakeApprover(AppContext* app) {
   return [app](const Tool& tool, const json& arguments) {
+    static std::atomic<uint64_t> sequence{0};
     ApprovalClass required = RequiredApproval(tool, arguments);
     bool mandatory = required == ApprovalClass::kMandatoryHuman;
-    std::string key = ApprovalKey(tool, arguments);
+    std::string key = ApprovalKey(tool, arguments, required);
     bool remembered =
         !mandatory &&
         std::find(app->session_approvals.begin(), app->session_approvals.end(),
                   key) != app->session_approvals.end();
     bool automatic = (app->options.yolo || remembered) && !mandatory;
     bool granted = true;
+    std::string request_id =
+        "approval-" + std::to_string(sequence.fetch_add(1) + 1);
     if (!automatic) {
       // Print the full command/payload before asking, so long commands are
       // never truncated in the approval prompt. A tool with more to show than
@@ -419,13 +473,24 @@ Agent::Approver MakeApprover(AppContext* app) {
       std::string payload =
           TerminalSafe(tool.approval_preview ? tool.approval_preview(arguments)
                                              : ToolSummary(tool, arguments));
+      Emit(Event{EventId::kApprovalRequested,
+                 {{"id", request_id},
+                  {"tool", tool.name},
+                  {"preview", payload},
+                  {"scope", ApprovalScope(tool, arguments)},
+                  {"mandatory_human", mandatory},
+                  {"choices", mandatory ? json::array({"yes", "no"})
+                                        : json::array({"once", "always", "no",
+                                                       "guidance"})}}});
       const char* headline = mandatory
                                  ? "allow %s%s \u2014 changes \u00b5Agent's "
                                    "own configuration\n%s\n%s\n"
                                  : "allow %s%s\n%s\n%s\n";
-      fprintf(stdout, "%s", YEL());
-      fprintf(stdout, headline, TerminalSafe(tool.name).c_str(), RST(),
-              payload.c_str(), RST());
+      if (!app->channel) {
+        fprintf(stdout, "%s", YEL());
+        fprintf(stdout, headline, TerminalSafe(tool.name).c_str(), RST(),
+                payload.c_str(), RST());
+      }
       if (mandatory && !InteractiveApprovalAvailable()) {
         fprintf(stdout,
                 "%s\u00b7 denied: this change needs a person, and no "
@@ -435,16 +500,31 @@ Agent::Approver MakeApprover(AppContext* app) {
       } else if (mandatory) {
         std::string question = std::string(YEL()) + "allow " +
                                TerminalSafe(tool.name) + "? [y/N] " + RST();
-        granted = Confirm(question);
+        granted = Confirm(
+            {.id = request_id,
+             .kind = "approval",
+             .prompt = std::move(question),
+             .options = json::array({{{"value", "y"}, {"label", "Allow"}},
+                                     {{"value", "n"}, {"label", "Deny"}}})});
       } else {
         // Anything else is guidance: denied, and queued as steering.
         std::string question =
             std::string(YEL()) + "allow " + TerminalSafe(tool.name) +
-            "? [y] once  [a] always " + TerminalSafe(key) +
+            "? [y] once  [a] always " +
+            TerminalSafe(ApprovalScope(tool, arguments)) +
             " this session  [n] no — or say what to do instead: " + RST();
         bool cancelled = false;
         bool eof = false;
-        std::string answer = Trim(ReadChoiceLine(question, cancelled, eof));
+        std::string answer = Trim(ReadChoiceLine(
+            {.id = request_id,
+             .kind = "approval",
+             .prompt = std::move(question),
+             .options = json::array(
+                 {{{"value", "y"}, {"label", "Allow once"}},
+                  {{"value", "a"}, {"label", "Always this session"}},
+                  {{"value", "n"}, {"label", "Deny"}},
+                  {{"value", "guidance"}, {"label", "Send guidance"}}})},
+            cancelled, eof));
         std::string choice = AsciiLower(answer);
         bool always = choice == "a" || choice == "always";
         granted =
@@ -461,6 +541,12 @@ Agent::Approver MakeApprover(AppContext* app) {
                           {"automatic", automatic},
                           {"mandatory_human", mandatory},
                           {"granted", granted}});
+    Emit(Event{EventId::kApprovalResolved,
+               {{"id", request_id},
+                {"tool", tool.name},
+                {"automatic", automatic},
+                {"mandatory_human", mandatory},
+                {"granted", granted}}});
     return granted;
   };
 }
@@ -471,7 +557,10 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
   return [app](std::chrono::steady_clock::time_point deadline) {
     bool changed = McpRefreshTools(app->tools, app->runtime.mcp,
                                    app->runtime.config, deadline);
-    if (changed) ApplyToolPolicy(app->tools, app->tool_policy);
+    if (changed) {
+      ApplyToolPolicy(app->tools, app->tool_policy);
+      app->session_approvals.clear();
+    }
     return changed;
   };
 }
@@ -481,7 +570,9 @@ void LogReady(const AppContext& context) {
   const RuntimeConfig& config = context.runtime.config;
   const std::string toolset = LeanToolset() ? "lean" : "full";
   const std::string run_mode =
-      context.options.prompt.empty() ? "interactive" : "headless";
+      context.channel
+          ? "channel"
+          : (context.options.prompt.empty() ? "interactive" : "headless");
   std::string overlay_digest;
   (void)PromptOverlay(&overlay_digest);
   json provenance = BuildProvenanceJson();
@@ -570,14 +661,23 @@ void HeadlessOutput::Restore() {
 }
 
 AppContext::AppContext(RuntimeConfig config, ConfigManager manager,
-                       Options parsed_options, Observability& observation_sink)
+                       Options parsed_options, Observability& observation_sink,
+                       ApplicationChannel* application_channel)
     : config_manager(std::move(manager)),
       runtime(std::move(config)),
       observability(observation_sink),
+      channel(application_channel),
       options(std::move(parsed_options)) {}
 
+AppContext::~AppContext() {
+  if (channel) SetInteractiveReadHandler({});
+}
+
 BootstrapResult Bootstrap(Options options, const char* executable,
-                          Observability& observability) {
+                          Observability& observability,
+                          ApplicationChannel* channel) {
+  ScopedChannelInput channel_input(channel);
+  if (channel) observability.EnableTerminal(false);
   SetExecutablePath(executable);
   // Nothing chdir()s during startup, so the canonical workspace is invariant.
   const std::filesystem::path workspace = CanonicalAccessPath(CanonicalCwd());
@@ -617,8 +717,10 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
   auto context =
       std::make_unique<AppContext>(std::move(config), std::move(config_manager),
-                                   std::move(options), observability);
-  if (!context->options.prompt.empty() && !context->output.Silence()) {
+                                   std::move(options), observability, channel);
+  channel_input.Transfer();
+  if ((!context->options.prompt.empty() || channel) &&
+      !context->output.Silence()) {
     return Failure("cannot redirect headless output");
   }
   if (context->options.debug &&
@@ -626,7 +728,8 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure("cannot open debug log: " + Debug().Error());
   }
   if (Debug().Enabled()) {
-    FILE* notice = context->options.prompt.empty() ? stdout : stderr;
+    FILE* notice =
+        context->options.prompt.empty() && !channel ? stdout : stderr;
     fprintf(notice, "%s· debug trace: %s%s\n", DIM(), Debug().Path().c_str(),
             RST());
     Debug().Write("process_start",
@@ -640,14 +743,16 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   }
 
   Api& api = context->runtime.api;
-  api.render_stream = context->options.prompt.empty();
+  api.render_stream = context->options.prompt.empty() && !channel;
   size_t project_limit =
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
   ProjectInstructions instructions = LoadInstructions(
       workspace, context->runtime.config, memory_child, project_limit);
-  printf("%s%sµAgent%s %sv%s · %s%s\n", RST(), BOLD(), RST(), DIM(), kVersion,
-         TerminalSafe(Tilde(CanonicalCwd())).c_str(), RST());
-  PrintProjectContext(instructions, project_limit);
+  if (!channel) {
+    printf("%s%sµAgent%s %sv%s · %s%s\n", RST(), BOLD(), RST(), DIM(), kVersion,
+           TerminalSafe(Tilde(CanonicalCwd())).c_str(), RST());
+    PrintProjectContext(instructions, project_limit);
+  }
   std::vector<Skill> skills =
       memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
 
@@ -669,8 +774,11 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   ActivateRoute(api);
   context->tool_policy = ToolPolicyFromEnvironment();
   PrintWarning(context->tool_policy.error);
-  context->tools = BuildTools(*context, workspace, trusted_snapshot, skills);
-  if (context->options.prompt.empty()) PrintStartupHints();
+  std::string tool_error;
+  context->tools =
+      BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
+  if (!tool_error.empty()) return Failure(tool_error);
+  if (context->options.prompt.empty() && !channel) PrintStartupHints();
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

@@ -219,6 +219,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestBackgroundValidation)             \
   X(TestSignalAndFileWatch)               \
   X(TestActivityBufferAndAdmission)       \
+  X(TestActivityStateGraph)               \
   X(TestActivitySessions)                 \
   X(TestActivityDescriptorAndInputPolicy) \
   X(TestActivityWaitAndDelivery)          \

@@ -146,6 +146,28 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
+def test_enter_arriving_with_paste_does_not_submit(root, home):
+    def verify(_, body):
+        pasted = body["messages"][-1].get("content")
+        return event(
+            {"content": ("paste-enter-ok" if pasted == "safe paste" else "paste-enter-bad")}
+        )
+
+    with Server([verify]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"\x1b[200~safe paste\x1b[201~\n", b"safe paste\xe2\x86\xb5"),
+                b"\n",
+                b"\x04",
+            ],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"paste-enter-ok" in output, output)
+        assert_true(len(server.requests) == 1, server.requests)
+
+
 def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
     write_session(
         home,

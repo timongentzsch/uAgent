@@ -11,6 +11,7 @@ model output, tool results, paths, and usage.
 | native memory audit | `~/.uagent/memory/events.jsonl` (bounded metadata and redacted previews) |
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/*` |
 | session-lifetime activity state | memory only; not resumable after process exit |
+| collaborator metadata and sessions | `~/.uagent/collaborators/{agent-id}.json` and `.session.json` |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
@@ -42,6 +43,21 @@ must ship an explicit, tested conversion or start a new session. Interrupted
 writes leave the prior valid record intact; malformed files remain available
 for diagnosis.
 
+Collaborators have durable logical identities even though each follow-up is a
+new supervised child process. Their private metadata records the originating
+workspace and route options; the adjacent atomic session snapshot is the
+conversation authority. Queued messages persist in metadata until a follow-up
+launch succeeds. Metadata and session files are pruned together at startup by
+the debug-retention bounds (`UAGENT_DEBUG_DAYS` and `UAGENT_DEBUG_FILES`). Live
+activity ownership, PTY state, and incremental buffers remain process-local and
+are not reconstructed after a coordinator exits.
+
+µAgent deliberately does not add a second canonical "rollout" log. The atomic
+session snapshot is replay authority, the bounded journal is operational
+metadata, and `--debug` is the opt-in sensitive reconstructable trace. Keeping
+those contracts separate avoids claiming crash recovery from a truncated event
+tail or retaining prompts by default.
+
 Native project/global files are writable through an explicitly requested
 `memory` action or the single bounded background extractor. Top-level Codex
 memory files under `~/.codex/memories` and the current Claude project files
@@ -63,7 +79,10 @@ artifact directory instead of entering model context whole. Each is bounded by
 Session-lifetime supervised activities have opaque IDs, bounded incremental
 head/tail output, and optional PTY state only in memory. They cannot be resumed
 after µAgent exits. Persistent detached records remain PID-backed, rotating-log
-based, and noninteractive; no broker retains their stdin.
+based, and noninteractive; no broker retains their stdin. Each new record also
+stores a boot-scoped kernel start identity. A missing or mismatched identity is
+treated as exited and is never signalled, so legacy records fail closed rather
+than risking a reused PID.
 
 Completed turn traces enter the bounded archive before old bulky tool results
 are compacted in active model context. The placeholder preserves protocol and a

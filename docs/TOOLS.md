@@ -3,8 +3,8 @@
 µAgent builds the model-visible tool registry at startup and refreshes it when
 MCP capabilities change. The exact set is filtered by approval policy, lean
 mode, route capabilities, runtime state, installed skills, delegation depth,
-and trusted configuration. `/context` prints the schemas advertised for the
-next request.
+and trusted configuration. `/context` prints the schemas currently advertised;
+normal turn-boundary work can still change the next wire request.
 
 ## Core tools
 
@@ -19,7 +19,7 @@ next request.
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `scratch` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
-| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | always; inspect-only |
+| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | standard toolset; inspect-only |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
 `read_path` decodes text only: a file whose first bytes are not text is refused
@@ -70,6 +70,14 @@ file notifications where available.
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
 | `uagent_configure` | the process is not a delegated child; persists a typed change to a registered setting after an exact diff is approved by a person |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
+
+`subagent` defaults to `operation=spawn`, returning both an activity ID and a
+durable collaborator ID. `operation=followup` resumes that collaborator's
+private conversation and prepends its persisted coordinator-owned `directive`;
+an explicit empty directive clears it. `message` queues one-shot guidance for
+the next follow-up, and `list` reports workspace collaborators. Use the
+ordinary `activity` tool for live output, waiting, and stopping; collaboration
+does not add a second process supervisor.
 
 `web_fetch` is independent of hosted-route support. It decodes markup, JSON,
 XML, and plain text, and refuses other content. Use the browser skill for pages

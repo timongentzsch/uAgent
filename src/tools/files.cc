@@ -735,7 +735,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   if (auto invalid = ValidatePathTarget(p, PathTarget::kDirectory)) {
     return std::move(*invalid);
   }
-  if (offset < 0) offset = 0;
+  if (offset < 1) offset = 1;
   if (limit <= 0) limit = ListDirEntries();
   int64_t scan_cap = ListDirScanEntries();
   std::error_code ec;
@@ -755,18 +755,18 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   }
   std::sort(entries.begin(), entries.end());
   if (entries.empty()) return ToolSuccess("(empty directory)");
-  if (offset >= static_cast<int64_t>(entries.size())) {
+  if (offset > static_cast<int64_t>(entries.size())) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: offset is beyond directory entries (" +
                            std::to_string(entries.size()) + ")");
   }
-  size_t begin = static_cast<size_t>(offset);
+  size_t begin = static_cast<size_t>(offset - 1);
   size_t available = entries.size() - begin;
   size_t count = limit > static_cast<int64_t>(available)
                      ? available
                      : static_cast<size_t>(limit);
   size_t end = begin + count;
-  std::string out = "[" + p + " entries " + std::to_string(offset + 1) + "-" +
+  std::string out = "[" + p + " entries " + std::to_string(offset) + "-" +
                     std::to_string(end) + " of " +
                     std::to_string(entries.size()) + "]\n";
   for (size_t i = begin; i < end; ++i) {
@@ -775,7 +775,7 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   }
 
   constexpr size_t kPreviewFiles = 4;
-  if (!include_small_files || offset != 0 || end != entries.size() ||
+  if (!include_small_files || offset != 1 || end != entries.size() ||
       entries.size() > kPreviewFiles) {
     return ToolSuccess(std::move(out));
   }

@@ -428,6 +428,7 @@ InteractiveInputEvent RawComposer::Read() {
     if (count < 0 && errno == EINTR) continue;
     break;
   }
+  bool pasted_in_batch = false;
   while (std::optional<TerminalInputToken> token = decoder_.Next()) {
     if (token->kind == TerminalInputTokenKind::kEscape) {
       return {InteractiveInputKind::kEscape, buffer_};
@@ -437,12 +438,19 @@ InteractiveInputEvent RawComposer::Read() {
       continue;
     }
     if (token->kind == TerminalInputTokenKind::kPaste) {
+      pasted_in_batch = true;
       if (token->overflow || !Insert(token->text)) {
         output_.Write("\a");
       }
       continue;
     }
     unsigned char ch = static_cast<unsigned char>(token->text[0]);
+    // A terminal may append Enter to a bracketed paste in the same input
+    // batch. Preserve it as pasted text instead of submitting unexpectedly.
+    if ((ch == '\r' || ch == '\n') && pasted_in_batch) {
+      if (!Insert("\n")) output_.Write("\a");
+      continue;
+    }
     // Both spellings submit: a piped script sends the bare newline.
     if (ch == '\r' || ch == '\n') {
       std::string line = std::move(buffer_);

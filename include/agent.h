@@ -29,6 +29,7 @@
 namespace uagent {
 
 struct BackgroundCompletion;
+enum class TurnStopReason;
 
 class Agent {
  public:
@@ -85,6 +86,7 @@ class Agent {
   // resumed session shows the context it is picking up from.
   void PrintHistory() const;
 
+  json ModelRequest() const;
   void PrintContext() const;
 
   bool Save(const std::string& path, std::string& error) const;
@@ -126,8 +128,8 @@ class Agent {
   void Turn(const std::string& user_input, json user_content = nullptr);
 
  private:
-  struct TurnState;
-  struct TurnLoop;
+  struct TurnExecution;
+  struct StepState;
 
   struct ActivityPollResult {
     int64_t id = 0;
@@ -171,45 +173,51 @@ class Agent {
   void AddRouteUsage(const Usage& usage);
   Usage AccountModelUsage(const json& reported);
 
-  void FailBudget(TurnState& state, std::string reason, std::string message);
-  bool TurnDeadlineExceeded(TurnState& state,
+  void FailTurn(TurnExecution& state, std::string message);
+  void FailBudget(TurnExecution& state, TurnStopReason reason,
+                  std::string message);
+  bool TurnDeadlineExceeded(TurnExecution& state,
                             std::chrono::seconds reserve = {});
-  bool TurnCostExceeded(TurnState& state);
+  bool TurnCostExceeded(TurnExecution& state);
+  bool TurnTokenBudgetExceeded(TurnExecution& state,
+                               bool before_model = false);
   void RecordModelResponse(
-      ChatResult& response, TurnState& state,
+      ChatResult& response, TurnExecution& state,
       std::unordered_map<std::string, int64_t>& tool_counts);
   bool ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
-                             TurnState& state, int64_t max_tool_calls,
+                             TurnExecution& state, int64_t max_tool_calls,
                              std::string& last_call, int64_t& repeated_calls);
-  void FinishTurn(TurnState& state, int64_t step);
-  static std::string TurnStatsLine(const TurnState& state, double seconds,
+  void FinishTurn(TurnExecution& state, int64_t step);
+  static std::string TurnStatsLine(const TurnExecution& state, double seconds,
                                    double tokens_per_second);
 
   // One step of the turn, in the order the loop runs them. Each phase reports
   // what the loop should do next.
   void PushSkillContext(std::string skill);
-  StepFlow InterruptTurn(TurnState& state);
-  bool ApplyQueuedSteering(TurnState& state, TurnLoop& loop);
-  StepFlow PrepareStep(TurnState& state, TurnLoop& loop, json& schemas);
-  StepFlow HandleFailedResponse(ChatResult& response, TurnState& state,
-                                TurnLoop& loop, const json& schemas,
+  StepFlow InterruptTurn(TurnExecution& state);
+  bool ApplyQueuedSteering(StepState& loop);
+  StepFlow PrepareStep(TurnExecution& state, StepState& loop, json& schemas);
+  StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
+                                StepState& loop, const json& schemas,
                                 bool attachment);
-  StepFlow HandleUnparsedToolMarkup(TurnState& state, TurnLoop& loop);
-  StepFlow HandleEmptyResponse(const ChatResult& response, TurnState& state,
-                               TurnLoop& loop);
+  StepFlow HandleUnparsedToolMarkup(TurnExecution& state, StepState& loop);
+  StepFlow HandleEmptyResponse(const ChatResult& response, TurnExecution& state,
+                               StepState& loop);
+  StepFlow HandleResponseStop(ChatResult& response, size_t tool_call_count,
+                              TurnExecution& state, StepState& loop);
   void RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
-                                 TurnState& state, TurnLoop& loop);
+                                 StepState& loop);
   bool HandleActivityPollResults(const std::vector<ActivityPollResult>& polls,
-                                 bool exclusive, TurnState& state,
-                                 TurnLoop& loop);
+                                 bool exclusive, TurnExecution& state,
+                                 StepState& loop);
   bool StopForRepeatedRejections(const std::vector<ToolRejection>& rejections,
-                                 TurnState& state, TurnLoop& loop);
+                                 TurnExecution& state, StepState& loop);
   void PushAssistantMessage(ChatResult& response,
                             const std::vector<ToolCall>& calls, bool text_mode);
-  StepFlow FinishWithProse(ChatResult& response, TurnState& state,
-                           TurnLoop& loop);
+  StepFlow FinishWithProse(ChatResult& response, TurnExecution& state,
+                           StepState& loop);
   StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls, bool text_mode,
-                            TurnState& state, TurnLoop& loop);
+                            TurnExecution& state, StepState& loop);
 
   void ArchiveAll(const char* reason);
 
@@ -324,6 +332,7 @@ class Agent {
   uint64_t revision_ = 0;
   bool verbose_ = false;
   bool cost_warning_shown_ = false;
+  bool token_warning_shown_ = false;
   std::chrono::steady_clock::time_point active_deadline_ =
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;

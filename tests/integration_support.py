@@ -191,6 +191,11 @@ class Server:
 
 def base_env(home, url):
     env = {key: value for key, value in os.environ.items() if not key.startswith("UAGENT_")}
+    # PTY cases assert µAgent's coloured interactive surface. Keep the fixture
+    # independent of the developer or CI runner's terminal preferences.
+    env.pop("NO_COLOR", None)
+    env["TERM"] = "xterm-256color"
+    env["COLORTERM"] = "truecolor"
     env.update(
         {
             "HOME": str(home),
@@ -225,6 +230,24 @@ def run(cwd, env, *args, timeout=10):
         capture_output=True,
         timeout=budget(timeout),
     )
+
+
+def write_mcp_server(path, body, *, setup="", extra_imports=()):
+    """Write the shared line-oriented JSON-RPC shell around a fixture body."""
+    modules = ", ".join(("json", *extra_imports, "sys"))
+    source = (
+        f"import {modules}\n"
+        f"{setup}"
+        "for line in sys.stdin:\n"
+        "    message = json.loads(line)\n"
+        "    if 'id' not in message:\n"
+        "        continue\n"
+        "    method = message.get('method')\n"
+        f"{body}"
+        "    print(json.dumps({'jsonrpc': '2.0', 'id': message['id'], "
+        "'result': result}), flush=True)\n"
+    )
+    path.write_text(source, encoding="utf-8")
 
 
 def run_dialog(cwd, env, text, *args, timeout=10):
@@ -339,9 +362,12 @@ def run_pty(
     payloads = [payload] if isinstance(payload, bytes) else payload
     for index, item in enumerate(payloads):
         marker = None
+        following = None
         resized_columns = None
         if isinstance(item, tuple):
-            if len(item) == 3:
+            if len(item) == 4:
+                item, marker, following, resized_columns = item
+            elif len(item) == 3:
                 item, marker, resized_columns = item
             else:
                 item, marker = item
@@ -374,7 +400,7 @@ def run_pty(
             process.send_signal(signal.SIGWINCH)
             time.sleep(0.05)
         if index + 1 < len(payloads):
-            if marker is not None and not read_until(marker, start):
+            if marker is not None and not read_until(marker, start, following):
                 break
             if marker is None:
                 read_prompt(start)
@@ -498,7 +524,17 @@ def wait_until(predicate, message, timeout=30, interval=0.02):
     raise AssertionError(message)
 
 
-def write_session(home, name, messages, *, cwd, kinds=None, context_tokens=0, **header):
+def write_session(
+    home,
+    name,
+    messages,
+    *,
+    cwd,
+    kinds=None,
+    context_tokens=0,
+    usage=None,
+    **header,
+):
     """Write one saved session the way the agent persists it.
 
     The format-3 envelope lives here alone: a schema change is one edit, and a
@@ -519,8 +555,9 @@ def write_session(home, name, messages, *, cwd, kinds=None, context_tokens=0, **
         "archive": [],
         "archive_dropped_segments": 0,
         "context_tokens": context_tokens,
-        "usage": {},
+        "usage": usage or {},
         "route_usage": {},
+        "tool_displays": {},
     }
     history = home / ".uagent" / "history"
     history.mkdir(parents=True, exist_ok=True)

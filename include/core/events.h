@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -41,6 +42,11 @@ enum class EventId : uint16_t {
   kReasoningDelta,
   kAnswerDelta,
   kResponseFinished,
+  kApprovalRequested,
+  kApprovalResolved,
+  kInteractionRequested,
+  kInteractionResolved,
+  kCommandCompleted,
   kNotice,
   kPresentation,
 };
@@ -116,6 +122,7 @@ struct Event {
 
 struct EventPolicy {
   EventId id;
+  const char* app_type;
   const char* debug_name;
   const char* public_type;
   const char* journal_type;
@@ -124,6 +131,21 @@ struct EventPolicy {
 };
 
 const EventPolicy& PolicyFor(EventId id);
+
+// Transport-neutral application protocol. Subscribers receive every semantic
+// event, including streaming deltas and interactive decisions. Delivery is
+// synchronous and callbacks run without the observability lock; an async
+// adapter must copy the value before returning. The binary is built without
+// exceptions, so callbacks must not throw.
+struct AppEvent {
+  uint64_t sequence = 0;
+  std::string time;
+  std::string type;
+  json data = nullptr;
+  bool durable = false;
+};
+
+using EventSubscriber = std::function<void(const AppEvent&)>;
 
 class TerminalPresenter;
 
@@ -151,8 +173,9 @@ class SessionJournal {
   bool enabled_ = true;
 };
 
-// Fixed compile-time sinks: terminal, public JSONL, private debug JSONL, and
-// the bounded session journal. There is deliberately no registration API.
+// Directly owns the built-in terminal, public JSONL, private debug JSONL, and
+// bounded journal sinks. Extra application adapters subscribe without gaining
+// access to control flow or those sink implementations.
 class Observability {
  public:
   Observability();
@@ -162,6 +185,9 @@ class Observability {
 
   bool StartDebug(const std::string& path = "");
   bool StartJsonStream();
+  void EnableTerminal(bool enabled);
+  uint64_t Subscribe(EventSubscriber subscriber);
+  void Unsubscribe(uint64_t subscription);
   void EnableJournal(bool enabled) { journal_.SetEnabled(enabled); }
   void Emit(Event event) noexcept;
   void Diagnostic(const std::string& name, json data = json::object()) noexcept;
@@ -177,7 +203,13 @@ class Observability {
   JsonEventStream json_;
   SessionJournal journal_;
   std::unique_ptr<TerminalPresenter> terminal_;
+  std::vector<std::pair<uint64_t, EventSubscriber>> subscribers_;
+  // Serializes subscriber delivery without holding the sink/state mutex.
+  // Recursive so a callback may emit or unsubscribe itself.
+  std::recursive_mutex delivery_mutex_;
   std::mutex mutex_;
+  uint64_t app_sequence_ = 0;
+  uint64_t next_subscription_ = 1;
   bool shutdown_ = false;
 };
 

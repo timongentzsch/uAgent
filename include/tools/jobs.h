@@ -20,6 +20,7 @@ namespace uagent {
 // budget and by the automatic background-completion text. Background output is
 // observational, so it stays well under what a foreground read gets.
 inline constexpr int64_t kActivityResultChars = 6000;
+inline constexpr std::string_view kNoNewActivityOutput = "(no new output)";
 
 struct CollectedLog {
   std::string output;
@@ -29,7 +30,6 @@ struct CollectedLog {
 struct BackgroundCompletion {
   int64_t activity_id = 0;
   ActivityKind kind = ActivityKind::kCommand;
-  std::string kind_label;  // the spawning job_kind, e.g. subagent
   int status = 0;
   std::string command;
   std::string output;
@@ -44,6 +44,7 @@ struct DetachedActivity {
 };
 
 void BgTrackSignal(pid_t pid, bool add);
+bool SignalProcessGroup(pid_t leader, int signal_number);
 void KillProcess(pid_t pid);
 std::string FmtExit(int status, bool show_ok);
 ToolResult ProcessResult(std::string output, int status);
@@ -52,6 +53,7 @@ ToolResult ProcessResult(std::string output, int status);
 int64_t ActivityOutputCap(int64_t requested);
 std::string LimitOutput(std::string text, int64_t cap);
 ToolResult LimitOutput(ToolResult result, int64_t cap);
+std::string DrainActivityOutput(const BgJob& job, int64_t cap);
 std::string ReadLogTail(const std::string& path, int64_t cap);
 uint64_t LogFileBytes(const std::string& path);
 void RemoveLog(const std::string& path);
@@ -65,6 +67,8 @@ int ToolLogPump(const std::string& path, int64_t max_bytes);
 bool ProcessGroupAlive(pid_t leader);
 std::string DetachedRecordPath(pid_t pid);
 std::vector<json> DetachedRecords();
+std::optional<json> FindDetachedRecord(int64_t pid);
+ToolResult ActivityNotFound(int64_t pid);
 std::optional<DetachedActivity> FindRunningDetachedActivity(
     const std::string& command);
 ToolResult SaveDetachedRecord(pid_t pid, const std::string& log,

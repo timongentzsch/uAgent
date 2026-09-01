@@ -37,7 +37,8 @@ void TestMcpContractHelpers() {
                                 json{{"command", "server"},
                                      {"args", json::array({"one"})},
                                      {"env", {{"TOKEN", "$TOKEN"}}},
-                                     {"cwd", "relative"}},
+                                     {"cwd", "relative"},
+                                     {"required", false}},
                                 error));
   error.clear();
   CHECK(!McpValidateServerConfig(
@@ -48,6 +49,10 @@ void TestMcpContractHelpers() {
       "test", json{{"command", "server"}, {"roots", json::array({""})}},
       error));
   CHECK(error.find("roots") != std::string::npos);
+  error.clear();
+  CHECK(!McpValidateServerConfig(
+      "test", json{{"command", "server"}, {"required", "sometimes"}}, error));
+  CHECK(error.find("required") != std::string::npos);
 
   std::filesystem::path root_fixture =
       std::filesystem::temp_directory_path() /
@@ -107,7 +112,7 @@ void TestMcpContractHelpers() {
                               {"inputSchema", json{{"type", "object"}}},
                               {"execution", {{"taskSupport", "required"}}}}});
   std::vector<Tool> tools;
-  CHECK(McpReplaceServerTools(tools, server, config, listed));
+  McpReplaceServerTools(tools, server, config, listed);
   CHECK(tools.size() == 1);
   CHECK(tools[0].parameters == input_schema);
   CHECK(tools[0].output_schema == output_schema);
@@ -263,19 +268,14 @@ void TestWorkspaceScopedSession() {
   CHECK(std::string(std::istreambuf_iterator<char>(preserved),
                     std::istreambuf_iterator<char>()) == corrupt);
 
-  // A session written before message kinds were recorded still loads: the
-  // kinds come back from the roles, so an old transcript stays resumable and
-  // stays available to memory extraction instead of being discarded.
+  // Format 2 is no longer inferred from ambiguous roles. Old sessions remain
+  // on disk, but callers get an explicit compatibility error instead of a
+  // transcript whose harness/user distinctions were guessed.
   json legacy_header = {{"format", 2},     {"cwd", CanonicalCwd()},
                         {"model", "test"}, {"session_id", "legacy"},
                         {"turns", 1},      {"title", "legacy"}};
   json legacy_state = {
-      {"messages",
-       json::array({{{"role", "system"}, {"content", "baseline"}},
-                    {{"role", "user"}, {"content", "[environment: date x]"}},
-                    {{"role", "user"}, {"content", "question"}},
-                    {{"role", "assistant"}, {"content", "answer"}},
-                    {{"role", "tool"}, {"content", "result"}}})},
+      {"messages", json::array({{{"role", "system"}, {"content", "baseline"}}})},
       {"archive", json::array()},
       {"archive_dropped_segments", 0},
       {"context_tokens", 12},
@@ -285,16 +285,7 @@ void TestWorkspaceScopedSession() {
             .Ok());
   SessionLoadResult legacy =
       SessionStore::Load(session.string(), CanonicalCwd());
-  CHECK(legacy.status.Ok());
-  CHECK(legacy.record.has_value());
-  const std::vector<MessageKind>& recovered =
-      legacy.record->state.message_kinds;
-  CHECK(recovered.size() == 5);
-  CHECK(recovered[0] == MessageKind::kSystem);
-  CHECK(recovered[1] == MessageKind::kRuntimeContext);
-  CHECK(recovered[2] == MessageKind::kUser);
-  CHECK(recovered[3] == MessageKind::kAssistant);
-  CHECK(recovered[4] == MessageKind::kToolResult);
+  CHECK(legacy.status.error == SessionStoreError::kIncompatible);
 
   std::error_code ec;
   fs::remove_all(root, ec);
@@ -369,7 +360,7 @@ void TestScopedBaseAndMemory() {
 
   // A global memory lands in the home directory even from inside a workspace.
   fs::path receipt = home / ".uagent/memory/test-receipt.json";
-  setenv("UAGENT_MEMORY_RECEIPT", receipt.c_str(), 1);
+  setenv("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt.c_str(), 1);
   setenv("UAGENT_INTERNAL_MEMORY_SOURCE", "/tmp/source-session.json", 1);
   CHECK(ToolMemoryAction("set", "global/prefers-tabs",
                          std::string("The user prefers tabs."))
@@ -386,7 +377,7 @@ void TestScopedBaseAndMemory() {
             .output.starts_with("unchanged "));
   CHECK(ReadMemoryReceipt(receipt.string(), memory_event, receipt_error));
   CHECK(memory_event.action == "unchanged");
-  unsetenv("UAGENT_MEMORY_RECEIPT");
+  unsetenv("UAGENT_INTERNAL_MEMORY_RECEIPT");
   unsetenv("UAGENT_INTERNAL_MEMORY_SOURCE");
   std::vector<MemoryEvent> memory_events = LoadMemoryEvents();
   CHECK(memory_events.size() >= 2);

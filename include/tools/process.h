@@ -34,18 +34,18 @@ enum class ActivityState : uint8_t {
   kStopped,
 };
 
-ActivityKind ParseActivityKind(const std::string& kind, bool detached = false);
+ActivityKind ParseActivityKind(const std::string& kind);
 std::string ActivityKindName(ActivityKind kind);
 bool ActivityTerminal(ActivityState state);
+// Call while holding ActivitySession::mutex. Rejects illegal regressions and
+// makes the process lifecycle's state graph explicit in one place.
+bool TransitionActivityLocked(struct ActivitySession& session,
+                              ActivityState next);
 
 struct ActivitySession {
-  // Identity, written once during registration and read freely afterwards.
-  int64_t id = 0;
+  // Process identity, written once during registration and read afterwards.
   pid_t pid = -1;
-  ActivityKind kind = ActivityKind::kCommand;
   bool tty = false;
-  std::string log;
-  std::string cmd;
 
   // Closed by ProcessSupervisor's I/O thread as soon as the activity reaches
   // a terminal state. Tools duplicate input_fd before writing, because this
@@ -66,7 +66,6 @@ struct ActivitySession {
   bool background_requested UAGENT_GUARDED_BY(mutex) = false;
   bool stop_requested UAGENT_GUARDED_BY(mutex) = false;
   bool output_eof UAGENT_GUARDED_BY(mutex) = false;
-  bool delivered UAGENT_GUARDED_BY(mutex) = false;
   HeadTailBuffer pending_output UAGENT_GUARDED_BY(mutex);
   HeadTailBuffer transcript UAGENT_GUARDED_BY(mutex);
   std::string until_window UAGENT_GUARDED_BY(mutex);
@@ -86,7 +85,7 @@ struct BgJob {
   pid_t pid;
   std::string log, cmd;
   bool detached = false;
-  std::string kind;
+  ActivityKind kind = ActivityKind::kCommand;
   int64_t id = 0;
   std::shared_ptr<ActivitySession> session;
   std::string display_label;

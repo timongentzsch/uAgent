@@ -24,6 +24,8 @@ constexpr FlagSpec kFlags[] = {
      nullptr, "emit versioned JSONL events in headless mode"},
     {"--budget", FlagKind::kBudget, nullptr, nullptr, "USD",
      "cap total session spend between model calls"},
+    {"--token-budget", FlagKind::kTokenBudget, nullptr, nullptr, "TOKENS",
+     "cap generated tokens across the session between model calls"},
     {.flag = "--no-memory",
      .kind = FlagKind::kConfigSet,
      .key = "UAGENT_MEMORY",
@@ -130,6 +132,16 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
           return parsed;
         }
         parsed.options.overrides["UAGENT_SESSION_BUDGET"] =
+            std::to_string(budget);
+        break;
+      }
+      case FlagKind::kTokenBudget: {
+        int64_t budget = 0;
+        if (!ParseInt64(value.c_str(), budget) || budget <= 0) {
+          parsed.error = "--token-budget must be a positive integer";
+          return parsed;
+        }
+        parsed.options.overrides["UAGENT_SESSION_TOKEN_BUDGET"] =
             std::to_string(budget);
         break;
       }

@@ -2,18 +2,27 @@
 
 #include "include/tools/subagent.h"
 
+#include <unistd.h>
+
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/core/time.h"
 #include "include/tools/child_agent.h"
+#include "include/tools/files.h"
 #include "include/tools/jobs.h"
 #include "include/tools/shell.h"
 
@@ -21,12 +30,93 @@ namespace uagent {
 namespace {
 
 constexpr size_t kAdvertisedRoutes = 16;
+constexpr int kCollaboratorFormat = 1;
+
+std::string CollaboratorPath(const std::string& id) {
+  return UagentDir("collaborators") + "/" + id + ".json";
+}
+
+std::string CollaboratorSessionPath(const std::string& id) {
+  return UagentDir("collaborators") + "/" + id + ".session.json";
+}
+
+std::string NewCollaboratorId() {
+  static std::atomic<uint64_t> sequence{0};
+  return "agent-" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+         std::to_string(getpid()) + "-" +
+         std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+}
+
+bool LoadCollaborator(const std::string& id, json& state, std::string& error) {
+  if (id.empty() || SafeFileComponent(id) != id) {
+    error = "invalid collaborator id";
+    return false;
+  }
+  std::ifstream input(CollaboratorPath(id));
+  if (!input) {
+    error = "collaborator not found";
+    return false;
+  }
+  state = json::parse(input, nullptr, false);
+  if (state.is_discarded() || !state.is_object() ||
+      JsonValue(state, "format", 0) != kCollaboratorFormat ||
+      JsonValue(state, "id", "") != id) {
+    error = "collaborator record is invalid";
+    return false;
+  }
+  if (JsonValue(state, "cwd", "") != CanonicalCwd()) {
+    error = "collaborator belongs to a different workspace";
+    return false;
+  }
+  return true;
+}
+
+ToolResult SaveCollaborator(const json& state) {
+  return ToolAtomicWrite(CollaboratorPath(JsonValue(state, "id", "")),
+                         JsonDump(state, 2) + "\n", kPrivateFileMode,
+                         /*preserve_mode=*/true);
+}
+
+std::optional<int64_t> ActiveCollaborator(const ProcessSupervisor& processes,
+                                          const std::string& id) {
+  for (const BgJob& job : processes.Snapshot()) {
+    if (job.source_id == id) return ActivityId(job);
+  }
+  return std::nullopt;
+}
+
+ToolResult ListCollaborators(const ProcessSupervisor& processes) {
+  namespace fs = std::filesystem;
+  std::error_code error;
+  std::vector<json> records;
+  for (fs::directory_iterator it(UagentDir("collaborators"), error), end;
+       !error && it != end && records.size() < 100; it.increment(error)) {
+    if (!it->is_regular_file(error) ||
+        !it->path().filename().string().ends_with(".json") ||
+        it->path().filename().string().ends_with(".session.json")) {
+      continue;
+    }
+    std::ifstream input(it->path());
+    json state = json::parse(input, nullptr, false);
+    if (state.is_discarded() || !state.is_object() ||
+        JsonValue(state, "cwd", "") != CanonicalCwd()) {
+      continue;
+    }
+    std::string id = JsonValue(state, "id", "");
+    json row = {
+        {"id", id},
+        {"model", JsonValue(state, "model", "")},
+        {"mode", JsonValue(state, "mode", "lean")},
+        {"status", ActiveCollaborator(processes, id) ? "running" : "idle"}};
+    records.push_back(std::move(row));
+  }
+  return ToolSuccess(records.empty() ? "no collaborators"
+                                     : JsonDump(records, 2));
+}
 
 // Concurrency is enforced by the spawn path (RunShellCommand reserves an
 // activity slot bounded by MaxBackgroundJobs); this is only a runaway ceiling.
-int64_t MaxSubagentCallsPerTurn() {
-  return std::max<int64_t>(1, EnvLong("UAGENT_SUBAGENT_CALLS_PER_TURN", 32));
-}
+int64_t MaxSubagentCallsPerTurn() { return SubagentCallsPerTurn(); }
 
 std::string JoinSelections(std::vector<std::string> selections) {
   std::sort(selections.begin(), selections.end());
@@ -132,8 +222,25 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,
                   const std::vector<NamedProvider>& providers, bool debug) {
   json properties = {
+      {"operation",
+       {{"type", "string"},
+        {"enum", json::array({"spawn", "followup", "message", "list"})},
+        {"description",
+         "spawn default; followup resumes a durable child; "
+         "message queues guidance; list shows collaborators"}}},
+      {"agent_id",
+       {{"type", "string"},
+        {"description", "durable collaborator id for followup or message"}}},
       {"prompt",
-       {{"type", "string"}, {"description", "complete standalone brief"}}},
+       {{"type", "string"},
+        {"description",
+         "standalone brief for spawn; next message for a "
+         "followup or queued message"}}},
+      {"directive",
+       {{"type", "string"},
+        {"description",
+         "persistent coordinator guidance prepended to followups; an "
+         "explicit empty string clears it"}}},
       {"background",
        {{"type", "boolean"},
         {"description",
@@ -173,22 +280,109 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "
       "parent rounds; for a broad request with orthogonal parts, issue one "
-      "task per part in a single batch. The child has no conversation: "
-      "include every required path, constraint and success condition, and "
-      "for research, focused questions and a demand for source URLs. Keep "
-      "background=true when useful parent work can continue.",
-      {{"type", "object"},
-       {"properties", std::move(properties)},
-       {"required", json::array({"prompt"})}},
+      "task per part in a single batch. Spawn creates a durable collaborator "
+      "whose conversation can be resumed with operation=followup; message "
+      "queues guidance for its next followup, while activity handles waiting, "
+      "output and stopping. Keep background=true when useful parent work can "
+      "continue.",
+      {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
-        std::string mode = JsonValue(arguments, "mode", "lean");
+        std::string operation = JsonValue(arguments, "operation", "spawn");
+        if (operation == "list") return ListCollaborators(processes);
+        if (operation != "spawn" && operation != "followup" &&
+            operation != "message") {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: operation must be spawn, followup, "
+                             "message, or list");
+        }
+
+        std::string collaborator_id = JsonValue(arguments, "agent_id", "");
+        json collaborator;
+        if (operation == "spawn") {
+          if (!collaborator_id.empty()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: agent_id is assigned by spawn");
+          }
+          collaborator_id = NewCollaboratorId();
+          collaborator = {
+              {"format", kCollaboratorFormat},
+              {"id", collaborator_id},
+              {"cwd", CanonicalCwd()},
+              {"session_file", CollaboratorSessionPath(collaborator_id)},
+              {"created_at", UtcStamp()},
+              {"directive", JsonValue(arguments, "directive", "")},
+              {"mailbox", json::array()}};
+        } else {
+          std::string load_error;
+          if (!LoadCollaborator(collaborator_id, collaborator, load_error)) {
+            return ToolFailure(ToolErrorCode::kNotFound,
+                               "error: " + load_error);
+          }
+        }
+
+        std::string prompt = JsonValue(arguments, "prompt", "");
+        if (operation == "message") {
+          if (arguments.contains("directive")) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: message cannot change directive; use "
+                               "followup");
+          }
+          if (prompt.empty()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: message requires prompt");
+          }
+          if (!collaborator.contains("mailbox") ||
+              !collaborator["mailbox"].is_array()) {
+            collaborator["mailbox"] = json::array();
+          }
+          collaborator["mailbox"].push_back(prompt);
+          collaborator["updated_at"] = UtcStamp();
+          ToolResult saved = SaveCollaborator(collaborator);
+          if (!saved.Ok()) return saved;
+          return ToolSuccess("queued message for collaborator " +
+                             collaborator_id);
+        }
+
+        if (std::optional<int64_t> active =
+                ActiveCollaborator(processes, collaborator_id)) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: collaborator " + collaborator_id +
+                                 " is already running as activity " +
+                                 std::to_string(*active));
+        }
+        if (operation == "followup") {
+          if (arguments.contains("directive")) {
+            collaborator["directive"] = JsonValue(arguments, "directive", "");
+          }
+          std::string directive = JsonValue(collaborator, "directive", "");
+          if (!directive.empty()) {
+            prompt = "[collaborator directive]\n" + directive +
+                     (prompt.empty() ? "" : "\n\n" + prompt);
+          }
+        }
+        if (operation == "followup" && collaborator.contains("mailbox") &&
+            collaborator["mailbox"].is_array()) {
+          for (const json& queued : collaborator["mailbox"]) {
+            if (!queued.is_string()) continue;
+            if (!prompt.empty()) prompt += "\n\n";
+            prompt += "[queued guidance]\n" + queued.get<std::string>();
+          }
+        }
+        if (prompt.empty()) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: spawn or followup requires prompt or "
+                             "queued guidance");
+        }
+
+        std::string mode = JsonValue(arguments, "mode",
+                                     JsonValue(collaborator, "mode", "lean"));
         if (mode != "lean" && mode != "full") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "error: mode must be lean or full");
         }
-        const std::string requested =
-            NormalizeModelId(JsonValue(arguments, "model", ""));
+        const std::string requested = NormalizeModelId(JsonValue(
+            arguments, "model", JsonValue(collaborator, "model", "")));
         SideRoute route =
             ResolveSubagentRoute(api, routes, providers, requested);
         std::string route_label = SubagentDiagnosticRoute(route, providers);
@@ -202,8 +396,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   "unknown model route: " + TerminalSafe(route.selection)));
         }
         double remaining_budget = 0;
-        if (std::optional<ToolResult> blocked =
-                ChildAgentBudgetBlock(api, processes, remaining_budget)) {
+        int64_t remaining_token_budget = 0;
+        if (std::optional<ToolResult> blocked = ChildAgentBudgetBlock(
+                api, processes, remaining_budget, remaining_token_budget)) {
           return *blocked;
         }
         EnvironmentOverrides environment =
@@ -217,14 +412,17 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         bool background = JsonValue(arguments, "background", true);
         // A caller may deny memory but not grant it: the session decides what
         // this process may read, and a child cannot widen that.
-        bool child_memory =
-            api.config.memory_enabled && JsonValue(arguments, "memory", true);
+        bool child_memory = api.config.memory_enabled &&
+                            JsonValue(arguments, "memory",
+                                      JsonValue(collaborator, "memory", true));
         environment.insert(
             environment.end(),
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
              {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
              {"UAGENT_TOOLSET", std::move(mode)},
              {"UAGENT_MEMORY", child_memory ? "1" : "0"},
+             {"UAGENT_INTERNAL_SESSION_FILE",
+              JsonValue(collaborator, "session_file", "")},
              // The parent brief is standalone. Re-inlining every always-on
              // memory in each child only duplicates context and emits a
              // misleading truncation warning when that optional cache is full.
@@ -253,6 +451,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           environment.emplace_back("UAGENT_SESSION_BUDGET",
                                    std::to_string(child_budget));
         }
+        if (api.config.session_token_budget > 0) {
+          environment.emplace_back("UAGENT_SESSION_TOKEN_BUDGET",
+                                   std::to_string(remaining_token_budget));
+        }
         // The per-call budget bounds a command that might run away. A child
         // the caller chose to wait for is supervised, so it is bounded by
         // max_seconds when given and by the turn otherwise.
@@ -267,8 +469,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           max_seconds = ceiling;
         }
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
-        std::string command =
-            ChildAgentCommand(debug, JsonValue(arguments, "prompt", ""));
+        std::string command = ChildAgentCommand(debug, prompt);
         ShellCommandResult child =
             RunShellCommand(processes, child_context,
                             {.command = std::move(command),
@@ -276,8 +477,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                              .immediate = background,
                              .job_kind = "subagent",
                              .activity_label = route_label,
+                             .source_id = collaborator_id,
                              .completion_notes = clamped,
                              .environment = std::move(environment)});
+        const bool launched = child.launched;
         ToolResult result = std::move(child.result);
         if (child.wait_status && result.artifact) {
           // The child ran long enough for its log to outgrow the cap, so the
@@ -304,6 +507,23 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               ChildAgentFailureReport(route_label, stage, result.output) +
               ChildAgentConstraintNotes(clamped);
         }
+        if (launched) {
+          collaborator["mode"] = JsonValue(
+              arguments, "mode", JsonValue(collaborator, "mode", "lean"));
+          collaborator["model"] = requested;
+          collaborator["memory"] = child_memory;
+          collaborator["mailbox"] = json::array();
+          collaborator["updated_at"] = UtcStamp();
+          ToolResult saved = SaveCollaborator(collaborator);
+          if (saved.Ok()) {
+            result.output += "\n[collaborator " + collaborator_id +
+                             "; resume with subagent operation=followup]";
+          } else {
+            result.output +=
+                "\n[warning: collaborator metadata was not saved: " +
+                TerminalSafe(saved.output) + "]";
+          }
+        }
         return result;
       });
   tool.clamped_arguments = {"max_steps", "max_tool_calls", "max_seconds"};
@@ -319,13 +539,18 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.available_in_lean = false;
   tool.max_calls_per_turn = MaxSubagentCallsPerTurn();
   tool.summary = [&api, &routes, &providers](const json& arguments) {
+    std::string operation = JsonValue(arguments, "operation", "spawn");
+    if (operation == "list") return std::string("list collaborators");
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");
+    std::string id = JsonValue(arguments, "agent_id", "");
+    if (operation == "message") return "[message " + id + "] " + prompt;
     std::string label = SubagentTargetLabel(
         api, routes, providers,
         NormalizeModelId(JsonValue(arguments, "model", "")));
     if (mode == "full") label += " · full";
     if (!JsonValue(arguments, "background", true)) label += " · foreground";
+    if (!id.empty()) label += " · " + id;
     return "[" + label + "] " + prompt;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.

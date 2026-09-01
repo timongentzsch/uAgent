@@ -35,7 +35,8 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
   std::string error;
   if (!session.context.observability.Journal().Load(
           session.session_file + ".events.jsonl", error)) {
-    fprintf(stderr, "cannot load session journal: %s\n", error.c_str());
+    Emit(NoticeEvent(PresentationStatus::kFailed,
+                     "cannot load session journal: " + error));
   }
   Emit(Event{EventId::kSessionResumed,
              {{"model", session.ApiClient().RequestModel()},
@@ -93,6 +94,7 @@ void SaveSelectedModel(AppSession& session, const std::string& selected) {
 // Its only caller is /models, so it stays here rather than in a header.
 std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   std::string current = RouteSelection(api, {});
+  json options = json::array();
   for (size_t i = 0; i < search.matches.size(); ++i) {
     const ModelCandidate& candidate = search.matches[i];
     bool active = candidate.route.base_url == api.base_url &&
@@ -119,6 +121,12 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
       }
     }
     printf("%s\n", RST());
+    options.push_back({{"value", std::to_string(i + 1)},
+                       {"label", candidate.selection},
+                       {"active", active},
+                       {"effort", effort},
+                       {"context", candidate.info.context},
+                       {"supported_efforts", candidate.info.efforts}});
   }
   for (const std::string& unavailable : search.unavailable) {
     printf("%s· %s catalog unavailable%s\n", YEL(),
@@ -132,8 +140,10 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
   bool cancelled = false;
   bool eof = false;
   std::string answer = ReadChoiceLine(
-      "model # (blank/Esc keeps " + TerminalSafe(current) + "): ", cancelled,
-      eof);
+      {.kind = "model.select",
+       .prompt = "model # (blank/Esc keeps " + TerminalSafe(current) + "): ",
+       .options = std::move(options)},
+      cancelled, eof);
   if (cancelled || eof || answer.empty()) {
     printf("%s· keeping %s%s\n", DIM(), TerminalSafe(current).c_str(), RST());
     return std::nullopt;
@@ -161,7 +171,8 @@ void HandleModels(AppSession& session, const std::string& argument) {
   printf("%s· searching all model catalogs%s%s\n", DIM(), suffix.c_str(),
          RST());
   fflush(stdout);
-  TerminalSpinner spinner(true, SpinnerLabel("searching model catalogs"));
+  TerminalSpinner spinner(session.context.channel == nullptr,
+                          SpinnerLabel("searching model catalogs"));
   ModelSearch search =
       SearchModels(session.ApiClient(), session.context.provider.routes,
                    session.context.provider.providers, argument);
@@ -186,6 +197,7 @@ void HandleModel(AppSession& session, const std::string& argument) {
     HandleModels(session, "");
     return;
   }
+  ModelSelection requested = ParseModelSelection(argument);
   std::string selected =
       SelectModel(session.ApiClient(), session.context.provider.routes,
                   session.context.provider.providers, argument);
@@ -193,6 +205,15 @@ void HandleModel(AppSession& session, const std::string& argument) {
     printf("%s· unknown model %s; use /models%s\n", RED(),
            TerminalSafe(argument).c_str(), RST());
     return;
+  }
+  if (!requested.effort.empty() &&
+      requested.effort != session.ApiClient().reasoning_effort) {
+    printf("%s· effort %s is not supported by this model; using %s%s\n", YEL(),
+           requested.effort.c_str(),
+           session.ApiClient().reasoning_effort.empty()
+               ? "provider default"
+               : session.ApiClient().reasoning_effort.c_str(),
+           RST());
   }
   SaveSelectedModel(session, selected);
 }
@@ -230,6 +251,9 @@ void HandleEffort(AppSession& session, const std::string& argument) {
         "%s· effort must be none, minimal, low, medium, high, xhigh, or "
         "max; use default to defer to the provider%s\n",
         RED(), RST());
+  } else if (!SupportsReasoningEffort(session.ApiClient(), argument)) {
+    printf("%s· effort %s is not supported by the active model%s\n", RED(),
+           argument.c_str(), RST());
   } else {
     session.ApiClient().reasoning_effort = argument;
     ActivateCurrentRoute(session);
@@ -374,14 +398,16 @@ void HandleContext(AppSession& session) {
   printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
          TerminalSafe(JsonDump(effective, 2)).c_str());
   printf("%smodel request%s\n", BOLD(), RST());
-  session.ActiveAgent().PrintContext();
+  if (session.context.channel == nullptr) {
+    session.ActiveAgent().PrintContext();
+  }
 }
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
 // set mid-session, so this is the live view.
 
-// /context stays the deep "exact next request" view. /status answers the
-// everyday questions in one screen and /debug-config explains provenance.
+// /context is the deep live-context view. /status answers the everyday
+// questions in one screen and /debug-config explains provenance.
 void HandleStatus(const AppSession& session) {
   json status =
       DescribeSelf(SelfTopic::kStatus, "",
@@ -531,12 +557,71 @@ void HandleProcesses(const AppSession& session) {
          TerminalSafe(activities.output).c_str(), RST());
 }
 
+SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
+  return {session.context.config_manager, session.Runtime().config,
+          session.ApiClient(), session.context.tools,
+          session.context.options.yolo};
+}
+
+json CommandResult(const AppSession& session,
+                   const ParsedSlashCommand& command) {
+  switch (command.spec->id) {
+    case SlashCommandId::kHelp:
+      return DescribeSelf(SelfTopic::kCommands, "", DescriptionInputs(session));
+    case SlashCommandId::kStatus:
+      return DescribeSelf(SelfTopic::kStatus, "", DescriptionInputs(session));
+    case SlashCommandId::kDebugConfig:
+      return DescribeSelf(SelfTopic::kConfig, command.argument,
+                          DescriptionInputs(session));
+    case SlashCommandId::kTools:
+      return DescribeSelf(SelfTopic::kTools, "", DescriptionInputs(session));
+    case SlashCommandId::kTrace:
+      return {{"trace", session.ActiveAgent().LatestToolTrace()}};
+    case SlashCommandId::kContext:
+      return {
+          {"effective_config", session.context.config_manager.DiagnosticJson(
+                                   session.Runtime().config)},
+          {"capabilities", session.ApiClient().capabilities.DiagnosticJson()},
+          {"model_request", session.ActiveAgent().ModelRequest()}};
+    case SlashCommandId::kCost:
+      return {{"routes", session.ActiveAgent().RouteUsageJson()},
+              {"total", UsageJson(session.ActiveAgent().SessionUsage())},
+              {"session_budget", session.ApiClient().config.session_budget}};
+    case SlashCommandId::kMemory: {
+      json entries = json::array();
+      for (const MemoryEntry& entry : ListMemories()) {
+        entries.push_back({{"key", entry.key}, {"path", entry.path}});
+      }
+      return {{"enabled", session.ApiClient().config.memory_enabled},
+              {"entries", std::move(entries)}};
+    }
+    case SlashCommandId::kProcesses: {
+      ToolResult activities = ToolActivityList(session.Runtime().processes);
+      return {{"activities", activities.output}};
+    }
+    case SlashCommandId::kAttach: {
+      json attachments = json::array();
+      for (const Attachment& attachment : session.attachments) {
+        attachments.push_back({{"name", attachment.name},
+                               {"path", attachment.path},
+                               {"mime", attachment.mime}});
+      }
+      return {{"attachments", std::move(attachments)}};
+    }
+    default:
+      return json::object();
+  }
+}
+
 }  // namespace
 
-bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
+bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
+                     json& result) {
+  bool quit = false;
   switch (command.spec->id) {
     case SlashCommandId::kQuit:
-      return true;
+      quit = true;
+      break;
     case SlashCommandId::kReset:
       session.ActiveAgent().Reset();
       session.context.observability.Journal().Clear();
@@ -546,10 +631,11 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
       printf("%s· fresh session%s\n", DIM(), RST());
       break;
     case SlashCommandId::kSessions: {
-      std::string chosen = PickSession();
+      bool render = session.context.channel == nullptr;
+      std::string chosen = PickSession(render);
       if (!chosen.empty()) {
         std::string previous_path = session.session_file;
-        ResumeInto(session.ActiveAgent(), chosen, session.session_file);
+        ResumeInto(session.ActiveAgent(), chosen, session.session_file, render);
         LoadSessionJournal(session, previous_path);
         session.attachments.clear();
         session.saved_revision = session.ActiveAgent().Revision();
@@ -557,7 +643,9 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
       break;
     }
     case SlashCommandId::kTrace:
-      session.ActiveAgent().PrintTrace();
+      if (session.context.channel == nullptr) {
+        session.ActiveAgent().PrintTrace();
+      }
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
@@ -571,7 +659,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
              RST());
       break;
     case SlashCommandId::kHelp:
-      PrintCommandHelp();
+      if (session.context.channel == nullptr) PrintCommandHelp();
       break;
     case SlashCommandId::kModels:
       HandleModels(session, command.argument);
@@ -626,7 +714,8 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command) {
   // Notices above are written with bare printf; the interactive composer owns
   // stdout and only sees what has left the buffer.
   fflush(stdout);
-  return false;
+  result = CommandResult(session, command);
+  return quit;
 }
 
 }  // namespace uagent

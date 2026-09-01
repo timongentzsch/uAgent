@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -19,16 +18,23 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
-#include "include/core/term.h"
 #include "include/mcp/server.h"
 
 namespace uagent {
 
 // Config fields the loader understands; anything else is reported and
 // ignored. A constexpr table keeps this out of per-TU dynamic init.
-inline constexpr std::string_view kKnown[] = {
-    "type",  "command", "args",  "env",      "cwd",
-    "tools", "roots",   "trust", "disabled", "__uagent_config_dir"};
+inline constexpr std::string_view kKnown[] = {"type",
+                                              "command",
+                                              "args",
+                                              "env",
+                                              "cwd",
+                                              "tools",
+                                              "roots",
+                                              "trust",
+                                              "required",
+                                              "disabled",
+                                              "__uagent_config_dir"};
 
 inline bool McpValidateServerConfig(const std::string& name, const json& conf,
                                     std::string& error) {
@@ -50,6 +56,7 @@ inline bool McpValidateServerConfig(const std::string& name, const json& conf,
       !require_type("tools", json::value_t::array, "an array") ||
       !require_type("roots", json::value_t::array, "an array") ||
       !require_type("trust", json::value_t::boolean, "a boolean") ||
+      !require_type("required", json::value_t::boolean, "a boolean") ||
       !require_type("disabled", json::value_t::boolean, "a boolean")) {
     return false;
   }
@@ -174,8 +181,7 @@ inline json McpLoadConfig(const json& trusted_project, size_t max_bytes) {
     if (!f) return json::object();
     json j = json::parse(f, nullptr, false);
     if (j.is_discarded() || !j.is_object()) {
-      printf("%smcp: %s is not valid JSON — ignored%s\n", RED(), path.c_str(),
-             RST());
+      McpError(path, "configuration is not valid JSON — ignored");
       return json::object();
     }
     return j.contains("mcpServers") && j["mcpServers"].is_object()

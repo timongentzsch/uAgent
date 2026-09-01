@@ -4,6 +4,31 @@
 
 ### Changed
 
+- MCP compatibility break: the legacy `initialize` / protocol `2025-11-25`
+  lifecycle is replaced by stateless `server/discover` negotiation for
+  `2026-07-28`, and a configured required server now aborts startup when it
+  cannot initialize instead of being skipped with a warning.
+- MCP launch now prepares argv before `fork()` and keeps the multithreaded
+  child path allocation-free until `exec`, avoiding inherited allocator-lock
+  deadlocks.
+- Generated-token budgets now complement dollar budgets: `UAGENT_MAX_TURN_TOKENS`
+  and `UAGENT_SESSION_TOKEN_BUDGET` stop between model rounds with one-response
+  overshoot, include side-route usage, persist across resume, and appear in the
+  headless `stop` metadata. Delegated children receive only the remaining
+  session allowance, and late child usage no longer discards a parent answer
+  that already completed. `--token-budget` and the GitHub Action input set the
+  session ceiling.
+- Durable collaborator sessions use the existing debug age/count retention
+  bounds. A launched follow-up consumes queued guidance even if execution later
+  fails, failed children remain resumable, and metadata-save failures preserve
+  completed answers with a warning.
+- Session format 2 is no longer resumed. µAgent now rejects it explicitly
+  instead of inferring message kinds from ambiguous roles; current format-3
+  sessions require their persisted tool-display map.
+- A newline delivered in the same terminal input batch as bracketed paste is
+  inserted into the draft instead of submitting it unexpectedly.
+- Release archives no longer bundle the Node-based `find-skills` skill.
+
 - `self-improve` now runs one bounded personal prompt-overlay experiment instead
   of proposing broad repository changes from incomplete session evidence. Its
   installed runner pre-registers control/treatment limits, rejects cohort and

@@ -42,6 +42,8 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_MAX_STEPS` | integer | `0` | next-user-turn | model rounds per turn; 0 disables the limit |
 | `UAGENT_MAX_TOOL_CALLS` | integer | `0` | next-user-turn | tool calls per turn; 0 disables the limit |
 | `UAGENT_MAX_TURN_SECONDS` | integer | `0` | next-user-turn | wall-clock seconds per turn; 0 disables the deadline |
+| `UAGENT_MAX_TURN_TOKENS` | integer | `0` | next-user-turn | generated-token ceiling per turn; 0 disables it |
+| `UAGENT_SESSION_TOKEN_BUDGET` | integer | `0` | next-user-turn | cumulative generated-token ceiling; 0 disables it |
 | `UAGENT_MAX_TURN_COST` | number | `0.0` | next-user-turn | reported-cost ceiling per turn; 0 disables it |
 | `UAGENT_SESSION_BUDGET` | number | `0.0` | next-user-turn | cumulative reported-cost ceiling; 0 disables it |
 | `UAGENT_TOOL_TIMEOUT` | integer | `30` | next-user-turn | seconds one tool call may run |
@@ -78,6 +80,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_MAX_STEPS` | integer | `100` | restart-required | model rounds per delegated child |
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
+| `UAGENT_SUBAGENT_CALLS_PER_TURN` | integer | `32` | restart-required | delegated children one coordinator turn may start |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
 
@@ -126,6 +129,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
 | `UAGENT_MCP_TIMEOUT` | integer | `60` | restart-required | seconds allowed for one MCP call |
+| `UAGENT_MCP_STARTUP_GRACE` | integer | `2` | restart-required | shared startup seconds for optional MCP servers |
 | `UAGENT_MCP_SERVERS` | integer | `32` | restart-required | MCP servers registered |
 | `UAGENT_MCP_PAGES` | integer | `100` | restart-required | pages walked while listing MCP tools |
 | `UAGENT_MCP_TOOLS` | integer | `256` | restart-required | MCP tools registered |
@@ -142,6 +146,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images |
 | `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
+| `UAGENT_IMAGE_PROTOCOL` | string | empty | restart-required | terminal image protocol: auto, iterm, kitty, or none |
 | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
 | `UAGENT_PENDING_ATTACHMENTS` | integer | `8` | restart-required | attachments queued for the next turn |
 | `UAGENT_ATTACHMENT_MB` | integer | `10` | restart-required | largest attachment in mebibytes |
@@ -174,6 +179,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
 | `UAGENT_APPROVAL` | string | empty | restart-required | yolo approves ordinary mutations without asking |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
+| `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | string | empty | restart-required | trust this workspace's .mcp.json and config |
 | `UAGENT_CONFIG_FILE` | string | empty | restart-required | replace both config-file locations |
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |

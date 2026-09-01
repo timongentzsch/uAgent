@@ -350,6 +350,7 @@ json EncodeAnthropic(const WireRequest& request) {
   json body = {
       {"model", request.model},
       {"messages", AnthropicMessages(request.messages, system)},
+      {"cache_control", {{"type", "ephemeral"}}},
       {"stream", true},
       {"max_tokens", request.max_output_tokens > 0 ? request.max_output_tokens
                                                    : int64_t{8192}}};

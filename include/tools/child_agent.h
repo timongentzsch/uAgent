@@ -64,9 +64,10 @@ std::string ChildAgentStopNote(const json& stop);
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the
 // refusal to hand back, or nothing when the call may proceed, and reports the
-// budget the child should inherit.
+// cost and generated-token budgets the child should inherit.
 std::optional<ToolResult> ChildAgentBudgetBlock(
-    const Api& api, const ProcessSupervisor& processes, double& remaining);
+    const Api& api, const ProcessSupervisor& processes,
+    double& remaining_cost, int64_t& remaining_tokens);
 
 }  // namespace uagent
 

@@ -69,7 +69,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "required":["path"]})json"),
       [workspace](const json& a, const ToolContext&) {
         std::string path = JsonValue(a, "path", ".");
-        int64_t offset = JsonValue(a, "offset", int64_t{0});
+        int64_t offset = JsonValue(a, "offset", int64_t{1});
         int64_t limit = JsonValue(a, "limit", int64_t{0});
         std::error_code error;
         if (std::filesystem::is_directory(path, error)) {
@@ -191,6 +191,11 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                         JsonValue(a, "mode", "content") == "files");
       }));
   grep.clamped_arguments = {"context"};
+  grep.canonicalize = [](json& arguments) {
+    if (JsonValue(arguments, "mode", "content") == "files") {
+      arguments.erase("context");
+    }
+  };
   grep.parallel_safe = true;  // read-only, like read_path
   grep.capabilities = Capability(ToolCapability::kInspect);
   // Same contract as read_path: only a byte-identical repeat of a result still

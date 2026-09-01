@@ -103,6 +103,7 @@ void TestWireAdapters() {
       EncodeWireRequest(WireApi::kAnthropicMessages, anthropic_request);
   CHECK(anthropic["system"] == "baseline");
   CHECK(anthropic["max_tokens"] == 2048);
+  CHECK(anthropic["cache_control"]["type"] == "ephemeral");
   CHECK(anthropic["thinking"]["type"] == "adaptive");
   CHECK(anthropic["output_config"]["effort"] == "high");
   CHECK(anthropic["messages"][0]["content"][1]["type"] == "image");
@@ -248,6 +249,37 @@ void TestWireStreams() {
   CHECK(responses_result.tool_calls[0].name == "read_path");
   CHECK(responses_result.tool_calls[0].args == R"({"path":"README.md"})");
 
+  // An incomplete Responses turn is a typed stop, not a transport failure.
+  // Complete calls remain executable so an output-token cutoff does not
+  // repeat an already formed side effect.
+  ChatResult incomplete_result;
+  std::map<int, ToolCall> incomplete_calls;
+  WireStreamState incomplete_state;
+  auto incomplete_event = [&](const json& value) {
+    return DecodeWireStreamEvent(WireApi::kResponses, JsonDump(value),
+                                 incomplete_result, incomplete_calls,
+                                 incomplete_state);
+  };
+  incomplete_event({{"type", "response.output_item.done"},
+                    {"output_index", 0},
+                    {"item",
+                     {{"type", "function_call"},
+                      {"call_id", "cutoff-call"},
+                      {"name", "read_path"},
+                      {"arguments", R"({"path":"README.md"})"}}}});
+  incomplete_event(
+      {{"type", "response.incomplete"},
+       {"response",
+        {{"incomplete_details", {{"reason", "max_output_tokens"}}},
+         {"usage", {{"input_tokens", 4}, {"output_tokens", 2}}}}}});
+  CHECK(incomplete_result.error.empty());
+  CHECK(incomplete_result.incomplete);
+  CHECK(incomplete_result.stop_cause == ResponseStopCause::kLength);
+  CHECK(incomplete_result.stop_details["reason"] == "max_output_tokens");
+  CHECK(CollectToolCalls(incomplete_calls, incomplete_result));
+  CHECK(incomplete_result.tool_calls.size() == 1);
+  CHECK(incomplete_result.tool_calls[0].id == "cutoff-call");
+
   ChatResult anthropic_result;
   std::map<int, ToolCall> anthropic_calls;
   WireStreamState anthropic_state;
@@ -327,7 +359,7 @@ void TestWireStreams() {
   anthropic_event({{"type", "message_stop"}});
   CHECK(anthropic_answer == "result");
   CHECK(anthropic_reasoning == "consider");
-  CHECK(anthropic_result.continue_response);
+  CHECK(anthropic_result.stop_cause == ResponseStopCause::kPause);
   CHECK(anthropic_result.finish_reason == "pause_turn");
   CHECK(anthropic_result.annotations.size() == 1);
   CHECK(anthropic_result.replay["content"].size() == 5);

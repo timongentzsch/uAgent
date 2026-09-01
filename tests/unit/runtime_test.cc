@@ -91,6 +91,8 @@ void TestRuntimeOwnershipHelpers() {
   static constexpr std::pair<const char*, const char*> kRuntimeEnv[] = {
       {"UAGENT_MAX_STEPS", "0"},
       {"UAGENT_MAX_TOOL_CALLS", "0"},
+      {"UAGENT_MAX_TURN_TOKENS", "123"},
+      {"UAGENT_SESSION_TOKEN_BUDGET", "456"},
       {"UAGENT_TEST_LONG", "999999999999999999999999999999"},
       {"UAGENT_SESSION_BUDGET", "2.5"},
       {"UAGENT_MAX_TURN_COST", "nan"},
@@ -114,6 +116,8 @@ void TestRuntimeOwnershipHelpers() {
   RuntimeConfig config = RuntimeConfig::FromEnvironment();
   CHECK(config.max_steps == 0);
   CHECK(config.max_tool_calls == 0);
+  CHECK(config.max_turn_tokens == 123);
+  CHECK(config.session_token_budget == 456);
   CHECK(EnvLong("UAGENT_TEST_LONG", 7) == 7);
   CHECK(config.session_budget == 2.5);
   CHECK(config.max_turn_cost == 0);
@@ -134,6 +138,8 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(config.openrouter_variant == "floor");
   json diagnostics = config.DiagnosticJson();
   CHECK(diagnostics.value("max_steps", int64_t{0}) == config.max_steps);
+  CHECK(diagnostics.value("max_turn_tokens", int64_t{0}) == 123);
+  CHECK(diagnostics.value("session_token_budget", int64_t{0}) == 456);
   CHECK(diagnostics.value("web_search_model", "") == config.web_search_model);
   CHECK(diagnostics.value("web_search_backend", "") ==
         config.web_search_backend);
@@ -150,6 +156,8 @@ void TestRuntimeOwnershipHelpers() {
   RuntimeConfig defaults;
   CHECK(defaults.max_steps == 0);
   CHECK(defaults.max_tool_calls == 0);
+  CHECK(defaults.max_turn_tokens == 0);
+  CHECK(defaults.session_token_budget == 0);
   CHECK(defaults.max_turn_cost == 0);
   CHECK(AutoCompactTokens() == 0);
   CHECK(defaults.max_turn_seconds == 0);
@@ -165,30 +173,31 @@ void TestRuntimeOwnershipHelpers() {
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenRouter, api.base_url);
   api.model = "test";
-  json body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  json body =
+      api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("session_id", "") == "stable-session");
   CHECK(body["provider"]["order"][0] == "streamlake");
   CHECK(body["provider"].value("allow_fallbacks", false));
   CHECK(!body.contains("stream_options"));
   api.config.openrouter_variant = "nitro";
-  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:nitro");
   api.model = "test:exacto";
   api.config.openrouter_variant = "floor";
-  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:floor");
   api.model = "test:free";
   api.config.openrouter_variant = "exacto";
-  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:free:exacto");
   api.reasoning_effort = "low";
-  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body["reasoning"].value("effort", "") == "low");
   CHECK(!body.contains("reasoning_effort"));
   api.base_url = "http://127.0.0.1:8080/v1";
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
-  body = api.BuildChatBody(json::array(), json::array(), "stable-session");
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
   CHECK(body.value("model", "") == "test:free");
   CHECK(!body.contains("session_id"));
   CHECK(!body.contains("provider"));
@@ -197,18 +206,27 @@ void TestRuntimeOwnershipHelpers() {
   api.capabilities =
       CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
   api.reasoning_effort = "high";
-  body = api.BuildChatBody(json::array(), json::array());
+  body = api.BuildRequestBody(json::array(), json::array());
   CHECK(body.value("reasoning_effort", "") == "high");
   // Uncapped by default: neither spelling is sent, so the provider's own
   // maximum applies and never clamps a derived thinking budget.
   CHECK(!body.contains("max_completion_tokens"));
   CHECK(!body.contains("max_tokens"));
   setenv("UAGENT_MAX_TOKENS", "4096", 1);
-  body = api.BuildChatBody(json::array(), json::array());
+  body = api.BuildRequestBody(json::array(), json::array());
   CHECK(body.value("max_completion_tokens", int64_t{0}) == 4096);
   CHECK(!body.contains("max_tokens"));
   unsetenv("UAGENT_MAX_TOKENS");
   CHECK(body["stream_options"].value("include_usage", false));
+  api.capabilities.wire_api = WireApi::kResponses;
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
+  CHECK(body.value("prompt_cache_key", "") == HashHex("stable-session"));
+  api.base_url = "http://127.0.0.1:8080/v1";
+  body = api.BuildRequestBody(json::array(), json::array(), "stable-session");
+  CHECK(!body.contains("prompt_cache_key"));
+  api.base_url = "https://api.openai.com/v1";
+  api.capabilities =
+      CapabilitiesForRoute(ProviderProtocol::kOpenAi, api.base_url);
 
   // The file-parser plugin rides the conversation request, so it is sent only
   // where it is understood and only when a document is actually attached.
@@ -217,16 +235,18 @@ void TestRuntimeOwnershipHelpers() {
         {"content", json::array({{{"type", "text"}, {"text", "read it"}},
                                  {{"type", "file"},
                                   {"file", {{"filename", "a.pdf"}}}}})}}});
-  CHECK(!api.BuildChatBody(documented, json::array(), "").contains("plugins"));
+  CHECK(
+      !api.BuildRequestBody(documented, json::array(), "").contains("plugins"));
   Api via_open_router(config);
   via_open_router.capabilities = CapabilitiesForRoute(
       ProviderProtocol::kOpenRouter, via_open_router.base_url);
-  json plugged = via_open_router.BuildChatBody(documented, json::array(), "");
+  json plugged =
+      via_open_router.BuildRequestBody(documented, json::array(), "");
   CHECK(plugged["plugins"][0]["id"] == "file-parser");
   CHECK(plugged["plugins"][0]["pdf"]["engine"] == "cloudflare-ai");
   // A request without a document does not carry it.
   CHECK(!via_open_router
-             .BuildChatBody(
+             .BuildRequestBody(
                  json::array({{{"role", "user"}, {"content", "plain"}}}),
                  json::array(), "")
              .contains("plugins"));
@@ -242,8 +262,8 @@ void TestRuntimeOwnershipHelpers() {
   auto same_bytes = [&](const json& messages, const std::string& session) {
     bool available = false;
     return api.ChatPayload(messages, json::array(), session, &available) ==
-           JsonDump(
-               api.BuildChatBody(messages, json::array(), session, &available));
+           JsonDump(api.BuildRequestBody(messages, json::array(), session,
+                                         &available));
   };
   CHECK(same_bytes(history, ""));  // empty history
   history.push_back(message("system", "base"));
@@ -638,12 +658,15 @@ void TestNamedProviders() {
   Api routed(config);
   routed.reasoning_effort = "medium";
   ApplyRoute(routed, *dynamic);
-  CHECK(routed.reasoning_effort == "medium");
+  CHECK(routed.reasoning_effort.empty());
   CHECK(routed.capabilities.OpenRouter());
   ModelRoute fixed_effort = *dynamic;
   fixed_effort.effort = "low";
+  fixed_effort.supported_efforts = {"low", "high"};
   ApplyRoute(routed, fixed_effort);
   CHECK(routed.reasoning_effort == "low");
+  CHECK(SupportsReasoningEffort(routed, "high"));
+  CHECK(!SupportsReasoningEffort(routed, "medium"));
   ActivateRoute(routed);
   CHECK(ContainsCaseInsensitive("codex-local/gpt-5.6-sol", "GPT-5.6"));
   CHECK(ContainsCaseInsensitive("openrouter/deepseek/v4", "openrouter"));
@@ -682,10 +705,26 @@ void TestNamedProviders() {
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
   Api no_catalog(RuntimeConfig{});
-  std::vector<ModelRoute> aliases = {
-      {"static/low", "https://static.test/v1", "key", "same-model", "low", 0},
-      {"static/high", "https://static.test/v1", "key", "same-model", "high",
-       0}};
+  std::vector<ModelRoute> aliases = {{"static/low",
+                                      "https://static.test/v1",
+                                      "key",
+                                      "same-model",
+                                      "low",
+                                      0,
+                                      ProviderProtocol::kOpenAi,
+                                      WireApi::kChatCompletions,
+                                      false,
+                                      {}},
+                                     {"static/high",
+                                      "https://static.test/v1",
+                                      "key",
+                                      "same-model",
+                                      "high",
+                                      0,
+                                      ProviderProtocol::kOpenAi,
+                                      WireApi::kChatCompletions,
+                                      false,
+                                      {}}};
   ModelSearch alias_search = SearchModels(no_catalog, aliases, {}, "static");
   CHECK(alias_search.matches.size() == 2);
 
@@ -720,6 +759,8 @@ void TestEffectiveConfigReload() {
             path,
             "UAGENT_MAX_STEPS=4\n"
             "UAGENT_MAX_TOOL_CALLS=2\n"
+            "UAGENT_MAX_TURN_TOKENS=100\n"
+            "UAGENT_SESSION_TOKEN_BUDGET=200\n"
             "UAGENT_MCP_SERVERS=9\n"
             "UAGENT_MODEL=initial-model\n"
             "UAGENT_SESSION_BUDGET=1\n"
@@ -734,6 +775,8 @@ void TestEffectiveConfigReload() {
   RuntimeConfig active = manager.Initialize();
   CHECK(active.max_steps == 9);
   CHECK(active.max_tool_calls == 2);
+  CHECK(active.max_turn_tokens == 100);
+  CHECK(active.session_token_budget == 200);
   CHECK(active.mcp_servers == 9);
   CHECK(active.session_budget == 3.5);
   CHECK(!active.memory_enabled);
@@ -750,6 +793,8 @@ void TestEffectiveConfigReload() {
 
   CHECK(ToolWriteFile(path,
                       "UAGENT_MAX_TOOL_CALLS=7\n"
+                      "UAGENT_MAX_TURN_TOKENS=150\n"
+                      "UAGENT_SESSION_TOKEN_BUDGET=250\n"
                       "UAGENT_MCP_SERVERS=10\n"
                       "UAGENT_MODEL=next-model\n"
                       "UAGENT_WEB_SEARCH_API_KEY=changed-secret\n")
@@ -759,6 +804,8 @@ void TestEffectiveConfigReload() {
   if (reload) {
     CHECK(reload->active.max_steps == 9);
     CHECK(reload->active.max_tool_calls == 7);
+    CHECK(reload->active.max_turn_tokens == 150);
+    CHECK(reload->active.session_token_budget == 250);
     CHECK(reload->active.mcp_servers == 9);
     CHECK(std::find(reload->applied.begin(), reload->applied.end(),
                     "max_tool_calls") != reload->applied.end());

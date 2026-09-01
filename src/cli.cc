@@ -6,12 +6,14 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <utility>
 
+#include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 
@@ -155,6 +157,8 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
   ReadHandler() = std::move(handler);
 }
 
+bool InteractiveReadAvailable() { return static_cast<bool>(ReadHandler()); }
+
 std::string InputPrompt(const char* label) {
   return std::string(CYAN()) +
          (label && *label ? std::string(label) + "> " : "> ") + RST();
@@ -181,27 +185,55 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
 
 std::string ReadInputLine(const std::string& prompt, bool* eof,
                           bool keep_history, const std::string& initial) {
+  return ReadInteraction(
+      {.prompt = prompt, .keep_history = keep_history, .initial = initial},
+      eof);
+}
+
+std::string ReadInteraction(InteractionRequest request, bool* eof) {
+  static std::atomic<uint64_t> sequence{0};
+  if (request.id.empty()) {
+    request.id = "interaction-" + std::to_string(sequence.fetch_add(1) + 1);
+  }
   *eof = false;
+  Emit(Event{EventId::kInteractionRequested,
+             {{"id", request.id},
+              {"kind", request.kind},
+              {"prompt", request.prompt},
+              {"initial", request.initial},
+              {"options", request.options}}});
+  std::string answer;
   if (ReadHandler()) {
-    return ReadHandler()(prompt, eof, keep_history, initial);
-  }
-  ScopedCookedInput cooked_input;
-  fputs(prompt.c_str(), stdout);
-  fputs(initial.c_str(), stdout);
-  fflush(stdout);
-  std::string input;
-  if (!std::getline(std::cin, input)) {
+    answer = ReadHandler()(request, eof);
+  } else {
+    ScopedCookedInput cooked_input;
+    fputs(request.prompt.c_str(), stdout);
+    fputs(request.initial.c_str(), stdout);
+    fflush(stdout);
+    if (!std::getline(std::cin, answer)) {
+      *eof = true;
+      answer.clear();
+    } else {
+      answer = request.initial + answer;
+    }
     fputs(RST(), stdout);
-    *eof = true;
-    return "";
   }
-  fputs(RST(), stdout);
-  return initial + input;
+  Emit(Event{EventId::kInteractionResolved,
+             {{"id", request.id},
+              {"kind", request.kind},
+              {"eof", *eof},
+              {"answer", answer}}});
+  return answer;
 }
 
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
                            bool& eof) {
-  std::string input = Trim(ReadInputLine(prompt, &eof, false));
+  return ReadChoiceLine({.kind = "choice", .prompt = prompt}, cancelled, eof);
+}
+
+std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
+                           bool& eof) {
+  std::string input = Trim(ReadInteraction(std::move(request), &eof));
   cancelled = eof || input.find('\x1b') != std::string::npos;
   return cancelled ? "" : input;
 }

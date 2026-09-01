@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/env.h"
 #include "include/core/platform.h"
 #include "include/core/strings.h"
 
@@ -25,8 +26,7 @@ std::string KeyOf(std::string_view entry) {
 // per child rather than once per inherited variable.
 std::vector<std::string> ShellAllowList() {
   std::vector<std::string> allowed;
-  const char* configured = getenv("UAGENT_SHELL_ENV_ALLOW");
-  if (!configured) return allowed;
+  std::string configured = ShellEnvironmentAllowlist();
   for (std::string entry : SplitPathList(configured, ',')) {
     entry = Trim(entry);
     if (!entry.empty()) allowed.push_back(std::move(entry));

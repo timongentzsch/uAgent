@@ -10,6 +10,7 @@
 | `--json` | — | emit a stable JSON envelope in headless mode |
 | `--json-stream` | — | emit versioned JSONL events in headless mode |
 | `--budget` | `USD` | cap total session spend between model calls |
+| `--token-budget` | `TOKENS` | cap generated tokens across the session between model calls |
 | `--no-memory` | — | disable memory recall and writes for this session |
 | `--model` | `SELECTION` | conversation model as [provider/]model[:variant][:effort] |
 | `--image-model` | `SELECTION` | read attached images with this model route |

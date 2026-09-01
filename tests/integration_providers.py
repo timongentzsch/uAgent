@@ -470,6 +470,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         valid = (
             body.get("model") == "gpt-live"
             and handler.headers.get("Authorization") == "Bearer key-b"
+            and "reasoning_effort" not in body
         )
         return event({"content": "dynamic-route-ok" if valid else "dynamic-route-bad"})
 
@@ -484,6 +485,10 @@ def test_dynamic_provider_catalog_and_model(root, home):
     }
     try:
         env = provider_env(home, first.url, providers, "active-live")
+        # A raw startup route may accept an explicit effort. A later catalog
+        # route with no advertised effort support must replace, not inherit,
+        # that state.
+        env["UAGENT_REASONING_EFFORT"] = "high"
         catalog_result = run_dialog(
             root,
             env,

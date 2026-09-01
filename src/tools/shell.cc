@@ -220,7 +220,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   auto fail_and_reap = [&](ToolResult error) {
     KillProcess(pid);
     RemoveLog(log);
-    return ShellCommandResult{std::move(error)};
+    return ShellCommandResult{std::move(error), std::nullopt,
+                              /*launched=*/true};
   };
   ToolResult saved = SaveDetachedRecord(pid, log, cmd);
   if (!saved.Ok()) return fail_and_reap(std::move(saved));
@@ -239,7 +240,8 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   }
   return {ToolSuccess("[detached] pid " + std::to_string(pid) + ", log: " +
                       log + " — activity id " + std::to_string(pid) +
-                      "; verify readiness with activity output")};
+                      "; verify readiness with activity output"),
+          std::nullopt, /*launched=*/true};
 }
 
 }  // namespace
@@ -381,13 +383,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     if (collected.artifact) output = std::move(collected.output);
     ToolResult result = build(std::move(output), status);
     result.artifact = std::move(collected.artifact);
-    return ShellCommandResult{std::move(result), status};
+    return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };
 
   if (cancelled) {
     (void)supervisor.RemoveForeground(pid);
     RemoveLog(log);
-    return {ToolCancelled("error: command cancelled by user")};
+    return {ToolCancelled("error: command cancelled by user"), std::nullopt,
+            /*launched=*/true};
   }
   if (exited) {
     (void)supervisor.RemoveForeground(pid);
@@ -409,7 +412,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
 
-  bool is_subagent = session->kind == ActivityKind::kSubagent;
+  bool is_subagent =
+      ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
   std::string subagent_label =
       spec.job_kind.empty() ? "subagent" : spec.job_kind;
   std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
@@ -417,7 +421,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     SignalShellGroup(pid, SIGKILL);
     RemoveLog(log);
     return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: foreground activity ownership was lost")};
+                        "error: foreground activity ownership was lost"),
+            std::nullopt, /*launched=*/true};
   }
   BgTrackSignal(pid, true);
   if (is_subagent) {
@@ -426,7 +431,8 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                         "; completion is added to the next natural model call "
                         "without starting one; inspect activity output for "
                         "progress/readiness, or wait when the next step is "
-                        "blocked")};
+                        "blocked"),
+            std::nullopt, /*launched=*/true};
   }
   std::string initial_output;
   {
@@ -440,7 +446,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                        "it keeps running while you work; poll or wait on it "
                        "for output";
   if (!initial_output.empty()) output += "\n" + initial_output;
-  return {ToolSuccess(std::move(output))};
+  return {ToolSuccess(std::move(output)), std::nullopt, /*launched=*/true};
 }
 
 ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
@@ -673,10 +679,6 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,
                     int64_t context_lines, const ToolContext& context,
                     bool files_only) {
-  if (files_only && context_lines > 0) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: grep context is only available in content mode");
-  }
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
   auto status = std::filesystem::status(target, path_error);

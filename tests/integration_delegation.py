@@ -1,3 +1,5 @@
+import re
+
 from integration_support import (
     BINARY,
     Server,
@@ -12,6 +14,7 @@ from integration_support import (
     run_dialog,
     signal,
     subprocess,
+    sys,
     threading,
     time,
     tool_call,
@@ -19,7 +22,103 @@ from integration_support import (
     wait_for_processes_stopped,
     wait_until,
     write_http_response,
+    write_mcp_server,
 )
+
+
+def test_subagent_usage_counts_toward_parent_token_budget(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child-budget"):
+            return event(
+                {"content": "child-result"},
+                usage={"prompt_tokens": 2, "completion_tokens": 4},
+            )
+        return tool_call("subagent", {"prompt": "child-budget", "background": False})
+
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--token-budget",
+            "3",
+            "--json",
+            "-p",
+            "delegate",
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
+        assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
+        assert_true(len(server.requests) == 2, server.requests)
+
+
+def test_completed_parent_answer_survives_late_child_budget_usage(root, home):
+    child_requested = threading.Event()
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "late-budget-child"):
+            child_requested.set()
+            return event(
+                {"content": "too-expensive-child"},
+                usage={"prompt_tokens": 1, "completion_tokens": 4},
+            )
+        results = tool_results(messages)
+        if any("[started] subagent id " in result for result in results):
+            assert_true(child_requested.wait(2), "child request did not arrive")
+            time.sleep(0.3)
+            return event({"content": "parent-answer"})
+        return tool_call("subagent", {"prompt": "late-budget-child"})
+
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--token-budget",
+            "3",
+            "--json",
+            "-p",
+            "delegate",
+            timeout=10,
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 0, envelope)
+        assert_true(envelope["answer"] == "parent-answer", envelope)
+        assert_true(envelope["stop"]["reason"] == "completed", envelope)
+        assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
+
+
+def test_subagent_inherits_only_remaining_session_token_budget(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child-remainder"):
+            response = tool_call("read_path", {"path": "."})
+            response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+            return response
+        response = tool_call("subagent", {"prompt": "child-remainder", "background": False})
+        response["usage"] = {"prompt_tokens": 1, "completion_tokens": 3}
+        return response
+
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--token-budget",
+            "5",
+            "--json",
+            "-p",
+            "delegate",
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
+        # The child inherited the two-token remainder and stopped before
+        # executing its call or requesting a second model round.
+        assert_true(len(server.requests) == 2, server.requests)
 
 
 def test_subagent_auto_join_continues_turn(root, home):
@@ -81,6 +180,201 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
             )
         ]
         assert_true(len(parent_requests) == 2, len(parent_requests))
+
+
+def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home):
+    marker = root / "mcp-starts"
+    fake = root / "fake_mcp.py"
+    write_mcp_server(
+        fake,
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], "
+        "'capabilities': {'tools': {}}}\n"
+        "    else:\n"
+        "        result = {'tools': []} if method == 'tools/list' else {}\n",
+        extra_imports=("os", "pathlib"),
+        setup=f"marker = pathlib.Path({str(marker)!r})\n"
+        "with marker.open('a', encoding='utf-8') as output:\n"
+        "    output.write(os.environ.get('UAGENT_DEPTH', '0') + '\\n')\n",
+    )
+    (home / ".mcp.json").write_text(
+        json.dumps(
+            {"mcpServers": {"parent-only": {"command": sys.executable, "args": [str(fake)]}}}
+        ),
+        encoding="utf-8",
+    )
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "child"):
+            return event({"content": "lean-child-result"})
+        if any("lean-child-result" in result for result in tool_results(messages)):
+            return event({"content": "lean-mcp-ok"})
+        return tool_call("subagent", {"prompt": "child", "background": False})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "lean-mcp-ok", result.stdout)
+        starts = marker.read_text(encoding="utf-8").splitlines()
+        assert_true(starts == ["0"], starts)
+
+
+def test_subagent_followup_resumes_durable_conversation(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        child_prompts = [
+            message.get("content") for message in messages if message.get("role") == "user"
+        ]
+        if "remember alpha" in child_prompts:
+            directed_followup = any(
+                prompt
+                == "[collaborator directive]\nalways mention beta\n\nwhat did I ask you to remember?"
+                for prompt in child_prompts
+            )
+            if directed_followup:
+                return event({"content": "alpha-from-history-with-directive"})
+            return event({"content": "stored alpha"})
+
+        results = "\n".join(tool_results(messages))
+        if "alpha-from-history-with-directive" in results:
+            return event({"content": "persistent-collaborator-ok"})
+        if "stored alpha" in results:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
+            assert_true(match is not None, results)
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": match.group(1),
+                    "prompt": "what did I ask you to remember?",
+                    "background": False,
+                },
+            )
+        return tool_call(
+            "subagent",
+            {
+                "prompt": "remember alpha",
+                "directive": "always mention beta",
+                "background": False,
+            },
+        )
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "collaborate")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "persistent-collaborator-ok", result.stdout)
+        records = list((home / ".uagent" / "collaborators").glob("agent-*.json"))
+        records = [path for path in records if not path.name.endswith(".session.json")]
+        assert_true(len(records) == 1, records)
+        state = json.loads(records[0].read_text(encoding="utf-8"))
+        assert_true(state["directive"] == "always mention beta", state)
+
+
+def test_completed_child_answer_survives_collaborator_save_failure(root, home):
+    collaborators = home / ".uagent" / "collaborators"
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "save-failure-child"):
+            collaborators.mkdir(parents=True, exist_ok=True)
+            collaborators.chmod(0o500)
+            return event({"content": "valuable-child-answer"})
+        results = tool_results(messages)
+        if results:
+            report = results[-1]
+            valid = (
+                "valuable-child-answer" in report
+                and "collaborator metadata was not saved" in report
+            )
+            return event({"content": "save-warning-ok" if valid else "save-warning-bad"})
+        return tool_call("subagent", {"prompt": "save-failure-child", "background": False})
+
+    try:
+        with Server([route]) as server:
+            result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate")
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(result.stdout.strip() == "save-warning-ok", result.stdout)
+    finally:
+        if collaborators.exists():
+            collaborators.chmod(0o700)
+
+
+def test_failed_followup_consumes_queued_guidance_after_launch(root, home):
+    collaborator_id = {"value": ""}
+
+    def route(_, body):
+        messages = body["messages"]
+        users = [
+            str(message.get("content", "")) for message in messages if message.get("role") == "user"
+        ]
+        results = tool_results(messages)
+
+        if users and users[-1] == "seed child":
+            return event({"content": "seeded"})
+        if users and "fail child" in users[-1]:
+            return event({}, finish="content_filter")
+        if users and users[-1] == "retry child":
+            queued = sum(prompt.count("[queued guidance]") for prompt in users)
+            valid = queued == 1 and "queued once" not in users[-1]
+            return event({"content": "mailbox-cleared" if valid else "mailbox-repeated"})
+
+        if has_message(messages, "user", "spawn coordinator"):
+            if results:
+                match = re.search(r"\[collaborator (agent-[^;\]]+)", results[-1])
+                assert_true(match is not None, results[-1])
+                collaborator_id["value"] = match.group(1)
+                return event({"content": "spawned"})
+            return tool_call("subagent", {"prompt": "seed child", "background": False})
+        if has_message(messages, "user", "queue coordinator"):
+            if results:
+                return event({"content": "queued"})
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "message",
+                    "agent_id": collaborator_id["value"],
+                    "prompt": "queued once",
+                },
+            )
+        if has_message(messages, "user", "fail coordinator"):
+            if results:
+                return event({"content": "failure-observed"})
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": collaborator_id["value"],
+                    "prompt": "fail child",
+                    "background": False,
+                },
+            )
+        if has_message(messages, "user", "retry coordinator"):
+            if results:
+                valid = "mailbox-cleared" in results[-1]
+                return event({"content": "mailbox-ok" if valid else "mailbox-bad"})
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": collaborator_id["value"],
+                    "prompt": "retry child",
+                    "background": False,
+                },
+            )
+        return event({"content": "unexpected-route"})
+
+    with Server([route]) as server:
+        env = base_env(home, server.url)
+        for prompt, expected in (
+            ("spawn coordinator", "spawned"),
+            ("queue coordinator", "queued"),
+            ("fail coordinator", "failure-observed"),
+            ("retry coordinator", "mailbox-ok"),
+        ):
+            result = run(root, env, "--yolo", "-p", prompt)
+            assert_true(result.returncode == 0, result.stderr)
+            assert_true(result.stdout.strip() == expected, result.stdout)
 
 
 def test_parallel_subagents_auto_join(root, home):

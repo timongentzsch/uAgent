@@ -4,12 +4,18 @@
 
 #include <sys/stat.h>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iterator>
 #include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "include/app/reference.h"
+#include "include/cli.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -26,6 +32,10 @@ void TestObservabilityEvents() {
   // consumers parse, so they are pinned here rather than left to the table.
   CHECK(std::string(PolicyFor(EventId::kTurnStarted).public_type) ==
         "turn.started");
+  CHECK(std::string(PolicyFor(EventId::kResponseStarted).app_type) ==
+        "response.started");
+  CHECK(std::string(PolicyFor(EventId::kApprovalResolved).app_type) ==
+        "approval.resolved");
   CHECK(std::string(PolicyFor(EventId::kToolCall).public_type) == "tool.call");
   CHECK(std::string(PolicyFor(EventId::kSessionResumed).journal_type) ==
         "session.resumed");
@@ -55,6 +65,120 @@ void TestObservabilityEvents() {
   SessionJournal notices;
   notices.Append(notice, PolicyFor(notice.id));
   CHECK(notices.Size() == 1);
+
+  // A future GUI consumes the complete application event protocol directly;
+  // streaming text is copied into the envelope and never depends on terminal
+  // rendering or the public/redacted JSONL projection.
+  Observability observable;
+  std::vector<AppEvent> received;
+  uint64_t subscription = observable.Subscribe(
+      [&](const AppEvent& event) { received.push_back(event); });
+  CHECK(subscription != 0);
+  Event delta{EventId::kAnswerDelta};
+  delta.text = "streamed";
+  observable.Emit(std::move(delta));
+  observable.Emit(Event{EventId::kApprovalRequested,
+                        {{"id", "approval-1"}, {"tool", "edit_file"}}});
+  CHECK(received.size() == 2);
+  CHECK(received[0].sequence == 1);
+  CHECK(received[0].type == "response.answer.delta");
+  CHECK(received[0].data["text"] == "streamed");
+  CHECK(received[1].type == "approval.requested");
+  CHECK(received[1].data["tool"] == "edit_file");
+  observable.Unsubscribe(subscription);
+  observable.Emit(Event{EventId::kResponseFinished});
+  CHECK(received.size() == 2);
+
+  Observability interactions;
+  interactions.EnableTerminal(false);
+  std::vector<AppEvent> interaction_events;
+  interactions.Subscribe(
+      [&](const AppEvent& event) { interaction_events.push_back(event); });
+  SetObservability(&interactions);
+  InteractionRequest captured;
+  SetInteractiveReadHandler(
+      [&](const InteractionRequest& request, bool*) -> std::string {
+        captured = request;
+        return "2";
+      });
+  bool cancelled = false;
+  bool eof = false;
+  std::string choice = ReadChoiceLine(
+      {.id = "session-choice",
+       .kind = "session.select",
+       .prompt = "resume #: ",
+       .options = json::array({{{"value", "1"}, {"label", "first"}},
+                               {{"value", "2"}, {"label", "second"}}})},
+      cancelled, eof);
+  SetInteractiveReadHandler({});
+  SetObservability(nullptr);
+  CHECK(choice == "2");
+  CHECK(!cancelled);
+  CHECK(!eof);
+  CHECK(captured.id == "session-choice");
+  CHECK(captured.options.size() == 2);
+  CHECK(interaction_events.size() == 2);
+  CHECK(interaction_events[0].type == "interaction.requested");
+  CHECK(interaction_events[0].data["options"].size() == 2);
+  CHECK(interaction_events[1].type == "interaction.resolved");
+  CHECK(interaction_events[1].data["answer"] == "2");
+
+  // Concurrent producers retain sequence order, and Unsubscribe is a lifetime
+  // barrier rather than merely removing a callback from the next snapshot.
+  Observability concurrent;
+  concurrent.EnableTerminal(false);
+  std::promise<void> first_entered;
+  std::promise<void> release_first;
+  std::shared_future<void> first_release = release_first.get_future().share();
+  std::vector<uint64_t> sequences;
+  std::mutex sequences_mutex;
+  concurrent.Subscribe([&](const AppEvent& event) {
+    {
+      std::lock_guard<std::mutex> lock(sequences_mutex);
+      sequences.push_back(event.sequence);
+    }
+    if (event.sequence == 1) {
+      first_entered.set_value();
+      first_release.wait();
+    }
+  });
+  std::thread first_emit(
+      [&] { concurrent.Emit(Event{EventId::kResponseStarted}); });
+  first_entered.get_future().wait();
+  auto second_emit = std::async(std::launch::async, [&] {
+    concurrent.Emit(Event{EventId::kResponseFinished});
+  });
+  CHECK(second_emit.wait_for(std::chrono::milliseconds(20)) ==
+        std::future_status::timeout);
+  release_first.set_value();
+  first_emit.join();
+  second_emit.get();
+  CHECK(sequences == std::vector<uint64_t>({1, 2}));
+
+  Observability lifetime;
+  lifetime.EnableTerminal(false);
+  std::promise<void> callback_entered;
+  std::promise<void> release_callback;
+  std::shared_future<void> callback_release =
+      release_callback.get_future().share();
+  std::atomic<int> callback_count{0};
+  uint64_t lifetime_subscription = lifetime.Subscribe([&](const AppEvent&) {
+    ++callback_count;
+    callback_entered.set_value();
+    callback_release.wait();
+  });
+  std::thread emitting(
+      [&] { lifetime.Emit(Event{EventId::kResponseStarted}); });
+  callback_entered.get_future().wait();
+  auto unsubscribing = std::async(
+      std::launch::async, [&] { lifetime.Unsubscribe(lifetime_subscription); });
+  CHECK(unsubscribing.wait_for(std::chrono::milliseconds(20)) ==
+        std::future_status::timeout);
+  release_callback.set_value();
+  emitting.join();
+  unsubscribing.get();
+  lifetime.Emit(Event{EventId::kResponseFinished});
+  CHECK(callback_count == 1);
 
   TestWorkspace workspace("events");
   SessionJournal projections;

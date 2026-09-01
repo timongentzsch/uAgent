@@ -20,18 +20,19 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "include/core/child_env.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
 #include "include/core/time.h"
 
 extern char** environ;
@@ -42,6 +43,13 @@ namespace uagent {
 // before escalating to signals, then again before the kill.
 inline constexpr auto kMcpEofGrace = std::chrono::milliseconds(200);
 inline constexpr auto kMcpTermGrace = std::chrono::milliseconds(300);
+inline constexpr auto kMcpKillGrace = std::chrono::milliseconds(500);
+
+enum class McpStartupState : uint8_t {
+  kReady,
+  kInitializing,
+  kDiscoveringTools,
+};
 
 struct McpServer;
 inline void McpShutdown(McpServer& server);
@@ -52,12 +60,21 @@ struct McpServer {
   // in: we write (the server's stdin) · out: we read (its stdout)
   Fd in, out;
   bool alive = false;
+  // 2026-07-28 is stateless at the protocol layer. µAgent intentionally has
+  // no legacy initialize lifecycle or downgrade state.
   std::string rbuf;  // partial line from the server
   int64_t next_id = 1;
   size_t response_cap = size_t{16} * 1024 * 1024;
   json config;
   json roots = json::array();
   bool tools_changed = false;
+  McpStartupState startup = McpStartupState::kReady;
+  int64_t initialize_id = -1;
+  int64_t tools_list_id = -1;
+  int64_t startup_pages = 0;
+  json startup_tools = json::array();
+  std::string startup_cursor;
+  std::set<std::string> startup_cursors;
 
   ~McpServer() { Shutdown(); }
 
@@ -82,14 +99,6 @@ struct McpServer {
     TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
     pid = -1;
     return true;
-  }
-
-  void ReapBlocking() {
-    if (pid <= 0) return;
-    int status = 0;
-    WaitPid(pid, &status);
-    TrackPid(g_mcp_pids, kMcpMax, pid, /*add=*/false);
-    pid = -1;
   }
 
   // Also called the moment a server is detected dead/wedged, so fds close and
@@ -123,8 +132,11 @@ inline void McpShutdownGroup(const Servers& servers) {
     if (server->pid <= 0) continue;
     kill(-server->pid, SIGKILL);
     kill(server->pid, SIGKILL);
-    server->ReapBlocking();
   }
+  // A child in uninterruptible kernel sleep may ignore SIGKILL for an
+  // unbounded period. Leave its pid for a later shutdown/reap attempt instead
+  // of wedging the current turn or process teardown.
+  wait_all(kMcpKillGrace);
 }
 
 inline void McpShutdown(McpServer& server) {
@@ -163,16 +175,11 @@ class McpRuntime {
 
 // One voice for server status: notes are dim and bulleted, errors are red.
 inline void McpNote(const std::string& name, const std::string& msg) {
-  std::string safe_name = TerminalSafe(name);
-  std::string safe_msg = TerminalSafe(msg);
-  printf("%s· mcp: %s — %s%s\n", DIM(), safe_name.c_str(), safe_msg.c_str(),
-         RST());
+  Emit(NoticeEvent(PresentationStatus::kNeutral,
+                   "· mcp: " + name + " — " + msg));
 }
 inline void McpError(const std::string& name, const std::string& msg) {
-  std::string safe_name = TerminalSafe(name);
-  std::string safe_msg = TerminalSafe(msg);
-  printf("%smcp: %s — %s%s\n", RED(), safe_name.c_str(), safe_msg.c_str(),
-         RST());
+  Emit(NoticeEvent(PresentationStatus::kFailed, "mcp: " + name + " — " + msg));
 }
 
 inline std::string McpLogPath(const std::string& name) {
@@ -239,6 +246,16 @@ inline bool McpSpawn(
   Fd errfd(open(McpLogPath(s.name).c_str(), O_CREAT | O_WRONLY | O_TRUNC,
                 kPrivateFileMode));
   ChildEnvironment child_environment(env);
+  // Build every allocation-backed child input before fork. µAgent is
+  // multithreaded here, so the child may only use async-signal-safe operations
+  // before exec; allocator locks inherited from another thread can deadlock.
+  std::vector<char*> argv;
+  argv.reserve(args.size() + 2);
+  argv.push_back(const_cast<char*>(cmd.c_str()));
+  for (const std::string& arg : args) {
+    argv.push_back(const_cast<char*>(arg.c_str()));
+  }
+  argv.push_back(nullptr);
   pid_t pid = fork();
   if (pid < 0) return false;
   if (pid == 0) {
@@ -258,16 +275,8 @@ inline bool McpSpawn(
     struct rlimit file_limit = {static_cast<rlim_t>(log_bytes),
                                 static_cast<rlim_t>(log_bytes)};
     setrlimit(RLIMIT_FSIZE, &file_limit);
-    if (!cwd.empty() && chdir(cwd.c_str()) != 0) {
-      dprintf(STDERR_FILENO, "cannot chdir to %s: %s\n", cwd.c_str(),
-              strerror(errno));
-      _exit(126);
-    }
+    if (!cwd.empty() && chdir(cwd.c_str()) != 0) _exit(126);
     environ = child_environment.Data();
-    std::vector<char*> argv;
-    argv.push_back(const_cast<char*>(cmd.c_str()));
-    for (auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
-    argv.push_back(nullptr);
     signal(SIGINT, SIG_DFL);
     execvp(cmd.c_str(), argv.data());
     _exit(127);

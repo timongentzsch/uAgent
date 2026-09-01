@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,6 +21,20 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
+
+struct InteractionRequest;
+
+// Transport-neutral input half of the application protocol. A terminal, a
+// JSON-RPC app server, or an in-process GUI can supply commands and answer
+// interactive decisions while Observability::Subscribe supplies every output
+// event. Returning nullopt closes the session.
+class ApplicationChannel {
+ public:
+  virtual ~ApplicationChannel() = default;
+  virtual std::optional<std::string> NextInput() = 0;
+  virtual std::string ReadInteraction(const InteractionRequest& request,
+                                      bool* eof) = 0;
+};
 
 class HeadlessOutput {
  public:
@@ -38,18 +53,21 @@ class HeadlessOutput {
 
 struct AppContext {
   AppContext(RuntimeConfig config, ConfigManager config_manager,
-             Options parsed_options, Observability& observation_sink);
+             Options parsed_options, Observability& observation_sink,
+             ApplicationChannel* application_channel);
+  ~AppContext();
 
   CurlRuntime curl;
   ConfigManager config_manager;
   AppRuntime runtime;
   Observability& observability;
+  ApplicationChannel* channel;
   Options options;
   ProviderSetup provider;
   ToolPolicy tool_policy;
   std::vector<Tool> tools;
-  // What "don't ask again" granted, as tool name plus, for a shell call, the
-  // first word of the command. Session-scoped by construction: it dies here.
+  // What "don't ask again" granted, bound to the tool's current provider,
+  // schema and approval policy. Session-scoped by construction: it dies here.
   std::vector<std::string> session_approvals;
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
@@ -64,7 +82,9 @@ struct BootstrapResult {
 };
 
 BootstrapResult Bootstrap(Options options, const char* executable,
-                          Observability& observability);
+                          Observability& observability,
+                          ApplicationChannel* channel = nullptr);
+
 int RunApplication(AppContext& context);
 
 // `stop` is additive: the schema string is what consumers match on, and a

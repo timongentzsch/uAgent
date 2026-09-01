@@ -316,8 +316,9 @@ ToolPolicy ToolPolicyFromEnvironment() {
     }
   }
 
-  ReadStringArray("UAGENT_TOOL_ALLOWLIST", policy.tool_allowlist, policy.error);
-  ReadStringArray("UAGENT_TOOL_RUN_ALLOWLIST", policy.run_allowlist,
+  ReadStringArray("UAGENT_INTERNAL_TOOL_ALLOWLIST", policy.tool_allowlist,
+                  policy.error);
+  ReadStringArray("UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST", policy.run_allowlist,
                   policy.error);
   return policy;
 }

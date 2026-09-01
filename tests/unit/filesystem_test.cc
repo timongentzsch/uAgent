@@ -31,28 +31,31 @@ void TestFileTools() {
             .output.starts_with("wrote "));
   CHECK(ToolWriteFile((small_directory / "two.cc").string(), "TWO_BODY\n")
             .output.starts_with("wrote "));
-  ToolResult names_only = ToolListDir(small_directory.string(), 0, 0, false);
+  ToolResult names_only = ToolListDir(small_directory.string(), 1, 0, false);
   CHECK(names_only.output.find("one.cc") != std::string::npos);
   CHECK(names_only.output.find("ONE_BODY") == std::string::npos);
-  ToolResult preview = ToolListDir(small_directory.string(), 0, 0, true);
+  ToolResult second_entry = ToolListDir(small_directory.string(), 2, 1, false);
+  CHECK(second_entry.output.find("two.cc") != std::string::npos);
+  CHECK(second_entry.output.find("one.cc") == std::string::npos);
+  ToolResult preview = ToolListDir(small_directory.string(), 1, 0, true);
   CHECK(preview.output.find("ONE_BODY") != std::string::npos);
   CHECK(preview.output.find("TWO_BODY") != std::string::npos);
   CHECK(preview.result_chars == ReadFileResultChars());
   fs::create_directories(small_directory / "nested");
-  CHECK(ToolListDir(small_directory.string(), 0, 0, true)
+  CHECK(ToolListDir(small_directory.string(), 1, 0, true)
             .output.find("ONE_BODY") == std::string::npos);
   fs::path binary_directory = root / "binary-directory";
   fs::create_directories(binary_directory);
   CHECK(ToolWriteFile((binary_directory / "data.bin").string(),
                       std::string("text\0binary", 11))
             .output.starts_with("wrote "));
-  CHECK(ToolListDir(binary_directory.string(), 0, 0, true)
+  CHECK(ToolListDir(binary_directory.string(), 1, 0, true)
             .output.find("small directory contents") == std::string::npos);
   fs::path symlink_directory = root / "symlink-directory";
   fs::create_directories(symlink_directory);
   fs::create_symlink(small_directory / "one.cc",
                      symlink_directory / "linked.cc");
-  CHECK(ToolListDir(symlink_directory.string(), 0, 0, true)
+  CHECK(ToolListDir(symlink_directory.string(), 1, 0, true)
             .output.find("ONE_BODY") == std::string::npos);
   fs::path file = root / "file.txt";
   CHECK(

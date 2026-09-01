@@ -113,14 +113,25 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
                      "response stream failed");
     return delta;
   }
-  if (type == "response.failed" || type == "response.incomplete") {
+  if (type == "response.failed") {
     const json* response = JsonObject(value, "response");
     const json* error = response ? JsonObject(*response, "error") : nullptr;
-    std::string fallback = type == "response.incomplete"
-                               ? "model returned an incomplete response"
-                               : "response stream failed";
     ApplyStreamError(error ? *error : json(nullptr), result,
-                     std::move(fallback));
+                     "response stream failed");
+    return delta;
+  }
+  if (type == "response.incomplete") {
+    const json* response = JsonObject(value, "response");
+    result.incomplete = true;
+    if (response) {
+      if (response->contains("usage")) result.usage = (*response)["usage"];
+      result.stop_details =
+          JsonValue(*response, "incomplete_details", json::object());
+    }
+    result.finish_reason =
+        JsonValue(result.stop_details, "reason", "incomplete");
+    result.stop_cause = ClassifyResponseStop(result.finish_reason);
+    delta.activity = true;
     return delta;
   }
   if (type == "response.output_text.delta") {
@@ -198,6 +209,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (response) {
       if (response->contains("usage")) result.usage = (*response)["usage"];
       result.finish_reason = JsonValue(*response, "status", "completed");
+      result.stop_cause = ClassifyResponseStop(result.finish_reason);
     }
     if (state.web_searches > 0) {
       if (!result.usage.is_object()) result.usage = json::object();
@@ -269,7 +281,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       const json* message_delta = JsonObject(value, "delta");
       if (message_delta) {
         result.finish_reason = JsonValue(*message_delta, "stop_reason", "");
-        result.continue_response = result.finish_reason == "pause_turn";
+        result.stop_cause = ClassifyResponseStop(result.finish_reason);
       }
       if (value.contains("usage")) MergeObject(result.usage, value["usage"]);
       delta.activity = true;

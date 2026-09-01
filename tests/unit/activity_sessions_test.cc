@@ -798,6 +798,21 @@ void TestDetachedActivityOwnership() {
     CHECK(own.result.Ok());
     CHECK(own.result.output.find("own-work") != std::string::npos);
     (void)children_busy.TakeAllForShutdown();
+
+    // Detached terminals outlive the session, so the pool bounds them too.
+    ProcessSupervisor detached_pool;
+    for (pid_t pid = 999811; pid < 999815; ++pid) {
+      CHECK(detached_pool.TryAdd({pid, "", "held", true, "command"}, 4));
+    }
+    CHECK(!detached_pool.TryAdd({999815, "", "overflow", true, "command"}, 4));
+    ShellCommandResult refused_detach =
+        RunShellCommand(detached_pool, context,
+                        {.command = "sleep 21", .detach = true, .immediate = true});
+    CHECK(!refused_detach.result.Ok());
+    CHECK(refused_detach.result.output.find("background job limit reached") !=
+          std::string::npos);
+    CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
+    (void)detached_pool.TakeAllForShutdown();
   }
 }
 

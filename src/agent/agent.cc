@@ -416,7 +416,7 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
     conversation_.Push(std::move(message), MessageKind::kUser);
   }
   conversation_.Push(
-      {{"role", "assistant"},
+      {{"role", "user"},
        {"content",
         "[model-generated context summary; non-authoritative]\nPrior "
         "context:\n" +

@@ -120,6 +120,7 @@ class Server:
         )
         self.requests = []
         self.unexpected_requests = []
+        self.route_failures = []
         self.get_requests = []
         owner = self
 
@@ -146,7 +147,18 @@ class Server:
                     return
                 response = owner.responders[min(index, len(owner.responders) - 1)]
                 if callable(response):
-                    response = response(self, body)
+                    # A route runs on this handler thread, so an assertion here
+                    # would otherwise surface only as an aborted connection.
+                    try:
+                        response = response(self, body)
+                    except Exception as error:  # noqa: BLE001 - reported in close()
+                        owner.route_failures.append(f"{type(error).__name__}: {error}")
+                        write_json_response(
+                            self,
+                            {"error": {"message": f"route failed: {error}"}},
+                            status=500,
+                        )
+                        return
                     if response is None:
                         return
                 streaming = body.get("stream", True)
@@ -183,6 +195,8 @@ class Server:
         self.httpd.shutdown()
         self.httpd.server_close()
         self.thread.join(timeout=2)
+        if check_unexpected and self.route_failures:
+            raise AssertionError("route assertion failed: " + "; ".join(self.route_failures))
         if check_unexpected and self.unexpected_requests:
             raise AssertionError(
                 f"server received {len(self.unexpected_requests)} unexpected request(s)"

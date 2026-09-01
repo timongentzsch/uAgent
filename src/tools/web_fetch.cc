@@ -22,12 +22,8 @@ namespace {
 constexpr std::array<std::string_view, 6> kDropped = {
     "script", "style", "svg", "nav", "footer", "aside"};
 
-// Indentation inside these is the meaning, not markup, so their text is kept
-// exactly as written.
-constexpr std::array<std::string_view, 1> kPre = {"pre"};
-
 // Table cells read as columns rather than lines: without a separator the
-// figureseither side of a boundary would run together into one number.
+// figures either side of a boundary would run together into one number.
 constexpr std::array<std::string_view, 2> kCells = {"td", "th"};
 
 // Everything else that reads as a line break once the tags are gone. Inline
@@ -208,7 +204,10 @@ std::string HtmlToText(const std::string& html) {
     } else {
       bool heading = name.size() == 2 && (name[0] | 0x20) == 'h' &&
                      name[1] >= '1' && name[1] <= '6';
-      if (Listed(kPre, name)) {
+      bool preformatted_tag =
+          name.size() == 3 && (name[0] | 0x20) == 'p' &&
+          (name[1] | 0x20) == 'r' && (name[2] | 0x20) == 'e';
+      if (preformatted_tag) {
         flush();
         preformatted = !closing;
         boundary();

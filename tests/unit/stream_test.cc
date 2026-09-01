@@ -147,9 +147,9 @@ void TestSseChunkPartitions() {
                    {{{"type", "reasoning.text"}, {"text", text}},
                     {{"type", "reasoning.encrypted"}, {"data", data}}})}}}}}}});
   };
-  OpenAiStreamDelta first_details =
+  WireStreamDelta first_details =
       DecodeOpenAiStreamEvent(reasoning_event("one", "a"), unindexed, no_calls);
-  OpenAiStreamDelta second_details = DecodeOpenAiStreamEvent(
+  WireStreamDelta second_details = DecodeOpenAiStreamEvent(
       reasoning_event(" two", "b"), unindexed, no_calls);
   CHECK(first_details.reasoning == "one");
   CHECK(second_details.reasoning == " two");
@@ -157,14 +157,14 @@ void TestSseChunkPartitions() {
   CHECK(unindexed.reasoning_details[0]["text"] == "one two");
   CHECK(unindexed.reasoning_details[1]["data"] == "ab");
 
-  OpenAiStreamDelta summary_delta = DecodeOpenAiStreamEvent(
+  WireStreamDelta summary_delta = DecodeOpenAiStreamEvent(
       R"({"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.summary","summary":"Summary chunk"}]}}]})",
       unindexed, no_calls);
   CHECK(summary_delta.reasoning == "Summary chunk");
   CHECK(unindexed.reasoning_details.size() == 3);
 
   ChatResult aliased_reasoning;
-  OpenAiStreamDelta aliased_delta = DecodeOpenAiStreamEvent(
+  WireStreamDelta aliased_delta = DecodeOpenAiStreamEvent(
       R"({"choices":[{"delta":{"reasoning":"once","reasoning_details":[{"type":"reasoning.text","text":"once"}]}}]})",
       aliased_reasoning, no_calls);
   CHECK(aliased_delta.reasoning == "once");
@@ -177,7 +177,7 @@ void TestSseChunkPartitions() {
   CHECK(empty_details.reasoning_details.empty());
 
   ChatResult empty_alias;
-  OpenAiStreamDelta details_fallback = DecodeOpenAiStreamEvent(
+  WireStreamDelta details_fallback = DecodeOpenAiStreamEvent(
       R"({"choices":[{"delta":{"reasoning":"","reasoning_details":[{"type":"reasoning.text","text":"details only"}]}}]})",
       empty_alias, no_calls);
   CHECK(details_fallback.reasoning == "details only");
@@ -325,6 +325,29 @@ void TestSseChunkPartitions() {
   CHECK(parallel[0].name == "grep");
   CHECK(parallel[0].args == "{\"pattern\":");
   CHECK(parallel[1].args == "{\"command\":\"ls\"}");
+}
+
+void TestChatCompletionAnnotationDeduplication() {
+  const json annotation = {
+      {"type", "url_citation"},
+      {"url_citation", {{"url", "https://example.com/source"}}}};
+  const json annotations = json::array({annotation});
+  json choice;
+  choice["annotations"] = annotations;
+  choice["message"]["annotations"] = annotations;
+  choice["delta"]["annotations"] = annotations;
+
+  ChatResult result;
+  std::map<int, ToolCall> calls;
+  DecodeOpenAiStreamEvent(
+      JsonDump({{"choices", json::array({std::move(choice)})}}), result,
+      calls);
+
+  CHECK(result.semantic_progress);
+  CHECK(result.annotations.size() == 1);
+  if (result.annotations.size() == 1) {
+    CHECK(result.annotations[0] == annotation);
+  }
 }
 
 void TestSseFraming() {

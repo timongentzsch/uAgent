@@ -7,20 +7,15 @@
 #include <string>
 #include <string_view>
 
-#include "include/api/types.h"
+#include "include/api/wire.h"
 
 namespace uagent {
 
-struct OpenAiStreamDelta {
-  std::string content;
-  std::string reasoning;
-  bool activity = false;
-};
-
 void MergeStreamIdentity(std::string& target, const std::string& fragment);
-OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
-                                          ChatResult& result,
-                                          std::map<int, ToolCall>& tool_calls);
+void AddStreamAnnotation(const json& annotation, ChatResult& result);
+WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
+                                         ChatResult& result,
+                                         std::map<int, ToolCall>& tool_calls);
 
 }  // namespace uagent
 

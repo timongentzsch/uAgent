@@ -4,6 +4,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -97,7 +98,9 @@ std::vector<std::string> TakeCompleted(
     bool completed = false;
     if (candidate.detached) {
       pid_t waited = WaitPid(candidate.pid, &status, WNOHANG);
-      completed = waited == candidate.pid && !ProcessGroupAlive(candidate.pid);
+      bool leader_reaped =
+          waited == candidate.pid || (waited < 0 && errno == ECHILD);
+      completed = leader_reaped && !ProcessGroupAlive(candidate.pid);
       if (!completed) continue;
     } else if (candidate.session) {
       std::lock_guard<std::mutex> lock(candidate.session->mutex);

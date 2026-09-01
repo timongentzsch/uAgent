@@ -740,7 +740,9 @@ ToolResult ToolListDir(const std::string& path, int64_t offset, int64_t limit,
   int64_t scan_cap = ListDirScanEntries();
   std::error_code ec;
   std::vector<std::string> entries;
-  for (auto& e : std::filesystem::directory_iterator(p, ec)) {
+  std::filesystem::directory_iterator iterator(p, ec), iterator_end;
+  for (; !ec && iterator != iterator_end; iterator.increment(ec)) {
+    const auto& e = *iterator;
     if (static_cast<int64_t>(entries.size()) >= scan_cap) {
       return ToolFailure(ToolErrorCode::kLimitExceeded,
                          "error: directory exceeds scan limit (" +

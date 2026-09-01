@@ -93,7 +93,9 @@ bool MentionsSecret(std::string_view text) {
     for (const std::string& keyword : RedactKeywords()) {
       all.push_back(AsciiLower(keyword));
     }
-    for (const char* fixed : {"bearer", "sk-", "-----begin", "gh"}) {
+    for (const char* fixed : {"bearer", "sk-", "-----begin", "ghp_",
+                              "gho_", "ghu_", "ghs_", "ghr_",
+                              "github_pat_"}) {
       all.emplace_back(fixed);
     }
     return all;

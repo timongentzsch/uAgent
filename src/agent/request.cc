@@ -505,9 +505,14 @@ json Agent::SysMsg() const {
   return {{"role", "system"}, {"content", std::move(content)}};
 }
 
-void Agent::RefreshSystemMessage() {
+void Agent::ApprovalChanged() { RefreshSystemMessage(true); }
+
+void Agent::RefreshSystemMessage(bool force) {
   uint64_t revision = adaptive_system_ ? adaptive_system_->revision : 0;
-  if (conversation_.Empty() || revision == applied_system_revision_) return;
+  if (conversation_.Empty() ||
+      (!force && revision == applied_system_revision_)) {
+    return;
+  }
   conversation_.Set(0, SysMsg(), MessageKind::kSystem);
   applied_system_revision_ = revision;
   // Message zero changed in place. Force the next debug request to carry a

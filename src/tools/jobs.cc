@@ -583,7 +583,7 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   }
   if (supervised) (void)supervisor.Take(requested);
   if (!detached) BgTrackSignal(pid, false);
-  unlink(DetachedRecordPath(pid).c_str());
+  if (detached) unlink(DetachedRecordPath(pid).c_str());
   RemoveLog(log);
   supervisor.Wake();
   return ToolSuccess(

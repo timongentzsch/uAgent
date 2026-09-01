@@ -313,6 +313,15 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     log = named;  // child's fd stays valid
   }
 
+  Fd input(tty ? dup(master.Get()) : -1);
+  if (tty && !input) {
+    KillProcess(pid);
+    RemoveLog(log);
+    return {ToolFailure(ToolErrorCode::kInternal,
+                        "error: cannot duplicate PTY input: " +
+                            std::string(strerror(errno)))};
+  }
+
   BgJob foreground{pid,
                    log,
                    cmd,
@@ -331,9 +340,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     return {JobLimitError(max_jobs)};
   }
   int64_t activity_id = *registered;
-  int input_fd = tty ? dup(master.Get()) : -1;
   int output_fd = tty ? master.Release() : pipe_read.Release();
-  supervisor.RegisterIo(session, output_fd, input_fd, lfd.Release(), log_bytes);
+  supervisor.RegisterIo(session, output_fd, input.Release(), lfd.Release(),
+                        log_bytes);
 
   TrackPid(g_child_pgids, kFgMax, pid, true);
   bool cancelled = false;

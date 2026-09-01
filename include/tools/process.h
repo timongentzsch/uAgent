@@ -76,7 +76,7 @@ struct ActivitySession {
 
 struct BgJob {
   BgJob(pid_t process_pid, std::string log_path, std::string command,
-        bool is_detached = false, std::string job_kind = {},
+        bool is_detached = false, const std::string& job_kind = {},
         int64_t activity_id = 0,
         std::shared_ptr<ActivitySession> activity = nullptr,
         std::string label = {}, std::string receipt = {},

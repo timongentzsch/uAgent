@@ -758,6 +758,34 @@ void TestDetachedActivityOwnership() {
     unlink(record_path.c_str());
     RemoveLog(sentinel_log);
   }
+
+  // Subagents, ordinary commands and detached terminals share one pool, so an
+  // unbounded fan-out of children would leave the parent unable to run the
+  // build, test or search it needs to check their work. Children stop short of
+  // the ceiling; the parent's own command still gets a slot.
+  {
+    ScopedEnv pool("UAGENT_MAX_BACKGROUND_JOBS", "4");
+    ProcessSupervisor shared_pool;
+    CHECK(shared_pool.TryAdd({999801, "", "child-a", false, "subagent"}, 4));
+    CHECK(shared_pool.TryAdd({999802, "", "child-b", false, "subagent"}, 4));
+
+    ShellCommandResult refused =
+        RunShellCommand(shared_pool, context,
+                        {.command = "echo third-child",
+                         .immediate = true,
+                         .job_kind = "subagent"});
+    CHECK(!refused.result.Ok());
+    CHECK(!refused.launched);
+    CHECK(refused.result.output.find(
+              "delegated child limit reached (2 concurrent children)") !=
+          std::string::npos);
+
+    ShellCommandResult own =
+        RunShellCommand(shared_pool, context, {.command = "printf own-work"});
+    CHECK(own.result.Ok());
+    CHECK(own.result.output.find("own-work") != std::string::npos);
+    (void)shared_pool.TakeAllForShutdown();
+  }
 }
 
 }  // namespace uagent

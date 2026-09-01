@@ -765,26 +765,39 @@ void TestDetachedActivityOwnership() {
   // the ceiling; the parent's own command still gets a slot.
   {
     ScopedEnv pool("UAGENT_MAX_BACKGROUND_JOBS", "4");
-    ProcessSupervisor shared_pool;
-    CHECK(shared_pool.TryAdd({999801, "", "child-a", false, "subagent"}, 4));
-    CHECK(shared_pool.TryAdd({999802, "", "child-b", false, "subagent"}, 4));
 
+    // The parent's own busy jobs must never refuse delegation: a child
+    // competes against other children, not against its parent.
+    ProcessSupervisor parent_busy;
+    CHECK(parent_busy.TryAdd({999801, "", "own-a", false, "command"}, 4));
+    CHECK(parent_busy.TryAdd({999802, "", "own-b", false, "command"}, 4));
+    ShellCommandResult admitted =
+        RunShellCommand(parent_busy, context,
+                        {.command = "printf child-admitted",
+                         .job_kind = "subagent"});
+    CHECK(admitted.result.Ok());
+    CHECK(admitted.result.output.find("child-admitted") != std::string::npos);
+    (void)parent_busy.TakeAllForShutdown();
+
+    // Children stop short of the ceiling so the parent keeps slots of its own.
+    ProcessSupervisor children_busy;
+    CHECK(children_busy.TryAdd({999803, "", "child-a", false, "subagent"}, 4));
+    CHECK(children_busy.TryAdd({999804, "", "child-b", false, "subagent"}, 4));
     ShellCommandResult refused =
-        RunShellCommand(shared_pool, context,
+        RunShellCommand(children_busy, context,
                         {.command = "echo third-child",
                          .immediate = true,
                          .job_kind = "subagent"});
     CHECK(!refused.result.Ok());
     CHECK(!refused.launched);
-    CHECK(refused.result.output.find(
-              "delegated child limit reached (2 concurrent children)") !=
+    CHECK(refused.result.output.find("at most 2 concurrent children") !=
           std::string::npos);
 
     ShellCommandResult own =
-        RunShellCommand(shared_pool, context, {.command = "printf own-work"});
+        RunShellCommand(children_busy, context, {.command = "printf own-work"});
     CHECK(own.result.Ok());
     CHECK(own.result.output.find("own-work") != std::string::npos);
-    (void)shared_pool.TakeAllForShutdown();
+    (void)children_busy.TakeAllForShutdown();
   }
 }
 

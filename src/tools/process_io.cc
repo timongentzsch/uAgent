@@ -127,7 +127,7 @@ ActivityReservation& ActivityReservation::operator=(
 
 void ActivityReservation::Reset() {
   if (!supervisor_) return;
-  supervisor_->ReleaseReservation();
+  supervisor_->ReleaseReservation(subagent_);
   supervisor_ = nullptr;
 }
 
@@ -135,7 +135,7 @@ std::optional<int64_t> ActivityReservation::Register(BgJob job) {
   if (!supervisor_) return std::nullopt;
   ProcessSupervisor* supervisor = supervisor_;
   supervisor_ = nullptr;
-  return supervisor->CommitReservation(std::move(job));
+  return supervisor->CommitReservation(std::move(job), subagent_);
 }
 
 ProcessSupervisor::ProcessSupervisor() {
@@ -212,7 +212,7 @@ void ProcessSupervisor::AssignId(BgJob& job) {
 }
 
 std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
-    int64_t max_pending) {
+    int64_t max_pending, int64_t max_subagents) {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t live = foreground_.size() +
                 static_cast<size_t>(std::count_if(
@@ -221,15 +221,30 @@ std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
   if (static_cast<int64_t>(live) + reservations_ >= max_pending) {
     return std::nullopt;
   }
+  // A child competes against other children, never against the parent's own
+  // commands, which would refuse delegation the moment the parent was busy.
+  bool subagent = max_subagents > 0;
+  if (subagent) {
+    auto child = [](const BgJob& current) {
+      return !current.detached && current.kind == ActivityKind::kSubagent;
+    };
+    int64_t children = static_cast<int64_t>(
+        std::count_if(foreground_.begin(), foreground_.end(), child) +
+        std::count_if(jobs_.begin(), jobs_.end(), child));
+    if (children + subagent_reservations_ >= max_subagents) return std::nullopt;
+    ++subagent_reservations_;
+  }
   ++reservations_;
   NotifyLocked();
-  return ActivityReservation(this);
+  return ActivityReservation(this, subagent);
 }
 
-std::optional<int64_t> ProcessSupervisor::CommitReservation(BgJob job) {
+std::optional<int64_t> ProcessSupervisor::CommitReservation(BgJob job,
+                                                            bool subagent) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (reservations_ <= 0) return std::nullopt;
   --reservations_;
+  if (subagent && subagent_reservations_ > 0) --subagent_reservations_;
   if (stopping_) {
     NotifyLocked();
     return std::nullopt;
@@ -240,9 +255,10 @@ std::optional<int64_t> ProcessSupervisor::CommitReservation(BgJob job) {
   return ActivityId(foreground_.back());
 }
 
-void ProcessSupervisor::ReleaseReservation() {
+void ProcessSupervisor::ReleaseReservation(bool subagent) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (reservations_ > 0) --reservations_;
+  if (subagent && subagent_reservations_ > 0) --subagent_reservations_;
   NotifyLocked();
 }
 

@@ -108,6 +108,12 @@ int64_t McpLogFiles();
 int64_t TerminalRecordDays();
 std::string ShellEnvironmentAllowlist();
 
+// Approval mode is the one setting a running session can toggle, so it cannot
+// live in environ: spawning a child iterates environ on another thread while
+// /yolo would be rewriting it. Children receive it as an explicit override.
+bool ApprovalIsAutomatic();
+void SetApprovalAutomatic(bool automatic);
+
 // Core request, MCP, and persistence settings. Bootstrap builds one snapshot;
 // a validated turn-boundary reload may replace explicitly safe fields.
 std::string RuntimeConfigField(std::string_view environment);

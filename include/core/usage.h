@@ -32,14 +32,15 @@ struct Usage {
 
   // `input` excludes the cached part, so the two together are the whole
   // prompt. Zero when nothing has been counted yet.
+  // A percentage of two token counts: double carries far more precision than
+  // the integer result needs.
   int64_t CacheHitPercent() const {
     int64_t fresh = Nonnegative(input);
     int64_t cached = Nonnegative(cache_read);
-    long double prompt =
-        static_cast<long double>(fresh) + static_cast<long double>(cached);
+    double prompt = static_cast<double>(fresh) + static_cast<double>(cached);
     if (prompt <= 0) return 0;
-    long double percent = 100.0L * static_cast<long double>(cached) / prompt;
-    return static_cast<int64_t>(std::clamp(percent, 0.0L, 100.0L));
+    double percent = 100.0 * static_cast<double>(cached) / prompt;
+    return static_cast<int64_t>(std::clamp(percent, 0.0, 100.0));
   }
 
   void Merge(const Usage& other) {

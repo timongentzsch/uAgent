@@ -672,8 +672,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       break;
     case SlashCommandId::kYolo:
       session.context.options.yolo = !session.context.options.yolo;
-      setenv("UAGENT_APPROVAL",
-             session.context.options.yolo ? "yolo" : "prompt", 1);
+      SetApprovalAutomatic(session.context.options.yolo);
       session.ActiveAgent().ApprovalChanged();
       printf("%s· yolo %s%s\n", DIM(),
              session.context.options.yolo ? "ON — auto-approving everything"

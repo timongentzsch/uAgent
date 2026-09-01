@@ -179,6 +179,15 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
+    // A self-authored directive is the least supervised thing a resume can
+    // reinstate, so it is announced rather than silently reapplied.
+    if (!adaptive_system_->instructions.empty()) {
+      Emit(NoticeEvent(
+          PresentationStatus::kNeutral,
+          "· self-directive revision " +
+              std::to_string(adaptive_system_->revision) +
+              " restored — /status to review, adapt_system to clear"));
+    }
   }
   RefreshBaseline();
   applied_system_revision_ = adaptive_system_ ? adaptive_system_->revision : 0;

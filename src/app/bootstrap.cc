@@ -704,6 +704,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   // One resolved source of truth for the approval mode, so the prompt and the
   // approver cannot disagree however the session was launched.
   setenv("UAGENT_APPROVAL", options.yolo ? "yolo" : "prompt", 1);
+  SetApprovalAutomatic(options.yolo);
   if (!options.debug) {
     options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
     options.debug = !options.debug_path.empty();

@@ -322,11 +322,18 @@ bool ProcessSupervisor::RequestForegroundBackground() {
 
 bool ProcessSupervisor::TryAdd(BgJob job, int64_t max_pending) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!job.detached) {
-    size_t count = foreground_.size() +
-                   static_cast<size_t>(std::count_if(
-                       jobs_.begin(), jobs_.end(),
-                       [](const BgJob& current) { return !current.detached; }));
+  auto pending = [](const BgJob& current) { return !current.detached; };
+  if (job.detached) {
+    // A detached terminal outlives the turn that started it, so this is the
+    // only bound on how many one session can leave running.
+    int64_t detached = static_cast<int64_t>(
+        std::count_if(jobs_.begin(), jobs_.end(),
+                      [](const BgJob& current) { return current.detached; }));
+    if (detached >= max_pending) return false;
+  } else {
+    size_t count =
+        foreground_.size() +
+        static_cast<size_t>(std::count_if(jobs_.begin(), jobs_.end(), pending));
     if (static_cast<int64_t>(count) + reservations_ >= max_pending) {
       return false;
     }

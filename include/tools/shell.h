@@ -20,6 +20,7 @@ namespace uagent {
 struct ShellCommandResult {
   ToolResult result;
   std::optional<int> wait_status = std::nullopt;
+  bool launched = false;
 };
 
 struct ShellCommand {

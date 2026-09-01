@@ -9,6 +9,8 @@
 #include <span>
 #include <string>
 
+#include "include/core/json.h"
+
 namespace uagent {
 
 enum class SlashCommandId {
@@ -64,9 +66,19 @@ struct InteractiveInputEvent {
   std::string text;
 };
 
-using InteractiveReadHandler = std::function<std::string(
-    const std::string&, bool*, bool, const std::string&)>;
+struct InteractionRequest {
+  std::string id;
+  std::string kind = "text";
+  std::string prompt;
+  bool keep_history = false;
+  std::string initial;
+  json options = json::array();
+};
+
+using InteractiveReadHandler =
+    std::function<std::string(const InteractionRequest&, bool*)>;
 void SetInteractiveReadHandler(InteractiveReadHandler handler);
+bool InteractiveReadAvailable();
 
 std::string InputPrompt(const char* label = "");
 // One echoed user turn, banded to the right edge. `text` is already display-
@@ -76,7 +88,10 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text);
 std::string ReadInputLine(const std::string& prompt, bool* eof,
                           bool keep_history = true,
                           const std::string& initial = "");
+std::string ReadInteraction(InteractionRequest request, bool* eof);
 std::string ReadChoiceLine(const std::string& prompt, bool& cancelled,
+                           bool& eof);
+std::string ReadChoiceLine(InteractionRequest request, bool& cancelled,
                            bool& eof);
 
 }  // namespace uagent

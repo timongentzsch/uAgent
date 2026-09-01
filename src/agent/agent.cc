@@ -81,6 +81,7 @@ void Agent::Reset() {
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
   api_.session_cost = 0;
+  api_.session_generated_tokens = 0;
   route_usage_.clear();
   logged_msgs_ = 0;
   logged_schemas_.clear();
@@ -131,10 +132,11 @@ int64_t Agent::UserTurns() const {
   return conversation_.UserTurns();
 }
 
-void Agent::PrintContext() const {
-  PrintModelContext(
-      api_.BuildChatBody(conversation_.Messages(), schemas_, session_id_));
+json Agent::ModelRequest() const {
+  return api_.BuildRequestBody(conversation_.Messages(), schemas_, session_id_);
 }
+
+void Agent::PrintContext() const { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   SessionRecord record;
@@ -182,6 +184,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   applied_system_revision_ = adaptive_system_ ? adaptive_system_->revision : 0;
   session_usage_ = record.state.usage;
   api_.session_cost = session_usage_.cost;
+  api_.session_generated_tokens = session_usage_.GeneratedTokens();
   route_usage_ = std::move(record.state.route_usage);
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
@@ -473,6 +476,7 @@ void Agent::MergeSideUsage(Usage& turn_usage) {
 void Agent::MergeSessionUsage(const Usage& usage) {
   session_usage_.Merge(usage);
   api_.session_cost = session_usage_.cost;
+  api_.session_generated_tokens = session_usage_.GeneratedTokens();
 }
 
 // One finished extraction: its receipt decides what the memory event records,
@@ -571,7 +575,7 @@ void Agent::DeliverActivityCompletions(
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
     record.title = (completion.kind == ActivityKind::kSubagent
-                        ? completion.kind_label + " "
+                        ? std::string("subagent ")
                         : std::string("activity ")) +
                    std::to_string(completion.activity_id);
     record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});

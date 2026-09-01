@@ -53,7 +53,16 @@ class Application {
         runtime_(context.runtime),
         api_(runtime_.api),
         agent_(*context.agent),
-        saved_revision_(agent_.Revision()) {}
+        saved_revision_(agent_.Revision()),
+        channel_(context.channel) {
+    std::string requested = EnvStr("UAGENT_INTERNAL_SESSION_FILE");
+    if (!requested.empty()) {
+      std::filesystem::path root =
+          CanonicalAccessPath(UagentDir("collaborators"));
+      std::filesystem::path path = CanonicalAccessPath(requested);
+      if (PathWithin(path, root)) session_file_ = path.string();
+    }
+  }
 
   AppSession Session() {
     return AppSession{context_, attachments_, session_file_, saved_revision_};
@@ -62,10 +71,12 @@ class Application {
   int Run() {
     int attachment_status = LoadInitialAttachments();
     if (attachment_status != 0) return attachment_status;
-    if (!context_.options.prompt.empty() && context_.options.resume_latest) {
+    if (!context_.options.prompt.empty() &&
+        (context_.options.resume_latest || !session_file_.empty())) {
       ResumeAtStartup();
     }
-    return context_.options.prompt.empty() ? RunInteractive() : RunHeadless();
+    if (!context_.options.prompt.empty()) return RunHeadless();
+    return channel_ ? RunChannel() : RunInteractive();
   }
 
  private:
@@ -157,6 +168,9 @@ class Application {
   }
 
   int RunHeadless() {
+    // Internal collaborator sessions are explicit durable conversations even
+    // though ordinary one-shot `-p` calls remain ephemeral.
+    persist_ = !session_file_.empty();
     json content;
     if (!attachments_.empty()) {
       std::string error;
@@ -170,6 +184,7 @@ class Application {
       }
     }
     RunTurns(context_.options.prompt, std::move(content));
+    SaveSession();
     // Background work is observational and never starts a model turn. Keep the
     // process alive long enough to publish completion and drain retained state.
     while (runtime_.processes.JoinableCount() > 0 && !AbortRequested()) {
@@ -205,7 +220,11 @@ class Application {
 
   void ResumeAtStartup() {
     std::string previous_path = session_file_;
-    if (context_.options.resume_pick) {
+    if (!session_file_.empty()) {
+      if (PathExists(session_file_)) {
+        ResumeInto(agent_, session_file_, session_file_);
+      }
+    } else if (context_.options.resume_pick) {
       ResumeInto(agent_, PickSession(), session_file_);
     } else if (context_.options.resume_latest) {
       std::vector<SessionInfo> sessions = ListSessions();
@@ -273,6 +292,19 @@ class Application {
     RunTurns(input, std::move(content));
   }
 
+  json InterfaceState() const {
+    return {{"route", RouteSelection(api_, context_.provider.providers)},
+            {"effort", api_.reasoning_effort},
+            {"variant", api_.config.openrouter_variant},
+            {"context_tokens", agent_.ContextUsed()},
+            {"context_window", api_.ctx_window},
+            {"attachments", attachments_.size()},
+            {"background", runtime_.processes.Count()},
+            {"tools", context_.tools.size()},
+            {"verbose", agent_.Verbose()},
+            {"yolo", context_.options.yolo}};
+  }
+
   bool ProcessInput(std::string input) {
     input = Trim(input);
     if (input.empty()) return false;
@@ -284,14 +316,21 @@ class Application {
     }
     if (command.spec) {
       AppSession session = Session();
-      if (!RunSlashCommand(session, command)) return false;
+      json result;
+      bool quit = RunSlashCommand(session, command, result);
+      Emit(Event{EventId::kCommandCompleted,
+                 {{"command", command.spec->name},
+                  {"argument", command.argument},
+                  {"quit", quit},
+                  {"result", std::move(result)},
+                  {"state", InterfaceState()}}});
+      if (!quit) return false;
       exit_reason_ = "command";
       return true;
     }
     if (input[0] == '/') {
-      printf("%s· unknown command %s; use /help%s\n", RED(),
-             TerminalSafe(input).c_str(), RST());
-      fflush(stdout);
+      Emit(NoticeEvent(PresentationStatus::kFailed,
+                       "· unknown command " + input + "; use /help"));
       return false;
     }
     RunPrompt(input);
@@ -515,11 +554,11 @@ class Application {
       if (!composer.Start()) return -1;
       SetTerminalWakeFd(broker.NotifyFd());
       app.runtime_.processes.SetNotifyFd(broker.NotifyFd());
-      SetInteractiveReadHandler([this](const std::string& prompt, bool* eof,
-                                       bool keep_history,
-                                       const std::string& initial) {
-        return broker.Read(prompt, eof, keep_history, initial);
-      });
+      SetInteractiveReadHandler(
+          [this](const InteractionRequest& request, bool* eof) {
+            return broker.Read(request.prompt, eof, request.keep_history,
+                               request.initial);
+          });
       SetPersistentComposer(true);
 
       constexpr auto kResizeSettle = std::chrono::milliseconds(80);
@@ -535,7 +574,8 @@ class Application {
                   {broker.ReadFd(), POLLIN, 0}};
         if (!working) {
           for (const auto& server : app.runtime_.mcp.Servers()) {
-            if (server->alive && server->out) {
+            if (server->alive && server->out &&
+                server->startup == McpStartupState::kReady) {
               events.push_back(
                   {server->out.Get(),
                    static_cast<int16_t>(POLLIN | POLLHUP | POLLERR), 0});
@@ -743,6 +783,17 @@ class Application {
     return FinishInteractive(0);
   }
 
+  int RunChannel() {
+    ResumeAtStartup();
+    persist_ = true;
+    while (std::optional<std::string> input = channel_->NextInput()) {
+      SaveSession();
+      agent_.DrainBackground();
+      if (ProcessInput(std::move(*input))) break;
+    }
+    return FinishInteractive(0);
+  }
+
   AppContext& context_;
   AppRuntime& runtime_;
   Api& api_;
@@ -752,6 +803,7 @@ class Application {
   uint64_t saved_revision_;
   bool persist_ = false;
   std::string exit_reason_ = "eof";
+  ApplicationChannel* channel_ = nullptr;
 };
 
 }  // namespace

@@ -150,7 +150,27 @@ struct StreamCtx {
 inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
                              ChatResult& result) {
   std::set<std::string> ids;
-  for (auto& [index, call] : streamed) {
+  for (auto it = streamed.begin(); it != streamed.end();) {
+    auto current = it++;
+    int index = current->first;
+    ToolCall& call = current->second;
+    json arguments = json::parse(call.args, nullptr, false);
+    if (call.name.empty() || arguments.is_discarded() ||
+        !arguments.is_object()) {
+      const bool truncated =
+          it == streamed.end() &&
+          (result.stop_cause == ResponseStopCause::kLength ||
+           result.stop_cause == ResponseStopCause::kInputLimit);
+      if (truncated) {
+        DebugLog(
+            "partial_tool_call_dropped",
+            {{"stream_index", index}, {"finish_reason", result.finish_reason}});
+        streamed.erase(current);
+        break;
+      }
+      result.error = "invalid model tool call: incomplete function";
+      return false;
+    }
     std::string original = call.id;
     std::string base =
         original.empty() ? "uagent-call-" + std::to_string(index) : original;
@@ -168,12 +188,6 @@ inline bool CollectToolCalls(std::map<int, ToolCall>& streamed,
                 {"reason", original.empty() ? "missing" : "duplicate"}});
     }
     ids.insert(candidate);
-    json arguments = json::parse(call.args, nullptr, false);
-    if (call.name.empty() || arguments.is_discarded() ||
-        !arguments.is_object()) {
-      result.error = "invalid model tool call: incomplete function";
-      return false;
-    }
   }
   for (auto& [index, call] : streamed) {
     (void)index;

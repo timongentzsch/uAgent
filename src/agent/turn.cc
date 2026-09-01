@@ -29,6 +29,7 @@
 #include "include/core/time.h"
 #include "include/md.h"
 #include "include/tools/jobs.h"
+#include "src/agent/turn_internal.h"
 
 namespace uagent {
 
@@ -41,73 +42,96 @@ bool GenericSessionTitle(std::string title) {
 
 }  // namespace
 
-struct Agent::TurnState {
-  size_t start = 0;
-  Usage usage;
-  int64_t tool_count = 0;
-  std::chrono::steady_clock::time_point started =
-      std::chrono::steady_clock::now();
-  std::chrono::steady_clock::time_point deadline;
-  int64_t max_steps = 0;
-  int64_t max_turn_seconds = 0;
-  double max_turn_cost = 0;
-  double session_budget = 0;
-  bool complete = false;
-  bool line_open = false;
-  double ttt_ms = -1;
-  double model_generation_ms = 0;
-  int64_t model_generated_tokens = 0;
-  std::string last_single_tool;
-  int64_t same_tool_rounds = 0;
-  std::string outcome = "step_limit";
-  // Which bound ended the turn, in a vocabulary a caller can branch on. The
-  // prose in last_error_ is for a human; a delegating parent needs to know
-  // whether raising a ceiling would change the outcome.
-  std::string stop_reason;
-};
-
-// Every bound the turn enforces ends the same way: record why, mark the turn,
-// and say so in red.
-void Agent::FailBudget(TurnState& state, std::string reason,
-                       std::string message) {
+// Every ordinary turn failure records the same terminal state and notice.
+void Agent::FailTurn(TurnExecution& state, std::string message) {
   last_error_ = std::move(message);
-  state.outcome = "budget_exceeded";
-  state.stop_reason = std::move(reason);
+  state.stop.outcome = TurnOutcome::kError;
   Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
 }
 
-bool Agent::TurnDeadlineExceeded(TurnState& state,
+// Every bound the turn enforces ends the same way: record why, mark the turn,
+// and say so in red.
+void Agent::FailBudget(TurnExecution& state, TurnStopReason reason,
+                       std::string message) {
+  last_error_ = std::move(message);
+  state.stop.outcome = TurnOutcome::kBudgetExceeded;
+  state.stop.reason = reason;
+  Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+}
+
+bool Agent::TurnDeadlineExceeded(TurnExecution& state,
                                  std::chrono::seconds reserve) {
   if (std::chrono::steady_clock::now() + reserve < state.deadline) return false;
-  FailBudget(state, "turn_deadline",
+  FailBudget(state, TurnStopReason::kTurnDeadline,
              "turn time limit reached (" +
-                 std::to_string(state.max_turn_seconds) + "s)");
+                 std::to_string(state.limits.max_turn_seconds) + "s)");
   return true;
 }
 
-bool Agent::TurnCostExceeded(TurnState& state) {
-  double limit = state.max_turn_cost;
-  double spent = state.usage.cost;
+bool Agent::TurnTokenBudgetExceeded(TurnExecution& state,
+                                    bool before_model) {
+  int64_t limit = state.limits.max_turn_tokens;
+  int64_t spent = state.metrics.usage.GeneratedTokens();
   std::string scope = "turn";
-  if (state.session_budget > 0 && session_usage_.cost > state.session_budget) {
-    limit = state.session_budget;
+  const int64_t session_spent = session_usage_.GeneratedTokens();
+  const bool session_limited = state.limits.session_token_budget > 0;
+  const bool session_exhausted =
+      session_limited &&
+      (before_model ? session_spent >= state.limits.session_token_budget
+                    : session_spent > state.limits.session_token_budget);
+  if (session_exhausted) {
+    limit = state.limits.session_token_budget;
+    spent = session_spent;
+    scope = "session";
+  }
+  if (limit <= 0 || (before_model ? spent < limit : spent <= limit)) {
+    return false;
+  }
+  FailBudget(state,
+             scope == "session" ? TurnStopReason::kSessionTokenBudget
+                                : TurnStopReason::kTurnTokens,
+             scope + " generated-token limit " +
+                 (spent == limit ? "reached (" : "exceeded (") +
+                 FmtCount(limit) + ")");
+  return true;
+}
+
+bool Agent::TurnCostExceeded(TurnExecution& state) {
+  double limit = state.limits.max_turn_cost;
+  double spent = state.metrics.usage.cost;
+  std::string scope = "turn";
+  if (state.limits.session_budget > 0 &&
+      session_usage_.cost > state.limits.session_budget) {
+    limit = state.limits.session_budget;
     spent = session_usage_.cost;
     scope = "session";
   }
   if (limit <= 0 || spent <= limit) return false;
-  FailBudget(state, scope == "session" ? "session_budget" : "turn_cost",
+  FailBudget(state,
+             scope == "session" ? TurnStopReason::kSessionBudget
+                                : TurnStopReason::kTurnCost,
              scope + " cost limit exceeded (" + FmtCost(limit) + ")");
   return true;
 }
 
 void Agent::RecordModelResponse(
-    ChatResult& response, TurnState& state,
+    ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
   Usage response_usage = AccountModelUsage(response.usage);
-  if (state.ttt_ms < 0 && response.first_event_ms >= 0) {
-    state.ttt_ms = response.first_event_ms;
+  if (state.metrics.ttt_ms < 0 && response.first_event_ms >= 0) {
+    state.metrics.ttt_ms = response.first_event_ms;
   }
-  if (state.session_budget > 0 && response.usage.is_object() &&
+  if ((state.limits.max_turn_tokens > 0 ||
+       state.limits.session_token_budget > 0) &&
+      (!response.usage.is_object() || response.usage.empty()) &&
+      !token_warning_shown_) {
+    token_warning_shown_ = true;
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "· provider does not report usage; token budget is not "
+                     "enforceable"));
+    DebugLog("token_usage_unavailable", {{"route", ActiveRoute()}});
+  }
+  if (state.limits.session_budget > 0 && response.usage.is_object() &&
       !response_usage.cost_reported && !cost_warning_shown_) {
     cost_warning_shown_ = true;
     Emit(NoticeEvent(PresentationStatus::kWarned,
@@ -119,11 +143,13 @@ void Agent::RecordModelResponse(
   // thinking, tool-call deliberation) and providers do not always report them
   // as reasoning, so only the full call duration cannot overstate the rate.
   if (response.duration_ms > 0 && response_usage.GeneratedTokens() > 0) {
-    state.model_generation_ms += response.duration_ms;
-    state.model_generated_tokens += response_usage.GeneratedTokens();
+    state.metrics.model_generation_ms += response.duration_ms;
+    state.metrics.model_generated_tokens = SaturatingNonnegativeAdd(
+        state.metrics.model_generated_tokens, response_usage.GeneratedTokens());
   }
-  state.usage.Merge(response_usage);
-  tool_counts["web_search"] += response_usage.web_searches;
+  state.metrics.usage.Merge(response_usage);
+  tool_counts["web_search"] = SaturatingNonnegativeAdd(
+      tool_counts["web_search"], response_usage.web_searches);
   turn_search_trace_.Add(response_usage.web_searches, response.annotations);
   state.line_open = !response.suppressed && !response.content.empty() &&
                     response.content.back() != '\n';
@@ -140,14 +166,15 @@ void Agent::RecordModelResponse(
 }
 
 bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
-                                  TurnState& state, int64_t max_tool_calls,
+                                  TurnExecution& state, int64_t max_tool_calls,
                                   std::string& last_call,
                                   int64_t& repeated_calls) {
   if (calls.empty()) return true;
   if (max_tool_calls > 0 &&
-      state.tool_count + static_cast<int64_t>(calls.size()) > max_tool_calls) {
+      state.metrics.tool_count + static_cast<int64_t>(calls.size()) >
+          max_tool_calls) {
     FailBudget(
-        state, "max_tool_calls",
+        state, TurnStopReason::kMaxToolCalls,
         "tool call limit reached (" + std::to_string(max_tool_calls) + ")");
     return false;
   }
@@ -172,7 +199,7 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     repeated = repeated || repeated_calls > 3;
   }
   if (!repeated) return true;
-  FailBudget(state, "repeated_calls",
+  FailBudget(state, TurnStopReason::kRepeatedCalls,
              "model repeated the same tool call more than 3 times");
   return false;
 }
@@ -209,31 +236,6 @@ std::vector<std::string> Agent::ExplicitSkillContext(
   return selected;
 }
 
-// The mutable state of one step loop, in a struct rather than as two dozen
-// locals so each phase below can be an ordinary function.
-struct Agent::TurnLoop {
-  std::unordered_map<std::string, int64_t> tool_counts;
-  std::unordered_map<std::string, std::string> stable_arguments;
-  std::unordered_map<std::string, int64_t> rejection_rounds;
-  std::string last_call;
-  int64_t step = 0;
-  int64_t repeated_calls = 0;
-  int64_t quiet_activity_id = 0;
-  int64_t quiet_activity_polls = 0;
-  int64_t consecutive_failed_tools = 0;
-  int64_t empty_responses = 0;
-  int64_t provider_continuations = 0;
-  bool failure_advisory_sent = false;
-  bool quiet_activity_advisory_sent = false;
-  bool markup_recovered = false;
-  bool context_overflow_recovery_attempted = false;
-  bool detached_records_available = false;
-  bool midturn_compaction_enabled = true;
-  // A harness note that guides exactly the next model call and is retracted
-  // once it has been sent. At most one is ever live.
-  std::optional<size_t> pending_note;
-};
-
 void Agent::PushSkillContext(std::string skill) {
   conversation_.Push(
       HarnessMessage("[explicit skill instructions; user selected]\n" +
@@ -242,15 +244,15 @@ void Agent::PushSkillContext(std::string skill) {
 }
 
 // Every interruption ends the turn the same way, whatever noticed it first.
-Agent::StepFlow Agent::InterruptTurn(TurnState& state) {
-  state.outcome = "interrupted";
-  last_error_ = state.outcome;
+Agent::StepFlow Agent::InterruptTurn(TurnExecution& state) {
+  state.stop.outcome = TurnOutcome::kInterrupted;
+  last_error_ = TurnOutcomeName(state.stop.outcome);
   return StepFlow::kEndTurn;
 }
 
 // Steering joins the conversation as ordinary user messages, and every
 // per-step recovery counter starts over: the question has changed.
-bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
+bool Agent::ApplyQueuedSteering(StepState& loop) {
   std::vector<std::string> queued = SteeringState().TakeQueued();
   if (queued.empty()) return false;
   SteeringState().Take();
@@ -267,8 +269,8 @@ bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
   loop.quiet_activity_polls = 0;
   loop.quiet_activity_advisory_sent = false;
   loop.consecutive_failed_tools = 0;
-  state.last_single_tool.clear();
-  state.same_tool_rounds = 0;
+  loop.last_single_tool.clear();
+  loop.same_tool_rounds = 0;
   loop.stable_arguments.clear();
   loop.rejection_rounds.clear();
   loop.failure_advisory_sent = false;
@@ -281,16 +283,19 @@ bool Agent::ApplyQueuedSteering(TurnState& state, TurnLoop& loop) {
 
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
-Agent::StepFlow Agent::PrepareStep(TurnState& state, TurnLoop& loop,
+Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop,
                                    json& schemas) {
-  ApplyQueuedSteering(state, loop);
+  ApplyQueuedSteering(loop);
   RefreshSystemMessage();
   if (SteeringState().Requested()) return InterruptTurn(state);
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   DrainBackground();
-  MergeSideUsage(state.usage);
+  MergeSideUsage(state.metrics.usage);
+  if (TurnTokenBudgetExceeded(state, /*before_model=*/true)) {
+    return StepFlow::kEndTurn;
+  }
   if (TurnCostExceeded(state)) return StepFlow::kEndTurn;
   ToolAvailability availability{
       .detached_terminal = processes_.PendingCount() > 0 ||
@@ -301,7 +306,7 @@ Agent::StepFlow Agent::PrepareStep(TurnState& state, TurnLoop& loop,
       AvailableToolSchemas(tools_, schemas_, loop.tool_counts, availability);
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
-        MaybeCompactDuringTurn(schemas, state.usage, state.start);
+        MaybeCompactDuringTurn(schemas, state.metrics.usage, state.start);
     if (compacted != MidturnCompact::kNotNeeded) {
       loop.midturn_compaction_enabled = false;
       // A successful compaction rebuilt the history, so a recorded note
@@ -316,7 +321,8 @@ Agent::StepFlow Agent::PrepareStep(TurnState& state, TurnLoop& loop,
 
 // An interrupted or failed model call; kProceed means the response is usable.
 Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
-                                            TurnState& state, TurnLoop& loop,
+                                            TurnExecution& state,
+                                            StepState& loop,
                                             const json& schemas,
                                             bool attachment) {
   if (response.interrupted) {
@@ -330,8 +336,7 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
         HarnessMessage("(response interrupted; partial output was "
                        "discarded)"),
         MessageKind::kInternal);
-    return ApplyQueuedSteering(state, loop) ? StepFlow::kNextStep
-                                            : StepFlow::kEndTurn;
+    return ApplyQueuedSteering(loop) ? StepFlow::kNextStep : StepFlow::kEndTurn;
   }
   if (response.error.empty()) return StepFlow::kProceed;
   state.line_open = false;
@@ -360,13 +365,11 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
     Emit(NoticeEvent(PresentationStatus::kNeutral,
                      "· provider context limit reached — compacting once"));
     loop.midturn_compaction_enabled = false;
-    if (Compact(true, &state.usage)) {
+    if (Compact(true, &state.metrics.usage)) {
       state.start = conversation_.Size();
       return StepFlow::kRetryStep;
     }
-    state.outcome = "error";
-    last_error_ = response.error;
-    Emit(NoticeEvent(PresentationStatus::kFailed, response.error));
+    FailTurn(state, response.error);
     return StepFlow::kEndTurn;
   }
   if (response.remote_error_kind == RemoteErrorKind::kContextLengthExceeded) {
@@ -378,16 +381,14 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
               {"semantic_progress", response.semantic_progress}});
   }
   if (DegradeAndRetry(response)) return StepFlow::kRetryStep;
-  state.outcome = "error";
-  last_error_ = response.error;
-  Emit(NoticeEvent(PresentationStatus::kFailed, response.error));
+  FailTurn(state, response.error);
   return StepFlow::kEndTurn;
 }
 
 // Text that imitates a tool protocol but parses as nothing. One correction is
 // worth sending; a second means the model will not recover.
-Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnState& state,
-                                                TurnLoop& loop) {
+Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnExecution& state,
+                                                StepState& loop) {
   if (!loop.markup_recovered) {
     loop.markup_recovered = true;
     conversation_.Push(
@@ -400,7 +401,7 @@ Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnState& state,
              {{"turn", turn_id_}, {"step", loop.step}});
     return StepFlow::kNextStep;
   }
-  state.outcome = "error";
+  state.stop.outcome = TurnOutcome::kError;
   last_error_ = "model repeatedly returned invalid tool markup";
   return StepFlow::kEndTurn;
 }
@@ -410,19 +411,18 @@ Agent::StepFlow Agent::HandleUnparsedToolMarkup(TurnState& state,
 // third ends the turn: a barren provider response must not cost the work this
 // turn has already done.
 Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
-                                           TurnState& state, TurnLoop& loop) {
+                                           TurnExecution& state,
+                                           StepState& loop) {
   constexpr int64_t kEmptyResponseAttempts = 3;
   if (++loop.empty_responses >= kEmptyResponseAttempts) {
-    state.outcome = "error";
-    last_error_ = "model returned an empty response";
-    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    FailTurn(state, "model returned an empty response");
     return StepFlow::kEndTurn;
   }
   // The first replay goes out unchanged: only a repeat is evidence that the
   // model needs steering rather than another attempt.
   if (loop.empty_responses > 1) {
     conversation_.Push(
-        HarnessMessage(state.tool_count > 0
+        HarnessMessage(state.metrics.tool_count > 0
                            ? "[empty model response] Return the final "
                              "answer from existing results. Do not "
                              "repeat completed work."
@@ -443,28 +443,87 @@ Agent::StepFlow Agent::HandleEmptyResponse(const ChatResult& response,
   return StepFlow::kNextStep;
 }
 
+// A provider stop is separate from transport success. Salvage complete calls
+// only for truncation; otherwise one bounded continuation prevents a partial
+// prose response or an unfamiliar stop reason from being accepted as final.
+Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
+                                          size_t tool_call_count,
+                                          TurnExecution& state,
+                                          StepState& loop) {
+  const ResponseStopCause cause = response.stop_cause;
+  if (cause == ResponseStopCause::kNone ||
+      cause == ResponseStopCause::kComplete ||
+      cause == ResponseStopCause::kPause) {
+    return StepFlow::kProceed;
+  }
+  const bool has_tool_calls = tool_call_count > 0;
+  const bool salvage_calls =
+      has_tool_calls && (cause == ResponseStopCause::kLength ||
+                         cause == ResponseStopCause::kInputLimit);
+  if (salvage_calls) {
+    DebugLog("partial_response_salvaged", {{"turn", turn_id_},
+                                           {"step", loop.step},
+                                           {"reason", response.finish_reason},
+                                           {"tool_calls", tool_call_count}});
+    return StepFlow::kProceed;
+  }
+
+  // Unknown provider reasons get one retry even when they accompanied calls.
+  // Do not execute those calls: a future policy stop must fail closed, while
+  // the retry gives a harmless new spelling a chance to complete normally.
+  const bool continuable =
+      (cause == ResponseStopCause::kOther) ||
+      (!response.content.empty() && !has_tool_calls &&
+       (cause == ResponseStopCause::kLength ||
+        cause == ResponseStopCause::kInputLimit));
+  if (continuable && loop.stop_recoveries++ == 0) {
+    PushAssistantMessage(response, {}, false);
+    conversation_.Push(
+        HarnessMessage("[partial model response: " + response.finish_reason +
+                       "] Continue exactly where the response stopped. Do "
+                       "not repeat completed content or work."),
+        MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+    DebugLog("partial_response_continuation",
+             {{"turn", turn_id_},
+              {"step", loop.step},
+              {"reason", response.finish_reason},
+              {"content_chars", response.content.size()}});
+    Emit(NoticeEvent(PresentationStatus::kNeutral,
+                     "· continuing a partial model response"));
+    return StepFlow::kNextStep;
+  }
+
+  std::string reason = response.finish_reason.empty()
+                           ? ResponseStopCauseName(cause)
+                           : response.finish_reason;
+  FailTurn(state,
+           "model response stopped before completion (" + reason + ")");
+  return StepFlow::kEndTurn;
+}
+
 // Worth a trace record long before it is worth stopping the turn.
 void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
-                                      TurnState& state, TurnLoop& loop) {
+                                      StepState& loop) {
   if (calls.size() != 1) {
-    state.last_single_tool.clear();
-    state.same_tool_rounds = 0;
+    loop.last_single_tool.clear();
+    loop.same_tool_rounds = 0;
     return;
   }
-  state.same_tool_rounds =
-      calls[0].name == state.last_single_tool ? state.same_tool_rounds + 1 : 1;
-  state.last_single_tool = calls[0].name;
-  if (state.same_tool_rounds == 8) {
+  loop.same_tool_rounds =
+      calls[0].name == loop.last_single_tool ? loop.same_tool_rounds + 1 : 1;
+  loop.last_single_tool = calls[0].name;
+  if (loop.same_tool_rounds == 8) {
     DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
                                       {"step", loop.step},
                                       {"tool", calls[0].name},
-                                      {"rounds", state.same_tool_rounds}});
+                                      {"rounds", loop.same_tool_rounds}});
   }
 }
 
 bool Agent::HandleActivityPollResults(
     const std::vector<ActivityPollResult>& polls, bool exclusive,
-    TurnState& state, TurnLoop& loop) {
+    TurnExecution& state, StepState& loop) {
   auto reset = [&] {
     loop.quiet_activity_id = 0;
     loop.quiet_activity_polls = 0;
@@ -500,12 +559,11 @@ bool Agent::HandleActivityPollResults(
   constexpr int64_t kDirectAfter = 4;
   constexpr int64_t kStopAfter = 12;
   if (loop.quiet_activity_polls >= kStopAfter) {
-    state.outcome = "error";
-    last_error_ = "activity " + std::to_string(poll.id) + " is still running, "
-                  "but the model polled it " +
-                  std::to_string(loop.quiet_activity_polls) +
-                  " times without new output and without waiting on it";
-    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    FailTurn(state, "activity " + std::to_string(poll.id) +
+                        " is still running, "
+                        "but the model polled it " +
+                        std::to_string(loop.quiet_activity_polls) +
+                        " times without new output and without waiting on it");
     DebugLog("activity_poll_loop", {{"turn", turn_id_},
                                     {"step", loop.step},
                                     {"activity_id", poll.id},
@@ -516,7 +574,8 @@ bool Agent::HandleActivityPollResults(
       loop.quiet_activity_polls == kDirectAfter) {
     const bool mandatory = loop.quiet_activity_polls == kDirectAfter;
     std::string note = "[activity poll advisory] Activity " +
-                       std::to_string(poll.id) + " is still running and has "
+                       std::to_string(poll.id) +
+                       " is still running and has "
                        "returned no new output " +
                        std::to_string(loop.quiet_activity_polls) + " times. ";
     note += mandatory ? "Stop polling it: this turn ends in an error if you "
@@ -541,8 +600,8 @@ bool Agent::HandleActivityPollResults(
 }
 
 bool Agent::StopForRepeatedRejections(
-    const std::vector<ToolRejection>& rejections, TurnState& state,
-    TurnLoop& loop) {
+    const std::vector<ToolRejection>& rejections, TurnExecution& state,
+    StepState& loop) {
   constexpr int64_t kRejectedRoundLimit = 3;
   std::unordered_set<std::string> seen_this_round;
   for (const ToolRejection& rejection : rejections) {
@@ -552,14 +611,14 @@ bool Agent::StopForRepeatedRejections(
     int64_t rounds = ++loop.rejection_rounds[key];
     if (rounds < kRejectedRoundLimit) continue;
 
-    state.outcome = "error";
-    last_error_ = "model repeated an equivalent rejected " + rejection.tool +
-                  " call 3 times (" + rejection.issue_code;
+    std::string message =
+        "model repeated an equivalent rejected " + rejection.tool +
+        " call 3 times (" + rejection.issue_code;
     if (!rejection.issue_field.empty()) {
-      last_error_ += ": " + rejection.issue_field;
+      message += ": " + rejection.issue_field;
     }
-    last_error_ += ")";
-    Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+    message += ")";
+    FailTurn(state, std::move(message));
     DebugLog("deterministic_rejection_loop",
              {{"turn", turn_id_},
               {"step", loop.step},
@@ -592,41 +651,41 @@ void Agent::PushAssistantMessage(ChatResult& response,
   }
   // Preserve the replay fields the active route actually emitted while any
   // tool protocol continues; completed prose does not burden later turns.
-  if (!calls.empty() || response.continue_response) {
+  if (!calls.empty() || response.stop_cause == ResponseStopCause::kPause) {
     api_.PreserveAssistantReasoning(message, response);
   }
   conversation_.Push(std::move(message), MessageKind::kAssistant);
 }
 
 // Plain prose and no call: the turn is done unless steering reopened it.
-Agent::StepFlow Agent::FinishWithProse(ChatResult& response, TurnState& state,
-                                       TurnLoop& loop) {
+Agent::StepFlow Agent::FinishWithProse(ChatResult& response,
+                                       TurnExecution& state, StepState& loop) {
   // Content that looked like a tool call was held back from the stream; if it
   // didn't parse into one, it's prose -- show it now.
   if (response.suppressed) {
     MdPrint(response.content);
     printf("\n");
   }
-  if (ApplyQueuedSteering(state, loop)) return StepFlow::kNextStep;
+  if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
   if (SteeringState().Requested()) return InterruptTurn(state);
   state.complete = true;
-  state.outcome = "complete";
+  state.stop.outcome = TurnOutcome::kComplete;
   return StepFlow::kEndTurn;
 }
 
 Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
-                                        bool text_mode, TurnState& state,
-                                        TurnLoop& loop) {
+                                        bool text_mode, TurnExecution& state,
+                                        StepState& loop) {
   if (state.line_open) printf("\n");
   std::vector<ToolRejection> rejections;
   std::vector<ActivityPollResult> activity_polls;
   bool cancelled =
-      RunCalls(calls, text_mode, state.tool_count, loop.tool_counts,
+      RunCalls(calls, text_mode, state.metrics.tool_count, loop.tool_counts,
                loop.stable_arguments, loop.step, state.deadline,
                loop.consecutive_failed_tools, rejections, activity_polls);
   state.line_open = false;
   bool foreground_interrupted = SteeringState().Requested() || cancelled;
-  bool steering_applied = ApplyQueuedSteering(state, loop);
+  bool steering_applied = ApplyQueuedSteering(loop);
   if (cancelled) BgCancelSubagents(processes_);
   if (foreground_interrupted) {
     if (steering_applied) return StepFlow::kNextStep;
@@ -722,8 +781,8 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     return;
   }
   EnsureRuntimeContext();
-  TurnState state;
-  TurnLoop loop;
+  TurnExecution state;
+  StepState loop;
   state.start = conversation_.Size();  // user message and prune_* start
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
   conversation_.Push(
@@ -731,17 +790,22 @@ void Agent::Turn(const std::string& user_input, json user_content) {
        {"content", attachment ? std::move(user_content) : json(user_input)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
   turn_search_trace_.Reset();
-  state.max_steps = api_.config.max_steps;
-  state.max_turn_seconds = api_.config.max_turn_seconds;
-  state.max_turn_cost = api_.config.max_turn_cost;
-  state.session_budget = api_.config.session_budget;
-  state.deadline = state.max_turn_seconds > 0
-                       ? DeadlineAfter(state.started, state.max_turn_seconds)
-                       : std::chrono::steady_clock::time_point::max();
+  state.limits.max_steps = api_.config.max_steps;
+  state.limits.max_tool_calls = api_.config.max_tool_calls;
+  state.limits.max_turn_seconds = api_.config.max_turn_seconds;
+  state.limits.max_turn_tokens = api_.config.max_turn_tokens;
+  state.limits.session_token_budget = api_.config.session_token_budget;
+  state.limits.max_turn_cost = api_.config.max_turn_cost;
+  state.limits.session_budget = api_.config.session_budget;
+  state.deadline =
+      state.limits.max_turn_seconds > 0
+          ? DeadlineAfter(state.started, state.limits.max_turn_seconds)
+          : std::chrono::steady_clock::time_point::max();
   active_deadline_ = state.deadline;
   loop.detached_records_available = !DetachedRecords().empty();
 
-  for (; state.max_steps <= 0 || loop.step < state.max_steps; ++loop.step) {
+  for (; state.limits.max_steps <= 0 || loop.step < state.limits.max_steps;
+       ++loop.step) {
     json schemas;
     StepFlow flow = PrepareStep(state, loop, schemas);
     if (flow == StepFlow::kEndTurn) break;
@@ -764,13 +828,13 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     }
 
     RecordModelResponse(response, state, loop.tool_counts);
+    if (TurnTokenBudgetExceeded(state)) break;
     if (TurnCostExceeded(state)) break;
-    if (response.continue_response && !response.replay.empty()) {
+    if (response.stop_cause == ResponseStopCause::kPause &&
+        !response.replay.empty()) {
       constexpr int64_t kProviderContinuationLimit = 8;
       if (++loop.provider_continuations > kProviderContinuationLimit) {
-        state.outcome = "error";
-        last_error_ = "provider continuation limit (8) reached";
-        Emit(NoticeEvent(PresentationStatus::kFailed, last_error_));
+        FailTurn(state, "provider continuation limit (8) reached");
         break;
       }
       PushAssistantMessage(response, {}, false);
@@ -789,6 +853,10 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     bool text_mode = !api_.capabilities.native_tools && parsed_text_calls;
     if (text_mode) calls = std::move(text_calls);
 
+    flow = HandleResponseStop(response, calls.size(), state, loop);
+    if (flow == StepFlow::kEndTurn) break;
+    if (flow == StepFlow::kNextStep) continue;
+
     if (calls.empty() &&
         (parsed_text_calls || ContainsForeignToolCallMarkup(response.content) ||
          response.suppressed)) {
@@ -797,11 +865,11 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       }
       break;
     }
-    if (!ToolCallsWithinLimits(calls, state, api_.config.max_tool_calls,
+    if (!ToolCallsWithinLimits(calls, state, state.limits.max_tool_calls,
                                loop.last_call, loop.repeated_calls)) {
       break;
     }
-    RecordToolRoundRepetition(calls, state, loop);
+    RecordToolRoundRepetition(calls, loop);
     if (calls.empty() && response.content.empty()) {
       if (HandleEmptyResponse(response, state, loop) == StepFlow::kNextStep) {
         continue;
@@ -818,84 +886,110 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 }
 
 // The one-line accounting footer printed after every turn.
-std::string Agent::TurnStatsLine(const TurnState& state, double seconds,
+std::string Agent::TurnStatsLine(const TurnExecution& state, double seconds,
                                  double tokens_per_second) {
   std::ostringstream stats;
-  stats << FmtCount(state.usage.input) << " in";
-  if (state.usage.cache_read) {
-    stats << " (+" << FmtCount(state.usage.cache_read) << " cached)";
+  stats << FmtCount(state.metrics.usage.input) << " in";
+  if (state.metrics.usage.cache_read) {
+    stats << " (+" << FmtCount(state.metrics.usage.cache_read) << " cached)";
   }
-  if (state.usage.cache_write) {
-    stats << " (+" << FmtCount(state.usage.cache_write) << " cache write)";
+  if (state.metrics.usage.cache_write) {
+    stats << " (+" << FmtCount(state.metrics.usage.cache_write)
+          << " cache write)";
   }
-  stats << " · " << FmtCount(state.usage.output) << " out";
-  if (state.usage.reasoning) {
-    stats << ' ' << ITAL() << "(+" << FmtCount(state.usage.reasoning)
+  stats << " · " << FmtCount(state.metrics.usage.output) << " out";
+  if (state.metrics.usage.reasoning) {
+    stats << ' ' << ITAL() << "(+" << FmtCount(state.metrics.usage.reasoning)
           << " reasoning)" << ItalOff();
   }
-  if (state.usage.cost > 0) stats << " · " << FmtCost(state.usage.cost);
-  if (state.usage.web_searches) {
-    stats << " · " << state.usage.web_searches << " search"
-          << (state.usage.web_searches == 1 ? "" : "es");
+  if (state.metrics.usage.cost > 0)
+    stats << " · " << FmtCost(state.metrics.usage.cost);
+  if (state.metrics.usage.web_searches) {
+    stats << " · " << state.metrics.usage.web_searches << " search"
+          << (state.metrics.usage.web_searches == 1 ? "" : "es");
   }
-  if (state.tool_count) {
-    stats << " · " << state.tool_count << " tool"
-          << (state.tool_count == 1 ? "" : "s");
+  if (state.metrics.tool_count) {
+    stats << " · " << state.metrics.tool_count << " tool"
+          << (state.metrics.tool_count == 1 ? "" : "s");
   }
   if (tokens_per_second > 0) {
     stats << " · " << std::fixed << std::setprecision(1) << tokens_per_second
           << " tok/s";
   }
-  if (state.ttt_ms >= 0) {
-    stats << " · first " << FmtDuration(state.ttt_ms / 1000.0);
+  if (state.metrics.ttt_ms >= 0) {
+    stats << " · first " << FmtDuration(state.metrics.ttt_ms / 1000.0);
   }
   stats << " · " << FmtDuration(seconds);
   return stats.str();
 }
 
-void Agent::FinishTurn(TurnState& state, int64_t step) {
-  bool step_limited = state.max_steps > 0 && step >= state.max_steps;
-  if (step_limited) {
+void Agent::FinishTurn(TurnExecution& state, int64_t step) {
+  // Side routes may finish after the last model round. Account them before
+  // deciding the terminal reason and constructing caller-visible metadata.
+  MergeSideUsage(state.metrics.usage);
+  if (state.stop.reason == TurnStopReason::kNone &&
+      state.stop.outcome != TurnOutcome::kComplete) {
+    if (!TurnTokenBudgetExceeded(state)) TurnCostExceeded(state);
+  }
+  bool step_limited =
+      state.limits.max_steps > 0 && step >= state.limits.max_steps;
+  if (step_limited && state.stop.reason == TurnStopReason::kNone) {
     last_error_ =
-        "step limit (" + std::to_string(state.max_steps) + ") reached";
-    state.stop_reason = "max_steps";
+        "step limit (" + std::to_string(state.limits.max_steps) + ") reached";
+    state.stop.reason = TurnStopReason::kMaxSteps;
     Emit(NoticeEvent(PresentationStatus::kFailed,
                      last_error_ + " — stopping this turn"));
   }
   // One record of why this turn ended and what was in force, so a parent
   // reading a child's envelope can tell "raise this ceiling and retry" from
   // "the work is done" without parsing prose.
-  int64_t steps_used = step_limited ? state.max_steps : step + 1;
-  last_stop_ = {{"reason", state.stop_reason.empty()
-                               ? (state.outcome == "complete"      ? "completed"
-                                  : state.outcome == "interrupted" ? "cancelled"
-                                  : state.outcome == "error" ? "error"
-                                                             : state.outcome)
-                               : state.stop_reason},
+  int64_t steps_used = step_limited ? state.limits.max_steps : step + 1;
+  std::string reason = TurnStopReasonName(state.stop.reason);
+  if (reason.empty()) {
+    switch (state.stop.outcome) {
+      case TurnOutcome::kComplete:
+        reason = "completed";
+        break;
+      case TurnOutcome::kInterrupted:
+        reason = "cancelled";
+        break;
+      case TurnOutcome::kError:
+        reason = "error";
+        break;
+      case TurnOutcome::kStepLimit:
+      case TurnOutcome::kBudgetExceeded:
+        reason = TurnOutcomeName(state.stop.outcome);
+        break;
+    }
+  }
+  last_stop_ = {{"reason", reason},
                 {"detail", last_error_},
                 {"steps", steps_used},
-                {"tool_calls", state.tool_count},
-                {"cost", state.usage.cost},
+                {"tool_calls", state.metrics.tool_count},
+                {"generated_tokens", state.metrics.usage.GeneratedTokens()},
+                {"cost", state.metrics.usage.cost},
                 {"limits",
-                 {{"max_steps", state.max_steps},
-                  {"max_tool_calls", api_.config.max_tool_calls},
-                  {"max_turn_seconds", state.max_turn_seconds},
-                  {"max_turn_cost", state.max_turn_cost},
-                  {"session_budget", state.session_budget}}},
+                 {{"max_steps", state.limits.max_steps},
+                  {"max_tool_calls", state.limits.max_tool_calls},
+                  {"max_turn_seconds", state.limits.max_turn_seconds},
+                  {"max_turn_tokens", state.limits.max_turn_tokens},
+                  {"session_token_budget", state.limits.session_token_budget},
+                  {"max_turn_cost", state.limits.max_turn_cost},
+                  {"session_budget", state.limits.session_budget}}},
+                {"session_generated_tokens",
+                 session_usage_.GeneratedTokens()},
                 {"session_cost", session_usage_.cost}};
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
   PruneOldToolResults();
 
-  MergeSideUsage(state.usage);
-
   double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() -
                                               state.started)
                     .count();
   double tokens_per_second =
-      state.model_generation_ms > 0
-          ? static_cast<double>(state.model_generated_tokens) * 1000.0 /
-                static_cast<double>(state.model_generation_ms)
+      state.metrics.model_generation_ms > 0
+          ? static_cast<double>(state.metrics.model_generated_tokens) * 1000.0 /
+                static_cast<double>(state.metrics.model_generation_ms)
           : 0;
   // One write: the interactive composer repaints on every chunk it observes,
   // so a footer split across writes would redraw the input line mid-line.
@@ -907,22 +1001,23 @@ void Agent::FinishTurn(TurnState& state, int64_t step) {
   // One write, as above: fputs of the assembled string, never a stream of
   // pieces the composer could repaint between.
   fputs(footer.str().c_str(), stdout);
-  Emit(Event{EventId::kTurnCompleted,
-             {{"turn", turn_id_},
-              {"outcome", state.outcome},
-              {"steps", state.max_steps > 0 && step >= state.max_steps
-                            ? state.max_steps
-                            : step + 1},
-              {"tool_calls", state.tool_count},
-              {"duration_ms", secs * 1000},
-              {"ttt_ms", state.ttt_ms},
-              {"tokens_per_second", tokens_per_second},
-              {"generation_ms", state.model_generation_ms},
-              {"generated_tokens", state.model_generated_tokens},
-              {"usage", UsageJson(state.usage)},
-              {"session_usage", UsageJson(session_usage_)},
-              {"messages", conversation_.Size()},
-              {"context_tokens", ContextUsed()}}});
+  Emit(Event{
+      EventId::kTurnCompleted,
+      {{"turn", turn_id_},
+       {"outcome", TurnOutcomeName(state.stop.outcome)},
+       {"steps", state.limits.max_steps > 0 && step >= state.limits.max_steps
+                     ? state.limits.max_steps
+                     : step + 1},
+       {"tool_calls", state.metrics.tool_count},
+       {"duration_ms", secs * 1000},
+       {"ttt_ms", state.metrics.ttt_ms},
+       {"tokens_per_second", tokens_per_second},
+       {"generation_ms", state.metrics.model_generation_ms},
+       {"generated_tokens", state.metrics.model_generated_tokens},
+       {"usage", UsageJson(state.metrics.usage)},
+       {"session_usage", UsageJson(session_usage_)},
+       {"messages", conversation_.Size()},
+       {"context_tokens", ContextUsed()}}});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

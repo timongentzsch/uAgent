@@ -148,6 +148,7 @@ OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
   const json& choice = value["choices"][0];
   if (choice.contains("finish_reason") && choice["finish_reason"].is_string()) {
     result.finish_reason = choice["finish_reason"].get<std::string>();
+    result.stop_cause = ClassifyResponseStop(result.finish_reason);
   }
   if (choice.contains("annotations")) {
     AddAnnotations(choice["annotations"], result);

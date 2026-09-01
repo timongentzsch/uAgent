@@ -39,11 +39,16 @@ their owning modules. Raise a bound only with a representative measurement.
 zero leaves it unlimited. `UAGENT_AUTO_COMPACT_TOKENS` optionally adds an
 absolute compaction threshold; zero relies on the model-relative percentage.
 `UAGENT_MAX_TURN_COST` optionally adds a reported-cost limit per turn; zero
-leaves it unlimited. `UAGENT_MAX_TURN_SECONDS` optionally adds an aggregate
-wall-clock deadline; zero leaves complete turns unlimited while request,
-stream-idle, tool, repetition, and interrupt boundaries still apply.
-`UAGENT_SESSION_BUDGET` independently limits cumulative
-reported session cost when set to a positive amount. Canonical overload,
+leaves it unlimited. `UAGENT_MAX_TURN_TOKENS` likewise caps generated output
+plus reasoning tokens between model rounds, with at most one response of
+overrun. `UAGENT_MAX_TURN_SECONDS` optionally adds an aggregate wall-clock
+deadline; zero leaves complete turns unlimited while request, stream-idle,
+tool, repetition, and interrupt boundaries still apply.
+`UAGENT_SESSION_BUDGET` independently limits cumulative reported session cost;
+`UAGENT_SESSION_TOKEN_BUDGET` does the same for generated tokens and survives
+resume. Zero disables either session ceiling. Providers that omit usage or cost
+produce an explicit warning because the corresponding limit cannot be enforced.
+Canonical overload,
 rate-limit, resource-exhaustion, timeout, and unavailable type/code variants
 share the transient retry path. Context overflow never does: a clean preflight
 failure gets one 256 KiB projected compaction and one original-request retry;
@@ -57,7 +62,9 @@ environment setting. `/memory` shows the active policy and saved keys without
 calling a model. `/status` summarizes active state; `/debug-config` explains
 why each value is active. `/context` shows active and configured values,
 provenance, restart-required changes, the redacted route, route capabilities,
-and the exact next request.
+conversation state, and currently advertised schemas. Normal pre-request
+steering, activity, attachment, tool-refresh, and compaction work may still
+change the next wire request.
 
 Trusted global/project config files are stamp-checked at user and harness turn
 boundaries. Changed files are fully reparsed first, then request/turn-scoped
@@ -111,13 +118,9 @@ Dollar limits are enforced between calls and require provider-reported
 may cross the remaining allowance. Budgeted delegation runs one child at a time
 with the remaining allowance.
 
-The typed observational spine fans semantic lifecycle events to four fixed
-consumers: terminal presentation, versioned `uagent.event.v2`, the sensitive
-debug trace, and a bounded metadata-only session journal. Events
-return no result and cannot affect agent control flow. Reasoning/answer token
-deltas are transient and never enter the journal. There is no dynamic sink
-registry and no linked OpenTelemetry dependency; deployments can consume the
-versioned JSONL externally.
+Event architecture and JSONL contracts are documented in
+[ARCHITECTURE.md](ARCHITECTURE.md); operations below cover only emitted data,
+retention, and diagnostics.
 
 Debug model-response records expose `request_preparation_ms`,
 `end_to_end_ms`, `dns_ms`, `connect_ms`, `tls_ms`, `pretransfer_ms`,
@@ -133,7 +136,8 @@ sensitive debug trace and internal conversation history.
 
 Commands, delegated tasks, and detached terminals share activity IDs.
 Session-lifetime activities use opaque IDs distinct from OS PIDs; persistent
-detached records remain PID-backed. `/ps` lists active work behind the status
+detached records remain PID-backed but require a matching boot-scoped process
+identity before reuse or signalling. `/ps` lists active work behind the status
 bar's `bg:N`. Launching the exact same detached command again from the same
 working directory reuses its process group.
 
@@ -176,8 +180,17 @@ completion is UI-only and never starts or enters a model turn. Subagent
 completion is added once to the next naturally occurring model call, capped at
 6 KiB each and 12 KiB per batch, without triggering a turn.
 
-Use `subagent(background=false)` when the next step requires the child result;
-background children notify the agent automatically on exit. A failed child
+`subagent` spawn creates a durable collaborator ID and private session under
+`~/.uagent/collaborators`. A positive session generated-token budget is passed
+to each child as only the coordinator's remaining allowance; budgeted children
+run one at a time so siblings cannot each spend the same remainder. Use
+`operation=followup` with that ID to resume its
+conversation. A persisted coordinator-owned `directive` is prepended to each
+follow-up until explicitly cleared; `operation=message` queues separate one-shot
+guidance for the next follow-up. `operation=list` inspects workspace
+collaborators. Use `background=false` when the next step requires the child
+result; background children notify the agent automatically on exit. A failed
+child
 reports its configured route, failure stage, bounded partial diagnostics, and a
 remedy; its one-line completion row shows only a bounded category-safe
 stage/reason, while the full report and captured artifact remain retained. The
@@ -187,7 +200,14 @@ join when no useful parent work remains.
 complete process group and removes its records and logs. Persistent TUI and headless runs
 publish completion without polling or starting a model turn.
 
-Configured MCP servers start once and expose their discovered tools directly.
+Configured MCP stdio servers start once and expose their discovered tools
+directly. µAgent requires the stateless `2026-07-28` lifecycle and rejects a
+server that does not advertise it; there is no legacy initialize path.
+Servers are required by default, so a required server's startup, discovery, or
+tool-list failure stops bootstrap. Set `"required": false` on nonessential
+servers: all optional servers then share `UAGENT_MCP_STARTUP_GRACE` seconds
+(default 2). One outstanding discovery request is polled nonblocking at turn
+boundaries, so a slow optional server never adds latency to a model step.
 Their stdio and shutdown waits share pollable abort/SIGCHLD notifications, so
 an idle server or cancellation does not depend on a periodic check. When a
 server reports an error without diagnostic text, the result points to that

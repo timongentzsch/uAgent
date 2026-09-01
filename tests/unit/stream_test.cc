@@ -257,7 +257,20 @@ void TestSseChunkPartitions() {
   ChatResult invalid;
   CHECK(!CollectToolCalls(malformed, invalid));
   CHECK(invalid.error.find("incomplete function") != std::string::npos);
+
+  std::map<int, ToolCall> truncated = {
+      {0, {"complete", "read_path", R"({"path":"README.md"})"}},
+      {1, {"partial", "read_path", R"({"path":)"}}};
+  ChatResult salvaged;
+  salvaged.finish_reason = "max_tokens";
+  salvaged.stop_cause = ResponseStopCause::kLength;
+  CHECK(CollectToolCalls(truncated, salvaged));
+  CHECK(salvaged.error.empty());
+  CHECK(salvaged.tool_calls.size() == 1);
+  CHECK(salvaged.tool_calls[0].id == "complete");
   CHECK(invalid.tool_calls.empty());
+  CHECK(ClassifyResponseStop("model_context_window_exceeded") ==
+        ResponseStopCause::kLength);
 
   ChatResult usage_then_error;
   std::map<int, ToolCall> no_tool_calls;

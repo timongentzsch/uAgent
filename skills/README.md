@@ -16,7 +16,6 @@ to the model when it opens the skill. Optional comma-separated
 | `uagent-config` | µAgent | MIT, this repository |
 | `self-improve` | µAgent | MIT, this repository |
 | `browser-use` | µAgent | MIT, this repository |
-| `find-skills` | [vercel-labs/skills](https://github.com/vercel-labs/skills) | MIT, see `find-skills/LICENSE` |
 
 `uagent-config` documents the release's configuration precedence and complete
 runtime, install, and integration environment reference. It keeps that detail
@@ -30,6 +29,3 @@ preserves exact rollback without storing session text.
 `browser-use` drives Playwright CLI through the existing approved `run` tool.
 Its daemon reuses one browser across concise calls while snapshots stay outside
 model context; recurring flows become deterministic Playwright code.
-
-`find-skills` searches the public ecosystem with `npx skills`. Suggested or
-requested installs are ordinary `run` calls and require the same approval.

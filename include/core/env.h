@@ -39,6 +39,7 @@ bool LeanToolset();
 int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
+int64_t SubagentCallsPerTurn();
 std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
@@ -91,6 +92,7 @@ int64_t AttachmentLimitMb();
 // One default, shared by the attachment path and MCP image results.
 int64_t TerminalImageLimitMb();
 int64_t ImageMaxColumns();
+std::string ImageProtocol();
 // The fallback is the width actually available, so it is passed in.
 int64_t ImageColumns(int64_t available);
 int64_t ContextWindow();
@@ -104,6 +106,7 @@ int64_t BgFiles();
 int64_t McpLogDays();
 int64_t McpLogFiles();
 int64_t TerminalRecordDays();
+std::string ShellEnvironmentAllowlist();
 
 // Core request, MCP, and persistence settings. Bootstrap builds one snapshot;
 // a validated turn-boundary reload may replace explicitly safe fields.
@@ -125,6 +128,10 @@ struct RuntimeConfig {
   // Zero disables the aggregate wall-clock turn deadline. Request, stream,
   // tool, repetition, cost, and user-interrupt limits remain independent.
   int64_t max_turn_seconds = 0;
+  // Zero disables generated-token limits. Enforcement happens between model
+  // rounds, so one response may cross a positive ceiling before the turn stops.
+  int64_t max_turn_tokens = 0;
+  int64_t session_token_budget = 0;
   // Zero disables the per-turn reported-cost budget. Users may opt into a
   // positive turn limit or set a separate cumulative session budget.
   double max_turn_cost = 0;
@@ -136,6 +143,7 @@ struct RuntimeConfig {
   int64_t web_search_max_results = 5;
   int64_t web_search_max_uses = 3;
   int64_t mcp_timeout_s = 60;
+  int64_t mcp_startup_grace_s = 2;
   int64_t mcp_servers = 32;
   int64_t mcp_pages = 100;
   int64_t mcp_tools = 256;

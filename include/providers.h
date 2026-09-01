@@ -22,6 +22,7 @@ struct ModelRoute {
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
   WireApi wire_api = WireApi::kChatCompletions;
   bool hosted_web_search = false;
+  std::vector<std::string> supported_efforts;
 };
 
 struct NamedProvider {
@@ -129,6 +130,7 @@ bool SaveModelPreference(const ModelPreference& preference, std::string& error);
 bool SaveSelectionSuffix(const std::string& variant, const std::string& effort,
                          std::string& error);
 bool ValidEffort(const std::string& effort);
+bool SupportsReasoningEffort(const Api& api, std::string_view effort);
 ProviderCatalog LoadProviderCatalog();
 // The catalog a side model should resolve against: configured providers plus
 // the built-in templates whose API key is present, so `openrouter/<id>` means

@@ -23,11 +23,12 @@ inline std::chrono::steady_clock::time_point DeadlineAfter(int64_t seconds) {
   return DeadlineAfter(std::chrono::steady_clock::now(), seconds);
 }
 
-// Whole seconds left, truncated toward zero and negative once past.
+// Positive whole-second timeout for a deadline. Round up so a sub-second
+// remainder remains usable by APIs whose timeout unit is seconds.
 inline int64_t SecondsUntil(std::chrono::steady_clock::time_point deadline) {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             deadline - std::chrono::steady_clock::now())
-      .count();
+  auto now = std::chrono::steady_clock::now();
+  if (deadline <= now) return 0;
+  return std::chrono::ceil<std::chrono::seconds>(deadline - now).count();
 }
 
 // poll(2) timeout for a steady-clock deadline, rounded up so a sub-millisecond

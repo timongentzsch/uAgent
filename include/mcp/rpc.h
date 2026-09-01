@@ -8,6 +8,7 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <string>
@@ -19,6 +20,16 @@
 #include "include/mcp/server.h"
 
 namespace uagent {
+
+inline constexpr char kMcpModernProtocolVersion[] = "2026-07-28";
+
+inline json McpRequestMeta() {
+  return {
+      {"io.modelcontextprotocol/protocolVersion", kMcpModernProtocolVersion},
+      {"io.modelcontextprotocol/clientInfo",
+       {{"name", "uagent"}, {"version", kVersion}}},
+      {"io.modelcontextprotocol/clientCapabilities", json::object()}};
+}
 
 // write a full message; drains the server's stdout while blocked so a chatty
 // server can never deadlock a large write (both pipes full = classic hang)
@@ -95,6 +106,12 @@ inline bool McpSend(McpServer& s, int64_t id, const std::string& method,
   json m = {{"jsonrpc", "2.0"}, {"method", method}};
   if (id >= 0) m["id"] = id;
   if (!params.is_null()) m["params"] = params;
+  if (id >= 0) {
+    if (!m.contains("params") || !m["params"].is_object()) {
+      m["params"] = json::object();
+    }
+    m["params"]["_meta"] = McpRequestMeta();
+  }
   return McpWrite(s, JsonDump(m) + "\n");
 }
 
@@ -125,10 +142,7 @@ inline bool McpHandleMessage(McpServer& s, const json& message) {
   return true;
 }
 
-// Consume notifications that arrived while no request was outstanding. This
-// is called at model-request boundaries so an idle server can change its tool
-// list without first receiving a tools/call.
-inline void McpDrainInbound(McpServer& s) {
+inline void McpFillAvailable(McpServer& s) {
   while (s.alive) {
     struct pollfd descriptor = {s.out.Get(), POLLIN, 0};
     int ready = poll(&descriptor, 1, 0);
@@ -136,6 +150,13 @@ inline void McpDrainInbound(McpServer& s) {
     if (ready <= 0) break;
     if ((descriptor.revents & (POLLIN | POLLHUP)) && !McpFillBuffer(s)) break;
   }
+}
+
+// Consume notifications that arrived while no request was outstanding. This
+// is called at model-request boundaries so an idle server can change its tool
+// list without first receiving a tools/call.
+inline void McpDrainInbound(McpServer& s) {
+  McpFillAvailable(s);
   std::string line;
   while (McpTakeLine(s, line)) {
     json message = json::parse(line, nullptr, false);
@@ -147,7 +168,9 @@ inline void McpDrainInbound(McpServer& s) {
 
 inline void McpDrainInbound(McpRuntime& runtime) {
   for (const auto& server : runtime.Servers()) {
-    if (server->alive) McpDrainInbound(*server);
+    if (server->alive && server->startup == McpStartupState::kReady) {
+      McpDrainInbound(*server);
+    }
   }
 }
 
@@ -156,6 +179,28 @@ inline void McpDrainInbound(McpRuntime& runtime) {
 // responses (e.g. from an earlier cancelled call) are dropped.
 inline json McpErrorReply(std::string message) {
   return json{{"error", {{"message", std::move(message)}}}};
+}
+
+enum class McpResponseState : uint8_t { kPending, kReady, kClosed };
+
+// Consume only bytes already available. Deferred startup calls this at turn
+// boundaries, so a slow optional server can become ready without adding a
+// timeout to every model step. Notifications and server requests ahead of the
+// target reply are handled before returning pending.
+inline McpResponseState McpTryResponse(McpServer& s, int64_t id,
+                                       json& response) {
+  McpFillAvailable(s);
+  std::string line;
+  while (McpTakeLine(s, line)) {
+    json message = json::parse(line, nullptr, false);
+    if (message.is_discarded() || !message.is_object()) continue;
+    if (McpHandleMessage(s, message)) continue;
+    if (message.contains("id") && message["id"] == id) {
+      response = std::move(message);
+      return McpResponseState::kReady;
+    }
+  }
+  return s.alive ? McpResponseState::kPending : McpResponseState::kClosed;
 }
 
 inline json McpAwait(McpServer& s, int64_t id, int64_t timeout_s,
@@ -191,6 +236,35 @@ inline json McpRpc(McpServer& s, const std::string& method, const json& params,
     RequestAbort();  // restore: the caller reports the cancellation
   }
   return r;
+}
+
+inline bool McpValidateDiscovery(const json& discovery, std::string& error) {
+  if (!discovery.contains("result") || !discovery["result"].is_object()) {
+    error = JsonErrorMessage(discovery, "server discovery failed");
+    return false;
+  }
+  const json& result = discovery["result"];
+  json versions = JsonValue(result, "supportedVersions", json::array());
+  bool supported = versions.is_array() &&
+                   std::find(versions.begin(), versions.end(),
+                             kMcpModernProtocolVersion) != versions.end();
+  if (!supported) {
+    error = "server does not support required protocol `" +
+            std::string(kMcpModernProtocolVersion) + "`";
+    return false;
+  }
+  if (!result.contains("capabilities") || !result["capabilities"].is_object() ||
+      !result["capabilities"].contains("tools")) {
+    error = "server did not negotiate tools capability";
+    return false;
+  }
+  return true;
+}
+
+inline bool McpFinishInitialize(McpServer& server, int64_t initialize_id,
+                                int64_t timeout, std::string& error) {
+  return McpValidateDiscovery(McpAwait(server, initialize_id, timeout, false),
+                              error);
 }
 
 }  // namespace uagent

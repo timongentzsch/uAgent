@@ -209,7 +209,7 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
   std::error_code ignored;
   std::filesystem::remove(receipt, ignored);
   std::string source_id = WorkspaceId(source);
-  environment.emplace_back("UAGENT_MEMORY_RECEIPT", receipt);
+  environment.emplace_back("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt);
   std::string cleanup =
       "if [ \"$(cat " + ShellQuote(marker) +
       " 2>/dev/null)\" = processing ]; then rm -f " + ShellQuote(marker) +

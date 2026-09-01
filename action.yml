@@ -8,6 +8,10 @@ inputs:
     description: Maximum session spend in USD
     required: false
     default: "2"
+  token-budget:
+    description: Maximum generated tokens across the session; 0 disables it
+    required: false
+    default: "0"
   version:
     description: Release tag to install
     required: false
@@ -24,6 +28,7 @@ runs:
       env:
         UAGENT_ACTION_PROMPT: ${{ inputs.prompt }}
         UAGENT_ACTION_BUDGET: ${{ inputs.budget }}
+        UAGENT_ACTION_TOKEN_BUDGET: ${{ inputs['token-budget'] }}
         UAGENT_ACTION_VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ github.token }}
       run: |
@@ -95,10 +100,11 @@ runs:
         fi
         unset GH_TOKEN
         tar -xzf "$work/$archive" -C "$work"
-        result=$(
-          "$work/uagent-$version/bin/uagent" --yolo \
-            --budget "$UAGENT_ACTION_BUDGET" --json -p "$UAGENT_ACTION_PROMPT"
-        )
+        args=(--yolo --budget "$UAGENT_ACTION_BUDGET" --json -p "$UAGENT_ACTION_PROMPT")
+        if [[ "$UAGENT_ACTION_TOKEN_BUDGET" != 0 ]]; then
+          args=(--token-budget "$UAGENT_ACTION_TOKEN_BUDGET" "${args[@]}")
+        fi
+        result=$("$work/uagent-$version/bin/uagent" "${args[@]}")
         printf '%s\n' "$result"
         delimiter="uagent_result_${RANDOM}_$$"
         {

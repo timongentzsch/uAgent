@@ -27,10 +27,12 @@ a service bus, service locator, or plugin system.
 | Path | Responsibility |
 | --- | --- |
 | `src/app/`, `include/app/` | options, bootstrap, REPL, shutdown |
-| `src/agent/`, `include/agent/` | conversation, compaction, tool loop |
+| `src/agent/`, `include/agent/` | conversation, compaction, and public agent ownership |
+| `src/agent/turn_internal.h`, `src/agent/turn.cc` | private turn limits, metrics, stop causes, and step strategy |
 | `src/api/`, `include/api/` | canonical request options, wire adapters, HTTP, and SSE decoding |
 | `src/providers.cc`, `include/providers.h` | provider catalogue and route activation |
-| `src/tools/`, `include/tools/` | bounded capabilities and process ownership |
+| `src/tools/process_io.cc`, `include/tools/process.h` | process ownership, checked activity transitions, and event-driven I/O |
+| `src/tools/activity_log.cc`, `activity_completion.cc`, `jobs.cc` | log/detach persistence, exact-once completion, and activity interactions |
 | `src/mcp/`, `include/mcp/` | bounded stdio JSON-RPC integrations |
 | `include/core/` | configuration registry, usage, diagnostics, platform helpers |
 | `include/ui/`, `include/cli.h` | inline terminal rendering and input |
@@ -87,9 +89,11 @@ whether the value may be displayed. Runtime getters resolve their descriptor at
 compile time, `RuntimeConfig` binds descriptors to fields, diagnostics derive
 redaction from declared sensitivity, and `uagent --emit-reference` generates the
 bundled skill's documentation from the same table. A getter naming an
-unregistered setting does not compile, and CI fails when the generated
-references differ from the registry, so a documented default cannot drift from
-the one the binary applies.
+unregistered setting does not compile; a source-contract test also rejects
+direct runtime `UAGENT_*` lookups unless they are registered or explicitly
+named `UAGENT_INTERNAL_*`. CI fails when the generated references differ from
+the registry, so a documented default cannot drift from the one the binary
+applies.
 
 `uagent_info` exposes that registry, the flag table, the slash-command table,
 the live tool list and the prompt surface in effect as a read-only tool. It is assembled only when called,
@@ -157,8 +161,9 @@ turn time, and reported cost have configurable opt-in caps; a zero
 request/stream/tool deadlines remain active. Persistent commands require `run(detach=true)`. Delegated work runs in
 separate sanitized processes. One `ProcessSupervisor` owns foreground commands,
 background commands, tasks, and detached services. Session activities receive
-opaque IDs distinct from OS PIDs; persistent detached records remain PID-backed
-for reattachment compatibility.
+opaque IDs distinct from OS PIDs. Persistent detached records pair their PID
+with a boot-scoped kernel start identity before the process group is treated as
+live or signalled.
 
 `run` applies a configurable 10-second initial wait by default; explicit
 `yield_ms=0` preserves full synchronous waiting. `tty=true` retains a POSIX PTY,
@@ -219,10 +224,13 @@ One capability policy filters both the exposed schema and executable registry,
 including after MCP refresh. Global round/call limits remain safety ceilings;
 tool-specific contracts such as visibility, call budgets, and stable arguments
 constrain misuse without guessing task difficulty.
-The MCP JSON-RPC boundary also handles server-initiated requests. Every session
-advertises a canonical root set and answers `roots/list`; roots are
-resolved once from workspace/global/per-server policy and survive lazy starts
-and restarts with the server configuration.
+The MCP JSON-RPC boundary requires `2026-07-28` through `server/discover`.
+Requests carry protocol, client identity, and client capabilities in `_meta`;
+a server that does not advertise that version and tools capability is rejected
+rather than downgraded. Server `roots/list` requests remain bounded by the
+canonical workspace/global/per-server root policy.
+Default lean delegated children do not clone the root session's MCP fleet;
+request a full child when the delegated task actually needs MCP tools.
 
 ## Configuration snapshots
 
@@ -258,6 +266,13 @@ keeps a prior summary at prose rather than tool-evidence size, and reinjects
 current runtime context before the retained goal. This makes continuation less
 dependent on a perfect summary while staying well below the next compaction
 threshold.
+
+Official OpenAI Responses requests add a hashed, session-stable
+`prompt_cache_key`; compatible/custom endpoints receive no OpenAI-only field.
+Anthropic Messages requests use its top-level moving `cache_control` breakpoint
+for growing conversations. Each provider still determines cache eligibility,
+while reported cache-read and cache-write tokens remain the evidence used for
+performance comparisons.
 
 Structured context-overflow codes, proxy-wrapped canonical codes, and HTTP 413
 form a separate non-retryable class. With no streamed content, usage,
@@ -307,10 +322,13 @@ and is visible through `/context`.
 
 ## Observability
 
-`EventId` and one compile-time policy table define stable debug/public names,
-durability, and public projection. Terminal, JSONL, debug, and journal sinks
-are concrete direct owners; there is no runtime sink registration. Transient
-reasoning/answer deltas are rendered but never journaled. With
+`EventId` and one compile-time policy table define stable application,
+debug/public names, durability, and public projection. Terminal, JSONL, debug,
+and journal sinks are concrete direct owners. Additional in-process adapters
+subscribe through `Observability::Subscribe`; each `AppEvent` has a monotonic
+sequence, timestamp, stable dotted type, structured data, and durability bit.
+Callbacks run outside the observability lock and cannot steer agent control
+flow. Transient reasoning/answer deltas are rendered but never journaled. With
 `UAGENT_HEADLESS_PROGRESS=1` — set for a background child, whose stderr already
 lands in the log its parent polls — the same durable events are echoed as one
 stderr line each, so a delegated run is traceable while it works; the stdout
@@ -327,6 +345,20 @@ User-facing notices — interruptions, budget failures, compaction, degraded
 capability — are events, not prints. The agent loop owns no terminal: severity
 selects a color in the presenter and nothing else, so the same notice reaches
 the journal and the JSONL whether or not a terminal is attached.
+
+The input half is `ApplicationChannel`: an adapter supplies prompts and slash
+commands and answers typed interaction requests while consuming the event
+stream. Model and session pickers carry their complete option sets in
+`interaction.requested`; the reply uses the same correlation ID. Approval
+requests and resolutions are explicit events, including automatic and
+mandatory-human decisions. Every slash command finishes with semantic result
+data plus the complete interface state in `command.completed`; direct terminal
+formatting is suppressed when a channel owns the session. A stdio adapter keeps
+its protocol descriptor independently before bootstrap silences process
+stdout. This is the
+transport-neutral seam for a future Codex-style app-server: JSON-RPC over stdio
+or WebSocket belongs in a small adapter around the channel and subscription,
+not in the agent loop.
 
 The API stream layer only decodes and assembles provider traffic. A terminal
 presenter owns Markdown, composer interaction, compact/verbose reasoning, and
@@ -362,7 +394,8 @@ can tail them if deployment needs justify it.
 
 - Retry transient transport failures only before semantic progress.
 - Degrade unsupported optional request features once and record it.
-- Isolate MCP failure to one server.
+- Isolate optional MCP failure to one server; fail bootstrap when a required
+  server cannot start, initialize, or list its tools.
 - Cancel and reap owned process groups on catchable exits.
 - Keep debug and persisted state private and bounded.
 

@@ -412,7 +412,16 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                       native_web,
                       allow_function_web};
   json body = EncodeWireRequest(capabilities.wire_api, request);
-  if (capabilities.wire_api != WireApi::kChatCompletions) return body;
+  if (capabilities.wire_api != WireApi::kChatCompletions) {
+    // OpenAI already caches matching prefixes automatically. A stable,
+    // session-scoped routing key improves the chance that later turns reach
+    // the same cache without exposing the session identifier itself.
+    if (capabilities.wire_api == WireApi::kResponses && OpenaiUrl(base_url) &&
+        !session_id.empty()) {
+      body["prompt_cache_key"] = HashHex(session_id);
+    }
+    return body;
+  }
 
   if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
       HasContentPart(messages, "file")) {
@@ -439,12 +448,6 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                         {"allow_fallbacks", config.openrouter_fallbacks}};
   }
   return body;
-}
-
-json Api::BuildChatBody(const json& messages, const json& tool_schemas,
-                        const std::string& session_id,
-                        bool* web_available) const {
-  return BuildRequestBody(messages, tool_schemas, session_id, web_available);
 }
 
 const std::string& Api::MessageCache::Serialize(const json& messages) {

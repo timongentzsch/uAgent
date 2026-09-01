@@ -265,7 +265,8 @@ std::optional<ModelRoute> ResolveModelRoute(
                     provider->context,
                     provider->protocol,
                     provider->wire_api,
-                    provider->hosted_web_search};
+                    provider->hosted_web_search,
+                    {}};
 }
 
 namespace {
@@ -300,10 +301,13 @@ void ResetRouteCapabilities(Api& api) {
 }
 
 void ApplySelectionPolicy(Api& api, const ModelSelection& selection) {
-  if (!selection.variant.empty()) {
+  if (!selection.variant.empty() && api.capabilities.model_variants) {
     api.config.openrouter_variant = selection.variant;
   }
-  if (!selection.effort.empty()) api.reasoning_effort = selection.effort;
+  if (!selection.effort.empty() &&
+      SupportsReasoningEffort(api, selection.effort)) {
+    api.reasoning_effort = selection.effort;
+  }
 }
 
 }  // namespace
@@ -330,7 +334,8 @@ SideRoute ResolveSideRoute(const Api& api,
       resolved.base_url = route->base_url;
       resolved.api_key = route->api_key.empty() ? "sk-noop" : route->api_key;
       resolved.model = route->model;
-      if (!route->effort.empty()) resolved.effort = route->effort;
+      resolved.effort = route->effort;
+      resolved.variant.clear();
       resolved.context = route->context;
       resolved.protocol = route->protocol;
       resolved.wire_api = route->wire_api;
@@ -352,7 +357,9 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.base_url = route.base_url;
   api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
   api.model = route.model;
-  if (!route.effort.empty()) api.reasoning_effort = route.effort;
+  api.reasoning_effort = route.effort;
+  api.supported_reasoning_efforts = route.supported_efforts;
+  api.config.openrouter_variant.clear();
   api.ctx_window = route.context;
   api.capabilities = CapabilitiesForRoute(
       route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
@@ -417,10 +424,18 @@ void ApplySideRoute(Api& api, const SideRoute& route) {
   api.api_key = route.api_key.empty() ? "sk-noop" : route.api_key;
   api.model = route.model;
   api.reasoning_effort = route.effort;
+  api.supported_reasoning_efforts.clear();
   api.ctx_window = route.context;
   api.capabilities = CapabilitiesForRoute(
       route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
   api.config.openrouter_variant = route.variant;
+}
+
+bool SupportsReasoningEffort(const Api& api, std::string_view effort) {
+  return effort.empty() || api.supported_reasoning_efforts.empty() ||
+         std::find(api.supported_reasoning_efforts.begin(),
+                   api.supported_reasoning_efforts.end(),
+                   effort) != api.supported_reasoning_efforts.end();
 }
 
 void ActivateRoute(Api& api) {
@@ -433,7 +448,9 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.api_key = EnvStr("UAGENT_API_KEY", "sk-noop");
   ModelSelection requested = ParseModelSelection(EnvStr("UAGENT_MODEL"));
   api.model = requested.base;
-  api.reasoning_effort = EnvStr("UAGENT_REASONING_EFFORT");
+  const std::string configured_effort = EnvStr("UAGENT_REASONING_EFFORT");
+  const std::string configured_variant = api.config.openrouter_variant;
+  api.reasoning_effort = configured_effort;
   api.ctx_window = ContextWindow();
   std::string protocol_setting = EnvStr("UAGENT_PROVIDER_PROTOCOL");
   std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
@@ -453,8 +470,7 @@ ProviderSetup ConfigureProvider(Api& api) {
   } else if (wire_api == WireApi::kAnthropicMessages) {
     protocol = ProviderProtocol::kAnthropic;
   } else {
-    protocol = OpenrouterUrl(api.base_url) ? ProviderProtocol::kOpenRouter
-                                           : ProviderProtocol::kOpenAi;
+    protocol = ProviderProtocol::kOpenAi;
   }
   json hosted_tools = json::array();
   for (std::string tool : SplitPathList(EnvStr("UAGENT_HOSTED_TOOLS"), ',')) {
@@ -506,6 +522,14 @@ ProviderSetup ConfigureProvider(Api& api) {
   // them after a named route so they override its defaults without becoming
   // part of the model ID sent over the active wire API.
   ApplySelectionPolicy(api, requested);
+  if (requested.effort.empty() && !configured_effort.empty() &&
+      SupportsReasoningEffort(api, configured_effort)) {
+    api.reasoning_effort = configured_effort;
+  }
+  if (requested.variant.empty() && !configured_variant.empty() &&
+      api.capabilities.model_variants) {
+    api.config.openrouter_variant = configured_variant;
+  }
   if (api.base_url.empty() && metadata_error.empty()) {
     route_metadata_validated =
         ApplyProviderTemplate(api, kProviderTemplates[0]);
@@ -514,7 +538,8 @@ ProviderSetup ConfigureProvider(Api& api) {
     setup.warning = std::move(metadata_error);
     api.base_url.clear();
   }
-  if (!ValidEffort(api.reasoning_effort)) {
+  if (!ValidEffort(api.reasoning_effort) ||
+      !SupportsReasoningEffort(api, api.reasoning_effort)) {
     if (!setup.warning.empty()) setup.warning += "; ";
     setup.warning +=
         "ignoring invalid reasoning effort: " + api.reasoning_effort;
@@ -539,19 +564,30 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     ApplyRoute(api, *route);
     selected = route->name;
   } else if (CanUseRawModel(api, selection.base)) {
-    if (api.model != selection.base) {
-      api.model = selection.base;
-      api.ctx_window = 0;
-    }
+    api.model = selection.base;
+    api.ctx_window = 0;
+    api.reasoning_effort.clear();
+    api.supported_reasoning_efforts.clear();
+    api.config.openrouter_variant.clear();
   } else {
     return "";
   }
   ApplySelectionPolicy(api, selection);
-  return ComposeSelection("", selected, selection.variant, selection.effort);
+  std::string variant = api.config.openrouter_variant == selection.variant
+                            ? selection.variant
+                            : std::string();
+  std::string effort = api.reasoning_effort == selection.effort
+                           ? selection.effort
+                           : std::string();
+  return ComposeSelection("", selected, variant, effort);
 }
 
 int64_t CatalogContextLength(const json& model) {
   if (int64_t context = JsonValue(model, "context_length", int64_t{0})) {
+    return context;
+  }
+  // Anthropic's catalog spells the same window this way.
+  if (int64_t context = JsonValue(model, "max_input_tokens", int64_t{0})) {
     return context;
   }
   if (int64_t context = JsonValue(model, "max_model_len", int64_t{0})) {
@@ -621,7 +657,8 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                       route.wire_api, route.hosted_web_search);
     if (!selections.insert(route.name).second) continue;
     route_identities.insert(std::move(identity));
-    ModelInfo info{route.model, {}, {}, route.context};
+    ModelInfo info{route.model, route.effort, route.supported_efforts,
+                   route.context};
     result.matches.push_back({route.name, route, std::move(info)});
   }
 
@@ -689,7 +726,9 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                        context,
                        source.protocol,
                        source.wire_api,
-                       source.hosted_web_search};
+                       source.hosted_web_search,
+                       info.efforts};
+      route.effort = info.default_effort;
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});

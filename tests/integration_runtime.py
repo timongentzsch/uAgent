@@ -127,6 +127,92 @@ def test_stream_error_is_not_an_empty_response(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
+def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home):
+    def completed_after_partial(_, body):
+        assistants = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "assistant"
+        ]
+        notes = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "user"
+        ]
+        valid = "partial answer" in assistants and any(
+            "partial model response: length" in note for note in notes
+        )
+        return event({"content": "continued-ok" if valid else "continued-bad"})
+
+    with Server(
+        [event({"content": "partial answer"}, finish="length"), completed_after_partial]
+    ) as server:
+        result = run(root, base_env(home, server.url), "-p", "finish safely")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "continued-ok", result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+    cutoff_call = tool_call("read_path", {"path": "."}, call_id="cutoff-call")
+    cutoff_call["choices"][0]["finish_reason"] = "length"
+
+    def completed_after_call(_, body):
+        results = tool_results(body["messages"])
+        valid = len(results) == 1 and "cutoff-call" in json.dumps(body["messages"])
+        return event({"content": "call-salvaged" if valid else "call-lost"})
+
+    with Server([cutoff_call, completed_after_call]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "call-salvaged", result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+    unknown_call = tool_call("read_path", {"path": "."}, call_id="unknown-call")
+    unknown_call["choices"][0]["finish_reason"] = "provider_new_reason"
+
+    def completed_after_unknown(_, body):
+        notes = [
+            str(message.get("content", ""))
+            for message in body["messages"]
+            if message.get("role") == "user"
+        ]
+        valid = not tool_results(body["messages"]) and any(
+            "partial model response: provider_new_reason" in note for note in notes
+        )
+        return event({"content": "unknown-recovered" if valid else "unknown-unsafe"})
+
+    with Server([unknown_call, completed_after_unknown]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "unknown-recovered", result.stdout)
+        assert_true(len(server.requests) == 2, len(server.requests))
+
+    with Server([event({"content": "unsafe partial"}, finish="content_filter")]) as server:
+        result = run(root, base_env(home, server.url), "-p", "answer")
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("content_filter" in result.stderr, result.stderr)
+        assert_true(len(server.requests) == 1, len(server.requests))
+
+
+def test_empty_partial_stop_fails_without_invalid_continuation(root, home):
+    empty_thinking = event(
+        {},
+        finish="length",
+        usage={
+            "prompt_tokens": 1,
+            "completion_tokens": 4,
+            "completion_tokens_details": {"reasoning_tokens": 4},
+        },
+    )
+    with Server([empty_thinking]) as server:
+        result = run(root, base_env(home, server.url), "-p", "finish safely")
+        assert_true(result.returncode == 1, result.stdout)
+        assert_true(
+            "model response stopped before completion (length)" in result.stderr,
+            result.stderr,
+        )
+        assert_true(len(server.requests) == 1, server.requests)
+
+
 def test_empty_response_after_tools_recovers(root, home):
     def recovered(_, body):
         contents = [
@@ -659,6 +745,57 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
 
 
+def test_turn_token_budget_stops_after_one_response_overshoot(root, home):
+    marker = root / "token-budget-marker"
+    response = tool_call("run", {"command": f"touch {marker}"})
+    response["usage"] = {
+        "prompt_tokens": 10,
+        "completion_tokens": 9,
+        "completion_tokens_details": {"reasoning_tokens": 2},
+    }
+    with Server([response]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_MAX_TURN_TOKENS"] = "5"
+        result = run(root, env, "--yolo", "--json", "-p", "inspect")
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true(envelope["stop"]["reason"] == "turn_tokens", envelope)
+        assert_true(envelope["stop"]["generated_tokens"] == 9, envelope)
+        assert_true(envelope["stop"]["limits"]["max_turn_tokens"] == 5, envelope)
+        assert_true(not marker.exists(), marker)
+        assert_true(len(server.requests) == 1, server.requests)
+
+
+def test_resumed_session_token_budget_stops_before_model_call(root, home):
+    write_session(
+        home,
+        "token-budget-resume",
+        [{"role": "system", "content": "saved system"}],
+        cwd=root,
+        kinds=["system"],
+        usage={"output": 5},
+        session_id="token-budget-resume",
+        turns=0,
+        title="saved session",
+    )
+    with Server([event({"content": "too-late"})]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "-c",
+            "--token-budget",
+            "5",
+            "--json",
+            "-p",
+            "continue",
+        )
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 1, envelope)
+        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
+        assert_true(envelope["stop"]["session_generated_tokens"] == 5, envelope)
+        assert_true(len(server.requests) == 0, server.requests)
+
+
 def test_session_budget_stops_before_the_next_call(root, home):
     expensive = tool_call("read_path", {"path": "."})
     expensive["usage"] = {
@@ -716,8 +853,8 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
         env.update(
             {
                 "UAGENT_TOOL_CAPABILITIES": "inspect",
-                "UAGENT_TOOL_ALLOWLIST": json.dumps(["grep", "read_path", "run"]),
-                "UAGENT_TOOL_RUN_ALLOWLIST": json.dumps(["python3 slow_analysis.py"]),
+                "UAGENT_INTERNAL_TOOL_ALLOWLIST": json.dumps(["grep", "read_path", "run"]),
+                "UAGENT_INTERNAL_TOOL_RUN_ALLOWLIST": json.dumps(["python3 slow_analysis.py"]),
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
@@ -725,6 +862,27 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "policy-ok", result.stdout)
         assert_true(not marker.exists(), marker)
+
+
+def test_collaborator_retention_prunes_whole_records(root, home):
+    collaborators = home / ".uagent" / "collaborators"
+    collaborators.mkdir(parents=True)
+    now = time.time()
+    for index, stamp in (("old", now - 120), ("new", now - 60)):
+        (collaborators / f"{index}.json").write_text("{}", encoding="utf-8")
+        (collaborators / f"{index}.session.json").write_text("{}", encoding="utf-8")
+        os.utime(collaborators / f"{index}.json", (stamp, stamp))
+        os.utime(collaborators / f"{index}.session.json", (stamp, stamp))
+
+    with Server([event({"content": "retention-ok"})]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_DEBUG_FILES"] = "1"
+        result = run(root, env, "-p", "reply")
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "retention-ok", result.stdout)
+
+    remaining = sorted(path.name for path in collaborators.iterdir())
+    assert_true(remaining == ["new.json", "new.session.json"], remaining)
 
 
 def test_project_agent_config_trust(root, home):

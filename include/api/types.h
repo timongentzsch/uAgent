@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "include/core/json.h"
@@ -16,6 +17,66 @@ enum class RemoteErrorKind : uint8_t {
   kTransient,
   kContextLengthExceeded,
 };
+
+// Provider-specific stop spellings collapse into one turn policy while the
+// raw reason and details remain available for diagnostics.
+enum class ResponseStopCause : uint8_t {
+  kNone,
+  kComplete,
+  kLength,
+  kPause,
+  kPolicy,
+  kInputLimit,
+  kTimeLimit,
+  kOther,
+};
+
+inline ResponseStopCause ClassifyResponseStop(std::string_view reason) {
+  if (reason.empty()) return ResponseStopCause::kNone;
+  if (reason == "stop" || reason == "completed" || reason == "end_turn" ||
+      reason == "tool_calls" || reason == "function_call" ||
+      reason == "tool_use" || reason == "stop_sequence") {
+    return ResponseStopCause::kComplete;
+  }
+  if (reason == "length" || reason == "max_tokens" ||
+      reason == "max_output_tokens" || reason == "model_length" ||
+      reason == "model_context_window_exceeded") {
+    return ResponseStopCause::kLength;
+  }
+  if (reason == "pause_turn") return ResponseStopCause::kPause;
+  if (reason == "content_filter" || reason == "refusal" || reason == "safety") {
+    return ResponseStopCause::kPolicy;
+  }
+  if (reason == "max_prompt_tokens" || reason == "context_length") {
+    return ResponseStopCause::kInputLimit;
+  }
+  if (reason == "max_time_limit" || reason == "time_limit") {
+    return ResponseStopCause::kTimeLimit;
+  }
+  return ResponseStopCause::kOther;
+}
+
+inline const char* ResponseStopCauseName(ResponseStopCause cause) {
+  switch (cause) {
+    case ResponseStopCause::kNone:
+      return "none";
+    case ResponseStopCause::kComplete:
+      return "complete";
+    case ResponseStopCause::kLength:
+      return "length";
+    case ResponseStopCause::kPause:
+      return "pause";
+    case ResponseStopCause::kPolicy:
+      return "policy";
+    case ResponseStopCause::kInputLimit:
+      return "input_limit";
+    case ResponseStopCause::kTimeLimit:
+      return "time_limit";
+    case ResponseStopCause::kOther:
+      return "other";
+  }
+  return "other";
+}
 
 // A non-streaming JSON call: the parsed body, the HTTP status, and a
 // transport- or provider-level error message when the call did not land.
@@ -67,6 +128,9 @@ struct ChatResult {
   double pretransfer_ms = -1;
   double start_transfer_ms = -1;
   std::string finish_reason;
+  json stop_details = json::object();
+  ResponseStopCause stop_cause = ResponseStopCause::kNone;
+  bool incomplete = false;
   std::string error;
   std::string remote_error_type;
   std::string remote_error_code;
@@ -75,7 +139,6 @@ struct ChatResult {
   bool suppressed = false;
   bool semantic_progress = false;
   bool retryable = false;
-  bool continue_response = false;
 };
 
 }  // namespace uagent

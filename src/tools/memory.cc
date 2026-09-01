@@ -57,9 +57,9 @@ std::optional<std::string> FirstLine(const std::filesystem::path& path) {
 const std::vector<std::string>& RedactKeywords() {
   static const std::vector<std::string> kKeywords = [] {
     std::vector<std::string> all = CredentialKeyStems();
-    for (const char* variant : {"api-key", "apikey", "access-token",
-                                "accesstoken", "auth_token", "auth-token",
-                                "authtoken"}) {
+    for (const char* variant :
+         {"api-key", "apikey", "access-token", "accesstoken", "auth_token",
+          "auth-token", "authtoken"}) {
       all.emplace_back(variant);
     }
     constexpr size_t kMaxExtra = 32;
@@ -439,7 +439,8 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                     UtcStamp(),
                     !source.empty()};
   std::string event_error;
-  std::string receipt = source.empty() ? "" : EnvStr("UAGENT_MEMORY_RECEIPT");
+  std::string receipt =
+      source.empty() ? "" : EnvStr("UAGENT_INTERNAL_MEMORY_RECEIPT");
   if (!WriteMemoryEvent(event, receipt, event_error)) {
     DebugLog("memory_event_write_error",
              {{"error", event_error}, {"key", event.key}});

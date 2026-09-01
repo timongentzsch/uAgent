@@ -284,7 +284,6 @@ void TestToolExecutionPolicy() {
   BackgroundCompletion task_completion;
   task_completion.activity_id = 7;
   task_completion.kind = ActivityKind::kSubagent;
-  task_completion.kind_label = "subagent";
   task_completion.command = "uagent -p 'very long delegated prompt'";
   CHECK(BgResultHeader(task_completion) ==
         "[Background result: subagent id 7]");

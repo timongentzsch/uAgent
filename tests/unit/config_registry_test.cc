@@ -3,6 +3,10 @@
 #include "include/core/config_registry.h"
 
 #include <algorithm>
+#include <cctype>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <set>
 #include <string>
 #include <string_view>
@@ -36,6 +40,7 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_DEPTH", AgentDepth},
     {"UAGENT_SUBAGENT_MAX_STEPS", SubagentMaxSteps},
     {"UAGENT_SUBAGENT_MAX_TOOL_CALLS", SubagentMaxToolCalls},
+    {"UAGENT_SUBAGENT_CALLS_PER_TURN", SubagentCallsPerTurn},
     {"UAGENT_MAX_TOKENS", MaxOutputTokens},
     {"UAGENT_READ_FILE_LINES", ReadFileLines},
     {"UAGENT_READ_FILE_MAX_LINES", ReadFileMaxLines},
@@ -71,6 +76,40 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_MCP_LOG_FILES", McpLogFiles},
     {"UAGENT_TERMINAL_DAYS", TerminalRecordDays},
 };
+
+std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
+  constexpr std::string_view kFunctions[] = {"EnvStr", "EnvLong", "EnvDouble",
+                                             "getenv", "ReadStringArray"};
+  std::vector<std::string> names;
+  for (std::string_view function : kFunctions) {
+    size_t offset = 0;
+    while ((offset = source.find(function, offset)) != std::string_view::npos) {
+      size_t cursor = offset + function.size();
+      while (cursor < source.size() &&
+             std::isspace(static_cast<unsigned char>(source[cursor]))) {
+        ++cursor;
+      }
+      if (cursor >= source.size() || source[cursor++] != '(') {
+        offset += function.size();
+        continue;
+      }
+      while (cursor < source.size() &&
+             std::isspace(static_cast<unsigned char>(source[cursor]))) {
+        ++cursor;
+      }
+      if (cursor >= source.size() || source[cursor++] != '"' ||
+          !source.substr(cursor).starts_with("UAGENT_")) {
+        offset += function.size();
+        continue;
+      }
+      size_t end = source.find('"', cursor);
+      if (end == std::string_view::npos) break;
+      names.emplace_back(source.substr(cursor, end - cursor));
+      offset = end + 1;
+    }
+  }
+  return names;
+}
 
 }  // namespace
 
@@ -127,6 +166,41 @@ void TestConfigRegistryContract() {
   json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
   CHECK(JsonDump(diagnostic).find("canary-secret-value") == std::string::npos);
   CHECK(JsonValue(diagnostic, "web_search_api_key", "") == "<set>");
+
+  // Direct runtime lookups are occasionally necessary at bootstrap, but they
+  // still belong to the registry unless their name explicitly marks
+  // process-internal plumbing. Scan the production source so a new bypass
+  // fails here instead of silently escaping diagnostics and generated docs.
+  const std::filesystem::path source_root = UAGENT_TEST_SOURCE_DIR;
+  size_t matched_lookups = 0;
+  size_t internal_lookups = 0;
+  for (const char* directory : {"src", "include"}) {
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(
+             source_root / directory)) {
+      if (!entry.is_regular_file()) continue;
+      std::string extension = entry.path().extension().string();
+      if (extension != ".cc" && extension != ".h") continue;
+      std::ifstream input(entry.path());
+      std::string source((std::istreambuf_iterator<char>(input)),
+                         std::istreambuf_iterator<char>());
+      for (const std::string& environment :
+           DirectRuntimeSettingLookups(source)) {
+        ++matched_lookups;
+        if (environment.starts_with("UAGENT_INTERNAL_")) {
+          ++internal_lookups;
+          continue;
+        }
+        const ConfigDescriptor* descriptor = FindConfigDescriptor(environment);
+        if (!descriptor) {
+          std::cerr << "unregistered runtime setting " << environment << " in "
+                    << entry.path() << '\n';
+        }
+        CHECK(descriptor != nullptr);
+      }
+    }
+  }
+  CHECK(matched_lookups >= 20);
+  CHECK(internal_lookups > 0);
 }
 
 void TestSelfDescriptionSchemas() {

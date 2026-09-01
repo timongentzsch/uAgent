@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,45 +24,65 @@ namespace uagent {
 namespace {
 
 constexpr EventPolicy kPolicies[] = {
-    {EventId::kSessionReady, "session_ready", nullptr, "session.ready",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kSessionResumed, "session_resumed", nullptr, "session.resumed",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kSessionEnded, "session_end", nullptr, "session.ended",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kTurnStarted, "turn_start", "turn.started", "turn.started",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kTurnStopped, "turn_end", nullptr, "turn.completed",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kTurnCompleted, "turn_end", "usage", "turn.completed",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kToolCall, "tool_call", "tool.call", "tool.call",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kToolResult, "tool_result", "tool.result", "tool.result",
-     EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kActivityCompleted, "activity_completed", nullptr,
-     "activity.completed", EventDurability::kDurable,
+    {EventId::kSessionReady, "session.ready", "session_ready", nullptr,
+     "session.ready", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
-    {EventId::kCapabilityChanged, "feature_degraded", nullptr,
-     "capability.changed", EventDurability::kDurable,
+    {EventId::kSessionResumed, "session.resumed", "session_resumed", nullptr,
+     "session.resumed", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
-    {EventId::kConfigChanged, "config_changed", nullptr, "config.changed",
+    {EventId::kSessionEnded, "session.ended", "session_end", nullptr,
+     "session.ended", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kTurnStarted, "turn.started", "turn_start", "turn.started",
+     "turn.started", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kTurnStopped, "turn.stopped", "turn_end", nullptr,
+     "turn.completed", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kTurnCompleted, "turn.completed", "turn_end", "usage",
+     "turn.completed", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kToolCall, "tool.call", "tool_call", "tool.call", "tool.call",
      EventDurability::kDurable, EventRedaction::kPublicProjection},
-    {EventId::kAnswer, nullptr, "answer", nullptr, EventDurability::kTransient,
+    {EventId::kToolResult, "tool.result", "tool_result", "tool.result",
+     "tool.result", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
-    {EventId::kError, nullptr, "error", nullptr, EventDurability::kTransient,
+    {EventId::kActivityCompleted, "activity.completed", "activity_completed",
+     nullptr, "activity.completed", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
-    {EventId::kResponseStarted, nullptr, nullptr, nullptr,
+    {EventId::kCapabilityChanged, "capability.changed", "feature_degraded",
+     nullptr, "capability.changed", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kConfigChanged, "config.changed", "config_changed", nullptr,
+     "config.changed", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
+    {EventId::kAnswer, "answer", nullptr, "answer", nullptr,
+     EventDurability::kTransient, EventRedaction::kPublicProjection},
+    {EventId::kError, "error", nullptr, "error", nullptr,
+     EventDurability::kTransient, EventRedaction::kPublicProjection},
+    {EventId::kResponseStarted, "response.started", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
-    {EventId::kReasoningDelta, nullptr, nullptr, nullptr,
+    {EventId::kReasoningDelta, "response.reasoning.delta", nullptr, nullptr,
+     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kAnswerDelta, "response.answer.delta", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
-    {EventId::kAnswerDelta, nullptr, nullptr, nullptr,
+    {EventId::kResponseFinished, "response.finished", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
-    {EventId::kResponseFinished, nullptr, nullptr, nullptr,
-     EventDurability::kTransient, EventRedaction::kNone},
-    {EventId::kNotice, "notice", "notice", "notice", EventDurability::kDurable,
-     EventRedaction::kPublicProjection},
-    {EventId::kPresentation, nullptr, nullptr, nullptr,
+    {EventId::kApprovalRequested, "approval.requested", "approval_requested",
+     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kApprovalResolved, "approval.resolved", "approval_resolved",
+     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kInteractionRequested, "interaction.requested",
+     "interaction_requested", nullptr, nullptr, EventDurability::kTransient,
+     EventRedaction::kNone},
+    {EventId::kInteractionResolved, "interaction.resolved",
+     "interaction_resolved", nullptr, nullptr, EventDurability::kTransient,
+     EventRedaction::kNone},
+    {EventId::kCommandCompleted, "command.completed", "command_completed",
+     nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kNotice, "notice", "notice", "notice", "notice",
+     EventDurability::kDurable, EventRedaction::kPublicProjection},
+    {EventId::kPresentation, "ui.presentation", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
 };
 
@@ -152,6 +173,17 @@ json PresentationJson(const PresentationRecord& record) {
   }
   AddArtifacts(value, record.artifacts);
   return value;
+}
+
+json AppProjection(const Event& event) {
+  json data = event.data.is_object() ? event.data : json::object();
+  if (!event.data.is_null() && !event.data.is_object())
+    data["value"] = event.data;
+  if (!event.text.empty()) data["text"] = std::string(event.text);
+  if (event.presentation) {
+    data["presentation"] = PresentationJson(*event.presentation);
+  }
+  return data;
 }
 
 json JournalPresentationJson(const PresentationRecord& record) {
@@ -397,6 +429,35 @@ bool Observability::StartJsonStream() {
   return json_.Start();
 }
 
+void Observability::EnableTerminal(bool enabled) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (enabled == static_cast<bool>(terminal_)) return;
+  if (terminal_) terminal_->Finish();
+  if (enabled) {
+    terminal_ = std::make_unique<TerminalPresenter>();
+  } else {
+    terminal_.reset();
+  }
+}
+
+uint64_t Observability::Subscribe(EventSubscriber subscriber) {
+  if (!subscriber) return 0;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (shutdown_) return 0;
+  uint64_t id = next_subscription_++;
+  subscribers_.emplace_back(id, std::move(subscriber));
+  return id;
+}
+
+void Observability::Unsubscribe(uint64_t subscription) {
+  // Returning means no callback for this subscription is still in flight.
+  std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  std::erase_if(subscribers_, [subscription](const auto& subscriber) {
+    return subscriber.first == subscription;
+  });
+}
+
 Event NoticeEvent(PresentationStatus status, std::string text) {
   Event event{EventId::kNotice};
   event.presentation = PresentationRecord{};
@@ -410,26 +471,53 @@ Event NoticeEvent(PresentationStatus status, std::string text) {
 }
 
 void Observability::Emit(Event event) noexcept {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (shutdown_) return;
-  const EventPolicy& policy = PolicyFor(event.id);
-  if (terminal_) terminal_->Consume(event);
-  if (debug_.Enabled() && policy.debug_name) {
-    json data = event.data;
-    if (event.presentation) {
-      data["presentation"] = PresentationJson(*event.presentation);
+  // Acquire before assigning sequence numbers so concurrent producers deliver
+  // AppEvents in sequence order. Sink state remains protected separately and
+  // is never held while application callbacks run.
+  std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
+  std::vector<std::pair<uint64_t, EventSubscriber>> subscribers;
+  AppEvent app_event;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (shutdown_) return;
+    const EventPolicy& policy = PolicyFor(event.id);
+    if (terminal_) terminal_->Consume(event);
+    if (debug_.Enabled() && policy.debug_name) {
+      json data = event.data;
+      if (event.presentation) {
+        data["presentation"] = PresentationJson(*event.presentation);
+      }
+      debug_.Write(policy.debug_name, std::move(data));
     }
-    debug_.Write(policy.debug_name, std::move(data));
+    if (json_.Enabled() && policy.public_type) {
+      json data = policy.redaction == EventRedaction::kPublicProjection
+                      ? PublicProjection(event)
+                      : event.data;
+      json_.Emit(policy.public_type, std::move(data));
+    }
+    if (policy.durability == EventDurability::kDurable) {
+      journal_.Append(event, policy);
+      EchoHeadlessProgress(event, policy);
+    }
+    if (!subscribers_.empty()) {
+      app_event = {++app_sequence_, UtcStamp(), policy.app_type,
+                   AppProjection(event),
+                   policy.durability == EventDurability::kDurable};
+      subscribers.reserve(subscribers_.size());
+      subscribers = subscribers_;
+    }
   }
-  if (json_.Enabled() && policy.public_type) {
-    json data = policy.redaction == EventRedaction::kPublicProjection
-                    ? PublicProjection(event)
-                    : event.data;
-    json_.Emit(policy.public_type, std::move(data));
-  }
-  if (policy.durability == EventDurability::kDurable) {
-    journal_.Append(event, policy);
-    EchoHeadlessProgress(event, policy);
+  for (const auto& [id, subscriber] : subscribers) {
+    // A callback may unsubscribe a later callback during this same delivery.
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (std::none_of(
+              subscribers_.begin(), subscribers_.end(),
+              [id](const auto& current) { return current.first == id; })) {
+        continue;
+      }
+    }
+    subscriber(app_event);
   }
 }
 
@@ -445,12 +533,14 @@ void Observability::Flush() {
 }
 
 void Observability::Shutdown() {
+  std::lock_guard<std::recursive_mutex> delivery(delivery_mutex_);
   std::lock_guard<std::mutex> lock(mutex_);
   if (shutdown_) return;
   if (terminal_) terminal_->Finish();
   debug_.Flush();
   json_.Stop();
   debug_.Stop();
+  subscribers_.clear();
   shutdown_ = true;
 }
 

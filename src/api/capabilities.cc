@@ -129,6 +129,8 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
   } else if (protocol == ProviderProtocol::kAnthropic) {
     capabilities.reasoning_object = true;
   } else if (OpenaiUrl(base_url)) {
+    // Exact official host, not a model-name or substring heuristic: OpenAI's
+    // Chat Completions dialect uses max_completion_tokens.
     capabilities.max_completion_tokens = true;
   }
   if (wire_api == WireApi::kResponses) {

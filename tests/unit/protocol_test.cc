@@ -594,6 +594,16 @@ void TestOptions() {
   char* invalid_budget[] = {executable, budget, non_finite};
   CHECK(!ParseOptions(3, invalid_budget).Ok());
 
+  char token_budget[] = "--token-budget";
+  char token_count[] = "1200";
+  char* token_arguments[] = {executable, token_budget, token_count};
+  ParsedOptions tokens = ParseOptions(3, token_arguments);
+  CHECK(tokens.Ok());
+  CHECK(tokens.options.overrides["UAGENT_SESSION_TOKEN_BUDGET"] == "1200");
+  char invalid_token_count[] = "1.5";
+  char* invalid_tokens[] = {executable, token_budget, invalid_token_count};
+  CHECK(!ParseOptions(3, invalid_tokens).Ok());
+
   char help[] = "--help";
   char* help_arguments[] = {executable, help};
   CHECK(ParseOptions(2, help_arguments).action == OptionsAction::kHelp);
@@ -635,6 +645,7 @@ void TestOptions() {
   CHECK(usage.find("--yolo") != std::string::npos);
   // The table drives both, so every accepted flag is documented.
   CHECK(usage.find("--subagent-model SELECTION") != std::string::npos);
+  CHECK(usage.find("--token-budget TOKENS") != std::string::npos);
   CHECK(usage.find("--web-search-model SELECTION") != std::string::npos);
 }
 

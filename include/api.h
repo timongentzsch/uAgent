@@ -28,10 +28,12 @@ struct StreamCtx;
 class Api {
  public:
   std::string base_url, api_key, model, reasoning_effort;
+  std::vector<std::string> supported_reasoning_efforts;
   int64_t ctx_window = 0;
   ProviderCapabilities capabilities;
   bool render_stream = true;
   double session_cost = 0;
+  int64_t session_generated_tokens = 0;
   // Set once at the user-turn boundary. Every transient status row in that
   // turn uses the same anchor, matching Codex's TurnStarted/TurnCompleted
   // lifetime instead of restarting for each request or tool.
@@ -52,10 +54,6 @@ class Api {
   json BuildRequestBody(const json& messages, const json& tool_schemas,
                         const std::string& session_id = "",
                         bool* web_available = nullptr) const;
-  // Compatibility name retained for embedders; it builds the active wire API.
-  json BuildChatBody(const json& messages, const json& tool_schemas,
-                     const std::string& session_id = "",
-                     bool* web_available = nullptr) const;
   // Uses an incremental message serializer on Chat Completions and a stable
   // adapter encoding on the other wire APIs.
   std::string ChatPayload(const json& messages, const json& tool_schemas,

@@ -41,8 +41,7 @@ void CloseSessionIo(const std::shared_ptr<ActivitySession>& session) {
 
 }  // namespace
 
-ActivityKind ParseActivityKind(const std::string& kind, bool detached) {
-  if (detached) return ActivityKind::kDetached;
+ActivityKind ParseActivityKind(const std::string& kind) {
   if (kind == "subagent") return ActivityKind::kSubagent;
   if (kind == "memory") return ActivityKind::kMemory;
   return ActivityKind::kCommand;
@@ -67,6 +66,35 @@ bool ActivityTerminal(ActivityState state) {
          state == ActivityState::kDelivered || state == ActivityState::kStopped;
 }
 
+bool TransitionActivityLocked(ActivitySession& session, ActivityState next) {
+  const ActivityState current = session.state;
+  if (current == next) return true;
+  bool allowed = false;
+  switch (current) {
+    case ActivityState::kStarting:
+      allowed = next == ActivityState::kRunning ||
+                next == ActivityState::kExited ||
+                next == ActivityState::kStopped;
+      break;
+    case ActivityState::kRunning:
+      allowed =
+          next == ActivityState::kExited || next == ActivityState::kStopped;
+      break;
+    case ActivityState::kExited:
+      allowed =
+          next == ActivityState::kDrained || next == ActivityState::kStopped;
+      break;
+    case ActivityState::kDrained:
+      allowed = next == ActivityState::kDelivered;
+      break;
+    case ActivityState::kDelivered:
+    case ActivityState::kStopped:
+      break;
+  }
+  if (allowed) session.state = next;
+  return allowed;
+}
+
 BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
              bool is_detached, std::string job_kind, int64_t activity_id,
              std::shared_ptr<ActivitySession> activity, std::string label,
@@ -76,7 +104,7 @@ BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
       log(std::move(log_path)),
       cmd(std::move(command)),
       detached(is_detached),
-      kind(std::move(job_kind)),
+      kind(is_detached ? ActivityKind::kDetached : ParseActivityKind(job_kind)),
       id(activity_id),
       session(std::move(activity)),
       display_label(std::move(label)),
@@ -161,7 +189,7 @@ void ProcessSupervisor::RegisterIo(
     session->input_fd.Reset(input_fd);
     session->log_fd.Reset(log_fd);
     session->log_limit = log_limit;
-    session->state = ActivityState::kRunning;
+    (void)TransitionActivityLocked(*session, ActivityState::kRunning);
   }
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -178,11 +206,7 @@ void ProcessSupervisor::AssignId(BgJob& job) {
   }
   if (job.session) {
     std::lock_guard<std::mutex> lock(job.session->mutex);
-    job.session->id = job.id;
     job.session->pid = job.pid;
-    job.session->kind = ParseActivityKind(job.kind, job.detached);
-    job.session->log = job.log;
-    job.session->cmd = job.cmd;
     job.session->last_used = std::chrono::steady_clock::now();
   }
 }
@@ -335,7 +359,7 @@ size_t ProcessSupervisor::JoinableCount() const {
   return static_cast<size_t>(
       std::count_if(jobs_.begin(), jobs_.end(), [](const BgJob& job) {
         return !job.detached && job.session &&
-               job.session->kind == ActivityKind::kSubagent;
+               job.kind == ActivityKind::kSubagent;
       }));
 }
 
@@ -405,8 +429,10 @@ void ProcessSupervisor::Retain(BgJob job) {
   if (!job.session || job.detached) return;
   {
     std::lock_guard<std::mutex> lock(job.session->mutex);
-    job.session->state = ActivityState::kDelivered;
-    job.session->delivered = true;
+    // A stopped activity is terminal but intentionally never deliverable.
+    if (!TransitionActivityLocked(*job.session, ActivityState::kDelivered)) {
+      return;
+    }
     job.session->last_used = std::chrono::steady_clock::now();
   }
   std::lock_guard<std::mutex> lock(mutex_);
@@ -515,9 +541,9 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
           size_t keep = 0;
           {
             std::lock_guard<std::mutex> lock(session->mutex);
-            session->state = session->state == ActivityState::kStarting
-                                 ? ActivityState::kRunning
-                                 : session->state;
+            if (session->state == ActivityState::kStarting) {
+              (void)TransitionActivityLocked(*session, ActivityState::kRunning);
+            }
             session->pending_output.Push(chunk);
             session->transcript.Push(chunk);
             session->until_window.append(chunk);
@@ -549,15 +575,16 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
         std::lock_guard<std::mutex> lock(session->mutex);
         if (waited == session->pid && !session->wait_status) {
           session->wait_status = status;
-          session->state = ActivityState::kExited;
+          (void)TransitionActivityLocked(*session, ActivityState::kExited);
           session->exited_at = now;
           notify = true;
         }
         if (session->wait_status &&
             (session->output_eof ||
              now - session->exited_at >= kTrailingOutputGrace)) {
-          session->state = session->stop_requested ? ActivityState::kStopped
-                                                   : ActivityState::kDrained;
+          (void)TransitionActivityLocked(
+              *session, session->stop_requested ? ActivityState::kStopped
+                                                : ActivityState::kDrained);
           notify = true;
         }
       }

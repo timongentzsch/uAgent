@@ -248,7 +248,6 @@ void SigintHandler(int signal_number) {
     pid_t pid = static_cast<pid_t>(g_bg_pids[index]);
     kill(-pid, SIGKILL);
     kill(pid, SIGKILL);
-    WaitPid(pid, nullptr);
   }
   for (int index = 0; index < kMcpMax; ++index) {
     if (g_mcp_pids[index] <= 0) continue;

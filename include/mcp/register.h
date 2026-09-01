@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_MCP_REGISTER_H_
 // Configured server startup, discovery, and lifecycle.
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -20,9 +21,6 @@
 #include "include/tools/tool.h"
 
 namespace uagent {
-
-inline constexpr char kMcpProtocolVersion[] = "2025-11-25";
-inline constexpr char kMcpProtocolVersionLegacy[] = "2025-06-18";
 
 inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
                                int64_t& initialize_id, std::string& error) {
@@ -62,54 +60,28 @@ inline bool McpStartConfigured(McpServer& server, const RuntimeConfig& config,
     return false;
   }
   initialize_id = server.next_id++;
-  if (!McpSend(server, initialize_id, "initialize",
-               {{"protocolVersion", kMcpProtocolVersion},
-                {"capabilities", {{"roots", {{"listChanged", false}}}}},
-                {"clientInfo", {{"name", "uagent"}, {"version", kVersion}}}})) {
-    error = "failed to initialize";
+  if (!McpSend(server, initialize_id, "server/discover", json::object())) {
+    error = "failed to negotiate protocol";
     server.Shutdown();
     return false;
   }
   return true;
 }
 
-inline bool McpFinishInitialize(McpServer& server, int64_t initialize_id,
-                                int64_t timeout, std::string& error) {
-  json init = McpAwait(server, initialize_id, timeout, false);
-  if (!init.contains("result")) {
-    error = JsonErrorMessage(init, "handshake failed");
-    return false;
-  }
-  const json& result = init["result"];
-  std::string protocol = JsonValue(result, "protocolVersion", "");
-  if (protocol != kMcpProtocolVersion &&
-      protocol != kMcpProtocolVersionLegacy) {
-    error = "unsupported protocol version `" + protocol + "`";
-    return false;
-  }
-  if (!result.contains("capabilities") || !result["capabilities"].is_object() ||
-      !result["capabilities"].contains("tools")) {
-    error = "server did not negotiate tools capability";
-    return false;
-  }
-  McpSend(server, -1, "notifications/initialized", json::object());
-  return true;
-}
-
 // Spawn configured servers, handshake, and append one Tool per server tool.
 // Spawns everything first and handshakes second, so slow server boots
 // (npx downloads, node startup) overlap instead of adding up.
-inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
-                        const RuntimeConfig& config,
-                        const json& trusted_project = nullptr) {
+inline std::string McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
+                               const RuntimeConfig& config,
+                               const json& trusted_project = nullptr) {
   json cfg = McpLoadConfig(trusted_project,
                            static_cast<size_t>(config.mcp_config_bytes));
-  if (cfg.empty()) return;
+  if (cfg.empty()) return {};
   int64_t timeout = config.mcp_timeout_s;
 
   struct Boot {
     McpServer* s;
-    int64_t init_id;
+    bool required;
   };
   std::vector<Boot> boots;
   // config and server replies are untrusted JSON: a wrong type anywhere
@@ -139,21 +111,28 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     srv->name = name;
     srv->response_cap = static_cast<size_t>(config.mcp_response_bytes);
     srv->config = conf;
+    bool required = JsonValue(conf, "required", true);
     int64_t id = -1;
     std::string start_error;
     if (!McpStartConfigured(*srv, config, id, start_error)) {
       McpError(name, start_error);
       runtime.Add(std::move(srv));
       ++spawned;
+      if (required) {
+        return "required MCP server `" + name + "`: " + start_error;
+      }
       continue;
     }
     // Queue the handshake now (the pipe buffers it); reap replies below.
-    boots.push_back({srv.get(), id});
+    boots.push_back({srv.get(), required});
+    srv->initialize_id = id;
+    if (!required) srv->startup = McpStartupState::kInitializing;
     runtime.Add(std::move(srv));
     ++spawned;
   }
 
   for (auto& b : boots) {
+    if (!b.required) continue;
     McpServer& s = *b.s;
     // Per server, like McpRefreshTools: a slow neighbour must not consume the
     // handshake window of a server whose reply is already buffered.
@@ -162,20 +141,46 @@ inline void McpRegister(std::vector<Tool>& tools, McpRuntime& runtime,
     if (remaining <= 0) {
       McpError(s.name, "startup deadline exceeded");
       s.Shutdown();
-      continue;
+      return "required MCP server `" + s.name + "`: startup deadline exceeded";
     }
     std::string initialize_error;
-    if (!McpFinishInitialize(s, b.init_id, remaining, initialize_error)) {
+    if (!McpFinishInitialize(s, s.initialize_id, remaining, initialize_error)) {
       McpError(s.name, initialize_error);
       s.Shutdown();
-      continue;
+      return "required MCP server `" + s.name + "`: " + initialize_error;
     }
+    s.initialize_id = -1;
 
     if (!McpLoadServerTools(tools, s, config, startup_deadline)) {
       s.Shutdown();
-      continue;
+      return "required MCP server `" + s.name + "`: tools/list failed";
     }
   }
+
+  // Optional servers share one small startup window instead of each adding a
+  // full timeout. Anything still booting is discovered at a turn boundary.
+  auto optional_deadline = DeadlineAfter(config.mcp_startup_grace_s);
+  for (;;) {
+    bool pending = false;
+    for (auto& b : boots) {
+      if (b.required || !b.s->alive ||
+          b.s->startup == McpStartupState::kReady) {
+        continue;
+      }
+      pending = true;
+      McpAdvanceStartup(tools, *b.s, config);
+    }
+    if (!pending || std::chrono::steady_clock::now() >= optional_deadline) {
+      break;
+    }
+    (void)poll(nullptr, 0, std::min(10, PollTimeoutMs(optional_deadline)));
+  }
+  for (auto& b : boots) {
+    if (!b.required && b.s->alive && b.s->startup != McpStartupState::kReady) {
+      McpNote(b.s->name, "starting in background");
+    }
+  }
+  return {};
 }
 
 }  // namespace uagent

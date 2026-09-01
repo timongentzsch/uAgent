@@ -32,8 +32,10 @@ struct AppSession {
   Agent& ActiveAgent() const { return *context.agent; }
 };
 
-// Returns true when the command ends the session.
-bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command);
+// Returns true when the command ends the session and fills the same semantic
+// result a non-terminal client receives in command.completed.
+bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
+                     json& result);
 
 // Adopts the journal of a session that was just resumed into.
 void LoadSessionJournal(AppSession& session, const std::string& previous_path);

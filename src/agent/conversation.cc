@@ -165,11 +165,11 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
                            json archive, int64_t dropped_segments,
                            json tool_displays) {
   if (!messages.is_array() || messages.empty() ||
-      messages.size() != kinds.size() || !archive.is_array()) {
+      messages.size() != kinds.size() || !archive.is_array() ||
+      !tool_displays.is_object()) {
     return false;
   }
-  tool_displays_ =
-      tool_displays.is_object() ? std::move(tool_displays) : json::object();
+  tool_displays_ = std::move(tool_displays);
   NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);

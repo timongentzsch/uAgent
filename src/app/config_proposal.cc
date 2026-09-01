@@ -216,11 +216,9 @@ std::string RedactSecretAssignments(
     size_t end = bytes.find('\n', start);
     std::string line = bytes.substr(
         start, end == std::string::npos ? std::string::npos : end - start);
-    std::string text = Trim(line);
-    if (text.starts_with("export ")) text = Trim(text.substr(7));
-    size_t equals = text.find('=');
-    if (equals != std::string::npos && equals > 0) {
-      std::string key = Trim(text.substr(0, equals));
+    ConfigAssignment assignment;
+    if (ParseConfigAssignment(line, assignment)) {
+      const std::string& key = assignment.key;
       const ConfigDescriptor* descriptor = FindConfigDescriptor(key);
       if (omit_composites && descriptor &&
           descriptor->sensitivity == Sensitivity::kCompositeSecret) {
@@ -233,7 +231,7 @@ std::string RedactSecretAssignments(
       } else if (descriptor &&
                  descriptor->sensitivity != Sensitivity::kPublic) {
         if (descriptor->sensitivity == Sensitivity::kCompositeSecret) {
-          std::string value = Unquote(Trim(text.substr(equals + 1)));
+          std::string value = Unquote(assignment.value);
           std::string literal;
           std::string error;
           if (ConfigValueLiteral(DisplayValue(*descriptor, value), literal,

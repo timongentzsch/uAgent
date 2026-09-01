@@ -16,6 +16,7 @@
 #include <string>
 #include <utility>
 
+#include "include/core/config_document.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
@@ -33,15 +34,9 @@ inline EnvValues ParseEnvValues(std::istream& input) {
   EnvValues values;
   std::string line;
   while (std::getline(input, line)) {
-    line = Trim(line);
-    if (line.empty() || line[0] == '#') continue;
-    if (line.starts_with("export ")) line = Trim(line.substr(7));
-    size_t eq = line.find('=');
-    if (eq == std::string::npos || eq == 0) continue;
-    std::string key = Trim(line.substr(0, eq));
-    std::string val = Trim(line.substr(eq + 1));
-    if (key.empty()) continue;
-    values[key] = Unquote(val);
+    ConfigAssignment assignment;
+    if (!ParseConfigAssignment(line, assignment)) continue;
+    values[assignment.key] = Unquote(assignment.value);
   }
   return values;
 }

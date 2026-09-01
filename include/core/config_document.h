@@ -12,6 +12,17 @@
 
 namespace uagent {
 
+struct ConfigAssignment {
+  std::string key;
+  std::string value;
+  bool exported = false;
+};
+
+// The assignment grammar shared by the loader, byte-preserving editor, and
+// approval preview. Values remain quoted; callers choose when to unquote.
+bool ParseConfigAssignment(const std::string& line,
+                           ConfigAssignment& assignment);
+
 class ConfigDocument {
  public:
   static ConfigDocument Parse(const std::string& bytes);

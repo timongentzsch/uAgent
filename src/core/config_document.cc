@@ -10,20 +10,25 @@
 #include "include/core/strings.h"
 
 namespace uagent {
-namespace {
-
-// The loader trims, drops an optional `export `, then splits on the first `=`.
-// This mirrors it exactly so a line this file calls an assignment is the same
-// line the loader would.
-bool AssignmentKey(const std::string& line, std::string& key) {
+bool ParseConfigAssignment(const std::string& line,
+                           ConfigAssignment& assignment) {
   std::string text = Trim(line);
   if (text.empty() || text[0] == '#') return false;
-  if (text.starts_with("export ")) text = Trim(text.substr(7));
+  ConfigAssignment parsed;
+  if (text.starts_with("export ")) {
+    parsed.exported = true;
+    text = Trim(text.substr(7));
+  }
   size_t equals = text.find('=');
   if (equals == std::string::npos || equals == 0) return false;
-  key = Trim(text.substr(0, equals));
-  return !key.empty();
+  parsed.key = Trim(text.substr(0, equals));
+  if (parsed.key.empty()) return false;
+  parsed.value = Trim(text.substr(equals + 1));
+  assignment = std::move(parsed);
+  return true;
 }
+
+namespace {
 
 bool BareValue(const std::string& value) {
   if (value.empty()) return false;
@@ -94,8 +99,10 @@ ConfigDocument ConfigDocument::Parse(const std::string& bytes) {
 size_t ConfigDocument::Count(std::string_view key) const {
   size_t count = 0;
   for (const std::string& line : lines_) {
-    std::string found;
-    if (AssignmentKey(line, found) && found == key) ++count;
+    ConfigAssignment assignment;
+    if (ParseConfigAssignment(line, assignment) && assignment.key == key) {
+      ++count;
+    }
   }
   return count;
 }
@@ -111,14 +118,14 @@ bool ConfigDocument::Set(const std::string& key, const std::string& value,
   std::string literal;
   if (!ConfigValueLiteral(value, literal, error)) return false;
   for (std::string& line : lines_) {
-    std::string found;
-    if (!AssignmentKey(line, found) || found != key) continue;
+    ConfigAssignment assignment;
+    if (!ParseConfigAssignment(line, assignment) || assignment.key != key) {
+      continue;
+    }
     // Keep an `export ` prefix and the original indentation.
-    std::string text = Trim(line);
-    std::string prefix = text.starts_with("export ") ? "export " : "";
     size_t indent = line.find_first_not_of(" \t");
-    line = line.substr(0, indent == std::string::npos ? 0 : indent) + prefix +
-           key + "=" + literal;
+    line = line.substr(0, indent == std::string::npos ? 0 : indent) +
+           (assignment.exported ? "export " : "") + key + "=" + literal;
     return true;
   }
   lines_.push_back(key + "=" + literal);
@@ -134,8 +141,8 @@ bool ConfigDocument::Unset(const std::string& key, std::string& error) {
   }
   if (assignments == 0) return true;  // already absent
   std::erase_if(lines_, [&](const std::string& line) {
-    std::string found;
-    return AssignmentKey(line, found) && found == key;
+    ConfigAssignment assignment;
+    return ParseConfigAssignment(line, assignment) && assignment.key == key;
   });
   return true;
 }

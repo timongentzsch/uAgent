@@ -341,12 +341,14 @@ void TestScopedBaseAndMemory() {
         "auth-token = abcdefghijklmnop", "secret = s3cr3tvaluehere",
         "Authorization: Bearer abcdefghijklmnop",
         "sk-proj-abcdefghijklmnopqrst", "ghp_abcdefghijklmnopqrst",
+        "gho_abcdefghijklmnopqrst", "ghu_abcdefghijklmnopqrst",
+        "ghs_abcdefghijklmnopqrst", "ghr_abcdefghijklmnopqrst",
         "github_pat_abcdefghijklmnopqrst",
         "-----BEGIN PRIVATE KEY-----\nx\n"}) {
     CHECK(RedactMemorySecrets(secret).find("REDACTED") != std::string::npos);
   }
-  CHECK(RedactMemorySecrets("nothing sensitive here") ==
-        "nothing sensitive here");
+  CHECK(RedactMemorySecrets("lightweight guidance stays visible") ==
+        "lightweight guidance stays visible");
 
   TestWorkspace test("memory");
   const fs::path& root = test.root;

@@ -22,6 +22,15 @@ void MergeStreamIdentity(std::string& target, const std::string& fragment) {
   }
 }
 
+void AddStreamAnnotation(const json& annotation, ChatResult& result) {
+  if (!annotation.is_object()) return;
+  for (const json& existing : result.annotations) {
+    if (existing == annotation) return;
+  }
+  result.annotations.push_back(annotation);
+  result.semantic_progress = true;
+}
+
 namespace {
 
 // OpenAI-compatible streams number parallel tool calls with `index`. A
@@ -42,10 +51,7 @@ int StreamToolSlot(const std::map<int, ToolCall>& calls,
 void AddAnnotations(const json& annotations, ChatResult& result) {
   if (!annotations.is_array()) return;
   for (const json& annotation : annotations) {
-    if (annotation.is_object()) {
-      result.annotations.push_back(annotation);
-      result.semantic_progress = true;
-    }
+    AddStreamAnnotation(annotation, result);
   }
 }
 
@@ -101,10 +107,10 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
 
 }  // namespace
 
-OpenAiStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
-                                          ChatResult& result,
-                                          std::map<int, ToolCall>& tool_calls) {
-  OpenAiStreamDelta delta;
+WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
+                                         ChatResult& result,
+                                         std::map<int, ToolCall>& tool_calls) {
+  WireStreamDelta delta;
   size_t begin = data.find_first_not_of(" \t\r\n");
   if (begin == std::string_view::npos) return delta;
   data = data.substr(begin, data.find_last_not_of(" \t\r\n") - begin + 1);

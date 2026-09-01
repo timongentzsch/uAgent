@@ -27,15 +27,6 @@ void MergeObject(json& target, const json& update) {
   }
 }
 
-void AddAnnotation(const json& annotation, ChatResult& result) {
-  if (!annotation.is_object()) return;
-  for (const json& existing : result.annotations) {
-    if (existing == annotation) return;
-  }
-  result.annotations.push_back(annotation);
-  result.semantic_progress = true;
-}
-
 void AddAnnotationsFromMessage(const json& item, ChatResult& result) {
   const json* content = JsonArray(item, "content");
   if (!content) return;
@@ -43,7 +34,7 @@ void AddAnnotationsFromMessage(const json& item, ChatResult& result) {
     const json* annotations = JsonArray(part, "annotations");
     if (!annotations) continue;
     for (const json& annotation : *annotations) {
-      AddAnnotation(annotation, result);
+      AddStreamAnnotation(annotation, result);
     }
   }
 }
@@ -148,7 +139,7 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   }
   if (type == "response.output_text.annotation.added") {
     if (value.contains("annotation")) {
-      AddAnnotation(value["annotation"], result);
+      AddStreamAnnotation(value["annotation"], result);
     }
     delta.activity = true;
     return delta;
@@ -350,7 +341,7 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       const json& citation = (*event_delta)["citation"];
       block.block["citations"].push_back(citation);
       json normalized = AnthropicCitation(citation);
-      if (normalized.is_object()) AddAnnotation(normalized, result);
+      if (normalized.is_object()) AddStreamAnnotation(normalized, result);
     }
     delta.activity = true;
     return delta;
@@ -389,10 +380,7 @@ WireStreamDelta DecodeWireStreamEvent(WireApi wire_api, std::string_view data,
                                       std::map<int, ToolCall>& tool_calls,
                                       WireStreamState& state) {
   if (wire_api == WireApi::kChatCompletions) {
-    OpenAiStreamDelta decoded =
-        DecodeOpenAiStreamEvent(data, result, tool_calls);
-    return {std::move(decoded.content), std::move(decoded.reasoning),
-            decoded.activity};
+    return DecodeOpenAiStreamEvent(data, result, tool_calls);
   }
   json value = ParseEvent(data);
   if (value.is_discarded() || value.is_null()) return {};

@@ -366,6 +366,12 @@ void TestRuntimeOwnershipHelpers() {
   CHECK(RejectedRouteCapability(rejected, router) == RejectedCapability::kNone);
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kStreamUsage);
+  rejected.error = "Invalid tool schema: parameters must be an object";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kNone);
+  rejected.error = "This model does not support tool calling";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kNativeTools);
 }
 
 void TestAgentConfigAllowlist() {
@@ -405,6 +411,10 @@ void TestAgentConfigAllowlist() {
 void TestChildEnvironmentPolicy() {
   ScopedEnv scoped_api("UAGENT_API_KEY", "secret");
   ScopedEnv scoped_token("GITHUB_TOKEN", "secret");
+  ScopedEnv scoped_passwd("DATABASE_PASSWD", "secret");
+  ScopedEnv scoped_access("SERVICE_ACCESS_KEY", "secret");
+  ScopedEnv scoped_private("SIGNING_PRIVATE_KEY", "secret");
+  ScopedEnv scoped_cookie("SESSION_COOKIE", "secret");
   ScopedEnv scoped_usage("UAGENT_USAGE_FILE", "/tmp/ledger");
   ScopedEnv scoped_providers("UAGENT_PROVIDERS", "private-provider-config");
   ScopedEnv scoped_safe("UAGENT_CHILD_ENV_SAFE", "visible");
@@ -414,13 +424,23 @@ void TestChildEnvironmentPolicy() {
   ChildEnvironment shell;
   CHECK(!shell.Contains("UAGENT_API_KEY"));
   CHECK(!shell.Contains("GITHUB_TOKEN"));
+  CHECK(!shell.Contains("DATABASE_PASSWD"));
+  CHECK(!shell.Contains("SERVICE_ACCESS_KEY"));
+  CHECK(!shell.Contains("SIGNING_PRIVATE_KEY"));
+  CHECK(!shell.Contains("SESSION_COOKIE"));
   CHECK(!shell.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!shell.Contains("UAGENT_PROVIDERS"));
   CHECK(shell.Contains("UAGENT_CHILD_ENV_SAFE"));
 
   ChildEnvironment approved({}, ChildEnvironmentPolicy::kApprovedShell);
   CHECK(!approved.Contains("UAGENT_API_KEY"));
   CHECK(approved.Contains("GITHUB_TOKEN"));
+  CHECK(!approved.Contains("DATABASE_PASSWD"));
+  CHECK(!approved.Contains("SERVICE_ACCESS_KEY"));
+  CHECK(!approved.Contains("SIGNING_PRIVATE_KEY"));
+  CHECK(!approved.Contains("SESSION_COOKIE"));
   CHECK(!approved.Contains("UAGENT_USAGE_FILE"));
+  CHECK(!approved.Contains("UAGENT_PROVIDERS"));
 
   ChildEnvironment delegated(
       {{"UAGENT_API_KEY", "explicit"}, {"UAGENT_USAGE_FILE", "/tmp/child"}});

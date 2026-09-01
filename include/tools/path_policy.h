@@ -28,23 +28,19 @@ enum class PathTarget {
 // shell command can still reach the same paths.
 inline bool SelfConfigurationPath(const std::string& path) {
   if (path.empty()) return false;
-  std::error_code ec;
-  std::filesystem::path candidate = std::filesystem::absolute(path, ec);
-  if (ec) return false;
-  candidate = candidate.lexically_normal();
+  std::filesystem::path candidate = CanonicalAccessPath(path);
   auto matches = [&](const std::string& target) {
-    if (target.empty()) return false;
-    std::error_code target_ec;
-    std::filesystem::path resolved =
-        std::filesystem::absolute(target, target_ec).lexically_normal();
-    return !target_ec && resolved == candidate;
+    return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
       matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE"))) {
     return true;
   }
-  // A workspace .mcp.json decides which servers are spawned.
-  return candidate.filename() == ".mcp.json";
+  // A workspace .mcp.json decides which servers are spawned. Preserve the
+  // basename rule for nested workspaces while recognizing either spelling of
+  // a symlink.
+  return std::filesystem::path(path).filename() == ".mcp.json" ||
+         candidate.filename() == ".mcp.json";
 }
 
 inline ApprovalClass PathApprovalClass(const std::string& path) {

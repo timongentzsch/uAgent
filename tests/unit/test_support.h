@@ -208,6 +208,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestTerminalSafety)                   \
   X(TestTerminalInputDecoder)             \
   X(TestSseChunkPartitions)               \
+  X(TestChatCompletionAnnotationDeduplication) \
   X(TestConfigDocumentPreservesFile)      \
   X(TestConfigProposalAndCommit)          \
   X(TestProjectConfigTrustRestamp)        \
@@ -220,6 +221,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSignalAndFileWatch)               \
   X(TestActivityBufferAndAdmission)       \
   X(TestActivityStateGraph)               \
+  X(TestDetachedActivityOwnership)       \
   X(TestActivitySessions)                 \
   X(TestActivityDescriptorAndInputPolicy) \
   X(TestActivityWaitAndDelivery)          \

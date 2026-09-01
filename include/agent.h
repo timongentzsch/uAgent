@@ -73,6 +73,10 @@ class Agent {
 
   void RouteChanged();
 
+  // Approval mode is host-owned but can change between interactive turns.
+  // Rebuild message zero after the host updates its canonical environment.
+  void ApprovalChanged();
+
   std::string ActiveRoute() const;
 
   // Session picker's one-line title.
@@ -263,7 +267,7 @@ class Agent {
   bool DegradeAndRetry(const ChatResult& result);
 
   std::string SystemPrompt() const;
-  void RefreshSystemMessage();
+  void RefreshSystemMessage(bool force = false);
   std::string RuntimeContextText() const;
 
   // Message 0 is the one place the system shape is defined. Always rebuilt

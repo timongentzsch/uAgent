@@ -114,10 +114,6 @@ ToolResult ListCollaborators(const ProcessSupervisor& processes) {
                                      : JsonDump(records, 2));
 }
 
-// Concurrency is enforced by the spawn path (RunShellCommand reserves an
-// activity slot bounded by MaxBackgroundJobs); this is only a runaway ceiling.
-int64_t MaxSubagentCallsPerTurn() { return SubagentCallsPerTurn(); }
-
 std::string JoinSelections(std::vector<std::string> selections) {
   std::sort(selections.begin(), selections.end());
   selections.erase(std::unique(selections.begin(), selections.end()),
@@ -405,7 +401,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             ChildAgentEnvironment(std::move(route));
         // A caller that knows the shape of the subtask may raise or lower the
         // ceiling for that one child; the schema bounds it, and the session
-        // cost budget still applies underneath.
+        // budgets still apply underneath.
         int64_t steps = JsonValue(arguments, "max_steps", SubagentMaxSteps());
         int64_t tool_calls =
             JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls());
@@ -537,7 +533,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   tool.delegates = true;
   tool.retain_output = true;
   tool.available_in_lean = false;
-  tool.max_calls_per_turn = MaxSubagentCallsPerTurn();
+  // Concurrency is enforced by the spawn path (RunShellCommand reserves an
+  // activity slot bounded by MaxBackgroundJobs); this is only a runaway
+  // ceiling.
+  tool.max_calls_per_turn = SubagentCallsPerTurn();
   tool.summary = [&api, &routes, &providers](const json& arguments) {
     std::string operation = JsonValue(arguments, "operation", "spawn");
     if (operation == "list") return std::string("list collaborators");

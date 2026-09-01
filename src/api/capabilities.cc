@@ -171,7 +171,13 @@ RejectedCapability RejectedRouteCapability(
       evidence.find("stream_options") != std::string::npos) {
     return RejectedCapability::kStreamUsage;
   }
-  if (capabilities.native_tools && evidence.find("tool") != std::string::npos) {
+  auto unsupported_feature = [&](std::string_view noun) {
+    return evidence.find(noun) != std::string::npos &&
+           (evidence.find("unsupported") != std::string::npos ||
+            evidence.find("not support") != std::string::npos ||
+            evidence.find("doesn't support") != std::string::npos);
+  };
+  if (capabilities.native_tools && unsupported_feature("tool")) {
     return RejectedCapability::kNativeTools;
   }
   return RejectedCapability::kNone;

@@ -1005,9 +1005,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
       EventId::kTurnCompleted,
       {{"turn", turn_id_},
        {"outcome", TurnOutcomeName(state.stop.outcome)},
-       {"steps", state.limits.max_steps > 0 && step >= state.limits.max_steps
-                     ? state.limits.max_steps
-                     : step + 1},
+       {"steps", steps_used},
        {"tool_calls", state.metrics.tool_count},
        {"duration_ms", secs * 1000},
        {"ttt_ms", state.metrics.ttt_ms},

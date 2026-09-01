@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <cstdlib>
-#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,14 +41,13 @@ bool SensitiveEnvironmentKey(std::string_view key) {
       lower == "xauthority") {
     return true;
   }
-  static constexpr std::string_view kMarkers[] = {
-      "_api_key",  "_access_key", "_private_key",  "_token",      "_secret",
-      "_password", "_credential", "authorization", "_auth_token", "_cookie",
-  };
-  return std::any_of(std::begin(kMarkers), std::end(kMarkers),
-                     [&](std::string_view marker) {
-                       return lower.find(marker) != std::string::npos;
-                     });
+  if (CredentialLikeKey(lower)) return true;
+  static constexpr std::string_view kAdditionalMarkers[] = {
+      "_access_key", "_private_key", "_cookie"};
+  for (std::string_view marker : kAdditionalMarkers) {
+    if (lower.find(marker) != std::string::npos) return true;
+  }
+  return false;
 }
 
 }  // namespace

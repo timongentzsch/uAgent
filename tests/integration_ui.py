@@ -19,6 +19,53 @@ from integration_support import (
 from memory_fixture import project_memory_dir
 
 
+def test_yolo_toggle_refreshes_approval_state(root, home):
+    def route(_, body):
+        messages = body["messages"]
+        system = messages[0].get("content", "")
+        turns = [
+            (index, str(message.get("content", "")))
+            for index, message in enumerate(messages)
+            if message.get("role") == "user"
+            and str(message.get("content", "")) in {"check-on", "check-off"}
+        ]
+        assert_true(turns, messages)
+        turn_start, turn_prompt = turns[-1]
+        results = [
+            str(message.get("content", ""))
+            for message in messages[turn_start + 1 :]
+            if message.get("role") == "tool"
+        ]
+        on_turn = turn_prompt == "check-on"
+        expected_mode = "automatic" if on_turn else "prompted"
+        expected_env = "env-on" if on_turn else "env-off"
+        assert_true(f"approval={expected_mode}" in system, system)
+        if results:
+            assert_true(expected_env in results[-1], results)
+            return event({"content": f"{expected_env}-ok"})
+        env_value = "yolo" if on_turn else "prompt"
+        return tool_call(
+            "run",
+            {
+                "command": (
+                    f'test "$UAGENT_APPROVAL" = {env_value} && printf {expected_env}'
+                )
+            },
+        )
+
+    with Server([route]) as server:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "/yolo\ncheck-on\n/yolo\ncheck-off\ny\n/q\n",
+        )
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true("env-on-ok" in result.stdout, result.stdout)
+        assert_true("env-off-ok" in result.stdout, result.stdout)
+        assert_true(result.stdout.count("allow run?") == 1, result.stdout)
+        assert_true(len(server.requests) == 4, server.requests)
+
+
 def test_command_help(root, home):
     with Server([event({"content": "unused"})]) as server:
         result = run_dialog(root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n")

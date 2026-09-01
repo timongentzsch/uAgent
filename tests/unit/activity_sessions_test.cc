@@ -6,8 +6,10 @@
 
 #include <array>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -685,6 +687,76 @@ void TestActivityWaitAndDelivery() {
   if (!handed_off.empty()) {
     CHECK(ProcessGroupAlive(handed_off[0].pid));
     CHECK(ToolActivityStop(handoff, ActivityId(handed_off[0])).Ok());
+  }
+}
+
+void TestDetachedActivityOwnership() {
+  ToolContext context{std::chrono::steady_clock::now() +
+                      std::chrono::seconds(10)};
+  TestWorkspace workspace("detached-ownership");
+
+  // A detached leader may already have been reaped by another lifecycle
+  // owner when automatic completion observes it. ECHILD plus a dead process
+  // group is still a completed activity, not one that remains supervised
+  // forever.
+  ProcessSupervisor reaped_completion;
+  ShellCommandResult detached = RunShellCommand(
+      reaped_completion, context,
+      {.command = "printf reaped-detached", .detach = true, .immediate = true});
+  CHECK(detached.result.Ok());
+  std::vector<BgJob> detached_jobs = reaped_completion.Snapshot();
+  CHECK(detached_jobs.size() == 1);
+  if (!detached_jobs.empty()) {
+    const BgJob& job = detached_jobs.front();
+    int status = 0;
+    CHECK(WaitPid(job.pid, &status) == job.pid);
+    for (int attempt = 0; attempt < 100 && ProcessGroupAlive(job.pid);
+         ++attempt) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(!ProcessGroupAlive(job.pid));
+    errno = 0;
+    CHECK(WaitPid(job.pid, &status) < 0);
+    CHECK(errno == ECHILD);
+
+    std::vector<std::string> completed = BgTakeCompleted(reaped_completion);
+    CHECK(completed.size() == 1);
+    CHECK(!completed.empty() &&
+          completed.front().find("reaped-detached") != std::string::npos);
+    CHECK(!reaped_completion.Find(job.pid).has_value());
+    CHECK(!std::filesystem::exists(DetachedRecordPath(job.pid)));
+    CHECK(!std::filesystem::exists(job.log));
+  }
+
+  // Stopping an ordinary supervised job owns that job's log, but not a
+  // detached record that happens to use the same process id. Such a record can
+  // survive PID reuse and must only be unlinked for detached activities.
+  ProcessSupervisor background_stop;
+  CHECK(RunShellCommand(background_stop, context,
+                        {.command = "sleep 20",
+                         .background = true,
+                         .immediate = true})
+            .result.Ok());
+  std::vector<BgJob> background_jobs = background_stop.Snapshot();
+  CHECK(background_jobs.size() == 1);
+  if (!background_jobs.empty()) {
+    const BgJob& job = background_jobs.front();
+    std::string sentinel_log = (workspace.root / "detached-sentinel.log").string();
+    {
+      std::ofstream output(sentinel_log);
+      output << "detached sentinel\n";
+    }
+    CHECK(SaveDetachedRecord(job.pid, sentinel_log, "detached sentinel").Ok());
+    std::string record_path = DetachedRecordPath(job.pid);
+    CHECK(std::filesystem::exists(record_path));
+
+    ToolResult stopped = ToolActivityStop(background_stop, ActivityId(job));
+    CHECK(stopped.Ok());
+    CHECK(std::filesystem::exists(record_path));
+    CHECK(std::filesystem::exists(sentinel_log));
+
+    unlink(record_path.c_str());
+    RemoveLog(sentinel_log);
   }
 }
 

@@ -5,6 +5,8 @@
 
 #include "tests/unit/test_support.h"
 
+#include "include/tools/path_policy.h"
+
 namespace uagent {
 
 void TestFileTools() {
@@ -341,6 +343,24 @@ void TestFileTools() {
   CHECK(CanonicalAccessPath("uagent-absent-probe.txt").is_absolute());
   CHECK(PathWithin(CanonicalAccessPath("uagent-absent-probe.txt"),
                    CanonicalAccessPath(".")));
+
+  // Mandatory approval follows the same canonical spelling as workspace
+  // access checks, so a symlink cannot disguise the configured file and a
+  // configured symlink cannot disguise its target.
+  fs::path custom_config = root / "custom-config";
+  fs::path custom_config_alias = root / "custom-config-alias";
+  CHECK(ToolWriteFile(custom_config.string(), "MODEL=test\n").Ok());
+  fs::create_symlink(custom_config, custom_config_alias);
+  {
+    ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config.string());
+    CHECK(SelfConfigurationPath(custom_config_alias.string()));
+    CHECK(PathApprovalClass(custom_config_alias.string()) ==
+          ApprovalClass::kMandatoryHuman);
+  }
+  {
+    ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config_alias.string());
+    CHECK(SelfConfigurationPath(custom_config.string()));
+  }
 
   fs::path fifo = root / "pipe";
   CHECK(mkfifo(fifo.c_str(), 0600) == 0);

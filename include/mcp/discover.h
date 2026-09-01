@@ -73,8 +73,9 @@ inline bool McpFetchToolDefinitions(
   std::set<std::string> cursors;
   int64_t pages = 0;
   do {
-    if (!McpToolPageAllowed(s.name, config.mcp_pages, pages, cursors, cursor))
+    if (!McpToolPageAllowed(s.name, config.mcp_pages, pages, cursors, cursor)) {
       return false;
+    }
     int64_t remaining = SecondsUntil(deadline);
     if (remaining <= 0) {
       McpError(s.name, "tools/list deadline exceeded");

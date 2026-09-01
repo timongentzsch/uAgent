@@ -814,6 +814,25 @@ void TestDetachedActivityOwnership() {
     CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
     (void)detached_pool.TakeAllForShutdown();
   }
+
+  // A pool too small to hold the headroom still admits a child: delegation
+  // stays possible, and the parent waits rather than the reverse.
+  {
+    ScopedEnv tiny("UAGENT_MAX_BACKGROUND_JOBS", "1");
+    ProcessSupervisor single;
+    ShellCommandResult child =
+        RunShellCommand(single, context,
+                        {.command = "printf tiny-pool", .job_kind = "subagent"});
+    CHECK(child.result.Ok());
+    CHECK(child.result.output.find("tiny-pool") != std::string::npos);
+    CHECK(single.TryAdd({999821, "", "holder", false, "subagent"}, 1));
+    ShellCommandResult blocked =
+        RunShellCommand(single, context, {.command = "printf blocked"});
+    CHECK(!blocked.result.Ok());
+    CHECK(blocked.result.output.find("background job limit reached (1)") !=
+          std::string::npos);
+    (void)single.TakeAllForShutdown();
+  }
 }
 
 }  // namespace uagent

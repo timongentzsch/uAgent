@@ -3,6 +3,7 @@
 #include "include/core/env.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdlib>
 #include <limits>
 #include <string>
@@ -233,6 +234,19 @@ int64_t TerminalRecordDays() {
 
 std::string ShellEnvironmentAllowlist() {
   return StringSetting(Cfg("UAGENT_SHELL_ENV_ALLOW"));
+}
+
+std::atomic<bool>& ApprovalAutomaticFlag() {
+  static std::atomic<bool> automatic{false};
+  return automatic;
+}
+
+bool ApprovalIsAutomatic() {
+  return ApprovalAutomaticFlag().load(std::memory_order_relaxed);
+}
+
+void SetApprovalAutomatic(bool automatic) {
+  ApprovalAutomaticFlag().store(automatic, std::memory_order_relaxed);
 }
 
 namespace {

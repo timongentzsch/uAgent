@@ -46,11 +46,7 @@ def test_yolo_toggle_refreshes_approval_state(root, home):
         env_value = "yolo" if on_turn else "prompt"
         return tool_call(
             "run",
-            {
-                "command": (
-                    f'test "$UAGENT_APPROVAL" = {env_value} && printf {expected_env}'
-                )
-            },
+            {"command": (f'test "$UAGENT_APPROVAL" = {env_value} && printf {expected_env}')},
         )
 
     with Server([route]) as server:

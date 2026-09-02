@@ -195,17 +195,19 @@ jobs:
         run: |
           cmake --build --preset coverage --target uagent_tests uagent --parallel
           ctest --preset coverage -R '^(core|integration_.*)$'
-      # The floor is deliberately below the measured number: it was measured
-      # locally (87.0% line, Apple clang/llvm-cov) and this job is gcc/gcovr,
-      # so the two disagree by an unknown margin. Raise it to the first green
-      # CI figure minus ~2 once that number exists.
+      # The floor sits ~2 points below the measured line rate. Measured on this
+      # job's own test selection and filters, locally, with gcovr driving
+      # llvm-cov gcov: 69.7%. That local number is trustworthy here because the
+      # one figure real gcc/gcovr ever produced -- 57.8% from run 33103436328,
+      # core tests only -- reproduces locally as 57.4% on the same selection, so
+      # the two toolchains disagree by well under a point.
       - name: Generate branch report
         run: >-
           gcovr --root .
           --filter include --filter src
           --exclude third_party
           --branches
-          --fail-under-line 80
+          --fail-under-line 67
           --gcov-ignore-parse-errors negative_hits.warn_once_per_file
           --print-summary
           --xml-pretty

@@ -35,6 +35,12 @@ double EnvDouble(const char* name, double dflt) {
   return ParseFiniteDouble(v, value) ? value : dflt;
 }
 
+bool EnvBool(const char* name, bool dflt) {
+  bool value = dflt;
+  ParseBool(EnvStr(name), value);
+  return value;
+}
+
 namespace {
 
 bool OneOf(std::string_view value,
@@ -383,10 +389,10 @@ RuntimeConfig RuntimeConfig::FromValues(const Values& values) {
                                           option.descriptor->default_value));
   }
   for (const auto& option : kBoolOptions) {
+    bool parsed = std::get<bool>(option.descriptor->default_value);
     const std::string* selected = value(option.Env());
-    config.*option.field =
-        selected ? *selected != "0"
-                 : std::get<bool>(option.descriptor->default_value);
+    if (selected) ParseBool(*selected, parsed);
+    config.*option.field = parsed;
   }
   for (const auto& option : kDoubleOptions) {
     const std::string* selected = value(option.Env());

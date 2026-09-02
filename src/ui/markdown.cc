@@ -202,7 +202,7 @@ std::vector<std::string> SplitCells(const std::string& text) {
 
 }  // namespace
 
-MdStream::MdStream() { on = g_tty && EnvStr("UAGENT_MARKDOWN", "1") != "0"; }
+MdStream::MdStream() { on = g_tty && EnvBool("UAGENT_MARKDOWN", true); }
 
 void MdStream::Feed(std::string_view s) {
   std::string safe = TerminalSafe(s);

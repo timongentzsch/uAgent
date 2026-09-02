@@ -4,6 +4,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -253,7 +254,9 @@ std::string RedactSecretAssignments(
   return out;
 }
 
-bool ValidateValue(const ConfigDescriptor& descriptor, const std::string& value,
+// Booleans are normalized to 0/1 in place, so the file keeps one spelling
+// whichever of the accepted words the caller wrote.
+bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
                    std::string& error) {
   const std::string name(descriptor.environment);
   switch (descriptor.type) {
@@ -278,12 +281,15 @@ bool ValidateValue(const ConfigDescriptor& descriptor, const std::string& value,
       }
       return true;
     }
-    case ConfigType::kBool:
-      if (value != "0" && value != "1") {
-        error = name + " expects 0 or 1";
+    case ConfigType::kBool: {
+      bool parsed = false;
+      if (!ParseBool(value, parsed)) {
+        error = name + " expects 0 or 1 (also true/false, yes/no, on/off)";
         return false;
       }
+      value = parsed ? "1" : "0";
       return true;
+    }
     case ConfigType::kString:
       return true;
   }
@@ -374,6 +380,10 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
   }
 
   std::set<std::string> seen;
+  // What each key will actually hold: validation may canonicalize a value
+  // (a boolean spelling becomes 0/1), and the read-back check below has to
+  // compare against what was written, not what was asked for.
+  std::map<std::string, std::string> written;
   json diagnostics = manager.DiagnosticJson(active);
   const json& sources = diagnostics["sources"];
   proposal.snapshot = ReadFileBytes(proposal.target, proposal.existed);
@@ -408,14 +418,15 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
       proposal.error = change.key + " cannot be set at this scope";
       return proposal;
     }
-    if (!change.unset &&
-        !ValidateValue(*descriptor, change.value, proposal.error)) {
+    std::string value = change.value;
+    if (!change.unset && !ValidateValue(*descriptor, value, proposal.error)) {
       return proposal;
     }
     bool applied = change.unset
                        ? document.Unset(change.key, proposal.error)
-                       : document.Set(change.key, change.value, proposal.error);
+                       : document.Set(change.key, value, proposal.error);
     if (!applied) return proposal;
+    if (!change.unset) written.emplace(change.key, value);
 
     ConfigChangeEffect effect;
     effect.key = change.key;
@@ -424,7 +435,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                             ? "<unset>"
                             : DisplayValue(*descriptor, existing->second);
     effect.proposed =
-        change.unset ? "<unset>" : DisplayValue(*descriptor, change.value);
+        change.unset ? "<unset>" : DisplayValue(*descriptor, value);
     effect.source = JsonValue(sources, change.key.c_str(), "default");
     effect.effect = ClassifyEffect(*descriptor, effect.source,
                                    scope == ConfigProposalScope::kUser);
@@ -450,7 +461,9 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
       }
       continue;
     }
-    if (found == after.end() || found->second != change.value) {
+    auto expected = written.find(change.key);
+    if (found == after.end() || expected == written.end() ||
+        found->second != expected->second) {
       proposal.error = change.key + " would not read back as written";
       return proposal;
     }

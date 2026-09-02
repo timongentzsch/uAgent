@@ -73,6 +73,23 @@ bool ParseFiniteDouble(const char* text, double& value) {
   return true;
 }
 
+bool ParseBool(std::string_view text, bool& value) {
+  static constexpr std::string_view kTrue[] = {"1", "true", "yes", "on"};
+  static constexpr std::string_view kFalse[] = {"0", "false", "no", "off"};
+  const std::string spelling = AsciiLower(std::string(text));
+  if (std::find(std::begin(kTrue), std::end(kTrue), spelling) !=
+      std::end(kTrue)) {
+    value = true;
+    return true;
+  }
+  if (std::find(std::begin(kFalse), std::end(kFalse), spelling) !=
+      std::end(kFalse)) {
+    value = false;
+    return true;
+  }
+  return false;
+}
+
 std::string Unquote(std::string s) {
   if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
                         (s.front() == '\'' && s.back() == '\''))) {

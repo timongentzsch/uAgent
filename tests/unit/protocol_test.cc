@@ -135,7 +135,7 @@ void TestTextToolProtocol() {
       "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}"
       "}"
       "[/uagent_tool_call]");
-  CHECK(calls.size() == 1);
+  REQUIRE(calls.size() == 1);
   CHECK(calls[0].name == "read_file");
   std::string spaced_call =
       std::string(kTtOpen) +

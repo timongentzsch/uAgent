@@ -1,0 +1,53 @@
+# The CI smoke run is a regression check: a few thousand executions from the
+# committed corpus, sized to keep a pull request fast. Finding a new input
+# takes longer than that, so the search runs here on its own schedule and
+# hands back whatever it reached as the next run's starting point.
+name: Fuzz
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzzer: [sse, input_decoder]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y clang libcurl4-openssl-dev
+      - name: Configure fuzzers
+        env:
+          CC: clang
+          CXX: clang++
+        run: cmake --preset fuzz
+      - name: Build fuzzer
+        run: >-
+          cmake --build --preset fuzz
+          --target uagent_fuzz_${{ matrix.fuzzer }} --parallel
+      # -max_total_time bounds the search; a crash still fails the step, and
+      # -print_final_stats records how far the run got in the log.
+      - name: Fuzz
+        run: |
+          cp -r tests/fuzz/corpus/${{ matrix.fuzzer }} /tmp/corpus
+          build/fuzz/uagent_fuzz_${{ matrix.fuzzer }} \
+            -max_total_time=300 -print_final_stats=1 /tmp/corpus
+      # The grown corpus is an artifact rather than a commit: promoting inputs
+      # back into tests/fuzz/corpus/ is a human decision, since every one of
+      # them is replayed by every later CI smoke run.
+      - name: Upload corpus
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-corpus-${{ matrix.fuzzer }}
+          path: /tmp/corpus
+          if-no-files-found: error
+          retention-days: 14

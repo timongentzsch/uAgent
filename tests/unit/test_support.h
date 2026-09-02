@@ -151,7 +151,9 @@ inline bool WaitForActivityDrain(
 }
 
 extern int failures;
-void Check(bool condition, const char* expression, const char* file, int line);
+// Records a failure and returns whether the condition held; the run continues
+// so one execution reports every failure rather than the first.
+bool Check(bool condition, const char* expression, const char* file, int line);
 
 template <typename Writer>
 std::string CaptureStdout(Writer&& writer, bool color = false,
@@ -257,5 +259,14 @@ UAGENT_TESTS(UAGENT_DECLARE_TEST)
 
 #define CHECK(expression) \
   ::uagent::Check((expression), #expression, __FILE__, __LINE__)
+
+// CHECK for a condition the rest of the test body dereferences: a failed CHECK
+// keeps going, so `CHECK(opt.has_value()); use(*opt);` crashes the whole binary
+// instead of reporting one failed case. REQUIRE reports and leaves.
+#define REQUIRE(expression)                                              \
+  do {                                                                   \
+    if (!::uagent::Check((expression), #expression, __FILE__, __LINE__)) \
+      return;                                                            \
+  } while (0)
 
 #endif  // UAGENT_TESTS_UNIT_TEST_SUPPORT_H_

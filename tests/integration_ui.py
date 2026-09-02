@@ -724,6 +724,51 @@ def test_input_slash_suggestions_and_tab_completion(root, home):
         assert_true(not server.get_requests, server.get_requests)
 
 
+def test_input_at_path_suggestions_and_tab_completion(root, home):
+    """`@` completes a path a segment at a time, the way a shell does.
+
+    Naming a file costs the draft a few keystrokes; describing one costs the
+    agent a grep and a read round to find what was meant. The rows are the same
+    block the slash suggestions use, so they are erased with the draft.
+    """
+    (root / "alpha").mkdir()
+    (root / "alpha" / "inner.txt").write_text("x", encoding="utf-8")
+    (root / "alphabet.txt").write_text("x", encoding="utf-8")
+    (root / "beta.txt").write_text("x", encoding="utf-8")
+    (root / ".hidden.txt").write_text("x", encoding="utf-8")
+
+    def answer(_, body):
+        user = next(
+            message.get("content")
+            for message in reversed(body["messages"])
+            if message.get("role") == "user"
+        )
+        return event({"content": "path-ok" if user == "read @alpha/inner.txt" else f"path-bad:{user!r}"})
+
+    with Server([answer]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                # Two entries share the prefix, so Tab commits only "alpha".
+                (b"read @alph", b"@alphabet.txt"),
+                (b"\t", b"@alpha"),
+                # Descending into the directory re-lists from inside it.
+                (b"/", b"@alpha/inner.txt"),
+                (b"\t\n", b"path-ok"),
+                b"/q\n",
+            ],
+        )
+        assert_true(code == 0, output)
+        # Both candidates are offered; a dotfile nobody asked for is not.
+        assert_true(b"@alpha/" in output, output)
+        assert_true(b"@alphabet.txt" in output, output)
+        assert_true(b".hidden.txt" not in output, output)
+        # An unrelated sibling is never a candidate for this prefix.
+        assert_true(b"beta.txt" not in output, output)
+        assert_true(b"path-ok" in output, output)
+
+
 def test_input_shift_enter_keeps_the_draft_open(root, home):
     """Shift+Enter is a newline in the draft; Enter is still the submission."""
 

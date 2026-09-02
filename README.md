@@ -156,6 +156,7 @@ reasoning and expanded bounded tool output.
 | Escape | Interrupt the foreground operation and apply queued steering |
 | Shift+Enter, Alt+Enter | Keep the draft open on a new line; Enter still submits |
 | Tab after `/` | Complete the command being typed from the rows below the draft |
+| Tab after `@` | Complete a path one segment at a time from the same rows |
 | Ctrl+C while idle | Ask first; a second press within two seconds exits |
 | `/models`, `/model` | Search or change model route |
 | `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |

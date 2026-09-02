@@ -96,6 +96,13 @@ std::string ConfigMarkdown() {
       "applies at the next prompt, and `restart-required` when it does not. "
       "Secret values are never displayed; diagnostics report only whether they "
       "are set.\n";
+  // A contents list, because this is the one reference long enough that a
+  // reader previewing the head of it would otherwise see only the first few
+  // categories and conclude the rest are missing.
+  out += "\n## Contents\n\n";
+  for (const std::string& category : categories) {
+    out += "- " + category + "\n";
+  }
   for (const std::string& category : categories) {
     out += "\n## " + category + "\n\n";
     out +=

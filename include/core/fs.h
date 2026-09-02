@@ -86,6 +86,14 @@ inline constexpr const char* kHistoryDir = "history";
 inline constexpr const char* kSessionsDir = "sessions";
 inline constexpr const char* kBgDir = "bg";
 inline constexpr const char* kTerminalsDir = "terminals";
+// Detached logs sit one level below their records rather than beside them. A
+// record names the log to remove and the process group to kill, so a writer
+// that can reach the records directory can forge one and redirect both. The
+// logs are the only part a command's own output has to reach, so they are the
+// only part that can be made writable. Readers need no split: every one of
+// them follows the full path stored in the record, and the record scan is
+// non-recursive and filters .json, so it does not see this subdirectory.
+inline constexpr const char* kTerminalLogsDir = "terminals/logs";
 inline constexpr const char* kArtifactsDir = "artifacts";
 inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";

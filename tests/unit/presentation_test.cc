@@ -2,7 +2,10 @@
 
 #include "include/ui/presentation.h"
 
+#include <unistd.h>
+
 #include <chrono>
+#include <cstdio>
 #include <string>
 
 #include "include/tools/child_agent.h"
@@ -20,6 +23,53 @@ ActivityView Working(std::chrono::milliseconds elapsed) {
   view.context_window = 1300000;
   return view;
 }
+
+// Render the idle row at a known width. TerminalColumns() probes TIOCGWINSZ on
+// both standard descriptors before it falls back to COLUMNS, so both have to
+// be something that is not a terminal -- otherwise this passes under ctest,
+// where they are pipes, and silently measures the developer's window when the
+// binary is run by hand.
+class FixedWidth {
+ public:
+  explicit FixedWidth(int columns) {
+    const char* prior = getenv("COLUMNS");
+    had_columns_ = prior != nullptr;
+    if (prior) saved_columns_ = prior;
+    setenv("COLUMNS", std::to_string(columns).c_str(), 1);
+    empty_ = tmpfile();
+    if (empty_) {
+      saved_out_ = dup(STDOUT_FILENO);
+      saved_in_ = dup(STDIN_FILENO);
+      dup2(fileno(empty_), STDOUT_FILENO);
+      dup2(fileno(empty_), STDIN_FILENO);
+    }
+  }
+  ~FixedWidth() {
+    if (saved_out_ >= 0) {
+      dup2(saved_out_, STDOUT_FILENO);
+      close(saved_out_);
+    }
+    if (saved_in_ >= 0) {
+      dup2(saved_in_, STDIN_FILENO);
+      close(saved_in_);
+    }
+    if (empty_) fclose(empty_);
+    if (had_columns_) {
+      setenv("COLUMNS", saved_columns_.c_str(), 1);
+    } else {
+      unsetenv("COLUMNS");
+    }
+  }
+  FixedWidth(const FixedWidth&) = delete;
+  FixedWidth& operator=(const FixedWidth&) = delete;
+
+ private:
+  bool had_columns_ = false;
+  std::string saved_columns_;
+  FILE* empty_ = nullptr;
+  int saved_out_ = -1;
+  int saved_in_ = -1;
+};
 
 Tool PollingActivityTool() {
   Tool tool;
@@ -245,6 +295,85 @@ void TestActivityBar() {
   // A child's progress never displaces what this process is doing itself.
   interrupting.subagent = "agent-1a2b3c4d: · reading";
   CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
+
+  g_tty = prior;
+  g_color = prior_color;
+}
+
+// The idle row drops segments by priority when the window is too narrow. The
+// order is the whole point -- it is what decides that a user on a small
+// terminal keeps the route and loses the cache hit rate rather than the other
+// way round -- and until now nothing measured it.
+void TestStatusBarDropsByPriority() {
+  bool prior = g_tty;
+  bool prior_color = g_color;
+  g_tty = true;
+  g_color = false;
+
+  Api api{RuntimeConfig{}};
+  api.ctx_window = 1300000;
+  Usage usage;
+  usage.input = 12000;
+  usage.output = 3400;
+  usage.cache_read = 6000;
+  usage.cost = 0.42;
+  StatusView view;
+  view.model = "anthropic/claude-sonnet-4-5";
+  view.context_used = 12000;
+  view.verbose = true;
+  view.attachments = 2;
+  view.background = 1;
+
+  // Wide enough for everything: the full row is the baseline the narrower
+  // widths are read against.
+  std::string wide;
+  {
+    FixedWidth columns(200);
+    wide = StatusBar(api, usage, view);
+  }
+  CHECK(wide ==
+        "anthropic/claude-sonnet-4-5 · ctx 12.0K/1.3M · 99% left · "
+        "12.0K in · 3.4K out · cache 33% · $0.4200 · bg:1 · 2 attached · "
+        "verbose · /help for shortcuts");
+
+  // Each narrower width is a prefix of the priorities that survive: 7 (the
+  // hint) goes first, then 6 (verbose), then 5 (cache), and so on.
+  std::string medium;
+  {
+    FixedWidth columns(80);
+    medium = StatusBar(api, usage, view);
+  }
+  CHECK(medium.find("/help for shortcuts") == std::string::npos);
+  CHECK(medium.find("verbose") == std::string::npos);
+  CHECK(medium.find("anthropic/claude-sonnet-4-5") != std::string::npos);
+  CHECK(DisplayWidth(medium) <= 80);
+
+  std::string narrow;
+  {
+    FixedWidth columns(40);
+    narrow = StatusBar(api, usage, view);
+  }
+  CHECK(DisplayWidth(narrow) <= 40);
+  CHECK(narrow.find("cache 33%") == std::string::npos);
+  CHECK(narrow.find("12.0K in") == std::string::npos);
+
+  // Priority 0 is never dropped, even when it alone overflows: the row would
+  // otherwise stop saying where the request goes.
+  {
+    FixedWidth columns(4);
+    std::string squeezed = StatusBar(api, usage, view);
+    CHECK(squeezed == "anthropic/claude-sonnet-4-5");
+  }
+
+  // A resolved provider scope is the whole of segment 0; an unresolvable one
+  // appends the host, and that pair still cannot be split apart.
+  {
+    FixedWidth columns(4);
+    StatusView hosted = view;
+    hosted.model = "local-model";
+    hosted.host = "127.0.0.1";
+    CHECK(StatusBar(api, usage, hosted) == "local-model @ 127.0.0.1");
+  }
 
   g_tty = prior;
   g_color = prior_color;

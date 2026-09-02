@@ -61,6 +61,14 @@ std::string ChildAgentRecoverEnvelope(std::string output,
 
 std::string ChildAgentStopNote(const json& stop);
 
+// The collaborator record this process is resuming, or empty when this process
+// is not a collaborator. The parent hands it down as a path in the child's
+// environment, so it is validated once here -- inside the collaborators
+// directory, canonicalized -- rather than trusted at each of the places that
+// ask. Memoized: it is fixed for the lifetime of the process, and it answers
+// the question "am I somebody's child" on paths that run every step.
+const std::string& CollaboratorSessionFile();
+
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the
 // refusal to hand back, or nothing when the call may proceed, and reports the

@@ -37,6 +37,7 @@
 #include "include/mcp/rpc.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
 #include "include/ui/display.h"
@@ -53,16 +54,9 @@ class Application {
         runtime_(context.runtime),
         api_(runtime_.api),
         agent_(*context.agent),
+        session_file_(CollaboratorSessionFile()),
         saved_revision_(agent_.Revision()),
-        channel_(context.channel) {
-    std::string requested = EnvStr("UAGENT_INTERNAL_SESSION_FILE");
-    if (!requested.empty()) {
-      std::filesystem::path root =
-          CanonicalAccessPath(UagentDir("collaborators"));
-      std::filesystem::path path = CanonicalAccessPath(requested);
-      if (PathWithin(path, root)) session_file_ = path.string();
-    }
-  }
+        channel_(context.channel) {}
 
   AppSession Session() {
     return AppSession{context_, attachments_, session_file_, saved_revision_};

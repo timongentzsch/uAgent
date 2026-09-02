@@ -251,6 +251,10 @@ def test_subagent_followup_resumes_durable_conversation(root, home):
         assert_true(len(records) == 1, records)
         state = json.loads(records[0].read_text(encoding="utf-8"))
         assert_true(state["directive"] == "always mention beta", state)
+        # A collaborator has to know it is one: guidance can arrive mid-run as
+        # an ordinary user message, which it cannot infer from its own prompt.
+        session = records[0].with_name(records[0].stem + ".session.json")
+        assert_true("[collaborator:" in session.read_text(encoding="utf-8"), session)
 
 
 def test_completed_child_answer_survives_collaborator_save_failure(root, home):

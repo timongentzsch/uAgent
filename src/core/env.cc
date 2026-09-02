@@ -118,6 +118,8 @@ bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
 
 bool SandboxEnabled() { return BoolSetting(Cfg("UAGENT_SANDBOX")); }
 
+bool SandboxNetworkAllowed() { return BoolSetting(Cfg("UAGENT_SANDBOX_NET")); }
+
 std::string SandboxWriteRoots() {
   return StringSetting(Cfg("UAGENT_SANDBOX_WRITE"));
 }

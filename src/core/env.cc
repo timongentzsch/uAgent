@@ -116,6 +116,12 @@ int64_t MaxOutputTokens() { return LongSetting(Cfg("UAGENT_MAX_TOKENS")); }
 
 bool SteeringEnabled() { return BoolSetting(Cfg("UAGENT_STEERING")); }
 
+bool SandboxEnabled() { return BoolSetting(Cfg("UAGENT_SANDBOX")); }
+
+std::string SandboxWriteRoots() {
+  return StringSetting(Cfg("UAGENT_SANDBOX_WRITE"));
+}
+
 bool AdaptiveSystemEnabled() { return BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM")); }
 
 std::string PromptOverlayPath() {

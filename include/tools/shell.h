@@ -30,6 +30,10 @@ struct ShellCommand {
   bool detach = false;
   bool immediate = false;
   bool tty = false;
+  // Confined by the OS sandbox when the session enforces one. Default-on so
+  // that a call site added later is confined without anyone remembering to ask
+  // for it; the two harness spawns that run uagent itself opt out explicitly.
+  bool sandbox = true;
   int64_t yield_ms = 0;
   int64_t max_output_chars = 0;
   std::string job_kind = {};

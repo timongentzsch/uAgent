@@ -32,6 +32,7 @@
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/platform.h"
+#include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
@@ -63,16 +64,41 @@ void ConfigureShellSpawn(posix_spawnattr_t& attributes,
                                             POSIX_SPAWN_SETSIGMASK));
 }
 
+// The shell that `bash` means on this host. Only needed under a sandbox
+// wrapper: there the spawn resolves the wrapper, so a missing shell surfaces
+// as the wrapper's own failure rather than as an errno the retry below could
+// read. Resolving in the parent keeps the same three candidates in the same
+// order.
+std::string ResolveShellExecutable(const std::string& shell) {
+  if (shell != "bash") return shell;
+  for (const char* candidate : {"/bin/bash", "/bin/sh"}) {
+    if (access(candidate, X_OK) == 0) return candidate;
+  }
+  return shell;
+}
+
 int SpawnShellWithFallback(const std::string& shell, std::string& command,
+                           const std::vector<std::string>& wrapper,
                            const posix_spawn_file_actions_t& actions,
                            const posix_spawnattr_t& attributes,
                            char* const* environment, pid_t& pid) {
   auto spawn = [&](const std::string& executable) {
-    char* const argv[] = {const_cast<char*>(executable.c_str()),
-                          const_cast<char*>("-c"), command.data(), nullptr};
-    return posix_spawnp(&pid, executable.c_str(), &actions, &attributes, argv,
+    std::vector<char*> argv;
+    argv.reserve(wrapper.size() + 4);
+    for (const std::string& word : wrapper) {
+      argv.push_back(const_cast<char*>(word.c_str()));
+    }
+    argv.push_back(const_cast<char*>(executable.c_str()));
+    argv.push_back(const_cast<char*>("-c"));
+    argv.push_back(command.data());
+    argv.push_back(nullptr);
+    // The program is the wrapper when there is one; the shell is then just its
+    // first argument, and `command` stays unwrapped either way.
+    const char* program = wrapper.empty() ? executable.c_str() : argv[0];
+    return posix_spawnp(&pid, program, &actions, &attributes, argv.data(),
                         environment);
   };
+  if (!wrapper.empty()) return spawn(ResolveShellExecutable(shell));
   int error = spawn(shell);
   // `bash` is the documented default, so fall back to the usual absolute
   // paths before giving up on a PATH that does not have it.
@@ -84,7 +110,8 @@ int SpawnShellWithFallback(const std::string& shell, std::string& command,
 // Spawn `shell -c command` with stdin at /dev/null, both output streams on the
 // log, default signal dispositions, and its own process group (or session, for
 // a detached terminal). Returns the posix_spawnp errno; `pid` is set on 0.
-int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
+int SpawnLoggedShell(const std::string& shell, std::string& command,
+                     const std::vector<std::string>& wrapper, int log_fd,
                      bool detach, char* const* environment, pid_t& pid) {
   posix_spawn_file_actions_t actions;
   posix_spawn_file_actions_init(&actions);
@@ -100,8 +127,8 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
   if (detach) group_flag = POSIX_SPAWN_SETSID;
 #endif
   ConfigureShellSpawn(attributes, group_flag);
-  int error = SpawnShellWithFallback(shell, command, actions, attributes,
-                                     environment, pid);
+  int error = SpawnShellWithFallback(shell, command, wrapper, actions,
+                                     attributes, environment, pid);
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
   return error;
@@ -109,6 +136,7 @@ int SpawnLoggedShell(const std::string& shell, std::string& command, int log_fd,
 
 // master_fd is set only on success; the caller owns it from then on.
 int SpawnPtyShell(const std::string& shell, std::string& command,
+                  const std::vector<std::string>& wrapper,
                   char* const* environment, pid_t& pid, int& master_fd) {
 #if defined(__unix__) || defined(__APPLE__)
   master_fd = -1;
@@ -140,8 +168,8 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   group_flag = POSIX_SPAWN_SETSID;
 #endif
   ConfigureShellSpawn(attributes, group_flag);
-  int error = SpawnShellWithFallback(shell, command, actions, attributes,
-                                     environment, pid);
+  int error = SpawnShellWithFallback(shell, command, wrapper, actions,
+                                     attributes, environment, pid);
   posix_spawnattr_destroy(&attributes);
   posix_spawn_file_actions_destroy(&actions);
   if (error == 0) master_fd = master.Release();
@@ -149,6 +177,7 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
 #else
   (void)shell;
   (void)command;
+  (void)wrapper;
   (void)environment;
   (void)pid;
   (void)master_fd;
@@ -192,11 +221,34 @@ ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
                          "agent's own commands). Wait for a child to finish");
 }
 
+// Resolves the wrapper argv for one spawn, or reports why this command cannot
+// run. Both failures are the same rule: a session that was told to confine and
+// cannot must not spawn anyway. That would be a silent unsandboxed command --
+// the one outcome the sandbox exists to rule out, arriving without a word.
+std::string SandboxWrapperFor(const ShellCommand& spec,
+                              std::vector<std::string>* wrapper) {
+  const SandboxStatus& status = SandboxRuntime();
+  if (!spec.sandbox) return {};
+  if (status.mode == SandboxMode::kRefused) {
+    return "error: UAGENT_SANDBOX is on but cannot be enforced: " +
+           status.reason + ". Set UAGENT_SANDBOX=0 to run commands unconfined";
+  }
+  if (status.mode != SandboxMode::kEnforced) return {};
+  *wrapper = SandboxWrapperArgv(status);
+  if (wrapper->empty()) {
+    return "error: the sandbox policy is too large to enforce (" +
+           std::to_string(status.policy.writable_roots.size()) +
+           " writable roots); remove entries from UAGENT_SANDBOX_WRITE";
+  }
+  return {};
+}
+
 // A detached terminal outlives the turn that starts it: its output goes to a
 // rotating log through a pump child, it has no session, no pipe and no
 // deadline, and an identical live command is reused rather than started twice.
 ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
-                                      ShellCommand& spec) {
+                                      ShellCommand& spec,
+                                      const std::vector<std::string>& wrapper) {
   const std::string& cmd = spec.command;
   if (std::optional<DetachedActivity> existing =
           FindRunningDetachedActivity(cmd)) {
@@ -222,7 +274,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      SpawnLoggedShell(spec.shell, bounded_cmd, lfd.Get(),
+      SpawnLoggedShell(spec.shell, bounded_cmd, wrapper, lfd.Get(),
                        /*detach=*/true, child_environment.Data(), pid);
   lfd.Reset();
   if (spawn_error != 0) {
@@ -278,7 +330,11 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         ToolErrorCode::kInvalidArguments,
         "error: shell must be a non-empty executable name or path")};
   }
-  if (spec.detach) return StartDetachedShell(supervisor, spec);
+  std::vector<std::string> wrapper;
+  if (std::string error = SandboxWrapperFor(spec, &wrapper); !error.empty()) {
+    return {ToolFailure(ToolErrorCode::kUnavailable, error)};
+  }
+  if (spec.detach) return StartDetachedShell(supervisor, spec, wrapper);
 
   // Everything below is the supervised foreground lifecycle.
   int64_t max_jobs = MaxBackgroundJobs();
@@ -321,10 +377,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   session->tty = tty;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      tty ? SpawnPtyShell(shell, bounded_cmd, child_environment.Data(), pid,
-                          master_fd)
-          : SpawnLoggedShell(shell, bounded_cmd, pipe_fds[1], /*detach=*/false,
-                             child_environment.Data(), pid);
+      tty ? SpawnPtyShell(shell, bounded_cmd, wrapper, child_environment.Data(),
+                          pid, master_fd)
+          : SpawnLoggedShell(shell, bounded_cmd, wrapper, pipe_fds[1],
+                             /*detach=*/false, child_environment.Data(), pid);
   pipe_write.Reset();
   Fd master(master_fd);
   if (spawn_error != 0) {

@@ -8,6 +8,7 @@ import integration_delegation
 import integration_mcp
 import integration_providers
 import integration_runtime
+import integration_sandbox
 import integration_tools
 import integration_ui
 
@@ -18,6 +19,7 @@ TEST_MODULES = (
     ("providers", integration_providers),
     ("mcp", integration_mcp),
     ("delegation", integration_delegation),
+    ("sandbox", integration_sandbox),
 )
 ALL_TESTS = {
     name: test

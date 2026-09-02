@@ -230,6 +230,26 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home):
     assert_true(outside.exists(), f"an approved hatch was still confined: {output}")
 
 
+def test_sandbox_protects_project_authority(root, home):
+    """The workspace is writable, but not the two files that grant authority.
+
+    Seatbelt only: Landlock has no deny form, so on Linux the same guarantee
+    would mean not granting the workspace at all. The case skips rather than
+    pretending, and the gap is written down in SECURITY.md.
+    """
+    if sys.platform != "darwin" or not sandbox_enforced(root, home):
+        return
+    ws = workspace(root)
+    (ws / ".uagent").mkdir(exist_ok=True)
+    config, mcp, scratch = ws / ".uagent" / ".config", ws / ".mcp.json", ws / ".uagent" / "s.py"
+    command = f"echo a > {config}; echo b > {mcp}; echo c > {scratch}; true"
+    run_once(root, sandbox_env(home, ""), command)
+    assert_true(not config.exists(), "a command wrote the project config")
+    assert_true(not mcp.exists(), "a command wrote the project .mcp.json")
+    # The carve-out is two files, not the directory: scratch lives beside them.
+    assert_true(scratch.exists(), "the carve-out took the whole .uagent directory")
+
+
 def test_sandbox_reports_itself(root, home):
     """The two surfaces that answer "what is confining me": /status and startup.
 

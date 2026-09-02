@@ -118,6 +118,30 @@ void TestActivityBufferAndAdmission() {
   first_slot.reset();
   CHECK(admission.ReserveActivity(1).has_value());
 
+  // The id is fixed at reservation, so a log can be named after it before the
+  // job exists, and it is the id the job actually commits under.
+  ProcessSupervisor reserved;
+  std::optional<ActivityReservation> early = reserved.ReserveActivity(4);
+  std::optional<ActivityReservation> later = reserved.ReserveActivity(4);
+  CHECK(early.has_value() && later.has_value());
+  if (early && later) {
+    CHECK(early->Id() > 0 && later->Id() > early->Id());
+    const int64_t promised = early->Id();
+    std::optional<int64_t> committed =
+        early->Register({899997, "", "reserved", false, "", promised});
+    CHECK(committed.has_value() && *committed == promised);
+  }
+
+  // The subagent flag survives the same move, so a released reservation gives
+  // the child counter back; losing it would refuse delegation for the rest of
+  // the run.
+  ProcessSupervisor children;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    std::optional<ActivityReservation> child = children.ReserveActivity(4, 1);
+    CHECK(child.has_value());
+    CHECK(!children.ReserveActivity(4, 1).has_value());
+  }
+
   ProcessSupervisor retained;
   std::vector<int64_t> retained_ids;
   for (int index = 0; index < 17; ++index) {
@@ -812,6 +836,10 @@ void TestDetachedActivityOwnership() {
     CHECK(refused_detach.result.output.find("background job limit reached") !=
           std::string::npos);
     CHECK(!FindRunningDetachedActivity("sleep 21").has_value());
+    // The record is written before the pool decides, so the refusal has to
+    // take it back out: a stale record aims a later stop at whatever inherits
+    // the reaped pid.
+    CHECK(DetachedRecords().empty());
     (void)detached_pool.TakeAllForShutdown();
   }
 

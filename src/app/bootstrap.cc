@@ -476,22 +476,25 @@ Agent::Approver MakeApprover(AppContext* app) {
       std::string payload =
           TerminalSafe(tool.approval_preview ? tool.approval_preview(arguments)
                                              : ToolSummary(tool, arguments));
+      // Reaching µAgent's own configuration is the reason a tool escalates by
+      // its path; a tool that escalates for its own reason names it.
+      std::string reason = tool.mandatory_reason.empty()
+                               ? "changes \u00b5Agent's own configuration"
+                               : tool.mandatory_reason;
       Emit(Event{EventId::kApprovalRequested,
                  {{"id", request_id},
                   {"tool", tool.name},
                   {"preview", payload},
                   {"scope", ApprovalScope(tool, arguments)},
                   {"mandatory_human", mandatory},
+                  {"mandatory_reason", mandatory ? reason : std::string()},
                   {"choices", mandatory ? json::array({"yes", "no"})
                                         : json::array({"once", "always", "no",
                                                        "guidance"})}}});
-      const char* headline = mandatory
-                                 ? "allow %s%s \u2014 changes \u00b5Agent's "
-                                   "own configuration\n%s\n%s\n"
-                                 : "allow %s%s\n%s\n%s\n";
       if (!app->channel) {
-        fprintf(stdout, "%s", YEL());
-        fprintf(stdout, headline, TerminalSafe(tool.name).c_str(), RST(),
+        std::string headline = "allow " + TerminalSafe(tool.name) + RST();
+        if (mandatory) headline += " \u2014 " + reason;
+        fprintf(stdout, "%s%s\n%s\n%s\n", YEL(), headline.c_str(),
                 payload.c_str(), RST());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {

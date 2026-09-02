@@ -55,7 +55,8 @@ ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const ToolContext& context, bool detach,
                                 const std::string& shell, bool tty = false,
                                 int64_t yield_ms = 0,
-                                int64_t max_output_chars = 0);
+                                int64_t max_output_chars = 0,
+                                bool sandbox = true);
 bool StartsWithShellWord(const std::string& command, const std::string& word);
 std::string RunCommandPolicyError(const std::string& command);
 bool PythonScriptHasDependencies(const std::string& source);

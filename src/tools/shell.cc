@@ -553,7 +553,8 @@ ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 const std::string& command,
                                 const ToolContext& context, bool detach,
                                 const std::string& shell, bool tty,
-                                int64_t yield_ms, int64_t max_output_chars) {
+                                int64_t yield_ms, int64_t max_output_chars,
+                                bool sandbox) {
   return RunShellCommand(
              supervisor, context,
              {.command = command,
@@ -561,6 +562,7 @@ ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
               .background = detach,
               .detach = detach,
               .tty = tty,
+              .sandbox = sandbox,
               .yield_ms = yield_ms,
               .max_output_chars = max_output_chars,
               .environment_policy = ChildEnvironmentPolicy::kApprovedShell})

@@ -104,8 +104,9 @@ inline int64_t ActivityId(const BgJob& job) {
 }
 
 // A running delegated child, reduced to what a one-row status display can
-// carry. `tail` is the child's newest progress line, which is terminal output
-// from another process -- the renderer must sanitize it.
+// carry. `tail` is the child's newest headless-progress line and empty when its
+// newest output is anything else, so it never shows the answer envelope. It is
+// terminal output from another process -- the renderer must sanitize it.
 struct SubagentView {
   int64_t id = 0;
   std::string source_id;

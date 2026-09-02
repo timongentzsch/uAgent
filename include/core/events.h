@@ -100,6 +100,11 @@ inline void SetCallLabel(PresentationRecord& record, std::string label) {
   (record.multiline ? record.detail : record.summary) = std::move(label);
 }
 
+// What `UAGENT_HEADLESS_PROGRESS` prefixes every echoed line with. A parent
+// reading a child's stream tells progress from the child's final answer by this
+// marker alone, so both sides have to agree on one spelling of it.
+inline constexpr const char* kHeadlessProgressPrefix = "· ";
+
 // A user-facing notice — one line the person should see. It rides the same
 // spine as everything else so it reaches the journal and the JSONL, not only a
 // terminal that may not be attached. Severity picks the color, nothing else.

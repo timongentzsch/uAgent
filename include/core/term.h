@@ -108,11 +108,18 @@ class TerminalActivityLabel {
   uint64_t id_;
 };
 
+// What a model round calls itself while it waits. It names no work -- it is
+// the placeholder every other label is more informative than -- so a status
+// row with something concrete to say may spend those columns on that instead.
+// One spelling, because that decision is a comparison against this string.
+inline constexpr const char* kWaitingActivity = "Working";
+
 // Animates while a call blocks with nothing to print. stop() is idempotent and
 // wakes the thread immediately — it runs on the first-streamed-byte path.
 class TerminalSpinner {
  public:
-  explicit TerminalSpinner(bool enabled = true, std::string label = "Working",
+  explicit TerminalSpinner(bool enabled = true,
+                           std::string label = kWaitingActivity,
                            std::chrono::steady_clock::time_point started =
                                std::chrono::steady_clock::now())
       : started_(started == std::chrono::steady_clock::time_point()

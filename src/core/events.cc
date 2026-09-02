@@ -318,7 +318,7 @@ void EchoHeadlessProgress(const Event& event, const EventPolicy& policy) {
     line += line.empty() ? record.summary : " · " + record.summary;
   }
   if (line.empty()) line = policy.journal_type;
-  fprintf(stderr, "· %s\n",
+  fprintf(stderr, "%s%s\n", kHeadlessProgressPrefix,
           Utf8Trunc(TerminalSafe(line), kProgressLineChars).c_str());
 }
 

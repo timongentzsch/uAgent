@@ -123,6 +123,17 @@ void TestConfigProposalAndCommit() {
   CHECK(unset_secret.ok);
   CHECK(unset_secret.Preview().find("canary-secret") == std::string::npos);
 
+  // A boolean takes any documented spelling and is stored in one of them.
+  ConfigProposal boolean = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "off", false}}, manager,
+      active, false);
+  CHECK(boolean.ok);
+  CHECK(boolean.candidate.find("UAGENT_MEMORY=0") != std::string::npos);
+  ConfigProposal bad_boolean = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_MEMORY", "maybe", false}}, manager,
+      active, false);
+  CHECK(!bad_boolean.ok);
+
   // Composite credentials may be named only by an exact environment reference.
   const std::string providers =
       R"({"codex-local":{"base_url":"http://127.0.0.1:8787/openai/v1","api_key":"$CODEX_LOCAL_PROXY_API_KEY","wire_api":"responses","hosted_tools":["web_search"]}})";

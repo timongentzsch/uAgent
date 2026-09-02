@@ -465,8 +465,12 @@ ProviderSetup ConfigureProvider(Api& api) {
   if (configured_protocol) {
     protocol = *configured_protocol;
   } else if (!compatible.empty()) {
-    protocol = compatible == "1" ? ProviderProtocol::kOpenRouter
-                                 : ProviderProtocol::kOpenAi;
+    // Tri-state: unset falls through to the wire API, so this stays a string
+    // read. An unreadable spelling means "not OpenRouter", as it always did.
+    bool openrouter = false;
+    ParseBool(compatible, openrouter);
+    protocol =
+        openrouter ? ProviderProtocol::kOpenRouter : ProviderProtocol::kOpenAi;
   } else if (wire_api == WireApi::kAnthropicMessages) {
     protocol = ProviderProtocol::kAnthropic;
   } else {

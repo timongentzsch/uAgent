@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace uagent {
@@ -29,6 +30,11 @@ bool ContainsCaseInsensitive(std::string text, const std::string& query);
 bool ParseInt64(const char* text, int64_t& value);
 
 bool ParseFiniteDouble(const char* text, double& value);
+
+// The one spelling of a boolean switch: 1/true/yes/on and 0/false/no/off,
+// case-insensitive. Anything else leaves `value` untouched and returns false,
+// so a typo falls back to the registered default instead of reading as true.
+bool ParseBool(std::string_view text, bool& value);
 
 // drop one layer of matching surrounding quotes, if present
 std::string Unquote(std::string s);

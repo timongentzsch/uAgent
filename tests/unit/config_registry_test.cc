@@ -17,6 +17,7 @@
 #include "include/app/self_description.h"
 #include "include/cli.h"
 #include "include/core/env.h"
+#include "include/core/strings.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -78,8 +79,8 @@ constexpr GetterCheck kIntGetters[] = {
 };
 
 std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
-  constexpr std::string_view kFunctions[] = {"EnvStr", "EnvLong", "EnvDouble",
-                                             "getenv", "ReadStringArray"};
+  constexpr std::string_view kFunctions[] = {
+      "EnvStr", "EnvLong", "EnvDouble", "EnvBool", "getenv", "ReadStringArray"};
   std::vector<std::string> names;
   for (std::string_view function : kFunctions) {
     size_t offset = 0;
@@ -201,6 +202,55 @@ void TestConfigRegistryContract() {
   }
   CHECK(matched_lookups >= 20);
   CHECK(internal_lookups > 0);
+}
+
+// The bug this pins: before strict parsing, every spelling except "0" read as
+// true, so UAGENT_MEMORY=false switched memory *on*.
+void TestStrictBooleanSettings() {
+  bool value = false;
+  for (const char* spelling : {"1", "true", "TRUE", "Yes", "on"}) {
+    value = false;
+    CHECK(ParseBool(spelling, value));
+    CHECK(value);
+  }
+  for (const char* spelling : {"0", "false", "FALSE", "No", "off"}) {
+    value = true;
+    CHECK(ParseBool(spelling, value));
+    CHECK(!value);
+  }
+  // An unreadable spelling reports failure and leaves the caller's default in
+  // place — the same contract ParseInt64 and ParseFiniteDouble keep.
+  for (const char* spelling : {"", "2", "maybe", "0x0", "true story"}) {
+    value = true;
+    CHECK(!ParseBool(spelling, value));
+    CHECK(value);
+    value = false;
+    CHECK(!ParseBool(spelling, value));
+    CHECK(!value);
+  }
+
+  // Environment path, through the registry default (UAGENT_MEMORY is true).
+  const ConfigDescriptor* memory = FindConfigDescriptor("UAGENT_MEMORY");
+  CHECK(memory != nullptr);
+  if (!memory) return;
+  {
+    ScopedEnv unset("UAGENT_MEMORY");
+    CHECK(BoolSetting(*memory));
+  }
+  for (const char* spelling : {"0", "false", "no", "off"}) {
+    ScopedEnv disabled("UAGENT_MEMORY", spelling);
+    CHECK(!BoolSetting(*memory));
+  }
+  for (const char* spelling : {"garbage", "2", ""}) {
+    ScopedEnv confused("UAGENT_MEMORY", spelling);
+    CHECK(BoolSetting(*memory));  // falls back to the registered default
+  }
+
+  // Config-file path: the same spellings through RuntimeConfig::FromValues.
+  CHECK(!RuntimeConfig::FromValues({{"UAGENT_MEMORY", "off"}}).memory_enabled);
+  CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "ON"}}).memory_enabled);
+  CHECK(RuntimeConfig::FromValues({{"UAGENT_MEMORY", "wat"}}).memory_enabled);
+  CHECK(RuntimeConfig::FromValues({}).memory_enabled);
 }
 
 void TestSelfDescriptionSchemas() {

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "include/core/env.h"
+#include "include/core/strings.h"
 
 namespace uagent {
 
@@ -29,8 +30,10 @@ int64_t LongSetting(const ConfigDescriptor& descriptor, int64_t fallback) {
 }
 
 bool BoolSetting(const ConfigDescriptor& descriptor) {
-  const bool* value = std::get_if<bool>(&descriptor.default_value);
-  return EnvStr(descriptor.EnvName(), value && *value ? "1" : "0") != "0";
+  const bool* declared = std::get_if<bool>(&descriptor.default_value);
+  bool value = declared && *declared;
+  ParseBool(EnvStr(descriptor.EnvName()), value);
+  return value;
 }
 
 std::string StringSetting(const ConfigDescriptor& descriptor) {

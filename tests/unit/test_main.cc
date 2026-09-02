@@ -13,10 +13,11 @@ namespace uagent {
 
 int failures = 0;
 
-void Check(bool condition, const char* expression, const char* file, int line) {
-  if (condition) return;
+bool Check(bool condition, const char* expression, const char* file, int line) {
+  if (condition) return true;
   std::cerr << "FAIL " << file << ':' << line << ": " << expression << '\n';
   ++failures;
+  return false;
 }
 
 struct TestCase {

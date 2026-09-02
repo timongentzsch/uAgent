@@ -130,17 +130,25 @@ jobs:
 
   thread-sanitizer:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
+    # Instrumented, and now driving real subprocesses, so the terminal cases
+    # get the same proportionally longer deadlines as the other sanitizer leg.
+    env:
+      UAGENT_TEST_TIMEOUT_SCALE: "6"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure TSan
         run: cmake --preset tsan
-      - name: Build core tests
-        run: cmake --build --preset tsan --target uagent_tests --parallel
-      - name: Test concurrent core paths
-        run: ctest --preset tsan -R '^core$'
+      # The races worth finding are between the supervisor, its per-job I/O
+      # threads and the tool reading their output -- none of which the core
+      # unit binary starts. They only run under the real binary, so it has to
+      # be instrumented too and the groups that drive subprocesses have to run.
+      - name: Build tests and agent
+        run: cmake --build --preset tsan --target uagent_tests uagent --parallel
+      - name: Test concurrent paths
+        run: ctest --preset tsan -R '^(core|integration_(runtime|tools))$'
 
   fuzzers:
     runs-on: ubuntu-24.04
@@ -158,31 +166,48 @@ jobs:
         run: |
           cmake --build --preset fuzz --target \
             uagent_fuzz_sse uagent_fuzz_input_decoder --parallel
+      # The corpus is committed, so the smoke run starts from inputs that
+      # already reach the interesting states instead of rediscovering an
+      # escape sequence from random bytes inside its run budget. Copied to a
+      # scratch dir because libFuzzer writes new inputs back into it.
       - name: Smoke fuzz
         run: |
-          build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192
-          build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096
+          cp -r tests/fuzz/corpus /tmp/corpus
+          build/fuzz/uagent_fuzz_sse -runs=1000 -max_len=8192 /tmp/corpus/sse
+          build/fuzz/uagent_fuzz_input_decoder -runs=2000 -max_len=4096 \
+            /tmp/corpus/input_decoder
 
   coverage:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      UAGENT_TEST_TIMEOUT_SCALE: "3"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y gcovr libcurl4-openssl-dev
       - name: Configure coverage
         run: cmake --preset coverage
+      # Most of src/app, src/ui and src/tools is only reached by driving the
+      # real binary, so a core-only report measures the libraries and calls
+      # the program uncovered.
       - name: Build and test
         run: |
-          cmake --build --preset coverage --target uagent_tests --parallel
-          ctest --preset coverage -R '^core$'
+          cmake --build --preset coverage --target uagent_tests uagent --parallel
+          ctest --preset coverage -R '^(core|integration_.*)$'
+      # The floor is deliberately below the measured number: it was measured
+      # locally (87.0% line, Apple clang/llvm-cov) and this job is gcc/gcovr,
+      # so the two disagree by an unknown margin. Raise it to the first green
+      # CI figure minus ~2 once that number exists.
       - name: Generate branch report
         run: >-
           gcovr --root .
           --filter include --filter src
           --exclude third_party
           --branches
+          --fail-under-line 80
           --gcov-ignore-parse-errors negative_hits.warn_once_per_file
+          --print-summary
           --xml-pretty
           --xml build/coverage/coverage.xml
           --html-details build/coverage/coverage.html

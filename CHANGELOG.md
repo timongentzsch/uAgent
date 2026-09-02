@@ -48,6 +48,13 @@
 
 ### Added
 
+- A running `message` now reaches a delegated child between its steps instead
+  of waiting for the next follow-up, the working row names the newest child and
+  what it is doing rather than counting it, and `/agents` lists the workspace's
+  collaborators with their status, elapsed time, and last progress line.
+  Collaborator IDs are short (`agent-1a2b3c4d`), which every spawn, follow-up,
+  and mention pays for.
+
 - Commands the agent runs are confined by the OS — `sandbox-exec` on macOS,
   Landlock on Linux — and it is on by default. Writes reach the workspace, the
   temporary directories, the package caches and whatever `UAGENT_SANDBOX_WRITE`

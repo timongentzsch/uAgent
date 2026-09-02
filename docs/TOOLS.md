@@ -83,9 +83,13 @@ durable collaborator ID. `operation=followup` resumes that collaborator's
 private conversation and prepends its persisted coordinator-owned `directive`;
 an explicit empty directive clears it. `message` delivers one-shot guidance to
 a running child between its steps and holds it for the next follow-up when the
-child is idle, and `list` reports workspace collaborators. Use the
-ordinary `activity` tool for live output, waiting, and stopping; collaboration
-does not add a second process supervisor.
+child is idle, and `list` reports this workspace's collaborators with
+their model, toolset, and status — plus the activity ID of each one still
+running, so a caller that sees `running` can wait on or stop it without
+guessing. Use the ordinary `activity` tool for live output, waiting, and
+stopping; collaboration does not add a second process supervisor. `/agents`
+shows a person the same records with each running child's newest progress
+line.
 
 `web_fetch` is independent of hosted-route support. It decodes markup, JSON,
 XML, and plain text, and refuses other content. Use the browser skill for pages

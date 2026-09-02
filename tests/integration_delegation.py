@@ -417,6 +417,37 @@ def test_message_reaches_running_child(root, home):
         assert_true(not list(collaborators.glob("*.mail-*")), "delivered mail was left behind")
 
 
+def test_agents_command_lists_a_running_child(root, home):
+    """/agents answers from the records and the supervisor, without a turn."""
+
+    def route(_, body):
+        messages = body["messages"]
+        users = [
+            str(message.get("content", "")) for message in messages if message.get("role") == "user"
+        ]
+        if "stay-busy" in users:
+            # Bounded: the coordinator quits long before this, and a child that
+            # outlived the dialog would keep the test's process group alive.
+            if len(messages) > 8:
+                return event({"content": "child-done"})
+            return tool_call("run", {"command": "sleep 1"})
+        combined = "\n".join(str(message.get("content", "")) for message in messages)
+        if "[started] subagent id" in combined:
+            return event({"content": "delegated"})
+        return tool_call("subagent", {"prompt": "stay-busy", "background": True})
+
+    with Server([route]) as server:
+        result = run_dialog(
+            root, base_env(home, server.url), "delegate\n/agents\n/q\n", "--yolo", timeout=30
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("collaborators" in result.stdout, result.stdout)
+        # The row joins the record on disk with the live job: the id and the
+        # mode come from the record, "running" only from the supervisor.
+        listing = result.stdout.split("collaborators", 1)[1]
+        assert_true(re.search(r"agent-[0-9a-f]{8}\s+running · lean", listing), listing)
+
+
 def test_parallel_subagents_auto_join(root, home):
     children_lock = threading.Lock()
     active_children = 0

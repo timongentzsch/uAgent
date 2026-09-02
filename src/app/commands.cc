@@ -2,6 +2,7 @@
 
 #include "include/app/commands.h"
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <map>
@@ -25,6 +26,8 @@
 #include "include/providers.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
+#include "include/tools/process.h"
+#include "include/tools/subagent.h"
 #include "include/ui/sessions.h"
 
 namespace uagent {
@@ -562,6 +565,54 @@ void HandleProcesses(const AppSession& session) {
          TerminalSafe(activities.output).c_str(), RST());
 }
 
+// The collaborator records the subagent tool reports, joined with what the
+// supervisor knows about the ones still running. The id is the join key: it is
+// what the spawn stamped on the job, and it is what the human types back.
+json AgentsJson(const AppSession& session) {
+  const ProcessSupervisor& processes = session.Runtime().processes;
+  std::vector<SubagentView> live = processes.SubagentViews();
+  json rows = json::array();
+  for (json& record : CollaboratorSummaries(processes)) {
+    const std::string id = JsonValue(record, "id", std::string());
+    for (const SubagentView& view : live) {
+      if (view.source_id != id) continue;
+      record["elapsed_ms"] =
+          std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed)
+              .count();
+      if (!view.tail.empty()) record["progress"] = view.tail;
+      break;
+    }
+    rows.push_back(std::move(record));
+  }
+  return rows;
+}
+
+// The working row has one line for the newest child; this is the whole set,
+// including the collaborators that have gone idle and can still be resumed.
+void HandleAgents(const AppSession& session) {
+  json rows = AgentsJson(session);
+  printf("%scollaborators%s\n", BOLD(), RST());
+  if (rows.empty()) {
+    printf("  %sno collaborators in this workspace%s\n", DIM(), RST());
+    return;
+  }
+  for (const json& row : rows) {
+    std::string detail = JsonValue(row, "status", std::string());
+    detail += " · " + JsonValue(row, "mode", std::string());
+    std::string model = JsonValue(row, "model", std::string());
+    if (!model.empty()) detail += " · " + model;
+    int64_t elapsed = JsonValue(row, "elapsed_ms", int64_t{0});
+    if (elapsed > 0) {
+      detail += " · " + FmtDuration(static_cast<double>(elapsed) / 1000.0);
+    }
+    std::string progress = JsonValue(row, "progress", std::string());
+    if (!progress.empty()) detail += " · " + progress;
+    printf("  %s%-16s%s %s\n", DIM(),
+           TerminalSafe(JsonValue(row, "id", std::string())).c_str(), RST(),
+           TerminalSafe(detail).c_str());
+  }
+}
+
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
   return {session.context.config_manager, session.Runtime().config,
           session.ApiClient(), session.context.tools,
@@ -604,6 +655,8 @@ json CommandResult(const AppSession& session,
       ToolResult activities = ToolActivityList(session.Runtime().processes);
       return {{"activities", activities.output}};
     }
+    case SlashCommandId::kAgents:
+      return {{"collaborators", AgentsJson(session)}};
     case SlashCommandId::kAttach: {
       json attachments = json::array();
       for (const Attachment& attachment : session.attachments) {
@@ -710,6 +763,9 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       break;
     case SlashCommandId::kProcesses:
       HandleProcesses(session);
+      break;
+    case SlashCommandId::kAgents:
+      HandleAgents(session);
       break;
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:

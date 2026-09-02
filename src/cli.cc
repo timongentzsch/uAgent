@@ -53,6 +53,8 @@ class ScopedCookedInput {
 }  // namespace
 
 constexpr SlashCommandSpec kSlashCommands[] = {
+    {SlashCommandId::kAgents, "/agents", "",
+     "list delegated collaborators and what they are doing"},
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
      "attach a file to the next turn"},
     {SlashCommandId::kCompact, "/compact", "",

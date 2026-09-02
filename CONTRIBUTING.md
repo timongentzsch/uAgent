@@ -49,12 +49,15 @@ Builds are warning-clean under `-Wall -Wextra -Wpedantic -Wconversion
 Make a narrowing or signedness change explicit at the point it happens rather
 than widening the type that receives it.
 
-clang-tidy runs whole check families, so run it before pushing. On macOS use a
-Homebrew LLVM binary with the Apple SDK: upstream clang-tidy cannot parse the
-SDK's libc++ headers, and without `-isysroot` neither can Homebrew's.
+clang-tidy runs whole check families, so run it before pushing. Configure
+through the preset rather than by hand: it turns off the precompiled header,
+and an `-include-pch` written by one clang is not readable by another. On
+macOS use a Homebrew LLVM binary with the Apple SDK: upstream clang-tidy
+cannot parse the SDK's libc++ headers, and without `-isysroot` neither can
+Homebrew's.
 
 ```sh
-cmake -S . -B build/tidy -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+cmake --preset tidy
 $(brew --prefix llvm)/bin/run-clang-tidy \
   -clang-tidy-binary $(brew --prefix llvm)/bin/clang-tidy \
   -p build/tidy -header-filter='.*/(include|src|tests)/.*' -quiet \

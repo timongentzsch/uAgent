@@ -340,8 +340,7 @@ void TestChatCompletionAnnotationDeduplication() {
   ChatResult result;
   std::map<int, ToolCall> calls;
   DecodeOpenAiStreamEvent(
-      JsonDump({{"choices", json::array({std::move(choice)})}}), result,
-      calls);
+      JsonDump({{"choices", json::array({std::move(choice)})}}), result, calls);
 
   CHECK(result.semantic_progress);
   CHECK(result.annotations.size() == 1);

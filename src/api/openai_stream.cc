@@ -108,8 +108,8 @@ std::string AddReasoningDetails(const json& details, ChatResult& result) {
 }  // namespace
 
 WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
-                                         ChatResult& result,
-                                         std::map<int, ToolCall>& tool_calls) {
+                                        ChatResult& result,
+                                        std::map<int, ToolCall>& tool_calls) {
   WireStreamDelta delta;
   size_t begin = data.find_first_not_of(" \t\r\n");
   if (begin == std::string_view::npos) return delta;

@@ -204,9 +204,9 @@ std::string HtmlToText(const std::string& html) {
     } else {
       bool heading = name.size() == 2 && (name[0] | 0x20) == 'h' &&
                      name[1] >= '1' && name[1] <= '6';
-      bool preformatted_tag =
-          name.size() == 3 && (name[0] | 0x20) == 'p' &&
-          (name[1] | 0x20) == 'r' && (name[2] | 0x20) == 'e';
+      bool preformatted_tag = name.size() == 3 && (name[0] | 0x20) == 'p' &&
+                              (name[1] | 0x20) == 'r' &&
+                              (name[2] | 0x20) == 'e';
       if (preformatted_tag) {
         flush();
         preformatted = !closing;

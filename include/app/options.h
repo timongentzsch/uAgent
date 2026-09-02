@@ -40,13 +40,13 @@ struct Options {
 // cannot be accepted without being documented or documented without being
 // accepted.
 enum class FlagKind {
-  kToggle,     // sets a bool on Options
-  kConfig,     // takes a value, forwarded to the config layer as `key`
-  kConfigSet,  // takes none, forwards the fixed `preset` as `key`
+  kToggle,       // sets a bool on Options
+  kConfig,       // takes a value, forwarded to the config layer as `key`
+  kConfigSet,    // takes none, forwards the fixed `preset` as `key`
   kBudget,       // takes a validated dollar amount
   kTokenBudget,  // takes a validated generated-token count
-  kPrompt,     // takes the headless prompt
-  kAttach,     // takes a path, repeatable
+  kPrompt,       // takes the headless prompt
+  kAttach,       // takes a path, repeatable
   kPrintVersion,
   kEmitReference,
   kHelp,

@@ -96,9 +96,9 @@ bool TransitionActivityLocked(ActivitySession& session, ActivityState next) {
 }
 
 BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
-             bool is_detached, const std::string& job_kind,
-             int64_t activity_id, std::shared_ptr<ActivitySession> activity,
-             std::string label, std::string receipt, std::string source,
+             bool is_detached, const std::string& job_kind, int64_t activity_id,
+             std::shared_ptr<ActivitySession> activity, std::string label,
+             std::string receipt, std::string source,
              std::vector<std::string> notes)
     : pid(process_pid),
       log(std::move(log_path)),
@@ -239,8 +239,7 @@ std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
     int64_t children =
         static_cast<int64_t>(
             std::count_if(foreground_.begin(), foreground_.end(), child)) +
-        static_cast<int64_t>(
-            std::count_if(jobs_.begin(), jobs_.end(), child));
+        static_cast<int64_t>(std::count_if(jobs_.begin(), jobs_.end(), child));
     if (children + subagent_reservations_ >= max_subagents) return std::nullopt;
     ++subagent_reservations_;
   }

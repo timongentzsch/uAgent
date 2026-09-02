@@ -764,16 +764,16 @@ void TestDetachedActivityOwnership() {
   // detached record that happens to use the same process id. Such a record can
   // survive PID reuse and must only be unlinked for detached activities.
   ProcessSupervisor background_stop;
-  CHECK(RunShellCommand(background_stop, context,
-                        {.command = "sleep 20",
-                         .background = true,
-                         .immediate = true})
+  CHECK(RunShellCommand(
+            background_stop, context,
+            {.command = "sleep 20", .background = true, .immediate = true})
             .result.Ok());
   std::vector<BgJob> background_jobs = background_stop.Snapshot();
   CHECK(background_jobs.size() == 1);
   if (!background_jobs.empty()) {
     const BgJob& job = background_jobs.front();
-    std::string sentinel_log = (workspace.root / "detached-sentinel.log").string();
+    std::string sentinel_log =
+        (workspace.root / "detached-sentinel.log").string();
     {
       std::ofstream output(sentinel_log);
       output << "detached sentinel\n";
@@ -803,10 +803,9 @@ void TestDetachedActivityOwnership() {
     ProcessSupervisor parent_busy;
     CHECK(parent_busy.TryAdd({999801, "", "own-a", false, "command"}, 4));
     CHECK(parent_busy.TryAdd({999802, "", "own-b", false, "command"}, 4));
-    ShellCommandResult admitted =
-        RunShellCommand(parent_busy, context,
-                        {.command = "printf child-admitted",
-                         .job_kind = "subagent"});
+    ShellCommandResult admitted = RunShellCommand(
+        parent_busy, context,
+        {.command = "printf child-admitted", .job_kind = "subagent"});
     CHECK(admitted.result.Ok());
     CHECK(admitted.result.output.find("child-admitted") != std::string::npos);
     (void)parent_busy.TakeAllForShutdown();
@@ -815,11 +814,10 @@ void TestDetachedActivityOwnership() {
     ProcessSupervisor children_busy;
     CHECK(children_busy.TryAdd({999803, "", "child-a", false, "subagent"}, 4));
     CHECK(children_busy.TryAdd({999804, "", "child-b", false, "subagent"}, 4));
-    ShellCommandResult refused =
-        RunShellCommand(children_busy, context,
-                        {.command = "echo third-child",
-                         .immediate = true,
-                         .job_kind = "subagent"});
+    ShellCommandResult refused = RunShellCommand(children_busy, context,
+                                                 {.command = "echo third-child",
+                                                  .immediate = true,
+                                                  .job_kind = "subagent"});
     CHECK(!refused.result.Ok());
     CHECK(!refused.launched);
     CHECK(refused.result.output.find("at most 2 concurrent children") !=
@@ -837,9 +835,9 @@ void TestDetachedActivityOwnership() {
       CHECK(detached_pool.TryAdd({pid, "", "held", true, "command"}, 4));
     }
     CHECK(!detached_pool.TryAdd({999815, "", "overflow", true, "command"}, 4));
-    ShellCommandResult refused_detach =
-        RunShellCommand(detached_pool, context,
-                        {.command = "sleep 21", .detach = true, .immediate = true});
+    ShellCommandResult refused_detach = RunShellCommand(
+        detached_pool, context,
+        {.command = "sleep 21", .detach = true, .immediate = true});
     CHECK(!refused_detach.result.Ok());
     CHECK(refused_detach.result.output.find("background job limit reached") !=
           std::string::npos);
@@ -856,9 +854,9 @@ void TestDetachedActivityOwnership() {
   {
     ScopedEnv tiny("UAGENT_MAX_BACKGROUND_JOBS", "1");
     ProcessSupervisor single;
-    ShellCommandResult child =
-        RunShellCommand(single, context,
-                        {.command = "printf tiny-pool", .job_kind = "subagent"});
+    ShellCommandResult child = RunShellCommand(
+        single, context,
+        {.command = "printf tiny-pool", .job_kind = "subagent"});
     CHECK(child.result.Ok());
     CHECK(child.result.output.find("tiny-pool") != std::string::npos);
     CHECK(single.TryAdd({999821, "", "holder", false, "subagent"}, 1));

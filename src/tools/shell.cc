@@ -187,8 +187,7 @@ ToolResult DelegatedJobLimitError(int64_t max_children, int64_t max_jobs) {
                      "error: no free background slot for a delegated child (at "
                      "most " +
                          std::to_string(max_children) +
-                         " concurrent children of " +
-                         std::to_string(max_jobs) +
+                         " concurrent children of " + std::to_string(max_jobs) +
                          " background slots; the rest stay reserved for this "
                          "agent's own commands). Wait for a child to finish");
 }
@@ -285,10 +284,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   int64_t max_jobs = MaxBackgroundJobs();
   bool is_subagent =
       ParseActivityKind(spec.job_kind) == ActivityKind::kSubagent;
-  int64_t max_children =
-      std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
-  std::optional<ActivityReservation> reservation = supervisor.ReserveActivity(
-      max_jobs, is_subagent ? max_children : 0);
+  int64_t max_children = std::max<int64_t>(1, max_jobs - kDelegatedJobHeadroom);
+  std::optional<ActivityReservation> reservation =
+      supervisor.ReserveActivity(max_jobs, is_subagent ? max_children : 0);
   if (!reservation) {
     return {is_subagent ? DelegatedJobLimitError(max_children, max_jobs)
                         : JobLimitError(max_jobs)};
@@ -349,9 +347,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   if (tty && !input) {
     KillProcess(pid);
     RemoveLog(log);
-    return {ToolFailure(ToolErrorCode::kInternal,
-                        "error: cannot duplicate PTY input: " +
-                            std::string(strerror(errno)))};
+    return {ToolFailure(
+        ToolErrorCode::kInternal,
+        "error: cannot duplicate PTY input: " + std::string(strerror(errno)))};
   }
 
   BgJob foreground{pid,

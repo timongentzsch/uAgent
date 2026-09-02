@@ -275,7 +275,8 @@ void TestWorkspaceScopedSession() {
                         {"model", "test"}, {"session_id", "legacy"},
                         {"turns", 1},      {"title", "legacy"}};
   json legacy_state = {
-      {"messages", json::array({{{"role", "system"}, {"content", "baseline"}}})},
+      {"messages",
+       json::array({{{"role", "system"}, {"content", "baseline"}}})},
       {"archive", json::array()},
       {"archive_dropped_segments", 0},
       {"context_tokens", 12},
@@ -334,19 +335,27 @@ void TestScopedBaseAndMemory() {
   namespace fs = std::filesystem;
   // Redaction is gated by a marker pre-scan, so every pattern alternative needs
   // a case here: a missing marker silently disables that pattern.
-  for (const char* secret :
-       {"passwd=hunter2trustno1", "passwd: hunter2trust",
-        "PASSWD='hunter2trustno1'", "password=hunter2trust",
-        "api_key=AKIAIOSFODNN7EXAMPLE", "access_token: abcdefghijklmnop",
-        "auth-token = abcdefghijklmnop", "secret = s3cr3tvaluehere",
-        "Authorization: Bearer abcdefghijklmnop",
-        "sk-proj-abcdefghijklmnopqrst", "ghp_abcdefghijklmnopqrst",
-        "gho_abcdefghijklmnopqrst", "ghu_abcdefghijklmnopqrst",
-        "ghs_abcdefghijklmnopqrst", "ghr_abcdefghijklmnopqrst",
-        "github_pat_abcdefghijklmnopqrst", "AKIAIOSFODNN7EXAMPLE",
-        "xoxb-1234567890-abcdefgh", "xoxp-1234567890-abcdefgh",
-        "AIzaSyA0123456789abcdefghijklmnopqrstuvw",
-        "-----BEGIN PRIVATE KEY-----\nx\n"}) {
+  for (const char* secret : {"passwd=hunter2trustno1",
+                             "passwd: hunter2trust",
+                             "PASSWD='hunter2trustno1'",
+                             "password=hunter2trust",
+                             "api_key=AKIAIOSFODNN7EXAMPLE",
+                             "access_token: abcdefghijklmnop",
+                             "auth-token = abcdefghijklmnop",
+                             "secret = s3cr3tvaluehere",
+                             "Authorization: Bearer abcdefghijklmnop",
+                             "sk-proj-abcdefghijklmnopqrst",
+                             "ghp_abcdefghijklmnopqrst",
+                             "gho_abcdefghijklmnopqrst",
+                             "ghu_abcdefghijklmnopqrst",
+                             "ghs_abcdefghijklmnopqrst",
+                             "ghr_abcdefghijklmnopqrst",
+                             "github_pat_abcdefghijklmnopqrst",
+                             "AKIAIOSFODNN7EXAMPLE",
+                             "xoxb-1234567890-abcdefgh",
+                             "xoxp-1234567890-abcdefgh",
+                             "AIzaSyA0123456789abcdefghijklmnopqrstuvw",
+                             "-----BEGIN PRIVATE KEY-----\nx\n"}) {
     CHECK(RedactMemorySecrets(secret).find("REDACTED") != std::string::npos);
   }
   // Every PEM label, terminated and truncated alike.

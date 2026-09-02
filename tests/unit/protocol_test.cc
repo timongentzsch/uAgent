@@ -432,6 +432,19 @@ void TestRegistries() {
   CHECK(!subagent_properties.contains("provider"));
   CHECK(subagent_properties["model"]["description"].get<std::string>().find(
             "codex-local/MODEL") != std::string::npos);
+  CHECK(static_cast<bool>(subagent.approval_preview));
+  const std::string spawn_preview = subagent.approval_preview(
+      json{{"operation", "spawn"}, {"prompt", "audit the parser"}});
+  CHECK(spawn_preview.find("approves its own tool calls") != std::string::npos);
+  CHECK(spawn_preview.find("lean: reading and running") != std::string::npos);
+  CHECK(spawn_preview.find("\"always\" covers every later subagent call") !=
+        std::string::npos);
+  CHECK(
+      subagent.approval_preview(json{{"operation", "spawn"}, {"mode", "full"}})
+          .find("full: reading, editing and running") != std::string::npos);
+  // Operations that hand over no authority say no more than the summary.
+  const json list_call{{"operation", "list"}};
+  CHECK(subagent.approval_preview(list_call) == subagent.summary(list_call));
 
   std::string host_prompt = HostCapabilityPrompt(capability_tools);
   CHECK(host_prompt.find("web_search=available") != std::string::npos);

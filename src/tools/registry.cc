@@ -43,14 +43,23 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
   if (adaptive_system) tools.push_back(AdaptSystemTool(*adaptive_system));
+  // "." is what a path-less read_path or grep operates on, so the hooks judge
+  // the path the call actually reaches. Access is assumed to be the stricter
+  // half, so a tool added later escalates until someone marks it read-only.
   auto path_tool = [&](Tool tool) -> Tool& {
     tool.needs_approval = [workspace](const json& args) {
-      return PathApprovalRequired(JsonValue(args, "path", ""), workspace);
+      return PathApprovalRequired(JsonValue(args, "path", "."), workspace);
     };
     tool.approval_class = [](const json& args) {
-      return PathApprovalClass(JsonValue(args, "path", ""));
+      return PathApprovalClass(JsonValue(args, "path", "."),
+                               PathAccess::kWrite);
     };
     return AddTool(tools, std::move(tool));
+  };
+  auto reads_only = [](Tool& tool) {
+    tool.approval_class = [](const json& args) {
+      return PathApprovalClass(JsonValue(args, "path", "."), PathAccess::kRead);
+    };
   };
 
   // Reading a file and listing a directory are the same act — show me what is
@@ -78,6 +87,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
         }
         return ToolReadFile(path, offset > 0 ? offset : 1, limit);
       }));
+  reads_only(read);
   read.parallel_safe = true;
   read.capabilities = Capability(ToolCapability::kInspect);
   read.dedupe_output = true;
@@ -190,6 +200,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                         JsonValue(a, "context", int64_t{0}), context,
                         JsonValue(a, "mode", "content") == "files");
       }));
+  reads_only(grep);
   grep.clamped_arguments = {"context"};
   grep.canonicalize = [](json& arguments) {
     if (JsonValue(arguments, "mode", "content") == "files") {
@@ -217,6 +228,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                  [](const json& a, const ToolContext&) {
                    return ToolShowImage(JsonValue(a, "path", ""));
                  }));
+    reads_only(show_image);
     show_image.capabilities = Capability(ToolCapability::kInspect);
     show_image.serial_media = true;
     show_image.replay_image = true;
@@ -234,6 +246,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             JsonValue(a, "path", ""), context.image_input_available,
             context.image_fallback_available, context.call_id);
       }));
+  reads_only(attach);
   attach.parallel_safe = true;
   attach.capabilities = Capability(ToolCapability::kInspect);
   // No per-turn cap of its own: the queue ceiling and the byte budget already

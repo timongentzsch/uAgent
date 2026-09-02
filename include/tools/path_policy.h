@@ -43,9 +43,21 @@ inline bool SelfConfigurationPath(const std::string& path) {
          candidate.filename() == ".mcp.json";
 }
 
-inline ApprovalClass PathApprovalClass(const std::string& path) {
-  return SelfConfigurationPath(path) ? ApprovalClass::kMandatoryHuman
-                                     : ApprovalClass::kNone;
+enum class PathAccess { kRead, kWrite };
+
+// Reads escalate as well as writes: the user and project config files and a
+// workspace .mcp.json carry provider keys and server credentials, so pulling
+// one into context is itself the harm. The trust store is the exception --
+// it holds path hashes and no secret, so only writing it changes what the
+// agent may do next launch.
+inline ApprovalClass PathApprovalClass(const std::string& path,
+                                       PathAccess access) {
+  if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
+  if (access == PathAccess::kRead &&
+      CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath())) {
+    return ApprovalClass::kNone;
+  }
+  return ApprovalClass::kMandatoryHuman;
 }
 
 inline bool PathApprovalRequired(const std::string& path,

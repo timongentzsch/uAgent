@@ -537,7 +537,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
   // activity slot bounded by MaxBackgroundJobs); this is only a runaway
   // ceiling.
   tool.max_calls_per_turn = SubagentCallsPerTurn();
-  tool.summary = [&api, &routes, &providers](const json& arguments) {
+  auto describe = [&api, &routes, &providers](const json& arguments) {
     std::string operation = JsonValue(arguments, "operation", "spawn");
     if (operation == "list") return std::string("list collaborators");
     std::string mode = JsonValue(arguments, "mode", "lean");
@@ -551,6 +551,39 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     if (!JsonValue(arguments, "background", true)) label += " · foreground";
     if (!id.empty()) label += " · " + id;
     return "[" + label + "] " + prompt;
+  };
+  tool.summary = describe;
+  // The summary names the model and the brief; what it cannot show is the
+  // authority handed over with them. The child runs with automatic approvals,
+  // so approving the spawn approves every tool call that child then decides
+  // to make -- and "always" is no narrower, because the approval key hashes
+  // tool policy rather than these arguments.
+  tool.approval_preview = [describe, &api](const json& arguments) {
+    std::string preview = describe(arguments);
+    std::string operation = JsonValue(arguments, "operation", "spawn");
+    if (operation != "spawn" && operation != "followup") return preview;
+    const bool full = JsonValue(arguments, "mode", "lean") == "full";
+    preview +=
+        "\n\u00b7 the child approves its own tool calls; it writes files and "
+        "runs commands unattended";
+    preview += std::string("\n\u00b7 toolset ") +
+               (full ? "full: reading, editing and running, plus its own "
+                       "children"
+                     : "lean: reading and running, no file edits");
+    preview +=
+        "\n\u00b7 bounded by " +
+        std::to_string(JsonValue(arguments, "max_steps", SubagentMaxSteps())) +
+        " steps, " +
+        std::to_string(
+            JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls())) +
+        " tool calls" +
+        (api.config.memory_enabled && JsonValue(arguments, "memory", true)
+             ? ", memory on"
+             : ", memory off");
+    preview +=
+        "\n\u00b7 \"always\" covers every later subagent call, not "
+        "this brief";
+    return preview;
   };
   return tool;  // Spawns serialize; immediate-background children overlap.
 }

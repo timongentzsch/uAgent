@@ -426,7 +426,9 @@ std::vector<Tool> BuildTools(AppContext& context,
 // Approval policy in one place, so the prompt and the yolo shortcut cannot
 // drift apart from the debug record of what was granted. A mandatory-human
 // call ignores every automatic-approval switch and denies when no human can
-// answer, so the agent cannot widen its own authority unattended.
+// answer. That is defense in depth for the built-in file tools, not a
+// boundary: until commands are sandboxed an approved shell reaches the same
+// paths with none of these checks in front of it.
 // Shells and interpreters can execute arbitrary payloads after the first word,
 // so reusable approval is exact-command scoped. Every grant also includes the
 // policy/schema generation: refreshing an MCP definition can never inherit

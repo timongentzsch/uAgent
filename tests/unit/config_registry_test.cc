@@ -266,8 +266,7 @@ void TestStrictBooleanSettings() {
 
   // Environment path, through the registry default (UAGENT_MEMORY is true).
   const ConfigDescriptor* memory = FindConfigDescriptor("UAGENT_MEMORY");
-  CHECK(memory != nullptr);
-  if (!memory) return;
+  REQUIRE(memory != nullptr);
   {
     ScopedEnv unset("UAGENT_MEMORY");
     CHECK(BoolSetting(*memory));

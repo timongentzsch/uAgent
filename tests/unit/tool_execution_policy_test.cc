@@ -217,9 +217,9 @@ void TestToolExecutionPolicy() {
     ScopedEnv scoped_home("HOME", log_root.c_str());
     return CollectCompletedLog(failed_log.string(), 4096, /*failed=*/true);
   }();
-  CHECK(failed_result.artifact.has_value());
-  CHECK(failed_result.artifact && failed_result.artifact->bytes == 28);
-  CHECK(failed_result.artifact && fs::exists(failed_result.artifact->path));
+  REQUIRE(failed_result.artifact.has_value());
+  CHECK(failed_result.artifact->bytes == 28);
+  CHECK(fs::exists(failed_result.artifact->path));
   CHECK(!fs::exists(failed_log));
 
   fs::path large_log = log_root / "large.log";
@@ -231,13 +231,11 @@ void TestToolExecutionPolicy() {
     ScopedEnv scoped_home("HOME", log_root.c_str());
     return CollectCompletedLog(large_log.string(), 16, /*failed=*/false);
   }();
-  CHECK(large_log_result.artifact.has_value());
-  CHECK(large_log_result.artifact &&
-        large_log_result.artifact->path != large_log.string());
-  CHECK(large_log_result.artifact && large_log_result.artifact->bytes == 64);
+  REQUIRE(large_log_result.artifact.has_value());
+  CHECK(large_log_result.artifact->path != large_log.string());
+  CHECK(large_log_result.artifact->bytes == 64);
   CHECK(!fs::exists(large_log));
-  CHECK(large_log_result.artifact &&
-        fs::exists(large_log_result.artifact->path));
+  CHECK(fs::exists(large_log_result.artifact->path));
   if (large_log_result.artifact) {
     std::ifstream input(large_log_result.artifact->path, std::ios::binary);
     std::string retained{std::istreambuf_iterator<char>(input),
@@ -268,9 +266,8 @@ void TestToolExecutionPolicy() {
     ScopedEnv scoped_home("HOME", fallback_home.c_str());
     return CollectCompletedLog(fallback_log.string(), 16, /*failed=*/false);
   }();
-  CHECK(fallback_result.artifact.has_value());
-  CHECK(fallback_result.artifact &&
-        fallback_result.artifact->path == fallback_log.string());
+  REQUIRE(fallback_result.artifact.has_value());
+  CHECK(fallback_result.artifact->path == fallback_log.string());
   CHECK(fs::exists(fallback_log));
   RemoveLog(fallback_log.string());
   fs::remove_all(log_root);

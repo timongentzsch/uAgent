@@ -132,6 +132,11 @@ struct Agent::StepState {
   bool context_overflow_recovery_attempted = false;
   bool detached_records_available = false;
   bool midturn_compaction_enabled = true;
+  // Index of a kInternal harness note pushed as the last message of the step,
+  // erased once the model has answered it so the nudge never accumulates in
+  // history. Only ever the tail at the moment it is set; anything that
+  // rewrites history mid-step (compaction) resets it rather than adjusting it,
+  // and the erase re-checks the index before trusting it.
   std::optional<size_t> pending_note;
 };
 

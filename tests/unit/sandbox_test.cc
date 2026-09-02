@@ -26,8 +26,7 @@ SandboxInputs BaseInputs() {
   inputs.workspace = "/home/u/work";
   inputs.global_base = "/home/u/.uagent";
   inputs.tmpdir = "/private/var/folders/ab/T";
-  inputs.cache_dir = "/home/u/.cache";
-  inputs.data_dir = "/home/u/.local/share";
+  inputs.tool_caches = {"/home/u/.cache", "/home/u/.local/share"};
   inputs.terminal_logs = "/home/u/.uagent/terminals/logs";
   return inputs;
 }

@@ -209,7 +209,7 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   }
   int64_t max_jobs = MaxBackgroundJobs();
   std::string log;
-  Fd lfd(CreateTempFile(UagentDir(kTerminalsDir) + "/pending-" +
+  Fd lfd(CreateTempFile(UagentDir(kTerminalLogsDir) + "/pending-" +
                             std::to_string(getpid()) + "-XXXXXX",
                         log));
   if (!lfd) {

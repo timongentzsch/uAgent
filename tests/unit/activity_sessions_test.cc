@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "include/core/file_watch.h"
+#include "include/core/fs.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
@@ -275,7 +276,14 @@ void TestActivitySessions() {
     pid_t pid = detached_jobs.front().pid;
     std::optional<BgJob> released = detached_launcher.Take(pid);
     CHECK(released.has_value());
+    // The log lives under the records directory, not in it: Phase C makes the
+    // log subdirectory writable by sandboxed commands, and a record beside it
+    // would be forgeable.
+    CHECK(std::filesystem::path(detached_jobs.front().log).parent_path() ==
+          std::filesystem::path(UagentDir(kTerminalLogsDir)));
     std::string record_path = DetachedRecordPath(pid);
+    CHECK(std::filesystem::path(record_path).parent_path() ==
+          std::filesystem::path(UagentDir(kTerminalsDir)));
     std::ifstream input(record_path);
     json record = json::parse(input, nullptr, false);
     CHECK(record.is_object());

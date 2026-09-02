@@ -295,8 +295,8 @@ std::string ChildAgentAnswer(std::string output,
 }
 
 std::optional<ToolResult> ChildAgentBudgetBlock(
-    const Api& api, const ProcessSupervisor& processes,
-    double& remaining_cost, int64_t& remaining_tokens) {
+    const Api& api, const ProcessSupervisor& processes, double& remaining_cost,
+    int64_t& remaining_tokens) {
   remaining_cost = api.config.session_budget - api.session_cost;
   remaining_tokens =
       api.config.session_token_budget > api.session_generated_tokens
@@ -310,8 +310,7 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: session generated-token limit reached");
   }
-  if ((api.config.session_budget > 0 ||
-       api.config.session_token_budget > 0) &&
+  if ((api.config.session_budget > 0 || api.config.session_token_budget > 0) &&
       processes.JoinableCount() > 0) {
     return ToolFailure(
         ToolErrorCode::kLimitExceeded,

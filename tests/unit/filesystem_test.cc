@@ -3,9 +3,8 @@
 #include <string>
 #include <vector>
 
-#include "tests/unit/test_support.h"
-
 #include "include/tools/path_policy.h"
+#include "tests/unit/test_support.h"
 
 namespace uagent {
 

@@ -66,8 +66,8 @@ std::string ChildAgentStopNote(const json& stop);
 // refusal to hand back, or nothing when the call may proceed, and reports the
 // cost and generated-token budgets the child should inherit.
 std::optional<ToolResult> ChildAgentBudgetBlock(
-    const Api& api, const ProcessSupervisor& processes,
-    double& remaining_cost, int64_t& remaining_tokens);
+    const Api& api, const ProcessSupervisor& processes, double& remaining_cost,
+    int64_t& remaining_tokens);
 
 }  // namespace uagent
 

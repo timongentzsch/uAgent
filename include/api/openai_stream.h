@@ -14,8 +14,8 @@ namespace uagent {
 void MergeStreamIdentity(std::string& target, const std::string& fragment);
 void AddStreamAnnotation(const json& annotation, ChatResult& result);
 WireStreamDelta DecodeOpenAiStreamEvent(std::string_view data,
-                                         ChatResult& result,
-                                         std::map<int, ToolCall>& tool_calls);
+                                        ChatResult& result,
+                                        std::map<int, ToolCall>& tool_calls);
 
 }  // namespace uagent
 

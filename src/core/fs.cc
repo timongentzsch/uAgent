@@ -104,10 +104,10 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
     std::string name = entry.path().filename().string();
     constexpr std::string_view kSessionSuffix = ".session.json";
     constexpr std::string_view kRecordSuffix = ".json";
-    size_t suffix = name.ends_with(kSessionSuffix)
-                        ? kSessionSuffix.size()
-                        : (name.ends_with(kRecordSuffix) ? kRecordSuffix.size()
-                                                        : 0);
+    size_t suffix =
+        name.ends_with(kSessionSuffix)
+            ? kSessionSuffix.size()
+            : (name.ends_with(kRecordSuffix) ? kRecordSuffix.size() : 0);
     if (suffix == 0) return;
     std::error_code time_error;
     fs::file_time_type modified = entry.last_write_time(time_error);
@@ -135,8 +135,7 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
       kept.push_back(&record);
     }
   }
-  if (max_records <= 0 ||
-      kept.size() <= static_cast<size_t>(max_records)) {
+  if (max_records <= 0 || kept.size() <= static_cast<size_t>(max_records)) {
     return;
   }
   std::sort(kept.begin(), kept.end(), [](const Record* a, const Record* b) {

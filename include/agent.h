@@ -183,8 +183,7 @@ class Agent {
   bool TurnDeadlineExceeded(TurnExecution& state,
                             std::chrono::seconds reserve = {});
   bool TurnCostExceeded(TurnExecution& state);
-  bool TurnTokenBudgetExceeded(TurnExecution& state,
-                               bool before_model = false);
+  bool TurnTokenBudgetExceeded(TurnExecution& state, bool before_model = false);
   void RecordModelResponse(
       ChatResult& response, TurnExecution& state,
       std::unordered_map<std::string, int64_t>& tool_counts);

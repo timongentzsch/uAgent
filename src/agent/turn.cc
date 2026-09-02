@@ -68,8 +68,7 @@ bool Agent::TurnDeadlineExceeded(TurnExecution& state,
   return true;
 }
 
-bool Agent::TurnTokenBudgetExceeded(TurnExecution& state,
-                                    bool before_model) {
+bool Agent::TurnTokenBudgetExceeded(TurnExecution& state, bool before_model) {
   int64_t limit = state.limits.max_turn_tokens;
   int64_t spent = state.metrics.usage.GeneratedTokens();
   std::string scope = "turn";
@@ -471,11 +470,10 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
   // Unknown provider reasons get one retry even when they accompanied calls.
   // Do not execute those calls: a future policy stop must fail closed, while
   // the retry gives a harmless new spelling a chance to complete normally.
-  const bool continuable =
-      (cause == ResponseStopCause::kOther) ||
-      (!response.content.empty() && !has_tool_calls &&
-       (cause == ResponseStopCause::kLength ||
-        cause == ResponseStopCause::kInputLimit));
+  const bool continuable = (cause == ResponseStopCause::kOther) ||
+                           (!response.content.empty() && !has_tool_calls &&
+                            (cause == ResponseStopCause::kLength ||
+                             cause == ResponseStopCause::kInputLimit));
   if (continuable && loop.stop_recoveries++ == 0) {
     PushAssistantMessage(response, {}, false);
     conversation_.Push(
@@ -497,8 +495,7 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
   std::string reason = response.finish_reason.empty()
                            ? ResponseStopCauseName(cause)
                            : response.finish_reason;
-  FailTurn(state,
-           "model response stopped before completion (" + reason + ")");
+  FailTurn(state, "model response stopped before completion (" + reason + ")");
   return StepFlow::kEndTurn;
 }
 
@@ -611,9 +608,9 @@ bool Agent::StopForRepeatedRejections(
     int64_t rounds = ++loop.rejection_rounds[key];
     if (rounds < kRejectedRoundLimit) continue;
 
-    std::string message =
-        "model repeated an equivalent rejected " + rejection.tool +
-        " call 3 times (" + rejection.issue_code;
+    std::string message = "model repeated an equivalent rejected " +
+                          rejection.tool + " call 3 times (" +
+                          rejection.issue_code;
     if (!rejection.issue_field.empty()) {
       message += ": " + rejection.issue_field;
     }
@@ -987,8 +984,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
                   {"session_token_budget", state.limits.session_token_budget},
                   {"max_turn_cost", state.limits.max_turn_cost},
                   {"session_budget", state.limits.session_budget}}},
-                {"session_generated_tokens",
-                 session_usage_.GeneratedTokens()},
+                {"session_generated_tokens", session_usage_.GeneratedTokens()},
                 {"session_cost", session_usage_.cost}};
   PruneAttachments(state.start);
   ArchiveTurnTrace(state.start);
@@ -1012,21 +1008,20 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // One write, as above: fputs of the assembled string, never a stream of
   // pieces the composer could repaint between.
   fputs(footer.str().c_str(), stdout);
-  Emit(Event{
-      EventId::kTurnCompleted,
-      {{"turn", turn_id_},
-       {"outcome", TurnOutcomeName(state.stop.outcome)},
-       {"steps", steps_used},
-       {"tool_calls", state.metrics.tool_count},
-       {"duration_ms", secs * 1000},
-       {"ttt_ms", state.metrics.ttt_ms},
-       {"tokens_per_second", tokens_per_second},
-       {"generation_ms", state.metrics.model_generation_ms},
-       {"generated_tokens", state.metrics.model_generated_tokens},
-       {"usage", UsageJson(state.metrics.usage)},
-       {"session_usage", UsageJson(session_usage_)},
-       {"messages", conversation_.Size()},
-       {"context_tokens", ContextUsed()}}});
+  Emit(Event{EventId::kTurnCompleted,
+             {{"turn", turn_id_},
+              {"outcome", TurnOutcomeName(state.stop.outcome)},
+              {"steps", steps_used},
+              {"tool_calls", state.metrics.tool_count},
+              {"duration_ms", secs * 1000},
+              {"ttt_ms", state.metrics.ttt_ms},
+              {"tokens_per_second", tokens_per_second},
+              {"generation_ms", state.metrics.model_generation_ms},
+              {"generated_tokens", state.metrics.model_generated_tokens},
+              {"usage", UsageJson(state.metrics.usage)},
+              {"session_usage", UsageJson(session_usage_)},
+              {"messages", conversation_.Size()},
+              {"context_tokens", ContextUsed()}}});
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

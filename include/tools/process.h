@@ -92,11 +92,27 @@ struct BgJob {
   std::string receipt_path;
   std::string source_id;
   std::vector<std::string> completion_notes;
+  // Set where the job is constructed rather than where it is registered: the
+  // two differ by a spawn, and the status row is reporting how long the child
+  // has been alive, not how long the supervisor has known about it.
+  std::chrono::steady_clock::time_point started =
+      std::chrono::steady_clock::now();
 };
 
 inline int64_t ActivityId(const BgJob& job) {
   return job.id > 0 ? job.id : static_cast<int64_t>(job.pid);
 }
+
+// A running delegated child, reduced to what a one-row status display can
+// carry. `tail` is the child's newest progress line, which is terminal output
+// from another process -- the renderer must sanitize it.
+struct SubagentView {
+  int64_t id = 0;
+  std::string source_id;
+  std::string label;
+  std::string tail;
+  std::chrono::steady_clock::duration elapsed{};
+};
 
 class ProcessSupervisor;
 
@@ -148,7 +164,11 @@ class ProcessSupervisor {
   size_t PendingCount() const;
   size_t DetachedCount() const;
   size_t Count() const;
+  size_t Count(ActivityKind kind) const;
   size_t JoinableCount() const;
+  // Background delegated children, newest last. Takes no lock a tool holds, so
+  // a status repaint never waits on one.
+  std::vector<SubagentView> SubagentViews() const;
   bool IsLive(int64_t id) const;
   std::optional<BgJob> Find(int64_t id) const;
   std::optional<BgJob> Take(int64_t id);

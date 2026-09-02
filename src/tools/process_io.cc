@@ -388,6 +388,48 @@ size_t ProcessSupervisor::Count() const {
   return jobs_.size();
 }
 
+size_t ProcessSupervisor::Count(ActivityKind kind) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return static_cast<size_t>(
+      std::count_if(jobs_.begin(), jobs_.end(),
+                    [kind](const BgJob& job) { return job.kind == kind; }));
+}
+
+std::vector<SubagentView> ProcessSupervisor::SubagentViews() const {
+  std::vector<BgJob> children;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const BgJob& job : jobs_) {
+      // Foreground delegations are deliberately absent: one is already the
+      // spinner's own label, so naming it again would spend the columns the
+      // children nobody is watching need.
+      if (!job.detached && job.session && job.kind == ActivityKind::kSubagent) {
+        children.push_back(job);
+      }
+    }
+  }
+  const auto now = std::chrono::steady_clock::now();
+  std::vector<SubagentView> views;
+  views.reserve(children.size());
+  for (const BgJob& job : children) {
+    SubagentView view;
+    view.id = ActivityId(job);
+    view.source_id = job.source_id;
+    view.label = job.display_label;
+    view.elapsed = now - job.started;
+    {
+      // The session lock only. `interaction` is held across a whole tool
+      // interaction, so a repaint that wanted it would stall the whole UI
+      // behind a child's read, and `pending_output` belongs to the tool that
+      // will drain it -- reading the transcript consumes nothing.
+      std::lock_guard<std::mutex> lock(job.session->mutex);
+      view.tail = job.session->transcript.TailLine();
+    }
+    views.push_back(std::move(view));
+  }
+  return views;
+}
+
 size_t ProcessSupervisor::JoinableCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return static_cast<size_t>(

@@ -354,7 +354,22 @@ void TestFileTools() {
   {
     ScopedEnv configured("UAGENT_CONFIG_FILE", custom_config.string());
     CHECK(SelfConfigurationPath(custom_config_alias.string()));
-    CHECK(PathApprovalClass(custom_config_alias.string()) ==
+    CHECK(PathApprovalClass(custom_config_alias.string(), PathAccess::kWrite) ==
+          ApprovalClass::kMandatoryHuman);
+    // The config file holds provider keys, so reading it is the harm too.
+    CHECK(PathApprovalClass(custom_config_alias.string(), PathAccess::kRead) ==
+          ApprovalClass::kMandatoryHuman);
+  }
+
+  // The trust store holds path hashes and no secret: reading it tells the
+  // agent which projects it already trusts, writing it decides that question.
+  {
+    ScopedEnv scoped_home("HOME", root.string());
+    CHECK(ToolWriteFile(TrustStorePath(), "{}\n").Ok());
+    CHECK(SelfConfigurationPath(TrustStorePath()));
+    CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kRead) ==
+          ApprovalClass::kNone);
+    CHECK(PathApprovalClass(TrustStorePath(), PathAccess::kWrite) ==
           ApprovalClass::kMandatoryHuman);
   }
   {

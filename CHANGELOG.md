@@ -30,6 +30,10 @@
   use. This is a token cost, not only an ergonomic one: a draft that says "the
   turn file" spends a grep and a read round locating what a completed
   `@src/agent/turn.cc` would have named outright.
+- Ctrl+X Ctrl+E opens the draft in `$VISUAL` or `$EDITOR` and takes back what
+  it saves, readline's spelling of the same gesture. The composer holds 16KB
+  and draws newlines as a glyph, which is writable but not somewhere to
+  compose a long prompt.
 
 ### Changed
 

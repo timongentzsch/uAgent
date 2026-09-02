@@ -769,6 +769,42 @@ def test_input_at_path_suggestions_and_tab_completion(root, home):
         assert_true(b"path-ok" in output, output)
 
 
+def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home):
+    """Ctrl+X Ctrl+E hands the draft to $EDITOR and takes back what it saved.
+
+    The terminal has to come back cooked for the editor and raw for the
+    composer afterwards, which is the part that strands a session when it is
+    wrong -- so the case keeps typing after the round trip.
+    """
+    editor = root / "fake-editor.sh"
+    # Appends rather than replaces, so the assertion proves both directions:
+    # the draft reached the file and the file came back.
+    editor.write_text(
+        '#!/bin/sh\nprintf \'%s\' "$(cat "$1")-edited" > "$1"\n', encoding="utf-8"
+    )
+    editor.chmod(0o755)
+
+    def answer(_, body):
+        user = next(
+            message.get("content")
+            for message in reversed(body["messages"])
+            if message.get("role") == "user"
+        )
+        return event({"content": "editor-ok" if user == "draft-edited!" else f"editor-bad:{user!r}"})
+
+    with Server([answer]) as server:
+        env = base_env(home, server.url)
+        env["EDITOR"] = str(editor)
+        code, output = run_pty(
+            root,
+            env,
+            # Ctrl+X Ctrl+E, then keep typing: the composer must be raw again.
+            [(b"draft\x18\x05", b"draft-edited"), (b"!\n", b"editor-ok"), b"/q\n"],
+        )
+        assert_true(code == 0, output)
+        assert_true(b"editor-ok" in output, output)
+
+
 def test_input_shift_enter_keeps_the_draft_open(root, home):
     """Shift+Enter is a newline in the draft; Enter is still the submission."""
 

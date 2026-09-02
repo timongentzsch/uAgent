@@ -70,6 +70,9 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_RUN_YIELD_MS` | integer | `10000` | restart-required | default initial wait for run; 0 disables yielding |
 | `UAGENT_MAX_BACKGROUND_JOBS` | integer | `8` | restart-required | concurrent detached activities |
 | `UAGENT_WEB_FETCH_BYTES` | integer | derived | restart-required | web_fetch download cap; defaults to the attachment cap |
+| `UAGENT_SANDBOX` | boolean | `0` | restart-required | confine shell commands with the OS sandbox |
+| `UAGENT_SANDBOX_NET` | boolean | `1` | restart-required | let sandboxed commands reach the network |
+| `UAGENT_SANDBOX_WRITE` | string | empty | restart-required | extra writable roots for the sandbox, colon-separated |
 
 ## delegation
 

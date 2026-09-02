@@ -343,9 +343,24 @@ void TestScopedBaseAndMemory() {
         "sk-proj-abcdefghijklmnopqrst", "ghp_abcdefghijklmnopqrst",
         "gho_abcdefghijklmnopqrst", "ghu_abcdefghijklmnopqrst",
         "ghs_abcdefghijklmnopqrst", "ghr_abcdefghijklmnopqrst",
-        "github_pat_abcdefghijklmnopqrst",
+        "github_pat_abcdefghijklmnopqrst", "AKIAIOSFODNN7EXAMPLE",
+        "xoxb-1234567890-abcdefgh", "xoxp-1234567890-abcdefgh",
+        "AIzaSyA0123456789abcdefghijklmnopqrstuvw",
         "-----BEGIN PRIVATE KEY-----\nx\n"}) {
     CHECK(RedactMemorySecrets(secret).find("REDACTED") != std::string::npos);
+  }
+  // Every PEM label, terminated and truncated alike.
+  for (const char* label :
+       {"", "RSA ", "EC ", "DSA ", "OPENSSH ", "ENCRYPTED "}) {
+    const std::string label_text(label);
+    const std::string key = "-----BEGIN " + label_text +
+                            "PRIVATE KEY-----\nMIIBsecret\n-----END " +
+                            label_text + "PRIVATE KEY-----";
+    CHECK(RedactMemorySecrets("before " + key + " after") ==
+          "before [REDACTED PRIVATE KEY] after");
+    CHECK(RedactMemorySecrets("before -----BEGIN " + label_text +
+                              "PRIVATE KEY-----\nMIIBsecret") ==
+          "before [REDACTED PRIVATE KEY]");
   }
   CHECK(RedactMemorySecrets("lightweight guidance stays visible") ==
         "lightweight guidance stays visible");

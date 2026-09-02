@@ -822,7 +822,7 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home):
             return event({"content": "limit-reported-ok"})
         return tool_call(
             "subagent",
-            {"prompt": "child", "background": False, "max_tool_calls": 1},
+            {"prompt": "child", "background": False, "limits": {"tool_calls": 1}},
         )
 
     with Server([route]) as server:
@@ -859,7 +859,7 @@ def test_subagent_answer_survives_a_record_larger_than_the_cap(root, home):
 
 
 def test_subagent_foreground_outlives_the_per_call_budget(root, home):
-    """A child the caller waits for is bounded by max_seconds, not by the
+    """A child the caller waits for is bounded by limits.seconds, not by the
     budget that stops a runaway command.
 
     The child spends its time working rather than stalling, so this measures
@@ -898,16 +898,16 @@ def test_subagent_clamps_are_reported_not_silent(root, home):
             report = next(
                 result for result in reversed(results) if "clamped-child-result" in result
             )
-            assert_true("clamped max_seconds to 2" in report, report)
+            assert_true("clamped limits.seconds to 2" in report, report)
             return event({"content": "clamp-reported-ok"})
         if any("[started] subagent id " in result for result in results):
             receipt = next(result for result in results if "[started] subagent id " in result)
-            assert_true("clamped max_seconds to 2" in receipt, receipt)
+            assert_true("clamped limits.seconds to 2" in receipt, receipt)
             assert_true("produced no result envelope" not in receipt, receipt)
             return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
         return tool_call(
             "subagent",
-            {"prompt": "child", "background": True, "max_seconds": 600},
+            {"prompt": "child", "background": True, "limits": {"seconds": 600}},
         )
 
     with Server([route]) as server:

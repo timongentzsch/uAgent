@@ -430,8 +430,22 @@ void TestRegistries() {
       subagent_properties["background"]["description"].get<std::string>().find(
           "final result directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
+  // The grammar for naming a provider-scoped route, not the roster: the roster
+  // is what uagent_info topic=routes reports, and enumerating it here was
+  // charged to every request.
   CHECK(subagent_properties["model"]["description"].get<std::string>().find(
-            "codex-local/MODEL") != std::string::npos);
+            "<provider>/MODEL") != std::string::npos);
+  CHECK(subagent_properties["model"]["description"].get<std::string>().find(
+            "codex-local") == std::string::npos);
+  // The per-child ceilings are one object, not five siblings.
+  CHECK(!subagent_properties.contains("max_steps"));
+  CHECK(subagent_properties["limits"]["type"] == "object");
+  const json& subagent_limits = subagent_properties["limits"]["properties"];
+  CHECK(subagent_limits["steps"]["maximum"] == 500);
+  CHECK(subagent_limits["tool_calls"]["maximum"] == 500);
+  CHECK(subagent_limits["seconds"]["maximum"] == 3600);
+  CHECK(subagent_limits["cost"]["type"] == "number");
+  CHECK(subagent_limits["memory"]["type"] == "boolean");
   CHECK(static_cast<bool>(subagent.approval_preview));
   const std::string spawn_preview = subagent.approval_preview(
       json{{"operation", "spawn"}, {"prompt", "audit the parser"}});

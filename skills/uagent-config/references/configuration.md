@@ -183,10 +183,10 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_APPROVAL` | string | empty | restart-required | yolo approves ordinary mutations without asking |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
-| `UAGENT_TRUST_PROJECT_CONFIG` | string | empty | restart-required | trust this workspace's .mcp.json and config |
+| `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |
 | `UAGENT_CONFIG_FILE` | string | empty | restart-required | replace both config-file locations |
 | `UAGENT_DEBUG_LOG` | string | empty | restart-required | write a sensitive reconstructable JSONL trace |
 | `UAGENT_USAGE_FILE` | string | empty | restart-required | append per-turn usage records to this path |
-| `UAGENT_MARKDOWN` | string | `1` | restart-required | render Markdown on a TTY |
-| `UAGENT_HEADLESS_PROGRESS` | string | empty | restart-required | echo progress lines in headless mode |
+| `UAGENT_MARKDOWN` | boolean | `1` | restart-required | render Markdown on a TTY |
+| `UAGENT_HEADLESS_PROGRESS` | boolean | `0` | restart-required | echo progress lines in headless mode |
 | `UAGENT_MEMORY_REDACT_KEYWORDS` | string | empty | restart-required | extra keywords redacted from stored memories |

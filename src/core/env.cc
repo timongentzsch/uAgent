@@ -126,6 +126,16 @@ std::string SandboxWriteRoots() {
 
 bool AdaptiveSystemEnabled() { return BoolSetting(Cfg("UAGENT_ADAPT_SYSTEM")); }
 
+bool MarkdownEnabled() { return BoolSetting(Cfg("UAGENT_MARKDOWN")); }
+
+bool TrustProjectConfig() {
+  return BoolSetting(Cfg("UAGENT_TRUST_PROJECT_CONFIG"));
+}
+
+bool HeadlessProgressEnabled() {
+  return BoolSetting(Cfg("UAGENT_HEADLESS_PROGRESS"));
+}
+
 std::string PromptOverlayPath() {
   return StringSetting(Cfg("UAGENT_PROMPT_OVERLAY"));
 }

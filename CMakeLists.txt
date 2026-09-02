@@ -154,6 +154,24 @@ target_link_libraries(uagent_core PUBLIC uagent_options)
 add_executable(uagent src/main.cc)
 target_link_libraries(uagent PRIVATE uagent_core)
 
+# `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
+# units through include/core/json.h. Measured on an M-series host it costs
+# 0.75s per TU over an empty one -- roughly a third of a clean build. It is
+# vendored and never changes, so a precompiled header is stable, needs no
+# source change, and takes about 20% off every TU that rebuilds. This does not
+# reduce rebuild fanout; it reduces what each of those rebuilds costs.
+set(UAGENT_PCH
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/json.hpp"
+    <algorithm>
+    <chrono>
+    <cstdint>
+    <optional>
+    <string>
+    <string_view>
+    <utility>
+    <vector>)
+target_precompile_headers(uagent_core PRIVATE ${UAGENT_PCH})
+
 # Link-time optimization has to cover the library: main.cc is a few lines and
 # every code path lives in uagent_core.
 include(CheckIPOSupported)
@@ -192,6 +210,9 @@ if(BUILD_TESTING)
     tests/unit/tool_execution_policy_test.cc
     tests/unit/wire_test.cc)
   target_link_libraries(uagent_tests PRIVATE uagent_core)
+  # Its own PCH rather than REUSE_FROM: the test binary carries an extra -D,
+  # and a reused header has to have been built with the same command line.
+  target_precompile_headers(uagent_tests PRIVATE ${UAGENT_PCH})
   target_compile_definitions(
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)

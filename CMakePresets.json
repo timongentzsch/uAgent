@@ -40,9 +40,11 @@
     {
       "name": "tidy",
       "inherits": "debug",
+      "description": "Precompiled headers are off here: run-clang-tidy reads compile_commands.json, and an -include-pch produced by one clang is not consumable by another.",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "UAGENT_BUILD_BENCHMARKS": "ON"
+        "UAGENT_BUILD_BENCHMARKS": "ON",
+        "CMAKE_DISABLE_PRECOMPILE_HEADERS": "ON"
       }
     },
     {

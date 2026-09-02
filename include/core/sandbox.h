@@ -87,6 +87,24 @@ bool DecodeSandboxPolicy(const std::vector<std::string>& words,
 // absolute; comparison is textual so that it cannot touch the filesystem.
 bool SandboxPathWithin(std::string_view path, std::string_view root);
 
+// What this host can actually enforce. Filesystem-only is the Landlock ABI 1-3
+// case: writes confine, the network toggle does not, so a policy that denies
+// the network on such a host is refusing rather than pretending.
+enum class SandboxLevel { kUnavailable, kFilesystem, kFilesystemAndNetwork };
+
+// Probes the host once and caches the answer. Cheap either way -- one syscall
+// on Linux, one access() on macOS -- but every spawn asks, and the answer
+// cannot change while the process runs.
+SandboxLevel SandboxSupported();
+
+// Linux trampoline: the argv word after the program name is --sandbox-child,
+// followed by the words EncodeSandboxPolicy produced, then `--`, then the
+// command to run. Applies the policy to itself and execs the command, so on
+// success it never returns. Every failure -- a malformed argv, a rejected
+// ruleset, a missing command -- returns without executing anything, because a
+// command that ran here would be a command that ran unconfined.
+int SandboxChildMain(int argc, char** argv);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_SANDBOX_H_

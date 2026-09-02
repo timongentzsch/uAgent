@@ -25,6 +25,7 @@ extern char** environ;
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
+#include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
@@ -102,6 +103,12 @@ int Fail(bool json_stream, bool json_envelope, const std::string& error,
 }  // namespace
 
 int Main(int argc, char** argv) {
+  // Both hidden modes are re-execs of this binary that must do their one job
+  // before any of the startup below runs: the sandbox trampoline in particular
+  // has to confine itself while it is still the only thing in the process.
+  if (argc > 2 && std::string(argv[1]) == "--sandbox-child") {
+    return SandboxChildMain(argc, argv);
+  }
   if (argc == 4 && std::string(argv[1]) == "--log-pump") {
     int64_t bytes = 0;
     return ParseInt64(argv[3], bytes) && bytes >= 1024

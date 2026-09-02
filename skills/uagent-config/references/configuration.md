@@ -5,6 +5,21 @@
 
 Every setting below is read from the running binary's registry. `takes effect` is `next-user-turn` when a change to a config file applies at the next prompt, and `restart-required` when it does not. Secret values are never displayed; diagnostics report only whether they are set.
 
+## Contents
+
+- route
+- request
+- budget
+- tools
+- delegation
+- search
+- memory
+- skills
+- mcp
+- media
+- retention
+- behaviour
+
 ## route
 
 | Setting | Type | Default | Takes effect | Description |

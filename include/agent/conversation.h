@@ -95,6 +95,13 @@ class Conversation {
 
   void PruneToolDisplays();
 
+  // Parallel by index and the same length, always. Every mutator below writes
+  // both, Restore rejects a mismatched pair off disk, and the read paths index
+  // kinds_ with a bound taken from messages_ -- so a new mutator that touches
+  // one array has to touch the other. The pair is kept rather than merged into
+  // one vector of {message, kind} because Messages() is handed straight to the
+  // request path as a reference; a merged store would have to materialize a
+  // json array per model request.
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
   json tool_displays_ = json::object();

@@ -2,6 +2,7 @@ import stat
 
 from integration_support import (
     SMALL_PNG,
+    TIMEOUT_SCALE,
     Server,
     assert_token_budget_stop,
     assert_true,
@@ -1187,7 +1188,33 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
             assert_true(code == 0, output)
             if name != "terminated":
                 assert_true(completion_logged(), f"{name} extractor did not complete")
-            wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
+                wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
+                return server.requests
+
+            # Shutdown gives a background group 500ms to run its EXIT trap
+            # before SIGKILL (BgShutdownAll in jobs.cc), and a shell defers
+            # that trap until its foreground child is reaped -- so a child too
+            # slow to unwind loses the race and the claim outlives it. That is
+            # a liveness cost the stale-claim sweep reclaims after 15 minutes,
+            # not a correctness one, and it is reproducible under TSan.
+            #
+            # The invariant that has to hold either way is what a surviving
+            # claim *says*. `processing` is reclaimable; `done` is not, and a
+            # killed extractor claiming completion would skip that session for
+            # good.
+            released = False
+            deadline = time.monotonic() + budget(30)
+            while time.monotonic() < deadline:
+                if not markers(case_home):
+                    released = True
+                    break
+                time.sleep(0.02)
+            for marker in markers(case_home):
+                state = marker.read_text(encoding="utf-8").strip()
+                assert_true(state == "processing", f"killed extractor claimed {state!r}")
+            # On a plain build the trap always wins, so a survivor there is a
+            # real regression rather than the documented race.
+            assert_true(released or TIMEOUT_SCALE > 1, "claim survived shutdown")
             return server.requests
 
     def fail_request(handler, _):

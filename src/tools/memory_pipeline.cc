@@ -210,6 +210,12 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
   std::filesystem::remove(receipt, ignored);
   std::string source_id = WorkspaceId(source);
   environment.emplace_back("UAGENT_INTERNAL_MEMORY_RECEIPT", receipt);
+  // Best effort, not a guarantee: a shell defers an EXIT trap until its
+  // foreground child is reaped, and shutdown allows a background group 500ms
+  // before SIGKILL (BgShutdownAll). A child too slow to unwind loses that race
+  // and leaves its claim behind. That is why the claim is reclaimed by age
+  // rather than only by this trap -- and why the trap narrows to `processing`,
+  // so a claim already marked `done` is never removed by a late signal.
   std::string cleanup =
       "if [ \"$(cat " + ShellQuote(marker) +
       " 2>/dev/null)\" = processing ]; then rm -f " + ShellQuote(marker) +

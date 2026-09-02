@@ -114,14 +114,22 @@ BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 
+// Every member moves: the supervisor alone told the destination which counter
+// to give back and, since the reservation names the log, which id to commit
+// under. ReserveActivity hands its result through an optional, so this runs on
+// the way out of every reservation.
 ActivityReservation::ActivityReservation(ActivityReservation&& other) noexcept
-    : supervisor_(std::exchange(other.supervisor_, nullptr)) {}
+    : supervisor_(std::exchange(other.supervisor_, nullptr)),
+      subagent_(other.subagent_),
+      id_(other.id_) {}
 
 ActivityReservation& ActivityReservation::operator=(
     ActivityReservation&& other) noexcept {
   if (this == &other) return *this;
   Reset();
   supervisor_ = std::exchange(other.supervisor_, nullptr);
+  subagent_ = other.subagent_;
+  id_ = other.id_;
   return *this;
 }
 
@@ -238,7 +246,9 @@ std::optional<ActivityReservation> ProcessSupervisor::ReserveActivity(
   }
   ++reservations_;
   NotifyLocked();
-  return ActivityReservation(this, subagent);
+  // Spent whether or not the reservation commits: ids are opaque, so a gap
+  // costs nothing and pre-allocation is what lets the caller name its log.
+  return ActivityReservation(this, subagent, next_id_++);
 }
 
 std::optional<int64_t> ProcessSupervisor::CommitReservation(BgJob job,

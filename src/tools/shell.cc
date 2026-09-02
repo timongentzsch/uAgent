@@ -3,6 +3,7 @@
 #include "include/tools/shell.h"
 
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/ioctl.h>
@@ -115,8 +116,11 @@ int SpawnPtyShell(const std::string& shell, std::string& command,
   Fd master(posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC));
   if (!master) return errno;
   if (grantpt(master.Get()) != 0 || unlockpt(master.Get()) != 0) return errno;
-  const char* slave_name = ptsname(master.Get());
-  if (!slave_name) return errno;
+  // ptsname() returns a static buffer, and `run` is parallel-safe.
+  char slave_path[PATH_MAX];
+  const int pts_error = ptsname_r(master.Get(), slave_path, sizeof(slave_path));
+  if (pts_error != 0) return pts_error > 0 ? pts_error : errno;
+  const char* slave_name = slave_path;
   winsize initial_size{};
   initial_size.ws_row = 24;
   initial_size.ws_col = 80;
@@ -232,6 +236,9 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
   // running without a record to find it by.
   auto fail_and_reap = [&](ToolResult error) {
     KillProcess(pid);
+    // The record may already be on disk: a reader that finds it after the
+    // child is reaped would kill whatever inherits the pid next.
+    unlink(DetachedRecordPath(pid).c_str());
     RemoveLog(log);
     return ShellCommandResult{std::move(error), std::nullopt,
                               /*launched=*/true};
@@ -328,7 +335,12 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         ToolErrorCode::kUnavailable,
         "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
-  std::string named = UagentDir(kBgDir) + "/" + std::to_string(pid) + ".log";
+  // Named after the pid and the activity id: a pid alone is reused within one
+  // run and a rename onto a completed job's uncollected log would destroy it,
+  // while an activity id alone counts from the same base in every process --
+  // and a child agent shares this directory with its parent.
+  std::string named = UagentDir(kBgDir) + "/" + std::to_string(getpid()) + "-" +
+                      std::to_string(reservation->Id()) + ".log";
   if (rename(log.c_str(), named.c_str()) == 0) {
     log = named;  // child's fd stays valid
   }
@@ -347,7 +359,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
                    cmd,
                    false,
                    spec.job_kind,
-                   0,
+                   reservation->Id(),
                    session,
                    std::move(spec.activity_label),
                    std::move(spec.receipt_path),
@@ -396,6 +408,10 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
     exited = WaitForTerminal(supervisor, session, stop_deadline);
   }
+  // Joined before it is dropped, so a Ctrl-C landing in the handover still
+  // reaches the child; every path below that does not background it takes the
+  // registration back out.
+  BgTrackSignal(pid, true);
   TrackPid(g_child_pgids, kFgMax, pid, false);
 
   auto finish = [&](auto build) {
@@ -416,12 +432,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   };
 
   if (cancelled) {
+    BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     RemoveLog(log);
     return {ToolCancelled("error: command cancelled by user"), std::nullopt,
             /*launched=*/true};
   }
   if (exited) {
+    BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     return finish([](std::string output, int status) {
       output += FmtExit(status, /*show_ok=*/false);
@@ -429,6 +447,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
     });
   }
   if (!spec.background && !handed_off && spec.yield_ms <= 0) {
+    BgTrackSignal(pid, false);
     (void)supervisor.RemoveForeground(pid);
     SignalShellGroup(pid, SIGKILL);
     auto stop_deadline =
@@ -445,13 +464,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
       spec.job_kind.empty() ? "subagent" : spec.job_kind;
   std::optional<BgJob> moved = supervisor.MoveForegroundToBackground(pid);
   if (!moved) {
+    BgTrackSignal(pid, false);
     SignalShellGroup(pid, SIGKILL);
     RemoveLog(log);
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: foreground activity ownership was lost"),
             std::nullopt, /*launched=*/true};
   }
-  BgTrackSignal(pid, true);
   if (is_subagent) {
     return {ToolSuccess("[started] " + subagent_label + " id " +
                         std::to_string(activity_id) +
@@ -753,9 +772,11 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
     }
     command += " -- " + ShellQuote(pattern) + " " + ShellQuote(target);
   }
-  command = "set -o pipefail; " + command + " 2>&1 | head -n " +
-            std::to_string(max_results + 1) + " | head -c " +
-            std::to_string(bytes);
+  // PIPESTATUS[0], not pipefail: head closing the pipe makes the whole
+  // pipeline exit 141, which would read as "truncated" and swallow a producer
+  // error. The producer's own 141 still means head cut it short.
+  command += " 2>&1 | head -n " + std::to_string(max_results + 1) +
+             " | head -c " + std::to_string(bytes) + "; exit ${PIPESTATUS[0]}";
   ShellCommandResult execution =
       RunShellCommand(supervisor, context, {.command = std::move(command)});
   ToolResult outcome = std::move(execution.result);

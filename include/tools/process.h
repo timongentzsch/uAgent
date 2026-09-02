@@ -110,14 +110,18 @@ class ActivityReservation {
   ActivityReservation& operator=(const ActivityReservation&) = delete;
 
   std::optional<int64_t> Register(BgJob job);
+  // The activity id this reservation will commit under, known before the job
+  // exists so its log can be named after it rather than after a reusable pid.
+  int64_t Id() const { return id_; }
 
  private:
   friend class ProcessSupervisor;
-  ActivityReservation(ProcessSupervisor* supervisor, bool subagent)
-      : supervisor_(supervisor), subagent_(subagent) {}
+  ActivityReservation(ProcessSupervisor* supervisor, bool subagent, int64_t id)
+      : supervisor_(supervisor), subagent_(subagent), id_(id) {}
   void Reset();
   ProcessSupervisor* supervisor_ = nullptr;
   bool subagent_ = false;
+  int64_t id_ = 0;
 };
 
 class ProcessSupervisor {

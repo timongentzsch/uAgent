@@ -39,7 +39,7 @@ std::string TakeStrandedSteering() {
   std::string prompt;
   for (std::string& stranded : SteeringState().TakeQueued()) {
     if (!prompt.empty()) prompt += "\n";
-    prompt += std::move(stranded);
+    prompt += stranded;
   }
   return prompt;
 }

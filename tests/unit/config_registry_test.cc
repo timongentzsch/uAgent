@@ -90,16 +90,21 @@ std::vector<std::string> DirectRuntimeSettingLookups(std::string_view source) {
              std::isspace(static_cast<unsigned char>(source[cursor]))) {
         ++cursor;
       }
-      if (cursor >= source.size() || source[cursor++] != '(') {
+      if (cursor >= source.size() || source[cursor] != '(') {
         offset += function.size();
         continue;
       }
+      ++cursor;
       while (cursor < source.size() &&
              std::isspace(static_cast<unsigned char>(source[cursor]))) {
         ++cursor;
       }
-      if (cursor >= source.size() || source[cursor++] != '"' ||
-          !source.substr(cursor).starts_with("UAGENT_")) {
+      if (cursor >= source.size() || source[cursor] != '"') {
+        offset += function.size();
+        continue;
+      }
+      ++cursor;
+      if (!source.substr(cursor).starts_with("UAGENT_")) {
         offset += function.size();
         continue;
       }

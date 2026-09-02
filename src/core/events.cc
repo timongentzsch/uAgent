@@ -177,8 +177,9 @@ json PresentationJson(const PresentationRecord& record) {
 
 json AppProjection(const Event& event) {
   json data = event.data.is_object() ? event.data : json::object();
-  if (!event.data.is_null() && !event.data.is_object())
+  if (!event.data.is_null() && !event.data.is_object()) {
     data["value"] = event.data;
+  }
   if (!event.text.empty()) data["text"] = std::string(event.text);
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);

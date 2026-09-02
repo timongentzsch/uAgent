@@ -69,6 +69,22 @@ std::string ChildAgentStopNote(const json& stop);
 // the question "am I somebody's child" on paths that run every step.
 const std::string& CollaboratorSessionFile();
 
+// Guidance for a collaborator, one message per file beside its record. A file
+// rather than an array in the record because the recipient may be running: two
+// processes appending to one JSON document race, and a running child would not
+// see the result until its next followup either way. The child drains these
+// between steps; a message to an idle collaborator waits for its next
+// followup, which drains the same files.
+ToolResult WriteCollaboratorMail(const std::string& id,
+                                 const std::string& prompt);
+// Oldest first, consumed as they are read. Corrupt mail is dropped rather than
+// retried, the same posture unreadable detached records get.
+std::vector<std::string> TakeCollaboratorMail(const std::string& id);
+// The child half: queue whatever has arrived as ordinary steering, then unlink.
+// Queue-before-unlink makes redelivery the failure mode rather than loss. A
+// no-op in a process that is not a collaborator.
+void DrainCollaboratorMailIntoSteering();
+
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the
 // refusal to hand back, or nothing when the call may proceed, and reports the

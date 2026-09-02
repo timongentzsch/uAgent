@@ -28,6 +28,7 @@
 #include "include/core/term.h"
 #include "include/core/time.h"
 #include "include/md.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "src/agent/turn_internal.h"
 
@@ -284,6 +285,10 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 // message, the budget gates, and the schemas this step is allowed to offer.
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop,
                                    json& schemas) {
+  // A collaborator's parent can speak to it mid-run; the guidance arrives as
+  // steering and is applied by the very next statement, so nothing it queues
+  // can strand at the end of a headless turn.
+  DrainCollaboratorMailIntoSteering();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
   if (SteeringState().Requested()) return InterruptTurn(state);

@@ -23,6 +23,7 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
 #include "include/tools/shell.h"
@@ -867,6 +868,54 @@ void TestDetachedActivityOwnership() {
           std::string::npos);
     (void)single.TakeAllForShutdown();
   }
+}
+
+void TestCollaboratorMail() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("collaborator-mail");
+  const fs::path dir = fs::path(UagentDir("collaborators"));
+
+  // Order is the contract: guidance read out of sequence is guidance the
+  // coordinator did not give.
+  CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
+  CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
+  CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
+  std::vector<std::string> taken = TakeCollaboratorMail("agent-aaaa1111");
+  CHECK(taken == std::vector<std::string>({"first", "second"}));
+  // Consumed on read, and only the addressee's: a second take returns nothing
+  // while the other collaborator's message is still waiting.
+  CHECK(TakeCollaboratorMail("agent-aaaa1111").empty());
+  CHECK(TakeCollaboratorMail("agent-bbbb2222") ==
+        std::vector<std::string>({"other"}));
+
+  // Unreadable mail is dropped rather than retried: left in place it would be
+  // reread on every step for as long as the record survives.
+  const fs::path corrupt =
+      dir / "agent-cccc3333.mail-19700101T000000Z-1-0000.json";
+  std::ofstream(corrupt) << "{not json";
+  CHECK(TakeCollaboratorMail("agent-cccc3333").empty());
+  CHECK(!fs::exists(corrupt));
+
+  // An id that could not name a file is answered with silence, not a path
+  // assembled out of it.
+  CHECK(TakeCollaboratorMail("../escape").empty());
+
+  // Mail prunes with the record it belongs to, and while it is unread it is
+  // what keeps that record from looking stale.
+  ScopedEnv days("UAGENT_DEBUG_DAYS", "1");
+  const fs::path record = dir / "agent-dddd4444.json";
+  std::ofstream(record) << "{}\n";
+  const auto stale = fs::file_time_type::clock::now() - std::chrono::hours(72);
+  fs::last_write_time(record, stale);
+  const fs::path forgotten = dir / "agent-eeee5555.json";
+  std::ofstream(forgotten) << "{}\n";
+  fs::last_write_time(forgotten, stale);
+  CHECK(WriteCollaboratorMail("agent-dddd4444", "still waiting").Ok());
+  MaintainArtifacts();
+  CHECK(fs::exists(record));
+  CHECK(TakeCollaboratorMail("agent-dddd4444") ==
+        std::vector<std::string>({"still waiting"}));
+  CHECK(!fs::exists(forgotten));
 }
 
 }  // namespace uagent

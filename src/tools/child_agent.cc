@@ -2,12 +2,16 @@
 
 #include "include/tools/child_agent.h"
 
+#include <unistd.h>
+
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,8 +20,12 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/core/strings.h"
+#include "include/core/time.h"
+#include "include/tools/files.h"
 #include "include/tools/output_buffer.h"
 
 namespace uagent {
@@ -285,6 +293,103 @@ const std::string& CollaboratorSessionFile() {
     return file.string();
   }();
   return kSessionFile;
+}
+
+namespace {
+
+// `.mail-` cannot collide with another collaborator's record: an id passes
+// through SafeFileComponent, whose alphabet has no dot. Flat siblings rather
+// than a subdirectory because the pruner removes files, not directories, and
+// grouping mail with its record then costs one substring search.
+constexpr std::string_view kMailInfix = ".mail-";
+
+std::string CollaboratorDir() { return UagentDir("collaborators"); }
+
+// Sorted oldest first. The name carries a UTC second, the writing pid and a
+// per-process counter, so messages from one parent stay ordered and two
+// parents in the same second interleave by pid rather than by nothing.
+std::vector<std::filesystem::path> CollaboratorMailFiles(
+    const std::string& id) {
+  std::vector<std::filesystem::path> files;
+  if (id.empty() || SafeFileComponent(id) != id) return files;
+  const std::string prefix = id + std::string(kMailInfix);
+  std::error_code error;
+  for (std::filesystem::directory_iterator it(CollaboratorDir(), error), end;
+       !error && it != end; it.increment(error)) {
+    std::string name = it->path().filename().string();
+    if (name.starts_with(prefix) && name.ends_with(".json")) {
+      files.push_back(it->path());
+    }
+  }
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
+// The prompt, or nothing when the file is unreadable or malformed. Either way
+// the caller unlinks: mail that cannot be delivered would otherwise be retried
+// on every step for as long as the record survives.
+std::optional<std::string> ReadCollaboratorMail(
+    const std::filesystem::path& path) {
+  std::ifstream input(path);
+  json mail = json::parse(input, nullptr, false);
+  if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
+  std::string prompt = JsonValue(mail, "prompt", std::string());
+  if (prompt.empty()) return std::nullopt;
+  return prompt;
+}
+
+// The id this process is running as, from the session file the parent handed
+// down. Empty in a process that is not a collaborator.
+std::string OwnCollaboratorId() {
+  const std::string& session = CollaboratorSessionFile();
+  if (session.empty()) return {};
+  std::string name = std::filesystem::path(session).filename().string();
+  constexpr std::string_view kSuffix = ".session.json";
+  if (!name.ends_with(kSuffix)) return {};
+  name.resize(name.size() - kSuffix.size());
+  return name;
+}
+
+}  // namespace
+
+ToolResult WriteCollaboratorMail(const std::string& id,
+                                 const std::string& prompt) {
+  static std::atomic<uint64_t> sequence{0};
+  // Zero-padded so a plain filename sort is a chronological one within the
+  // second the stamp resolves to.
+  std::string seq =
+      std::to_string(sequence.fetch_add(1, std::memory_order_relaxed) % 10000);
+  seq.insert(0, 4 - std::min<size_t>(4, seq.size()), '0');
+  std::string path = CollaboratorDir() + "/" + id + std::string(kMailInfix) +
+                     UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+                     std::to_string(getpid()) + "-" + seq + ".json";
+  json mail = {{"format", 1}, {"prompt", prompt}};
+  return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
+                         /*preserve_mode=*/true);
+}
+
+std::vector<std::string> TakeCollaboratorMail(const std::string& id) {
+  std::vector<std::string> prompts;
+  for (const std::filesystem::path& path : CollaboratorMailFiles(id)) {
+    std::optional<std::string> prompt = ReadCollaboratorMail(path);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    if (prompt) prompts.push_back(std::move(*prompt));
+  }
+  return prompts;
+}
+
+void DrainCollaboratorMailIntoSteering() {
+  const std::string id = OwnCollaboratorId();
+  if (id.empty()) return;
+  for (const std::filesystem::path& path : CollaboratorMailFiles(id)) {
+    std::optional<std::string> prompt = ReadCollaboratorMail(path);
+    // Queued before the unlink, so a crash in between costs a repeat rather
+    // than the message. The reverse order would lose it outright.
+    if (prompt) SteeringState().Queue("[parent guidance]\n" + *prompt);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+  }
 }
 
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped) {

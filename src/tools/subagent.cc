@@ -70,6 +70,19 @@ std::string NewCollaboratorId() {
   return "agent-" + HashHex(seed);
 }
 
+// Mail is consumed before the launch so a child already draining it is not
+// handed the same guidance twice -- which leaves every path that gives up
+// between here and the launch holding messages nobody asked for. Writing them
+// back on the way out is the only place that covers all of them.
+struct MailRestore {
+  std::string id;
+  std::vector<std::string> taken;
+
+  ~MailRestore() {
+    for (const std::string& queued : taken) WriteCollaboratorMail(id, queued);
+  }
+};
+
 bool LoadCollaborator(const std::string& id, json& state, std::string& error) {
   if (id.empty() || SafeFileComponent(id) != id) {
     error = "invalid collaborator id";
@@ -114,9 +127,12 @@ ToolResult ListCollaborators(const ProcessSupervisor& processes) {
   std::vector<json> records;
   for (fs::directory_iterator it(UagentDir("collaborators"), error), end;
        !error && it != end && records.size() < 100; it.increment(error)) {
-    if (!it->is_regular_file(error) ||
-        !it->path().filename().string().ends_with(".json") ||
-        it->path().filename().string().ends_with(".session.json")) {
+    const std::string name = it->path().filename().string();
+    // Undelivered mail is a sibling file, not a collaborator: skipping it by
+    // name keeps a talkative parent from crowding out the records below.
+    if (!it->is_regular_file(error) || !name.ends_with(".json") ||
+        name.ends_with(".session.json") ||
+        name.find(".mail-") != std::string::npos) {
       continue;
     }
     std::ifstream input(it->path());
@@ -245,8 +261,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
        {{"type", "string"},
         {"enum", json::array({"spawn", "followup", "message", "list"})},
         {"description",
-         "spawn default; followup resumes a durable child; "
-         "message queues guidance; list shows collaborators"}}},
+         "spawn default; followup resumes a durable child; message "
+         "delivers guidance to a running child between its steps and "
+         "otherwise holds it for the next followup; list shows "
+         "collaborators"}}},
       {"agent_id",
        {{"type", "string"},
         {"description", "durable collaborator id for followup or message"}}},
@@ -301,9 +319,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "parent rounds; for a broad request with orthogonal parts, issue one "
       "task per part in a single batch. Spawn creates a durable collaborator "
       "whose conversation can be resumed with operation=followup; message "
-      "queues guidance for its next followup, while activity handles waiting, "
-      "output and stopping. Keep background=true when useful parent work can "
-      "continue.",
+      "reaches a running child between its steps without waiting for a "
+      "followup, while activity handles waiting, output and stopping. Keep "
+      "background=true when useful parent work can continue.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
@@ -330,8 +348,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               {"cwd", CanonicalCwd()},
               {"session_file", CollaboratorSessionPath(collaborator_id)},
               {"created_at", UtcStamp()},
-              {"directive", JsonValue(arguments, "directive", "")},
-              {"mailbox", json::array()}};
+              {"directive", JsonValue(arguments, "directive", "")}};
         } else {
           std::string load_error;
           if (!LoadCollaborator(collaborator_id, collaborator, load_error)) {
@@ -351,13 +368,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             return ToolFailure(ToolErrorCode::kInvalidArguments,
                                "error: message requires prompt");
           }
-          if (!collaborator.contains("mailbox") ||
-              !collaborator["mailbox"].is_array()) {
-            collaborator["mailbox"] = json::array();
-          }
-          collaborator["mailbox"].push_back(prompt);
-          collaborator["updated_at"] = UtcStamp();
-          ToolResult saved = SaveCollaborator(collaborator);
+          ToolResult saved = WriteCollaboratorMail(collaborator_id, prompt);
           if (!saved.Ok()) return saved;
           return ToolSuccess("queued message for collaborator " +
                              collaborator_id);
@@ -380,12 +391,15 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                      (prompt.empty() ? "" : "\n\n" + prompt);
           }
         }
-        if (operation == "followup" && collaborator.contains("mailbox") &&
-            collaborator["mailbox"].is_array()) {
-          for (const json& queued : collaborator["mailbox"]) {
-            if (!queued.is_string()) continue;
+        // Consumed before the launch rather than after it: a child that is
+        // already reading these would otherwise be handed them twice. When the
+        // launch does not happen they are written back below.
+        MailRestore restore{collaborator_id, {}};
+        if (operation == "followup") {
+          restore.taken = TakeCollaboratorMail(collaborator_id);
+          for (const std::string& queued : restore.taken) {
             if (!prompt.empty()) prompt += "\n\n";
-            prompt += "[queued guidance]\n" + queued.get<std::string>();
+            prompt += "[queued guidance]\n" + queued;
           }
         }
         if (prompt.empty()) {
@@ -532,11 +546,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               ChildAgentConstraintNotes(clamped);
         }
         if (launched) {
+          restore.taken.clear();
           collaborator["mode"] = JsonValue(
               arguments, "mode", JsonValue(collaborator, "mode", "lean"));
           collaborator["model"] = requested;
           collaborator["memory"] = child_memory;
-          collaborator["mailbox"] = json::array();
           collaborator["updated_at"] = UtcStamp();
           ToolResult saved = SaveCollaborator(collaborator);
           if (saved.Ok()) {

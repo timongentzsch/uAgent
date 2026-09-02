@@ -188,8 +188,9 @@ to each child as only the coordinator's remaining allowance; budgeted children
 run one at a time so siblings cannot each spend the same remainder. Use
 `operation=followup` with that ID to resume its
 conversation. A persisted coordinator-owned `directive` is prepended to each
-follow-up until explicitly cleared; `operation=message` queues separate one-shot
-guidance for the next follow-up. `operation=list` inspects workspace
+follow-up until explicitly cleared; `operation=message` sends separate one-shot
+guidance, which a running child picks up between its steps and an idle one
+receives with its next follow-up. `operation=list` inspects workspace
 collaborators. Use `background=false` when the next step requires the child
 result; background children notify the agent automatically on exit. A failed
 child

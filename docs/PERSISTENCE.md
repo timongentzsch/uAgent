@@ -13,6 +13,7 @@ model output, tool results, paths, and usage.
 | detached terminal records | `~/.uagent/terminals/<pid>.json` |
 | session-lifetime activity state | memory only; not resumable after process exit |
 | collaborator metadata and sessions | `~/.uagent/collaborators/agent-<8 hex>.json` and `.session.json` |
+| undelivered collaborator guidance | `~/.uagent/collaborators/agent-<8 hex>.mail-*.json` (removed on delivery; pruned with its record) |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |

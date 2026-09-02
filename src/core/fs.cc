@@ -113,7 +113,13 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
     std::error_code time_error;
     fs::file_time_type modified = entry.last_write_time(time_error);
     if (time_error) return;
-    Record& record = records[name.substr(0, name.size() - suffix)];
+    std::string base = name.substr(0, name.size() - suffix);
+    // Undelivered mail belongs to its recipient's group, so it ages out with
+    // the record and, while it is fresh, keeps that record from looking stale.
+    if (size_t mail = base.find(".mail-"); mail != std::string::npos) {
+      base.resize(mail);
+    }
+    Record& record = records[base];
     record.modified = std::max(record.modified, modified);
     record.files.push_back(entry.path());
   });

@@ -365,6 +365,56 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home):
             result = run(root, env, "--yolo", "-p", prompt)
             assert_true(result.returncode == 0, result.stderr)
             assert_true(result.stdout.strip() == expected, result.stdout)
+        # Guidance lives in files beside the record until it is delivered, so a
+        # message that reached the child has to leave nothing behind.
+        left = list((home / ".uagent" / "collaborators").glob("*.mail-*"))
+        assert_true(not left, left)
+
+
+def test_message_reaches_running_child(root, home):
+    """A message to a running child is delivered without waiting for a followup."""
+    scale = max(1, int(float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))))
+
+    def route(_, body):
+        messages = body["messages"]
+        users = [
+            str(message.get("content", "")) for message in messages if message.get("role") == "user"
+        ]
+        if "wait-for-guidance" in users:
+            if any("[parent guidance]" in user for user in users):
+                return event({"content": "guidance-received"})
+            if len(messages) > 30 * scale:
+                return event({"content": "guidance-never-arrived"})
+            # Idle in short steps: the drain runs between them, so the child
+            # only has to still be alive when the message lands.
+            return tool_call("run", {"command": "sleep 0.2"})
+        combined = "\n".join(str(message.get("content", "")) for message in messages)
+        if "guidance-received" in combined:
+            return event({"content": "live-message-ok"})
+        if "queued message for collaborator" in combined:
+            return tool_call("activity", {"operation": "wait", "wait_ms": 30000})
+        if "[started] subagent id" in combined:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
+            assert_true(match is not None, combined)
+            return tool_call(
+                "subagent",
+                {"operation": "message", "agent_id": match.group(1), "prompt": "say banana"},
+            )
+        return tool_call("subagent", {"prompt": "wait-for-guidance", "background": True})
+
+    with Server([route]) as server:
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "coordinate", timeout=60)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "live-message-ok", result.stdout)
+        collaborators = home / ".uagent" / "collaborators"
+        sessions = list(collaborators.glob("agent-*.session.json"))
+        assert_true(len(sessions) == 1, sessions)
+        # The guidance became an ordinary user message in the child's own
+        # conversation, which is what makes it steering rather than a note.
+        # The record is JSON, so the wrapper's newline is escaped in the file.
+        transcript = sessions[0].read_text(encoding="utf-8")
+        assert_true("[parent guidance]\\nsay banana" in transcript, transcript[:2000])
+        assert_true(not list(collaborators.glob("*.mail-*")), "delivered mail was left behind")
 
 
 def test_parallel_subagents_auto_join(root, home):

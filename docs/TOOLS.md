@@ -81,8 +81,9 @@ file notifications where available.
 `subagent` defaults to `operation=spawn`, returning both an activity ID and a
 durable collaborator ID. `operation=followup` resumes that collaborator's
 private conversation and prepends its persisted coordinator-owned `directive`;
-an explicit empty directive clears it. `message` queues one-shot guidance for
-the next follow-up, and `list` reports workspace collaborators. Use the
+an explicit empty directive clears it. `message` delivers one-shot guidance to
+a running child between its steps and holds it for the next follow-up when the
+child is idle, and `list` reports workspace collaborators. Use the
 ordinary `activity` tool for live output, waiting, and stopping; collaboration
 does not add a second process supervisor.
 

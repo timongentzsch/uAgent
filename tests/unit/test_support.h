@@ -233,6 +233,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestActivitySessions)                      \
   X(TestActivityDescriptorAndInputPolicy)      \
   X(TestActivityWaitAndDelivery)               \
+  X(TestCollaboratorMail)                      \
   X(TestToolExecutionPolicy)                   \
   X(TestOpenRouterServerSearch)                \
   X(TestAttachmentEncoding)                    \

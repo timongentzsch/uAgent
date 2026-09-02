@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/events.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
@@ -423,7 +424,14 @@ std::vector<SubagentView> ProcessSupervisor::SubagentViews() const {
       // behind a child's read, and `pending_output` belongs to the tool that
       // will drain it -- reading the transcript consumes nothing.
       std::lock_guard<std::mutex> lock(job.session->mutex);
-      view.tail = job.session->transcript.TailLine();
+      std::string line = job.session->transcript.TailLine();
+      // Progress lines only. Once the child answers, the newest line on its
+      // stream is the JSON envelope the parent will deliver whole -- a
+      // fragment of that is not what the child is doing, and a row showing it
+      // would be reporting the result before the result is in.
+      if (line.starts_with(kHeadlessProgressPrefix)) {
+        view.tail = std::move(line);
+      }
     }
     views.push_back(std::move(view));
   }

@@ -154,6 +154,14 @@ void TestActivityBufferAndAdmission() {
   // Looking is not draining: the tool that joins the child still needs every
   // byte the transcript holds.
   CHECK(delegating.SubagentViews()[0].tail == "· writing");
+  // The child's answer is not progress. Once it prints its JSON envelope the
+  // newest line on the stream is the result the parent will deliver whole, so
+  // the row says nothing rather than a fragment of it.
+  {
+    std::lock_guard<std::mutex> lock(delegated->mutex);
+    delegated->transcript.Push("{\"format\":3,\"answer\":\"done\"}\n");
+  }
+  CHECK(delegating.SubagentViews()[0].tail.empty());
 
   ProcessSupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);

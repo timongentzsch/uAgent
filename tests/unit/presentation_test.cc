@@ -219,6 +219,23 @@ void TestActivityBar() {
   // the row -- a child could otherwise repaint the parent's screen.
   delegated.subagent = "agent-1a2b3c4d: \033[2Jwiped";
   CHECK(ActivityBar(delegated).find("\033[2J") == std::string::npos);
+  // The model round posts an activity of its own, and it is the one label the
+  // child's progress outranks: without this the branch above is unreachable
+  // for the entire time a parent spends waiting on its children.
+  delegated.subagent = "agent-1a2b3c4d: · reading";
+  {
+    TerminalActivityLabel waiting(kWaitingActivity);
+    CHECK(ActivityBar(delegated).find("agent-1a2b3c4d: · reading") !=
+          std::string::npos);
+  }
+  // Anything that names actual work keeps the row.
+  {
+    TerminalActivityLabel running("run · make");
+    std::string busy_bar = ActivityBar(delegated);
+    CHECK(busy_bar.find("run · make") != std::string::npos);
+    CHECK(busy_bar.find("agent-1a2b3c4d") == std::string::npos);
+    CHECK(busy_bar.find("agents:2") != std::string::npos);
+  }
 
   // Interrupting replaces the idle "Working" label.
   ActivityView interrupting = Working(std::chrono::milliseconds(0));

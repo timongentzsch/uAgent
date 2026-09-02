@@ -151,14 +151,16 @@ inline std::string ActivityBar(const ActivityView& view) {
   std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
   prefix += " ";
   // What the turn is doing, in descending order of how directly the human
-  // asked for it -- a delegated child's progress is better than "Working" and
-  // worse than the work this process is doing itself.
-  std::string state = "Working";
+  // asked for it. A model round is the one label that names no work, so a
+  // delegated child's progress takes those columns and yields again as soon
+  // as this process has something of its own to report.
+  const bool waiting =
+      activity.empty() || activity.starts_with(kWaitingActivity);
+  std::string state =
+      activity.empty() ? std::string(kWaitingActivity) : activity;
   if (view.interrupting) {
     state = "Interrupting";
-  } else if (!activity.empty()) {
-    state = activity;
-  } else if (!view.subagent.empty()) {
+  } else if (waiting && !view.subagent.empty()) {
     // Terminal output from another process. It is not sanitized here because
     // ActivityLabel already does it for every label this row can carry --
     // duplicating that would leave two places to keep honest instead of one.

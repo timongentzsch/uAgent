@@ -224,12 +224,17 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home):
         code, output = run_pty(
             workspace(root),
             sandbox_env(home, server.url),
-            # The headline is part of the contract: whoever is asked has to be
-            # told which of the two mandatory reasons this is.
-            [(b"go\n", b"runs without the OS sandbox"), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
+            # Wait for the question, not the headline that precedes it: the
+            # composer is still reading until `Confirm` takes over, so a "y"
+            # typed on the headline is captured as steering and the child then
+            # blocks on an answer that has already been consumed.
+            [(b"go\n", b"allow run? [y/N] "), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
             timeout=30,
         )
     assert_true(code == 0, output)
+    # The headline is part of the contract: whoever is asked has to be told
+    # which of the two mandatory reasons this is.
+    assert_true(b"runs without the OS sandbox" in output, output)
     assert_true(outside.exists(), f"an approved hatch was still confined: {output}")
 
 

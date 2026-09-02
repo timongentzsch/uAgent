@@ -224,6 +224,16 @@ if(BUILD_TESTING)
   # Each scenario enforces its own subprocess deadline. Leave enough wrapper
   # headroom for loaded hosted macOS runners to report that diagnostic.
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
+  # Token scoreboard: the bytes charged to every request. `compare()` gates only
+  # the machine-independent axes, so binary size and peak RSS are reported and
+  # never fail; a host with no session journals skips the coverage check rather
+  # than failing it. Without this the schema could grow release over release
+  # with the measurement already written and nothing reading it.
+  add_test(NAME token_audit
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/audit.py
+                   $<TARGET_FILE:uagent> --check)
+  set_tests_properties(token_audit PROPERTIES TIMEOUT 180)
 endif()
 
 option(UAGENT_BUILD_BENCHMARKS "Build lightweight performance baselines" OFF)

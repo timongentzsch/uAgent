@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <queue>
 #include <string>
@@ -91,7 +92,7 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
     fs::file_time_type modified = fs::file_time_type::min();
     std::vector<fs::path> files;
   };
-  std::map<std::string, Record> records;
+  std::map<std::string, Record, std::less<>> records;
   ForEachTreeEntry(dir, [&](const fs::directory_entry& entry) {
     std::error_code ec;
     if (entry.is_symlink(ec)) return;
@@ -125,24 +126,33 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
   };
   auto cutoff = fs::file_time_type::clock::now() -
                 std::chrono::hours(24 * std::max(int64_t{1}, max_age_days));
-  std::vector<const Record*> kept;
+  std::vector<std::string_view> kept;
   kept.reserve(records.size());
   for (const auto& [id, record] : records) {
-    (void)id;
     if (record.modified < cutoff) {
       remove_record(record);
     } else {
-      kept.push_back(&record);
+      kept.push_back(id);
     }
   }
   if (max_records <= 0 || kept.size() <= static_cast<size_t>(max_records)) {
     return;
   }
-  std::sort(kept.begin(), kept.end(), [](const Record* a, const Record* b) {
-    return a->modified > b->modified;
-  });
+  // Newest first, ties broken by id. std::sort is not stable, so without a
+  // total order two records stamped in the same filesystem tick could prune in
+  // either direction from one run to the next -- which is why this keeps ids
+  // rather than record addresses.
+  std::sort(kept.begin(), kept.end(),
+            [&records](std::string_view a, std::string_view b) {
+              const Record& left = records.find(a)->second;
+              const Record& right = records.find(b)->second;
+              if (left.modified != right.modified) {
+                return left.modified > right.modified;
+              }
+              return a < b;
+            });
   for (size_t i = static_cast<size_t>(max_records); i < kept.size(); ++i) {
-    remove_record(*kept[i]);
+    remove_record(records.find(kept[i])->second);
   }
 }
 

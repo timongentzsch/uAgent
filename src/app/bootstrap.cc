@@ -441,8 +441,9 @@ std::string ApprovalKey(const Tool& tool, const json& arguments,
                  {"mutating", tool.mutating},
                  {"capabilities", tool.capabilities},
                  {"approval_class", static_cast<int>(required)}};
-  if (!tool.output_schema.is_null())
+  if (!tool.output_schema.is_null()) {
     policy["output_schema"] = tool.output_schema;
+  }
   std::string command = Trim(JsonValue(arguments, "command", ""));
   std::string scope = command.empty() ? tool.name : tool.name + " " + command;
   return HashHex(JsonDump(policy)) + "\n" + scope;

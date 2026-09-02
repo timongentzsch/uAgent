@@ -910,8 +910,9 @@ std::string Agent::TurnStatsLine(const TurnExecution& state, double seconds,
     stats << ' ' << ITAL() << "(+" << FmtCount(state.metrics.usage.reasoning)
           << " reasoning)" << ItalOff();
   }
-  if (state.metrics.usage.cost > 0)
+  if (state.metrics.usage.cost > 0) {
     stats << " · " << FmtCost(state.metrics.usage.cost);
+  }
   if (state.metrics.usage.web_searches) {
     stats << " · " << state.metrics.usage.web_searches << " search"
           << (state.metrics.usage.web_searches == 1 ? "" : "es");

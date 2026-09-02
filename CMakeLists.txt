@@ -117,6 +117,7 @@ add_library(
   src/core/file_watch.cc
   src/core/fs.cc
   src/core/platform_posix.cc
+  src/core/sandbox.cc
   src/core/signals.cc
   src/core/steering.cc
   src/core/strings.cc
@@ -183,6 +184,7 @@ if(BUILD_TESTING)
     tests/unit/protocol_test.cc
     tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
+    tests/unit/sandbox_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc

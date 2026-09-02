@@ -215,6 +215,9 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestConfigProposalAndCommit)               \
   X(TestProjectConfigTrustRestamp)             \
   X(TestConfigRegistryContract)                \
+  X(TestSandboxPolicy)                         \
+  X(TestSandboxRendering)                      \
+  X(TestSandboxTrampolineArgs)                 \
   X(TestStrictBooleanSettings)                 \
   X(TestSelfDescriptionSchemas)                \
   X(TestSseFraming)                            \

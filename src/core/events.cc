@@ -310,7 +310,7 @@ json JournalProjection(const Event& event) {
 constexpr size_t kProgressLineChars = 120;
 
 void EchoHeadlessProgress(const Event& event, const EventPolicy& policy) {
-  static const bool kEnabled = EnvBool("UAGENT_HEADLESS_PROGRESS", false);
+  static const bool kEnabled = HeadlessProgressEnabled();
   if (!kEnabled || !policy.journal_type || !event.presentation) return;
   const PresentationRecord& record = *event.presentation;
   std::string line = record.title;

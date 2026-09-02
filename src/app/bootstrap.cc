@@ -100,8 +100,7 @@ bool InteractiveApprovalAvailable() {
 bool ResolveProjectTrust(const Options& options, bool& trusted,
                          json& trusted_snapshot, std::string& error,
                          int& exit_code) {
-  trusted =
-      options.trust_project || EnvBool("UAGENT_TRUST_PROJECT_CONFIG", false);
+  trusted = options.trust_project || TrustProjectConfig();
   if (!trusted) trusted = ProjectConfigTrusted(&trusted_snapshot);
   bool mcp_present = ProjectMcpPresent();
   bool agent_config_present = ProjectAgentConfigPresent();

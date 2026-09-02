@@ -52,6 +52,11 @@ bool SandboxEnabled();
 bool SandboxNetworkAllowed();
 std::string SandboxWriteRoots();
 bool AdaptiveSystemEnabled();
+bool MarkdownEnabled();
+bool TrustProjectConfig();
+// A delegated child echoes one line per durable event to stderr, which is the
+// only way its parent can tell work from a stall before the answer arrives.
+bool HeadlessProgressEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();
 

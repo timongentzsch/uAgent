@@ -12,7 +12,7 @@ model output, tool results, paths, and usage.
 | process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/logs/*` (the latter is not age-pruned; a live terminal writes there) |
 | detached terminal records | `~/.uagent/terminals/<pid>.json` |
 | session-lifetime activity state | memory only; not resumable after process exit |
-| collaborator metadata and sessions | `~/.uagent/collaborators/{agent-id}.json` and `.session.json` |
+| collaborator metadata and sessions | `~/.uagent/collaborators/agent-<8 hex>.json` and `.session.json` |
 | MCP logs and captured images | `~/.uagent/mcp/*` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |

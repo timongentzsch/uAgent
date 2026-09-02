@@ -21,6 +21,7 @@ from integration_support import (
     event,
     os,
     run,
+    run_pty,
     tool_call,
 )
 
@@ -47,7 +48,7 @@ def run_once(root, env, command):
         return run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
 
 
-def tool_output(root, env, command):
+def tool_output(root, env, command, **arguments):
     """The same turn, but returning what the tool reported back to the model."""
     seen = []
 
@@ -56,7 +57,7 @@ def tool_output(root, env, command):
         if contents:
             seen.append(contents[-1])
             return event({"content": "ok"})
-        return tool_call("run", {"command": command})
+        return tool_call("run", {"command": command, **arguments})
 
     with Server([route]) as server:
         env = dict(env)
@@ -198,6 +199,35 @@ def test_sandbox_refuses_when_it_cannot_enforce(root, home):
     output = tool_output(root, env, f"echo x > {written}")
     assert_true(not written.exists(), "a command ran on a host that cannot confine it")
     assert_true("UAGENT_SANDBOX" in output, f"the refusal did not explain itself: {output}")
+
+
+def test_sandbox_escape_hatch_needs_a_person(root, home):
+    """sandbox=false is mandatory-human: --yolo cannot answer for one."""
+    if not sandbox_enforced(root, home):
+        return
+    outside = root / "hatch-headless.txt"
+    output = tool_output(root, sandbox_env(home, ""), f"echo x > {outside}", sandbox=False)
+    assert_true(not outside.exists(), "an unconfined command ran with nobody to approve it")
+    assert_true("denied" in output.lower(), f"the hatch was not denied: {output}")
+
+
+def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home):
+    """Approved at a terminal, the command runs with no wrapper at all."""
+    if not sandbox_enforced(root, home):
+        return
+    outside = root / "hatch-approved.txt"
+    call = tool_call("run", {"command": f"echo x > {outside}", "sandbox": False})
+    with Server([call, event({"content": "hatch-ok"})]) as server:
+        code, output = run_pty(
+            workspace(root),
+            sandbox_env(home, server.url),
+            # The headline is part of the contract: whoever is asked has to be
+            # told which of the two mandatory reasons this is.
+            [(b"go\n", b"runs without the OS sandbox"), (b"y\n", b"hatch-ok"), b"", b"/q\n"],
+            timeout=30,
+        )
+    assert_true(code == 0, output)
+    assert_true(outside.exists(), f"an approved hatch was still confined: {output}")
 
 
 def test_sandbox_off_leaves_spawning_unchanged(root, home):

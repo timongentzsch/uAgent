@@ -214,9 +214,12 @@ struct Tool {
   bool redact_invalid_arguments = false;  // hide raw rejected arguments
   bool parallel_safe = false;             // safe beside another tool call
   uint32_t capabilities = kAllToolCapabilities;  // required to expose
-  Approval needs_approval;          // dynamic policy (e.g. external read)
-  Classify approval_class;          // escalates specific arguments
-  Preview approval_preview;         // long-form text for the approval prompt
+  Approval needs_approval;   // dynamic policy (e.g. external read)
+  Classify approval_class;   // escalates specific arguments
+  Preview approval_preview;  // long-form text for the approval prompt
+  // Why this call needs a person, when the reason is not the default one of
+  // reaching µAgent's own configuration. Shown in the approval headline.
+  std::string mandatory_reason;
   std::string provider;             // owner for live registry refresh
   json output_schema;               // optional MCP output contract
   std::string stable_argument;      // value must stay fixed during one turn

@@ -283,8 +283,28 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                      JsonValue(a, "detach", false),
                      JsonValue(a, "shell", "bash"), JsonValue(a, "tty", false),
                      JsonValue(a, "yield_ms", RunDefaultYieldMs()),
-                     JsonValue(a, "max_output_chars", int64_t{0}));
+                     JsonValue(a, "max_output_chars", int64_t{0}),
+                     JsonValue(a, "sandbox", true));
                }));
+  // The hatch exists only where there is something to escape. Advertising it
+  // unconditionally would spend schema tokens on an argument that does nothing,
+  // and invite the model to reach for it on a host that never confined
+  // anything. `scratch` and `grep` get none: neither has a use for one.
+  if (SandboxEnabled()) {
+    run.parameters["properties"]["sandbox"] =
+        json{{"type", "boolean"},
+             {"description",
+              "false runs outside the OS sandbox; always asks a person"}};
+    // Mandatory rather than mutating: an approval a person did not give is an
+    // approval this must not have. Yolo, remembered grants and headless
+    // sessions all fall to a denial, so a collaborator child cannot unconfine
+    // itself no matter what it was launched with.
+    run.approval_class = [](const json& a) {
+      return JsonValue(a, "sandbox", true) ? ApprovalClass::kNone
+                                           : ApprovalClass::kMandatoryHuman;
+    };
+    run.mandatory_reason = "runs without the OS sandbox";
+  }
   run.clamped_arguments = {"yield_ms", "max_output_chars"};
   run.mutating = true;
   run.capabilities = Capability(ToolCapability::kExecute) |

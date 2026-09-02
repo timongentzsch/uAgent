@@ -128,8 +128,33 @@ The agent has no tool that writes configuration. Editing `~/.uagent/.config`, a
 project config, the trust store or `.mcp.json` through the built-in file tools
 is classified `kMandatoryHuman`: `--yolo`, `UAGENT_APPROVAL=yolo` and `/yolo`
 do not apply, the default answer is no, and a headless or delegated run denies
-rather than assuming consent. This is defense in depth for the built-in tools,
-not a sandbox — an approved shell command can still reach the same paths.
+rather than assuming consent. That covers the built-in tools; the sandbox below
+is what stops an approved shell command from reaching the same paths behind
+them.
+
+## Sandbox
+
+Every command the agent runs is confined by the OS, and one chokepoint decides
+how: `RunShellCommand` resolves a wrapper before it spawns anything, so a new
+call site is confined by default rather than by remembering to ask. A session
+that was told to confine and cannot does not spawn at all — a silent
+unconfined command is the one outcome the sandbox exists to rule out.
+
+The policy is composed once per session and is pure: `src/core/sandbox.cc` turns a
+set of candidate roots into writable roots and an SBPL profile without touching
+the filesystem, which is why both platforms' rules are unit-testable on either.
+Canonicalisation happens before composition, in `src/core/sandbox_posix.cc`, because
+seatbelt matches resolved paths only and because a root spelled `~/.uagent/..`
+would otherwise pass the ancestor screen and resolve back to the home
+directory.
+
+macOS prepends `sandbox-exec -p`. Linux re-execs µAgent as `--sandbox-child`
+beside `--log-pump`, passing the policy as separate argv words so no quoting
+rule sits between parent and trampoline; the trampoline sets `no_new_privs`,
+applies a Landlock ruleset, and execs. Every failure there exits without
+executing. Landlock is monotonic — a nested µAgent can only narrow what it
+inherited, never widen it — and a delegated child cannot reach the escape
+hatch, which always requires a person.
 
 Every route mutation uses one activation path: construct a centralized
 `ProviderCapabilities` contract, export its stable child-process projection,

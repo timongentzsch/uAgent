@@ -48,6 +48,18 @@
 
 ### Added
 
+- Commands the agent runs are confined by the OS — `sandbox-exec` on macOS,
+  Landlock on Linux — and it is on by default. Writes reach the workspace, the
+  temporary directories, the package caches and whatever `UAGENT_SANDBOX_WRITE`
+  adds; `~/.uagent` and every ancestor of it are refused, so a shell command
+  can no longer reach the config, the trust store or the job records that the
+  file tools already asked a person about. Reads stay open and so does the
+  network, unless `UAGENT_SANDBOX_NET=0`. `run(sandbox=false)` escapes for one
+  command and always asks a person, which a headless or delegated run answers
+  no. A kernel that cannot enforce runs unconfined and says so at startup;
+  a session that asked for the sandbox by name refuses to run commands instead.
+  `UAGENT_SANDBOX=0` turns the whole thing off. `/status` names the mechanism
+  and `/context` lists the writable roots.
 - The composer answers the two gestures every other agent CLI has: Shift+Enter
   (or Alt+Enter) keeps a draft open on a new line, and Tab completes a command
   from the rows that appear under the draft as soon as it starts with `/`. The

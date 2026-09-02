@@ -25,6 +25,13 @@ normal turn-boundary work can still change the next wire request.
 `read_path` decodes text only: a file whose first bytes are not text is refused
 with a pointer to `attach` rather than decoded into replacement characters.
 
+`run`, `scratch` and `grep` execute inside the OS sandbox: writes land in the
+workspace, the temporary directories and the package caches, and are refused
+everywhere else, while reads and (by default) the network stay open. `run`
+alone offers `sandbox=false`, which always asks a person — yolo, a remembered
+grant and a headless run all answer no. [SECURITY.md](../SECURITY.md) has the
+full policy.
+
 Filesystem and external-read approval follows the active path policy. Mutating
 and process tools require approval unless yolo mode is active. Editing µAgent's
 own configuration, the project trust store or `.mcp.json` is a stricter class:

@@ -23,9 +23,9 @@ enum class PathTarget {
 };
 
 // µAgent's own configuration and trust state. Editing these changes what the
-// agent is allowed to do next launch, so they are never auto-approved. This is
-// defense in depth for the built-in file tools, not a sandbox: an approved
-// shell command can still reach the same paths.
+// agent is allowed to do next launch, so they are never auto-approved. This
+// covers the built-in file tools; the OS sandbox is what stops an approved
+// shell command from reaching the same paths behind them.
 inline bool SelfConfigurationPath(const std::string& path) {
   if (path.empty()) return false;
   std::filesystem::path candidate = CanonicalAccessPath(path);

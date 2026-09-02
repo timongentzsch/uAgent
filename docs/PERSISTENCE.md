@@ -9,7 +9,7 @@ model output, tool results, paths, and usage.
 | bounded session journals | `<session>.json.events.jsonl` |
 | debug traces | `~/.uagent/sessions/*.jsonl` |
 | native memory audit | `~/.uagent/memory/events.jsonl` (bounded metadata and redacted previews) |
-| process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/logs/*` |
+| process logs | `~/.uagent/bg/*`, `~/.uagent/terminals/logs/*` (the latter is not age-pruned; a live terminal writes there) |
 | detached terminal records | `~/.uagent/terminals/<pid>.json` |
 | session-lifetime activity state | memory only; not resumable after process exit |
 | collaborator metadata and sessions | `~/.uagent/collaborators/{agent-id}.json` and `.session.json` |

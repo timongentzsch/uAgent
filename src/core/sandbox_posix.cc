@@ -179,6 +179,7 @@ SandboxInputs CollectInputs() {
     return path.empty() ? std::string() : CanonicalAccessPath(path).string();
   };
   SandboxInputs inputs;
+  inputs.allow_network = SandboxNetworkAllowed();
   inputs.workspace = CanonicalCwd();
   inputs.global_base = canonical(GlobalBase());
   inputs.tmpdir = canonical(EnvStr("TMPDIR"));
@@ -234,7 +235,19 @@ SandboxStatus BuildStatus() {
 #endif
     return status;
   }
-  SandboxPolicyResult built = BuildSandboxPolicy(CollectInputs());
+  SandboxInputs inputs = CollectInputs();
+  // Denying the network on a host that can only confine writes would be a
+  // policy nobody is enforcing. Unlike the tier above this refuses whatever
+  // asked for it: a default cannot ask for a network denial, so anything that
+  // reaches here was written down by somebody.
+  if (!inputs.allow_network &&
+      status.level != SandboxLevel::kFilesystemAndNetwork) {
+    status.mode = SandboxMode::kRefused;
+    status.reason =
+        "this kernel's Landlock cannot restrict the network (needs ABI 4)";
+    return status;
+  }
+  SandboxPolicyResult built = BuildSandboxPolicy(inputs);
   status.policy = std::move(built.policy);
   status.rejected = std::move(built.rejected);
   status.mode = SandboxMode::kEnforced;

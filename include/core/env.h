@@ -48,6 +48,8 @@ std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
 bool SandboxEnabled();
+// Outbound TCP. Allowed by default: git, npm and pip all need it.
+bool SandboxNetworkAllowed();
 std::string SandboxWriteRoots();
 bool AdaptiveSystemEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.

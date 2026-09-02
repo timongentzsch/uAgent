@@ -11,6 +11,9 @@ whole group would run with nothing writable at all -- and every "outside" path
 here lives in the case root, which is outside that workspace.
 """
 
+import socket
+import sys
+
 from integration_support import (
     Server,
     assert_true,
@@ -150,6 +153,38 @@ def test_sandbox_extra_roots_are_granted_and_screened(root, home):
     run_once(root, env, f"echo a > {inside}; echo b > {denied}; true")
     assert_true(inside.exists(), "an extra root was not granted")
     assert_true(not denied.exists(), "an ancestor of ~/.uagent was granted")
+
+
+def tcp_reachable(root, home, allow):
+    """Whether a sandboxed command can open a TCP connection to a live socket.
+
+    The listener is local and the marker is a file, so a run that never got as
+    far as connecting is indistinguishable from one that was denied -- which is
+    the assertion either way.
+    """
+    marker = workspace(root) / f"net-{int(allow)}.txt"
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+    connect = f"import socket;socket.create_connection(('127.0.0.1',{port}),2)"
+    try:
+        run_once(
+            root,
+            sandbox_env(home, "", UAGENT_SANDBOX_NET="1" if allow else "0"),
+            f'{sys.executable} -c "{connect}" && echo up > {marker}',
+        )
+    finally:
+        listener.close()
+    return marker.exists()
+
+
+def test_sandbox_network_toggle(root, home):
+    """Outbound is allowed by default and denied when the setting says so."""
+    if not sandbox_enforced(root, home):
+        return
+    assert_true(tcp_reachable(root, home, True), "a sandboxed command could not connect")
+    assert_true(not tcp_reachable(root, home, False), "UAGENT_SANDBOX_NET=0 did not deny")
 
 
 def test_sandbox_refuses_when_it_cannot_enforce(root, home):

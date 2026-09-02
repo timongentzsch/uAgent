@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -40,11 +41,33 @@ std::string CollaboratorSessionPath(const std::string& id) {
   return UagentDir("collaborators") + "/" + id + ".session.json";
 }
 
+// Short because the id is quoted back in every spawn, followup, message and
+// list result -- a recurring token cost for something no human types. The
+// digest is the same FNV-1a construction session ids use, truncated to eight
+// hex digits and retried against the files it would name. Retrying is not
+// exclusive creation: nothing is created here, so two processes can still
+// agree on a free id at the same instant. That residual is accepted -- the
+// inputs already include the pid, and the alternative is an O_EXCL placeholder
+// on a path the caller may never write.
 std::string NewCollaboratorId() {
   static std::atomic<uint64_t> sequence{0};
-  return "agent-" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
-         std::to_string(getpid()) + "-" +
-         std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+  const std::string seed =
+      CanonicalCwd() + ":" + std::to_string(getpid()) + ":" +
+      std::to_string(
+          std::chrono::steady_clock::now().time_since_epoch().count()) +
+      ":" + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
+  std::error_code code;
+  for (int attempt = 0; attempt < 8; ++attempt) {
+    std::string id =
+        "agent-" + HashHex(seed + ":" + std::to_string(attempt)).substr(0, 8);
+    if (!std::filesystem::exists(CollaboratorPath(id), code) &&
+        !std::filesystem::exists(CollaboratorSessionPath(id), code)) {
+      return id;
+    }
+  }
+  // Eight collisions in a row is a broken digest, not bad luck. Fall back to
+  // the full width rather than handing back an id that is known to be taken.
+  return "agent-" + HashHex(seed);
 }
 
 bool LoadCollaborator(const std::string& id, json& state, std::string& error) {

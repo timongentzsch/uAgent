@@ -369,9 +369,12 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "Invalid tool schema: parameters must be an object";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
+  // Native tool calls are not a negotiable capability: a route that rejects
+  // them has no fallback to degrade to, so this stays an ordinary error and
+  // the turn reports the provider's own message.
   rejected.error = "This model does not support tool calling";
   CHECK(RejectedRouteCapability(rejected, generic) ==
-        RejectedCapability::kNativeTools);
+        RejectedCapability::kNone);
 }
 
 void TestAgentConfigAllowlist() {

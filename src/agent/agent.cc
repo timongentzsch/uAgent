@@ -238,6 +238,7 @@ json Agent::CompactionMessages() const {
     transcript_bytes =
         std::clamp(route_bytes, size_t{16} * 1024, transcript_bytes);
   }
+  constexpr const char* kToolFallbackName = "tool";
   constexpr size_t kProseBytes = size_t{8} * 1024;
   constexpr size_t kEvidenceBytes = 1024;
   HeadTailBuffer transcript(transcript_bytes);
@@ -282,10 +283,7 @@ json Agent::CompactionMessages() const {
       continue;
     }
     if (kind == MessageKind::kAssistant) {
-      std::vector<ToolCall> text_calls = ParseTextToolCalls(content);
-      if (text_calls.empty()) {
-        append("ASSISTANT: ", content, kProseBytes);
-      }
+      append("ASSISTANT: ", content, kProseBytes);
       if (const json* tool_calls = JsonArray(message, "tool_calls")) {
         for (const json& call : *tool_calls) {
           const json* found = JsonObject(call, "function");
@@ -299,26 +297,15 @@ json Agent::CompactionMessages() const {
                       arguments.is_string() ? arguments.get<std::string>()
                                             : JsonDump(arguments));
         }
-      } else {
-        for (const ToolCall& call : text_calls) {
-          json arguments = json::parse(call.args, nullptr, false);
-          append_call(
-              call.name, arguments,
-              arguments.is_discarded() ? call.args : JsonDump(arguments));
-        }
       }
       continue;
     }
     if (kind == MessageKind::kToolResult) {
-      std::string name;
-      std::string result;
-      if (!ParseTextToolResult(content, name, result)) {
-        std::string id = JsonValue(message, "tool_call_id", "");
-        auto found = tool_names.find(id);
-        name = found == tool_names.end() ? "tool" : found->second;
-        result = std::move(content);
-      }
-      append("TOOL RESULT " + name + ": ", result, kEvidenceBytes);
+      std::string id = JsonValue(message, "tool_call_id", "");
+      auto found = tool_names.find(id);
+      const std::string& name =
+          found == tool_names.end() ? kToolFallbackName : found->second;
+      append("TOOL RESULT " + name + ": ", content, kEvidenceBytes);
       continue;
     }
     if (kind == MessageKind::kInternal) {

@@ -28,7 +28,6 @@ enum class RejectedCapability : uint8_t {
   kFileInput,
   kParallelTools,
   kStreamUsage,
-  kNativeTools,
 };
 
 const char* ProviderProtocolName(ProviderProtocol protocol);

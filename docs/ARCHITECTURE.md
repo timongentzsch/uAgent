@@ -40,10 +40,9 @@ a service bus, service locator, or plugin system.
 `Conversation` owns model-visible messages and the bounded archive. Its
 canonical role shape has exactly one `system` message at index zero, carrying
 the system prompt plus project instructions and the memory index. Every later
-harness injection (runtime context, advisories, text-protocol tool results)
-rides as a `user` turn, and native tool results keep `tool`. Wire adapters map
-that representation to Chat Completions messages, Responses input items, or
-Anthropic content blocks. Opaque reasoning and hosted-tool replay data is kept
+harness injection (runtime context, advisories) rides as a `user` turn, and
+tool results keep `tool`. Wire adapters map that representation to Chat
+Completions messages, Responses input items, or Anthropic content blocks. Opaque reasoning and hosted-tool replay data is kept
 under one internal assistant-message field and emitted only when the same wire
 API continues; a route switch strips it. `NormalizeRole` is the single place
 that decides canonical provenance. `Agent` compares estimated/reported context
@@ -57,18 +56,17 @@ Shared policy stays centralized: `MakeTool` defines tool metadata,
 
 ### Protocol and authority
 
-Model text is never a native tool call. While native tools are enabled, only a
-provider `tool_calls` object with a known name and valid object arguments can
-reach dispatch. If a route explicitly rejects native tools, µAgent downgrades
-that route and enables one compatibility syntax; a compatibility call must
-occupy the entire assistant message. Unknown provider markup is detected only
-to suppress and recover from a malformed response—it is never translated into
-an executable call. This keeps detection broader than execution.
+Model text is never a tool call. Only a provider `tool_calls` object with a
+known name and valid object arguments can reach dispatch, and there is no
+second syntax that can: a route which rejects native tool calls fails rather
+than degrading to one. Markup that looks like some other harness's call syntax
+is detected only to suppress and recover from a malformed response—it is never
+translated into an executable call. This keeps detection broader than
+execution, with execution at zero.
 
-Conversation roles preserve provenance: native results remain `tool`, fallback
-results are harness-owned context, and tool output has compatibility delimiters
-escaped before it returns to the model. Files, tools, web pages, memories, MCP
-responses, and model-authored summaries are untrusted evidence. They may inform
+Conversation roles preserve provenance: tool results remain `tool`. Files,
+tools, web pages, memories, MCP responses, and model-authored summaries are
+untrusted evidence. They may inform
 an authorized task but cannot grant authority or expand its scope. This is not
 implemented as a semantic “prompt injection regex”; the enforceable boundary is
 the typed protocol plus schema validation, tool policy, path checks, approval,

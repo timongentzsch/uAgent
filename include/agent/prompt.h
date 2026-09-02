@@ -46,10 +46,6 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools);
 // the registry actually offers, and whether mutations need consent.
 std::string HostCapabilityPrompt(const std::vector<Tool>& tools);
 
-// Appended only after a route rejects native tool calls; carries a tool list
-// because schemas are no longer sent on that path.
-std::string TextProtocolPrompt(const std::vector<Tool>& tools);
-
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                int64_t terminal_columns = 0);
 

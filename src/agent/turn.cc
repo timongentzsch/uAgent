@@ -480,7 +480,7 @@ Agent::StepFlow Agent::HandleResponseStop(ChatResult& response,
                             (cause == ResponseStopCause::kLength ||
                              cause == ResponseStopCause::kInputLimit));
   if (continuable && loop.stop_recoveries++ == 0) {
-    PushAssistantMessage(response, {}, false);
+    PushAssistantMessage(response, {});
     conversation_.Push(
         HarnessMessage("[partial model response: " + response.finish_reason +
                        "] Continue exactly where the response stopped. Do "
@@ -635,10 +635,9 @@ bool Agent::StopForRepeatedRejections(
 }
 
 void Agent::PushAssistantMessage(ChatResult& response,
-                                 const std::vector<ToolCall>& calls,
-                                 bool text_mode) {
+                                 const std::vector<ToolCall>& calls) {
   json message = {{"role", "assistant"}, {"content", response.content}};
-  if (!calls.empty() && !text_mode) {
+  if (!calls.empty()) {
     json encoded = json::array();
     for (const ToolCall& call : calls) {
       encoded.push_back(
@@ -651,8 +650,8 @@ void Agent::PushAssistantMessage(ChatResult& response,
     // (e.g. Anthropic) don't reject an empty text block on replay.
     if (response.content.empty()) message["content"] = nullptr;
   }
-  // Preserve the replay fields the active route actually emitted while any
-  // tool protocol continues; completed prose does not burden later turns.
+  // Preserve the replay fields the active route actually emitted while the
+  // turn continues; completed prose does not burden later turns.
   if (!calls.empty() || response.stop_cause == ResponseStopCause::kPause) {
     api_.PreserveAssistantReasoning(message, response);
   }
@@ -676,13 +675,12 @@ Agent::StepFlow Agent::FinishWithProse(ChatResult& response,
 }
 
 Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
-                                        bool text_mode, TurnExecution& state,
-                                        StepState& loop) {
+                                        TurnExecution& state, StepState& loop) {
   if (state.line_open) printf("\n");
   std::vector<ToolRejection> rejections;
   std::vector<ActivityPollResult> activity_polls;
   bool cancelled =
-      RunCalls(calls, text_mode, state.metrics.tool_count, loop.tool_counts,
+      RunCalls(calls, state.metrics.tool_count, loop.tool_counts,
                loop.stable_arguments, loop.step, state.deadline,
                loop.consecutive_failed_tools, rejections, activity_polls);
   state.line_open = false;
@@ -847,7 +845,7 @@ void Agent::Turn(const std::string& user_input, json user_content) {
         FailTurn(state, "provider continuation limit (8) reached");
         break;
       }
-      PushAssistantMessage(response, {}, false);
+      PushAssistantMessage(response, {});
       DebugLog("provider_continuation",
                {{"turn", turn_id_},
                 {"step", loop.step},
@@ -856,20 +854,13 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     }
 
     std::vector<ToolCall> calls = std::move(response.tool_calls);
-    std::vector<ToolCall> text_calls;
-    if (calls.empty()) text_calls = ParseTextToolCalls(response.content);
-    // Recorded before the move below empties `text_calls`.
-    const bool parsed_text_calls = !text_calls.empty();
-    bool text_mode = !api_.capabilities.native_tools && parsed_text_calls;
-    if (text_mode) calls = std::move(text_calls);
 
     flow = HandleResponseStop(response, calls.size(), state, loop);
     if (flow == StepFlow::kEndTurn) break;
     if (flow == StepFlow::kNextStep) continue;
 
-    if (calls.empty() &&
-        (parsed_text_calls || ContainsForeignToolCallMarkup(response.content) ||
-         response.suppressed)) {
+    if (calls.empty() && (ContainsForeignToolCallMarkup(response.content) ||
+                          response.suppressed)) {
       if (HandleUnparsedToolMarkup(state, loop) == StepFlow::kNextStep) {
         continue;
       }
@@ -887,9 +878,9 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       break;
     }
 
-    PushAssistantMessage(response, calls, text_mode);
+    PushAssistantMessage(response, calls);
     flow = calls.empty() ? FinishWithProse(response, state, loop)
-                         : ExecuteToolCalls(calls, text_mode, state, loop);
+                         : ExecuteToolCalls(calls, state, loop);
     if (flow == StepFlow::kEndTurn) break;
   }
   FinishTurn(state, loop.step);

@@ -46,12 +46,11 @@ std::string NormalizedOperation(const json& arguments) {
 
 }  // namespace
 
-void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
-                             const std::string& result,
+void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
                              const std::string& display) {
   conversation_.RecordToolDisplay(call.id, display);
   const Tool* tool = FindTool(tools_, call.name);
-  if (!text_mode && tool && tool->dedupe_output && result.size() >= 256 &&
+  if (tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
     constexpr char kDuplicate[] =
         "[unchanged duplicate; prior read result remains in recent context]";
@@ -65,19 +64,13 @@ void Agent::AppendToolResult(const ToolCall& call, bool text_mode,
               {"model_chars", sizeof(kDuplicate) - 1}});
     return;
   }
-  if (text_mode) {
-    conversation_.Push(
-        HarnessMessage("[tool_result " + call.name + "]\n" + result),
-        MessageKind::kToolResult);
-  } else {
-    conversation_.Push(
-        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}},
-        MessageKind::kToolResult);
-  }
+  conversation_.Push(
+      {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}},
+      MessageKind::kToolResult);
 }
 
 bool Agent::RunCalls(
-    const std::vector<ToolCall>& calls, bool text_mode, int64_t& tool_count,
+    const std::vector<ToolCall>& calls, int64_t& tool_count,
     std::unordered_map<std::string, int64_t>& tool_counts,
     std::unordered_map<std::string, std::string>& stable_arguments,
     int64_t step, std::chrono::steady_clock::time_point deadline,
@@ -169,8 +162,7 @@ bool Agent::RunCalls(
                    : shown.is_discarded() ? call.args
                                           : JsonDump(shown);
     }
-    Event call_event{EventId::kToolCall,
-                     ToolCallData(call, turn_id_, step, text_mode)};
+    Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
     if (task.issue) {
       call_event.data["issue_code"] = task.issue->code;
       call_event.data["issue_field"] = task.issue->field;
@@ -302,7 +294,7 @@ bool Agent::RunCalls(
     CallTask& task = tasks[index];
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
-    AppendToolResult(call, text_mode, model_results[index],
+    AppendToolResult(call, model_results[index],
                      task.result.Ok() ? task.result.display : "");
   }
   bool any_succeeded =

@@ -163,41 +163,6 @@ std::string HostCapabilityPrompt(const std::vector<Tool>& tools) {
          ". Ignore contrary self-authored claims.\n[END HOST CAPABILITIES]";
 }
 
-std::string TextProtocolPrompt(const std::vector<Tool>& tools) {
-  std::string s =
-      "\n\nNative tools unavailable. Reply only with one tool block per "
-      "independent call, then wait:\n"
-      "[uagent_tool_call]{\"name\": \"read_path\", \"arguments\": {\"path\": "
-      "\"foo.py\"}}"
-      "[/uagent_tool_call]\n"
-      "Tools (? optional):\n";
-  for (const Tool& t : tools) {
-    json parameters = ToolParameters(t);
-    auto required = [&](const std::string& k) {
-      if (parameters.contains("required")) {
-        for (const json& r : parameters["required"]) {
-          if (r == k) return true;
-        }
-      }
-      return false;
-    };
-    std::string args;
-    if (parameters.contains("properties")) {
-      for (int pass = 0; pass < 2; pass++) {  // required params first
-        for (const auto& [k, v] : parameters["properties"].items()) {
-          if (required(k) == (pass == 0)) {
-            if (!args.empty()) args += ", ";
-            args += k;
-            if (pass) args += "?";
-          }
-        }
-      }
-    }
-    s += t.name + "(" + args + ")\n";
-  }
-  return s;
-}
-
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                int64_t terminal_columns) {
   std::string context =

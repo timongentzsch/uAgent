@@ -216,10 +216,10 @@ class Agent {
   bool StopForRepeatedRejections(const std::vector<ToolRejection>& rejections,
                                  TurnExecution& state, StepState& loop);
   void PushAssistantMessage(ChatResult& response,
-                            const std::vector<ToolCall>& calls, bool text_mode);
+                            const std::vector<ToolCall>& calls);
   StepFlow FinishWithProse(ChatResult& response, TurnExecution& state,
                            StepState& loop);
-  StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls, bool text_mode,
+  StepFlow ExecuteToolCalls(const std::vector<ToolCall>& calls,
                             TurnExecution& state, StepState& loop);
 
   void ArchiveAll(const char* reason);
@@ -290,13 +290,11 @@ class Agent {
 
   // `display` is the terminal-only receipt, kept beside the transcript so a
   // resumed session can redraw it; the model only ever sees `result`.
-  void AppendToolResult(const ToolCall& call, bool text_mode,
-                        const std::string& result,
+  void AppendToolResult(const ToolCall& call, const std::string& result,
                         const std::string& display = "");
 
   // returns true if the user interrupted the batch
-  bool RunCalls(const std::vector<ToolCall>& calls, bool text_mode,
-                int64_t& tool_count,
+  bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
                 std::unordered_map<std::string, int64_t>& tool_counts,
                 std::unordered_map<std::string, std::string>& stable_arguments,
                 int64_t step, std::chrono::steady_clock::time_point deadline,

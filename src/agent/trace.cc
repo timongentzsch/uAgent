@@ -59,42 +59,27 @@ void PrintCitationSources(const json& annotations) {
 
 json ToolTraceMessages(const json& messages, const json& kinds) {
   json trace = json::array();
-  std::vector<size_t> pending_text_calls;
-  auto append_call = [&](const ToolCall& call, bool text_protocol) {
-    json arguments = json::parse(call.args, nullptr, false);
-    if (arguments.is_discarded()) arguments = call.args;
-    json item = {{"type", "function"},
-                 {"id", call.id},
-                 {"name", call.name},
-                 {"arguments", std::move(arguments)},
-                 {"result", nullptr}};
-    if (text_protocol) item["text_protocol"] = true;
-    trace.push_back(std::move(item));
-    if (text_protocol) pending_text_calls.push_back(trace.size() - 1);
-  };
-
   for (size_t index = 0; index < messages.size(); ++index) {
     const json& message = messages[index];
     if (!message.is_object()) continue;
     if (JsonValue(message, "role", "") == "assistant") {
-      if (const json* tool_calls = JsonArray(message, "tool_calls")) {
-        for (const json& call : *tool_calls) {
-          const json* found = JsonObject(call, "function");
-          if (!found) continue;
-          const json& function = *found;
-          json arguments = ParsedToolCallArguments(function);
-          append_call(
-              {JsonValue(call, "id", ""), JsonValue(function, "name", ""),
-               arguments.is_string() ? arguments.get<std::string>()
-                                     : JsonDump(arguments)},
-              /*text_protocol=*/false);
-        }
-      } else if (message.contains("content") &&
-                 message["content"].is_string()) {
-        for (const ToolCall& call :
-             ParseTextToolCalls(message["content"].get<std::string>())) {
-          append_call(call, /*text_protocol=*/true);
-        }
+      const json* tool_calls = JsonArray(message, "tool_calls");
+      if (tool_calls == nullptr) continue;
+      for (const json& call : *tool_calls) {
+        const json* found = JsonObject(call, "function");
+        if (!found) continue;
+        json arguments = ParsedToolCallArguments(*found);
+        json stored =
+            json::parse(arguments.is_string() ? arguments.get<std::string>()
+                                              : JsonDump(arguments),
+                        nullptr, false);
+        trace.push_back(
+            {{"type", "function"},
+             {"id", JsonValue(call, "id", "")},
+             {"name", JsonValue(*found, "name", "")},
+             {"arguments",
+              stored.is_discarded() ? std::move(arguments) : std::move(stored)},
+             {"result", nullptr}});
       }
       continue;
     }
@@ -104,25 +89,14 @@ json ToolTraceMessages(const json& messages, const json& kinds) {
         kind != MessageKind::kToolResult) {
       continue;
     }
-    std::string content = JsonValue(message, "content", "");
     std::string id = JsonValue(message, "tool_call_id", "");
-    if (!id.empty()) {
-      auto call =
-          std::find_if(trace.rbegin(), trace.rend(), [&](const json& item) {
-            return JsonValue(item, "id", "") == id && item["result"].is_null();
-          });
-      if (call != trace.rend()) (*call)["result"] = std::move(content);
-      continue;
-    }
-    std::string name;
-    std::string result;
-    if (!ParseTextToolResult(content, name, result)) continue;
-    for (size_t call_index : pending_text_calls) {
-      json& call = trace[call_index];
-      if (call["result"].is_null() && JsonValue(call, "name", "") == name) {
-        call["result"] = std::move(result);
-        break;
-      }
+    if (id.empty()) continue;
+    auto call =
+        std::find_if(trace.rbegin(), trace.rend(), [&](const json& item) {
+          return JsonValue(item, "id", "") == id && item["result"].is_null();
+        });
+    if (call != trace.rend()) {
+      (*call)["result"] = JsonValue(message, "content", "");
     }
   }
   return trace;

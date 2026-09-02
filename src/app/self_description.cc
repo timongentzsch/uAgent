@@ -325,8 +325,7 @@ json PromptSurfaceJson() {
   return {{"base", base},
           {"base_chars", base.size()},
           {"overlay_sections", std::move(sections)},
-          {"capability_fragments", std::move(fragments)},
-          {"text_protocol_preamble", TextProtocolPrompt({})}};
+          {"capability_fragments", std::move(fragments)}};
 }
 
 json ToolSurfaceJson() {

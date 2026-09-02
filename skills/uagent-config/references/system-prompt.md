@@ -63,13 +63,3 @@ adapt_system revises the mutable part of this message. Call it on a concrete obs
 ## Capabilities
 Use web_search directly for current or external facts; do not scrape result pages with run. When it cannot confirm a specific page, escalate to an installed browser skill rather than reporting the fact as unverifiable. Delegate research only for independent multi-step synthesis, not a single search.
 ```
-
-## Text-protocol preamble
-
-Sent only after a route rejects native tool calls.
-
-```text
-Native tools unavailable. Reply only with one tool block per independent call, then wait:
-[uagent_tool_call]{"name": "read_path", "arguments": {"path": "foo.py"}}[/uagent_tool_call]
-Tools (? optional):
-```

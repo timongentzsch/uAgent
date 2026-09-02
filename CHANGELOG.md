@@ -2,7 +2,51 @@
 
 ## Unreleased
 
+### Removed
+
+- The text-protocol fallback is gone. It let a route that rejected native tool
+  calls keep working by having the model emit
+  `[uagent_tool_call]{...}[/uagent_tool_call]` blocks, and across 60 real
+  sessions and 7,660 recorded tool calls it activated exactly zero times, while
+  costing a branch in the hottest paths: the turn loop, the tool loop, the
+  transcript printer, the compaction summariser, the trace builder and the
+  capability negotiator each carried a second protocol. A route that rejects
+  native tool calls now fails with the provider's own message instead of
+  degrading, `native_tools` is no longer a negotiable capability, and tool
+  output is no longer delimiter-escaped on its way back to the model because
+  there is no syntax left for it to imitate. `text_protocol` is gone from the
+  JSONL tool-call projection and the session journal.
+
+  Recognizing *other* harnesses' call syntax is unaffected and slightly wider:
+  a bracketed marker followed immediately by `{` now joins the angle-bracket
+  forms, so a model that emits call syntax as content is still suppressed and
+  asked for a real call rather than having the markup printed as an answer.
+  Detection stays broader than execution, and execution is now zero.
+
 ### Changed
+
+- `subagent` charges one description for five ceilings. `max_steps`,
+  `max_tool_calls`, `max_seconds`, `max_cost` and `memory` become one `limits`
+  object; every capability is unchanged, including per-call tightening and the
+  clamp-and-report on the host ceiling, which now names `limits.seconds` rather
+  than `max_seconds`. `ClampToolArguments` resolves one level of nesting so this
+  needed no local exception. The `model` description carries the grammar for a
+  provider-scoped route instead of enumerating every configured provider;
+  `uagent_info topic=routes` reports the roster.
+- `scratch` is advertised only when `uv` or `python3` is on PATH. It runs under
+  uv when present and falls back to `python3`, so a host with neither could
+  only ever answer it with an error.
+- `benchmarks/audit.py --check` runs as the `token_audit` CTest gate. It has
+  measured the bytes charged to every request since it was written and nothing
+  ran it, which is how a schema regression reached the tree with the
+  measurement already on disk. Only the machine-independent axes can fail a
+  build; binary size and peak RSS stay reported.
+- Release builds precompile the vendored `third_party/json.hpp`. It reaches 82
+  of the ~90 translation units and costs 0.75s in each, about a third of a
+  clean build; the header is vendored and never changes, so the precompiled
+  header is stable. Eight of the heaviest units drop from 17.9s to 13.9s and a
+  clean release build from 19s to 16s. The `tidy` preset disables it, because
+  `run-clang-tidy` cannot consume an `-include-pch` from a different clang.
 
 - MCP compatibility break: the legacy `initialize` / protocol `2025-11-25`
   lifecycle is replaced by stateless `server/discover` negotiation for

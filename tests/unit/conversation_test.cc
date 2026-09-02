@@ -194,19 +194,13 @@ void TestConversation() {
         std::string::npos);
   CHECK(traces.PruneOldToolResults(1500, 2500, {"skill"}).results == 0);
 
-  std::string text_call = std::string(kTtOpen) +
-                          R"({"name":"read_path","arguments":{"path":"."}})" +
-                          kTtClose;
-  json text_messages = json::array(
-      {{{"role", "assistant"}, {"content", text_call}},
+  // Prose alongside a call is transcript, not a second call protocol: an
+  // assistant message with no tool_calls array contributes no trace rows.
+  json prose_messages = json::array(
+      {{{"role", "assistant"}, {"content", "[uagent_tool_call]{}"}},
        {{"role", "system"}, {"content", "[tool_result read_path]\nentry"}}});
-  json text_kinds = json::array({"assistant", "tool_result"});
-  json text_trace = ToolTraceMessages(text_messages, text_kinds);
-  CHECK(text_trace.size() == 1);
-  CHECK(text_trace[0]["name"] == "read_path");
-  CHECK(text_trace[0]["arguments"] == json({{"path", "."}}));
-  CHECK(text_trace[0]["result"] == "entry");
-  CHECK(text_trace[0].value("text_protocol", false));
+  json prose_kinds = json::array({"assistant", "tool_result"});
+  CHECK(ToolTraceMessages(prose_messages, prose_kinds).empty());
 
   json parallel_messages = json::array(
       {{{"role", "assistant"},

@@ -448,14 +448,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
     changed(rejected);
     return true;
   }
-
-  api_.capabilities.native_tools = false;
-  changed(rejected);
-  conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-  Emit(NoticeEvent(
-      PresentationStatus::kNeutral,
-      "· server rejected native tools — falling back to text protocol"));
-  return true;
+  return false;
 }
 
 std::string Agent::SystemPrompt() const {
@@ -467,7 +460,6 @@ std::string Agent::SystemPrompt() const {
   }
   prompt += CapabilityPrompt(tools_);
   prompt += TerminalImageInstruction();
-  if (!api_.capabilities.native_tools) prompt += TextProtocolPrompt(tools_);
   if (adaptive_system_ && !adaptive_system_->instructions.empty() &&
       FindTool(tools_, "adapt_system")) {
     prompt += "\n\n[MUTABLE SELF-DIRECTIVE revision " +

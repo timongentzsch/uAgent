@@ -171,15 +171,6 @@ RejectedCapability RejectedRouteCapability(
       evidence.find("stream_options") != std::string::npos) {
     return RejectedCapability::kStreamUsage;
   }
-  auto unsupported_feature = [&](std::string_view noun) {
-    return evidence.find(noun) != std::string::npos &&
-           (evidence.find("unsupported") != std::string::npos ||
-            evidence.find("not support") != std::string::npos ||
-            evidence.find("doesn't support") != std::string::npos);
-  };
-  if (capabilities.native_tools && unsupported_feature("tool")) {
-    return RejectedCapability::kNativeTools;
-  }
   return RejectedCapability::kNone;
 }
 
@@ -193,8 +184,6 @@ const char* CapabilityName(RejectedCapability capability) {
       return "parallel_tool_calls";
     case RejectedCapability::kStreamUsage:
       return "stream_options";
-    case RejectedCapability::kNativeTools:
-      return "native_tools";
     case RejectedCapability::kNone:
       return "none";
   }

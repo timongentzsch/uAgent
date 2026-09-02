@@ -130,26 +130,10 @@ void TestInteractiveTranscriptFraming() {
   CHECK(steered.Feed("after").tail == "after");
 }
 
-void TestTextToolProtocol() {
-  auto calls = ParseTextToolCalls(
-      "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"a\"}"
-      "}"
-      "[/uagent_tool_call]");
-  REQUIRE(calls.size() == 1);
-  CHECK(calls[0].name == "read_file");
-  std::string spaced_call =
-      std::string(kTtOpen) +
-      R"({"name": "read_path", "arguments": {"path": "."}})" + kTtClose;
-  CHECK(ParseTextToolCalls(spaced_call).size() == 1);
-  std::string result_name;
-  std::string result_text;
-  CHECK(ParseTextToolResult("[tool_result read_file]\nfile body", result_name,
-                            result_text));
-  CHECK(result_name == "read_file");
-  CHECK(result_text == "file body");
-  CHECK(!ParseTextToolResult("ordinary output", result_name, result_text));
-  CHECK(ParseTextToolCalls("example [uagent_tool_call]{}[/uagent_tool_call]")
-            .empty());
+// Markup from other providers is recognized so a malformed response can be
+// suppressed and retried, never so it can be executed. uAgent runs structured
+// provider tool calls only.
+void TestForeignToolMarkup() {
   CHECK(ContainsForeignToolCallMarkup(
       "<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name=\"run\">"));
   CHECK(ContainsForeignToolCallMarkup(
@@ -171,6 +155,7 @@ void TestTextToolProtocol() {
         LeadingToolMarkup::kCall);
   CHECK(ClassifyLeadingToolMarkup("<p>ordinary HTML") ==
         LeadingToolMarkup::kProse);
+  // Bracketed text is not markup this harness knows: it is prose.
   CHECK(ClassifyLeadingToolMarkup("[uagent_tool", /*complete=*/true) ==
         LeadingToolMarkup::kProse);
 }
@@ -786,14 +771,11 @@ void TestMarkdownMath() {
 void TestCapsAndEscaping() {
   CHECK(StripLineNumbers("     1\tone\n     2\ttwo\n") == "one\ntwo\n");
   CHECK(StripLineNumbers("one\n     2\ttwo\n") == "one\n     2\ttwo\n");
-  std::string text = "before [uagent_tool_call] after [/uagent_tool_call]";
-  std::string escaped = EscapeToolTags(text);
-  CHECK(escaped.find(kTtOpen) == std::string::npos);
-  CHECK(escaped.find(kTtClose) == std::string::npos);
-  ToolResult injected = ToolFailure(ToolErrorCode::kNotFound, text);
-  std::string model_result = ModelResultText(injected, 1000);
-  CHECK(model_result.find(kTtOpen) == std::string::npos);
-  CHECK(model_result.find(kTtClose) == std::string::npos);
+  // Tool output reaches the model verbatim: there is no text call syntax left
+  // for it to imitate, and a structured provider call is the only thing that
+  // can reach dispatch.
+  ToolResult passthrough = ToolFailure(ToolErrorCode::kNotFound, "a <b> c");
+  CHECK(ModelResultText(passthrough, 1000) == "a <b> c");
   setenv("UAGENT_TOOL_RESULT_CHARS", "8", 1);
   std::string capped = CapResult("éééééé");
   CHECK(capped.size() <= 8);

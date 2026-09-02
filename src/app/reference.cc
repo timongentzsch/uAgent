@@ -139,11 +139,6 @@ std::string PromptMarkdown() {
            "\n\n```text\n" + Trim(JsonValue(fragment, "text", std::string())) +
            "\n```\n";
   }
-  out +=
-      "\n## Text-protocol preamble\n\nSent only after a route rejects "
-      "native tool calls.\n\n```text\n" +
-      Trim(JsonValue(surface, "text_protocol_preamble", std::string())) +
-      "\n```\n";
   return out;
 }
 

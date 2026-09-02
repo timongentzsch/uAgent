@@ -192,7 +192,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
 
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                        \
-  X(TestTextToolProtocol)                      \
+  X(TestForeignToolMarkup)                     \
   X(TestToolResults)                           \
   X(TestRegistries)                            \
   X(TestCommandAndDisplayRegistries)           \

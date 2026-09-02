@@ -50,7 +50,7 @@ inline int64_t ResultCharLimit(const CallTask& task) {
 // The artifact itself stays out of context; only this small locator rides with
 // the result.
 inline std::string ModelResultText(const ToolResult& result, int64_t cap) {
-  std::string output = EscapeToolTags(result.output);
+  std::string output = result.output;
   if (!result.artifact) return CapResult(std::move(output), cap);
   if (cap < 0) cap = ToolResultCap();
   std::string hint = ArtifactHint(*result.artifact);
@@ -180,8 +180,7 @@ inline void EmitToolResultObservation(const CallTask& task,
   Emit(std::move(event));
 }
 
-inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step,
-                         bool text_protocol) {
+inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step) {
   // A digest, never the arguments: the journal deliberately keeps values out,
   // and a fingerprint is enough to see that the same call was made twice.
   return {{"turn", turn},
@@ -189,8 +188,7 @@ inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step,
           {"id", call.id},
           {"name", call.name},
           {"arguments", call.args},
-          {"arguments_digest", HashHex(call.args).substr(0, 12)},
-          {"text_protocol", text_protocol}};
+          {"arguments_digest", HashHex(call.args).substr(0, 12)}};
 }
 
 inline void CancelCall(CallTask& task) {

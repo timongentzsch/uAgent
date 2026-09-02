@@ -105,7 +105,7 @@ json PublicProjection(const Event& event) {
 
   json data = json::object();
   for (const char* field : {"turn", "step", "id", "name", "arguments_digest",
-                            "text_protocol", "issue_code", "issue_field"}) {
+                            "issue_code", "issue_field"}) {
     if (event.data.contains(field)) data[field] = event.data[field];
   }
 
@@ -250,7 +250,6 @@ json JournalProjection(const Event& event) {
       copy("id");
       copy("name");
       copy("arguments_digest");
-      copy("text_protocol");
       copy("issue_code");
       copy("issue_field");
       break;

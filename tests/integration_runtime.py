@@ -274,10 +274,12 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
         assert_true(len(repeated.requests) == 2, len(repeated.requests))
 
-    # The compatibility text protocol is executable only after this route has
-    # explicitly rejected native tools. In native mode it is malformed prose,
-    # even if its arguments would otherwise be valid and auto-approved.
-    marker = home / "native-text-protocol-must-not-run"
+    # A bracketed marker followed by JSON is call syntax this harness does not
+    # execute -- there is no parser for it at all. It is recognized only so the
+    # turn can ask for a real call instead of printing the markup as an answer,
+    # and the arguments here would be valid and auto-approved if anything ran
+    # them.
+    marker = home / "bracket-markup-must-not-run"
     own_markup = (
         "[uagent_tool_call]"
         + json.dumps({"name": "run", "arguments": {"command": f"touch {marker}"}})

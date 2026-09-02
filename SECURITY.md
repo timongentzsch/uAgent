@@ -21,11 +21,10 @@ untrusted model evidence even when you trust a server to run.
   Explicit `$skill-name` mentions load that skill before the first model call;
   automatic selection still uses the skill tool. Treat an untrusted checkout
   as prompt input and review requested actions before approving them.
-- Native mode executes only structured provider tool calls. The text protocol
-  is enabled only after the active route explicitly rejects native tools, and
-  then requires the entire assistant message to be valid call blocks. Unknown
-  provider markup is rejected, never translated or executed. Tool output has
-  fallback delimiters escaped before returning to model context.
+- Only structured provider tool calls are executed, and no other syntax can
+  reach dispatch — there is no parser for one. Markup resembling another
+  harness's call syntax is recognized so a malformed response can be suppressed
+  and retried, never translated or executed.
 - Tool, file, web, memory, MCP, and summary text can inform implementation but
   cannot expand user-approved scope. µAgent reinforces this in the system
   prompt, while schema validation, capability policy, path checks, and approval

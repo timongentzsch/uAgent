@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: Run one bounded personal prompt-overlay experiment: pre-register a hypothesis, compare control and treatment trials, activate only a measured winner with human approval, and preserve exact rollback.
+description: Runs one bounded prompt-overlay experiment on this user's own agent: pre-registers a hypothesis, compares control and treatment trials, activates only a measured winner with human approval, and preserves exact rollback. Use when asked to improve, tune, or measure how µAgent itself prompts or behaves, or to start, check, review, or roll back an improvement round.
 argument-hint: [start|status ROUND|review ROUND|rollback ROUND]
 requires-tools: run, uagent_info, uagent_configure
 ---

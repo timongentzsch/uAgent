@@ -572,6 +572,40 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
+def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home):
+    """A wrap boundary that falls inside double-width text.
+
+    The composer maps the cursor to a row by subtracting each row's display
+    width, so a row that ends one column short of the terminal -- which is
+    what a two-column glyph that will not fit forces -- is where that
+    arithmetic and the byte offsets disagree. WrapLines is unit-tested on
+    wide text; this is the caret walking back over it.
+    """
+    # 74 columns of ASCII plus three wide glyphs, against 77 usable columns:
+    # the first row takes one glyph and stops at 76, the rest wrap.
+    original = "a" * 74 + "\u65e5\u672c\u8a9e"
+    expected = "a" * 74 + "\u65e5" + "ok"
+
+    def answer(_, body):
+        user = next(
+            message.get("content")
+            for message in reversed(body["messages"])
+            if message.get("role") == "user"
+        )
+        return event({"content": "wide-ok" if user == expected else f"wide-bad:{user!r}"})
+
+    with Server([answer]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [original.encode(), b"\x7f" * 2 + b"ok\n", b"/q\n"],
+            columns=80,
+        )
+        text = output.decode(errors="replace")
+        assert_true(code == 0, text)
+        assert_true("wide-ok" in text, text)
+
+
 def test_resize_replaces_the_status_row_instead_of_appending(root, home):
     """Repeated resizes must not stack status rows down the scrollback.
 

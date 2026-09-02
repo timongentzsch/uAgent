@@ -420,10 +420,14 @@ void TestRegistries() {
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;
-  Tool subagent = SubagentTool(
-      delegation_api, delegation_processes, {},
-      {NamedProvider{.name = "codex-local", .base_url = "", .api_key = ""}},
-      false);
+  // Named, not a temporary: SubagentTool's handlers capture routes and
+  // providers by reference and outlive this call, so a temporary here is a
+  // dangling read the moment the preview or the handler runs.
+  const std::vector<ModelRoute> delegation_routes;
+  const std::vector<NamedProvider> delegation_providers = {
+      NamedProvider{.name = "codex-local", .base_url = "", .api_key = ""}};
+  Tool subagent = SubagentTool(delegation_api, delegation_processes,
+                               delegation_routes, delegation_providers, false);
   const json& subagent_properties = subagent.parameters["properties"];
   CHECK(subagent_properties["background"]["type"] == "boolean");
   CHECK(

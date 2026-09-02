@@ -87,6 +87,17 @@ inline const json* JsonObject(const json& object, const char* key) {
   return value != object.end() && value->is_object() ? &*value : nullptr;
 }
 
+// The mutable sibling of JsonObject: a nested object to write into, replacing
+// a missing or wrongly-typed child (and parent) with a fresh one. Provider
+// values reach these chains, and operator[] on a scalar aborts under
+// -fno-exceptions.
+inline json& EnsureObject(json& object, const char* key) {
+  if (!object.is_object()) object = json::object();
+  json& nested = object[key];
+  if (!nested.is_object()) nested = json::object();
+  return nested;
+}
+
 inline const json* JsonArray(const json& object, const char* key) {
   if (!object.is_object()) return nullptr;
   auto value = object.find(key);

@@ -254,11 +254,57 @@ SandboxStatus BuildStatus() {
   return status;
 }
 
+// What the summary line calls the thing doing the confining.
+const char* MechanismName() {
+#if defined(__APPLE__)
+  return "seatbelt";
+#elif defined(__linux__)
+  return "landlock";
+#else
+  return "none";
+#endif
+}
+
 }  // namespace
 
 const SandboxStatus& SandboxRuntime() {
   static const SandboxStatus kStatus = BuildStatus();
   return kStatus;
+}
+
+json SandboxDiagnosticJson() {
+  const SandboxStatus& status = SandboxRuntime();
+  switch (status.mode) {
+    case SandboxMode::kOff:
+      return {{"mode", "off"}, {"summary", "off"}};
+    case SandboxMode::kDegraded:
+      return {
+          {"mode", "degraded"},
+          {"reason", status.reason},
+          {"summary", "degraded, commands run unconfined: " + status.reason}};
+    case SandboxMode::kRefused:
+      return {{"mode", "refused"},
+              {"reason", status.reason},
+              {"summary", "refusing every command: " + status.reason}};
+    case SandboxMode::kEnforced:
+      break;
+  }
+  // Landlock restricts TCP and nothing else, so calling it "no network" on
+  // Linux would promise a UDP closure that is not there.
+  std::string summary = std::string(MechanismName()) + ": writes";
+  if (!status.policy.allow_network) {
+#if defined(__linux__)
+    summary += " + no outbound tcp";
+#else
+    summary += " + no network";
+#endif
+  }
+  return {{"mode", "enforced"},
+          {"mechanism", MechanismName()},
+          {"network", status.policy.allow_network ? "allowed" : "denied"},
+          {"roots", status.policy.writable_roots},
+          {"rejected", status.rejected},
+          {"summary", std::move(summary)}};
 }
 
 std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {

@@ -230,6 +230,27 @@ def test_sandbox_escape_hatch_runs_unconfined_when_approved(root, home):
     assert_true(outside.exists(), f"an approved hatch was still confined: {output}")
 
 
+def test_sandbox_reports_itself(root, home):
+    """The two surfaces that answer "what is confining me": /status and startup.
+
+    A root that was asked for and not granted has to be said out loud at
+    startup. Finding out from a command that failed hours later is the same
+    information arriving too late to act on.
+    """
+    if not sandbox_enforced(root, home):
+        return
+    with Server([event({"content": "ready-ok"})]) as server:
+        code, output = run_pty(
+            workspace(root),
+            sandbox_env(home, server.url, UAGENT_SANDBOX_WRITE="/"),
+            [(b"/status\n", b"sandbox"), b"", b"/q\n"],
+            timeout=30,
+        )
+    assert_true(code == 0, output)
+    assert_true(b"writes" in output, f"/status did not say what is enforced: {output!r}")
+    assert_true(b"not granted as writable: /" in output, f"a dropped root was silent: {output!r}")
+
+
 def test_sandbox_off_leaves_spawning_unchanged(root, home):
     """The shipped default: no wrapper, no refusal, no behaviour change."""
     target = workspace(root) / "unconfined.txt"

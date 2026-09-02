@@ -16,6 +16,7 @@
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/sandbox.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -377,6 +378,9 @@ void HandleContext(AppSession& session) {
   json effective =
       session.context.config_manager.DiagnosticJson(session.Runtime().config);
   effective["capabilities"] = session.ApiClient().capabilities.DiagnosticJson();
+  // The writable roots are the whole of what the sandbox permits, so the deep
+  // view is the one place they are printed in full.
+  effective["sandbox"] = SandboxDiagnosticJson();
   const json& sources = effective["sources"];
   auto source = [&](const char* key, const std::string& fallback = "runtime") {
     return sources.is_object() ? JsonValue(sources, key, fallback) : fallback;
@@ -426,6 +430,7 @@ void HandleStatus(const AppSession& session) {
   row("effort", JsonValue(status, "effort", std::string()));
   row("approval", JsonValue(status, "approval", std::string()));
   row("web search", JsonValue(status, "web_search", std::string()));
+  row("sandbox", JsonValue(status["sandbox"], "summary", std::string()));
   row("memory", JsonValue(status, "memory", false) ? "on" : "off");
   row("tools", std::to_string(JsonValue(status, "tools", int64_t{0})));
   int64_t window = JsonValue(status, "context_window", int64_t{0});

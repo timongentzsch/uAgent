@@ -18,6 +18,8 @@
 #include <string_view>
 #include <vector>
 
+#include "include/core/json.h"
+
 namespace uagent {
 
 struct SandboxPolicy {
@@ -128,6 +130,11 @@ struct SandboxStatus {
 // Reads the configuration, composes the policy and probes the host once. Every
 // spawn asks; none of the answers can change while the process runs.
 const SandboxStatus& SandboxRuntime();
+
+// One object describing how this session confines its commands: mode,
+// mechanism, the writable roots, and anything asked for that was not granted.
+// Shared by session_ready, /status and /context so all three cannot drift.
+json SandboxDiagnosticJson();
 
 // The argv words to put in front of `<shell> -c <command>`. Empty when the
 // status does not enforce, which is what makes an unsandboxed spawn identical

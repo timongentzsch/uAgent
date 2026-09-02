@@ -28,6 +28,7 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/project.h"
+#include "include/core/sandbox.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -571,6 +572,29 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
   };
 }
 
+// Two things a session must not discover only when a command fails: that the
+// sandbox it asked for is not running, and that a root it listed was dropped.
+void ReportSandbox() {
+  const SandboxStatus& status = SandboxRuntime();
+  if (status.mode == SandboxMode::kDegraded) {
+    Emit(Event{EventId::kCapabilityChanged,
+               {{"feature", "sandbox"},
+                {"from", true},
+                {"to", false},
+                {"reason", status.reason}}});
+    Emit(NoticeEvent(
+        PresentationStatus::kWarned,
+        "\u00b7 sandbox: " + status.reason + "; commands run unconfined"));
+  }
+  if (status.rejected.empty()) return;
+  std::string dropped;
+  for (const std::string& root : status.rejected) {
+    dropped += (dropped.empty() ? "" : ", ") + root;
+  }
+  Emit(NoticeEvent(PresentationStatus::kWarned,
+                   "\u00b7 sandbox: not granted as writable: " + dropped));
+}
+
 void LogReady(const AppContext& context) {
   const Api& api = context.runtime.api;
   const RuntimeConfig& config = context.runtime.config;
@@ -583,6 +607,7 @@ void LogReady(const AppContext& context) {
   (void)PromptOverlay(&overlay_digest);
   json provenance = BuildProvenanceJson();
   provenance["toolset"] = toolset;
+  provenance["sandbox"] = SandboxDiagnosticJson();
   provenance["active_schema_digest"] =
       HashHex(JsonDump(ToolSchemas(context.tools)));
   provenance["behavior"] = {
@@ -639,6 +664,7 @@ void LogReady(const AppContext& context) {
        {"max_tokens", MaxOutputTokens()},
        {"limits", config.DiagnosticJson()},
        {"effective_config", context.config_manager.DiagnosticJson(config)}}});
+  ReportSandbox();
 }
 
 }  // namespace

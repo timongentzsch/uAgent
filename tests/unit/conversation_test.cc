@@ -64,6 +64,17 @@ void TestConversation() {
     CHECK(wire[i].value("role", "") != "system");
   }
 
+  // Set is the one mutator taking an index from the caller. Every current
+  // caller rewrites message zero, which only exists once a baseline does.
+  Conversation unstarted;
+  unstarted.Set(0, {{"role", "system"}, {"content", "sys"}},
+                MessageKind::kSystem);
+  CHECK(unstarted.Empty());
+  conversation.Set(conversation.Size(), {{"role", "user"}, {"content", "past"}},
+                   MessageKind::kUser);
+  CHECK(conversation.Size() == wire.size());
+  CHECK(conversation.Kinds().size() == conversation.Size());
+
   // UpsertTail keeps a stable historical prefix by relocating changed runtime
   // context to the end instead of rewriting it in place.
   Conversation tailed;

@@ -269,6 +269,10 @@ void Conversation::UpsertTail(json message, MessageKind kind) {
 }
 
 void Conversation::Set(size_t index, json message, MessageKind kind) {
+  // The four callers all rewrite message zero, which exists for as long as a
+  // baseline does -- but Erase already clamps rather than trusting a computed
+  // index, and an unchecked write here is the one that reads out of bounds.
+  if (index >= messages_.size()) return;
   NormalizeRole(message, kind);
   // Byte-identical replacement changes nothing observable: leave the cached
   // prefix untouched instead of rewriting message zero on every refresh.
@@ -425,6 +429,9 @@ size_t Conversation::PruneAttachments(size_t begin) {
       text = JsonValue(content[0], "text", "");
     }
     content = text + "\n[attachments omitted after processing]";
+    // Reclassified in place: the message stays where it is and only stops
+    // being an attachment, so this is the one kind write that has no message
+    // write beside it. Bounded by the messages_/kinds_ pairing.
     if (kinds_[index] == MessageKind::kAttachment) {
       kinds_[index] =
           index == begin ? MessageKind::kUser : MessageKind::kInternal;

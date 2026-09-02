@@ -597,7 +597,9 @@ def test_input_steering_yields_activity_wait(root, home):
         assert_true(code == 0, output)
         assert_true(b"steering-wait-ok" in output, output)
         assert_true(b"steering-wait-bad" not in output, output)
-        assert_true(elapsed < 8, elapsed)
+        # Same wall-clock claim as the run_pty deadline above it, so the same
+        # scaling: an instrumented build is slower without being wrong.
+        assert_true(elapsed < budget(8), elapsed)
 
 
 def test_input_idle_background_completion_is_observational(root, home):
@@ -1300,7 +1302,11 @@ def test_first_event_timeout(root, home):
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
-        assert_true(3.0 < elapsed < 6.5, elapsed)
+        # The lower bound is the behaviour -- three attempts each waiting out a
+        # 1s first-event timeout -- so it is absolute. The upper bound only
+        # says the retries ended, which is a wall-clock claim about the host
+        # and scales with an instrumented build like every other deadline.
+        assert_true(3.0 < elapsed < budget(6.5), elapsed)
 
 
 def test_midturn_compaction_preserves_progress_and_usage(root, home):

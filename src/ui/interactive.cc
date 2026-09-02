@@ -3,6 +3,8 @@
 #include "include/ui/interactive.h"
 
 #include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -11,6 +13,8 @@
 #include <cerrno>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -18,6 +22,8 @@
 #include <vector>
 
 #include "include/cli.h"
+#include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
@@ -468,6 +474,72 @@ void RawComposer::Remount() {
   RenderFromTop();
 }
 
+// Readline's spelling, so the gesture is already in the fingers of anyone who
+// edits a long shell command the same way. The composer holds 16KB and renders
+// newlines as a glyph, which is writable but not somewhere to compose a long
+// prompt.
+bool RawComposer::EditExternally() {
+  const char* editor = getenv("VISUAL");
+  if (editor == nullptr || *editor == 0) editor = getenv("EDITOR");
+  if (editor == nullptr || *editor == 0) return false;
+
+  std::string path =
+      UagentDir("drafts") + "/draft-" + std::to_string(getpid()) + ".md";
+  std::string error;
+  if (!AtomicWriteFile(path, buffer_, kPrivateFileMode, /*preserve_mode=*/false,
+                       error)) {
+    return false;
+  }
+
+  // Cooked, and the signal-safe restore disarmed, for as long as the editor
+  // owns the terminal. Its stdio is the real terminal rather than the
+  // descriptors this process holds, because stdout here is the transcript pipe.
+  Stop();
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
+    posix_spawn_file_actions_adddup2(&actions, output_.TerminalFd(), fd);
+  }
+  // Through a shell because an editor is routinely configured with arguments.
+  std::string command = std::string(editor) + " " + ShellQuote(path);
+  const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
+  pid_t pid = 0;
+  int spawned = posix_spawnp(&pid, "sh", &actions, nullptr,
+                             const_cast<char* const*>(argv),
+                             ProcessEnvironment());
+  posix_spawn_file_actions_destroy(&actions);
+  if (spawned == 0) {
+    int status = 0;
+    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+    }
+  }
+  Start();
+
+  bool restored = false;
+  if (spawned == 0) {
+    std::ifstream saved(path, std::ios::binary);
+    if (saved) {
+      std::string text((std::istreambuf_iterator<char>(saved)),
+                       std::istreambuf_iterator<char>());
+      // An editor adds the trailing newline a file is supposed to end with;
+      // the draft is a line of input and does not want it.
+      while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+        text.pop_back();
+      }
+      buffer_ = Utf8Prefix(std::move(text), kInputBufferBytes);
+      cursor_ = buffer_.size();
+      restored = true;
+    }
+  }
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
+  // The editor painted over the screen, so nothing that was drawn is still
+  // there to erase.
+  Detach();
+  RenderFromTop();
+  return restored;
+}
+
 void RawComposer::Detach() {
   drawn_rows_ = 0;
   caret_row_ = 0;
@@ -546,6 +618,17 @@ InteractiveInputEvent RawComposer::Read() {
       if (buffer_.empty()) return {InteractiveInputKind::kEof, {}};
       size_t next = NextUtf8(buffer_, cursor_);
       buffer_.erase(cursor_, next - cursor_);
+      continue;
+    }
+    if (editor_prefix_) {
+      editor_prefix_ = false;
+      if (ch == 0x05) {  // Ctrl+X Ctrl+E, readline's spelling
+        if (!EditExternally()) output_.Write("\a");
+        continue;
+      }
+    }
+    if (ch == 0x18) {  // Ctrl+X, a prefix on its own
+      editor_prefix_ = true;
       continue;
     }
     if (ch == 0x7f || ch == 0x08) {

@@ -66,6 +66,10 @@ class InteractiveOutput {
   void Write(const std::string& text) const;
 
   int ReadFd() const { return read_.Get(); }
+  // The real terminal, for a child that has to own the screen: stdout is the
+  // pipe here, so handing a subprocess the usual descriptors would send its
+  // rendering into the transcript instead of to the user.
+  int TerminalFd() const { return saved_.Get(); }
 
  private:
   Fd saved_;  // the real terminal, kept aside while stdout is the pipe
@@ -132,6 +136,10 @@ class RawComposer {
   void DeletePreviousWord();
   void ApplySequence(const std::string& sequence);
   void History(int direction);
+  // Hand the draft to $VISUAL/$EDITOR and take back what it saved. False when
+  // no editor is configured or the round trip failed, leaving the draft as it
+  // was.
+  bool EditExternally();
 
   const InteractiveOutput& output_;
   termios saved_{};
@@ -149,6 +157,8 @@ class RawComposer {
   std::string history_draft_;
   bool keep_history_ = true;
   bool input_limit_bell_ = false;
+  // Ctrl+X seen, waiting to learn whether it opens the editor.
+  bool editor_prefix_ = false;
 };
 
 // Hands a synchronous input request from a worker thread to the composer

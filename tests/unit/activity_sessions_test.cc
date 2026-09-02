@@ -112,6 +112,49 @@ void TestActivityBufferAndAdmission() {
   CHECK(!buffer.Drain().empty());
   CHECK(buffer.Drain().empty());
 
+  // The status row asks for one line and must not pay for the megabyte behind
+  // it, so the tail is read where it lands rather than through Snapshot().
+  HeadTailBuffer progress;
+  CHECK(progress.TailLine().empty());
+  progress.Push("· reading\n· writing\n");
+  CHECK(progress.TailLine() == "· writing");
+  // A process that just printed a newline has not stopped saying what it was
+  // saying: trailing blanks name the line before them.
+  progress.Push("\n  \n");
+  CHECK(progress.TailLine() == "· writing");
+  // Bounded at a codepoint boundary, never mid-sequence.
+  HeadTailBuffer wide;
+  wide.Push("ααα\n");
+  CHECK(wide.TailLine(3) == "α");
+  // Past the budget the newest bytes are all that survive, and the line comes
+  // from those rather than from the prefix the buffer also kept.
+  HeadTailBuffer spilled(10);
+  spilled.Push("first\nsecond\nthird");
+  CHECK(spilled.TailLine() == "third");
+
+  // What the status row reads: delegated children only, each with its newest
+  // progress line, and a count that agrees with the list it came from.
+  ProcessSupervisor delegating;
+  auto delegated = std::make_shared<ActivitySession>();
+  {
+    std::lock_guard<std::mutex> lock(delegated->mutex);
+    delegated->transcript.Push("· reading\n· writing\n");
+  }
+  CHECK(delegating.TryAdd({899980, "", "child", false, "subagent", 0, delegated,
+                           "haiku", "", "agent-1a2b3c4d"},
+                          4));
+  CHECK(delegating.TryAdd({899981, "", "plain", false, "command"}, 4));
+  std::vector<SubagentView> views = delegating.SubagentViews();
+  REQUIRE(views.size() == 1);
+  CHECK(views[0].source_id == "agent-1a2b3c4d");
+  CHECK(views[0].label == "haiku");
+  CHECK(views[0].tail == "· writing");
+  CHECK(delegating.Count(ActivityKind::kSubagent) == 1);
+  CHECK(delegating.Count() == 2);
+  // Looking is not draining: the tool that joins the child still needs every
+  // byte the transcript holds.
+  CHECK(delegating.SubagentViews()[0].tail == "· writing");
+
   ProcessSupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);
   CHECK(first_slot.has_value());

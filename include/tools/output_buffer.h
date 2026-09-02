@@ -8,6 +8,8 @@
 #include <string>
 #include <string_view>
 
+#include "include/core/strings.h"
+
 namespace uagent {
 
 // Bounded process output preserving a stable prefix and the newest suffix.
@@ -49,6 +51,14 @@ class HeadTailBuffer {
     return output;
   }
 
+  // The newest non-empty line, for a status row that has one row to spend on
+  // a process still running. Scans backwards over a bounded window instead of
+  // building Snapshot(), which is a megabyte the caller would throw away.
+  std::string TailLine(size_t cap = 160) const {
+    std::string line = LastLine(tail_, cap);
+    return line.empty() ? LastLine(head_, cap) : line;
+  }
+
   std::string Drain() {
     std::string output = Snapshot();
     head_.clear();
@@ -58,6 +68,31 @@ class HeadTailBuffer {
   }
 
  private:
+  static bool Blank(char c) {
+    return c == '\n' || c == '\r' || c == ' ' || c == '\t';
+  }
+
+  // Trailing blanks are skipped rather than answered with an empty line: a
+  // process that just printed a newline has not stopped saying what it was
+  // saying. The window bounds a producer that emits one enormous line or a
+  // great many blank ones -- the cost stays the same either way.
+  static std::string LastLine(const std::string& text, size_t cap) {
+    static constexpr size_t kWindow = 4096;
+    size_t limit = text.size() > kWindow ? text.size() - kWindow : 0;
+    size_t end = text.size();
+    while (end > limit && Blank(text[end - 1])) --end;
+    if (end == limit) return std::string();
+    size_t begin = end;
+    while (begin > limit && text[begin - 1] != '\n' &&
+           text[begin - 1] != '\r') {
+      --begin;
+    }
+    while (begin < end && Blank(text[begin])) ++begin;
+    // Cut from the front: the head of a progress line is what names the work,
+    // and the caller bounds it again for its own width.
+    return Utf8Prefix(text.substr(begin, end - begin), cap);
+  }
+
   size_t head_budget_;
   size_t tail_budget_;
   std::string head_;

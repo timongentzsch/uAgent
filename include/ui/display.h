@@ -125,8 +125,14 @@ struct ActivityView {
   std::string model;
   size_t background = 0;
   size_t foreground = 0;
+  // Delegated children, counted apart from `background` so the row can say
+  // what the other processes are rather than lumping them into one number.
+  size_t subagents = 0;
   size_t queued = 0;
   bool interrupting = false;
+  // The newest child's progress, "<id>: <line>". Terminal output from another
+  // process: rendered through TerminalSafe, never raw.
+  std::string subagent;
 };
 
 // The working row: spinner frame, activity label, and the same "drop what does
@@ -144,12 +150,26 @@ inline std::string ActivityBar(const ActivityView& view) {
       kSpinnerInterval;
   std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
   prefix += " ";
-  std::string state = view.interrupting
-                          ? "Interrupting"
-                          : (activity.empty() ? "Working" : activity);
+  // What the turn is doing, in descending order of how directly the human
+  // asked for it -- a delegated child's progress is better than "Working" and
+  // worse than the work this process is doing itself.
+  std::string state = "Working";
+  if (view.interrupting) {
+    state = "Interrupting";
+  } else if (!activity.empty()) {
+    state = activity;
+  } else if (!view.subagent.empty()) {
+    // Terminal output from another process. It is not sanitized here because
+    // ActivityLabel already does it for every label this row can carry --
+    // duplicating that would leave two places to keep honest instead of one.
+    state = view.subagent;
+  }
   std::string route = view.model.empty() ? std::string() : " · " + view.model;
   std::string suffix = " · " + seconds;
   suffix += " · " + ContextSummary(view.context_used, view.context_window);
+  if (view.subagents > 0) {
+    suffix += " · agents:" + std::to_string(view.subagents);
+  }
   if (view.background > 0) suffix += " · bg:" + std::to_string(view.background);
   if (view.foreground > 0) {
     suffix += " · Ctrl+B background";

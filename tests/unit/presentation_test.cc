@@ -204,11 +204,30 @@ void TestActivityBar() {
   busy.foreground = 2;
   CHECK(ActivityBar(busy).find("2 commands") != std::string::npos);
 
+  // Delegated children get a chip of their own and lend the row their newest
+  // progress line: a parent that is only waiting on a child would otherwise
+  // say "Working" for as long as the child runs.
+  CHECK(first.find("agents:") == std::string::npos);
+  ActivityView delegated = Working(std::chrono::milliseconds(0));
+  delegated.subagents = 2;
+  delegated.subagent = "agent-1a2b3c4d: · reading";
+  std::string delegated_bar = ActivityBar(delegated);
+  CHECK(delegated_bar.find("agents:2") != std::string::npos);
+  CHECK(delegated_bar.find("agent-1a2b3c4d: · reading") != std::string::npos);
+  CHECK(delegated_bar.find("Working") == std::string::npos);
+  // The line is another process's terminal output, so escapes must not reach
+  // the row -- a child could otherwise repaint the parent's screen.
+  delegated.subagent = "agent-1a2b3c4d: \033[2Jwiped";
+  CHECK(ActivityBar(delegated).find("\033[2J") == std::string::npos);
+
   // Interrupting replaces the idle "Working" label.
   ActivityView interrupting = Working(std::chrono::milliseconds(0));
   interrupting.interrupting = true;
   CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
   CHECK(first.find("Working") != std::string::npos);
+  // A child's progress never displaces what this process is doing itself.
+  interrupting.subagent = "agent-1a2b3c4d: · reading";
+  CHECK(ActivityBar(interrupting).find("Interrupting") != std::string::npos);
 
   g_tty = prior;
   g_color = prior_color;

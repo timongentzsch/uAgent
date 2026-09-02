@@ -40,6 +40,7 @@
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
+#include "include/tools/process.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
@@ -349,23 +350,51 @@ class Application {
       AppSession session = app.Session();
       view.model = RouteSelection(session.ApiClient(),
                                   session.context.provider.providers);
-      view.background = app.runtime_.processes.Count();
+      view.subagent = SubagentProgress(&view.subagents);
+      size_t running = app.runtime_.processes.Count();
+      // The children have their own chip, so `bg:` is what is left: two
+      // snapshots a moment apart can disagree, and a saturating subtraction is
+      // the difference between a stale number and an absurd one.
+      view.background = running > view.subagents ? running - view.subagents : 0;
       view.foreground = app.runtime_.processes.ForegroundCount();
       view.queued = SteeringState().QueuedCount();
       view.interrupting = interrupting;
       return ActivityBar(view);
     }
 
+    // The newest child that has said something, as "<id>: <progress>", and the
+    // number of children beside it. One snapshot feeds both, so the count and
+    // the line can never describe different sets. A child that has not printed
+    // yet is skipped rather than shown blank -- the row falls back to the
+    // label it would otherwise have had.
+    std::string SubagentProgress(size_t* count) {
+      std::vector<SubagentView> agents = app.runtime_.processes.SubagentViews();
+      *count = agents.size();
+      for (auto it = agents.rbegin(); it != agents.rend(); ++it) {
+        if (it->tail.empty()) continue;
+        std::string id = it->source_id.empty() ? "#" + std::to_string(it->id)
+                                               : it->source_id;
+        return id + ": " + it->tail;
+      }
+      return std::string();
+    }
+
     std::string RenderedStatus() {
       return StatusBarLine(Status(), &status_columns);
     }
 
+    // Everything the working row shows that is not the clock. The children's
+    // progress is part of it: without that, a repaint would wait for the next
+    // hundred-millisecond tick and the line would lag what the child said.
     std::string StatusState() {
+      size_t agents = 0;
+      std::string progress = SubagentProgress(&agents);
       return std::string(interrupting ? "interrupting|" : "working|") +
              CurrentTerminalActivity() + "|" +
              std::to_string(SteeringState().QueuedCount()) + "|" +
              std::to_string(app.runtime_.processes.Count()) + "|" +
-             std::to_string(app.runtime_.processes.ForegroundCount());
+             std::to_string(app.runtime_.processes.ForegroundCount()) + "|" +
+             std::to_string(agents) + "|" + progress;
     }
 
     size_t TailRows() const {

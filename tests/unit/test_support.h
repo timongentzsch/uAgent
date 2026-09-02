@@ -206,6 +206,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestFileTools)                             \
   X(TestMathTransliteration)                   \
   X(TestActivityBar)                           \
+  X(TestStatusBarDropsByPriority)              \
   X(TestPollCollapse)                          \
   X(TestTerminalSafety)                        \
   X(TestTerminalInputDecoder)                  \

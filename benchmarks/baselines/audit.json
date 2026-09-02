@@ -1,18 +1,18 @@
 {
   "schema": "uagent.audit.v1",
-  "generated_at": "2026-08-26T09:43:56Z",
+  "generated_at": "2026-09-02T20:05:21Z",
   "hardware": {
-    "binary_bytes": 2456584,
-    "peak_rss_bytes": 10272768
+    "binary_bytes": 2657128,
+    "peak_rss_bytes": 11141120
   },
   "token": {
     "system_chars": 2712,
-    "schema_chars": 8659,
+    "schema_chars": 9320,
     "advertised_tools": 11,
-    "always_on_schema_bytes": 5213,
+    "always_on_schema_bytes": 5314,
     "largest_schemas": {
-      "subagent": 1612,
-      "run": 1052,
+      "subagent": 2122,
+      "run": 1153,
       "uagent_info": 1033,
       "scratch": 812,
       "read_path": 663
@@ -20,7 +20,7 @@
   },
   "profile_token": {
     "system_chars": 2712,
-    "schema_chars": 10910,
+    "schema_chars": 11403,
     "advertised_tools": 13,
     "only_with_profile": [
       "memory",
@@ -29,28 +29,41 @@
   },
   "speed": {
     "rebuild_fanout": {
-      "include/core/strings.h": 56,
-      "include/core/checked.h": 52,
-      "include/core/json.h": 52,
-      "include/core/env.h": 45,
-      "include/core/time.h": 41,
-      "include/core/platform.h": 39
+      "include/core/strings.h": 83,
+      "include/core/json.h": 82,
+      "include/core/checked.h": 82,
+      "include/core/env.h": 68,
+      "include/core/platform.h": 60,
+      "include/core/time.h": 59
     }
   },
   "capability": {
-    "surface_tools": 19,
-    "scenarios": 9,
-    "checks": 52,
+    "surface_tools": 18,
+    "scenarios": 12,
+    "checks": 73,
     "tiers": {
-      "regression": 8,
-      "capability": 1
+      "regression": 10,
+      "capability": 2
     },
     "tool_calls": {
-      "run": 2,
+      "read_path": 23,
+      "run": 4,
       "activity": 1,
-      "read_path": 17,
       "edit_file": 1,
       "grep": 2
+    }
+  },
+  "trajectory": {
+    "probe": {
+      "cumulative_request_chars": 12361,
+      "tool_result_chars": 0,
+      "model_duration_ms": 4.430666
+    },
+    "hermetic_baseline": {
+      "cases": 13,
+      "cumulative_request_chars": 625903,
+      "tool_result_chars": 48437,
+      "max_request_chars": 46540
     }
   },
   "readability": {
@@ -64,29 +77,24 @@
       "unused_declaration": 0
     },
     "marker_files": 0,
-    "largest_file_lines": 1149,
-    "largest_file": "src/tools/jobs.cc"
+    "largest_file_lines": 1023,
+    "largest_file": "src/agent/turn.cc"
   },
   "representativeness": {
-    "real_calls": 4752,
+    "real_calls": 6215,
     "real_mix": {
-      "run": 2642,
-      "read_path": 571,
-      "edit_file": 564,
-      "grep": 351,
-      "activity": 247,
-      "scratch": 98,
-      "web_search": 54,
-      "memory": 54
+      "run": 3030,
+      "read_path": 919,
+      "edit_file": 837,
+      "grep": 506,
+      "activity": 440,
+      "scratch": 140,
+      "subagent": 73,
+      "web_fetch": 60
     },
     "uncovered_above_floor": [],
     "retired_names_in_history": [
-      "activity_output",
-      "activity_wait",
-      "advisor",
-      "list_dir",
-      "read_file",
-      "run_python"
+      "activity_stop"
     ]
   }
 }

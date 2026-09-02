@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -14,6 +15,7 @@
 
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/output_buffer.h"
@@ -270,6 +272,19 @@ std::string ChildAgentStopNote(const json& stop) {
   note +=
       "; rerun with that ceiling raised, or use this partial result as it is]";
   return note;
+}
+
+const std::string& CollaboratorSessionFile() {
+  static const std::string kSessionFile = [] {
+    std::string requested = EnvStr("UAGENT_INTERNAL_SESSION_FILE");
+    if (requested.empty()) return std::string();
+    std::filesystem::path root =
+        CanonicalAccessPath(UagentDir("collaborators"));
+    std::filesystem::path file = CanonicalAccessPath(requested);
+    if (!PathWithin(file, root)) return std::string();
+    return file.string();
+  }();
+  return kSessionFile;
 }
 
 std::string ChildAgentConstraintNotes(const std::vector<std::string>& clamped) {

@@ -20,6 +20,7 @@
 #include "include/core/term.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/subagent.h"
 
 namespace uagent {
@@ -532,6 +533,16 @@ std::string Agent::RuntimeContextText() const {
   if (std::any_of(tools_.begin(), tools_.end(),
                   [](const Tool& tool) { return tool.delegates; })) {
     content += DelegationRuntimeContext(api_);
+  }
+  if (!CollaboratorSessionFile().empty()) {
+    // A collaborator is reachable while it runs, which is not something it can
+    // infer from its own prompt: guidance arrives mid-turn as an ordinary user
+    // message. The second line is the other half of the same channel -- a child
+    // that stops on a missing decision has somewhere to send the question.
+    content +=
+        "\n[collaborator: coordinator guidance may arrive between steps as a "
+        "user message; follow it.\nIf you are blocked on a decision only the "
+        "coordinator can make, end your answer with that one question.]";
   }
   if (HasMemoryContent(project_instructions_)) {
     content += "\n\n" + MemoryText();

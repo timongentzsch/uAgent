@@ -223,6 +223,10 @@ std::string StartMemoryExtractor(ProcessSupervisor& processes, const Api& api,
                       {.command = std::move(command),
                        .background = true,
                        .immediate = true,
+                       // Runs uagent itself, which writes ~/.uagent state a
+                       // confined child could not. Its own commands inherit
+                       // UAGENT_SANDBOX and are confined one level down.
+                       .sandbox = false,
                        .job_kind = "memory",
                        .activity_label = "extracting from " + source_id,
                        .receipt_path = receipt,

@@ -196,7 +196,7 @@ if(BUILD_TESTING)
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
-  foreach(group IN ITEMS runtime tools ui providers mcp delegation)
+  foreach(group IN ITEMS runtime tools ui providers mcp delegation sandbox)
     add_test(NAME integration_${group}
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py

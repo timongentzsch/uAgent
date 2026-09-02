@@ -471,6 +471,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                             {.command = std::move(command),
                              .background = background,
                              .immediate = background,
+                             // Runs uagent itself, which writes ~/.uagent
+                             // state a confined child could not. Its own
+                             // commands inherit UAGENT_SANDBOX and are
+                             // confined one level down.
+                             .sandbox = false,
                              .job_kind = "subagent",
                              .activity_label = route_label,
                              .source_id = collaborator_id,

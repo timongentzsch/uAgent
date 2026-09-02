@@ -47,6 +47,8 @@ int64_t SubagentCallsPerTurn();
 std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();
+bool SandboxEnabled();
+std::string SandboxWriteRoots();
 bool AdaptiveSystemEnabled();
 // Experiment overlay for the base prompt: a path, empty when unset.
 std::string PromptOverlayPath();

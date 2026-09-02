@@ -7,7 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 #if defined(__linux__)
@@ -15,8 +17,11 @@
 #include <sys/syscall.h>
 #endif
 
+#include "include/core/env.h"
 #include "include/core/fd.h"
+#include "include/core/fs.h"
 #include "include/core/sandbox.h"
+#include "include/core/signals.h"
 
 // Everything that has to ask the host what it can enforce, and the Linux
 // trampoline that enforces it. The platform split lives inside this file so
@@ -160,6 +165,107 @@ SandboxLevel SandboxSupported() {
                   : SandboxLevel::kFilesystem;
 #else
   return SandboxLevel::kUnavailable;
+#endif
+}
+
+namespace {
+
+// Every configured value the sandbox reads, resolved to the canonical absolute
+// paths seatbelt and Landlock both match on. macOS makes this mandatory rather
+// than tidy: /tmp there is a symlink to /private/tmp, and a profile naming the
+// symlink confines nothing.
+SandboxInputs CollectInputs() {
+  auto canonical = [](const std::string& path) {
+    return path.empty() ? std::string() : CanonicalAccessPath(path).string();
+  };
+  SandboxInputs inputs;
+  inputs.workspace = CanonicalCwd();
+  inputs.global_base = canonical(GlobalBase());
+  inputs.tmpdir = canonical(EnvStr("TMPDIR"));
+  inputs.terminal_logs = canonical(UagentDir(kTerminalLogsDir));
+  // Canonicalised component by component rather than passed through raw: a
+  // root written as ~/.uagent/.. is not textually inside ~/.uagent, so the
+  // ancestor screen would let it past and both mechanisms would then resolve
+  // it back to the home directory.
+  const std::string raw = SandboxWriteRoots();
+  for (size_t start = 0; start < raw.size();) {
+    size_t end = raw.find(':', start);
+    if (end == std::string::npos) end = raw.size();
+    std::string root = canonical(raw.substr(start, end - start));
+    if (!root.empty()) {
+      if (!inputs.extra_roots.empty()) inputs.extra_roots += ':';
+      inputs.extra_roots += root;
+    }
+    start = end + 1;
+  }
+  const std::string home = UserHome();
+  if (!home.empty()) {
+#if defined(__APPLE__)
+    inputs.cache_dir = canonical(home + "/Library/Caches");
+#else
+    inputs.cache_dir = canonical(home + "/.cache");
+    inputs.data_dir = canonical(home + "/.local/share");
+#endif
+  }
+  return inputs;
+}
+
+SandboxStatus BuildStatus() {
+  SandboxStatus status;
+  if (!SandboxEnabled()) return status;
+  status.level = SandboxSupported();
+  // Test-only, and only ever stricter: it can make an enforceable host look
+  // unenforceable, never the other way round.
+  if (!EnvStr("UAGENT_INTERNAL_SANDBOX_UNAVAILABLE").empty()) {
+    status.level = SandboxLevel::kUnavailable;
+  }
+  // A value in the environment here is a value somebody wrote down: the
+  // configuration layer exports what a file, the environment or a flag
+  // supplied, and never the registry defaults. That is the whole of the
+  // provenance the two unenforceable tiers need.
+  const bool requested = !EnvStr("UAGENT_SANDBOX").empty();
+  if (status.level == SandboxLevel::kUnavailable) {
+    status.mode = requested ? SandboxMode::kRefused : SandboxMode::kDegraded;
+    status.reason =
+#if defined(__linux__)
+        "this kernel has no Landlock support (needs 5.13 or newer)";
+#else
+        "this host has no usable sandbox mechanism";
+#endif
+    return status;
+  }
+  SandboxPolicyResult built = BuildSandboxPolicy(CollectInputs());
+  status.policy = std::move(built.policy);
+  status.rejected = std::move(built.rejected);
+  status.mode = SandboxMode::kEnforced;
+  return status;
+}
+
+}  // namespace
+
+const SandboxStatus& SandboxRuntime() {
+  static const SandboxStatus kStatus = BuildStatus();
+  return kStatus;
+}
+
+std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
+  if (status.mode != SandboxMode::kEnforced) return {};
+#if defined(__APPLE__)
+  std::string profile = SeatbeltProfile(status.policy);
+  // An oversized profile renders empty rather than truncated, and a truncated
+  // profile is a weaker one. No wrapper here would mean no confinement, so the
+  // caller is told to refuse instead.
+  if (profile.empty()) return {};
+  return {"/usr/bin/sandbox-exec", "-p", std::move(profile)};
+#elif defined(__linux__)
+  std::vector<std::string> argv{ExecutablePath(), "--sandbox-child"};
+  std::vector<std::string> words = EncodeSandboxPolicy(status.policy);
+  argv.insert(argv.end(), std::make_move_iterator(words.begin()),
+              std::make_move_iterator(words.end()));
+  argv.emplace_back("--");
+  return argv;
+#else
+  return {};
 #endif
 }
 

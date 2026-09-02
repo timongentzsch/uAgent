@@ -105,6 +105,35 @@ SandboxLevel SandboxSupported();
 // command that ran here would be a command that ran unconfined.
 int SandboxChildMain(int argc, char** argv);
 
+// How this session's spawns are actually treated.
+//
+// kDegraded and kRefused are the same host -- one that cannot enforce -- split
+// by who asked for the sandbox. A default that bricked every old kernel would
+// be a bad default, so a setting nobody touched degrades loudly and keeps
+// working; a setting somebody wrote down is a requirement, and quietly not
+// meeting it would be the one outcome worse than refusing.
+enum class SandboxMode { kOff, kEnforced, kDegraded, kRefused };
+
+struct SandboxStatus {
+  SandboxMode mode = SandboxMode::kOff;
+  SandboxLevel level = SandboxLevel::kUnavailable;
+  SandboxPolicy policy;
+  // Roots BuildSandboxPolicy refused, so startup can name what was asked for
+  // and not granted.
+  std::vector<std::string> rejected;
+  // Why the mode is kDegraded or kRefused. Empty otherwise.
+  std::string reason;
+};
+
+// Reads the configuration, composes the policy and probes the host once. Every
+// spawn asks; none of the answers can change while the process runs.
+const SandboxStatus& SandboxRuntime();
+
+// The argv words to put in front of `<shell> -c <command>`. Empty when the
+// status does not enforce, which is what makes an unsandboxed spawn identical
+// to the one this release already ships.
+std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_SANDBOX_H_

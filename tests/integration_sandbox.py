@@ -1,0 +1,173 @@
+"""OS sandbox: what an agent-run command may and may not write.
+
+Every case here asserts the filesystem, not the message: a command that fails
+for the wrong reason still leaves the file absent, and a command that succeeds
+in spite of the sandbox leaves it present whatever it printed.
+
+The workspace is a subdirectory of the case root rather than the case root
+itself, because the harness nests HOME inside it. A workspace holding ~/.uagent
+would be an ancestor of the config and is rejected as a writable root, so the
+whole group would run with nothing writable at all -- and every "outside" path
+here lives in the case root, which is outside that workspace.
+"""
+
+from integration_support import (
+    Server,
+    assert_true,
+    base_env,
+    event,
+    os,
+    run,
+    tool_call,
+)
+
+
+def workspace(root):
+    """The agent's cwd: a sibling of HOME, not its parent."""
+    path = root / "ws"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+def sandbox_env(home, url, **overrides):
+    env = base_env(home, url)
+    env["UAGENT_SANDBOX"] = "1"
+    env.update(overrides)
+    return env
+
+
+def run_once(root, env, command):
+    """One turn that runs `command` through the shell tool."""
+    with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
+        env = dict(env)
+        env["UAGENT_BASE_URL"] = server.url
+        return run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
+
+
+def tool_output(root, env, command):
+    """The same turn, but returning what the tool reported back to the model."""
+    seen = []
+
+    def route(_, body):
+        contents = [str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"]
+        if contents:
+            seen.append(contents[-1])
+            return event({"content": "ok"})
+        return tool_call("run", {"command": command})
+
+    with Server([route]) as server:
+        env = dict(env)
+        env["UAGENT_BASE_URL"] = server.url
+        run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
+    return seen[0] if seen else ""
+
+
+def sandbox_enforced(root, home):
+    """True when this host actually confines writes.
+
+    Probing by behaviour rather than by platform: the answer on Linux depends
+    on the kernel, and a suite that assumed enforcement would report a missing
+    Landlock as a sandbox escape.
+    """
+    probe = root / "sandbox-probe"
+    run_once(root, sandbox_env(home, ""), f"echo x > {probe}")
+    escaped = probe.exists()
+    probe.unlink(missing_ok=True)
+    return not escaped
+
+
+def test_sandbox_confines_writes_to_the_workspace(root, home):
+    """Inside the workspace writes land; outside it they do not."""
+    if not sandbox_enforced(root, home):
+        return
+    inside, outside = workspace(root) / "inside.txt", root / "outside.txt"
+    run_once(root, sandbox_env(home, ""), f"echo in > {inside}; echo out > {outside}; true")
+    assert_true(inside.exists(), "workspace write was blocked")
+    assert_true(not outside.exists(), "wrote outside the workspace")
+
+
+def test_sandbox_protects_agent_state(root, home):
+    """A shell command cannot reach the config or the trust store.
+
+    The unsandboxed control is the point of the case: without it a passing
+    assertion could just mean the command was malformed.
+    """
+    if not sandbox_enforced(root, home):
+        return
+    target = home / ".uagent" / ".config"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    command = f"echo UAGENT_YOLO=1 >> {target}"
+    run_once(root, sandbox_env(home, ""), command)
+    assert_true(not target.exists(), "sandboxed command wrote the config")
+
+    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), command)
+    assert_true(target.exists(), "control run could not write the config either")
+
+
+def test_sandbox_reads_stay_open(root, home):
+    """Reads are deliberately unrestricted, and the suite pins that.
+
+    A sandboxed `cat` of the config still reaches model context. Whoever
+    narrows this later should have to change a test that says so.
+    """
+    if not sandbox_enforced(root, home):
+        return
+    secret = home / "readable.txt"
+    secret.write_text("read-me-marker\n")
+    output = tool_output(root, sandbox_env(home, ""), f"cat {secret}")
+    assert_true("read-me-marker" in output, f"a sandboxed command could not read: {output}")
+
+
+def test_sandbox_detached_log_writes_but_records_do_not(root, home):
+    """The A4 split, from the sandbox side.
+
+    A detached job's own log pump has to write under ~/.uagent/terminals/logs,
+    so that directory is a writable root. The records beside it are not: a
+    forged record would misdirect the kill and the expiry unlink that read it.
+    """
+    if not sandbox_enforced(root, home):
+        return
+    forged = home / ".uagent" / "terminals" / "99999.json"
+    logs = home / ".uagent" / "terminals" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    probe = logs / "probe.log"
+    run_once(root, sandbox_env(home, ""), f"echo forged > {forged}; echo live > {probe}; true")
+    assert_true(probe.exists(), "the detached log directory is not writable")
+    assert_true(not forged.exists(), "a command forged a detached record")
+
+
+def test_sandbox_extra_roots_are_granted_and_screened(root, home):
+    """UAGENT_SANDBOX_WRITE widens the policy, but never onto agent state."""
+    if not sandbox_enforced(root, home):
+        return
+    extra = root / "extra"
+    extra.mkdir(exist_ok=True)
+    (home / ".uagent").mkdir(parents=True, exist_ok=True)
+    inside, denied = extra / "ok.txt", home / "granted.txt"
+    # The second root resolves to HOME: it is only rejected because the roots
+    # are canonicalised before the ancestor screen sees them.
+    env = sandbox_env(home, "", UAGENT_SANDBOX_WRITE=f"{extra}:{home}/.uagent/..")
+    run_once(root, env, f"echo a > {inside}; echo b > {denied}; true")
+    assert_true(inside.exists(), "an extra root was not granted")
+    assert_true(not denied.exists(), "an ancestor of ~/.uagent was granted")
+
+
+def test_sandbox_refuses_when_it_cannot_enforce(root, home):
+    """Explicitly configured on, host cannot enforce: the command must not run.
+
+    The degraded tier -- on only by registry default -- is not reachable while
+    that default is off, so it is covered where the default flips.
+    """
+    written = workspace(root) / "should-not-exist.txt"
+    env = sandbox_env(home, "", UAGENT_INTERNAL_SANDBOX_UNAVAILABLE="1")
+    output = tool_output(root, env, f"echo x > {written}")
+    assert_true(not written.exists(), "a command ran on a host that cannot confine it")
+    assert_true("UAGENT_SANDBOX" in output, f"the refusal did not explain itself: {output}")
+
+
+def test_sandbox_off_leaves_spawning_unchanged(root, home):
+    """The shipped default: no wrapper, no refusal, no behaviour change."""
+    target = workspace(root) / "unconfined.txt"
+    os.environ.pop("UAGENT_SANDBOX", None)
+    run_once(root, base_env(home, ""), f"echo x > {target}")
+    assert_true(target.exists(), "the unsandboxed path changed")

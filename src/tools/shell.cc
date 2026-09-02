@@ -23,6 +23,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -239,6 +240,22 @@ std::string SandboxWrapperFor(const ShellCommand& spec,
     return "error: the sandbox policy is too large to enforce (" +
            std::to_string(status.policy.writable_roots.size()) +
            " writable roots); remove entries from UAGENT_SANDBOX_WRITE";
+  }
+  return {};
+}
+
+// A refused write arrives as the kernel's errno, which names a permission and
+// not the policy that withheld it -- so a command that failed for the one
+// reason this session introduced is the one that explains itself worst. Added
+// only to a wrapped command that actually failed, and it points at the place
+// the writable roots are listed rather than repeating them here.
+std::string SandboxHint(const std::string& output) {
+  for (std::string_view denial :
+       {"Operation not permitted", "Permission denied"}) {
+    if (output.find(denial) != std::string::npos) {
+      return "\n[sandbox: writes are confined to the workspace; /context lists "
+             "every writable root]";
+    }
   }
   return {};
 }
@@ -481,6 +498,9 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
         /*failed=*/!(WIFEXITED(status) && WEXITSTATUS(status) == 0));
     if (collected.artifact) output = std::move(collected.output);
     ToolResult result = build(std::move(output), status);
+    if (!result.Ok() && !wrapper.empty()) {
+      result.output += SandboxHint(result.output);
+    }
     result.artifact = std::move(collected.artifact);
     return ShellCommandResult{std::move(result), status, /*launched=*/true};
   };

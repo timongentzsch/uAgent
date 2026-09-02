@@ -83,9 +83,14 @@ def test_sandbox_confines_writes_to_the_workspace(root, home):
     if not sandbox_enforced(root, home):
         return
     inside, outside = workspace(root) / "inside.txt", root / "outside.txt"
-    run_once(root, sandbox_env(home, ""), f"echo in > {inside}; echo out > {outside}; true")
+    # No trailing `true`: the shell's exit status has to carry the failure, or
+    # the hint below has nothing to attach itself to.
+    output = tool_output(root, sandbox_env(home, ""), f"echo in > {inside}; echo out > {outside}")
     assert_true(inside.exists(), "workspace write was blocked")
     assert_true(not outside.exists(), "wrote outside the workspace")
+    # The errno the shell prints names a permission, not the policy that
+    # withheld it. Whoever reads the failure has to be told which it was.
+    assert_true("[sandbox:" in output, f"a refused write did not name the sandbox: {output}")
 
 
 def test_sandbox_protects_agent_state(root, home):

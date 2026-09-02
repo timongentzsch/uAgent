@@ -200,5 +200,7 @@ ctest --preset debug --output-on-failure
 
 First-party C++ follows the
 [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
-µAgent is a local single-user CLI, not an OS sandbox; use a restricted account,
-container, or VM for untrusted code.
+µAgent is a local single-user CLI. It confines the commands it runs with the
+OS sandbox — writes only, on by default, `UAGENT_SANDBOX=0` to opt out — but it
+is not a container; use a restricted account, container, or VM for untrusted
+code.

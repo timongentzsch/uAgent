@@ -1,7 +1,8 @@
 # Operations
 
-µAgent is a local, single-user POSIX CLI for macOS and Linux. It is neither an
-OS sandbox nor a multi-tenant service.
+µAgent is a local, single-user POSIX CLI for macOS and Linux. It confines the
+commands it runs (see [SECURITY.md](../SECURITY.md)) but is not a container or
+a multi-tenant service.
 
 ## Bounds
 
@@ -31,6 +32,7 @@ OS sandbox nor a multi-tenant service.
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
 | automatic compaction | 85% projected model context |
 | removed-trace archive | 16 MiB |
+| sandbox profile | 64 KiB, refused rather than truncated above it |
 
 Files, edits, instructions, memories, skills, schemas, MCP traffic, shell logs,
 and Python scratch scripts have additional fixed bounds in `RuntimeConfig` and
@@ -281,5 +283,19 @@ untrusted fork code; pin both the Action ref and release version.
 - Corrupt sessions are reported and left untouched.
 - Managed processes are reaped on catchable exits; `SIGKILL` cannot guarantee
   cleanup.
+- A command that fails on a refused write reports the kernel's errno plus a
+  `[sandbox: ...]` line. `/context` lists every writable root; widen with
+  `UAGENT_SANDBOX_WRITE`, or run that one command with `run(sandbox=false)`,
+  which always asks a person.
+- On Linux the trampoline sets `no_new_privs`, which disables setuid: a
+  sandboxed `ping`, `sudo` or any other setuid binary fails where it worked
+  unconfined. `UAGENT_SANDBOX=0` is the way out; there is no partial one.
+- `UAGENT_SANDBOX=1` on a kernel without Landlock refuses every command; the
+  same host with the setting untouched runs them unconfined and warns. If the
+  startup line says `degraded`, nothing is confining that session.
+- `~/.uagent/terminals/logs` is deliberately not pruned by age: a live
+  detached terminal writes there for as long as it runs, and aging the tree out
+  would take its log with it. A crash between creating a log and writing the
+  record beside it leaves an orphan `pending-*` file to delete by hand.
 
 Local state and removal paths are listed in [PERSISTENCE.md](PERSISTENCE.md).

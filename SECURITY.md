@@ -1,7 +1,9 @@
 # Security
 
-µAgent is a local coding agent, not an OS sandbox. It sends prompts, selected
-files, tool results, and attachments to the configured endpoint. Treat that
+µAgent is a local coding agent. It confines the commands it runs (see
+[Sandboxing](#sandboxing)) but is not a container: approval still grants the
+current user's permissions, and reads are unrestricted. It sends prompts,
+selected files, tool results, and attachments to the configured endpoint. Treat that
 model endpoint as trusted infrastructure; MCP descriptions and results remain
 untrusted model evidence even when you trust a server to run.
 
@@ -36,7 +38,8 @@ untrusted model evidence even when you trust a server to run.
   approval unless yolo mode is active. An MCP call skips approval only when its
   configured server is trusted and the server marks that tool read-only.
   External reads also prompt.
-- Paths are canonicalized to reduce symlink escapes. Writes are atomic.
+- Paths are canonicalized to reduce symlink escapes. Writes are atomic. Shell
+  commands are additionally confined by the OS sandbox below.
 - Requests, responses, attachments, tool output, scans, jobs, turns, costs, MCP
   data, and logs are bounded.
 - API redirects are rejected and bearer-auth transfers use HTTP(S) only.
@@ -67,8 +70,9 @@ untrusted model evidence even when you trust a server to run.
   every secret can be recognized.
 - Model, MCP, and tool text is terminal-sanitized.
 
-Approval grants the current user's filesystem and network permissions. Use a
-container, VM, or restricted account for untrusted code.
+Approval grants the current user's filesystem and network permissions, minus
+what the sandbox withholds. Use a container, VM, or restricted account for
+untrusted code.
 
 Playwright's isolated mode uses a separate profile. CDP attach can inspect and
 control authenticated tabs after Chrome's remote-debugging approval; close
@@ -77,6 +81,46 @@ snapshots report form field values verbatim — including password,
 credit-card, and one-time-code inputs that autofill has populated — and expose
 no flag to suppress them, so the redaction above covers µAgent's own
 transcripts, not page content a snapshot pulls into context.
+
+## Sandboxing
+
+Commands the agent runs are confined by the OS: `sandbox-exec` on macOS,
+Landlock on Linux. It is on by default; `UAGENT_SANDBOX=0` turns it off.
+
+What it restricts is **writes**. A confined command may write the workspace,
+`$TMPDIR` and `/tmp`, the package caches, and the roots
+`UAGENT_SANDBOX_WRITE` adds; everything else is refused, including
+`~/.uagent` and every ancestor of it, which is what keeps the config, the
+trust store, the collaborator records and the detached-job records out of
+reach of a command that can otherwise write freely. `~/.uagent/terminals/logs`
+is the one deliberate exception, because a detached job's own log pump writes
+there. `/status` names the mechanism; `/context` lists every writable root.
+A root that was asked for and refused is reported at startup.
+
+Reads are **not** restricted, on either platform. A confined `cat
+~/.uagent/.config` still pulls the file into model context. Neither is
+outbound traffic by default, because git, npm and pip need it;
+`UAGENT_SANDBOX_NET=0` denies it — all IP traffic on macOS, outbound TCP only
+on Linux, where Landlock cannot express the rest.
+
+A project's own `.uagent/.config` and `.mcp.json` sit inside the writable
+workspace and are carved back out of it. That carve-out is macOS-only:
+Landlock grants rights per path and has no deny form, so the same guarantee on
+Linux would mean not granting the workspace at all.
+
+Editing configuration through the sanctioned path is unaffected: the built-in
+file tools and `uagent_configure` proposals still reach those files, and still
+require a person to approve each change.
+
+Two ways a session can be unconfined, both of which say so:
+
+- `run(sandbox=false)` always asks a person. `--yolo`, a remembered grant and
+  a headless or delegated run all answer no, so a delegated child cannot
+  unconfine itself whatever it was launched with.
+- A host that cannot enforce — a Linux kernel without Landlock — degrades: a
+  startup warning, a `capability_changed` event, `sandbox.mode=degraded`, and
+  commands run unconfined. A session that asked for the sandbox by name, in
+  the environment or a config file, refuses to run commands instead.
 
 ## Sensitive data
 

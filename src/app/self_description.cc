@@ -16,6 +16,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
+#include "include/core/sandbox.h"
 #include "include/core/strings.h"
 #include "include/providers.h"
 #include "include/tools/configure.h"
@@ -170,6 +171,7 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       out["max_turn_cost"] = inputs.active.max_turn_cost;
       out["memory"] = inputs.active.memory_enabled;
       out["web_search"] = inputs.active.web_search_backend;
+      out["sandbox"] = SandboxDiagnosticJson();
       json diagnostics = inputs.config_manager.DiagnosticJson(inputs.active);
       out["restart_required"] = diagnostics["restart_required"];
       break;

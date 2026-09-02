@@ -222,7 +222,14 @@ if(BUILD_TESTING)
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py
                      $<TARGET_FILE:uagent> --group ${group})
-    set_tests_properties(integration_${group} PROPERTIES TIMEOUT 180)
+    # A backstop, not the deadline. Every case inside the runner carries its
+    # own budget, scaled by UAGENT_TEST_TIMEOUT_SCALE, and that budget is what
+    # should fail -- it prints the captured terminal session and names the
+    # case. This ceiling is not scaled, so at the sanitizer legs' scale of 6 a
+    # single 30s case reached exactly 180s and ctest killed the runner first,
+    # reporting a timeout with an empty log. Set above the slowest real group
+    # (TSan runtime, ~5min) so the runner always wins the race.
+    set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
   add_test(NAME session_metrics_self_test
            COMMAND ${Python3_EXECUTABLE}

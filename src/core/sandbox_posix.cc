@@ -201,11 +201,10 @@ SandboxInputs CollectInputs() {
   }
   const std::string home = UserHome();
   if (!home.empty()) {
+    inputs.tool_caches = {canonical(home + "/.cache"),
+                          canonical(home + "/.local/share")};
 #if defined(__APPLE__)
-    inputs.cache_dir = canonical(home + "/Library/Caches");
-#else
-    inputs.cache_dir = canonical(home + "/.cache");
-    inputs.data_dir = canonical(home + "/.local/share");
+    inputs.tool_caches.push_back(canonical(home + "/Library/Caches"));
 #endif
   }
   return inputs;

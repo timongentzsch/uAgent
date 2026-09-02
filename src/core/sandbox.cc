@@ -80,8 +80,9 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   for (std::string_view root : kFixedRoots) {
     Offer(root, inputs, &accepted, &result.rejected);
   }
-  Offer(inputs.cache_dir, inputs, &accepted, &result.rejected);
-  Offer(inputs.data_dir, inputs, &accepted, &result.rejected);
+  for (const std::string& cache : inputs.tool_caches) {
+    Offer(cache, inputs, &accepted, &result.rejected);
+  }
   Offer(inputs.terminal_logs, inputs, &accepted, &result.rejected);
   for (size_t start = 0; start < inputs.extra_roots.size();) {
     size_t end = inputs.extra_roots.find(':', start);

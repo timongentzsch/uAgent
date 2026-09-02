@@ -44,8 +44,11 @@ struct SandboxInputs {
   // reach of a command that can otherwise write freely.
   std::string global_base;
   std::string tmpdir;  // $TMPDIR; empty when unset
-  std::string cache_dir;
-  std::string data_dir;  // ~/.local/share; empty where there is no such dir
+  // Package-manager caches, which are per-user rather than per-project and so
+  // sit outside every other root. A list because a platform has more than one
+  // and they do not partition by platform: uv keeps its cache in ~/.cache even
+  // on macOS, where the native location is ~/Library/Caches.
+  std::vector<std::string> tool_caches;
   // ~/.uagent/terminals/logs -- the one deliberate exception inside
   // global_base, because a detached job's own log pump writes there.
   std::string terminal_logs;

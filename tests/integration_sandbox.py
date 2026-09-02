@@ -5,10 +5,9 @@ for the wrong reason still leaves the file absent, and a command that succeeds
 in spite of the sandbox leaves it present whatever it printed.
 
 The workspace is a subdirectory of the case root rather than the case root
-itself, because the harness nests HOME inside it. A workspace holding ~/.uagent
-would be an ancestor of the config and is rejected as a writable root, so the
-whole group would run with nothing writable at all -- and every "outside" path
-here lives in the case root, which is outside that workspace.
+itself, so that every "outside" path here can live in the case root: that is
+neither the workspace nor under any other default root, so a write to one is
+denied on both platforms.
 """
 
 import socket
@@ -19,7 +18,6 @@ from integration_support import (
     assert_true,
     base_env,
     event,
-    os,
     run,
     run_pty,
     tool_call,
@@ -27,7 +25,7 @@ from integration_support import (
 
 
 def workspace(root):
-    """The agent's cwd: a sibling of HOME, not its parent."""
+    """The agent's cwd, with the case root left over as unwritable ground."""
     path = root / "ws"
     path.mkdir(exist_ok=True)
     return path
@@ -40,12 +38,12 @@ def sandbox_env(home, url, **overrides):
     return env
 
 
-def run_once(root, env, command):
+def run_once(root, env, command, *flags):
     """One turn that runs `command` through the shell tool."""
     with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
         env = dict(env)
         env["UAGENT_BASE_URL"] = server.url
-        return run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
+        return run(workspace(root), env, "--yolo", *flags, "-p", "go", timeout=30)
 
 
 def tool_output(root, env, command, **arguments):
@@ -271,9 +269,25 @@ def test_sandbox_reports_itself(root, home):
     assert_true(b"not granted as writable: /" in output, f"a dropped root was silent: {output!r}")
 
 
+def test_sandbox_degrades_when_it_cannot_enforce_by_default(root, home):
+    """On by default, host cannot enforce: run unconfined and say so.
+
+    The refusal above is for a session that asked for the sandbox by name. A
+    session that only inherited the default gets the opposite answer, because
+    shipping a default that bricks an old kernel is worse than the exposure.
+    """
+    written = root / "degraded.txt"
+    env = base_env(home, "")
+    env["UAGENT_INTERNAL_SANDBOX_UNAVAILABLE"] = "1"
+    # --json-stream because a plain headless run prints the answer and nothing
+    # else: the notice is an event, and this is where events are observable.
+    result = run_once(root, env, f"echo x > {written}", "--json-stream")
+    assert_true(written.exists(), f"the degraded tier refused instead: {result.stdout}")
+    assert_true("sandbox:" in result.stdout, f"degrading was silent: {result.stdout}")
+
+
 def test_sandbox_off_leaves_spawning_unchanged(root, home):
-    """The shipped default: no wrapper, no refusal, no behaviour change."""
-    target = workspace(root) / "unconfined.txt"
-    os.environ.pop("UAGENT_SANDBOX", None)
-    run_once(root, base_env(home, ""), f"echo x > {target}")
+    """UAGENT_SANDBOX=0: no wrapper, no refusal, no behaviour change."""
+    target = root / "unconfined.txt"
+    run_once(root, sandbox_env(home, "", UAGENT_SANDBOX="0"), f"echo x > {target}")
     assert_true(target.exists(), "the unsandboxed path changed")

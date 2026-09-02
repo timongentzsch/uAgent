@@ -569,6 +569,10 @@ def test_model_preference_survives_restart(root, home):
 
 
 def test_provider_responses_native_search_and_function_replay(root, home):
+    # The replayed function_call lists the workspace, so it needs an entry to
+    # list: an empty directory reports itself as empty and never gets there.
+    (root / "listed.txt").write_text("x\n", encoding="utf-8")
+
     def first(handler, body):
         assert_true(handler.path == "/v1/responses", handler.path)
         assert_true(handler.headers.get("Authorization") == "Bearer response-key", handler.headers)

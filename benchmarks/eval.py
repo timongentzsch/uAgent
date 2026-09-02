@@ -479,6 +479,12 @@ def run_case(
         try:
             env = case_environment(scenario, variant, arguments, mock)
             env["HOME"] = str(home)
+            # Beside HOME rather than above it: the runner's own TMPDIR is an
+            # ancestor of this case's ~/.uagent, and the sandbox will not grant
+            # a writable root that contains the agent's own state.
+            scratch = root / "tmp"
+            scratch.mkdir(exist_ok=True)
+            env["TMPDIR"] = str(scratch)
             authority = arguments.cost_authority_data["routes"][model] if arguments.run else None
             if authority is not None:
                 apply_live_authority(env, authority)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import pathlib
 import sys
 import tempfile
@@ -78,10 +79,24 @@ def main():
     label = arguments.group if not (arguments.test or arguments.match) else "selected"
     with tempfile.TemporaryDirectory(prefix="uagent-integration-") as temp:
         root = pathlib.Path(temp)
+        # A temp directory of its own, beside the case homes rather than above
+        # them. The runner's own TMPDIR is an ancestor of everything under
+        # `root`, including each case's ~/.uagent, so leaving it in place would
+        # make the sandbox drop it as a writable root and warn about it in
+        # every session the suite starts.
+        tmpdir = root / "tmp"
+        tmpdir.mkdir()
+        os.environ["TMPDIR"] = str(tmpdir)
         for name in names:
             print(f"running {name}", flush=True)
             case_root = root / name
-            home = case_root / "home"
+            # HOME is a sibling of the case workspace, not a child of it. A
+            # workspace containing ~/.uagent is an ancestor of the agent's own
+            # state, which the sandbox refuses to grant as a writable root --
+            # so nesting them would leave every case running with nothing it
+            # could write, which is not how a real session is laid out.
+            home = root / (name + ".home")
+            case_root.mkdir(parents=True)
             home.mkdir(parents=True)
             ALL_TESTS[name](case_root, home)
         print(f"all {len(names)} {label} integration tests passed")

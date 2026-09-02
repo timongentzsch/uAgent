@@ -4,6 +4,7 @@ import re
 from integration_support import (
     BINARY,
     Server,
+    assert_token_budget_stop,
     assert_true,
     base_env,
     descendant_pids,
@@ -38,19 +39,9 @@ def test_subagent_usage_counts_toward_parent_token_budget(root, home):
         return tool_call("subagent", {"prompt": "child-budget", "background": False})
 
     with Server([route]) as server:
-        result = run(
-            root,
-            base_env(home, server.url),
-            "--yolo",
-            "--token-budget",
-            "3",
-            "--json",
-            "-p",
-            "delegate",
+        envelope = assert_token_budget_stop(
+            root, home, server, "--yolo", "--token-budget", "3", "-p", "delegate"
         )
-        envelope = json.loads(result.stdout)
-        assert_true(result.returncode == 1, envelope)
-        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
         assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
         assert_true(len(server.requests) == 2, server.requests)
 
@@ -104,19 +95,9 @@ def test_subagent_inherits_only_remaining_session_token_budget(root, home):
         return response
 
     with Server([route]) as server:
-        result = run(
-            root,
-            base_env(home, server.url),
-            "--yolo",
-            "--token-budget",
-            "5",
-            "--json",
-            "-p",
-            "delegate",
+        assert_token_budget_stop(
+            root, home, server, "--yolo", "--token-budget", "5", "-p", "delegate"
         )
-        envelope = json.loads(result.stdout)
-        assert_true(result.returncode == 1, envelope)
-        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
         # The child inherited the two-token remainder and stopped before
         # executing its call or requesting a second model round.
         assert_true(len(server.requests) == 2, server.requests)

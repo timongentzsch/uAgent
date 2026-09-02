@@ -3,6 +3,7 @@ import stat
 from integration_support import (
     SMALL_PNG,
     Server,
+    assert_token_budget_stop,
     assert_true,
     base_env,
     budget,
@@ -767,19 +768,9 @@ def test_resumed_session_token_budget_stops_before_model_call(root, home):
         title="saved session",
     )
     with Server([event({"content": "too-late"})]) as server:
-        result = run(
-            root,
-            base_env(home, server.url),
-            "-c",
-            "--token-budget",
-            "5",
-            "--json",
-            "-p",
-            "continue",
+        envelope = assert_token_budget_stop(
+            root, home, server, "-c", "--token-budget", "5", "-p", "continue"
         )
-        envelope = json.loads(result.stdout)
-        assert_true(result.returncode == 1, envelope)
-        assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
         assert_true(envelope["stop"]["session_generated_tokens"] == 5, envelope)
         assert_true(len(server.requests) == 0, server.requests)
 

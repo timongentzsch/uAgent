@@ -118,6 +118,7 @@ add_library(
   src/core/fs.cc
   src/core/platform_posix.cc
   src/core/sandbox.cc
+  src/core/sandbox_posix.cc
   src/core/signals.cc
   src/core/steering.cc
   src/core/strings.cc

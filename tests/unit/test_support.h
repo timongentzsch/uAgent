@@ -218,6 +218,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSandboxPolicy)                         \
   X(TestSandboxRendering)                      \
   X(TestSandboxTrampolineArgs)                 \
+  X(TestSandboxProbe)                          \
   X(TestStrictBooleanSettings)                 \
   X(TestSelfDescriptionSchemas)                \
   X(TestSseFraming)                            \

@@ -170,4 +170,21 @@ void TestSandboxTrampolineArgs() {
                              &ignored, &consumed));
 }
 
+void TestSandboxProbe() {
+  // The probe reads the host, so what it reports is not assertable here -- what
+  // is, is that it answers at all and answers the same way twice. A probe that
+  // re-read the host per spawn would be both slower and free to change its mind
+  // mid-session, and every caller treats the level as fixed.
+  const SandboxLevel level = SandboxSupported();
+  CHECK(level == SandboxSupported());
+  CHECK(level == SandboxLevel::kUnavailable ||
+        level == SandboxLevel::kFilesystem ||
+        level == SandboxLevel::kFilesystemAndNetwork);
+#if defined(__APPLE__)
+  // sandbox-exec is part of the base system, so the only macOS host that can
+  // report unavailable is one where it has been removed.
+  CHECK(level == SandboxLevel::kFilesystemAndNetwork);
+#endif
+}
+
 }  // namespace uagent

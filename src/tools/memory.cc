@@ -83,8 +83,30 @@ const std::vector<std::string>& RedactKeywords() {
   return kKeywords;
 }
 
-// Cheap gate for the redactor: text that mentions no credential at all is the
-// common case and needs none of the three regex passes. The keyword markers
+// Vendor token shapes. The marker is the literal the pre-scan below searches
+// for (lowercase -- that scan folds case), the pattern is what gets redacted.
+// The pair lives in one row so a new vendor cannot reach the regex without
+// also reaching the gate that decides whether the regex ever runs.
+struct TokenShape {
+  const char* marker;
+  const char* pattern;
+};
+
+constexpr TokenShape kTokenShapes[] = {
+    {"sk-", R"(sk-(?:proj-)?[A-Za-z0-9_-]{16,})"},
+    {"ghp_", R"(ghp_[A-Za-z0-9_]{16,})"},
+    {"gho_", R"(gho_[A-Za-z0-9_]{16,})"},
+    {"ghu_", R"(ghu_[A-Za-z0-9_]{16,})"},
+    {"ghs_", R"(ghs_[A-Za-z0-9_]{16,})"},
+    {"ghr_", R"(ghr_[A-Za-z0-9_]{16,})"},
+    {"github_pat_", R"(github_pat_[A-Za-z0-9_]{16,})"},
+    {"akia", R"(AKIA[0-9A-Z]{16})"},
+    {"xox", R"(xox[baprs]-[A-Za-z0-9-]{10,})"},
+    {"aiza", R"(AIza[0-9A-Za-z_-]{35})"},
+};
+
+// Cheap gate for the redactor: text that mentions no credential at all is
+// the common case and needs none of the three regex passes. The keyword markers
 // are derived from RedactKeywords() rather than restated, so a keyword can no
 // longer be gated out of existence -- `passwd` was missed that way once.
 bool MentionsSecret(std::string_view text) {
@@ -93,11 +115,10 @@ bool MentionsSecret(std::string_view text) {
     for (const std::string& keyword : RedactKeywords()) {
       all.push_back(AsciiLower(keyword));
     }
-    for (const char* fixed : {"bearer", "sk-", "-----begin", "ghp_",
-                              "gho_", "ghu_", "ghs_", "ghr_",
-                              "github_pat_"}) {
+    for (const char* fixed : {"bearer", "-----begin"}) {
       all.emplace_back(fixed);
     }
+    for (const TokenShape& shape : kTokenShapes) all.emplace_back(shape.marker);
     return all;
   }();
   return std::any_of(
@@ -590,23 +611,30 @@ std::string RedactMemorySecrets(std::string text) {
       std::regex_constants::icase);
   static const std::regex kBearer(R"((Bearer[ \t]+)[A-Za-z0-9._~+/=-]{12,})",
                                   std::regex_constants::icase);
-  static const std::regex kKnownToken(
-      R"((sk-(?:proj-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{16,}|)"
-      R"(github_pat_[A-Za-z0-9_]{16,}))");
+  static const std::regex kKnownToken([] {
+    std::string alternation;
+    for (const TokenShape& shape : kTokenShapes) {
+      if (!alternation.empty()) alternation += '|';
+      alternation += shape.pattern;
+    }
+    return alternation;
+  }());
   text = std::regex_replace(text, kAssignment, "$1$2[REDACTED]");
   text = std::regex_replace(text, kBearer, "$1[REDACTED]");
   text = std::regex_replace(text, kKnownToken, "[REDACTED]");
 
-  constexpr std::string_view kBegin = "-----BEGIN PRIVATE KEY-----";
-  constexpr std::string_view kEnd = "-----END PRIVATE KEY-----";
-  for (size_t begin = text.find(kBegin); begin != std::string::npos;
-       begin = text.find(kBegin, begin + 10)) {
-    size_t end = text.find(kEnd, begin + kBegin.size());
-    if (end == std::string::npos) {
-      text.replace(begin, text.size() - begin, "[REDACTED PRIVATE KEY]");
-      break;
-    }
-    text.replace(begin, end + kEnd.size() - begin, "[REDACTED PRIVATE KEY]");
+  // Any PEM private key, labelled (RSA, EC, OPENSSH, DSA, ENCRYPTED) or not.
+  static const std::regex kPrivateKey(
+      R"(-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----[\s\S]*?)"
+      R"(-----END (?:[A-Z0-9 ]+ )?PRIVATE KEY-----)");
+  static const std::regex kPrivateKeyBegin(
+      R"(-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----)");
+  text = std::regex_replace(text, kPrivateKey, "[REDACTED PRIVATE KEY]");
+  // Whatever BEGIN survives has no END: the key is truncated, so is the text.
+  std::smatch unterminated;
+  if (std::regex_search(text, unterminated, kPrivateKeyBegin)) {
+    const size_t begin = static_cast<size_t>(unterminated.position());
+    text.replace(begin, text.size() - begin, "[REDACTED PRIVATE KEY]");
   }
   return text;
 }

@@ -476,6 +476,11 @@ void TestCommandAndDisplayRegistries() {
   CHECK(command.spec && command.spec->id == SlashCommandId::kMemory);
   command = ParseSlashCommand("/ps");
   CHECK(command.spec && command.spec->id == SlashCommandId::kProcesses);
+  command = ParseSlashCommand("/agents");
+  CHECK(command.spec && command.spec->id == SlashCommandId::kAgents);
+  // A local view, not a turn: /agents answers from the records and the
+  // supervisor rather than asking the model to go and look.
+  CHECK(SlashCommandPrompt(command).empty());
   CHECK(!ParseSlashCommand("/unknown").spec);
   command = ParseSlashCommand("/resume");
   CHECK(command.spec && command.spec->id == SlashCommandId::kSessions);

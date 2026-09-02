@@ -403,6 +403,11 @@ can replay a retained bounded transcript.
 
 Interactive status exposes model/effort, endpoint, context, cache, cost,
 background count, queue depth, working time, and transferable foreground work.
+Delegated children are counted apart from other background work and lend the
+working row their newest progress line, read from the transcript their parent
+already keeps under the session's own lock so a repaint never waits on a tool
+interaction; `/agents` joins the same live view with the durable collaborator
+records for the full set, idle ones included.
 Reasoning is collected in every mode. Provider replay blocks are retained on
 assistant messages according to emitted fields and route capability, while
 `--debug` captures complete flattened reasoning and structured details.

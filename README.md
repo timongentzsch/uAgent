@@ -160,7 +160,7 @@ reasoning and expanded bounded tool output.
 | `/models`, `/model` | Search or change model route |
 | `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |
 | `/attach` | Queue or clear an attachment |
-| `/context`, `/trace`, `/cost`, `/ps`, `/tools` | Inspect active state |
+| `/context`, `/trace`, `/cost`, `/ps`, `/agents`, `/tools` | Inspect active state |
 | `/compact`, `/sessions`, `/reset` | Manage context and sessions |
 | `/init`, `/review`, `/diff` | Write AGENTS.md, review changes, or show the git diff |
 | `/memory` | Show saved memory action, time, source, and redacted preview |

@@ -121,7 +121,9 @@ std::optional<int64_t> ActiveCollaborator(const ProcessSupervisor& processes,
   return std::nullopt;
 }
 
-ToolResult ListCollaborators(const ProcessSupervisor& processes) {
+}  // namespace
+
+std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes) {
   namespace fs = std::filesystem;
   std::error_code error;
   std::vector<json> records;
@@ -142,16 +144,20 @@ ToolResult ListCollaborators(const ProcessSupervisor& processes) {
       continue;
     }
     std::string id = JsonValue(state, "id", "");
-    json row = {
-        {"id", id},
-        {"model", JsonValue(state, "model", "")},
-        {"mode", JsonValue(state, "mode", "lean")},
-        {"status", ActiveCollaborator(processes, id) ? "running" : "idle"}};
+    std::optional<int64_t> activity = ActiveCollaborator(processes, id);
+    json row = {{"id", id},
+                {"model", JsonValue(state, "model", "")},
+                {"mode", JsonValue(state, "mode", "lean")},
+                {"status", activity ? "running" : "idle"}};
+    // The handle the activity tool wants, so a caller that sees "running" does
+    // not have to guess at one to wait on or stop it.
+    if (activity) row["activity"] = *activity;
     records.push_back(std::move(row));
   }
-  return ToolSuccess(records.empty() ? "no collaborators"
-                                     : JsonDump(records, 2));
+  return records;
 }
+
+namespace {
 
 std::string JoinSelections(std::vector<std::string> selections) {
   std::sort(selections.begin(), selections.end());
@@ -326,7 +332,12 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       [&api, &routes, &providers, debug, &processes](
           const json& arguments, const ToolContext& context) {
         std::string operation = JsonValue(arguments, "operation", "spawn");
-        if (operation == "list") return ListCollaborators(processes);
+        if (operation == "list") {
+          std::vector<json> collaborators = CollaboratorSummaries(processes);
+          return ToolSuccess(collaborators.empty()
+                                 ? "no collaborators"
+                                 : JsonDump(collaborators, 2));
+        }
         if (operation != "spawn" && operation != "followup" &&
             operation != "message") {
           return ToolFailure(ToolErrorCode::kInvalidArguments,

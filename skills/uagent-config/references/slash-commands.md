@@ -5,6 +5,7 @@
 
 | Command | Description |
 | --- | --- |
+| `/agents` | list delegated collaborators and what they are doing |
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |

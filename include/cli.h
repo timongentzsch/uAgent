@@ -14,6 +14,7 @@
 namespace uagent {
 
 enum class SlashCommandId {
+  kAgents,
   kAttach,
   kCompact,
   kContext,

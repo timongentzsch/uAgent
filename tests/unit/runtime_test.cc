@@ -670,10 +670,10 @@ void TestNamedProviders() {
 
   std::optional<ModelRoute> dynamic = ResolveModelRoute(
       catalog.models, catalog.providers, "codex-local/org/model");
-  CHECK(dynamic.has_value());
-  CHECK(dynamic && dynamic->model == "org/model");
-  CHECK(dynamic && dynamic->context == 16384);
-  CHECK(dynamic && dynamic->protocol == ProviderProtocol::kOpenRouter);
+  REQUIRE(dynamic.has_value());
+  CHECK(dynamic->model == "org/model");
+  CHECK(dynamic->context == 16384);
+  CHECK(dynamic->protocol == ProviderProtocol::kOpenRouter);
   RuntimeConfig config;
   Api routed(config);
   routed.reasoning_effort = "medium";
@@ -717,10 +717,10 @@ void TestNamedProviders() {
   CHECK(DefaultSubagentModel(openrouter_api) == "parent-model");
   std::optional<ModelRoute> fixed =
       ResolveModelRoute(catalog.models, catalog.providers, "static/fast");
-  CHECK(fixed.has_value());
-  CHECK(fixed && fixed->model == "actual-model");
-  CHECK(fixed && fixed->wire_api == WireApi::kResponses);
-  CHECK(fixed && fixed->hosted_web_search);
+  REQUIRE(fixed.has_value());
+  CHECK(fixed->model == "actual-model");
+  CHECK(fixed->wire_api == WireApi::kResponses);
+  CHECK(fixed->hosted_web_search);
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "missing/model"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local/"));
   CHECK(!ResolveModelRoute(catalog.models, catalog.providers, "codex-local"));
@@ -820,24 +820,23 @@ void TestEffectiveConfigReload() {
                       "UAGENT_WEB_SEARCH_API_KEY=changed-secret\n")
             .output.starts_with("wrote "));
   std::optional<ConfigReload> reload = manager.Reload(active);
-  CHECK(reload.has_value());
-  if (reload) {
-    CHECK(reload->active.max_steps == 9);
-    CHECK(reload->active.max_tool_calls == 7);
-    CHECK(reload->active.max_turn_tokens == 150);
-    CHECK(reload->active.session_token_budget == 250);
-    CHECK(reload->active.mcp_servers == 9);
-    CHECK(std::find(reload->applied.begin(), reload->applied.end(),
-                    "max_tool_calls") != reload->applied.end());
-    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                    "mcp_servers") != reload->deferred.end());
-    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                    "UAGENT_MODEL") != reload->deferred.end());
-    CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
-                    "web_search_api_key") != reload->deferred.end());
-  }
-  CHECK(JsonDump(manager.DiagnosticJson(reload ? reload->active : active))
-            .find("changed-secret") == std::string::npos);
+  REQUIRE(reload.has_value());
+  CHECK(reload->active.max_steps == 9);
+  CHECK(reload->active.max_tool_calls == 7);
+  CHECK(reload->active.max_turn_tokens == 150);
+  CHECK(reload->active.session_token_budget == 250);
+  CHECK(reload->active.mcp_servers == 9);
+  CHECK(std::find(reload->applied.begin(), reload->applied.end(),
+                  "max_tool_calls") != reload->applied.end());
+  CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                  "mcp_servers") != reload->deferred.end());
+  CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                  "UAGENT_MODEL") != reload->deferred.end());
+  CHECK(std::find(reload->deferred.begin(), reload->deferred.end(),
+                  "web_search_api_key") != reload->deferred.end());
+  CHECK(
+      JsonDump(manager.DiagnosticJson(reload->active)).find("changed-secret") ==
+      std::string::npos);
 }
 
 }  // namespace uagent

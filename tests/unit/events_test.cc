@@ -58,7 +58,7 @@ void TestObservabilityEvents() {
   Event notice = NoticeEvent(PresentationStatus::kWarned, "· interrupted");
   CHECK(notice.id == EventId::kNotice);
   CHECK(notice.render);
-  CHECK(notice.presentation.has_value());
+  REQUIRE(notice.presentation.has_value());
   CHECK(notice.presentation->kind == PresentationKind::kNotice);
   CHECK(notice.presentation->status == PresentationStatus::kWarned);
   CHECK(notice.data["text"] == "· interrupted");

@@ -176,14 +176,14 @@ void TestActivityBufferAndAdmission() {
   ProcessSupervisor reserved;
   std::optional<ActivityReservation> early = reserved.ReserveActivity(4);
   std::optional<ActivityReservation> later = reserved.ReserveActivity(4);
-  CHECK(early.has_value() && later.has_value());
-  if (early && later) {
-    CHECK(early->Id() > 0 && later->Id() > early->Id());
-    const int64_t promised = early->Id();
-    std::optional<int64_t> committed =
-        early->Register({899997, "", "reserved", false, "", promised});
-    CHECK(committed.has_value() && *committed == promised);
-  }
+  REQUIRE(early.has_value());
+  REQUIRE(later.has_value());
+  CHECK(early->Id() > 0 && later->Id() > early->Id());
+  const int64_t promised = early->Id();
+  std::optional<int64_t> committed =
+      early->Register({899997, "", "reserved", false, "", promised});
+  REQUIRE(committed.has_value());
+  CHECK(*committed == promised);
 
   // The subagent flag survives the same move, so a released reservation gives
   // the child counter back; losing it would refuse delegation for the rest of
@@ -205,13 +205,13 @@ void TestActivityBufferAndAdmission() {
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
     std::optional<BgJob> completed = retained.Take(id);
-    CHECK(completed.has_value());
-    if (completed) {
+    REQUIRE(completed.has_value());
+    {
       std::lock_guard<std::mutex> lock(session->mutex);
       CHECK(TransitionActivityLocked(*session, ActivityState::kExited));
       CHECK(TransitionActivityLocked(*session, ActivityState::kDrained));
     }
-    if (completed) retained.Retain(std::move(*completed));
+    retained.Retain(std::move(*completed));
   }
   CHECK(!retained.Find(retained_ids.front()).has_value());
   CHECK(retained.Find(retained_ids.back()).has_value());
@@ -241,8 +241,8 @@ void TestActivityStateGraph() {
   CHECK(supervisor.TryAdd({899990, "", "stopped", false, "", 0, stopped}, 1));
   int64_t id = ActivityId(supervisor.Snapshot().front());
   std::optional<BgJob> job = supervisor.Take(id);
-  CHECK(job.has_value());
-  if (job) supervisor.Retain(std::move(*job));
+  REQUIRE(job.has_value());
+  supervisor.Retain(std::move(*job));
   CHECK(!supervisor.Find(id).has_value());
 }
 

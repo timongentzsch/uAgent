@@ -30,7 +30,9 @@
 namespace uagent {
 namespace {
 
-constexpr size_t kAdvertisedRoutes = 16;
+// Enough to show the shape of a configured roster without charging the whole
+// list to every request; uagent_info topic=routes reports all of them.
+constexpr size_t kAdvertisedRoutes = 4;
 constexpr int kCollaboratorFormat = 1;
 
 std::string CollaboratorPath(const std::string& id) {
@@ -178,18 +180,21 @@ std::string JoinSelections(std::vector<std::string> selections) {
   return result;
 }
 
+// The per-child ceilings live under one `limits` object. An absent object and
+// an absent field mean the same thing -- inherit the configured default -- so
+// every reader goes through here rather than testing for the object first.
+const json& ChildLimits(const json& arguments) {
+  static const json kNone = json::object();
+  const json* limits = JsonObject(arguments, "limits");
+  return limits != nullptr ? *limits : kNone;
+}
+
 std::string ModelPropertyDescription(
     const std::vector<ModelRoute>& routes,
     const std::vector<NamedProvider>& providers) {
   std::vector<std::string> aliases;
   aliases.reserve(routes.size());
   for (const ModelRoute& route : routes) aliases.push_back(route.name);
-
-  std::vector<std::string> prefixes;
-  prefixes.reserve(providers.size());
-  for (const NamedProvider& provider : providers) {
-    prefixes.push_back(provider.name + "/MODEL");
-  }
 
   // Naming an alias here is an override, not the default. Spelling that out
   // matters: a child sent to an unreachable alias fails outright rather than
@@ -201,9 +206,15 @@ std::string ModelPropertyDescription(
   if (!configured.empty()) {
     description += " Overrides: " + configured + ".";
   }
-  std::string dynamic = JoinSelections(std::move(prefixes));
-  if (!dynamic.empty()) {
-    description += " Or any model on a named provider: " + dynamic + ".";
+  // The grammar, not the enumeration. Naming every provider here charged a
+  // list to every request; withholding the grammar entirely is what produced
+  // the guessed selections `uagent_info topic=routes` was added to answer, so
+  // the shape stays and the roster moves to the tool that reports it on
+  // demand.
+  if (!providers.empty()) {
+    description +=
+        " Or <provider>/MODEL for a configured provider; uagent_info "
+        "topic=routes lists them.";
   }
   return description;
 }
@@ -295,30 +306,23 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       {"model",
        {{"type", "string"},
         {"description", ModelPropertyDescription(routes, providers)}}},
-      {"max_steps",
-       {{"type", "integer"},
-        {"minimum", 1},
-        {"maximum", 500},
+      // One object rather than five siblings: each of these needed a sentence
+      // saying "optional ceiling for this child", and that sentence is charged
+      // to every request that advertises the tool. Grouped, it is said once.
+      {"limits",
+       {{"type", "object"},
+        {"additionalProperties", false},
+        {"properties",
+         {{"steps", {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
+          {"tool_calls",
+           {{"type", "integer"}, {"minimum", 1}, {"maximum", 500}}},
+          {"seconds", {{"type", "integer"}, {"minimum", 1}, {"maximum", 3600}}},
+          {"cost", {{"type", "number"}, {"minimum", 0}}},
+          {"memory", {{"type", "boolean"}}}}},
         {"description",
-         "optional model-round ceiling for this child; omit for the "
-         "configured default"}}},
-      {"max_tool_calls",
-       {{"type", "integer"},
-        {"minimum", 1},
-        {"maximum", 500},
-        {"description", "optional tool-call ceiling for this child"}}},
-      {"max_seconds",
-       {{"type", "integer"},
-        {"minimum", 1},
-        {"maximum", 3600},
-        {"description", "wall-clock ceiling for a foreground child"}}},
-      {"max_cost",
-       {{"type", "number"},
-        {"minimum", 0},
-        {"description", "cost ceiling; clamped to the session's remainder"}}},
-      {"memory",
-       {{"type", "boolean"},
-        {"description", "false denies the child memory; default inherits"}}}};
+         "optional per-child ceilings; an omitted field inherits the "
+         "configured default, memory=false denies the child memory, and a "
+         "value above the host ceiling is clamped and reported"}}}};
   Tool tool = MakeTool(
       "subagent",
       "Delegate an isolated subtask whose compact result avoids multiple "
@@ -450,14 +454,15 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         // A caller that knows the shape of the subtask may raise or lower the
         // ceiling for that one child; the schema bounds it, and the session
         // budgets still apply underneath.
-        int64_t steps = JsonValue(arguments, "max_steps", SubagentMaxSteps());
+        const json& limits = ChildLimits(arguments);
+        int64_t steps = JsonValue(limits, "steps", SubagentMaxSteps());
         int64_t tool_calls =
-            JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls());
+            JsonValue(limits, "tool_calls", SubagentMaxToolCalls());
         bool background = JsonValue(arguments, "background", true);
         // A caller may deny memory but not grant it: the session decides what
         // this process may read, and a child cannot widen that.
         bool child_memory = api.config.memory_enabled &&
-                            JsonValue(arguments, "memory",
+                            JsonValue(limits, "memory",
                                       JsonValue(collaborator, "memory", true));
         environment.insert(
             environment.end(),
@@ -481,11 +486,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         // budget above what the session has left is clamped, and the clamp is
         // reported rather than applied behind the caller's back.
         std::vector<std::string> clamped;
-        double child_budget = JsonValue(arguments, "max_cost", 0.0);
+        double child_budget = JsonValue(limits, "cost", 0.0);
         if (api.config.session_budget > 0) {
           if (child_budget <= 0 || child_budget > remaining_budget) {
             if (child_budget > remaining_budget) {
-              clamped.push_back("max_cost to " + FmtCost(remaining_budget) +
+              clamped.push_back("limits.cost to " + FmtCost(remaining_budget) +
                                 ", the session's remainder");
             }
             child_budget = remaining_budget;
@@ -503,11 +508,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         // the caller chose to wait for is supervised, so it is bounded by
         // max_seconds when given and by the turn otherwise.
         ToolContext child_context = context;
-        int64_t max_seconds = JsonValue(arguments, "max_seconds", int64_t{0});
+        int64_t max_seconds = JsonValue(limits, "seconds", int64_t{0});
         int64_t ceiling = SubagentTimeoutSeconds();
         if (ceiling > 0 && (max_seconds <= 0 || max_seconds > ceiling)) {
           if (max_seconds > ceiling) {
-            clamped.push_back("max_seconds to " + std::to_string(ceiling) +
+            clamped.push_back("limits.seconds to " + std::to_string(ceiling) +
                               ", this build's ceiling");
           }
           max_seconds = ceiling;
@@ -575,10 +580,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         return result;
       });
-  tool.clamped_arguments = {"max_steps", "max_tool_calls", "max_seconds"};
+  tool.clamped_arguments = {"limits.steps", "limits.tool_calls",
+                            "limits.seconds"};
   // Same reasoning as run, scratch and activity: the per-call budget stops a
   // command running away, and a child the caller is waiting for is neither
-  // unsupervised nor unbounded — max_seconds and the turn bound it, and
+  // unsupervised nor unbounded — limits.seconds and the turn bound it, and
   // Escape still returns immediately.
   tool.timeout_s = 0;
   tool.mutating = true;
@@ -623,16 +629,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                (full ? "full: reading, editing and running, plus its own "
                        "children"
                      : "lean: reading and running, no file edits");
-    preview +=
-        "\n\u00b7 bounded by " +
-        std::to_string(JsonValue(arguments, "max_steps", SubagentMaxSteps())) +
-        " steps, " +
-        std::to_string(
-            JsonValue(arguments, "max_tool_calls", SubagentMaxToolCalls())) +
-        " tool calls" +
-        (api.config.memory_enabled && JsonValue(arguments, "memory", true)
-             ? ", memory on"
-             : ", memory off");
+    const json& limits = ChildLimits(arguments);
+    preview += "\n\u00b7 bounded by " +
+               std::to_string(JsonValue(limits, "steps", SubagentMaxSteps())) +
+               " steps, " +
+               std::to_string(
+                   JsonValue(limits, "tool_calls", SubagentMaxToolCalls())) +
+               " tool calls" +
+               (api.config.memory_enabled && JsonValue(limits, "memory", true)
+                    ? ", memory on"
+                    : ", memory off");
     preview +=
         "\n\u00b7 \"always\" covers every later subagent call, not "
         "this brief";

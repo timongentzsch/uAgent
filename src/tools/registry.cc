@@ -330,15 +330,20 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   run.parallel_safe = true;
   run.command_policy = true;
 
-  Tool& python = AddTool(
-      tools,
-      MakeTool(
-          "scratch",
-          "Run a one-off Python script when shell is insufficient, never for "
-          "requested project code. Writes or replaces one persistent script "
-          "under .uagent/scratch and runs it under isolated uv.",
-          schema(
-              R"json({"type":"object","additionalProperties":false,"properties":{
+  // ToolRunPython runs the script under uv when it is there and falls back to
+  // python3 otherwise, so a host with neither can only ever answer this tool
+  // with an error. An 800-byte schema that cannot succeed is worse than an
+  // absent one, and the same reasoning already gates show_image.
+  if (ExecutableOnPath("uv") || ExecutableOnPath("python3")) {
+    Tool& python = AddTool(
+        tools,
+        MakeTool(
+            "scratch",
+            "Run a one-off Python script when shell is insufficient, never for "
+            "requested project code. Writes or replaces one persistent script "
+            "under .uagent/scratch and runs it under isolated uv.",
+            schema(
+                R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
                       "description":"stable relative .py path; reuse it during the task"},
                     "code":{"type":["string","null"],"minLength":1,"maxLength":131072,
@@ -346,23 +351,25 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "packages":{"type":["array","null"],"items":{"type":"string","minLength":1,"maxLength":256},"maxItems":12,
                       "description":"PEP 508 dependencies with code ([] for stdlib); null when rerunning"}},
                     "required":["path","code","packages"]})json"),
-          [&supervisor, workspace](const json& a, const ToolContext& context) {
-            return ToolRunPython(
-                supervisor, workspace, JsonValue(a, "path", ""),
-                JsonValue(a, "code", json(nullptr)),
-                JsonValue(a, "packages", json(nullptr)), context);
-          }));
-  python.mutating = true;
-  python.capabilities = Capability(ToolCapability::kExecute) |
-                        Capability(ToolCapability::kMutate);
-  python.summary = [](const json& a) {
-    std::string path = JsonValue(a, "path", "");
-    return a.contains("code") && a["code"].is_string()
-               ? "write/replace " + path + " → execute"
-               : "execute " + path;
-  };
-  python.stable_argument = "path";
-  python.timeout_s = 0;  // bounded by the turn; no model-driven polling
+            [&supervisor, workspace](const json& a,
+                                     const ToolContext& context) {
+              return ToolRunPython(
+                  supervisor, workspace, JsonValue(a, "path", ""),
+                  JsonValue(a, "code", json(nullptr)),
+                  JsonValue(a, "packages", json(nullptr)), context);
+            }));
+    python.mutating = true;
+    python.capabilities = Capability(ToolCapability::kExecute) |
+                          Capability(ToolCapability::kMutate);
+    python.summary = [](const json& a) {
+      std::string path = JsonValue(a, "path", "");
+      return a.contains("code") && a["code"].is_string()
+                 ? "write/replace " + path + " → execute"
+                 : "execute " + path;
+    };
+    python.stable_argument = "path";
+    python.timeout_s = 0;  // bounded by the turn; no model-driven polling
+  }
 
   Tool& activity = AddTool(
       tools,

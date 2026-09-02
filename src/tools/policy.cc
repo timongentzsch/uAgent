@@ -233,18 +233,54 @@ void ReadStringArray(const char* name, std::vector<std::string>& values,
 
 }  // namespace
 
+namespace {
+
+// Resolve a clamp target, which may name a field one object deep as `a.b`.
+// Grouping several pacing hints under one object property is how a tool keeps
+// its schema small; they are still pacing hints, so they still clamp. One
+// level is deliberate — nothing needs two, and a general path resolver here
+// would be machinery without a caller.
+bool ResolveClampTarget(json& args, const json& properties,
+                        const std::string& name, json*& value,
+                        const json*& schema) {
+  const size_t dot = name.find('.');
+  json* container = &args;
+  const json* declared = &properties;
+  std::string leaf = name;
+  if (dot != std::string::npos) {
+    const std::string outer = name.substr(0, dot);
+    leaf = name.substr(dot + 1);
+    const auto nested = args.find(outer);
+    const json* bounds = JsonObject(properties, outer.c_str());
+    if (nested == args.end() || !nested->is_object() || bounds == nullptr) {
+      return false;
+    }
+    container = &*nested;
+    declared = JsonObject(*bounds, "properties");
+    if (declared == nullptr) return false;
+  }
+  const auto found = container->find(leaf);
+  const auto bound = declared->find(leaf);
+  if (found == container->end() || !found->is_number() ||
+      bound == declared->end() || !bound->is_object()) {
+    return false;
+  }
+  value = &*found;
+  schema = &*bound;
+  return true;
+}
+
+}  // namespace
+
 void ClampToolArguments(const Tool& tool, json& args,
                         std::vector<std::string>* clamped) {
   if (tool.clamped_arguments.empty() || !args.is_object()) return;
-  const auto properties = tool.parameters.find("properties");
-  if (properties == tool.parameters.end() || !properties->is_object()) return;
+  const json* properties = JsonObject(tool.parameters, "properties");
+  if (properties == nullptr) return;
   for (const std::string& name : tool.clamped_arguments) {
-    const auto value = args.find(name);
-    const auto schema = properties->find(name);
-    if (value == args.end() || !value->is_number() ||
-        schema == properties->end() || !schema->is_object()) {
-      continue;
-    }
+    json* value = nullptr;
+    const json* schema = nullptr;
+    if (!ResolveClampTarget(args, *properties, name, value, schema)) continue;
     const double given = value->get<double>();
     double bounded = given;
     const auto minimum = schema->find("minimum");

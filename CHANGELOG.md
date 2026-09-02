@@ -23,6 +23,14 @@
   asked for a real call rather than having the markup printed as an answer.
   Detection stays broader than execution, and execution is now zero.
 
+### Added
+
+- Tab after `@` completes a path, one segment at a time from the directory the
+  token already names, in the same rows below the draft that slash commands
+  use. This is a token cost, not only an ergonomic one: a draft that says "the
+  turn file" spends a grep and a read round locating what a completed
+  `@src/agent/turn.cc` would have named outright.
+
 ### Changed
 
 - `subagent` charges one description for five ceilings. `max_steps`,

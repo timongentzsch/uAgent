@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -161,20 +162,85 @@ constexpr SequenceBinding kSequenceBindings[] = {
     {"\x1b[13;2u", SequenceAction::kInsertNewline},
 };
 
+// One completion candidate and the span of the draft it replaces. Two sources
+// share this: slash commands, which replace the whole line, and `@paths`,
+// which replace only the token under the cursor.
+struct Suggestion {
+  std::string name;
+  std::string description;
+  bool wants_argument = false;
+};
+
+struct Suggestions {
+  size_t begin = 0;
+  size_t end = 0;
+  std::vector<Suggestion> matches;
+};
+
 // What a partially typed "/word" could still become; aliases stay hidden.
-std::vector<const SlashCommandSpec*> SlashMatches(const std::string& buffer) {
-  std::vector<const SlashCommandSpec*> matches;
+Suggestions SlashMatches(const std::string& buffer) {
+  Suggestions found{0, buffer.size(), {}};
   if (buffer.empty() || buffer[0] != '/' ||
       buffer.find(' ') != std::string::npos) {
-    return matches;
+    return found;
   }
   for (const SlashCommandSpec& command : SlashCommandRegistry()) {
     if (!*command.description) continue;
     if (std::string_view(command.name).starts_with(buffer)) {
-      matches.push_back(&command);
+      found.matches.push_back(
+          {command.name, command.description, *command.argument != 0});
     }
   }
-  return matches;
+  return found;
+}
+
+// A path is completed one segment at a time, from the directory the token
+// already names -- the way a shell does it. Listing one directory per keypress
+// needs no index, no cache to invalidate and no subprocess, and it cannot
+// offer a build tree the repository ignores unless the typist walked into one.
+Suggestions PathMatches(const std::string& buffer, size_t cursor) {
+  Suggestions found{cursor, cursor, {}};
+  size_t at = buffer.rfind('@', cursor == 0 ? 0 : cursor - 1);
+  if (at == std::string::npos || at >= cursor) return found;
+  // Only at a word boundary: an email address or a decorator is not a path.
+  if (at > 0 && std::isspace(static_cast<unsigned char>(buffer[at - 1])) == 0) {
+    return found;
+  }
+  std::string typed = buffer.substr(at + 1, cursor - at - 1);
+  if (typed.find_first_of(" \t\n") != std::string::npos) return found;
+  found.begin = at;
+
+  size_t slash = typed.rfind('/');
+  std::string parent = slash == std::string::npos ? "" : typed.substr(0, slash + 1);
+  std::string prefix = slash == std::string::npos ? typed : typed.substr(slash + 1);
+
+  namespace fs = std::filesystem;
+  std::error_code error;
+  // A cap, not a page: the whole set is what the shared prefix is computed
+  // from, while only the first few are ever drawn.
+  constexpr size_t kCandidateCap = 256;
+  for (fs::directory_iterator it(parent.empty() ? "." : parent, error), end;
+       it != end && !error && found.matches.size() < kCandidateCap;
+       it.increment(error)) {
+    std::string name = it->path().filename().string();
+    if (!std::string_view(name).starts_with(prefix)) continue;
+    // Hidden entries stay hidden until the typist asks for one by name.
+    if (name.starts_with(".") && !prefix.starts_with(".")) continue;
+    std::error_code kind_error;
+    if (fs::is_directory(it->status(kind_error)) && !kind_error) name += "/";
+    found.matches.push_back({"@" + parent + name, "", false});
+  }
+  std::sort(found.matches.begin(), found.matches.end(),
+            [](const Suggestion& a, const Suggestion& b) {
+              return a.name < b.name;
+            });
+  return found;
+}
+
+Suggestions CompletionMatches(const std::string& buffer, size_t cursor) {
+  Suggestions slash = SlashMatches(buffer);
+  if (!slash.matches.empty()) return slash;
+  return PathMatches(buffer, cursor);
 }
 
 // One character back/forward from a boundary, over the shared scanners.
@@ -493,23 +559,26 @@ InteractiveInputEvent RawComposer::Read() {
     } else if (ch == 0x15) {
       buffer_.erase(0, cursor_);
       cursor_ = 0;
-    } else if (ch == '\t') {  // completes a command, else a plain tab
-      std::vector<const SlashCommandSpec*> matches = SlashMatches(buffer_);
-      if (matches.empty()) {
+    } else if (ch == '\t') {  // completes a command or a path, else a plain tab
+      Suggestions found = CompletionMatches(buffer_, cursor_);
+      if (found.matches.empty()) {
         Insert("\t");
       } else {
-        std::string name = matches.front()->name;
-        for (const SlashCommandSpec* match : matches) {
-          std::string_view candidate = match->name;
+        // The longest prefix every candidate agrees on: one Tab commits what
+        // is certain, and the rows below the draft show what is still open.
+        std::string name = found.matches.front().name;
+        for (const Suggestion& match : found.matches) {
           name.resize(static_cast<size_t>(
-              std::mismatch(name.begin(), name.end(), candidate.begin(),
-                            candidate.end())
+              std::mismatch(name.begin(), name.end(), match.name.begin(),
+                            match.name.end())
                   .first -
               name.begin()));
         }
-        if (matches.size() == 1 && *matches.front()->argument) name += " ";
-        buffer_ = name;
-        cursor_ = buffer_.size();
+        if (found.matches.size() == 1 && found.matches.front().wants_argument) {
+          name += " ";
+        }
+        buffer_.replace(found.begin, found.end - found.begin, name);
+        cursor_ = found.begin + name.size();
       }
     } else if (ch >= 0x20) {
       if (!Insert(std::string(1, static_cast<char>(ch))) &&
@@ -544,13 +613,14 @@ RawComposer::Layout RawComposer::ComputeLayout() const {
   size_t caret_col = std::min(before_width, DisplayWidth(rows[row]));
   // Below the draft, inside the erased block. Plain text: these rows are
   // measured, and an SGR escape is not width.
-  std::vector<const SlashCommandSpec*> matches = SlashMatches(buffer_);
+  Suggestions found = CompletionMatches(buffer_, cursor_);
   constexpr size_t kShownMatches = 5;
-  for (size_t index = 0; index < matches.size() && index < kShownMatches;
+  for (size_t index = 0; index < found.matches.size() && index < kShownMatches;
        ++index) {
-    rows.push_back(DisplayTrunc("  " + std::string(matches[index]->name) +
-                                    "  " + matches[index]->description,
-                                AvailableColumns()));
+    const Suggestion& match = found.matches[index];
+    std::string suggestion = "  " + match.name;
+    if (!match.description.empty()) suggestion += "  " + match.description;
+    rows.push_back(DisplayTrunc(suggestion, AvailableColumns()));
   }
   return {std::move(rows), row, caret_col};
 }

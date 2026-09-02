@@ -122,16 +122,14 @@ void SetApprovalAutomatic(bool automatic);
 // a validated turn-boundary reload may replace explicitly safe fields.
 std::string RuntimeConfigField(std::string_view environment);
 
-struct RuntimeConfig {
-  using Values = std::map<std::string, std::string>;
-  int64_t first_event_timeout_s = 300;
-  int64_t stream_idle_timeout_s = 300;
-  int64_t request_timeout_s = 600;
-  int64_t request_bytes = int64_t{64} * 1024 * 1024;
-  int64_t response_bytes = int64_t{32} * 1024 * 1024;
-  int64_t max_steps = 0;
+// The limits a turn is measured against. A base of RuntimeConfig rather than a
+// member of it so that every `config.max_steps` reader keeps working, and so
+// that a turn takes its snapshot by slicing -- one assignment that cannot omit
+// a budget the way seven hand-written ones could.
+struct TurnBudgets {
   // Zero disables the model-round limit; turn time, cost, context, process,
   // and tool-call budgets remain independent safety limits.
+  int64_t max_steps = 0;
   // Zero disables the aggregate per-turn tool-call budget. Individual tools,
   // repeated identical calls, time, and cost remain bounded.
   int64_t max_tool_calls = 0;
@@ -146,6 +144,15 @@ struct RuntimeConfig {
   // positive turn limit or set a separate cumulative session budget.
   double max_turn_cost = 0;
   double session_budget = 0;
+};
+
+struct RuntimeConfig : TurnBudgets {
+  using Values = std::map<std::string, std::string>;
+  int64_t first_event_timeout_s = 300;
+  int64_t stream_idle_timeout_s = 300;
+  int64_t request_timeout_s = 600;
+  int64_t request_bytes = int64_t{64} * 1024 * 1024;
+  int64_t response_bytes = int64_t{32} * 1024 * 1024;
   int64_t tool_timeout_s = 30;
   int64_t web_search_timeout_s = 60;
   int64_t web_search_max_tokens = 1200;

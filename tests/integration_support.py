@@ -435,6 +435,19 @@ def assert_true(value, message):
         raise AssertionError(message)
 
 
+def assert_token_budget_stop(root, home, server, *args):
+    """Run headless to a session-token-budget stop and return the envelope.
+
+    Three cases share the same invocation and the same two assertions about how
+    it ends; only the flags before them and the accounting after them differ.
+    """
+    result = run(root, base_env(home, server.url), *args, "--json")
+    envelope = json.loads(result.stdout)
+    assert_true(result.returncode == 1, envelope)
+    assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)
+    return envelope
+
+
 def tool_results(messages):
     """Every tool-role message content, in order."""
     return [str(m.get("content", "")) for m in messages if m.get("role") == "tool"]

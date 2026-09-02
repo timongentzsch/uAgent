@@ -787,13 +787,10 @@ void Agent::Turn(const std::string& user_input, json user_content) {
        {"content", attachment ? std::move(user_content) : json(user_input)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
   turn_search_trace_.Reset();
-  state.limits.max_steps = api_.config.max_steps;
-  state.limits.max_tool_calls = api_.config.max_tool_calls;
-  state.limits.max_turn_seconds = api_.config.max_turn_seconds;
-  state.limits.max_turn_tokens = api_.config.max_turn_tokens;
-  state.limits.session_token_budget = api_.config.session_token_budget;
-  state.limits.max_turn_cost = api_.config.max_turn_cost;
-  state.limits.session_budget = api_.config.session_budget;
+  // Slices the budget block out of the config: a turn-boundary reload may
+  // replace api_.config mid-session, and the limits this turn is judged
+  // against are the ones it started with.
+  state.limits = api_.config;
   state.deadline =
       state.limits.max_turn_seconds > 0
           ? DeadlineAfter(state.started, state.limits.max_turn_seconds)

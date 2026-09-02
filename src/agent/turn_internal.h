@@ -10,6 +10,7 @@
 #include <unordered_map>
 
 #include "include/agent.h"
+#include "include/core/env.h"
 #include "include/core/usage.h"
 
 namespace uagent {
@@ -73,15 +74,10 @@ inline const char* TurnStopReasonName(TurnStopReason reason) {
   return "";
 }
 
-struct TurnLimits {
-  int64_t max_steps = 0;
-  int64_t max_tool_calls = 0;
-  int64_t max_turn_seconds = 0;
-  int64_t max_turn_tokens = 0;
-  int64_t session_token_budget = 0;
-  double max_turn_cost = 0;
-  double session_budget = 0;
-};
+// A turn's limits are the configured budgets as they stood when it started,
+// so this is the config's own budget block rather than a second declaration of
+// it. Named separately because a turn reads limits, never settings.
+using TurnLimits = TurnBudgets;
 
 struct TurnMetrics {
   Usage usage;

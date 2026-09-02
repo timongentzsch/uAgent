@@ -203,15 +203,11 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
       result.stop_cause = ClassifyResponseStop(result.finish_reason);
     }
     if (state.web_searches > 0) {
-      if (!result.usage.is_object()) result.usage = json::object();
-      const bool reported =
-          result.usage.contains("server_tool_use_details") &&
-          result.usage["server_tool_use_details"].is_object() &&
-          JsonValue(result.usage["server_tool_use_details"],
-                    "web_search_requests", int64_t{0}) > 0;
-      if (!reported) {
-        result.usage["server_tool_use_details"]["web_search_requests"] =
-            state.web_searches;
+      const json* details = JsonObject(result.usage, "server_tool_use_details");
+      if (!details ||
+          JsonValue(*details, "web_search_requests", int64_t{0}) == 0) {
+        json& counts = EnsureObject(result.usage, "server_tool_use_details");
+        counts["web_search_requests"] = state.web_searches;
       }
     }
     delta.activity = true;
@@ -282,8 +278,8 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
         const json* server = JsonObject(result.usage, "server_tool_use");
         if (!server ||
             JsonValue(*server, "web_search_requests", int64_t{0}) == 0) {
-          result.usage["server_tool_use"]["web_search_requests"] =
-              state.web_searches;
+          json& counts = EnsureObject(result.usage, "server_tool_use");
+          counts["web_search_requests"] = state.web_searches;
         }
       }
       delta.activity = true;
@@ -339,9 +335,15 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
     } else if (delta_type == "citations_delta" &&
                event_delta->contains("citation")) {
       const json& citation = (*event_delta)["citation"];
-      block.block["citations"].push_back(citation);
-      json normalized = AnthropicCitation(citation);
-      if (normalized.is_object()) AddStreamAnnotation(normalized, result);
+      if (citation.is_object()) {
+        // The block's shape is the provider's: a "citations" that arrived as
+        // anything but an array has no push_back to call.
+        json& citations = block.block["citations"];
+        if (citations.is_null()) citations = json::array();
+        if (citations.is_array()) citations.push_back(citation);
+        json normalized = AnthropicCitation(citation);
+        if (normalized.is_object()) AddStreamAnnotation(normalized, result);
+      }
     }
     delta.activity = true;
     return delta;

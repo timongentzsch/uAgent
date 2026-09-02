@@ -218,6 +218,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSseFraming)                       \
   X(TestWireAdapters)                     \
   X(TestWireStreams)                      \
+  X(TestWireStreamMalformedValues)        \
   X(TestBackgroundValidation)             \
   X(TestSignalAndFileWatch)               \
   X(TestActivityBufferAndAdmission)       \

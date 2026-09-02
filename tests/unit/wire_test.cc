@@ -415,4 +415,122 @@ void TestWireStreams() {
   }
 }
 
+// Usage and citation payloads are provider-controlled, and under
+// -fno-exceptions an operator[] chain through a scalar aborts the process.
+// Wrong-typed fields must decode into a sane result instead.
+void TestWireStreamMalformedValues() {
+  ChatResult responses_result;
+  std::map<int, ToolCall> responses_calls;
+  WireStreamState responses_state;
+  auto responses_event = [&](const json& value) {
+    DecodeWireStreamEvent(WireApi::kResponses, JsonDump(value),
+                          responses_result, responses_calls, responses_state);
+  };
+  responses_event(
+      {{"type", "response.output_item.done"},
+       {"output_index", 0},
+       {"item", {{"type", "web_search_call"}, {"id", "search-1"}}}});
+  responses_event({{"type", "response.completed"},
+                   {"response",
+                    {{"status", "completed"},
+                     {"usage",
+                      {{"input_tokens", 3},
+                       {"server_tool_use_details", "not-an-object"}}}}}});
+  CHECK(responses_result
+            .usage["server_tool_use_details"]["web_search_requests"] == 1);
+  CHECK(responses_result.usage["input_tokens"] == 3);
+
+  // A scalar usage object is replaced wholesale rather than indexed into.
+  ChatResult scalar_result;
+  std::map<int, ToolCall> scalar_calls;
+  WireStreamState scalar_state;
+  auto scalar_event = [&](const json& value) {
+    DecodeWireStreamEvent(WireApi::kResponses, JsonDump(value), scalar_result,
+                          scalar_calls, scalar_state);
+  };
+  scalar_event({{"type", "response.output_item.done"},
+                {"output_index", 0},
+                {"item", {{"type", "web_search_call"}, {"id", "search-1"}}}});
+  scalar_event({{"type", "response.completed"},
+                {"response", {{"status", "completed"}, {"usage", "none"}}}});
+  CHECK(scalar_result.usage["server_tool_use_details"]["web_search_requests"] ==
+        1);
+
+  ChatResult anthropic_result;
+  std::map<int, ToolCall> anthropic_calls;
+  WireStreamState anthropic_state;
+  std::string anthropic_answer;
+  auto anthropic_event = [&](const json& value) {
+    anthropic_answer += DecodeWireStreamEvent(WireApi::kAnthropicMessages,
+                                              JsonDump(value), anthropic_result,
+                                              anthropic_calls, anthropic_state)
+                            .content;
+  };
+  anthropic_event(
+      {{"type", "message_start"},
+       {"message",
+        {{"usage",
+          {{"input_tokens", 5}, {"server_tool_use", "not-an-object"}}}}}});
+  anthropic_event({{"type", "content_block_start"},
+                   {"index", 0},
+                   {"content_block",
+                    {{"type", "server_tool_use"}, {"name", "web_search"}}}});
+  anthropic_event(
+      {{"type", "content_block_start"},
+       {"index", 1},
+       {"content_block",
+        {{"type", "text"}, {"text", ""}, {"citations", "not-an-array"}}}});
+  // A wrong-typed citations field is left alone; a scalar citation is dropped.
+  anthropic_event({{"type", "content_block_delta"},
+                   {"index", 1},
+                   {"delta",
+                    {{"type", "citations_delta"},
+                     {"citation",
+                      {{"type", "web_search_result_location"},
+                       {"url", "https://example.test/cpp"},
+                       {"cited_text", "source"}}}}}});
+  anthropic_event(
+      {{"type", "content_block_delta"},
+       {"index", 1},
+       {"delta", {{"type", "citations_delta"}, {"citation", "scalar"}}}});
+  anthropic_event({{"type", "content_block_delta"},
+                   {"index", 1},
+                   {"delta", {{"type", "text_delta"}, {"text", "answer"}}}});
+  anthropic_event({{"type", "message_stop"}});
+  CHECK(anthropic_answer == "answer");
+  CHECK(anthropic_result.usage["server_tool_use"]["web_search_requests"] == 1);
+  CHECK(anthropic_result.usage["input_tokens"] == 5);
+  CHECK(anthropic_result.annotations.size() == 1);
+  const json* content = JsonArray(anthropic_result.replay, "content");
+  CHECK(content != nullptr && content->size() == 2);
+  if (content && content->size() == 2) {
+    CHECK((*content)[1]["citations"] == "not-an-array");
+  }
+
+  // A citations field the provider left absent still collects normally.
+  ChatResult fresh_result;
+  std::map<int, ToolCall> fresh_calls;
+  WireStreamState fresh_state;
+  auto fresh_event = [&](const json& value) {
+    DecodeWireStreamEvent(WireApi::kAnthropicMessages, JsonDump(value),
+                          fresh_result, fresh_calls, fresh_state);
+  };
+  fresh_event({{"type", "content_block_start"},
+               {"index", 0},
+               {"content_block", {{"type", "text"}, {"text", ""}}}});
+  fresh_event(
+      {{"type", "content_block_delta"},
+       {"index", 0},
+       {"delta",
+        {{"type", "citations_delta"},
+         {"citation",
+          {{"url", "https://example.test/cpp"}, {"cited_text", "source"}}}}}});
+  fresh_event({{"type", "message_stop"}});
+  const json* fresh_content = JsonArray(fresh_result.replay, "content");
+  CHECK(fresh_content != nullptr && fresh_content->size() == 1);
+  if (fresh_content && !fresh_content->empty()) {
+    CHECK((*fresh_content)[0]["citations"].size() == 1);
+  }
+}
+
 }  // namespace uagent

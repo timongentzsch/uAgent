@@ -816,7 +816,18 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
     ChatResult response = Chat("turn", loop.step, schemas);
     if (loop.pending_note) {
-      conversation_.Erase(*loop.pending_note, *loop.pending_note + 1);
+      // The index was the tail when it was recorded. If history moved under
+      // it anyway, erasing blind would drop a real message, so drop the note
+      // instead and leave a trace of the contract having been broken.
+      if (*loop.pending_note < conversation_.Size() &&
+          conversation_.KindAt(*loop.pending_note) == MessageKind::kInternal) {
+        conversation_.Erase(*loop.pending_note, *loop.pending_note + 1);
+      } else {
+        DebugLog("pending_note_stale", {{"turn", turn_id_},
+                                        {"step", loop.step},
+                                        {"index", *loop.pending_note},
+                                        {"size", conversation_.Size()}});
+      }
       loop.pending_note.reset();
     }
     flow = HandleFailedResponse(response, state, loop, schemas, attachment);

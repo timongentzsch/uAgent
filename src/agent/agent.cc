@@ -140,18 +140,26 @@ void Agent::PrintContext() const { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   SessionRecord record;
-  record.metadata = {CanonicalCwd(), api_.RequestModel(), session_id_,
-                     UserTurns(), FirstUserText()};
-  record.state = {conversation_.Messages(),
-                  conversation_.Kinds(),
-                  conversation_.Archive(),
-                  conversation_.DroppedSegments(),
-                  ContextUsed(),
-                  session_usage_,
-                  route_usage_,
-                  adaptive_system_ ? adaptive_system_->instructions : "",
-                  adaptive_system_ ? adaptive_system_->revision : 0,
-                  conversation_.ToolDisplays()};
+  // Named, not positional: fifteen fields across the two structs, several of
+  // them adjacent same-typed strings and integers, so a field inserted in the
+  // header would silently reassign the rest of the save.
+  record.metadata = {.cwd = CanonicalCwd(),
+                     .model = api_.RequestModel(),
+                     .session_id = session_id_,
+                     .turns = UserTurns(),
+                     .title = FirstUserText()};
+  record.state = {
+      .messages = conversation_.Messages(),
+      .message_kinds = conversation_.Kinds(),
+      .archive = conversation_.Archive(),
+      .archive_dropped_segments = conversation_.DroppedSegments(),
+      .context_tokens = ContextUsed(),
+      .usage = session_usage_,
+      .route_usage = route_usage_,
+      .adaptive_system = adaptive_system_ ? adaptive_system_->instructions : "",
+      .adaptive_system_revision =
+          adaptive_system_ ? adaptive_system_->revision : 0,
+      .tool_displays = conversation_.ToolDisplays()};
   SessionStoreStatus status = SessionStore::Save(path, record);
   if (!status.Ok()) {
     error = std::move(status.message);

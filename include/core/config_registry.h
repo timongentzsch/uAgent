@@ -299,6 +299,18 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Derived("UAGENT_WEB_FETCH_BYTES", 1024, kConfigAnyMax, "tools",
                       "web_fetch download cap; defaults to the attachment cap"),
 
+    // OS sandbox for agent-run commands. Restart-required because the policy is
+    // built once and every spawn is wrapped with it; a mid-session change would
+    // leave already-running jobs under the old confinement.
+    registry::Bul("UAGENT_SANDBOX", {}, false, ReloadPolicy::kRestartRequired,
+                  "tools", "confine shell commands with the OS sandbox"),
+    registry::Bul("UAGENT_SANDBOX_NET", {}, true,
+                  ReloadPolicy::kRestartRequired, "tools",
+                  "let sandboxed commands reach the network"),
+    registry::Str("UAGENT_SANDBOX_WRITE", {}, "",
+                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic, "tools",
+                  "extra writable roots for the sandbox, colon-separated"),
+
     // Delegation.
     registry::Int("UAGENT_DEPTH", {}, 0, 0, kConfigMaxMinusOne,
                   ReloadPolicy::kRestartRequired, "delegation",

@@ -508,8 +508,33 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     event.timestamp = UtcStamp();
     event.automatic = true;
     if (!success) {
-      event.preview =
-          Utf8Trunc(OneLine(RedactMemorySecrets(completion.output)), 160);
+      // The last line, not the first. A child that failed has usually printed
+      // a startup warning before it got anywhere -- an over-full memory slice
+      // prints one every time -- and taking the head recorded that warning as
+      // the cause, which is how eight failures came to be labelled with a
+      // condition that did not fail anything. `CapResult` states the same
+      // convention: errors live at the end.
+      std::string output = RedactMemorySecrets(completion.output);
+      // ArtifactHint appends a captured-log pointer after everything else, so
+      // it is the last line whenever output was spilled to a file. It is
+      // structure, never the cause; drop it before looking for one.
+      size_t hint = output.find("\n[captured log: ");
+      if (hint != std::string::npos) output.resize(hint);
+      std::string_view tail(output);
+      while (!tail.empty()) {
+        size_t line = tail.find_last_not_of("\r\n");
+        if (line == std::string_view::npos) break;
+        tail = tail.substr(0, line + 1);
+        size_t start = tail.find_last_of('\n');
+        std::string_view candidate =
+            start == std::string_view::npos ? tail : tail.substr(start + 1);
+        if (!Trim(std::string(candidate)).empty()) {
+          event.preview = Utf8Trunc(std::string(candidate), 160);
+          break;
+        }
+        tail = start == std::string_view::npos ? std::string_view()
+                                               : tail.substr(0, start);
+      }
     }
     std::string event_error;
     if (!WriteMemoryEvent(event, {}, event_error)) {

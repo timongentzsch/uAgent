@@ -1150,8 +1150,23 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
         assert_true(len(server.requests) == 1, server.requests)
         assert_true(not list((no_write_home / ".uagent/memory").rglob("*.md")), no_write_home)
 
+    def overfill_globals(case_home):
+        """More global memory than the always-on slice can carry.
+
+        The extractor child then warns about truncation at startup, which is
+        what makes the preview assertion below discriminate: without it the
+        child prints nothing before the real error and any policy passes.
+        """
+        globals_dir = global_memory_dir(case_home)
+        globals_dir.mkdir(parents=True, exist_ok=True)
+        for index in range(8):
+            (globals_dir / f"planted_{index}.md").write_text(
+                f"Standing preference {index}. " + "padding " * 40, encoding="utf-8"
+            )
+
     def run_cleanup_case(name, responder, kinds=None, wait_for_request=False):
         case_home, workspace = scenario(name, kinds)
+        overfill_globals(case_home)
         trace = root / f"memory-{name}.jsonl"
         with Server([responder]) as server:
             env = base_env(case_home, server.url)
@@ -1191,6 +1206,24 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
             if name != "terminated":
                 assert_true(completion_logged(), f"{name} extractor did not complete")
                 wait_until(lambda: not markers(case_home), f"{name} claim survived shutdown")
+                # A failure preview is read to find out why, and the globals
+                # planted above guarantee the child prints a truncation warning
+                # before it reaches whatever actually stopped it. Recording the
+                # head of its output made that warning the cause; the tail does
+                # not, so the reader is not sent to consolidate memories over a
+                # failure that had nothing to do with them.
+                journal = case_home / ".uagent/memory/events.jsonl"
+                previews = [
+                    json.loads(line).get("preview", "")
+                    for line in journal.read_text(encoding="utf-8").splitlines()
+                    if line.strip() and json.loads(line).get("action") == "failed"
+                ]
+                assert_true(previews, f"{name} recorded no failure to explain")
+                for preview in previews:
+                    assert_true(
+                        "memory context truncated" not in preview,
+                        f"{name} recorded a startup warning as the failure: {preview!r}",
+                    )
                 return server.requests
 
             # Shutdown gives a background group 500ms to run its EXIT trap

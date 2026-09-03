@@ -18,8 +18,15 @@ def main():
     expected_skills = set()
     for path in (source / "skills").rglob("*"):
         relative = path.relative_to(source / "skills")
-        if path.is_file() and not any(part.startswith(".") for part in relative.parts):
-            expected_skills.add(relative.as_posix())
+        # The same two exclusions the install rule applies (CMakeLists.txt):
+        # dotfiles, and the bytecode a developer leaves behind by running a
+        # skill's script. Expecting a .pyc the archive deliberately omits fails
+        # this check on a working tree and never in CI, which checks out clean.
+        if not path.is_file() or any(
+            part.startswith(".") or part == "__pycache__" for part in relative.parts
+        ):
+            continue
+        expected_skills.add(relative.as_posix())
     # Installed from docs/ARCHITECTURE.md rather than duplicated in the tree.
     expected_skills.add("uagent-config/references/architecture.md")
     with tarfile.open(archive, "r:gz") as package:

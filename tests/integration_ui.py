@@ -496,6 +496,13 @@ def test_suspend_restores_and_rearms_terminal(root, home):
             ],
             configure_terminal=cooked,
             suspend=suspend,
+            # run_pty runs one deadline across the whole interaction, and the
+            # suspend handshake here spends it before a key is typed:
+            # wait_until_stopped plus two wait_for_echo calls each scale to the
+            # default on their own. Under a loaded sanitizer run the payload
+            # phase then ran out and the child was killed, which reads as a
+            # wrong exit code rather than the timeout it is.
+            timeout=30,
         )
     # It really suspended, and SIGINT still ends the session afterwards.
     assert_true(seen["stop_signal"] == signal.SIGTSTP, seen)

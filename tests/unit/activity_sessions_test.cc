@@ -299,13 +299,13 @@ void TestActivitySessions() {
         activity ? activity->run({{"operation", "write"},
                                   {"id", id},
                                   {"chars", "hello\n"},
-                                  {"wait_ms", 2000}},
+                                  {"wait_ms", BudgetMs(2000)}},
                                  context)
                  : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(input.Ok());
     CHECK(input.output.find("got:hello") != std::string::npos);
     ToolResult completed =
-        ToolActivityWait(pty_processes, {id}, "all", 2000, context);
+        ToolActivityWait(pty_processes, {id}, "all", BudgetMs(2000), context);
     CHECK(completed.Ok());
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
@@ -581,7 +581,7 @@ void TestActivityWaitAndDelivery() {
   if (!once_jobs.empty()) {
     ToolResult final =
         ToolActivityWait(no_duplicate_completion, {ActivityId(once_jobs[0])},
-                         "all", 2000, context);
+                         "all", BudgetMs(2000), context);
     CHECK(final.Ok());
     CHECK(final.output.find("(no new output)") != std::string::npos);
     CHECK(final.output.find("\nonce") == std::string::npos);
@@ -635,7 +635,7 @@ void TestActivityWaitAndDelivery() {
     CHECK(no_duplicate.output.find("Server ready") == std::string::npos);
     CHECK(no_duplicate.no_change);
     ToolResult final =
-        ToolActivityWait(incremental, {id}, "all", 2000, context);
+        ToolActivityWait(incremental, {id}, "all", BudgetMs(2000), context);
     CHECK(final.Ok());
     CHECK(final.output.find("done") != std::string::npos);
   }

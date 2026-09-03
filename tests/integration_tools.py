@@ -323,7 +323,10 @@ def test_skill_tool_offers_and_opens(root, home):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            [b"reply\n", b"/trace\n", b"\x04"],
+            # /trace must describe a finished turn: typing it while the turn
+            # is still working traces an empty one, and the body sentinel the
+            # assertions below look for is never printed.
+            [(b"reply\n", b"skill-ok"), b"/trace\n", b"\x04"],
             columns=24,
         )
         assert_true(code == 0, output)
@@ -757,9 +760,9 @@ def test_self_configuration_asks_even_under_yolo(root, home):
             root,
             base_env(home, server.url),
             [
-                b"raise the limit\n",
-                (b"y\n", b"allow uagent_configure? "),
-                (b"/quit\n", b"yolo-still-asked"),
+                (b"raise the limit\n", b"allow uagent_configure? "),
+                (b"y\n", b"yolo-still-asked"),
+                b"/quit\n",
             ],
             args=("--yolo",),
             timeout=20,
@@ -819,9 +822,9 @@ def test_composite_configuration_requires_exact_human_approval(root, home):
             root,
             base_env(home, server.url),
             [
-                b"configure providers\n",
-                (b"y\n", b"allow uagent_configure? "),
-                (b"/quit\n", b"composite-config-ok"),
+                (b"configure providers\n", b"allow uagent_configure? "),
+                (b"y\n", b"composite-config-ok"),
+                b"/quit\n",
             ],
             args=("--yolo",),
             timeout=25,
@@ -944,9 +947,9 @@ def test_self_configuration_commits_after_approval(root, home):
             root,
             env,
             [
-                b"raise the limit\n",
-                (b"y\n", b"allow uagent_configure? "),
-                (b"/quit\n", b"configure-ok"),
+                (b"raise the limit\n", b"allow uagent_configure? "),
+                (b"y\n", b"configure-ok"),
+                b"/quit\n",
             ],
             timeout=20,
         )

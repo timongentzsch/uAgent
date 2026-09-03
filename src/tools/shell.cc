@@ -811,8 +811,9 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     // Checked here rather than at write: a rerun executes whatever is on disk,
     // and the file is writable by edit_file between the two.
     std::string policy = ScriptCommandPolicyError(source);
-    if (!policy.empty())
+    if (!policy.empty()) {
       return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
+    }
     command = "sh " + ShellQuote(script.string());
   } else {
     bool uv = ExecutableOnPath("uv");

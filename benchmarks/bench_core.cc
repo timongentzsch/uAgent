@@ -101,15 +101,8 @@ void BenchmarkStream(bool tty, bool render = true) {
 
 int RunBenchmarks() {
   constexpr size_t kIterations = 10000;
-  const std::string call =
-      "[uagent_tool_call]{\"name\":\"read_file\",\"arguments\":{\"path\":\"src/"
-      "main.cc\","
-      "\"offset\":1,\"limit\":200}}[/uagent_tool_call]";
   const std::string hostile = "normal text\n\x1b]52;c;payload\x07\tmore text\n";
   const std::string large(24000, 'x');
-
-  Report("text tool-call parse", kIterations,
-         Measure(kIterations, [&] { return ParseTextToolCalls(call).size(); }));
 
   bool prior_tty = g_tty;
   g_tty = true;

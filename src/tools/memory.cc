@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -692,28 +693,40 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
 // these are exactly the standing preferences/corrections the agent should not
 // have to remember to go look up.
 //
-// Newest first, and every entry is admitted whole or skipped: a lesson cut
-// mid-sentence is worse than an absent one, and when the cap binds the freshest
-// standing preferences are the ones worth keeping.
+// Smallest first, and every entry is admitted whole or skipped: a lesson cut
+// mid-sentence is worse than an absent one.
+//
+// Ordering by size rather than by age, for two reasons. It fits more -- on the
+// store this was measured against, seven standing preferences instead of four
+// -- and every global is by definition one the user wanted applied everywhere,
+// so admitting more of them is the goal. And it is stable: mtime is rewritten
+// by a consolidation pass, a checkout, or an editor save, any of which would
+// silently reshuffle which preferences are live. Size only changes when the
+// content does.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes) {
   namespace fs = std::filesystem;
-  std::vector<std::pair<fs::file_time_type, MemoryEntry>> globals;
+  std::vector<std::pair<uintmax_t, MemoryEntry>> globals;
   for (const MemoryEntry& memory : ListMemories(cwd)) {
     if (!memory.key.starts_with("global/")) continue;
     std::error_code error;
-    fs::file_time_type modified = fs::last_write_time(memory.path, error);
-    globals.emplace_back(error ? fs::file_time_type{} : modified, memory);
+    uintmax_t bytes = fs::file_size(memory.path, error);
+    // Unreadable size sorts last rather than first: it is the one entry whose
+    // cost is unknown, so it must not displace one that is known to fit.
+    globals.emplace_back(error ? UINTMAX_MAX : bytes, memory);
   }
   std::stable_sort(globals.begin(), globals.end(),
                    [](const auto& left, const auto& right) {
-                     return left.first > right.first;
+                     if (left.first != right.first) {
+                       return left.first < right.first;
+                     }
+                     return left.second.key < right.second.key;
                    });
 
   MemoryIndex index;
   size_t used = 0;
   size_t body_cap = static_cast<size_t>(MemoryBytes());
-  for (const auto& [modified, memory] : globals) {
+  for (const auto& [bytes, memory] : globals) {
     std::ifstream input(memory.path, std::ios::binary);
     if (!input) continue;
     std::string body;

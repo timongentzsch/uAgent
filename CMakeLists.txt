@@ -197,6 +197,7 @@ if(BUILD_TESTING)
     tests/unit/math_test.cc
     tests/unit/grep_tool_test.cc
     tests/unit/input_decoder_test.cc
+    tests/unit/memory_test.cc
     tests/unit/mcp_session_test.cc
     tests/unit/openrouter_server_search_test.cc
     tests/unit/presentation_test.cc

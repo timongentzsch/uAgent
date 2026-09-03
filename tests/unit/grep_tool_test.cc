@@ -162,7 +162,7 @@ void TestGrepTool() {
   const Tool* python = FindTool(lean_tools, "scratch");
   CHECK(python != nullptr);
   CHECK(python && ToolDescription(*python).find(
-                      "never for requested project") != std::string::npos);
+                      "never requested project code") != std::string::npos);
   CHECK(python &&
         python->parameters.value("additionalProperties", true) == false);
   CHECK(python && python->parameters["required"] ==

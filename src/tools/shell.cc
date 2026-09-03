@@ -596,12 +596,47 @@ bool StartsWithShellWord(const std::string& command, const std::string& word) {
           std::isspace(static_cast<unsigned char>(trimmed[word.size()])));
 }
 
-std::string RunCommandPolicyError(const std::string& command) {
+std::string PrivilegedCommandError(const std::string& command) {
   if (StartsWithShellWord(command, "sudo")) {
     return "error: privileged commands are unavailable. Do not use sudo; "
            "use workspace or user-local tools, or adapt to installed "
            "dependencies.";
   }
+  return "";
+}
+
+// The same rule read over a script instead of a command. `run`'s check looks
+// at a first word, so against a multi-line body it would only ever inspect
+// line one. Only the privileged-command half carries over: the other half
+// routes bare Python at `scratch`, which is circular advice to give from
+// inside it.
+//
+// This is parity with `run`, not better than it -- neither sees `x && sudo y`,
+// because neither parses shell. The boundary that does hold is the OS sandbox,
+// and a scratch script is always inside it.
+std::string ScriptCommandPolicyError(const std::string& script) {
+  size_t number = 0;
+  for (size_t at = 0; at <= script.size();) {
+    size_t end = script.find('\n', at);
+    if (end == std::string::npos) end = script.size();
+    std::string line = Trim(script.substr(at, end - at));
+    ++number;
+    if (!line.empty() && line.front() != '#') {
+      std::string error = PrivilegedCommandError(line);
+      if (!error.empty()) {
+        return "error: line " + std::to_string(number) + ": " +
+               error.substr(std::string_view("error: ").size());
+      }
+    }
+    if (end == script.size()) break;
+    at = end + 1;
+  }
+  return "";
+}
+
+std::string RunCommandPolicyError(const std::string& command) {
+  std::string privileged = PrivilegedCommandError(command);
+  if (!privileged.empty()) return privileged;
   for (const char* executable : {"python", "python3", "pip", "pip3"}) {
     if (StartsWithShellWord(command, executable)) {
       return "error: do not invoke bare Python or pip through run. For project "
@@ -648,16 +683,17 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   fs::path requested(relative_path.starts_with(kScratchPrefix)
                          ? relative_path.substr(kScratchPrefix.size())
                          : relative_path);
+  const bool shell_script = requested.extension() == ".sh";
   if (relative_path.empty() || requested.is_absolute() ||
-      requested.extension() != ".py") {
+      (!shell_script && requested.extension() != ".py")) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: path must be a relative .py file under "
+                       "error: path must be a relative .py or .sh file under "
                        ".uagent/scratch");
   }
   for (const fs::path& component : requested) {
     if (component == "..") {
       return ToolFailure(ToolErrorCode::kPermissionDenied,
-                         "error: Python script path must not contain ..");
+                         "error: scratch script path must not contain ..");
     }
   }
 
@@ -667,13 +703,13 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   if (ec) {
     return ToolFailure(
         ToolErrorCode::kInternal,
-        "error: cannot create Python scratch directory: " + ec.message());
+        "error: cannot create scratch directory: " + ec.message());
   }
   scratch = fs::canonical(scratch, ec);
   fs::path script = CanonicalAccessPath((scratch / requested).string());
   if (ec || !PathWithin(script, scratch)) {
     return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "error: Python script path escapes .uagent/scratch");
+                       "error: scratch script path escapes .uagent/scratch");
   }
 
   std::string write_error;
@@ -700,19 +736,28 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     if (ec) {
       return ToolFailure(
           ToolErrorCode::kInternal,
-          "error: cannot inspect Python scratch script: " + ec.message());
+          "error: cannot inspect scratch script: " + ec.message());
     }
     if (exists && !fs::is_regular_file(script, ec)) {
       return ToolFailure(
           ToolErrorCode::kInvalidArguments,
-          "error: Python scratch path exists but is not a regular file: " +
+          "error: scratch path exists but is not a regular file: " +
               requested.generic_string());
     }
     std::string body = code.get<std::string>();
     if (body.find('\0') != std::string::npos) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: Python code contains NUL");
+                         "error: script code contains NUL");
     }
+    if (shell_script) {
+      if (!packages.empty()) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: a .sh script takes no packages; pass [] and "
+                           "install nothing, or use a .py script under uv");
+      }
+      source = body;
+      if (source.empty() || source.back() != '\n') source += '\n';
+    } else {
     if (body.find("# /// script") != std::string::npos) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: code must contain only the script body; "
@@ -730,6 +775,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     }
     source += "# ]\n# ///\n\n" + body;
     if (source.back() != '\n') source += '\n';
+    }
     if (exists) {
       std::ifstream prior_input(script);
       prior.assign(std::istreambuf_iterator<char>(prior_input),
@@ -749,7 +795,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
   } else if (!fs::is_regular_file(script, ec)) {
     return ToolFailure(
         ToolErrorCode::kNotFound,
-        "error: Python scratch script does not exist: " + relative_path);
+        "error: scratch script does not exist: " + relative_path);
   }
 
   if (!create) {  // a rerun executes whatever is on disk now
@@ -757,21 +803,30 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     source.assign(std::istreambuf_iterator<char>(input),
                   std::istreambuf_iterator<char>());
   }
-  bool uv = ExecutableOnPath("uv");
-  if (!uv && PythonScriptHasDependencies(source)) {
-    return ToolFailure(
-        ToolErrorCode::kUnavailable,
-        "error: this script declares third-party dependencies and requires "
-        "uv on PATH. Install uv or edit the PEP 723 dependency list");
+  std::string command;
+  if (shell_script) {
+    // Checked here rather than at write: a rerun executes whatever is on disk,
+    // and the file is writable by edit_file between the two.
+    std::string policy = ScriptCommandPolicyError(source);
+    if (!policy.empty()) return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
+    command = "sh " + ShellQuote(script.string());
+  } else {
+    bool uv = ExecutableOnPath("uv");
+    if (!uv && PythonScriptHasDependencies(source)) {
+      return ToolFailure(
+          ToolErrorCode::kUnavailable,
+          "error: this script declares third-party dependencies and requires "
+          "uv on PATH. Install uv or edit the PEP 723 dependency list");
+    }
+    command =
+        uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
+             "--script " +
+                 ShellQuote(script.string())
+           : "MPLBACKEND=Agg python3 " + ShellQuote(script.string());
   }
-  std::string command =
-      uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
-           "--script " +
-               ShellQuote(script.string())
-         : "MPLBACKEND=Agg python3 " + ShellQuote(script.string());
   ShellCommandResult result =
       RunShellCommand(supervisor, context, {.command = std::move(command)});
-  if (result.result.error == ToolErrorCode::kProcessFailed) {
+  if (result.result.error == ToolErrorCode::kProcessFailed && !shell_script) {
     std::string hint =
         result.result.output.find("No module named") != std::string::npos
             ? " Add every third-party dependency to the script's PEP 723 "

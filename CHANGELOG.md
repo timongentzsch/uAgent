@@ -25,6 +25,16 @@
 
 ### Added
 
+- `scratch` runs a `.sh` script as well as a `.py` one, chosen by the path's
+  extension. Half of every shell byte this agent sends is already a byte-exact
+  repeat within the same session -- 3.08 MB of 6.18 MB across 18,564 measured
+  `run` calls, spread over 8,551 distinct commands rather than a few outliers --
+  and `scratch` was the one tool that could save a script and rerun it by path
+  for a few dozen bytes, but only for Python. The heaviest repeats were already
+  scripts: `uv run python - <<'PY'`, `ruby <<'RUBY'`, `git apply <<'PATCH'`.
+  A `.sh` script takes no packages, runs under `sh`, and stays inside the OS
+  sandbox with no escape hatch, so it is strictly more confined than `run`.
+
 - Tab after `@` completes a path, one segment at a time from the directory the
   token already names, in the same rows below the draft that slash commands
   use. This is a token cost, not only an ergonomic one: a draft that says "the

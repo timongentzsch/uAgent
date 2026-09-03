@@ -330,26 +330,29 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   run.parallel_safe = true;
   run.command_policy = true;
 
-  // ToolRunScratch runs the script under uv when it is there and falls back to
+  // ToolRunScratch runs a .py under uv when it is there and falls back to
   // python3 otherwise, so a host with neither can only ever answer this tool
   // with an error. An 800-byte schema that cannot succeed is worse than an
-  // absent one, and the same reasoning already gates show_image.
+  // absent one, and the same reasoning already gates show_image. A .sh needs
+  // only sh, but gating the whole tool on the interpreter its Python half
+  // needs keeps one condition instead of two.
   if (ExecutableOnPath("uv") || ExecutableOnPath("python3")) {
     Tool& python = AddTool(
         tools,
         MakeTool(
             "scratch",
-            "Run a one-off Python script when shell is insufficient, never for "
-            "requested project code. Writes or replaces one persistent script "
-            "under .uagent/scratch and runs it under isolated uv.",
+            "Run a one-off script, never requested project code. Writes or "
+            "replaces one persistent script under .uagent/scratch and reruns "
+            "it by path: prefer this over resending a long shell pipeline or "
+            "heredoc through run. .py runs under isolated uv, .sh under sh.",
             schema(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
-                      "description":"stable relative .py path; reuse it during the task"},
+                      "description":"stable relative .py or .sh path; reuse it during the task"},
                     "code":{"type":["string","null"],"minLength":1,"maxLength":131072,
                       "description":"script body, without PEP 723 metadata; null reruns the file unchanged"},
                     "packages":{"type":["array","null"],"items":{"type":"string","minLength":1,"maxLength":256},"maxItems":12,
-                      "description":"PEP 508 dependencies with code ([] for stdlib); null when rerunning"}},
+                      "description":"PEP 508 dependencies with code ([] for stdlib or any .sh); null when rerunning"}},
                     "required":["path","code","packages"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {

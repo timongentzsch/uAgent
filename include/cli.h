@@ -68,11 +68,11 @@ struct InteractiveInputEvent {
 };
 
 struct InteractionRequest {
-  std::string id;
+  std::string id = "";
   std::string kind = "text";
   std::string prompt;
   bool keep_history = false;
-  std::string initial;
+  std::string initial = "";
   json options = json::array();
 };
 

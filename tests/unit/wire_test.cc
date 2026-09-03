@@ -459,10 +459,12 @@ void TestWireStreamHostedSearch() {
         {{"type", "web_search_call"},
          {"id", "ws_1"},
          {"status", "completed"},
-         {"action", {{"sources", json::array({{{"url", "https://a.test"}},
-                                              {{"url", "https://b.test"}}})}}}}}});
-  responses_event({{"type", "response.completed"},
-                   {"response", {{"status", "completed"}, {"usage", json::object()}}}});
+         {"action",
+          {{"sources", json::array({{{"url", "https://a.test"}},
+                                    {{"url", "https://b.test"}}})}}}}}});
+  responses_event(
+      {{"type", "response.completed"},
+       {"response", {{"status", "completed"}, {"usage", json::object()}}}});
   const decltype(steps) expected_steps = {
       {"ws_1", "started"}, {"ws_1", "searching"}, {"ws_1", "completed"}};
   CHECK(steps == expected_steps);
@@ -475,22 +477,22 @@ void TestWireStreamHostedSearch() {
                    {"output_index", 1},
                    {"item", {{"type", "web_search_call"}, {"id", "ws_2"}}}});
   CHECK(steps.size() == 4);
-  CHECK(steps.back() == std::make_pair(std::string("ws_2"),
-                                       std::string("started")));
+  CHECK(steps.back() ==
+        std::make_pair(std::string("ws_2"), std::string("started")));
 
   // A search item the provider marks failed is a failure, not an empty result.
   ChatResult failed_result;
   std::map<int, ToolCall> failed_calls;
   WireStreamState failed_state;
-  WireStreamDelta failed = DecodeWireStreamEvent(
-      WireApi::kResponses,
-      JsonDump(json{{"type", "response.output_item.done"},
-                    {"output_index", 0},
-                    {"item",
-                     {{"type", "web_search_call"},
-                      {"id", "ws_9"},
-                      {"status", "failed"}}}}),
-      failed_result, failed_calls, failed_state);
+  WireStreamDelta failed =
+      DecodeWireStreamEvent(WireApi::kResponses,
+                            JsonDump(json{{"type", "response.output_item.done"},
+                                          {"output_index", 0},
+                                          {"item",
+                                           {{"type", "web_search_call"},
+                                            {"id", "ws_9"},
+                                            {"status", "failed"}}}}),
+                            failed_result, failed_calls, failed_state);
   REQUIRE(failed.hosted_tool.has_value());
   CHECK(failed.hosted_tool->phase == HostedToolPhase::kFailed);
 
@@ -499,10 +501,9 @@ void TestWireStreamHostedSearch() {
   WireStreamState anthropic_state;
   std::vector<std::pair<std::string, std::string>> anthropic_steps;
   auto anthropic_event = [&](const json& value) {
-    WireStreamDelta delta =
-        DecodeWireStreamEvent(WireApi::kAnthropicMessages, JsonDump(value),
-                              anthropic_result, anthropic_calls,
-                              anthropic_state);
+    WireStreamDelta delta = DecodeWireStreamEvent(
+        WireApi::kAnthropicMessages, JsonDump(value), anthropic_result,
+        anthropic_calls, anthropic_state);
     if (!delta.hosted_tool) return;
     json payload = HostedToolJson(*delta.hosted_tool);
     anthropic_steps.emplace_back(payload["id"], payload["phase"]);

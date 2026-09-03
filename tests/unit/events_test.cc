@@ -95,8 +95,9 @@ void TestObservabilityEvents() {
   CHECK(received[0].data["text"] == "streamed");
   CHECK(received[1].type == "approval.requested");
   CHECK(received[1].data["tool"] == "edit_file");
-  Event search{EventId::kHostedToolActivity,
-               {{"tool", "web_search"}, {"id", "ws_1"}, {"phase", "searching"}}};
+  Event search{
+      EventId::kHostedToolActivity,
+      {{"tool", "web_search"}, {"id", "ws_1"}, {"phase", "searching"}}};
   SessionJournal searches;
   searches.Append(search, PolicyFor(search.id));
   CHECK(searches.Size() == 0);

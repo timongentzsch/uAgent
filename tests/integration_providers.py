@@ -728,9 +728,7 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home):
         records = events_for(wire_api, handler)
         searches = [r for r in records if r["type"] == "response.hosted_tool"]
         assert_true(len(searches) >= 2, (wire_api, [r["type"] for r in records]))
-        assert_true(
-            all(r["data"]["tool"] == "web_search" for r in searches), searches
-        )
+        assert_true(all(r["data"]["tool"] == "web_search" for r in searches), searches)
         assert_true(all(r["data"]["id"] == search_id for r in searches), searches)
         phases = [r["data"]["phase"] for r in searches]
         assert_true(phases[0] in {"started", "searching"}, (wire_api, phases))

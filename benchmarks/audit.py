@@ -237,26 +237,28 @@ def lint_probes() -> dict[str, int]:
     introduces the next change.
     """
     slop = collections.Counter(item["kind"] for item in slop_scan(sorted(SLOP_CHECKS)))
-    probe = subprocess.run(
-        [
-            "uv",
-            "run",
-            "--frozen",
-            "ruff",
-            "check",
-            "--select",
-            "ARG,ERA,F401,F841",
-            "--output-format",
-            "concise",
-            "tests",
-            "benchmarks",
-        ],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    findings = [line for line in probe.stdout.splitlines() if ": " in line]
+    findings = []
+    if shutil.which("uv"):
+        probe = subprocess.run(
+            [
+                "uv",
+                "run",
+                "--frozen",
+                "ruff",
+                "check",
+                "--select",
+                "ARG,ERA,F401,F841",
+                "--output-format",
+                "concise",
+                "tests",
+                "benchmarks",
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        findings = [line for line in probe.stdout.splitlines() if ": " in line]
     markers = subprocess.run(
         ["git", "grep", "-cE", r"TODO|FIXME|HACK", "--", "src", "include"],
         cwd=ROOT,

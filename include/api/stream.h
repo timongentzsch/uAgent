@@ -97,7 +97,8 @@ struct StreamCtx {
     // what it was so a presenter need not infer it from silence.
     if (delta.activity) MarkEvent();
     if (delta.hosted_tool) {
-      Emit(Event{EventId::kHostedToolActivity, HostedToolJson(*delta.hosted_tool)});
+      Emit(Event{EventId::kHostedToolActivity,
+                 HostedToolJson(*delta.hosted_tool)});
     }
     if (!delta.reasoning.empty()) {
       res->reasoning += delta.reasoning;

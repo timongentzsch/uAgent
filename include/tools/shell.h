@@ -60,7 +60,7 @@ ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
 bool StartsWithShellWord(const std::string& command, const std::string& word);
 std::string RunCommandPolicyError(const std::string& command);
 bool PythonScriptHasDependencies(const std::string& source);
-ToolResult ToolRunPython(ProcessSupervisor& supervisor,
+ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                          const std::filesystem::path& workspace,
                          const std::string& relative_path, const json& code,
                          const json& packages, const ToolContext& context = {});

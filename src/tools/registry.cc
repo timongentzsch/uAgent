@@ -330,7 +330,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   run.parallel_safe = true;
   run.command_policy = true;
 
-  // ToolRunPython runs the script under uv when it is there and falls back to
+  // ToolRunScratch runs the script under uv when it is there and falls back to
   // python3 otherwise, so a host with neither can only ever answer this tool
   // with an error. An 800-byte schema that cannot succeed is worse than an
   // absent one, and the same reasoning already gates show_image.
@@ -353,7 +353,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "required":["path","code","packages"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
-              return ToolRunPython(
+              return ToolRunScratch(
                   supervisor, workspace, JsonValue(a, "path", ""),
                   JsonValue(a, "code", json(nullptr)),
                   JsonValue(a, "packages", json(nullptr)), context);

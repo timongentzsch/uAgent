@@ -58,8 +58,10 @@ namespace uagent {
 // by hand.
 inline int64_t BudgetMs(int64_t milliseconds) {
   const char* scale = std::getenv("UAGENT_TEST_TIMEOUT_SCALE");
-  const double factor = scale ? std::atof(scale) : 1.0;
-  if (factor <= 1.0) return milliseconds;
+  if (scale == nullptr) return milliseconds;
+  char* end = nullptr;
+  const double factor = std::strtod(scale, &end);
+  if (end == scale || factor <= 1.0) return milliseconds;
   return static_cast<int64_t>(static_cast<double>(milliseconds) * factor);
 }
 

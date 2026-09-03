@@ -323,10 +323,11 @@ def test_skill_tool_offers_and_opens(root, home):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # /trace must describe a finished turn: typing it while the turn
-            # is still working traces an empty one, and the body sentinel the
-            # assertions below look for is never printed.
-            [(b"reply\n", b"skill-ok"), b"/trace\n", b"\x04"],
+            # /trace must describe a finished turn, and the EOF must not beat
+            # its output to the screen: waiting on a bare prompt matches the
+            # one already drawn for the finished turn, so this waits for the
+            # traced body itself.
+            [(b"reply\n", b"skill-ok"), (b"/trace\n", b"demo-body-sentinel"), b"\x04"],
             columns=24,
         )
         assert_true(code == 0, output)

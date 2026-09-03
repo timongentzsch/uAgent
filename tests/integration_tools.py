@@ -323,11 +323,14 @@ def test_skill_tool_offers_and_opens(root, home):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            # /trace must describe a finished turn, and the EOF must not beat
-            # its output to the screen: waiting on a bare prompt matches the
-            # one already drawn for the finished turn, so this waits for the
-            # traced body itself.
-            [(b"reply\n", b"skill-ok"), (b"/trace\n", b"demo-body-sentinel"), b"\x04"],
+            # /trace must describe a finished turn. The composer stays visible
+            # while the worker is active, so wait for its idle status after the
+            # answer before typing the command, then keep EOF behind its body.
+            [
+                (b"reply\n", b"skill-ok", b"test @ 127.0.0.1", None),
+                (b"/trace\n", b"demo-body-sentinel"),
+                b"\x04",
+            ],
             columns=24,
         )
         assert_true(code == 0, output)

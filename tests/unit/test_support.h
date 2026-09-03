@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <clocale>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -58,11 +59,16 @@ namespace uagent {
 // by hand.
 inline int64_t BudgetMs(int64_t milliseconds) {
   const char* scale = std::getenv("UAGENT_TEST_TIMEOUT_SCALE");
-  if (scale == nullptr) return milliseconds;
+  if (scale == nullptr || milliseconds <= 0) return milliseconds;
   char* end = nullptr;
   const double factor = std::strtod(scale, &end);
-  if (end == scale || factor <= 1.0) return milliseconds;
-  return static_cast<int64_t>(static_cast<double>(milliseconds) * factor);
+  const double scaled = static_cast<double>(milliseconds) * factor;
+  if (end == scale || *end != '\0' || !std::isfinite(factor) || factor <= 1.0 ||
+      !std::isfinite(scaled) ||
+      scaled >= static_cast<double>(std::numeric_limits<int64_t>::max())) {
+    return milliseconds;
+  }
+  return static_cast<int64_t>(scaled);
 }
 
 class TestWorkspace {

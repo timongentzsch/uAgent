@@ -404,11 +404,11 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(b"work\n\x1b", b"Interrupting"), b"/q\n"],
+            [(b"work\n\x1b", b"\xc2\xb7 interrupted"), b"/q\n"],
             timeout=8,
         )
         assert_true(code == 0, output)
-        assert_true(b"Interrupting" in output, output)
+        assert_true(b"\xc2\xb7 interrupted" in output, output)
         assert_true(b"too-late" not in output, output)
 
 

@@ -28,6 +28,7 @@ struct WireRequest {
   bool stream_usage = false;
   bool native_web_search = false;
   bool function_web_search = true;
+  bool include_web_search_sources = false;
 };
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);

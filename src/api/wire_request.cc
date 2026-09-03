@@ -332,7 +332,7 @@ json EncodeResponses(const WireRequest& request) {
     if (request.parallel_tools) body["parallel_tool_calls"] = true;
   }
   json include = json::array({"reasoning.encrypted_content"});
-  if (request.native_web_search) {
+  if (request.native_web_search && request.include_web_search_sources) {
     include.push_back("web_search_call.action.sources");
   }
   body["include"] = std::move(include);

@@ -35,6 +35,20 @@ BASELINE_PATH = ROOT / "benchmarks" / "baselines" / "slop.json"
 SOURCE_DIRS = ("src", "include")
 ALL_CODE_DIRS = ("src", "include", "tests", "benchmarks")
 DOC_FILES = ("README.md", "CONTRIBUTING.md", "CHANGELOG.md")
+
+# Agent Skills spec, plus the two extensions skills/README.md declares: one
+# Claude Code reads and one only uAgent does. ParseSkillFrontMatter ignores
+# unknown keys, so a typo like `requires-tool` is silent without this list.
+SKILL_SPEC_KEYS = frozenset(
+    {"name", "description", "license", "allowed-tools", "metadata", "compatibility"}
+)
+SKILL_EXTRA_KEYS = frozenset({"argument-hint", "requires-tools"})
+SKILL_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# The description carries the whole burden of deciding whether a skill loads,
+# so it has to name an occasion and not only a capability.
+SKILL_WHEN = re.compile(r"\buse\b[^.]{0,120}?\b(?:when|for|to|on|after|before)\b", re.IGNORECASE)
+SKILL_BODY_LINES = 500
+SKILL_CONTENTS_LINES = 100
 # The fixture tree plants an instance of every check deliberately, so scanning
 # it as ordinary source would report those forever. Compared as leading path
 # components rather than as a substring, so a future tests/fixtures/slop_old
@@ -255,12 +269,89 @@ def duplicate_sentences(root: Path = ROOT) -> list[dict[str, str]]:
     ]
 
 
+def skill_frontmatter(root: Path = ROOT) -> list[dict[str, str]]:
+    """Skill metadata the loader accepts but the authoring spec does not.
+
+    Path existence is already covered by stale_doc_path, which reads SKILL.md
+    among the docs, so this checks only what that cannot see: the front matter
+    itself, the body budget, and whether a reference file is navigable.
+    """
+    out = []
+    for skill in sorted((root / "skills").rglob("SKILL.md")):
+        lines = skill.read_text(errors="replace").splitlines()
+        details: list[str] = []
+        report = details.append
+        end = None
+        if not lines or lines[0].strip() != "---":
+            report("no front matter; the whole file is body")
+        else:
+            end = next((i for i, line in enumerate(lines[1:], 1) if line.strip() == "---"), None)
+            if end is None:
+                report("front matter is never closed")
+        if end is None:
+            out += [finding("skill_frontmatter", str(skill.relative_to(root)), d) for d in details]
+            continue
+        fields = {}
+        for line in lines[1:end]:
+            key, sep, value = line.partition(":")
+            if sep and not key.startswith(" "):
+                fields[key.strip()] = value.strip().strip("\"'")
+
+        for key in sorted(set(fields) - SKILL_SPEC_KEYS - SKILL_EXTRA_KEYS):
+            report(f"unknown front-matter key `{key}`")
+
+        name = fields.get("name", "")
+        directory = skill.parent.name
+        if not name:
+            report("no `name`")
+        elif name != directory:
+            report(f"`name` is {name!r} but the directory is {directory!r}, which wins")
+        elif not SKILL_NAME.match(name) or len(name) > 64:
+            report(f"`name` {name!r} is not lowercase-hyphen within 64 chars")
+        elif "claude" in name or "anthropic" in name:
+            report(f"`name` {name!r} uses a reserved word")
+
+        description = fields.get("description", "")
+        if not description:
+            report("no `description`")
+        elif len(description) > 1024:
+            report(f"`description` is {len(description)} chars, over 1024")
+        elif not SKILL_WHEN.search(description):
+            report("`description` says what it does but never when to use it")
+
+        body = len(lines) - end - 1
+        if body > SKILL_BODY_LINES:
+            report(f"body is {body} lines, over {SKILL_BODY_LINES}")
+
+        # References are reached from SKILL.md as backticked relative paths.
+        for target in sorted(set(re.findall(r"`([\w./-]+\.md)`", "\n".join(lines[end:])))):
+            reference = skill.parent / target
+            if not reference.is_file():
+                continue  # stale_doc_path owns absence
+            nested = reference.read_text(errors="replace")
+            if len(nested.splitlines()) > SKILL_CONTENTS_LINES and "## Contents" not in nested:
+                report(f"{target} is over {SKILL_CONTENTS_LINES} lines with no `## Contents`")
+            # A sibling is written either way in practice: relative to the
+            # reference itself, or from the skill root.
+            deeper = [
+                other
+                for other in re.findall(r"`([\w./-]+\.md)`", nested)
+                if other != target
+                and ((reference.parent / other).is_file() or (skill.parent / other).is_file())
+            ]
+            if deeper:
+                report(f"{target} points further at {deeper[0]}; keep references one level deep")
+        out += [finding("skill_frontmatter", str(skill.relative_to(root)), d) for d in details]
+    return out
+
+
 CHECKS = {
     "unreachable": unreachable_statements,
     "unused_declaration": unused_declarations,
     "duplicate_block": duplicate_blocks,
     "stale_doc_path": stale_doc_paths,
     "duplicate_sentence": duplicate_sentences,
+    "skill_frontmatter": skill_frontmatter,
 }
 
 

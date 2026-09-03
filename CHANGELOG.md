@@ -2,27 +2,6 @@
 
 ## Unreleased
 
-### Removed
-
-- The text-protocol fallback is gone. It let a route that rejected native tool
-  calls keep working by having the model emit
-  `[uagent_tool_call]{...}[/uagent_tool_call]` blocks, and across 60 real
-  sessions and 7,660 recorded tool calls it activated exactly zero times, while
-  costing a branch in the hottest paths: the turn loop, the tool loop, the
-  transcript printer, the compaction summariser, the trace builder and the
-  capability negotiator each carried a second protocol. A route that rejects
-  native tool calls now fails with the provider's own message instead of
-  degrading, `native_tools` is no longer a negotiable capability, and tool
-  output is no longer delimiter-escaped on its way back to the model because
-  there is no syntax left for it to imitate. `text_protocol` is gone from the
-  JSONL tool-call projection and the session journal.
-
-  Recognizing *other* harnesses' call syntax is unaffected and slightly wider:
-  a bracketed marker followed immediately by `{` now joins the angle-bracket
-  forms, so a model that emits call syntax as content is still suppressed and
-  asked for a real call rather than having the markup printed as an answer.
-  Detection stays broader than execution, and execution is now zero.
-
 ### Added
 
 - `scratch` runs a `.sh` script as well as a `.py` one, chosen by the path's
@@ -125,6 +104,27 @@
   comparisons then use only matched tasks where both variants succeed, while a
   control-only success still rejects and a treatment-only success counts as a
   capability gain without rewarding fast failure.
+
+### Removed
+
+- The text-protocol fallback is gone. It let a route that rejected native tool
+  calls keep working by having the model emit
+  `[uagent_tool_call]{...}[/uagent_tool_call]` blocks, and across 60 real
+  sessions and 7,660 recorded tool calls it activated exactly zero times, while
+  costing a branch in the hottest paths: the turn loop, the tool loop, the
+  transcript printer, the compaction summariser, the trace builder and the
+  capability negotiator each carried a second protocol. A route that rejects
+  native tool calls now fails with the provider's own message instead of
+  degrading, `native_tools` is no longer a negotiable capability, and tool
+  output is no longer delimiter-escaped on its way back to the model because
+  there is no syntax left for it to imitate. `text_protocol` is gone from the
+  JSONL tool-call projection and the session journal.
+
+  Recognizing *other* harnesses' call syntax is unaffected and slightly wider:
+  a bracketed marker followed immediately by `{` now joins the angle-bracket
+  forms, so a model that emits call syntax as content is still suppressed and
+  asked for a real call rather than having the markup printed as an answer.
+  Detection stays broader than execution, and execution is now zero.
 
 ## v0.9.0 - 2026-08-27
 

@@ -47,6 +47,13 @@
 
 ### Changed
 
+- The memory index carries an opening clause for each global memory instead of
+  a bare key. A key says a memory exists and not what it holds, so the globals
+  the always-on slice has no room for were listed every session and never
+  opened. Global scope only: a global's body is already eligible for every
+  request through that slice, while project-scoped bodies are deliberately
+  never injected, and a hook there would put every workspace's notes into every
+  prompt.
 - The always-on memory slice admits the smallest global memories rather than
   the most recently written. Measured on a real store, that is seven standing
   preferences in the prompt instead of four, out of twenty-one: every global is

@@ -58,10 +58,23 @@ void TestMemoryAlwaysOnSelection() {
   CHECK(touched.text == always.text);
 
   // The index carries every memory regardless, so what the slice drops is
-  // still reachable by name.
+  // still reachable -- and each line says enough to judge whether it is worth
+  // fetching, which a bare key does not.
+  {
+    std::ofstream out(globals / "hooked.md");
+    out << "Prefer the measured number. Everything after this is elaboration "
+           "that the index has no room for.\n";
+  }
   MemoryIndex index = LoadMemoryIndex(root, 4096);
   CHECK(index.text.find("global/enormous") != std::string::npos);
+  CHECK(index.text.find("- global/hooked: Prefer the measured number\n") !=
+        std::string::npos);
+  CHECK(index.text.find("elaboration") == std::string::npos);
   CHECK(!index.truncated);
+  // A hook never costs the index its budget: the cap still binds.
+  MemoryIndex tight = LoadMemoryIndex(root, 40);
+  CHECK(tight.truncated);
+  CHECK(tight.text.size() <= 40);
 
   if (prior_home) {
     setenv("HOME", saved_home.c_str(), 1);

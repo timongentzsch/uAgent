@@ -19,6 +19,7 @@ from integration_support import (
     base_env,
     event,
     run,
+    run_dialog,
     run_pty,
     tool_call,
 )
@@ -43,10 +44,10 @@ def run_once(root, env, command, *flags):
     with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
         env = dict(env)
         env["UAGENT_BASE_URL"] = server.url
-        return run(workspace(root), env, "--yolo", *flags, "-p", "go", timeout=30)
+        return run_dialog(workspace(root), env, "y\n", *flags, "-p", "go", timeout=30)
 
 
-def tool_output(root, env, command, **arguments):
+def tool_output(root, env, command, headless=False, **arguments):
     """The same turn, but returning what the tool reported back to the model."""
     seen = []
 
@@ -60,7 +61,10 @@ def tool_output(root, env, command, **arguments):
     with Server([route]) as server:
         env = dict(env)
         env["UAGENT_BASE_URL"] = server.url
-        run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
+        if headless:
+            run(workspace(root), env, "--yolo", "-p", "go", timeout=30)
+        else:
+            run_dialog(workspace(root), env, "y\n", "-p", "go", timeout=30)
     return seen[0] if seen else ""
 
 
@@ -76,6 +80,63 @@ def sandbox_enforced(root, home):
     escaped = probe.exists()
     probe.unlink(missing_ok=True)
     return not escaped
+
+
+def test_yolo_disables_the_sandbox_from_cli_and_config(root, home):
+    """Both startup forms of yolo run the default shell path unconfined."""
+    if not sandbox_enforced(root, home):
+        return
+    for source in ("cli", "config"):
+        outside = root / f"yolo-{source}.txt"
+        command = f"echo x > {outside}"
+        with Server([tool_call("run", {"command": command}), event({"content": "ok"})]) as server:
+            env = sandbox_env(home, server.url)
+            flags = ("--yolo",) if source == "cli" else ()
+            if source == "config":
+                env["UAGENT_APPROVAL"] = "yolo"
+            result = run(workspace(root), env, *flags, "-p", "go", timeout=30)
+        assert_true(result.returncode == 0, (result.stdout, result.stderr))
+        assert_true(outside.exists(), f"{source} yolo still used the sandbox")
+
+
+def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home):
+    """Interactive /yolo disables confinement and restores it when toggled off."""
+    if not sandbox_enforced(root, home):
+        return
+    unconfined = root / "toggle-yolo.txt"
+    confined = root / "toggle-prompt.txt"
+
+    def route(_, body):
+        messages = body["messages"]
+        turns = [
+            (index, str(message.get("content", "")))
+            for index, message in enumerate(messages)
+            if message.get("role") == "user"
+            and str(message.get("content", "")) in {"unconfined", "confined"}
+        ]
+        assert_true(turns, messages)
+        turn_start, prompt = turns[-1]
+        results = [
+            message for message in messages[turn_start + 1 :] if message.get("role") == "tool"
+        ]
+        if results:
+            return event({"content": f"{prompt}-ok"})
+        target = unconfined if prompt == "unconfined" else confined
+        return tool_call("run", {"command": f"echo x > {target}"})
+
+    with Server([route]) as server:
+        result = run_dialog(
+            workspace(root),
+            sandbox_env(home, server.url),
+            "/yolo\nunconfined\n/yolo\nconfined\ny\n/q\n",
+            timeout=30,
+        )
+    assert_true(result.returncode == 0, (result.stdout, result.stderr))
+    assert_true(unconfined.exists(), f"/yolo did not disable confinement: {result.stdout}")
+    assert_true(
+        not confined.exists(),
+        f"toggling /yolo off did not restore confinement: {result.stdout}",
+    )
 
 
 def test_sandbox_confines_writes_to_the_workspace(root, home):
@@ -209,7 +270,13 @@ def test_sandbox_escape_hatch_needs_a_person(root, home):
     if not sandbox_enforced(root, home):
         return
     outside = root / "hatch-headless.txt"
-    output = tool_output(root, sandbox_env(home, ""), f"echo x > {outside}", sandbox=False)
+    output = tool_output(
+        root,
+        sandbox_env(home, ""),
+        f"echo x > {outside}",
+        headless=True,
+        sandbox=False,
+    )
     assert_true(not outside.exists(), "an unconfined command ran with nobody to approve it")
     assert_true("denied" in output.lower(), f"the hatch was not denied: {output}")
 

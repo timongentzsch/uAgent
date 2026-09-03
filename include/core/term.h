@@ -169,6 +169,19 @@ class TerminalSpinner {
     wake_.notify_one();
   }
 
+  // Rename the live row: what the response is waiting on has changed, and the
+  // caller has something more useful to say than the label it started with.
+  // Leaves rolling mode, so a later SetRolling re-enters it at the live edge.
+  void SetLabel(std::string label) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      label_ = label;
+    }
+    rolling_.store(false, std::memory_order_relaxed);
+    UpdateTerminalActivity(activity_id_, std::move(label));
+    wake_.notify_one();
+  }
+
   void Stop() {
     if (!active_) return;
     if (thread_.joinable()) {

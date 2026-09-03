@@ -19,6 +19,7 @@
 
 #include "include/core/env.h"
 #include "include/core/fd.h"
+#include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/sandbox.h"
 #include "include/core/signals.h"
@@ -272,6 +273,11 @@ const SandboxStatus& SandboxRuntime() {
 }
 
 json SandboxDiagnosticJson() {
+  if (ApprovalIsAutomatic()) {
+    return {{"mode", "off"},
+            {"reason", "yolo approval mode"},
+            {"summary", "off (yolo)"}};
+  }
   const SandboxStatus& status = SandboxRuntime();
   switch (status.mode) {
     case SandboxMode::kOff:

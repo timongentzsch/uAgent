@@ -574,6 +574,7 @@ Agent::ToolRefresher MakeToolRefresher(AppContext* app) {
 // Two things a session must not discover only when a command fails: that the
 // sandbox it asked for is not running, and that a root it listed was dropped.
 void ReportSandbox() {
+  if (ApprovalIsAutomatic()) return;
   const SandboxStatus& status = SandboxRuntime();
   if (status.mode == SandboxMode::kDegraded) {
     Emit(Event{EventId::kCapabilityChanged,

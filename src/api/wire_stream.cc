@@ -60,6 +60,53 @@ void ApplyStreamError(const json& error, ChatResult& result,
   }
 }
 
+int HostedToolRank(HostedToolPhase phase) {
+  switch (phase) {
+    case HostedToolPhase::kNone:
+      return -1;
+    case HostedToolPhase::kStarted:
+      return 0;
+    case HostedToolPhase::kSearching:
+      return 1;
+    case HostedToolPhase::kCompleted:
+    case HostedToolPhase::kFailed:
+      return 2;
+  }
+  return -1;
+}
+
+// What a search is tracked under. Providers always name one, but a stream
+// that omits the id still has a stable slot, and correlating by position is
+// what keeps a nameless search from merging with the next one.
+std::string HostedToolKey(const std::string& id, int slot) {
+  return id.empty() ? "#" + std::to_string(slot) : id;
+}
+
+HostedToolPhase SearchStopPhase(std::string_view status) {
+  return status == "failed" || status == "incomplete"
+             ? HostedToolPhase::kFailed
+             : HostedToolPhase::kCompleted;
+}
+
+// Record one step of a hosted search, reporting it only when it advances that
+// search. Counting rides the same key, so a provider repeating a terminal
+// event neither doubles the request count nor the step the presenter sees.
+void MarkHostedTool(WireStreamDelta& delta, HostedToolState& state,
+                    const std::string& key, std::string id,
+                    HostedToolPhase phase, int64_t source_count) {
+  HostedToolPhase& tracked = state.phases[key];
+  if (HostedToolRank(phase) <= HostedToolRank(tracked)) return;
+  if (tracked == HostedToolPhase::kNone) ++state.web_searches;
+  tracked = phase;
+  delta.hosted_tool = HostedToolDelta{HostedTool::kWebSearch, phase,
+                                      std::move(id), source_count};
+}
+
+int64_t JsonArraySize(const json& value, const char* key) {
+  const json* array = JsonArray(value, key);
+  return array ? static_cast<int64_t>(array->size()) : -1;
+}
+
 int ResponsesSlot(const json& value, ResponsesStreamState& state,
                   const std::map<int, ToolCall>& calls) {
   int64_t output_index = JsonValue(value, "output_index", int64_t{-1});
@@ -190,7 +237,17 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (type.ends_with(".done")) {
       RecordResponsesReplay(ResponsesSlot(value, state, calls), *item, state,
                             result);
-      if (item_type == "web_search_call") ++state.web_searches;
+    }
+    if (item_type == "web_search_call") {
+      const json* action = JsonObject(*item, "action");
+      std::string id = JsonValue(*item, "id", "");
+      MarkHostedTool(delta, state.hosted,
+                     HostedToolKey(id, ResponsesSlot(value, state, calls)),
+                     std::move(id),
+                     type.ends_with(".added")
+                         ? HostedToolPhase::kStarted
+                         : SearchStopPhase(JsonValue(*item, "status", "")),
+                     action ? JsonArraySize(*action, "sources") : -1);
     }
     delta.activity = true;
     return delta;
@@ -202,21 +259,31 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
       result.finish_reason = JsonValue(*response, "status", "completed");
       result.stop_cause = ClassifyResponseStop(result.finish_reason);
     }
-    if (state.web_searches > 0) {
+    if (state.hosted.web_searches > 0) {
       const json* details = JsonObject(result.usage, "server_tool_use_details");
       if (!details ||
           JsonValue(*details, "web_search_requests", int64_t{0}) == 0) {
         json& counts = EnsureObject(result.usage, "server_tool_use_details");
-        counts["web_search_requests"] = state.web_searches;
+        counts["web_search_requests"] = state.hosted.web_searches;
       }
     }
     delta.activity = true;
     return delta;
   }
-  if (type == "response.created" || type == "response.in_progress" ||
-      type == "response.web_search_call.in_progress" ||
-      type == "response.web_search_call.searching" ||
-      type == "response.web_search_call.completed") {
+  if (type.starts_with("response.web_search_call.")) {
+    std::string id = JsonValue(value, "item_id", "");
+    HostedToolPhase phase = type.ends_with(".searching")
+                                ? HostedToolPhase::kSearching
+                            : type.ends_with(".completed")
+                                ? HostedToolPhase::kCompleted
+                                : HostedToolPhase::kStarted;
+    MarkHostedTool(delta, state.hosted,
+                   HostedToolKey(id, ResponsesSlot(value, state, calls)),
+                   std::move(id), phase, /*source_count=*/-1);
+    delta.activity = true;
+    return delta;
+  }
+  if (type == "response.created" || type == "response.in_progress") {
     delta.activity = true;
   }
   return delta;
@@ -274,12 +341,12 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       delta.activity = true;
     } else if (type == "message_stop") {
       SetAnthropicReplay(state, result);
-      if (state.web_searches > 0) {
+      if (state.hosted.web_searches > 0) {
         const json* server = JsonObject(result.usage, "server_tool_use");
         if (!server ||
             JsonValue(*server, "web_search_requests", int64_t{0}) == 0) {
           json& counts = EnsureObject(result.usage, "server_tool_use");
-          counts["web_search_requests"] = state.web_searches;
+          counts["web_search_requests"] = state.hosted.web_searches;
         }
       }
       delta.activity = true;
@@ -308,7 +375,24 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
       }
     } else if (block_type == "server_tool_use" &&
                JsonValue(*started, "name", "") == "web_search") {
-      ++state.web_searches;
+      std::string id = JsonValue(*started, "id", "");
+      state.open_search = HostedToolKey(id, index);
+      MarkHostedTool(delta, state.hosted, state.open_search, std::move(id),
+                     HostedToolPhase::kSearching, /*source_count=*/-1);
+    } else if (block_type == "web_search_tool_result") {
+      // An error record is a failed search, not a completed one with no
+      // sources; Anthropic reports it in place of the result array.
+      const json* failure = JsonObject(*started, "content");
+      std::string id = JsonValue(*started, "tool_use_id", "");
+      std::string key = id.empty() && !state.open_search.empty()
+                            ? state.open_search
+                            : HostedToolKey(id, index);
+      MarkHostedTool(delta, state.hosted, key, std::move(id),
+                     failure && JsonValue(*failure, "type", "") ==
+                                    "web_search_tool_result_error"
+                         ? HostedToolPhase::kFailed
+                         : HostedToolPhase::kCompleted,
+                     JsonArraySize(*started, "content"));
     }
     delta.activity = true;
     return delta;
@@ -364,6 +448,35 @@ WireStreamDelta DecodeAnthropicEvent(const json& value, ChatResult& result,
 }
 
 }  // namespace
+
+json HostedToolJson(const HostedToolDelta& delta) {
+  const char* phase = "none";
+  switch (delta.phase) {
+    case HostedToolPhase::kNone:
+      break;
+    case HostedToolPhase::kStarted:
+      phase = "started";
+      break;
+    case HostedToolPhase::kSearching:
+      phase = "searching";
+      break;
+    case HostedToolPhase::kCompleted:
+      phase = "completed";
+      break;
+    case HostedToolPhase::kFailed:
+      phase = "failed";
+      break;
+  }
+  const char* tool = "web_search";
+  switch (delta.tool) {
+    case HostedTool::kWebSearch:
+      tool = "web_search";
+      break;
+  }
+  json value = {{"tool", tool}, {"id", delta.id}, {"phase", phase}};
+  if (delta.source_count >= 0) value["source_count"] = delta.source_count;
+  return value;
+}
 
 std::string_view WireEndpoint(WireApi wire_api) {
   switch (wire_api) {

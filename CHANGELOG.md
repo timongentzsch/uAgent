@@ -4,6 +4,13 @@
 
 ### Added
 
+- Native hosted web search now reports one provider-neutral lifecycle across
+  OpenAI Responses and Anthropic Messages. The terminal shows `searching the
+  web` while a provider-side search is active, then restores the prior
+  reasoning ticker or waiting status; application subscribers and
+  `--json-stream` receive transient `response.hosted_tool` events without
+  exposing generated queries or turning server tools into executable calls.
+
 - `scratch` runs a `.sh` script as well as a `.py` one, chosen by the path's
   extension. Half of every shell byte this agent sends is already a byte-exact
   repeat within the same session -- 3.08 MB of 6.18 MB across 18,564 measured
@@ -25,6 +32,10 @@
   compose a long prompt.
 
 ### Changed
+
+- Yolo mode now disables the OS sandbox as well as approval prompts. This
+  applies equally to `--yolo`, `UAGENT_APPROVAL=yolo`, and an interactive
+  `/yolo` toggle; toggling it off restores confinement for the next command.
 
 - The memory index carries an opening clause for each global memory instead of
   a bare key. A key says a memory exists and not what it holds, so the globals

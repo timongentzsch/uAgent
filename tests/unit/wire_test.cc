@@ -4,6 +4,8 @@
 
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "include/api.h"
 #include "include/api/stream.h"
@@ -413,6 +415,156 @@ void TestWireStreams() {
     CHECK(decode_split(WireApi::kAnthropicMessages, anthropic_wire, split) ==
           "beta");
   }
+}
+
+// A search the provider runs is visible progress, not a round this agent owes
+// a result for. Both halves matter: the lifecycle has to reach a presenter,
+// and the search must never reach the tool loop.
+void TestWireStreamHostedSearch() {
+  ChatResult result;
+  std::map<int, ToolCall> calls;
+  WireStreamState state;
+  std::vector<std::pair<std::string, std::string>> steps;
+  auto responses_event = [&](const json& value) {
+    WireStreamDelta delta = DecodeWireStreamEvent(
+        WireApi::kResponses, JsonDump(value), result, calls, state);
+    CHECK(delta.activity);
+    if (delta.hosted_tool) {
+      json payload = HostedToolJson(*delta.hosted_tool);
+      CHECK(payload["tool"] == "web_search");
+      steps.emplace_back(payload["id"], payload["phase"]);
+    }
+  };
+  responses_event({{"type", "response.output_item.added"},
+                   {"output_index", 0},
+                   {"item",
+                    {{"type", "web_search_call"},
+                     {"id", "ws_1"},
+                     {"status", "in_progress"}}}});
+  responses_event({{"type", "response.web_search_call.in_progress"},
+                   {"output_index", 0},
+                   {"item_id", "ws_1"}});
+  responses_event({{"type", "response.web_search_call.searching"},
+                   {"output_index", 0},
+                   {"item_id", "ws_1"}});
+  responses_event({{"type", "response.web_search_call.completed"},
+                   {"output_index", 0},
+                   {"item_id", "ws_1"}});
+  // Responses reports the same finished search a second time as an output
+  // item; a duplicate step would restart a spinner the row already left.
+  responses_event(
+      {{"type", "response.output_item.done"},
+       {"output_index", 0},
+       {"item",
+        {{"type", "web_search_call"},
+         {"id", "ws_1"},
+         {"status", "completed"},
+         {"action", {{"sources", json::array({{{"url", "https://a.test"}},
+                                              {{"url", "https://b.test"}}})}}}}}});
+  responses_event({{"type", "response.completed"},
+                   {"response", {{"status", "completed"}, {"usage", json::object()}}}});
+  const decltype(steps) expected_steps = {
+      {"ws_1", "started"}, {"ws_1", "searching"}, {"ws_1", "completed"}};
+  CHECK(steps == expected_steps);
+  CHECK(result.usage["server_tool_use_details"]["web_search_requests"] == 1);
+  CHECK(CollectToolCalls(calls, result));
+  CHECK(result.tool_calls.empty());
+
+  // A second search is its own lifecycle, not a continuation of the first.
+  responses_event({{"type", "response.output_item.added"},
+                   {"output_index", 1},
+                   {"item", {{"type", "web_search_call"}, {"id", "ws_2"}}}});
+  CHECK(steps.size() == 4);
+  CHECK(steps.back() == std::make_pair(std::string("ws_2"),
+                                       std::string("started")));
+
+  // A search item the provider marks failed is a failure, not an empty result.
+  ChatResult failed_result;
+  std::map<int, ToolCall> failed_calls;
+  WireStreamState failed_state;
+  WireStreamDelta failed = DecodeWireStreamEvent(
+      WireApi::kResponses,
+      JsonDump(json{{"type", "response.output_item.done"},
+                    {"output_index", 0},
+                    {"item",
+                     {{"type", "web_search_call"},
+                      {"id", "ws_9"},
+                      {"status", "failed"}}}}),
+      failed_result, failed_calls, failed_state);
+  REQUIRE(failed.hosted_tool.has_value());
+  CHECK(failed.hosted_tool->phase == HostedToolPhase::kFailed);
+
+  ChatResult anthropic_result;
+  std::map<int, ToolCall> anthropic_calls;
+  WireStreamState anthropic_state;
+  std::vector<std::pair<std::string, std::string>> anthropic_steps;
+  auto anthropic_event = [&](const json& value) {
+    WireStreamDelta delta =
+        DecodeWireStreamEvent(WireApi::kAnthropicMessages, JsonDump(value),
+                              anthropic_result, anthropic_calls,
+                              anthropic_state);
+    if (!delta.hosted_tool) return;
+    json payload = HostedToolJson(*delta.hosted_tool);
+    anthropic_steps.emplace_back(payload["id"], payload["phase"]);
+  };
+  anthropic_event({{"type", "content_block_start"},
+                   {"index", 0},
+                   {"content_block",
+                    {{"type", "server_tool_use"},
+                     {"id", "srvtoolu_1"},
+                     {"name", "web_search"},
+                     {"input", {{"query", "C++26"}}}}}});
+  anthropic_event(
+      {{"type", "content_block_start"},
+       {"index", 1},
+       {"content_block",
+        {{"type", "web_search_tool_result"},
+         {"tool_use_id", "srvtoolu_1"},
+         {"content", json::array({{{"type", "web_search_result"},
+                                   {"url", "https://example.test/cpp"}}})}}}});
+  anthropic_event({{"type", "content_block_start"},
+                   {"index", 2},
+                   {"content_block",
+                    {{"type", "tool_use"},
+                     {"id", "tool-1"},
+                     {"name", "read_path"},
+                     {"input", json::object()}}}});
+  anthropic_event({{"type", "content_block_stop"}, {"index", 2}});
+  anthropic_event({{"type", "message_stop"}});
+  const decltype(anthropic_steps) expected_anthropic = {
+      {"srvtoolu_1", "searching"}, {"srvtoolu_1", "completed"}};
+  CHECK(anthropic_steps == expected_anthropic);
+  // One search, counted once, though it is named by both of its blocks.
+  CHECK(anthropic_result.usage["server_tool_use"]["web_search_requests"] == 1);
+  // The ordinary call still executes; only the hosted one is held back.
+  CHECK(CollectToolCalls(anthropic_calls, anthropic_result));
+  CHECK(anthropic_result.tool_calls.size() == 1);
+  CHECK(anthropic_result.tool_calls[0].name == "read_path");
+  // Both server-tool blocks stay in the replay a pause_turn resends.
+  CHECK(anthropic_result.replay["content"].size() == 3);
+  CHECK(anthropic_result.replay["content"][0]["type"] == "server_tool_use");
+  CHECK(anthropic_result.replay["content"][1]["type"] ==
+        "web_search_tool_result");
+
+  // An error record in place of results is a failed search.
+  ChatResult error_result;
+  std::map<int, ToolCall> error_calls;
+  WireStreamState error_state;
+  WireStreamDelta error_delta = DecodeWireStreamEvent(
+      WireApi::kAnthropicMessages,
+      JsonDump(json{{"type", "content_block_start"},
+                    {"index", 0},
+                    {"content_block",
+                     {{"type", "web_search_tool_result"},
+                      {"tool_use_id", "srvtoolu_2"},
+                      {"content",
+                       {{"type", "web_search_tool_result_error"},
+                        {"error_code", "unavailable"}}}}}}),
+      error_result, error_calls, error_state);
+  REQUIRE(error_delta.hosted_tool.has_value());
+  CHECK(error_delta.hosted_tool->phase == HostedToolPhase::kFailed);
+  CHECK(HostedToolJson(*error_delta.hosted_tool).contains("source_count") ==
+        false);
 }
 
 // Usage and citation payloads are provider-controlled, and under

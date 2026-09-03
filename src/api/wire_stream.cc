@@ -241,9 +241,11 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
     if (item_type == "web_search_call") {
       const json* action = JsonObject(*item, "action");
       std::string id = JsonValue(*item, "id", "");
-      MarkHostedTool(delta, state.hosted,
-                     HostedToolKey(id, ResponsesSlot(value, state, calls)),
-                     std::move(id),
+      // The key reads `id` and the same call then moves it. Argument
+      // evaluation order is unspecified, so the key is built first rather
+      // than racing the move.
+      std::string key = HostedToolKey(id, ResponsesSlot(value, state, calls));
+      MarkHostedTool(delta, state.hosted, key, std::move(id),
                      type.ends_with(".added")
                          ? HostedToolPhase::kStarted
                          : SearchStopPhase(JsonValue(*item, "status", "")),
@@ -276,9 +278,9 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
         type.ends_with(".searching")   ? HostedToolPhase::kSearching
         : type.ends_with(".completed") ? HostedToolPhase::kCompleted
                                        : HostedToolPhase::kStarted;
-    MarkHostedTool(delta, state.hosted,
-                   HostedToolKey(id, ResponsesSlot(value, state, calls)),
-                   std::move(id), phase, /*source_count=*/-1);
+    std::string key = HostedToolKey(id, ResponsesSlot(value, state, calls));
+    MarkHostedTool(delta, state.hosted, key, std::move(id), phase,
+                   /*source_count=*/-1);
     delta.activity = true;
     return delta;
   }
@@ -466,7 +468,9 @@ json HostedToolJson(const HostedToolDelta& delta) {
       phase = "failed";
       break;
   }
-  const char* tool = "web_search";
+  // Named rather than initialised to the same literal the switch assigns: a
+  // dead store there would hide a future enumerator that falls through.
+  const char* tool = nullptr;
   switch (delta.tool) {
     case HostedTool::kWebSearch:
       tool = "web_search";

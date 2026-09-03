@@ -51,6 +51,18 @@
 
 namespace uagent {
 
+// Scale a millisecond deadline for an instrumented build, mirroring the Python
+// harness's budget(). A sanitizer leg starts and renders several times slower
+// than a plain one, so a fixed PTY round-trip budget there is a coin flip; CI
+// raises the multiplier for those jobs rather than each deadline being retuned
+// by hand.
+inline int64_t BudgetMs(int64_t milliseconds) {
+  const char* scale = std::getenv("UAGENT_TEST_TIMEOUT_SCALE");
+  const double factor = scale ? std::atof(scale) : 1.0;
+  if (factor <= 1.0) return milliseconds;
+  return static_cast<int64_t>(static_cast<double>(milliseconds) * factor);
+}
+
 class TestWorkspace {
  public:
   explicit TestWorkspace(const std::string& name)

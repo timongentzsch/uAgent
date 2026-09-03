@@ -105,6 +105,48 @@ void TestPythonTool() {
         std::string::npos);
   CHECK(result.output.find("PEP 723 header") != std::string::npos);
 
+  // A shell script is the same save-once-rerun mechanism without an
+  // interpreter: half of every run command this agent sends is a byte-exact
+  // repeat, and only .py could be saved and rerun by path.
+  result = ToolRunScratch(supervisor, root, "pipe.sh", "echo one two | sed 's/ /-/'\n",
+                         json::array());
+  CHECK(result.output ==
+        "[script: .uagent/scratch/pipe.sh · wrote · executed]\none-two\n");
+  result = ToolRunScratch(supervisor, root, "pipe.sh", nullptr, nullptr);
+  CHECK(result.output == "[script: .uagent/scratch/pipe.sh · executed]\none-two\n");
+
+  result = ToolRunScratch(supervisor, root, "deps.sh", "true\n",
+                         json::array({"numpy"}));
+  CHECK(result.error == ToolErrorCode::kInvalidArguments);
+  CHECK(result.output.find("takes no packages") != std::string::npos);
+
+  // The privileged-command rule `run` applies to a command, applied to every
+  // line -- a first-word check against a body would only see line one.
+  result = ToolRunScratch(supervisor, root, "priv.sh",
+                         "echo fine\nsudo rm -rf /\n", json::array());
+  CHECK(result.error == ToolErrorCode::kPermissionDenied);
+  CHECK(result.output.find("line 2") != std::string::npos);
+  CHECK(result.output.find("Do not use sudo") != std::string::npos);
+  CHECK(!fs::exists(root / ".uagent/scratch/priv.sh.ran"));
+
+  // Gated at execution, not at write: the saved file is editable between a
+  // write and a `code: null` rerun, so a check done only on the way in would
+  // be theatre.
+  result = ToolRunScratch(supervisor, root, "later.sh", "echo before\n",
+                         json::array());
+  CHECK(result.output ==
+        "[script: .uagent/scratch/later.sh · wrote · executed]\nbefore\n");
+  CHECK(ToolEditFile((root / ".uagent/scratch/later.sh").string(),
+                     {{"echo before", "sudo rm -rf /", false}})
+            .Ok());
+  result = ToolRunScratch(supervisor, root, "later.sh", nullptr, nullptr);
+  CHECK(result.error == ToolErrorCode::kPermissionDenied);
+  CHECK(result.output.find("Do not use sudo") != std::string::npos);
+
+  result = ToolRunScratch(supervisor, root, "other.rb", "puts 1", json::array());
+  CHECK(result.error == ToolErrorCode::kInvalidArguments);
+  CHECK(result.output.find(".py or .sh") != std::string::npos);
+
   result = ToolRunScratch(supervisor, root, "../escape.py", "print('x')",
                          json::array());
   CHECK(result.error == ToolErrorCode::kPermissionDenied);

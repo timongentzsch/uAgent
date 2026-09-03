@@ -5,7 +5,7 @@
 
 Descriptions are what the model reads, including the batching and budget suffixes the registry appends. `bytes` is what one schema costs in every request that advertises it, and `when` says which sessions pay it. `schema` digests the complete JSON parameters, so an argument or its description cannot change without changing this table. Conditionally registered tools are rendered from empty dependencies: the route- and skill-catalogue text a live session splices in, and MCP tools, appear in `/context` instead.
 
-Advertised schema text totals 12579 bytes, of which 5314 bytes are sent by every session.
+Advertised schema text totals 12666 bytes, of which 5401 bytes are sent by every session.
 
 | Tool | Bytes | Arguments | Lean | Batchable | When | Schema | Description |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -17,7 +17,7 @@ Advertised schema text totals 12579 bytes, of which 5314 bytes are sent by every
 | `grep` | 496 | `context?, glob?, mode?, path?, pattern` | yes | yes | always | `419febbcc0d3` | Locate file paths or matching content with a regex under an optional path and glob. Use mode=files to match paths and read_path afterward. Batchable with independent calls. |
 | `attach` | 210 | `path` | yes | yes | always | `248d9b4cfbdb` | Add an image/document to model context when read_path cannot parse it. Batchable with independent calls. |
 | `run` | 1077 | `command, detach?, max_output_chars?, sandbox?, shell?, tty?, yield_ms?` | yes | yes | always | `ec358b83d219` | Execute a non-privileged build, test, or shell command in cwd (bash default; omit cd; no sudo). Set tty=true only when the process needs interactive stdin. Do not use it for file search, reading, or editing when a dedicated tool exists. Use a project's existing Python runner such as uv run or pytest. Detach only for a persistent terminal that may outlive the current session. Batchable with independent calls. |
-| `scratch` | 732 | `code, packages, path` | yes | no | always | `1da5c2f0e9eb` | Run a one-off Python script when shell is insufficient, never for requested project code. Writes or replaces one persistent script under .uagent/scratch and runs it under isolated uv. |
+| `scratch` | 819 | `code, packages, path` | yes | no | always | `f0906e8929b4` | Run a one-off script, never requested project code. Writes or replaces one persistent script under .uagent/scratch and reruns it by path: prefer this over resending a long shell pipeline or heredoc through run. .py runs under isolated uv, .sh under sh. |
 | `activity` | 1077 | `chars?, cols?, id?, max_output_chars?, mode?, operation, rows?, until?, wait_ms?` | yes | yes | detached activity | `a664dba0e572` | Inspect or drive activities with an explicit operation: list, poll one, wait for any/all, write to one, resize its PTY, or stop one — stop terminates its complete process group and cleans its log. Completion never starts a model turn. Batchable with independent calls. |
 | `memory` | 721 | `action, content?, key?` | no | no | memory enabled | `e397f5100891` | List or search memory when the startup index is insufficient; get a body only when relevant. Set or forget only when the user asks, except that the dedicated background extractor may set one native memory. Never save task progress, guesses, secrets, commands, or permissions. Codex and Claude memories are read-only. |
 | `show_image` | 163 | `path` | yes | no | terminal images | `248d9b4cfbdb` | Display a local image using the native terminal protocol. |

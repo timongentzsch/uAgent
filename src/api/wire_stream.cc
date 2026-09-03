@@ -272,11 +272,10 @@ WireStreamDelta DecodeResponsesEvent(const json& value, ChatResult& result,
   }
   if (type.starts_with("response.web_search_call.")) {
     std::string id = JsonValue(value, "item_id", "");
-    HostedToolPhase phase = type.ends_with(".searching")
-                                ? HostedToolPhase::kSearching
-                            : type.ends_with(".completed")
-                                ? HostedToolPhase::kCompleted
-                                : HostedToolPhase::kStarted;
+    HostedToolPhase phase =
+        type.ends_with(".searching")   ? HostedToolPhase::kSearching
+        : type.ends_with(".completed") ? HostedToolPhase::kCompleted
+                                       : HostedToolPhase::kStarted;
     MarkHostedTool(delta, state.hosted,
                    HostedToolKey(id, ResponsesSlot(value, state, calls)),
                    std::move(id), phase, /*source_count=*/-1);

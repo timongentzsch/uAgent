@@ -690,7 +690,8 @@ std::string MemoryHook(const std::filesystem::path& path) {
   // written as a claim, and the rest is elaboration.
   size_t stop = head.find_first_of("\r\n");
   size_t sentence = head.find(". ");
-  if (sentence != std::string::npos && (stop == std::string::npos || sentence < stop)) {
+  if (sentence != std::string::npos &&
+      (stop == std::string::npos || sentence < stop)) {
     stop = sentence;
   }
   if (stop != std::string::npos) head.resize(stop);
@@ -706,7 +707,8 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
     std::string hook = memory.key.starts_with("global/")
                            ? MemoryHook(memory.path)
                            : std::string();
-    std::string line = "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
+    std::string line =
+        "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
     std::optional<size_t> total = CheckedAdd(used, line.size());
     if (!total || *total > max_bytes) {
       index.truncated = true;

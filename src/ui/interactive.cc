@@ -217,8 +217,10 @@ Suggestions PathMatches(const std::string& buffer, size_t cursor) {
   found.begin = at;
 
   size_t slash = typed.rfind('/');
-  std::string parent = slash == std::string::npos ? "" : typed.substr(0, slash + 1);
-  std::string prefix = slash == std::string::npos ? typed : typed.substr(slash + 1);
+  std::string parent =
+      slash == std::string::npos ? "" : typed.substr(0, slash + 1);
+  std::string prefix =
+      slash == std::string::npos ? typed : typed.substr(slash + 1);
 
   namespace fs = std::filesystem;
   std::error_code error;
@@ -236,10 +238,9 @@ Suggestions PathMatches(const std::string& buffer, size_t cursor) {
     if (fs::is_directory(it->status(kind_error)) && !kind_error) name += "/";
     found.matches.push_back({"@" + parent + name, "", false});
   }
-  std::sort(found.matches.begin(), found.matches.end(),
-            [](const Suggestion& a, const Suggestion& b) {
-              return a.name < b.name;
-            });
+  std::sort(
+      found.matches.begin(), found.matches.end(),
+      [](const Suggestion& a, const Suggestion& b) { return a.name < b.name; });
   return found;
 }
 
@@ -504,9 +505,9 @@ bool RawComposer::EditExternally() {
   std::string command = std::string(editor) + " " + ShellQuote(path);
   const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
   pid_t pid = 0;
-  int spawned = posix_spawnp(&pid, "sh", &actions, nullptr,
-                             const_cast<char* const*>(argv),
-                             ProcessEnvironment());
+  int spawned =
+      posix_spawnp(&pid, "sh", &actions, nullptr,
+                   const_cast<char* const*>(argv), ProcessEnvironment());
   posix_spawn_file_actions_destroy(&actions);
   if (spawned == 0) {
     int status = 0;

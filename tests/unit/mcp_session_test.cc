@@ -506,8 +506,8 @@ void TestScopedBaseAndMemory() {
   // A global's opening clause rides in the index so the model can tell whether
   // it is worth fetching; its body is already eligible for every request
   // through the always-on slice, so this discloses nothing new.
-  CHECK(loaded.memory_index.find("global/prefers-tabs: The user prefers tabs") !=
-        std::string::npos);
+  CHECK(loaded.memory_index.find(
+            "global/prefers-tabs: The user prefers tabs") != std::string::npos);
   // A project memory travels by name only. Its body is never injected, which
   // is what keeps one workspace's notes out of every other prompt.
   CHECK(loaded.memory_index.find("project/build-uses-ninja") !=

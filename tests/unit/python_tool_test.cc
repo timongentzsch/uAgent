@@ -49,15 +49,15 @@ void TestPythonTool() {
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
-  ToolResult result = ToolRunScratch(supervisor, root, "math.py", "print(6 * 7)",
-                                    json::array({"numpy>=2"}));
+  ToolResult result = ToolRunScratch(supervisor, root, "math.py",
+                                     "print(6 * 7)", json::array({"numpy>=2"}));
   CHECK(result.output ==
         "[script: .uagent/scratch/math.py · wrote · executed]\n42\n");
   fs::path script = root / ".uagent/scratch/math.py";
   CHECK(fs::is_regular_file(script));
   CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
   result = ToolRunScratch(supervisor, root, ".uagent/scratch/prefixed.py",
-                         "print('normalized')", json::array());
+                          "print('normalized')", json::array());
   CHECK(result.output ==
         "[script: .uagent/scratch/prefixed.py · wrote · executed]\n"
         "normalized\n");
@@ -69,13 +69,13 @@ void TestPythonTool() {
   CHECK(script_source.find("\"numpy>=2\"") != std::string::npos);
 
   result = ToolRunScratch(supervisor, root, "math.py", "print(6 * 7)",
-                         json::array({"numpy>=2"}));
+                          json::array({"numpy>=2"}));
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find("code is identical") != std::string::npos);
   CHECK(result.output.find("code=null") != std::string::npos);
 
   result = ToolRunScratch(supervisor, root, "math.py", "print(7 * 7)",
-                         json::array({"numpy>=2"}));
+                          json::array({"numpy>=2"}));
   CHECK(result.output ==
         "[script: .uagent/scratch/math.py · overwrote · executed]\n49\n");
 
@@ -85,21 +85,21 @@ void TestPythonTool() {
 
   fs::path marker = root / "injected";
   result = ToolRunScratch(supervisor, root, "safe.py", "print('safe')",
-                         json::array({"x; touch " + marker.string()}));
+                          json::array({"x; touch " + marker.string()}));
   CHECK(result.output ==
         "[script: .uagent/scratch/safe.py · wrote · executed]\nsafe\n");
   CHECK(!fs::exists(marker));
 
   result = ToolRunScratch(supervisor, root, "slow.py",
-                         "import time; time.sleep(.2); print('slow-ok')",
-                         json::array());
+                          "import time; time.sleep(.2); print('slow-ok')",
+                          json::array());
   CHECK(result.output ==
         "[script: .uagent/scratch/slow.py · wrote · executed]\nslow-ok\n");
   CHECK(supervisor.PendingCount() == 0);
 
   result =
       ToolRunScratch(supervisor, root, "missing.py",
-                    "import definitely_missing_uagent_package", json::array());
+                     "import definitely_missing_uagent_package", json::array());
   CHECK(result.error == ToolErrorCode::kProcessFailed);
   CHECK(result.output.find("error: Python execution failed.") !=
         std::string::npos);
@@ -108,22 +108,23 @@ void TestPythonTool() {
   // A shell script is the same save-once-rerun mechanism without an
   // interpreter: half of every run command this agent sends is a byte-exact
   // repeat, and only .py could be saved and rerun by path.
-  result = ToolRunScratch(supervisor, root, "pipe.sh", "echo one two | sed 's/ /-/'\n",
-                         json::array());
+  result = ToolRunScratch(supervisor, root, "pipe.sh",
+                          "echo one two | sed 's/ /-/'\n", json::array());
   CHECK(result.output ==
         "[script: .uagent/scratch/pipe.sh · wrote · executed]\none-two\n");
   result = ToolRunScratch(supervisor, root, "pipe.sh", nullptr, nullptr);
-  CHECK(result.output == "[script: .uagent/scratch/pipe.sh · executed]\none-two\n");
+  CHECK(result.output ==
+        "[script: .uagent/scratch/pipe.sh · executed]\none-two\n");
 
   result = ToolRunScratch(supervisor, root, "deps.sh", "true\n",
-                         json::array({"numpy"}));
+                          json::array({"numpy"}));
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find("takes no packages") != std::string::npos);
 
   // The privileged-command rule `run` applies to a command, applied to every
   // line -- a first-word check against a body would only see line one.
   result = ToolRunScratch(supervisor, root, "priv.sh",
-                         "echo fine\nsudo rm -rf /\n", json::array());
+                          "echo fine\nsudo rm -rf /\n", json::array());
   CHECK(result.error == ToolErrorCode::kPermissionDenied);
   CHECK(result.output.find("line 2") != std::string::npos);
   CHECK(result.output.find("Do not use sudo") != std::string::npos);
@@ -133,7 +134,7 @@ void TestPythonTool() {
   // write and a `code: null` rerun, so a check done only on the way in would
   // be theatre.
   result = ToolRunScratch(supervisor, root, "later.sh", "echo before\n",
-                         json::array());
+                          json::array());
   CHECK(result.output ==
         "[script: .uagent/scratch/later.sh · wrote · executed]\nbefore\n");
   CHECK(ToolEditFile((root / ".uagent/scratch/later.sh").string(),
@@ -143,19 +144,20 @@ void TestPythonTool() {
   CHECK(result.error == ToolErrorCode::kPermissionDenied);
   CHECK(result.output.find("Do not use sudo") != std::string::npos);
 
-  result = ToolRunScratch(supervisor, root, "other.rb", "puts 1", json::array());
+  result =
+      ToolRunScratch(supervisor, root, "other.rb", "puts 1", json::array());
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find(".py or .sh") != std::string::npos);
 
   result = ToolRunScratch(supervisor, root, "../escape.py", "print('x')",
-                         json::array());
+                          json::array());
   CHECK(result.error == ToolErrorCode::kPermissionDenied);
   result = ToolRunScratch(supervisor, root, "math.py", nullptr, json::array());
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
 
   setenv("PATH", root.c_str(), 1);  // no uv
   result = ToolRunScratch(supervisor, root, "dependency.py", "print('x')",
-                         json::array({"numpy"}));
+                          json::array({"numpy"}));
   CHECK(result.error == ToolErrorCode::kUnavailable);
   CHECK(result.output.find("declares third-party dependencies") !=
         std::string::npos);

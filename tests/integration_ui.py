@@ -750,7 +750,9 @@ def test_input_at_path_suggestions_and_tab_completion(root, home):
             for message in reversed(body["messages"])
             if message.get("role") == "user"
         )
-        return event({"content": "path-ok" if user == "read @alpha/inner.txt" else f"path-bad:{user!r}"})
+        return event(
+            {"content": "path-ok" if user == "read @alpha/inner.txt" else f"path-bad:{user!r}"}
+        )
 
     with Server([answer]) as server:
         code, output = run_pty(
@@ -786,9 +788,7 @@ def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home):
     editor = root / "fake-editor.sh"
     # Appends rather than replaces, so the assertion proves both directions:
     # the draft reached the file and the file came back.
-    editor.write_text(
-        '#!/bin/sh\nprintf \'%s\' "$(cat "$1")-edited" > "$1"\n', encoding="utf-8"
-    )
+    editor.write_text('#!/bin/sh\nprintf \'%s\' "$(cat "$1")-edited" > "$1"\n', encoding="utf-8")
     editor.chmod(0o755)
 
     def answer(_, body):
@@ -797,7 +797,9 @@ def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home):
             for message in reversed(body["messages"])
             if message.get("role") == "user"
         )
-        return event({"content": "editor-ok" if user == "draft-edited!" else f"editor-bad:{user!r}"})
+        return event(
+            {"content": "editor-ok" if user == "draft-edited!" else f"editor-bad:{user!r}"}
+        )
 
     with Server([answer]) as server:
         env = base_env(home, server.url)

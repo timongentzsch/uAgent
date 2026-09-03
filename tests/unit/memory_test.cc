@@ -1,11 +1,12 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/tools/memory.h"
+
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
 
-#include "include/tools/memory.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

@@ -678,9 +678,9 @@ bool PythonScriptHasDependencies(const std::string& source) {
 }
 
 ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
-                         const std::filesystem::path& workspace,
-                         const std::string& relative_path, const json& code,
-                         const json& packages, const ToolContext& context) {
+                          const std::filesystem::path& workspace,
+                          const std::string& relative_path, const json& code,
+                          const json& packages, const ToolContext& context) {
   namespace fs = std::filesystem;
   constexpr std::string_view kScratchPrefix = ".uagent/scratch/";
   fs::path requested(relative_path.starts_with(kScratchPrefix)
@@ -761,23 +761,23 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
       source = body;
       if (source.empty() || source.back() != '\n') source += '\n';
     } else {
-    if (body.find("# /// script") != std::string::npos) {
-      return ToolFailure(ToolErrorCode::kInvalidArguments,
-                         "error: code must contain only the script body; "
-                         "packages generate the PEP 723 header");
-    }
-    source = "# /// script\n# dependencies = [\n";
-    for (const json& value : packages) {
-      std::string package = value.get<std::string>();
-      if (package.find_first_of("\r\n") != std::string::npos ||
-          package.find('\0') != std::string::npos) {
+      if (body.find("# /// script") != std::string::npos) {
         return ToolFailure(ToolErrorCode::kInvalidArguments,
-                           "error: invalid package entry");
+                           "error: code must contain only the script body; "
+                           "packages generate the PEP 723 header");
       }
-      source += "#   " + JsonDump(package) + ",\n";
-    }
-    source += "# ]\n# ///\n\n" + body;
-    if (source.back() != '\n') source += '\n';
+      source = "# /// script\n# dependencies = [\n";
+      for (const json& value : packages) {
+        std::string package = value.get<std::string>();
+        if (package.find_first_of("\r\n") != std::string::npos ||
+            package.find('\0') != std::string::npos) {
+          return ToolFailure(ToolErrorCode::kInvalidArguments,
+                             "error: invalid package entry");
+        }
+        source += "#   " + JsonDump(package) + ",\n";
+      }
+      source += "# ]\n# ///\n\n" + body;
+      if (source.back() != '\n') source += '\n';
     }
     if (exists) {
       std::ifstream prior_input(script);
@@ -811,7 +811,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     // Checked here rather than at write: a rerun executes whatever is on disk,
     // and the file is writable by edit_file between the two.
     std::string policy = ScriptCommandPolicyError(source);
-    if (!policy.empty()) return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
+    if (!policy.empty())
+      return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
     command = "sh " + ShellQuote(script.string());
   } else {
     bool uv = ExecutableOnPath("uv");

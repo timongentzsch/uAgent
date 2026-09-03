@@ -95,6 +95,7 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"image_input", image_input},
+          {"web_search_sources", web_search_sources},
           {"model_catalog_required", model_catalog_required},
           {"raw_slash_models", raw_slash_models},
           {"reasoning_object", reasoning_object},
@@ -136,6 +137,7 @@ ProviderCapabilities CapabilitiesForRoute(ProviderProtocol protocol,
   if (wire_api == WireApi::kResponses) {
     capabilities.reasoning_object = true;
     capabilities.max_completion_tokens = true;
+    capabilities.web_search_sources = OpenaiUrl(base_url);
   }
   capabilities.ResetNegotiated();
   return capabilities;

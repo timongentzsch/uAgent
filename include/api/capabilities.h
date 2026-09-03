@@ -57,6 +57,10 @@ struct ProviderCapabilities {
   bool reasoning_object = false;
   bool reasoning_replay_text = false;
   bool max_completion_tokens = false;
+  // Optional Responses expansion supported by the official OpenAI endpoint.
+  // Compatible routes can still run hosted search without returning its full
+  // internal source list.
+  bool web_search_sources = false;
   bool provider_routing = false;
   bool session_passthrough = false;
   bool model_variants = false;

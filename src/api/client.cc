@@ -410,7 +410,8 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                       capabilities.parallel_tools,
                       capabilities.stream_usage_option,
                       native_web,
-                      allow_function_web};
+                      allow_function_web,
+                      capabilities.web_search_sources};
   json body = EncodeWireRequest(capabilities.wire_api, request);
   if (capabilities.wire_api != WireApi::kChatCompletions) {
     // OpenAI already caches matching prefixes automatically. A stable,

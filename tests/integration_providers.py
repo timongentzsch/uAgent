@@ -488,6 +488,7 @@ def test_provider_responses_native_search_and_function_replay(root, home):
         assert_true(handler.path == "/v1/responses", handler.path)
         assert_true(handler.headers.get("Authorization") == "Bearer response-key", handler.headers)
         assert_true("input" in body and "messages" not in body, body)
+        assert_true(body.get("include") == ["reasoning.encrypted_content"], body)
         hosted = [tool for tool in body["tools"] if tool.get("type") == "web_search"]
         functions = [tool for tool in body["tools"] if tool.get("type") == "function"]
         assert_true(len(hosted) == 1, body["tools"])
@@ -541,6 +542,7 @@ def test_provider_responses_native_search_and_function_replay(root, home):
         )
 
     def second(handler, body):
+        assert_true(body.get("include") == ["reasoning.encrypted_content"], body)
         item_types = [item.get("type") for item in body["input"]]
         assert_true("reasoning" in item_types, body["input"])
         assert_true(item_types.count("function_call") == 1, body["input"])

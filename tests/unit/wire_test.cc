@@ -68,8 +68,9 @@ void TestWireAdapters() {
         {"tool_call_id", "call-1"},
         {"content", "contents"}}});
 
-  WireRequest responses_request{"gpt-test", messages, schemas, "high", 4096,
-                                true,       true,     false,   true,   true};
+  WireRequest responses_request{"gpt-test", messages, schemas, "high",
+                                4096,       true,     true,    false,
+                                true,       true,     true};
   json responses = EncodeWireRequest(WireApi::kResponses, responses_request);
   CHECK(responses["model"] == "gpt-test");
   CHECK(responses["store"] == false);
@@ -82,6 +83,9 @@ void TestWireAdapters() {
   CHECK(ItemsOfType(responses["tools"], "function") == 1);
   CHECK(responses["tools"][0]["name"] == "read_path");
   CHECK(responses["parallel_tool_calls"] == true);
+  CHECK(responses["include"] ==
+        json::array(
+            {"reasoning.encrypted_content", "web_search_call.action.sources"}));
   CHECK(responses["input"][1]["content"][1]["type"] == "input_image");
   CHECK(responses["input"][1]["content"][2]["type"] == "input_file");
   CHECK(WireEndpoint(WireApi::kResponses) == "/responses");
@@ -156,6 +160,14 @@ void TestWireAdapters() {
   CHECK(web_available);
   CHECK(ItemsOfType(native["tools"], "web_search") == 1);
   CHECK(ItemsOfType(native["tools"], "function") == 1);
+  CHECK(native["include"] == json::array({"reasoning.encrypted_content"}));
+
+  api.capabilities = CapabilitiesForRoute(ProviderProtocol::kOpenAi,
+                                          "https://api.openai.com/v1",
+                                          WireApi::kResponses, true);
+  json official = api.BuildRequestBody(json::array(), schemas);
+  CHECK(official["include"] == json::array({"reasoning.encrypted_content",
+                                            "web_search_call.action.sources"}));
 
   api.config.web_search_backend = "openrouter";
   CHECK(!api.NativeHostedTool(HostedTool::kWebSearch));

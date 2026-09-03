@@ -31,6 +31,22 @@ namespace uagent {
 namespace {
 
 #if defined(__linux__)
+// The running image's own path. Falls back to argv[0] only if /proc is not
+// mounted; the caller treats an empty answer as a refusal rather than as "no
+// wrapper needed", because a spawn that silently skipped confinement is the
+// one outcome the sandbox exists to rule out.
+std::string SelfExecutablePath() {
+  std::string path(4096, '\0');
+  const ssize_t length = readlink("/proc/self/exe", path.data(), path.size());
+  if (length <= 0 || static_cast<size_t>(length) >= path.size()) {
+    return ExecutablePath();
+  }
+  path.resize(static_cast<size_t>(length));
+  return path;
+}
+#endif
+
+#if defined(__linux__)
 
 // Landlock has no libc wrappers, and <linux/landlock.h> is missing on distros
 // whose headers predate a kernel that supports it -- so the numbers live here
@@ -321,7 +337,15 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
   if (profile.empty()) return {};
   return {"/usr/bin/sandbox-exec", "-p", std::move(profile)};
 #elif defined(__linux__)
-  std::vector<std::string> argv{ExecutablePath(), "--sandbox-child"};
+  // The trampoline re-execs *this* image, so it asks the kernel which image
+  // that is instead of trusting argv[0]. argv[0] is recorded by Bootstrap and
+  // is therefore empty in any process that does not run it -- the unit test
+  // binary among them, whose every sandboxed spawn then tried to exec "" --
+  // and even in the agent it can be a bare `uagent` resolved from PATH, which
+  // is not a path exec can use. /proc/self/exe is neither.
+  std::string self = SelfExecutablePath();
+  if (self.empty()) return {};
+  std::vector<std::string> argv{std::move(self), "--sandbox-child"};
   std::vector<std::string> words = EncodeSandboxPolicy(status.policy);
   argv.insert(argv.end(), std::make_move_iterator(words.begin()),
               std::make_move_iterator(words.end()));

@@ -669,12 +669,44 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd) {
   return entries;
 }
 
+// One line per memory, and for a global one, enough of it to judge whether it
+// is worth fetching: a bare key says something exists and not what, so the
+// globals the always-on slice cannot fit were listed and never opened.
+//
+// Global scope only. A global memory's body is already eligible for every
+// request through the always-on slice, so an opening clause of one discloses
+// nothing new. Project-scoped bodies are deliberately never injected -- the
+// index is how their names travel without their contents -- and a hook there
+// would put every workspace's memories into every prompt.
+constexpr size_t kMemoryHookChars = 96;
+
+std::string MemoryHook(const std::filesystem::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return {};
+  std::string head(kMemoryHookChars * 2, '\0');
+  input.read(head.data(), static_cast<std::streamsize>(head.size()));
+  head.resize(static_cast<size_t>(input.gcount()));
+  // One sentence, or one line, whichever ends first: the opening of these is
+  // written as a claim, and the rest is elaboration.
+  size_t stop = head.find_first_of("\r\n");
+  size_t sentence = head.find(". ");
+  if (sentence != std::string::npos && (stop == std::string::npos || sentence < stop)) {
+    stop = sentence;
+  }
+  if (stop != std::string::npos) head.resize(stop);
+  return Utf8Trunc(Trim(RedactMemorySecrets(std::move(head))),
+                   kMemoryHookChars);
+}
+
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
                             size_t max_bytes) {
   MemoryIndex index;
   size_t used = 0;
   for (const MemoryEntry& memory : ListMemories(cwd)) {
-    std::string line = "- " + memory.key + "\n";
+    std::string hook = memory.key.starts_with("global/")
+                           ? MemoryHook(memory.path)
+                           : std::string();
+    std::string line = "- " + memory.key + (hook.empty() ? "" : ": " + hook) + "\n";
     std::optional<size_t> total = CheckedAdd(used, line.size());
     if (!total || *total > max_bytes) {
       index.truncated = true;

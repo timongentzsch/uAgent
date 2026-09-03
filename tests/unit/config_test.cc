@@ -116,7 +116,9 @@ void TestProjectInstructionDiscovery() {
   CHECK(global < root_agent && root_agent < child_override);
   CHECK(loaded.text.find("remembered-evidence") == std::string::npos);
   CHECK(loaded.memory_index.find("global/lesson") != std::string::npos);
-  CHECK(loaded.memory_index.find("remembered-evidence") == std::string::npos);
+  // The index carries a global's opening clause, never a project memory's.
+  CHECK(loaded.memory_index.find("global/lesson: remembered-evidence") !=
+        std::string::npos);
 
   // ...but it is used when the directory has no AGENTS file
   fs::path only_claude = repo / "claude-only";

@@ -43,6 +43,26 @@ the design; it does not calculate the verdict or write µAgent configuration.
   approval, or resource limits.
 - An inconclusive result is a result. Do not tune thresholds after seeing data.
 
+## Stop conditions
+
+Stop and report, without improvising, when:
+
+- there is no falsifiable hypothesis or held-out task;
+- route authority proves neither reported cost with a hard USD budget nor an
+  explicit non-billable cheap declaration with complete limits;
+- a proposed cheap declaration exceeds the eval's global ceilings or does not
+  apply to the exact route;
+- the user will not approve the declared maximum spend or cheap-route limits;
+- a trial cannot be scored without retaining private text;
+- cohort settings drift;
+- the candidate, target, snapshot, result schema, or cost bound fails validation;
+- another actor changed the active overlay;
+- a CLI flag or environment variable owns `UAGENT_PROMPT_OVERLAY`;
+- the result is inconclusive.
+
+Do not respond to a stopped round by expanding scope to foreign logs, automatic
+memory, source changes, or upstream PR preparation.
+
 ## Interpret the request
 
 - No argument or `start`: run the complete procedure below.
@@ -260,23 +280,3 @@ removes a target that did not exist before. It refuses when the active file
 changed externally. Then present its rollback configuration proposal and call
 `uagent_configure` only after human approval. Report separately whether file
 restoration and config restoration both succeeded.
-
-## Stop conditions
-
-Stop and report, without improvising, when:
-
-- there is no falsifiable hypothesis or held-out task;
-- route authority proves neither reported cost with a hard USD budget nor an
-  explicit non-billable cheap declaration with complete limits;
-- a proposed cheap declaration exceeds the eval's global ceilings or does not
-  apply to the exact route;
-- the user will not approve the declared maximum spend or cheap-route limits;
-- a trial cannot be scored without retaining private text;
-- cohort settings drift;
-- the candidate, target, snapshot, result schema, or cost bound fails validation;
-- another actor changed the active overlay;
-- a CLI flag or environment variable owns `UAGENT_PROMPT_OVERLAY`;
-- the result is inconclusive.
-
-Do not respond to a stopped round by expanding scope to foreign logs, automatic
-memory, source changes, or upstream PR preparation.

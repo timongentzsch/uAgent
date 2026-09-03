@@ -639,7 +639,7 @@ bool PythonScriptHasDependencies(const std::string& source) {
   return false;
 }
 
-ToolResult ToolRunPython(ProcessSupervisor& supervisor,
+ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                          const std::filesystem::path& workspace,
                          const std::string& relative_path, const json& code,
                          const json& packages, const ToolContext& context) {

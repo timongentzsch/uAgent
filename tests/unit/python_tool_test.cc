@@ -49,14 +49,14 @@ void TestPythonTool() {
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
 
-  ToolResult result = ToolRunPython(supervisor, root, "math.py", "print(6 * 7)",
+  ToolResult result = ToolRunScratch(supervisor, root, "math.py", "print(6 * 7)",
                                     json::array({"numpy>=2"}));
   CHECK(result.output ==
         "[script: .uagent/scratch/math.py · wrote · executed]\n42\n");
   fs::path script = root / ".uagent/scratch/math.py";
   CHECK(fs::is_regular_file(script));
   CHECK(fs::is_regular_file(root / ".uagent/scratch/.gitignore"));
-  result = ToolRunPython(supervisor, root, ".uagent/scratch/prefixed.py",
+  result = ToolRunScratch(supervisor, root, ".uagent/scratch/prefixed.py",
                          "print('normalized')", json::array());
   CHECK(result.output ==
         "[script: .uagent/scratch/prefixed.py · wrote · executed]\n"
@@ -68,29 +68,29 @@ void TestPythonTool() {
   CHECK(script_source.find("# /// script") == 0);
   CHECK(script_source.find("\"numpy>=2\"") != std::string::npos);
 
-  result = ToolRunPython(supervisor, root, "math.py", "print(6 * 7)",
+  result = ToolRunScratch(supervisor, root, "math.py", "print(6 * 7)",
                          json::array({"numpy>=2"}));
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find("code is identical") != std::string::npos);
   CHECK(result.output.find("code=null") != std::string::npos);
 
-  result = ToolRunPython(supervisor, root, "math.py", "print(7 * 7)",
+  result = ToolRunScratch(supervisor, root, "math.py", "print(7 * 7)",
                          json::array({"numpy>=2"}));
   CHECK(result.output ==
         "[script: .uagent/scratch/math.py · overwrote · executed]\n49\n");
 
   CHECK(ToolEditFile(script.string(), {{"7 * 7", "8 * 8", false}}).Ok());
-  result = ToolRunPython(supervisor, root, "math.py", nullptr, nullptr);
+  result = ToolRunScratch(supervisor, root, "math.py", nullptr, nullptr);
   CHECK(result.output == "[script: .uagent/scratch/math.py · executed]\n64\n");
 
   fs::path marker = root / "injected";
-  result = ToolRunPython(supervisor, root, "safe.py", "print('safe')",
+  result = ToolRunScratch(supervisor, root, "safe.py", "print('safe')",
                          json::array({"x; touch " + marker.string()}));
   CHECK(result.output ==
         "[script: .uagent/scratch/safe.py · wrote · executed]\nsafe\n");
   CHECK(!fs::exists(marker));
 
-  result = ToolRunPython(supervisor, root, "slow.py",
+  result = ToolRunScratch(supervisor, root, "slow.py",
                          "import time; time.sleep(.2); print('slow-ok')",
                          json::array());
   CHECK(result.output ==
@@ -98,21 +98,21 @@ void TestPythonTool() {
   CHECK(supervisor.PendingCount() == 0);
 
   result =
-      ToolRunPython(supervisor, root, "missing.py",
+      ToolRunScratch(supervisor, root, "missing.py",
                     "import definitely_missing_uagent_package", json::array());
   CHECK(result.error == ToolErrorCode::kProcessFailed);
   CHECK(result.output.find("error: Python execution failed.") !=
         std::string::npos);
   CHECK(result.output.find("PEP 723 header") != std::string::npos);
 
-  result = ToolRunPython(supervisor, root, "../escape.py", "print('x')",
+  result = ToolRunScratch(supervisor, root, "../escape.py", "print('x')",
                          json::array());
   CHECK(result.error == ToolErrorCode::kPermissionDenied);
-  result = ToolRunPython(supervisor, root, "math.py", nullptr, json::array());
+  result = ToolRunScratch(supervisor, root, "math.py", nullptr, json::array());
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
 
   setenv("PATH", root.c_str(), 1);  // no uv
-  result = ToolRunPython(supervisor, root, "dependency.py", "print('x')",
+  result = ToolRunScratch(supervisor, root, "dependency.py", "print('x')",
                          json::array({"numpy"}));
   CHECK(result.error == ToolErrorCode::kUnavailable);
   CHECK(result.output.find("declares third-party dependencies") !=

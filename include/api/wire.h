@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -33,16 +34,50 @@ bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request);
 std::string_view WireEndpoint(WireApi wire_api);
 
+enum class HostedToolPhase : uint8_t {
+  kNone,
+  kStarted,
+  kSearching,
+  kCompleted,
+  kFailed,
+};
+
+// One lifecycle step of a tool the *provider* ran. Deliberately not a
+// ToolCall: nothing here is dispatched, approved, or answered locally, and
+// routing a provider's own search through the tool loop would make it look
+// like a round this agent still owes a result for.
+struct HostedToolDelta {
+  HostedTool tool = HostedTool::kWebSearch;
+  HostedToolPhase phase = HostedToolPhase::kNone;
+  std::string id;
+  int64_t source_count = -1;  // negative when the provider did not say
+};
+
 struct WireStreamDelta {
   std::string content;
   std::string reasoning;
   bool activity = false;
+  std::optional<HostedToolDelta> hosted_tool;
+};
+
+// The observable payload of a hosted-tool step. The query is deliberately
+// absent: it would be the one piece of model-chosen prose on a spine whose
+// other transient events carry none, and nothing downstream needs it.
+json HostedToolJson(const HostedToolDelta& delta);
+
+// Both providers report a finished search more than once -- Responses as
+// `web_search_call.completed` and again as `output_item.done` -- so phases are
+// tracked per search and only forward steps are reported. Searches are counted
+// through the same key, which is what keeps one search worth one request.
+struct HostedToolState {
+  std::map<std::string, HostedToolPhase> phases;
+  int64_t web_searches = 0;
 };
 
 struct ResponsesStreamState {
   std::map<std::string, int> item_slots;
   std::map<int, json> replay_items;
-  int64_t web_searches = 0;
+  HostedToolState hosted;
 };
 
 struct AnthropicBlockState {
@@ -52,7 +87,10 @@ struct AnthropicBlockState {
 
 struct AnthropicStreamState {
   std::map<int, AnthropicBlockState> blocks;
-  int64_t web_searches = 0;
+  HostedToolState hosted;
+  // Correlates a result block back to its request when the provider omitted
+  // the tool_use_id.
+  std::string open_search;
 };
 
 struct WireStreamState {

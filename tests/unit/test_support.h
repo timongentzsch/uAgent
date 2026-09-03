@@ -205,6 +205,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestCapsAndEscaping)                       \
   X(TestFileTools)                             \
   X(TestMathTransliteration)                   \
+  X(TestHostedSearchStatusRow)                 \
   X(TestActivityBar)                           \
   X(TestStatusBarDropsByPriority)              \
   X(TestPollCollapse)                          \
@@ -225,6 +226,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestSseFraming)                            \
   X(TestWireAdapters)                          \
   X(TestWireStreams)                           \
+  X(TestWireStreamHostedSearch)                \
   X(TestWireStreamMalformedValues)             \
   X(TestBackgroundValidation)                  \
   X(TestSignalAndFileWatch)                    \

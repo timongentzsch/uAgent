@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <string>
 
+#include "include/core/term.h"
 #include "include/tools/child_agent.h"
 #include "include/ui/display.h"
 #include "include/ui/tool_output.h"
@@ -187,6 +188,86 @@ void TestPollCollapse() {
             .status == PresentationStatus::kFailed);
 
   ClearPollAnchor(4242);
+}
+
+// A search the provider runs is the one long wait the status row could not
+// explain: without this it reads as ordinary thinking for as many seconds as
+// the search takes. The row is ephemeral on purpose -- several searches a turn
+// would otherwise each leave a permanent line behind.
+void TestHostedSearchStatusRow() {
+  bool prior = g_tty;
+  FixedWidth columns(80);
+  g_tty = true;
+
+  TerminalPresenter presenter;
+  auto respond = [&] {
+    Event started{EventId::kResponseStarted};
+    started.render = true;
+    started.text = kWaitingActivity;
+    presenter.Consume(started);
+  };
+  auto search = [&](const char* id, const char* phase) {
+    presenter.Consume(
+        Event{EventId::kHostedToolActivity,
+              {{"tool", "web_search"}, {"id", id}, {"phase", phase}}});
+  };
+  auto think = [&](std::string_view text) {
+    Event delta{EventId::kReasoningDelta};
+    delta.text = text;
+    presenter.Consume(delta);
+  };
+
+  // Working -> searching the web -> thinking -> answer.
+  respond();
+  CHECK(CurrentTerminalActivity() == kWaitingActivity);
+  search("ws_1", "started");
+  CHECK(CurrentTerminalActivity() == "searching the web");
+  CHECK(!CurrentTerminalActivityRolling());
+  // Reasoning arriving mid-search grows the buffer without taking the row.
+  think("checking the release notes");
+  CHECK(CurrentTerminalActivity() == "searching the web");
+  search("ws_1", "completed");
+  CHECK(CurrentTerminalActivityRolling());
+  Event answer{EventId::kAnswerDelta};
+  answer.text = "done";
+  presenter.Consume(answer);
+  CHECK(CurrentTerminalActivity().empty());
+  presenter.Consume(Event{EventId::kResponseFinished});
+
+  // A search opening after reasoning takes the row back, and hands it to the
+  // ticker rather than to the base label when it ends.
+  respond();
+  think("weighing options");
+  CHECK(CurrentTerminalActivityRolling());
+  search("ws_2", "searching");
+  CHECK(CurrentTerminalActivity() == "searching the web");
+  search("ws_2", "completed");
+  CHECK(CurrentTerminalActivityRolling());
+  presenter.Consume(Event{EventId::kResponseFinished});
+
+  // Overlapping searches share the row; only the last to finish releases it.
+  respond();
+  search("ws_3", "started");
+  search("ws_4", "started");
+  search("ws_3", "completed");
+  CHECK(CurrentTerminalActivity() == "searching the web");
+  search("ws_4", "failed");
+  CHECK(CurrentTerminalActivity() == kWaitingActivity);
+
+  // A completion for a search that never opened cannot strand the row.
+  search("ws_5", "completed");
+  CHECK(CurrentTerminalActivity() == kWaitingActivity);
+  presenter.Consume(Event{EventId::kResponseFinished});
+
+  // A response that ends mid-search stops the row with it: nothing outlives
+  // the response that owns it.
+  respond();
+  search("ws_6", "searching");
+  CHECK(CurrentTerminalActivity() == "searching the web");
+  presenter.Consume(Event{EventId::kResponseFinished});
+  CHECK(CurrentTerminalActivity().empty());
+
+  g_tty = prior;
 }
 
 // The working row used to be assembled inside the REPL loop, where nothing

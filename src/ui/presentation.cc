@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -113,13 +114,18 @@ void AppendRolling(std::string& buffer, std::string_view value) {
   }
 }
 
+// What the row says while the provider runs a search of its own. Ephemeral by
+// design: several searches a turn would otherwise each leave a permanent line
+// in the scrollback for something the user did not ask to see individually.
+constexpr const char* kSearchingActivity = "searching the web";
+
 struct TerminalPresenter::State {
   explicit State(const Event& event)
       : render(event.render),
         full_reasoning(event.verbose),
-        spinner(std::make_unique<TerminalSpinner>(
-            event.render, SpinnerLabel(std::string(event.text)),
-            event.anchor)) {}
+        base_label(SpinnerLabel(std::string(event.text))),
+        spinner(std::make_unique<TerminalSpinner>(event.render, base_label,
+                                                  event.anchor)) {}
 
   void BeginOutput() {
     if (spinner) spinner->Stop();
@@ -172,6 +178,10 @@ struct TerminalPresenter::State {
     if (!full_reasoning) {
       if (!spinner) return;
       AppendRolling(reasoning_tail, value);
+      // A provider-side search owns the row for as long as it runs. The buffer
+      // still grows underneath, so the ticker resumes at the live edge rather
+      // than replaying what was thought during the wait.
+      if (!active_searches.empty()) return;
       // Strip on the whole buffer, not per delta: decoration detection needs
       // the neighbouring characters, which a chunk boundary would split. The
       // renderer applies it, so that whole-buffer pass runs once per drawn
@@ -196,6 +206,30 @@ struct TerminalPresenter::State {
     SetLineOpen(value);
   }
 
+  // A tool the provider ran. It is response activity, not a tool row: routing
+  // it through the tool presentation would claim this agent executed a search,
+  // and would put an approval-shaped record in the scrollback for one it never
+  // could have declined.
+  void HostedTool(const json& data) {
+    if (!render || !spinner) return;
+    const std::string phase = JsonValue(data, "phase", "");
+    const bool running = phase == "started" || phase == "searching";
+    // Erasing an id that never started covers a completion with no matching
+    // start, which otherwise strands the row on "searching the web".
+    if (running) {
+      active_searches.insert(JsonValue(data, "id", ""));
+    } else {
+      active_searches.erase(JsonValue(data, "id", ""));
+    }
+    if (!active_searches.empty()) {
+      spinner->SetLabel(kSearchingActivity);
+    } else if (!reasoning_tail.empty()) {
+      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
+    } else {
+      spinner->SetLabel(base_label);
+    }
+  }
+
   void Finish() {
     BeginOutput();
     if (in_reasoning) {
@@ -212,6 +246,9 @@ struct TerminalPresenter::State {
   bool content_started = false;
   bool line_open = false;
   std::string reasoning_tail;
+  std::string base_label;
+  // Concurrent searches share one label; the last to finish hands the row back.
+  std::set<std::string> active_searches;
   std::unique_ptr<TerminalSpinner> spinner;
   MdStream markdown;
 };
@@ -230,6 +267,9 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
       break;
     case EventId::kAnswerDelta:
       if (state_) state_->Text(event.text);
+      break;
+    case EventId::kHostedToolActivity:
+      if (state_) state_->HostedTool(event.data);
       break;
     case EventId::kResponseFinished:
       Finish();

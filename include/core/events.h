@@ -41,6 +41,7 @@ enum class EventId : uint16_t {
   kResponseStarted,
   kReasoningDelta,
   kAnswerDelta,
+  kHostedToolActivity,
   kResponseFinished,
   kApprovalRequested,
   kApprovalResolved,

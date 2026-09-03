@@ -92,7 +92,13 @@ struct StreamCtx {
   void HandleEvent(const SseEvent& event) {
     WireStreamDelta delta =
         DecodeWireStreamEvent(wire_api, event.data, *res, calls, wire_state);
+    // Semantic progress and rendering are independent: a hosted search feeds
+    // the timeout the same way every other event does, and additionally says
+    // what it was so a presenter need not infer it from silence.
     if (delta.activity) MarkEvent();
+    if (delta.hosted_tool) {
+      Emit(Event{EventId::kHostedToolActivity, HostedToolJson(*delta.hosted_tool)});
+    }
     if (!delta.reasoning.empty()) {
       res->reasoning += delta.reasoning;
       OutputReasoning(delta.reasoning);

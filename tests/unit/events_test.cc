@@ -45,6 +45,16 @@ void TestObservabilityEvents() {
   CHECK(PolicyFor(EventId::kTurnStopped).public_type == nullptr);
   CHECK(PolicyFor(EventId::kReasoningDelta).durability ==
         EventDurability::kTransient);
+  // A tool the provider ran reaches subscribers and the public stream, and
+  // stops there: journalling it would put provider-side activity into the
+  // session record, where only what this agent did belongs.
+  CHECK(std::string(PolicyFor(EventId::kHostedToolActivity).app_type) ==
+        "response.hosted_tool");
+  CHECK(std::string(PolicyFor(EventId::kHostedToolActivity).public_type) ==
+        "response.hosted_tool");
+  CHECK(PolicyFor(EventId::kHostedToolActivity).journal_type == nullptr);
+  CHECK(PolicyFor(EventId::kHostedToolActivity).durability ==
+        EventDurability::kTransient);
   CHECK(PolicyFor(EventId::kToolResult).durability ==
         EventDurability::kDurable);
   CHECK(PolicyFor(EventId::kActivityCompleted).durability ==
@@ -85,9 +95,23 @@ void TestObservabilityEvents() {
   CHECK(received[0].data["text"] == "streamed");
   CHECK(received[1].type == "approval.requested");
   CHECK(received[1].data["tool"] == "edit_file");
+  Event search{EventId::kHostedToolActivity,
+               {{"tool", "web_search"}, {"id", "ws_1"}, {"phase", "searching"}}};
+  SessionJournal searches;
+  searches.Append(search, PolicyFor(search.id));
+  CHECK(searches.Size() == 0);
+  observable.Emit(std::move(search));
+  CHECK(received.size() == 3);
+  CHECK(received[2].type == "response.hosted_tool");
+  CHECK(received[2].data["phase"] == "searching");
+  CHECK(received[2].data["id"] == "ws_1");
+  CHECK(!received[2].durable);
+  // What was searched for is the model's own prose; the fact of the search is
+  // what a subscriber needs, so the query never reaches this payload.
+  CHECK(!received[2].data.contains("query"));
   observable.Unsubscribe(subscription);
   observable.Emit(Event{EventId::kResponseFinished});
-  CHECK(received.size() == 2);
+  CHECK(received.size() == 3);
 
   Observability interactions;
   interactions.EnableTerminal(false);

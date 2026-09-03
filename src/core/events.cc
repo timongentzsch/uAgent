@@ -66,6 +66,12 @@ constexpr EventPolicy kPolicies[] = {
      nullptr, EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kAnswerDelta, "response.answer.delta", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
+    // A tool the provider ran, not one this agent did: no journal type, so it
+    // never enters the session record or model context, and no query text, so
+    // the public stream carries the fact of a search and not its subject.
+    {EventId::kHostedToolActivity, "response.hosted_tool", "hosted_tool",
+     "response.hosted_tool", nullptr, EventDurability::kTransient,
+     EventRedaction::kPublicProjection},
     {EventId::kResponseFinished, "response.finished", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kApprovalRequested, "approval.requested", "approval_requested",

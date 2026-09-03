@@ -600,6 +600,154 @@ def test_provider_responses_native_search_and_function_replay(root, home):
         assert_true(len(server.requests) == 2, server.requests)
 
 
+def test_hosted_search_reports_one_lifecycle_on_either_route(root, home):
+    """A provider-run search must look the same whichever provider ran it.
+
+    Without this the wait is indistinguishable from thinking: the decoders
+    marked search events as progress and dropped everything that said what
+    they were.
+    """
+
+    def responses_stream(handler, _body):
+        write_sse_sequence(
+            handler,
+            [
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "web_search_call",
+                        "id": "ws_1",
+                        "status": "in_progress",
+                    },
+                },
+                {
+                    "type": "response.web_search_call.searching",
+                    "output_index": 0,
+                    "item_id": "ws_1",
+                },
+                {
+                    "type": "response.web_search_call.completed",
+                    "output_index": 0,
+                    "item_id": "ws_1",
+                },
+                # Responses names the same finished search twice; a client
+                # must see one completion, and usage must count one search.
+                {
+                    "type": "response.output_item.done",
+                    "output_index": 0,
+                    "item": {
+                        "type": "web_search_call",
+                        "id": "ws_1",
+                        "status": "completed",
+                    },
+                },
+                {"type": "response.output_text.delta", "delta": "responses-search-ok"},
+                {
+                    "type": "response.completed",
+                    "response": {
+                        "status": "completed",
+                        "usage": {"input_tokens": 6, "output_tokens": 2},
+                    },
+                },
+            ],
+        )
+
+    def anthropic_stream(handler, _body):
+        write_sse_sequence(
+            handler,
+            [
+                {"type": "message_start", "message": {"usage": {"input_tokens": 5}}},
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_1",
+                        "name": "web_search",
+                        "input": {"query": "C++20"},
+                    },
+                },
+                {"type": "content_block_stop", "index": 0},
+                {
+                    "type": "content_block_start",
+                    "index": 1,
+                    "content_block": {
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_1",
+                        "content": [
+                            {
+                                "type": "web_search_result",
+                                "url": "https://example.com/anthropic",
+                            }
+                        ],
+                    },
+                },
+                {"type": "content_block_stop", "index": 1},
+                {
+                    "type": "content_block_start",
+                    "index": 2,
+                    "content_block": {"type": "text", "text": ""},
+                },
+                {
+                    "type": "content_block_delta",
+                    "index": 2,
+                    "delta": {"type": "text_delta", "text": "anthropic-search-ok"},
+                },
+                {"type": "content_block_stop", "index": 2},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"output_tokens": 3},
+                },
+                {"type": "message_stop"},
+            ],
+        )
+
+    def events_for(wire_api, handler):
+        with Server([handler]) as server:
+            env = base_env(home, server.url)
+            env.update(
+                {
+                    "UAGENT_API_KEY": "search-key",
+                    "UAGENT_WIRE_API": wire_api,
+                    "UAGENT_HOSTED_TOOLS": "web_search",
+                    "UAGENT_WEB_SEARCH_BACKEND": "auto",
+                    "UAGENT_WEB_SEARCH_URL": server.url,
+                    "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
+                }
+            )
+            result = run(root, env, "--yolo", "--json-stream", "-p", "search")
+            assert_true(result.returncode == 0, result.stderr)
+            return [json.loads(line) for line in result.stdout.splitlines()]
+
+    for wire_api, handler, search_id in (
+        ("responses", responses_stream, "ws_1"),
+        ("anthropic_messages", anthropic_stream, "srvtoolu_1"),
+    ):
+        records = events_for(wire_api, handler)
+        searches = [r for r in records if r["type"] == "response.hosted_tool"]
+        assert_true(len(searches) >= 2, (wire_api, [r["type"] for r in records]))
+        assert_true(
+            all(r["data"]["tool"] == "web_search" for r in searches), searches
+        )
+        assert_true(all(r["data"]["id"] == search_id for r in searches), searches)
+        phases = [r["data"]["phase"] for r in searches]
+        assert_true(phases[0] in {"started", "searching"}, (wire_api, phases))
+        assert_true(phases[-1] == "completed", (wire_api, phases))
+        # One completion, however many times the provider announced it.
+        assert_true(phases.count("completed") == 1, (wire_api, phases))
+        # The query is the model's own prose and never leaves the wire.
+        assert_true(all("query" not in r["data"] for r in searches), searches)
+        # A hosted search is not a round this agent owes an answer to.
+        assert_true(
+            not [r for r in records if r["type"] == "tool.call"],
+            [r["type"] for r in records],
+        )
+        usage = next(r for r in records if r["type"] == "usage")
+        assert_true(usage["data"]["usage"]["web_searches"] == 1, usage)
+
+
 def test_provider_anthropic_native_search_pause_turn_replay(root, home):
     def first(handler, body):
         assert_true(handler.path == "/v1/messages", handler.path)

@@ -2,6 +2,8 @@
 
 #include "include/core/sandbox.h"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <string>
 #include <vector>
@@ -172,6 +174,21 @@ void TestSandboxTrampolineArgs() {
   CHECK(!DecodeSandboxPolicy({"net=1", "roots=2", "/w"}, &ignored, &consumed));
   CHECK(!DecodeSandboxPolicy({"net=1", "roots=99999999999999999999", "/w"},
                              &ignored, &consumed));
+
+  // The wrapper has to name a program the spawn can actually exec. It once
+  // took argv[0], which only Bootstrap records, so every binary that links
+  // this library without running it -- this test binary included -- produced a
+  // wrapper whose argv[0] was "" and failed every sandboxed spawn with ENOENT.
+  const SandboxStatus& status = SandboxRuntime();
+  std::vector<std::string> wrapper = SandboxWrapperArgv(status);
+  if (status.mode == SandboxMode::kEnforced) {
+    REQUIRE(!wrapper.empty());
+    CHECK(!wrapper.front().empty());
+    CHECK(wrapper.front().front() == '/');
+    CHECK(access(wrapper.front().c_str(), X_OK) == 0);
+  } else {
+    CHECK(wrapper.empty());
+  }
 }
 
 void TestSandboxProbe() {

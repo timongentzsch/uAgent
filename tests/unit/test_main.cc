@@ -2,11 +2,13 @@
 
 #include <curl/curl.h>
 
+#include <clocale>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "include/core/sandbox.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -84,4 +86,15 @@ int RunTests(int argc, char** argv) {
 
 }  // namespace uagent
 
-int main(int argc, char** argv) { return uagent::RunTests(argc, argv); }
+int main(int argc, char** argv) {
+  // Linux confines a spawn by re-execing the *calling* binary as the Landlock
+  // trampoline, and for these cases that binary is this one rather than
+  // uagent. Without the same dispatch src/main.cc does, every sandboxed spawn
+  // re-enters the argument parser, is rejected as unknown, and never execs the
+  // command -- which is how the whole suite's process-driving cases failed on
+  // Linux while passing on macOS, where seatbelt wraps an external program.
+  if (argc > 2 && std::string(argv[1]) == "--sandbox-child") {
+    return uagent::SandboxChildMain(argc, argv);
+  }
+  return uagent::RunTests(argc, argv);
+}

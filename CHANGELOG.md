@@ -116,6 +116,19 @@
   control-only success still rejects and a treatment-only success counts as a
   capability gain without rewarding fast failure.
 
+### Fixed
+
+- The Linux sandbox trampoline named itself by `argv[0]`, which only the
+  agent's own startup records. Any other program linking the runtime and
+  spawning a confined command therefore built a wrapper whose `argv[0]` was
+  empty and failed every spawn with `cannot spawn shell: No such file or
+  directory`. It now asks the kernel for the running image via
+  `/proc/self/exe`, which also covers an agent invoked as a bare `uagent`
+  resolved from `PATH` -- a name `exec` cannot use. The unit binary honours
+  `--sandbox-child` like the agent does, so its cases exercise real
+  confinement rather than bypassing it, and the trampoline argv is now
+  asserted to name an executable file.
+
 ### Removed
 
 - The text-protocol fallback is gone. It let a route that rejected native tool

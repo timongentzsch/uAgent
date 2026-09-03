@@ -90,19 +90,21 @@ void TestProjectInstructionDiscovery() {
   CHECK(capped_memory.truncated);
   CHECK(capped_memory.text.size() <= 24);
 
-  // Under the cap the newest global memory wins, and an entry that no longer
-  // fits is dropped whole rather than cut mid-sentence.
+  // Under the cap the smaller global memory wins -- more standing preferences
+  // fit that way -- and an entry that no longer fits is dropped whole rather
+  // than cut mid-sentence. Made the newest as well as the largest, so an mtime
+  // order would reach the opposite answer.
   CHECK(ToolWriteFile((home / ".uagent/memory/global/newer.md").string(),
-                      "newer-evidence-body")
+                      std::string(200, 'n'))
             .output.starts_with("wrote "));
   fs::last_write_time(
       home / ".uagent/memory/global/lesson.md",
       fs::file_time_type::clock::now() - std::chrono::hours(24));
-  MemoryIndex newest_first = LoadAlwaysOnMemory(child, 64);
-  CHECK(newest_first.truncated);
-  CHECK(newest_first.sources.size() == 1);
-  CHECK(newest_first.text.find("newer-evidence-body") != std::string::npos);
-  CHECK(newest_first.text.find("remembered-evidence") == std::string::npos);
+  MemoryIndex smallest_first = LoadAlwaysOnMemory(child, 64);
+  CHECK(smallest_first.truncated);
+  CHECK(smallest_first.sources.size() == 1);
+  CHECK(smallest_first.text.find("remembered-evidence") != std::string::npos);
+  CHECK(smallest_first.text.find(std::string(200, 'n')) == std::string::npos);
   CHECK(fs::remove(home / ".uagent/memory/global/newer.md"));
   CHECK(loaded.text.find("ignored-agent") == std::string::npos);
   // CLAUDE.md is a fallback, so it must not load beside an AGENTS file

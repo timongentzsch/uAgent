@@ -47,6 +47,15 @@
 
 ### Changed
 
+- The always-on memory slice admits the smallest global memories rather than
+  the most recently written. Measured on a real store, that is seven standing
+  preferences in the prompt instead of four, out of twenty-one: every global is
+  one the user asked to apply everywhere, so fitting more of them is the point.
+  Age was also the wrong key for a second reason -- a consolidation pass, a
+  checkout or an editor save rewrites mtimes and would silently reshuffle which
+  preferences are live, while size changes only when the content does. What the
+  slice drops is still listed in the memory index and fetchable by name.
+
 - `subagent` charges one description for five ceilings. `max_steps`,
   `max_tool_calls`, `max_seconds`, `max_cost` and `memory` become one `limits`
   object; every capability is unchanged, including per-call tightening and the

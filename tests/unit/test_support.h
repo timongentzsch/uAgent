@@ -240,6 +240,7 @@ std::string CaptureStdout(Writer&& writer, bool color = false,
   X(TestAttachmentEncoding)                    \
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \
+  X(TestMemoryAlwaysOnSelection)               \
   X(TestRuntimeOwnershipHelpers)               \
   X(TestAgentConfigAllowlist)                  \
   X(TestEffectiveConfigReload)                 \

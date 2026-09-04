@@ -11,6 +11,10 @@ permissions: {}
 
 jobs:
   analyze:
+    # Private repositories need GitHub Advanced Security for CodeQL uploads.
+    # Skip before runner allocation on plans where this repository is private;
+    # the gate resumes automatically if it becomes public again.
+    if: github.event.repository.private == false
     name: Analyze C++
     runs-on: ubuntu-24.04
     timeout-minutes: 20

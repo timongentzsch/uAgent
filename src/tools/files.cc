@@ -713,6 +713,9 @@ std::string WholeFileDiffDisplay(const std::string& path,
                     " (+" + std::to_string(diff.new_end - diff.prefix) + " -" +
                     std::to_string(diff.old_end - diff.prefix) + ")\n" +
                     display.body;
+  // Symmetric with the delete receipt: a diff cut at the line cap says so,
+  // rather than ending mid-file as if that were the whole change.
+  if (display.truncated) out += " … diff truncated\n";
   return out;
 }
 

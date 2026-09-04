@@ -177,6 +177,9 @@ json PresentationJson(const PresentationRecord& record) {
   if (!record.detail.empty()) {
     value["detail"] = Utf8Trunc(record.detail, size_t{4096});
   }
+  if (!record.change.empty()) {
+    value["change"] = Utf8Trunc(record.change, size_t{4096});
+  }
   AddArtifacts(value, record.artifacts);
   return value;
 }

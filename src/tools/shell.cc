@@ -25,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -677,10 +678,35 @@ bool PythonScriptHasDependencies(const std::string& source) {
   return false;
 }
 
+std::string ScratchArgvLabel(const json& args) {
+  std::string label;
+  if (!args.is_array()) return label;
+  for (const json& value : args) {
+    if (!value.is_string()) continue;
+    const std::string& arg = value.get_ref<const std::string&>();
+    label += ' ';
+    label += arg.empty() || arg.find_first_of(" \t\n'\"\\") != std::string::npos
+                 ? ShellQuote(arg)
+                 : arg;
+  }
+  return label;
+}
+
+// A script's body earns the scrollback once per path. Rewrites are wholesale
+// rather than incremental in practice, so repeating the body would bury the
+// output the run produced under the code that produced it.
+bool FirstScriptDisplay(const std::filesystem::path& script) {
+  static std::mutex mutex;
+  static std::unordered_set<std::string> shown;
+  std::lock_guard<std::mutex> lock(mutex);
+  return shown.insert(script.string()).second;
+}
+
 ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                           const std::filesystem::path& workspace,
                           const std::string& relative_path, const json& code,
-                          const json& packages, const ToolContext& context) {
+                          const json& packages, const json& args,
+                          const ToolContext& context) {
   namespace fs = std::filesystem;
   constexpr std::string_view kScratchPrefix = ".uagent/scratch/";
   fs::path requested(relative_path.starts_with(kScratchPrefix)
@@ -807,6 +833,21 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                   std::istreambuf_iterator<char>());
   }
   std::string command;
+  std::string argv;
+  if (!args.is_null() && !args.is_array()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: args must be an array of strings");
+  }
+  if (args.is_array()) {
+    for (const json& value : args) {
+      if (!value.is_string() ||
+          value.get_ref<const std::string&>().find('\0') != std::string::npos) {
+        return ToolFailure(ToolErrorCode::kInvalidArguments,
+                           "error: args must be strings without NUL");
+      }
+      argv += ' ' + ShellQuote(value.get<std::string>());
+    }
+  }
   if (shell_script) {
     // Checked here rather than at write: a rerun executes whatever is on disk,
     // and the file is writable by edit_file between the two.
@@ -814,7 +855,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     if (!policy.empty()) {
       return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
     }
-    command = "sh " + ShellQuote(script.string());
+    command = "sh " + ShellQuote(script.string()) + argv;
   } else {
     bool uv = ExecutableOnPath("uv");
     if (!uv && PythonScriptHasDependencies(source)) {
@@ -826,8 +867,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     command =
         uv ? "UV_NO_PROGRESS=1 MPLBACKEND=Agg uv run --quiet --no-project "
              "--script " +
-                 ShellQuote(script.string())
-           : "MPLBACKEND=Agg python3 " + ShellQuote(script.string());
+                 ShellQuote(script.string()) + argv
+           : "MPLBACKEND=Agg python3 " + ShellQuote(script.string()) + argv;
   }
   ShellCommandResult result =
       RunShellCommand(supervisor, context, {.command = std::move(command)});
@@ -841,8 +882,12 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
   if (create) {
-    result.result.display =
+    std::string diff =
         WholeFileDiffDisplay(script.string(), prior, source, replaced);
+    if (!diff.empty() && !FirstScriptDisplay(script)) {
+      diff = FirstLine(diff) + "\n";
+    }
+    result.result.display = std::move(diff);
   }
   std::string lifecycle =
       create ? (replaced ? " · overwrote" : " · wrote") : "";
@@ -852,8 +897,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
           : " · execution " +
                 std::string(CompletionStatusName(result.result.status));
   result.result.output = "[script: .uagent/scratch/" +
-                         requested.generic_string() + lifecycle + "]\n" +
-                         result.result.output;
+                         requested.generic_string() + ScratchArgvLabel(args) +
+                         lifecycle + "]\n" + result.result.output;
   return std::move(result.result);
 }
 

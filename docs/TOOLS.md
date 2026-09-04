@@ -17,7 +17,7 @@ normal turn-boundary work can still change the next wire request.
 | `attach` | Add a local image or document to the next model request | when attachments are enabled |
 | `show_image` | Render a local image with the terminal's native inline protocol | interactive terminals with inline-image support |
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
-| `scratch` | Create or rerun one bounded uv-backed scratch script | standard toolset with execute capability |
+| `scratch` | Create or rerun one bounded uv-backed scratch script, with optional argv | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
 | `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | standard toolset; inspect-only |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |

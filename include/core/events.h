@@ -85,7 +85,10 @@ struct PresentationRecord {
   std::string summary;
   std::string detail;
   bool multiline = false;
-  bool change_display = false;
+  // A +/- change receipt drawn above the result row. A file write is fully
+  // told by its diff, but a script that was written and then run also has
+  // something to say, so `change` and `detail` can both be set.
+  std::string change;
   // Opening a skill changes how the whole turn proceeds, so it is marked in
   // the scrollback rather than reading as one more tool row.
   bool skill = false;

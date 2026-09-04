@@ -62,10 +62,13 @@ std::string RunCommandPolicyError(const std::string& command);
 // The privileged-command half of the above, applied to every line of a script.
 std::string ScriptCommandPolicyError(const std::string& script);
 bool PythonScriptHasDependencies(const std::string& source);
+// argv as the receipt and the call row show it: quoted only where a shell
+// would need it, because neither is re-executed.
+std::string ScratchArgvLabel(const json& args);
 ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                           const std::filesystem::path& workspace,
                           const std::string& relative_path, const json& code,
-                          const json& packages,
+                          const json& packages, const json& args = {},
                           const ToolContext& context = {});
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,

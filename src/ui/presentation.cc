@@ -324,21 +324,25 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     return;
   }
 
-  if (record.change_display && !record.detail.empty()) {
-    std::istringstream input(record.detail);
+  if (!record.change.empty()) {
+    std::istringstream input(record.change);
     std::string line;
-    if (!std::getline(input, line)) return;
-    std::string output = std::string(DIM()) + "•" + RST() + " " + BOLD() +
-                         TerminalSafe(line) + RST() + "\n";
-    while (std::getline(input, line)) {
-      const char* style = DIM();
-      if (!line.empty() && line[0] == '+') style = GREEN();
-      if (!line.empty() && line[0] == '-') style = RED();
-      if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
-      output += std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
+    if (std::getline(input, line)) {
+      std::string output = std::string(DIM()) + "•" + RST() + " " + BOLD() +
+                           TerminalSafe(line) + RST() + "\n";
+      while (std::getline(input, line)) {
+        const char* style = DIM();
+        if (!line.empty() && line[0] == '+') style = GREEN();
+        if (!line.empty() && line[0] == '-') style = RED();
+        if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
+        output +=
+            std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
+      }
+      WriteTerminalRecord(output);
     }
-    WriteTerminalRecord(output);
-    return;
+    // A change that also produced output (a script that was written and then
+    // run) still owes the person that output, so only a bare receipt ends here.
+    if (record.detail.empty() && record.summary.empty()) return;
   }
 
   const char* style = ResultStyle(record.status);

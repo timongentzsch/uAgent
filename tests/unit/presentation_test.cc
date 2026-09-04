@@ -180,12 +180,68 @@ void TestPollCollapse() {
   // a resumed diff keeps the colour it had when it happened.
   PresentationRecord redrawn =
       StoredToolResultPresentation("edit_file", "edited a.txt", "-old\n+new");
-  CHECK(redrawn.change_display);
-  CHECK(redrawn.multiline);
-  CHECK(redrawn.detail == "-old\n+new");
+  CHECK(redrawn.change == "-old\n+new");
+  // A file write is fully told by its diff: there is no output row under it.
+  CHECK(redrawn.detail.empty());
+  CHECK(!redrawn.multiline);
+  // A script that was written and then run owes the person what it printed,
+  // so the receipt and the output are both kept.
+  PresentationRecord ran = StoredToolResultPresentation(
+      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n",
+      "x.py\n+print(6*7)");
+  CHECK(ran.change == "x.py\n+print(6*7)");
+  CHECK(ran.multiline);
+  CHECK(ran.detail == "42");
   // A failure is still a failure, receipt or not.
   CHECK(StoredToolResultPresentation("edit_file", "error: no such file", "x")
             .status == PresentationStatus::kFailed);
+
+  // A script that was written and then run renders both: the receipt above,
+  // the bounded output below. Without this the terminal showed the code that
+  // ran and never what it returned.
+  bool tty = g_tty;
+  g_tty = true;
+  CallTask script;
+  script.tool = &tool;
+  script.args = json::object();
+  script.ordinal = "[2] ";
+  std::string body;
+  for (int line = 1; line <= 30; ++line) body += std::to_string(line) + "\n";
+  script.result = ToolSuccess("[script: .uagent/scratch/x.py · wrote]\n" + body);
+  script.result.display = "Created x.py\n+print(1)";
+  PresentationRecord compact =
+      ToolResultPresentation(script, call, script.result.output, false);
+  CHECK(compact.change == "Created x.py\n+print(1)");
+  CHECK(compact.multiline);
+  CHECK(compact.detail.starts_with("1\n2\n"));
+  CHECK(compact.detail.find("30 lines") != std::string::npos);
+  CHECK(compact.detail.find("\n30\n") == std::string::npos);  // bounded
+  PresentationRecord loud =
+      ToolResultPresentation(script, call, script.result.output, true);
+  CHECK(loud.change == compact.change);
+  CHECK(loud.detail.find("\n30") != std::string::npos);  // /verbose is whole
+  std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
+  CHECK(drawn.find("Created x.py") != std::string::npos);
+  CHECK(drawn.find("+print(1)") != std::string::npos);
+  CHECK(drawn.find("← [2] activity") != std::string::npos);
+  CHECK(drawn.find("\n1\n") != std::string::npos);
+  // A file write is told entirely by its diff: no empty row is drawn under it.
+  CallTask wrote = script;
+  wrote.result = ToolSuccess("wrote 9 bytes to a.txt");
+  wrote.result.display = "Created a.txt\n+x";
+  PresentationRecord receipt =
+      ToolResultPresentation(wrote, call, wrote.result.output, false);
+  CHECK(receipt.detail.empty() && receipt.summary.empty());
+  CHECK(CaptureStdout([&] { PrintPresentation(receipt); }).find("←") ==
+        std::string::npos);
+  // Without a terminal the row summarises the output, not the receipt line.
+  g_tty = false;
+  PresentationRecord headless =
+      ToolResultPresentation(script, call, script.result.output, false);
+  CHECK(headless.change.empty());
+  CHECK(headless.summary.find("[script:") == std::string::npos);
+  CHECK(headless.summary.find("1") != std::string::npos);
+  g_tty = tty;
 
   ClearPollAnchor(4242);
 }

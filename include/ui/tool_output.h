@@ -47,6 +47,33 @@ inline std::string ToolResultSummary(const ToolResult& result,
   return summary;
 }
 
+// A tool that draws a change receipt says what changed in the receipt, so the
+// first line of its output only restates it. What follows does not: a file
+// write has nothing there, a script that was written and then run has its
+// whole result there.
+inline std::string OutputBelowReceipt(const std::string& output) {
+  size_t newline = output.find('\n');
+  if (newline == std::string::npos) return "";
+  std::string body = output.substr(newline + 1);
+  while (!body.empty() && body.back() == '\n') body.pop_back();
+  return body;
+}
+
+// Compact rows stay bounded: a long result keeps its head and reports the rest
+// by count, and /verbose prints the whole thing.
+inline constexpr size_t kChangeResultLines = 12;
+
+inline std::string BoundedLines(const std::string& text, size_t max_lines) {
+  size_t at = 0;
+  for (size_t line = 0; line < max_lines; ++line) {
+    size_t newline = text.find('\n', at);
+    if (newline == std::string::npos) return text;
+    at = newline + 1;
+  }
+  return text.substr(0, at) + "… · " + std::to_string(TextLines(text)) +
+         " lines · " + FmtCount(static_cast<int64_t>(text.size())) + " chars";
+}
+
 inline PresentationRecord ToolCallPresentation(const CallTask& task,
                                                const ToolCall& call) {
   PresentationRecord record;
@@ -91,15 +118,27 @@ inline PresentationRecord ToolResultPresentation(
     ClearPollAnchor(activity_id);
   }
   if (g_tty && task.result.Ok() && !task.result.display.empty()) {
-    record.detail = task.result.display;
+    record.change = task.result.display;
+    std::string body = OutputBelowReceipt(
+        verbose ? ModelResultText(task.result, ResultCharLimit(task))
+                : model_output);
+    if (body.empty()) return record;
+    record.detail = verbose ? std::move(body)
+                            : BoundedLines(body, kChangeResultLines);
     record.multiline = true;
-    record.change_display = true;
     return record;
   }
 
   std::string shown = verbose
                           ? ModelResultText(task.result, ResultCharLimit(task))
                           : model_output;
+  // Without a terminal there is no diff block above the row, but the receipt
+  // line is still the first thing the tool printed. Summarising from it would
+  // report `[script: ...]` and never the script's result.
+  if (task.result.Ok() && !task.result.display.empty()) {
+    std::string body = OutputBelowReceipt(shown);
+    if (!body.empty()) shown = std::move(body);
+  }
   if (verbose && shown.find('\n') != std::string::npos) {
     record.detail = shown;
     record.multiline = true;
@@ -135,9 +174,12 @@ inline PresentationRecord StoredToolResultPresentation(
   record.title = name.empty() ? "tool" : name;
   // A kept receipt replays as it was drawn, the way the live row showed it.
   if (replayed.Ok() && !display.empty()) {
-    record.detail = display;
-    record.multiline = true;
-    record.change_display = true;
+    record.change = display;
+    std::string body = OutputBelowReceipt(output);
+    if (!body.empty()) {
+      record.detail = BoundedLines(body, kChangeResultLines);
+      record.multiline = true;
+    }
     return record;
   }
   record.summary = TerminalSummary(ToolResultSummary(replayed, output,

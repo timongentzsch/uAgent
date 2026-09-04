@@ -343,8 +343,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             "scratch",
             "Run a one-off script, never requested project code. Writes or "
             "replaces one persistent script under .uagent/scratch and reruns "
-            "it by path: prefer this over resending a long shell pipeline or "
-            "heredoc through run. .py runs under isolated uv, .sh under sh.",
+            "it by path with optional argv: prefer this over resending a long "
+            "shell pipeline or heredoc through run, and vary `args` instead "
+            "of rewriting the body. .py runs under isolated uv, .sh under sh.",
             schema(
                 R"json({"type":"object","additionalProperties":false,"properties":{
                     "path":{"type":"string","minLength":1,
@@ -352,23 +353,27 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                     "code":{"type":["string","null"],"minLength":1,"maxLength":131072,
                       "description":"script body, without PEP 723 metadata; null reruns the file unchanged"},
                     "packages":{"type":["array","null"],"items":{"type":"string","minLength":1,"maxLength":256},"maxItems":12,
-                      "description":"PEP 508 dependencies with code ([] for stdlib or any .sh); null when rerunning"}},
+                      "description":"PEP 508 dependencies with code ([] for stdlib or any .sh); null when rerunning"},
+                    "args":{"type":"array","items":{"type":"string","maxLength":4096},"maxItems":32,
+                      "description":"argv for this run, read from sys.argv or $@; vary it instead of rewriting the script"}},
                     "required":["path","code","packages"]})json"),
             [&supervisor, workspace](const json& a,
                                      const ToolContext& context) {
               return ToolRunScratch(
                   supervisor, workspace, JsonValue(a, "path", ""),
                   JsonValue(a, "code", json(nullptr)),
-                  JsonValue(a, "packages", json(nullptr)), context);
+                  JsonValue(a, "packages", json(nullptr)),
+                  JsonValue(a, "args", json(nullptr)), context);
             }));
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);
     python.summary = [](const json& a) {
       std::string path = JsonValue(a, "path", "");
+      std::string argv = ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
       return a.contains("code") && a["code"].is_string()
-                 ? "write/replace " + path + " → execute"
-                 : "execute " + path;
+                 ? "write/replace " + path + " → execute" + argv
+                 : "execute " + path + argv;
     };
     python.stable_argument = "path";
     python.timeout_s = 0;  // bounded by the turn; no model-driven polling

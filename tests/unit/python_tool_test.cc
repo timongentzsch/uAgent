@@ -34,7 +34,7 @@ void TestPythonTool() {
             uv.string(),
             "#!/bin/sh\n"
             "while [ \"$#\" -gt 0 ]; do\n"
-            "  if [ \"$1\" = --script ]; then shift; exec python3 \"$1\"; fi\n"
+            "  if [ \"$1\" = --script ]; then shift; exec python3 \"$@\"; fi\n"
             "  shift\n"
             "done\n"
             "exit 2\n")
@@ -82,6 +82,39 @@ void TestPythonTool() {
   CHECK(ToolEditFile(script.string(), {{"7 * 7", "8 * 8", false}}).Ok());
   result = ToolRunScratch(supervisor, root, "math.py", nullptr, nullptr);
   CHECK(result.output == "[script: .uagent/scratch/math.py · executed]\n64\n");
+
+  // argv lets one saved script answer a family of questions, so a changed
+  // parameter is a rerun rather than a rewritten body.
+  result = ToolRunScratch(supervisor, root, "argv.py",
+                          "import sys; print('|'.join(sys.argv[1:]))",
+                          json::array());
+  CHECK(result.output ==
+        "[script: .uagent/scratch/argv.py · wrote · executed]\n\n");
+  result = ToolRunScratch(supervisor, root, "argv.py", nullptr, nullptr,
+                          json::array({"a b", "--limit=5"}));
+  CHECK(result.output ==
+        "[script: .uagent/scratch/argv.py 'a b' --limit=5 · executed]\n"
+        "a b|--limit=5\n");
+  result = ToolRunScratch(supervisor, root, "argv.sh", "echo \"$2/$1\"\n",
+                          json::array(), json::array({"one", "two"}));
+  CHECK(result.output ==
+        "[script: .uagent/scratch/argv.sh one two · wrote · executed]\n"
+        "two/one\n");
+  result = ToolRunScratch(supervisor, root, "argv.sh", nullptr, nullptr,
+                          json::array({7}));
+  CHECK(result.error == ToolErrorCode::kInvalidArguments);
+  CHECK(result.output.find("args must be strings") != std::string::npos);
+
+  // The body is worth the scrollback once per path; a rewrite reports counts.
+  result = ToolRunScratch(supervisor, root, "receipt.py", "print(1)",
+                          json::array());
+  CHECK(result.display.starts_with("Created "));
+  CHECK(result.display.find("+print(1)") != std::string::npos);
+  result = ToolRunScratch(supervisor, root, "receipt.py", "print(2)",
+                          json::array());
+  CHECK(result.display.starts_with("Replaced "));
+  CHECK(result.display.find('\n') == result.display.size() - 1);
+  CHECK(result.display.find("print(2)") == std::string::npos);
 
   fs::path marker = root / "injected";
   result = ToolRunScratch(supervisor, root, "safe.py", "print('safe')",

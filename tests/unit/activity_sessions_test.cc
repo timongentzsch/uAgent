@@ -575,7 +575,8 @@ void TestActivityWaitAndDelivery() {
   ShellCommandResult yielded_once =
       RunShellCommand(no_duplicate_completion, context,
                       {.command = "printf once; sleep 0.5", .yield_ms = 250});
-  CHECK(yielded_once.result.output.find("once") != std::string::npos);
+  const bool yielded_once_output =
+      yielded_once.result.output.find("\nonce") != std::string::npos;
   std::vector<BgJob> once_jobs = no_duplicate_completion.Snapshot();
   CHECK(once_jobs.size() == 1);
   if (!once_jobs.empty()) {
@@ -583,8 +584,15 @@ void TestActivityWaitAndDelivery() {
         ToolActivityWait(no_duplicate_completion, {ActivityId(once_jobs[0])},
                          "all", BudgetMs(2000), context);
     CHECK(final.Ok());
-    CHECK(final.output.find("(no new output)") != std::string::npos);
-    CHECK(final.output.find("\nonce") == std::string::npos);
+    const bool final_once_output =
+        final.output.find("\nonce") != std::string::npos;
+    // Scheduling may put the first read on either side of the yield deadline.
+    // Whichever call receives the bytes owns them; completion must not replay
+    // them or lose them.
+    CHECK(yielded_once_output != final_once_output);
+    if (yielded_once_output) {
+      CHECK(final.output.find("(no new output)") != std::string::npos);
+    }
   }
 
   {

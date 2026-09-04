@@ -67,8 +67,6 @@ inline void TerminalClearToEnd() {
   fputs("\r\033[K", stdout);
   fflush(stdout);
 }
-// Wraps pasted text in \e[200~ … \e[201~ so a multi-line paste arrives as one
-// unit.
 // The transient activity registry: the label (or rolling reasoning ticker)
 // shown in the status row while a call is in flight. The state itself is
 // implementation-owned; see src/core/term.cc.

@@ -670,13 +670,11 @@ std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd) {
 }
 
 // One line per memory, and for a global one, enough of it to judge whether it
-// is worth fetching: a bare key says something exists and not what, so the
-// globals the always-on slice cannot fit were listed and never opened.
+// is worth fetching: a bare key says something exists and not what.
 //
-// Global scope only. A global memory's body is already eligible for every
-// request through the always-on slice, so an opening clause of one discloses
-// nothing new. Project-scoped bodies are deliberately never injected -- the
-// index is how their names travel without their contents -- and a hook there
+// Global scope only. A global body is already eligible for every request
+// through the always-on slice, so an opening clause discloses nothing new,
+// while project-scoped bodies are deliberately never injected -- a hook there
 // would put every workspace's memories into every prompt.
 constexpr size_t kMemoryHookChars = 96;
 
@@ -721,22 +719,17 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd,
   return index;
 }
 
-// Behavioral "always-on" slice: the full content of global-scope memories is
-// injected into the startup context in addition to the index, capped by
-// UAGENT_MEMORY_ALWAYS_BYTES. Global scope is the applies-everywhere bucket, so
-// these are exactly the standing preferences/corrections the agent should not
-// have to remember to go look up.
+// Behavioral "always-on" slice: global memories are injected whole into the
+// startup context alongside the index, capped by UAGENT_MEMORY_ALWAYS_BYTES.
+// Global scope is the applies-everywhere bucket, so these are exactly the
+// standing preferences the agent should not have to go look up.
 //
 // Smallest first, and every entry is admitted whole or skipped: a lesson cut
-// mid-sentence is worse than an absent one.
-//
-// Ordering by size rather than by age, for two reasons. It fits more -- on the
-// store this was measured against, seven standing preferences instead of four
-// -- and every global is by definition one the user wanted applied everywhere,
-// so admitting more of them is the goal. And it is stable: mtime is rewritten
-// by a consolidation pass, a checkout, or an editor save, any of which would
-// silently reshuffle which preferences are live. Size only changes when the
-// content does.
+// mid-sentence is worse than an absent one. Size order fits more -- seven
+// standing preferences instead of four on the store this was measured against
+// -- and is stable, where mtime is rewritten by a consolidation pass, a
+// checkout or an editor save, any of which would silently reshuffle which
+// preferences are live.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes) {
   namespace fs = std::filesystem;

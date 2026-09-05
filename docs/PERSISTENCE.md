@@ -35,6 +35,10 @@ authority nor model context.
 The session snapshot retains tool calls and results used to rebuild the visible
 timeline. Successful `show_image` entries are retransmitted from their recorded
 paths; image bytes are not stored. Missing or invalid paths are skipped safely.
+Successful file reads delivered without truncation carry optional
+`_uagent_read_range` metadata (`[path, first_line, last_line]`) in their saved
+tool message. This supports superseded-read pruning after resume; wire adapters
+omit it. Older messages without it remain valid and are not guessed eligible.
 Only the current format is accepted: incompatible, incomplete, or corrupt
 records are reported without changing live state or the source file. Missing
 files are a normal empty state. Saves validate the complete record, then use a

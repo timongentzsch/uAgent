@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "include/api/capabilities.h"
 #include "include/api/types.h"
@@ -16,6 +17,8 @@
 namespace uagent {
 
 inline constexpr char kWireReplayField[] = "_uagent_wire_replay";
+// Harness-only metadata: a successful, untruncated read's [path, first, last].
+inline constexpr char kReadRangeField[] = "_uagent_read_range";
 
 struct WireRequest {
   const std::string& model;
@@ -33,6 +36,26 @@ struct WireRequest {
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool);
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request);
+
+// Shares the wire encoders above, retaining only unchanged per-message
+// encodings and the current tool set. No caller-maintained revision is needed.
+class WireRequestCache {
+ public:
+  json Encode(WireApi wire_api, const WireRequest& request);
+  std::string Serialize(const json& body) const;
+
+ private:
+  struct Message {
+    json source;
+    std::string body, role, system;
+    bool valid = false;
+  };
+  WireApi wire_api_ = WireApi::kChatCompletions;
+  std::vector<Message> messages_;
+  json tool_key_, schemas_;
+  bool active_ = false;
+  std::string encoded_messages_, encoded_tools_;
+};
 std::string_view WireEndpoint(WireApi wire_api);
 
 enum class HostedToolPhase : uint8_t {

@@ -272,6 +272,14 @@ mutation.
 
 ## Context and cache
 
+One wire cache reuses unchanged per-message encodings and tool schemas across
+all three adapters. It compares canonical inputs, so history edits, shrinking,
+tool changes, and route switches cannot reuse stale encodings. Anthropic role
+groups are assembled from cached content blocks, including when a new tool
+result extends the previous user group. Cached payloads must remain byte-identical
+to the uncached encoder. Tool selection and its estimated byte count are reused
+until availability changes or the registry is rebuilt.
+
 The stable prefix is system policy, project instructions, ordinary tool
 schemas, and mostly append-only history. Dynamic environment metadata is added
 only when it changes. Older completed tool outputs are replaced in meaningful

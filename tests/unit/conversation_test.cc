@@ -3,6 +3,7 @@
 #include "include/ui/conversation.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/agent/trace.h"
@@ -136,6 +137,21 @@ void TestConversation() {
   CHECK(bounded.Archive()[0]["turn"] == 2);
   CHECK(bounded.ArchivedBytes() <= one_segment_bytes);
   CHECK(bounded.DroppedSegments() == 1);
+  for (int turn = 3; turn <= 6; ++turn) {
+    CHECK(bounded.ArchiveRange("next", 1, bounded.Size(), turn, 4096));
+  }
+  Conversation restored;
+  CHECK(restored.Restore(bounded.Messages(), bounded.Kinds(), bounded.Archive(),
+                         bounded.DroppedSegments()));
+  CHECK(restored.ArchivedBytes() ==
+        static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
+  CHECK(
+      restored.ArchiveRange("next", 1, restored.Size(), 7, one_segment_bytes));
+  CHECK(restored.ArchivedSegments() == 1);
+  CHECK(restored.Archive()[0]["turn"] == 7);
+  CHECK(restored.DroppedSegments() == 6);
+  CHECK(restored.ArchivedBytes() ==
+        static_cast<int64_t>(JsonDump(restored.Archive()).size()) - 2);
 
   Conversation rejected;
   rejected.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
@@ -238,6 +254,51 @@ void TestConversation() {
   small_turn(3, 'z');
   CHECK(small_batch.PruneOldToolResults(0, 2000, {}).results == 0);
   CHECK(small_batch.At(2).value("content", "") == std::string(1500, 'x'));
+
+  Conversation snapshots;
+  snapshots.Reset(json::array({{{"role", "user"}, {"content", "inspect"}}}),
+                  {MessageKind::kUser});
+  auto read_snapshot = [&](const char* id, const std::string& output,
+                           bool complete = true) {
+    snapshots.Push(
+        {{"role", "assistant"},
+         {"tool_calls",
+          json::array({{{"id", id},
+                        {"function",
+                         {{"name", "read_path"},
+                          {"arguments", R"({"path":"notes"})"}}}}})}},
+        MessageKind::kAssistant);
+    json message = {
+        {"role", "tool"}, {"tool_call_id", id}, {"content", output}};
+    if (complete) message[kReadRangeField] = {"notes", 1, 100};
+    snapshots.Push(std::move(message), MessageKind::kToolResult);
+  };
+  const std::string before =
+      "arbitrary display wording\n" + std::string(2000, 'a');
+  const std::string after =
+      "limited is just file content\n" + std::string(2000, 'b');
+  read_snapshot("before", before);
+  read_snapshot("after", after);
+  read_snapshot("failed", "error: " + std::string(2000, 'e'), false);
+  CHECK(snapshots.Restore(json::parse(JsonDump(snapshots.Messages())),
+                          snapshots.Kinds(), json::array(), 0));
+  CHECK(snapshots.PruneOldToolResults(0, 1024, {}).results == 0);
+  CHECK(snapshots
+            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
+                                 512)
+            .results == 0);
+  CHECK(snapshots
+            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
+                                 16384)
+            .results == 1);
+  CHECK(snapshots.At(2)["content"] != before);
+  CHECK(snapshots.At(4)["content"] == after);
+  CHECK(snapshots.At(6)["content"] == "error: " + std::string(2000, 'e'));
+  CHECK(snapshots.Archive()[0]["messages"][0]["content"] == before);
+  CHECK(snapshots
+            .PruneOldToolResults(0, 1024, {}, ToolPruneMode::kSupersededReads,
+                                 16384)
+            .results == 0);
 
   json kinds = MessageKindsJson(conversation.Kinds());
   std::vector<MessageKind> parsed;

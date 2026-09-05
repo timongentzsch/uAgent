@@ -18,6 +18,7 @@
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/core/checked.h"
+#include "include/core/config_registry.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
@@ -283,8 +284,7 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
-Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop,
-                                   json& schemas) {
+Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   // A collaborator's parent can speak to it mid-run; the guidance arrives as
   // steering and is applied by the very next statement, so nothing it queues
   // can strand at the end of a headless turn.
@@ -306,8 +306,11 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop,
                            processes_.DetachedCount() > 0 ||
                            loop.detached_records_available,
   };
-  schemas =
-      AvailableToolSchemas(tools_, schemas_, loop.tool_counts, availability);
+  const json& schemas =
+      available_schemas_.Get(tools_, schemas_, loop.tool_counts, availability);
+  if (loop.step > 0 && BoolSetting(Cfg("UAGENT_PRUNE_SUPERSEDED_READS"))) {
+    PruneOldToolResults(ToolPruneMode::kSupersededReads);
+  }
   if (loop.step > 0 && loop.midturn_compaction_enabled) {
     MidturnCompact compacted =
         MaybeCompactDuringTurn(schemas, state.metrics.usage, state.start);
@@ -803,14 +806,14 @@ void Agent::Turn(const std::string& user_input, json user_content) {
 
   for (; state.limits.max_steps <= 0 || loop.step < state.limits.max_steps;
        ++loop.step) {
-    json schemas;
-    StepFlow flow = PrepareStep(state, loop, schemas);
+    StepFlow flow = PrepareStep(state, loop);
     if (flow == StepFlow::kEndTurn) break;
     if (flow == StepFlow::kRetryStep) {
       --loop.step;
       continue;
     }
 
+    const json& schemas = available_schemas_.Schemas();
     ChatResult response = Chat("turn", loop.step, schemas);
     if (loop.pending_note) {
       // The index was the tail when it was recorded. If history moved under

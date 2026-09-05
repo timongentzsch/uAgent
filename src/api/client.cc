@@ -30,8 +30,6 @@ namespace uagent {
 
 namespace {
 
-constexpr char kMessagesSlot[] = "\x01uagent-messages\x01";
-
 // The transport's failure vocabulary. The three entry points below return
 // three result types, but the retry classifier and the user-facing notice
 // both work from this text, so it is written once.
@@ -385,8 +383,8 @@ bool Api::NativeHostedTool(HostedTool tool) const {
 }
 
 json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
-                           const std::string& session_id,
-                           bool* web_available) const {
+                           const std::string& session_id, bool* web_available,
+                           WireRequestCache* cache) const {
   bool native_web = NativeHostedTool(HostedTool::kWebSearch);
   bool allow_function_web = config.web_search_backend != "off";
   bool function_web = false;
@@ -412,7 +410,8 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
                       native_web,
                       allow_function_web,
                       capabilities.web_search_sources};
-  json body = EncodeWireRequest(capabilities.wire_api, request);
+  json body = cache ? cache->Encode(capabilities.wire_api, request)
+                    : EncodeWireRequest(capabilities.wire_api, request);
   if (capabilities.wire_api != WireApi::kChatCompletions) {
     // OpenAI already caches matching prefixes automatically. A stable,
     // session-scoped routing key improves the chance that later turns reach
@@ -451,59 +450,11 @@ json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
   return body;
 }
 
-const std::string& Api::MessageCache::Serialize(const json& messages) {
-  size_t match = 0;
-  while (match < ends_.size() && match < messages.size() &&
-         sent_[match] == messages[match]) {
-    ++match;
-  }
-  dump_.resize(match > 0 ? ends_[match - 1] : 1);
-  ends_.resize(match);
-  sent_.erase(sent_.begin() + static_cast<json::difference_type>(match),
-              sent_.end());
-  for (size_t index = match; index < messages.size(); ++index) {
-    if (index > 0) dump_ += ',';
-    dump_ += JsonDump(messages[index]);
-    ends_.push_back(dump_.size());
-    sent_.push_back(messages[index]);
-  }
-  dump_ += ']';
-  return dump_;
-}
-
 std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
                              const std::string& session_id,
                              bool* web_available) {
-  if (capabilities.wire_api != WireApi::kChatCompletions) {
-    return JsonDump(
-        BuildRequestBody(messages, tool_schemas, session_id, web_available));
-  }
-  // Chat Completions can splice the canonical message array directly. Other
-  // adapters still produce deterministic bytes, but transform each message.
-  const std::string slot = JsonDump(json(kMessagesSlot));
-  std::string payload = JsonDump(
-      BuildRequestBody(kMessagesSlot, tool_schemas, session_id, web_available));
-  json sanitized;
-  const json* encoded_messages = &messages;
-  if (messages.is_array() &&
-      std::any_of(messages.begin(), messages.end(), [](const json& message) {
-        return message.is_object() && message.contains(kWireReplayField);
-      })) {
-    sanitized = messages;
-    for (json& message : sanitized) {
-      if (message.is_object()) message.erase(kWireReplayField);
-    }
-    encoded_messages = &sanitized;
-  }
-  size_t at =
-      encoded_messages->is_array() ? payload.find(slot) : std::string::npos;
-  if (at == std::string::npos ||
-      payload.find(slot, at + 1) != std::string::npos) {
-    return JsonDump(
-        BuildRequestBody(messages, tool_schemas, session_id, web_available));
-  }
-  payload.replace(at, slot.size(), messages_.Serialize(*encoded_messages));
-  return payload;
+  return wire_cache_.Serialize(BuildRequestBody(
+      messages, tool_schemas, session_id, web_available, &wire_cache_));
 }
 
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,

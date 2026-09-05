@@ -199,7 +199,7 @@ class Agent {
   void PushSkillContext(std::string skill);
   StepFlow InterruptTurn(TurnExecution& state);
   bool ApplyQueuedSteering(StepState& loop);
-  StepFlow PrepareStep(TurnExecution& state, StepState& loop, json& schemas);
+  StepFlow PrepareStep(TurnExecution& state, StepState& loop);
   StepFlow HandleFailedResponse(ChatResult& response, TurnExecution& state,
                                 StepState& loop, const json& schemas,
                                 bool attachment);
@@ -257,7 +257,7 @@ class Agent {
   // Keep completed tool messages in active context until normal compaction,
   // while also archiving them for the user-facing /trace command.
   void ArchiveTurnTrace(size_t turn_start);
-  void PruneOldToolResults();
+  void PruneOldToolResults(ToolPruneMode mode = ToolPruneMode::kOldResults);
 
   // A rejected capability -> drop it and retry. Ordered most-specific first:
   // the native-tools probe matches any "tool", so it must stay last or it would
@@ -288,10 +288,9 @@ class Agent {
 
   void RefreshBaseline();
 
-  // `display` is the terminal-only receipt, kept beside the transcript so a
-  // resumed session can redraw it; the model only ever sees `result`.
+  // Keep receipts and read metadata from the original; send only `result`.
   void AppendToolResult(const ToolCall& call, const std::string& result,
-                        const std::string& display = "");
+                        const ToolResult& original);
 
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
@@ -311,6 +310,7 @@ class Agent {
   ProcessSupervisor& processes_;
   UsageAccumulator& side_usage_;
   json schemas_;  // request-shaped tool schemas, rebuilt after MCP changes
+  ToolSchemaCache available_schemas_;
   size_t schema_chars_ = 0;
   Approver approve_;
   ToolRefresher refresh_tools_;

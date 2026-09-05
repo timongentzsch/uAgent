@@ -488,7 +488,8 @@ def test_session_journal_records_digests_not_argument_values(root, home):
     def read_once(_, __):
         return tool_call("read_path", {"path": secret.name})
 
-    def read_again(_, __):
+    def read_again(_, body):
+        assert_true(all("_uagent_read_range" not in m for m in body["messages"]), body)
         return tool_call("read_path", {"path": secret.name}, call_id="call-2")
 
     def read_missing(_, __):
@@ -504,6 +505,10 @@ def test_session_journal_records_digests_not_argument_values(root, home):
         assert_true(code == 0, output)
 
     sessions = list((home / ".uagent" / "history").rglob("*.json"))
+    state = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[1])
+    saved_results = [m for m in state["messages"] if m.get("role") == "tool"]
+    assert_true(saved_results[0].get("_uagent_read_range") == [secret.name, 1, 1], saved_results)
+    assert_true("_uagent_read_range" not in saved_results[-1], saved_results)
     journal = pathlib.Path(str(sessions[0]) + ".events.jsonl")
     text = journal.read_text(encoding="utf-8")
     records = [json.loads(line) for line in text.splitlines()]

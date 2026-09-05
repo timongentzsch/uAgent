@@ -13,6 +13,7 @@
 
 #include "include/api/capabilities.h"
 #include "include/api/types.h"
+#include "include/api/wire.h"
 #include "include/core/env.h"
 
 using CURL = void;
@@ -53,9 +54,8 @@ class Api {
   bool NativeHostedTool(HostedTool tool) const;
   json BuildRequestBody(const json& messages, const json& tool_schemas,
                         const std::string& session_id = "",
-                        bool* web_available = nullptr) const;
-  // Uses an incremental message serializer on Chat Completions and a stable
-  // adapter encoding on the other wire APIs.
+                        bool* web_available = nullptr,
+                        WireRequestCache* cache = nullptr) const;
   std::string ChatPayload(const json& messages, const json& tool_schemas,
                           const std::string& session_id = "",
                           bool* web_available = nullptr);
@@ -76,22 +76,6 @@ class Api {
   WebResponse GetUrl(const std::string& url, int64_t timeout_s, size_t cap);
 
  private:
-  // Incremental serialization of the messages array. An array dump is the
-  // element dumps joined by commas, so reusing a prefix of them is
-  // byte-identical to dumping the array whole - which provider-side prefix
-  // caching depends on. Reuse is *verified* against the previous request
-  // element by element rather than announced by callers: no mutation of the
-  // history, wherever it happens, can leave a stale prefix behind.
-  class MessageCache {
-   public:
-    const std::string& Serialize(const json& messages);
-
-   private:
-    json sent_ = json::array();
-    std::vector<size_t> ends_;  // end offset of each element inside dump_
-    std::string dump_ = "[]";
-  };
-
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
                          bool render_output, bool full_reasoning);
@@ -109,7 +93,7 @@ class Api {
 
   CURL* handle_;
   CURLM* multi_;
-  MessageCache messages_;
+  WireRequestCache wire_cache_;
 };
 
 }  // namespace uagent

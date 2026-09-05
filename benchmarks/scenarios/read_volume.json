@@ -1,0 +1,114 @@
+{
+  "name": "read_volume",
+  "description": "Compare 250/500/1000-line defaults including continuation rounds. Scripted mode validates accounting; live mode measures the model's reading strategy.",
+  "tier": "capability",
+  "variants": [
+    "250",
+    "500",
+    "1000"
+  ],
+  "variant_env": {
+    "250": {
+      "UAGENT_READ_FILE_LINES": "250"
+    },
+    "500": {
+      "UAGENT_READ_FILE_LINES": "500"
+    },
+    "1000": {
+      "UAGENT_READ_FILE_LINES": "1000"
+    }
+  },
+  "prompt": "Inspect records.txt and report the last record's number and value. Do not modify the workspace.",
+  "files": {
+    "records.txt": {
+      "repeat_text": "record {index:03d}: value-{index:03d}\n",
+      "repeat": 900
+    }
+  },
+  "script": [
+    {
+      "when": {
+        "tool_results": 0
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "first",
+            "name": "read_path",
+            "arguments": {
+              "path": "records.txt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "contains": "value-899"
+      },
+      "respond": {
+        "content": "Last record: 899, value-899."
+      }
+    },
+    {
+      "when": {
+        "contains": "value-749"
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "part-751",
+            "name": "read_path",
+            "arguments": {
+              "path": "records.txt",
+              "offset": 751
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "contains": "value-499"
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "part-501",
+            "name": "read_path",
+            "arguments": {
+              "path": "records.txt",
+              "offset": 501
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "contains": "value-249"
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "part-251",
+            "name": "read_path",
+            "arguments": {
+              "path": "records.txt",
+              "offset": 251
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": true,
+    "answer_contains": [
+      "899",
+      "value-899"
+    ],
+    "max_requests": 5,
+    "max_tool_calls": 4
+  }
+}

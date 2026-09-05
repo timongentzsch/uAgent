@@ -47,8 +47,9 @@ std::string NormalizedOperation(const json& arguments) {
 }  // namespace
 
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
-                             const std::string& display) {
-  conversation_.RecordToolDisplay(call.id, display);
+                             const ToolResult& original) {
+  conversation_.RecordToolDisplay(call.id,
+                                  original.Ok() ? original.display : "");
   const Tool* tool = FindTool(tools_, call.name);
   if (tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
@@ -64,9 +65,13 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
               {"model_chars", sizeof(kDuplicate) - 1}});
     return;
   }
-  conversation_.Push(
-      {{"role", "tool"}, {"tool_call_id", call.id}, {"content", result}},
-      MessageKind::kToolResult);
+  json message = {
+      {"role", "tool"}, {"tool_call_id", call.id}, {"content", result}};
+  if (original.Ok() && original.read_range && result == original.output) {
+    const ReadRange& range = *original.read_range;
+    message[kReadRangeField] = {range.path, range.first, range.last};
+  }
+  conversation_.Push(std::move(message), MessageKind::kToolResult);
 }
 
 bool Agent::RunCalls(
@@ -294,8 +299,7 @@ bool Agent::RunCalls(
     CallTask& task = tasks[index];
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
-    AppendToolResult(call, model_results[index],
-                     task.result.Ok() ? task.result.display : "");
+    AppendToolResult(call, model_results[index], task.result);
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

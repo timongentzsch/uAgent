@@ -70,6 +70,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
+| `UAGENT_PRUNE_SUPERSEDED_READS` | boolean | `0` | restart-required | experimental step-boundary pruning of superseded reads |
 | `UAGENT_TOOL_RESULT_CHARS` | integer | `8000` | restart-required | characters kept from one tool result |
 | `UAGENT_TOOL_TRACE_PROTECT_CHARS` | integer | `65536` | restart-required | recent tool output never pruned from the trace |
 | `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS` | integer | `32768` | restart-required | smallest tool result the trace pruner will drop |

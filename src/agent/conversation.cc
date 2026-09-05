@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "include/agent/protocol.h"
+#include "include/api/wire.h"
 #include "include/core/checked.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
@@ -157,6 +158,7 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
 void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   ResetHistory(std::move(baseline), std::move(kinds));
   archive_ = json::array();
+  archive_sizes_.clear();
   archive_bytes_ = 0;
   dropped_segments_ = 0;
 }
@@ -174,9 +176,13 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   messages_ = std::move(messages);
   kinds_ = std::move(kinds);
   archive_ = std::move(archive);
-  archive_bytes_ = archive_.empty()
-                       ? 0
-                       : static_cast<int64_t>(JsonDump(archive_).size()) - 2;
+  archive_sizes_.clear();
+  archive_bytes_ = 0;
+  for (const json& segment : archive_) {
+    archive_sizes_.push_back(static_cast<int64_t>(JsonDump(segment).size()));
+    archive_bytes_ +=
+        archive_sizes_.back() + (archive_sizes_.size() > 1 ? 1 : 0);
+  }
   dropped_segments_ = std::max(int64_t{0}, dropped_segments);
   return true;
 }
@@ -370,10 +376,15 @@ bool Conversation::HasRecentToolResult(const std::string& name,
 
 ToolTracePruneResult Conversation::PruneOldToolResults(
     size_t protect_chars, size_t minimum_reclaim_chars,
-    const std::vector<std::string>& retained_tools) {
+    const std::vector<std::string>& retained_tools, ToolPruneMode mode,
+    int64_t archive_cap) {
   if (minimum_reclaim_chars == 0) return {};
+  const bool superseded_only = mode == ToolPruneMode::kSupersededReads;
   const std::unordered_set<std::string> retained(retained_tools.begin(),
                                                  retained_tools.end());
+  if (superseded_only && (archive_cap <= 0 || retained.contains("read_path"))) {
+    return {};
+  }
   struct Candidate {
     size_t index;
     std::string replacement;
@@ -382,6 +393,7 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   size_t protected_chars = 0;
   size_t reclaimable_chars = 0;
   int64_t user_turns = 0;
+  std::unordered_set<std::string> newer_reads;
 
   for (size_t index = messages_.size(); index > 0; --index) {
     size_t current = index - 1;
@@ -389,7 +401,7 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
       ++user_turns;
       continue;
     }
-    if (user_turns < kProtectedUserTurns ||
+    if ((!superseded_only && user_turns < kProtectedUserTurns) ||
         kinds_[current] != MessageKind::kToolResult) {
       continue;
     }
@@ -397,11 +409,26 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
     const std::string* content = JsonStringRef(message, "content");
     if (!content || content->size() < kMinimumPrunableResultChars ||
         content->starts_with(kCompactedToolOutput) ||
-        retained.contains(ToolResultName(messages_, kinds_, current))) {
+        (!superseded_only &&
+         retained.contains(ToolResultName(messages_, kinds_, current)))) {
       continue;
     }
+    bool superseded = false;
+    if (superseded_only) {
+      const json* range = JsonArray(message, kReadRangeField);
+      // Older sessions without metadata remain eligible only for age pruning.
+      if (!range || range->size() != 3 || !(*range)[0].is_string() ||
+          !(*range)[1].is_number_integer() ||
+          !(*range)[2].is_number_integer() || (*range)[1].get<int64_t>() < 1 ||
+          (*range)[2] < (*range)[1]) {
+        continue;
+      }
+      superseded = !newer_reads.insert(JsonDump(*range)).second;
+    }
     protected_chars = SaturatingAdd(protected_chars, content->size());
-    if (protected_chars <= protect_chars) continue;
+    if (protected_chars <= protect_chars || (superseded_only && !superseded)) {
+      continue;
+    }
     std::string replacement = CompactedResult(*content);
     if (replacement.size() >= content->size()) continue;
     size_t reclaimed = content->size() - replacement.size();
@@ -410,10 +437,19 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   }
 
   if (reclaimable_chars < minimum_reclaim_chars) return {};
+  ToolTracePruneResult result;
   for (Candidate& candidate : candidates) {
+    if (superseded_only && !ArchiveRange("superseded_read", candidate.index,
+                                         candidate.index + 1, 0, archive_cap)) {
+      continue;
+    }
+    ++result.results;
+    result.reclaimed_chars +=
+        JsonStringRef(messages_[candidate.index], "content")->size() -
+        candidate.replacement.size();
     messages_[candidate.index]["content"] = std::move(candidate.replacement);
   }
-  return {candidates.size(), reclaimable_chars};
+  return result;
 }
 
 size_t Conversation::PruneAttachments(size_t begin) {
@@ -448,7 +484,7 @@ void Conversation::ArchiveTurn(size_t turn_start, int64_t turn,
                archive_cap, std::move(metadata));
 }
 
-void Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
+bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
                                 int64_t turn, int64_t archive_cap,
                                 json metadata) {
   if (!metadata.is_object()) metadata = json::object();
@@ -461,7 +497,7 @@ void Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
       saved_kinds.push_back(MessageKindName(kinds_[index]));
     }
   }
-  if (saved.empty() && metadata.empty()) return;
+  if (saved.empty() && metadata.empty()) return false;
   json segment = {{"turn", turn},
                   {"reason", reason},
                   {"messages", std::move(saved)},
@@ -469,7 +505,7 @@ void Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
   for (auto& [key, value] : metadata.items()) {
     if (!segment.contains(key)) segment[key] = std::move(value);
   }
-  AddArchiveSegment(std::move(segment), archive_cap);
+  return AddArchiveSegment(std::move(segment), archive_cap);
 }
 
 void Conversation::ArchiveAll(const char* reason, size_t baseline_size,
@@ -477,22 +513,32 @@ void Conversation::ArchiveAll(const char* reason, size_t baseline_size,
   ArchiveRange(reason, baseline_size, messages_.size(), turn, archive_cap);
 }
 
-void Conversation::AddArchiveSegment(json segment, int64_t archive_cap) {
+bool Conversation::AddArchiveSegment(json segment, int64_t archive_cap) {
   int64_t segment_bytes = static_cast<int64_t>(JsonDump(segment).size());
   if (archive_cap <= 0 || segment_bytes > archive_cap) {
     ++dropped_segments_;
-    return;
+    return false;
   }
   int64_t bytes = segment_bytes + (archive_.empty() ? 0 : 1);
-  while (!archive_.empty() && archive_bytes_ + bytes > archive_cap) {
-    archive_bytes_ -= static_cast<int64_t>(JsonDump(archive_.front()).size()) +
-                      (archive_.size() > 1 ? 1 : 0);
-    archive_.erase(archive_.begin());
+  size_t expired = 0;
+  while (expired < archive_sizes_.size() &&
+         archive_bytes_ + bytes > archive_cap) {
+    archive_bytes_ -=
+        archive_sizes_[expired] + (archive_sizes_.size() - expired > 1 ? 1 : 0);
+    ++expired;
     ++dropped_segments_;
-    bytes = segment_bytes + (archive_.empty() ? 0 : 1);
+    bytes = segment_bytes + (expired < archive_sizes_.size() ? 1 : 0);
   }
+  archive_.erase(
+      archive_.begin(),
+      archive_.begin() + static_cast<json::difference_type>(expired));
+  archive_sizes_.erase(
+      archive_sizes_.begin(),
+      archive_sizes_.begin() + static_cast<std::ptrdiff_t>(expired));
   archive_.push_back(std::move(segment));
-  archive_bytes_ += segment_bytes + (archive_.size() > 1 ? 1 : 0);
+  archive_sizes_.push_back(segment_bytes);
+  archive_bytes_ += bytes;
+  return true;
 }
 
 json MessageKindsJson(const std::vector<MessageKind>& kinds) {

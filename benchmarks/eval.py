@@ -414,6 +414,9 @@ def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) ->
         }
     )
     env.update({key: str(value) for key, value in scenario.get("env", {}).items()})
+    env.update(
+        {key: str(value) for key, value in scenario.get("variant_env", {}).get(variant, {}).items()}
+    )
     if arguments.prompt_overlay:
         env["UAGENT_PROMPT_OVERLAY"] = str(Path(arguments.prompt_overlay).resolve())
     if arguments.toolset != "full":

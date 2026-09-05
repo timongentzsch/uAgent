@@ -32,6 +32,8 @@ struct ToolTracePruneResult {
   size_t reclaimed_chars = 0;
 };
 
+enum class ToolPruneMode { kOldResults, kSupersededReads };
+
 class Conversation {
  public:
   json& Messages() { return messages_; }
@@ -79,19 +81,20 @@ class Conversation {
                            const std::string& result) const;
   ToolTracePruneResult PruneOldToolResults(
       size_t protect_chars, size_t minimum_reclaim_chars,
-      const std::vector<std::string>& retained_tools);
+      const std::vector<std::string>& retained_tools,
+      ToolPruneMode mode = ToolPruneMode::kOldResults, int64_t archive_cap = 0);
 
   size_t PruneAttachments(size_t begin);
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
                    json metadata);
 
-  void ArchiveRange(const char* reason, size_t begin, size_t end, int64_t turn,
+  bool ArchiveRange(const char* reason, size_t begin, size_t end, int64_t turn,
                     int64_t archive_cap, json metadata = json::object());
   void ArchiveAll(const char* reason, size_t baseline_size, int64_t turn,
                   int64_t archive_cap);
 
  private:
-  void AddArchiveSegment(json segment, int64_t archive_cap);
+  bool AddArchiveSegment(json segment, int64_t archive_cap);
 
   void PruneToolDisplays();
 
@@ -106,6 +109,7 @@ class Conversation {
   std::vector<MessageKind> kinds_;
   json tool_displays_ = json::object();
   json archive_ = json::array();
+  std::vector<int64_t> archive_sizes_;
   int64_t archive_bytes_ = 0;
   int64_t dropped_segments_ = 0;
 };

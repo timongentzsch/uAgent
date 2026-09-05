@@ -136,15 +136,35 @@ int RunBenchmarks() {
   wire_benchmark(WireApi::kChatCompletions, "encode Chat Completions");
   wire_benchmark(WireApi::kResponses, "encode Responses");
   wire_benchmark(WireApi::kAnthropicMessages, "encode Anthropic Messages");
-  Api cached_chat;
-  cached_chat.model = benchmark_model;
-  (void)cached_chat.ChatPayload(history, no_tools);
-  Report("cached Chat payload", kWireIterations, Measure(kWireIterations, [&] {
-           return cached_chat.ChatPayload(history, no_tools).size();
-         }));
-
   ProcessSupervisor processes;
   auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."), false);
+  const json cached_tools = ToolSchemas(lean_tools);
+  for (WireApi wire : {WireApi::kChatCompletions, WireApi::kResponses,
+                       WireApi::kAnthropicMessages}) {
+    Api cached;
+    cached.model = benchmark_model;
+    cached.capabilities.wire_api = wire;
+    const std::string label = std::string(WireApiName(wire));
+    size_t revision = 0;
+    auto change_tail = [&] {
+      history.back()["content"] =
+          std::string(256, 'x') + std::to_string(revision++);
+    };
+    Report((label + " full payload").c_str(), kWireIterations,
+           Measure(kWireIterations, [&] {
+             change_tail();
+             return JsonDump(cached.BuildRequestBody(history, cached_tools))
+                 .size();
+           }));
+    revision = 0;
+    (void)cached.ChatPayload(history, cached_tools);
+    Report((label + " cached payload").c_str(), kWireIterations,
+           Measure(kWireIterations, [&] {
+             change_tail();
+             return cached.ChatPayload(history, cached_tools).size();
+           }));
+  }
+
   auto image_tools = BuiltinTools(processes, CanonicalAccessPath("."), true);
   auto without = [](std::vector<Tool> tools, const std::string& name) {
     std::erase_if(tools, [&](const Tool& tool) { return tool.name == name; });

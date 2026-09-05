@@ -22,7 +22,10 @@ json ChatMessages(const json& messages) {
   if (!messages.is_array()) return messages;
   json encoded = messages;
   for (json& message : encoded) {
-    if (message.is_object()) message.erase(kWireReplayField);
+    if (message.is_object()) {
+      message.erase(kWireReplayField);
+      message.erase(kReadRangeField);
+    }
   }
   return encoded;
 }
@@ -298,80 +301,70 @@ json AnthropicMessages(const json& canonical, std::string& system) {
   return messages;
 }
 
-json EncodeChatCompletions(const WireRequest& request) {
-  json body = {{"model", request.model},
-               {"messages", ChatMessages(request.messages)},
-               {"stream", true}};
-  if (request.native_tools) {
-    json tools = FunctionTools(WireApi::kChatCompletions, request.tool_schemas,
-                               !request.function_web_search);
-    if (!tools.empty()) {
-      body["tools"] = std::move(tools);
-      if (request.parallel_tools) body["parallel_tool_calls"] = true;
-    }
-  }
-  if (request.stream_usage) {
-    body["stream_options"] = {{"include_usage", true}};
-  }
-  return body;
-}
-
-json EncodeResponses(const WireRequest& request) {
-  json body = {{"model", request.model},
-               {"input", ResponsesInput(request.messages)},
-               {"stream", true},
-               {"store", false}};
+json RequestTools(WireApi wire_api, const WireRequest& request) {
   json tools = request.native_tools
-                   ? FunctionTools(WireApi::kResponses, request.tool_schemas,
-                                   request.native_web_search ||
+                   ? FunctionTools(wire_api, request.tool_schemas,
+                                   (wire_api != WireApi::kChatCompletions &&
+                                    request.native_web_search) ||
                                        !request.function_web_search)
                    : json::array();
-  if (request.native_web_search) tools.push_back({{"type", "web_search"}});
+  if (request.native_web_search) {
+    if (wire_api == WireApi::kResponses) {
+      tools.push_back({{"type", "web_search"}});
+    } else if (wire_api == WireApi::kAnthropicMessages) {
+      tools.push_back(
+          {{"type", "web_search_20250305"}, {"name", "web_search"}});
+    }
+  }
+  return tools;
+}
+
+json RequestEnvelope(WireApi wire_api, const WireRequest& request, json tools) {
+  json body = {{"model", request.model}, {"stream", true}};
   if (!tools.empty()) {
     body["tools"] = std::move(tools);
-    if (request.parallel_tools) body["parallel_tool_calls"] = true;
+    if (request.parallel_tools && wire_api != WireApi::kAnthropicMessages) {
+      body["parallel_tool_calls"] = true;
+    }
   }
-  json include = json::array({"reasoning.encrypted_content"});
-  if (request.native_web_search && request.include_web_search_sources) {
-    include.push_back("web_search_call.action.sources");
-  }
-  body["include"] = std::move(include);
-  if (request.max_output_tokens > 0) {
-    body["max_output_tokens"] = request.max_output_tokens;
-  }
-  if (!request.reasoning_effort.empty()) {
-    body["reasoning"] = {{"effort", request.reasoning_effort}};
+  if (wire_api == WireApi::kChatCompletions) {
+    if (request.stream_usage) {
+      body["stream_options"] = {{"include_usage", true}};
+    }
+  } else if (wire_api == WireApi::kResponses) {
+    body["store"] = false;
+    json include = json::array({"reasoning.encrypted_content"});
+    if (request.native_web_search && request.include_web_search_sources) {
+      include.push_back("web_search_call.action.sources");
+    }
+    body["include"] = std::move(include);
+    if (request.max_output_tokens > 0) {
+      body["max_output_tokens"] = request.max_output_tokens;
+    }
+    if (!request.reasoning_effort.empty()) {
+      body["reasoning"] = {{"effort", request.reasoning_effort}};
+    }
+  } else {
+    body["cache_control"] = {{"type", "ephemeral"}};
+    body["max_tokens"] = request.max_output_tokens > 0
+                             ? request.max_output_tokens
+                             : int64_t{8192};
+    if (request.reasoning_effort == "low" ||
+        request.reasoning_effort == "medium" ||
+        request.reasoning_effort == "high" ||
+        request.reasoning_effort == "max") {
+      body["thinking"] = {{"type", "adaptive"}};
+      body["output_config"] = {{"effort", request.reasoning_effort}};
+    }
   }
   return body;
 }
 
-json EncodeAnthropic(const WireRequest& request) {
-  std::string system;
-  json body = {
-      {"model", request.model},
-      {"messages", AnthropicMessages(request.messages, system)},
-      {"cache_control", {{"type", "ephemeral"}}},
-      {"stream", true},
-      {"max_tokens", request.max_output_tokens > 0 ? request.max_output_tokens
-                                                   : int64_t{8192}}};
-  if (!system.empty()) body["system"] = std::move(system);
-  json tools =
-      request.native_tools
-          ? FunctionTools(
-                WireApi::kAnthropicMessages, request.tool_schemas,
-                request.native_web_search || !request.function_web_search)
-          : json::array();
-  if (request.native_web_search) {
-    tools.push_back({{"type", "web_search_20250305"}, {"name", "web_search"}});
-  }
-  if (!tools.empty()) body["tools"] = std::move(tools);
-  if (request.reasoning_effort == "low" ||
-      request.reasoning_effort == "medium" ||
-      request.reasoning_effort == "high" || request.reasoning_effort == "max") {
-    body["thinking"] = {{"type", "adaptive"}};
-    body["output_config"] = {{"effort", request.reasoning_effort}};
-  }
-  return body;
+constexpr char kEncodedSlot[] = "\x01uagent-encoded\x01";
+
+std::string ArrayContents(const json& array) {
+  std::string text = JsonDump(array);
+  return text.substr(1, text.size() - 2);
 }
 
 }  // namespace
@@ -383,15 +376,107 @@ bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool) {
 }
 
 json EncodeWireRequest(WireApi wire_api, const WireRequest& request) {
+  json body =
+      RequestEnvelope(wire_api, request, RequestTools(wire_api, request));
+  std::string system;
   switch (wire_api) {
     case WireApi::kChatCompletions:
-      return EncodeChatCompletions(request);
+      body["messages"] = ChatMessages(request.messages);
+      break;
     case WireApi::kResponses:
-      return EncodeResponses(request);
+      body["input"] = ResponsesInput(request.messages);
+      break;
     case WireApi::kAnthropicMessages:
-      return EncodeAnthropic(request);
+      body["messages"] = AnthropicMessages(request.messages, system);
+      if (!system.empty()) body["system"] = std::move(system);
+      break;
   }
-  return EncodeChatCompletions(request);
+  return body;
+}
+
+json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
+  active_ = request.messages.is_array();
+  if (!active_) return EncodeWireRequest(wire_api, request);
+  if (wire_api_ != wire_api) {
+    messages_.clear();
+    tool_key_ = nullptr;
+    wire_api_ = wire_api;
+  }
+  messages_.resize(request.messages.size());
+  std::string system;
+  std::string role;
+  encoded_messages_ = "[";
+  for (size_t index = 0; index < messages_.size(); ++index) {
+    Message& entry = messages_[index];
+    const json& source = request.messages[index];
+    if (!entry.valid || entry.source != source) {
+      entry = {source, {}, {}, {}, true};
+      json single = json::array({source});
+      if (wire_api == WireApi::kAnthropicMessages) {
+        json encoded = AnthropicMessages(single, entry.system);
+        if (!encoded.empty()) {
+          entry.role = JsonValue(encoded[0], "role", "");
+          entry.body = ArrayContents(encoded[0]["content"]);
+        }
+      } else {
+        entry.body = ArrayContents(wire_api == WireApi::kResponses
+                                       ? ResponsesInput(single)
+                                       : ChatMessages(single));
+      }
+    }
+    if (!entry.system.empty()) {
+      if (!system.empty()) system += "\n\n";
+      system += entry.system;
+    }
+    if (entry.body.empty()) continue;
+    if (wire_api == WireApi::kAnthropicMessages) {
+      if (role != entry.role) {
+        if (!role.empty()) {
+          encoded_messages_ += "],\"role\":" + JsonDump(role) + "},";
+        }
+        encoded_messages_ += "{\"content\":[";
+        role = entry.role;
+      } else {
+        encoded_messages_ += ',';
+      }
+    } else if (encoded_messages_.size() > 1) {
+      encoded_messages_ += ',';
+    }
+    encoded_messages_ += entry.body;
+  }
+  if (!role.empty()) encoded_messages_ += "],\"role\":" + JsonDump(role) + "}";
+  encoded_messages_ += ']';
+
+  json key = json::array({request.native_tools, request.native_web_search,
+                          request.function_web_search});
+  if (key != tool_key_ || schemas_ != request.tool_schemas) {
+    encoded_tools_ = JsonDump(RequestTools(wire_api, request));
+    tool_key_ = std::move(key);
+    schemas_ = request.tool_schemas;
+  }
+  json body = RequestEnvelope(
+      wire_api, request,
+      encoded_tools_ == "[]" ? json::array() : json(kEncodedSlot));
+  body[wire_api == WireApi::kResponses ? "input" : "messages"] = kEncodedSlot;
+  if (!system.empty()) body["system"] = std::move(system);
+  return body;
+}
+
+std::string WireRequestCache::Serialize(const json& body) const {
+  std::string payload = JsonDump(body);
+  if (!active_) return payload;
+  for (const char* field : {"messages", "input", "tools"}) {
+    if (JsonValue(body, field, "") != kEncodedSlot) continue;
+    std::string key = JsonDump(field) + ":";
+    std::string marker = key + JsonDump(kEncodedSlot);
+    size_t at = payload.find(marker);
+    if (at != std::string::npos) {
+      payload.replace(at + key.size(), marker.size() - key.size(),
+                      std::string_view(field) == "tools" ? encoded_tools_
+                                                         : encoded_messages_);
+    }
+  }
+  return payload;
 }
 
 }  // namespace uagent

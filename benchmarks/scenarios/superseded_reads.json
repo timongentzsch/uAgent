@@ -1,0 +1,116 @@
+{
+  "name": "superseded_reads",
+  "description": "Repeated changed reads compare step-boundary pruning with control. The old result must be archived and the latest evidence retained.",
+  "tier": "capability",
+  "variants": [
+    "control",
+    "pruned"
+  ],
+  "yolo": true,
+  "env": {
+    "UAGENT_TOOL_TRACE_PROTECT_CHARS": "0",
+    "UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS": "1024"
+  },
+  "variant_env": {
+    "control": {
+      "UAGENT_PRUNE_SUPERSEDED_READS": "0"
+    },
+    "pruned": {
+      "UAGENT_PRUNE_SUPERSEDED_READS": "1"
+    }
+  },
+  "prompt": "Read notes.txt, change OLD-MARKER to NEW-MARKER, reread the file, and verify NEW-MARKER is present.",
+  "files": {
+    "notes.txt": {
+      "text": "OLD-MARKER\n",
+      "repeat_text": "row {index:03d}: durable evidence padding abcdefghijklmnopqrstuvwxyz\n",
+      "repeat": 80
+    }
+  },
+  "script": [
+    {
+      "when": {
+        "tool_results": 0
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "before",
+            "name": "read_path",
+            "arguments": {
+              "path": "notes.txt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 1
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "edit",
+            "name": "edit_file",
+            "arguments": {
+              "path": "notes.txt",
+              "edits": [
+                {
+                  "old": "OLD-MARKER",
+                  "new": "NEW-MARKER"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 2
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "after",
+            "name": "read_path",
+            "arguments": {
+              "path": "notes.txt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "when": {
+        "tool_results": 3
+      },
+      "respond": {
+        "tool_calls": [
+          {
+            "id": "check",
+            "name": "grep",
+            "arguments": {
+              "path": "notes.txt",
+              "pattern": "NEW-MARKER"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "respond": {
+        "content": "Verified NEW-MARKER in notes.txt."
+      }
+    }
+  ],
+  "checks": {
+    "workspace_unchanged": false,
+    "answer_contains": [
+      "NEW-MARKER"
+    ],
+    "max_requests": 5,
+    "max_tool_calls": 4
+  }
+}

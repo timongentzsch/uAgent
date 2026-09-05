@@ -36,13 +36,17 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   int64_t request = ++request_id_;
   const json& messages =
       request_messages ? *request_messages : conversation_.Messages();
-  const size_t schema_bytes = JsonEstimatedBytes(schemas);
+  const size_t schema_bytes = &schemas == &available_schemas_.Schemas()
+                                  ? available_schemas_.Bytes()
+                                  : JsonEstimatedBytes(schemas);
+  const size_t message_bytes = JsonEstimatedBytes(messages);
   const size_t estimated_bytes =
-      RequestContextBytes(schema_bytes, request_messages);
+      api_.capabilities.native_tools
+          ? SaturatingAdd(message_bytes, schema_bytes)
+          : message_bytes;
   context_snapshot_.store(EstimatedTokens(estimated_bytes),
                           std::memory_order_relaxed);
   if (Debug().Enabled()) {
-    const size_t message_bytes = JsonEstimatedBytes(messages);
     // A full snapshot after any shrink plus per-step deltas reconstructs every
     // request without re-dumping the whole history on every step.
     json record = {
@@ -68,7 +72,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
       record["messages"] = messages;
       record["message_chars"] = message_bytes;
       record["projected_context"] = true;
-    } else if (step <= 0 || logged_msgs_ > conversation_.Size()) {
+    } else if (step <= 0 || logged_msgs_ == 0 ||
+               logged_msgs_ > conversation_.Size()) {
       record["messages"] = conversation_.Messages();
       record["message_chars"] = message_bytes;
     } else {
@@ -369,14 +374,15 @@ void Agent::ArchiveTurnTrace(size_t turn_start) {
            {{"turn", turn_id_}, {"messages", conversation_.Size()}});
 }
 
-void Agent::PruneOldToolResults() {
+void Agent::PruneOldToolResults(ToolPruneMode mode) {
   std::vector<std::string> retained_tools;
   for (const Tool& tool : tools_) {
     if (tool.retain_output) retained_tools.push_back(tool.name);
   }
   ToolTracePruneResult result = conversation_.PruneOldToolResults(
       static_cast<size_t>(ToolTraceProtectChars()),
-      static_cast<size_t>(ToolTracePruneMinChars()), retained_tools);
+      static_cast<size_t>(ToolTracePruneMinChars()), retained_tools, mode,
+      api_.config.session_archive_bytes);
   if (result.results == 0) return;
   logged_msgs_ = 0;
   ++revision_;

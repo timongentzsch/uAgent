@@ -64,6 +64,7 @@ void TestFileTools() {
   std::string read = ToolReadFile(file.string(), 1, 1).output;
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
+  CHECK(ToolReadFile(file.string(), 1, 1).read_range->last == 1);
   // Bytes that are not text are not read as text: the refusal names the tool
   // that can carry them instead of filling context with mojibake.
   fs::path binary_file = root / "payload.bin";
@@ -79,6 +80,17 @@ void TestFileTools() {
   std::string long_read = ToolReadFile(long_line.string(), 1, 1).output;
   CHECK(long_read.find("lines 1-1; line prefix limited") != std::string::npos);
   CHECK(long_read.find(std::string(1024, 'x')) != std::string::npos);
+  CHECK(!ToolReadFile(long_line.string(), 1, 1).read_range);
+  CHECK(long_read.find("more available") == std::string::npos);
+  CHECK(ToolWriteFile(long_line.string(),
+                      std::string(size_t{2} * 1024 * 1024, 'x') + "\ntail\n")
+            .Ok());
+  CHECK(ToolReadFile(long_line.string(), 2, 1).output.ends_with("\ntail\n"));
+  CHECK(ToolReadFile(long_line.string(), 3, 1).error ==
+        ToolErrorCode::kInvalidArguments);
+  CHECK(ToolWriteFile(long_line.string(), std::string(8191, 'x') + "\n").Ok());
+  CHECK(ToolReadFile(long_line.string(), 1, 1).output.find("more available") ==
+        std::string::npos);
   fs::path ordinary_source = root / "ordinary-source.txt";
   std::string ordinary_source_text;
   for (int line = 1; line <= 300; ++line) {

@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -19,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/core/checked.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -133,6 +133,53 @@ ToolResult FileOpenFailure(const std::string& path) {
 // Defined below, beside the directory preview that shares it.
 bool LikelyTextFile(const std::filesystem::path& path);
 
+// Scan skipped lines without retaining them; never allocate a complete giant
+// line merely to truncate it. Cancellation is checked once per input chunk.
+class FileLines {
+ public:
+  explicit FileLines(std::istream& input) : input_(input) {}
+
+  bool Next(std::string& line, size_t cap, bool skip, bool& limited) {
+    line.clear();
+    bool found = false;
+    while (!AbortRequested()) {
+      if (begin_ == end_) {
+        input_.read(buffer_, sizeof buffer_);
+        begin_ = 0;
+        end_ = static_cast<size_t>(input_.gcount());
+        if (end_ == 0) return found;
+      }
+      const char* start = buffer_ + begin_;
+      const char* newline =
+          static_cast<const char*>(std::memchr(start, '\n', end_ - begin_));
+      size_t bytes =
+          newline ? static_cast<size_t>(newline - start) : end_ - begin_;
+      found = true;
+      if (!skip) {
+        size_t keep = std::min(bytes, cap - line.size());
+        line.append(start, keep);
+        if (keep < bytes) {
+          limited = true;
+          return true;
+        }
+      }
+      begin_ += bytes + (newline ? 1 : 0);
+      if (newline) return true;
+    }
+    return false;
+  }
+
+  bool More() {
+    return begin_ < end_ || input_.peek() != std::char_traits<char>::eof();
+  }
+
+ private:
+  std::istream& input_;
+  char buffer_[8192];
+  size_t begin_ = 0;
+  size_t end_ = 0;
+};
+
 // Atomic write: temp file in the same directory, then rename — a disk-full or
 // crash mid-write can never leave the target truncated. Keeps an existing
 // file's permissions.
@@ -194,14 +241,15 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
   std::string line, out;
   int64_t total = 0, shown = 0, first = 0, last = 0;
   bool output_limited = false, line_truncated = false;
-  while (shown < limit && std::getline(f, line)) {
+  FileLines lines(f);
+  while (shown < limit &&
+         lines.Next(line, static_cast<size_t>(max_bytes) - out.size(),
+                    total + 1 < offset, output_limited)) {
     if (AbortRequested()) return ToolCancelled("error: read cancelled");
     ++total;
     if (total >= offset) {
-      std::optional<size_t> with_line = CheckedAdd(out.size(), line.size());
-      std::optional<size_t> with_newline =
-          with_line ? CheckedAdd(*with_line, 1) : std::nullopt;
-      if (!with_newline || *with_newline > static_cast<size_t>(max_bytes)) {
+      if (output_limited ||
+          line.size() >= static_cast<size_t>(max_bytes) - out.size()) {
         if (out.empty()) {
           out = Utf8Prefix(std::move(line), static_cast<size_t>(max_bytes));
           first = last = total;
@@ -218,8 +266,11 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
       ++shown;
     }
   }
-  bool more = output_limited ||
-              (shown >= limit && f.peek() != std::char_traits<char>::eof());
+  if (AbortRequested()) return ToolCancelled("error: read cancelled");
+  if (f.bad()) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: read failed");
+  }
+  bool more = output_limited || (shown >= limit && lines.More());
   if (total == 0) return ToolSuccess("(empty file)");
   if (offset > total && !more) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -230,7 +281,8 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
   std::string header = "[" + path + " lines " + std::to_string(first) + "-" +
                        std::to_string(last);
   if (output_limited) {
-    header += line_truncated ? "; line prefix limited; more available"
+    header += line_truncated ? "; line prefix limited; use a targeted search "
+                               "or run to inspect the remainder"
                              : "; output byte limit reached; more available";
   } else if (more) {
     header += "; more available";
@@ -241,7 +293,9 @@ ToolResult ToolReadFile(const std::string& path, int64_t offset,
     header += "; limit " + std::to_string(max_lines) + " of " +
               std::to_string(requested_lines) + " requested";
   }
-  return ToolSuccess(header + "]\n" + out);
+  ToolResult result = ToolSuccess(header + "]\n" + out);
+  if (!output_limited) result.read_range = ReadRange{path, first, last};
+  return result;
 }
 
 ToolResult ToolWriteFile(const std::string& path, const std::string& content) {

@@ -58,6 +58,14 @@ HTTP 413 follows the same policy. If compaction is also rejected, the turn
 stops; background completion remains observational.
 Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 `UAGENT_TOOL_TRACE_PROTECT_CHARS` controls the recent-output budget.
+`UAGENT_PRUNE_SUPERSEDED_READS=1` additionally experiments with pruning at
+model-step boundaries. Only successful, untruncated file reads replaced by a
+later read of the same recorded path and line range qualify. Originals must fit
+in the bounded session archive; failures, different ranges, and incremental
+activity output remain untouched. It uses the same protection and batch limits
+and requires a nonzero session archive budget. Sessions without read metadata
+retain the usual age-based pruning. It is off by default pending
+live outcome evaluation.
 Use `--no-memory` to remove memory recall and writes from the coordinator and
 delegated children during reproducible runs. `UAGENT_MEMORY=0` is the equivalent
 environment setting. `/memory` shows the active policy and saved keys without

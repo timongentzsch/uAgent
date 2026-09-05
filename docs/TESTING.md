@@ -139,6 +139,21 @@ say what broke.
 
 ## Improvement iterations
 
+The `read_volume` scenario compares 250/500/1000-line defaults, including the
+extra requests needed to continue reading. `superseded_reads` compares control
+with opt-in step-boundary pruning. Both use `variant_env` to apply only the
+settings under test:
+
+```sh
+python3 benchmarks/eval.py build/release/uagent --scenario read_volume \
+  --scenario superseded_reads --trials 3 --report /tmp/efficiency.json
+```
+
+These scripted trials verify mechanisms and cumulative accounting, not model
+quality. Use the live authority procedure above before changing defaults. The
+native benchmark also compares full and cached payload preparation for every
+wire API; these timings exclude network and generation latency.
+
 `benchmarks/session_metrics.py` reports what real sessions did and where they
 spent time, tokens and turns. It cohorts canonical, allowlisted
 `session.ready` provenance (`legacy` is explicit), supports `--cohort`, and

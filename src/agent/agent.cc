@@ -699,6 +699,7 @@ void Agent::ArchiveAll(const char* reason) {
 }
 
 void Agent::RebuildToolSchemas() {
+  available_schemas_.Reset();
   schemas_ = ToolSchemas(tools_);
   schema_chars_ = JsonDump(schemas_).size();
   logged_schemas_.clear();

@@ -147,7 +147,8 @@ void TestToolExecutionPolicy() {
   CHECK(lean_tools[0].name == "unbounded");
   std::vector<Tool> policies{bounded_tool, unbounded};
   json schemas = ToolSchemas(policies);
-  json available = AvailableToolSchemas(policies, schemas, {{"bounded", 2}});
+  ToolSchemaCache schema_cache;
+  json available = schema_cache.Get(policies, schemas, {{"bounded", 2}});
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "unbounded");
 
@@ -184,10 +185,11 @@ void TestToolExecutionPolicy() {
   terminal_only.visibility = Tool::Visibility::kDetachedTerminal;
   policies = {unbounded, terminal_only};
   schemas = ToolSchemas(policies);
-  available = AvailableToolSchemas(policies, schemas, {});
+  schema_cache.Reset();
+  available = schema_cache.Get(policies, schemas, {});
   CHECK(available.size() == 1);
   available =
-      AvailableToolSchemas(policies, schemas, {}, {.detached_terminal = true});
+      schema_cache.Get(policies, schemas, {}, {.detached_terminal = true});
   CHECK(available.size() == 2);
   CHECK(available[1]["function"]["name"] == "terminal_only");
 

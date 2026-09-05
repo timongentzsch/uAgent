@@ -256,6 +256,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
         "absolute token trigger for compaction; 0 uses the percentage"),
 
     // Tool results and trace retention.
+    registry::Bul("UAGENT_PRUNE_SUPERSEDED_READS", {}, false,
+                  ReloadPolicy::kRestartRequired, "tools",
+                  "experimental step-boundary pruning of superseded reads"),
     registry::Int("UAGENT_TOOL_RESULT_CHARS", {}, 8000, kConfigAnyMin,
                   kConfigAnyMax, ReloadPolicy::kRestartRequired, "tools",
                   "characters kept from one tool result"),

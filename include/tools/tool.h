@@ -80,11 +80,17 @@ inline std::string ArtifactHint(const ToolArtifact& artifact) {
          "not read it whole]";
 }
 
+struct ReadRange {
+  std::string path;
+  int64_t first = 0, last = 0;
+};
+
 struct ToolResult {
   CompletionStatus status = CompletionStatus::kSuccess;
   std::string output;
   ToolErrorCode error = ToolErrorCode::kNone;
   std::optional<ToolArtifact> artifact;
+  std::optional<ReadRange> read_range;
   // Optional model-facing override for this call. Most tools inherit their
   // registry cap; a bounded richer result can raise it.
   int64_t result_chars = -1;
@@ -388,26 +394,46 @@ inline json ToolSchemas(const std::vector<Tool>& tools) {
   return out;
 }
 
-inline json AvailableToolSchemas(
-    const std::vector<Tool>& tools, const json& schemas,
-    const std::unordered_map<std::string, int64_t>& counts,
-    ToolAvailability availability = {}) {
-  json available = json::array();
-  for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
-    const Tool& tool = tools[i];
-    if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
-        !availability.detached_terminal) {
-      continue;
+class ToolSchemaCache {
+ public:
+  void Reset() { valid_ = false; }
+
+  const json& Get(const std::vector<Tool>& tools, const json& schemas,
+                  const std::unordered_map<std::string, int64_t>& counts,
+                  ToolAvailability availability = {}) {
+    std::vector<size_t> selected;
+    for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
+      const Tool& tool = tools[i];
+      if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
+          !availability.detached_terminal) {
+        continue;
+      }
+      auto count = counts.find(tool.name);
+      if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
+          count->second >= tool.max_calls_per_turn) {
+        continue;
+      }
+      selected.push_back(i);
     }
-    auto count = counts.find(tool.name);
-    if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
-        count->second >= tool.max_calls_per_turn) {
-      continue;
+    if (!valid_ || selected != selected_) {
+      available_ = json::array();
+      for (size_t i : selected) available_.push_back(schemas[i]);
+      selected_ = std::move(selected);
+      bytes_ = JsonEstimatedBytes(available_);
+      valid_ = true;
     }
-    available.push_back(schemas[i]);
+    return available_;
   }
-  return available;
-}
+
+  size_t Bytes() const { return bytes_; }
+  const json& Schemas() const { return available_; }
+
+ private:
+  bool valid_ = false;
+  size_t bytes_ = 0;
+  std::vector<size_t> selected_;
+  json available_ = json::array();
+};
 
 }  // namespace uagent
 

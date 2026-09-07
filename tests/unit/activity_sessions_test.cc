@@ -338,10 +338,13 @@ void TestActivitySessions() {
                                  context)
                  : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(input.Ok());
-    CHECK(input.output.find("got:hello") != std::string::npos);
     ToolResult completed =
         ToolActivityWait(pty_processes, {id}, "all", BudgetMs(2000), context);
     CHECK(completed.Ok());
+    // write may return as soon as the PTY echoes input; the command's response
+    // can arrive in the following wait result.
+    CHECK((input.output + completed.output).find("got:hello") !=
+          std::string::npos);
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
 

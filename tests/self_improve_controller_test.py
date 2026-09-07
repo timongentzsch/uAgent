@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SANDBOX = (
@@ -165,6 +166,43 @@ class ControllerTest(unittest.TestCase):
         return json.loads((self.state / "state.json").read_text(encoding="utf-8"))
 
     # --- end-to-end ---
+
+    @unittest.skipUnless(sys.platform == "darwin", "Darwin process-group semantics")
+    def test_cleanup_accepts_an_exited_group_reporting_eperm(self):
+        with patch("agent_run.os.killpg", side_effect=PermissionError("group exited")):
+            result = run_process(
+                ["/usr/bin/true"],
+                workspace=self.source,
+                env=os.environ.copy(),
+                timeout=5,
+                sandbox_binary=SANDBOX,
+                writable_roots=(self.source,),
+            )
+        self.assertEqual(result["returncode"], 0)
+
+    @unittest.skipUnless(sys.platform == "darwin", "Darwin process-group semantics")
+    def test_cleanup_rejects_eperm_with_a_live_descendant(self):
+        signal_group = os.killpg
+        denied = False
+
+        def deny_once(group, number):
+            nonlocal denied
+            if not denied:
+                denied = True
+                raise PermissionError("live group")
+            signal_group(group, number)
+
+        with patch("agent_run.os.killpg", side_effect=deny_once):
+            with self.assertRaisesRegex(PermissionError, "live group"):
+                run_process(
+                    ["/bin/sh", "-c", "sleep 30 &"],
+                    workspace=self.source,
+                    env=os.environ.copy(),
+                    timeout=5,
+                    sandbox_binary=SANDBOX,
+                    writable_roots=(self.source,),
+                    monitor=lambda: "stop",
+                )
 
     def test_native_executor_can_start_inside_the_outer_sandbox(self):
         home = self.base / "home"

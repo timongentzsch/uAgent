@@ -324,16 +324,27 @@ def run_process(argv, *, workspace, env, timeout, sandbox_binary, writable_roots
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            except PermissionError:
-                # macOS returns EPERM for a group containing only an unreaped
-                # zombie. Reap our exited child, then retry so live descendants
-                # still receive SIGKILL and real permission failures propagate.
-                if sys.platform != "darwin" or process.poll() is None:
+            except PermissionError as error:
+                # Darwin reports EPERM for groups containing only exiting or
+                # zombie processes. Allow our child to become reapable, then
+                # verify that no live group member escaped cleanup.
+                if sys.platform != "darwin":
                     raise
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                    process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    raise error from None
+                listing = subprocess.run(
+                    ["/bin/ps", "-axo", "pgid=,stat="],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=1,
+                )
+                for line in listing.stdout.splitlines():
+                    group, state = line.split()
+                    if int(group) == process.pid and not state.startswith("Z"):
+                        raise error
 
         try:
             with selectors.DefaultSelector() as selector:

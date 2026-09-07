@@ -407,13 +407,13 @@ def compose_prompt(manifest: dict[str, Any], history) -> str:
         json.dumps(
             {
                 "schema": CLAIM_SCHEMA,
-                "hypothesis": "one falsifiable sentence",
-                "measurement": "what the check demonstrates",
+                "hypothesis": "shared limitation, architectural change and falsifiable effect",
+                "measurement": "before/after evidence per affected workflow",
                 "verify_command": "the command that reproduces the claimed gain",
                 "assessment": {
                     "change_summary": "what you changed and why",
                     "impact": "observed before/after results, with units where applicable",
-                    "generality": "which inputs, users or workflows should benefit, and why",
+                    "generality": "shared mechanism, distinct workflows tested and untested reach",
                     "limitations": "untested cases, risks and evidence still needed",
                     "recommendation": "propose, revise or reject",
                     "proposed_title": "suggested commit or PR title",
@@ -1370,6 +1370,7 @@ def review_packet(path: pathlib.Path, manifest: dict) -> tuple[dict, bytes]:
             "The agent designed the improvement check; independent human review is still required.",
             "Claim-before-edit is an instruction, not controller-enforced preregistration.",
             "Generality is the agent's assessment; held-out generalization is not established.",
+            "Source validation does not establish architectural impact; review the shared mechanism and evidence across distinct workflows.",
         ],
         "authorization": "Pending human review; no apply, commit, PR, installation or promotion authorized.",
     }

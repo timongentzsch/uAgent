@@ -42,9 +42,12 @@ establish any speed, cost, reliability or generalization gain.
 
 ## Deliberate design choices, not research findings
 
-- The normal endpoint is human review of a focused fix. Making recursive A/B
-  optional prevents an unrelated capability comparison from being the sole
-  route for proposing an ordinary bug fix. This is a product decision.
+- The target is an architectural change to a shared harness mechanism, supported
+  by evidence across distinct workflows. Ordinary bug fixes are incidental
+  findings. This scope is the user's product requirement, not a research result
+  or a claim that larger patches perform better. Human review assesses scope;
+  source validation does not automatically establish architectural impact.
+  Recursive A/B remains optional and does not replace that assessment.
 - A review ID binds the patch, assessment and evidence. It cannot prove that a
   person actually read the report. Commit/PR presentation and authorization
   are operator responsibilities; the controller offers no commit/PR endpoint.

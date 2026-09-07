@@ -1,28 +1,31 @@
 ---
 name: self-improve
-description: Run one bounded source-improvement attempt on µAgent, or operate its measured incumbent/successor comparison, promotion and rollback workflow.
+description: Improve µAgent's shared harness architecture across development workflows, with measured evidence and human review; operate its comparison, promotion and rollback workflow. Not an ordinary bug-fix or polish skill.
 argument-hint: [attempt|status|start|verdict GENERATION|rollback]
 requires-tools: run, read_path, edit_file, grep
 ---
 
 # Self-improve
 
-For a source-improvement attempt, follow `${SKILL_DIR}/INSTRUCTION.md`. The
+For an architectural improvement attempt, follow `${SKILL_DIR}/INSTRUCTION.md`. The
 controller supplies the source, fixed instruction, route, limits and existing
-gates. Stop after one justified candidate or no validated improvement.
+gates. Target a shared mechanism with evidence across distinct workflows.
+Stop after one justified architectural candidate or no validated architectural
+improvement. Report micro fixes as incidental findings instead of selecting
+them as the attempt's outcome.
 
 Record `.uagent-improvement.json` before the substantive edit:
 
 ```json
 {
   "schema": "uagent.improvement.claim.v1",
-  "hypothesis": "one falsifiable sentence",
-  "measurement": "what observable behavior will improve",
+  "hypothesis": "shared limitation, architectural change and falsifiable effect",
+  "measurement": "before/after evidence per affected workflow",
   "verify_command": "the command that demonstrates the improvement",
   "assessment": {
     "change_summary": "what changed and why",
     "impact": "observed before/after results",
-    "generality": "expected scope of benefit and supporting reasoning",
+    "generality": "shared mechanism, distinct workflows tested and untested reach",
     "limitations": "untested cases, risks and missing evidence",
     "recommendation": "propose",
     "proposed_title": "suggested commit or PR title"
@@ -53,14 +56,19 @@ the full test suite can exercise its own sandboxes. Verification uses clean
 temporary source copies and HOME, but host mode runs candidate code with user
 permissions. Executors remain sandboxed. Never retry a failed sandbox gate in
 host mode within the same generation.
-`source_validated` records a proven source fix independently of the later A/B
-verdict; a useful fix need not establish better recursive self-improvement.
+`source_validated` records a reproduced source check independently of the later
+A/B verdict. It does not establish architectural impact. Architecture selection
+and assessment are instruction and human-review requirements; the controller
+does not infer them from line counts, file counts or a passing regression.
 
 `review` produces `review.md`, `review.json` and `proposal.patch`. Read and
 present the change, measured impact, agent-assessed generality and limitations,
 recommendation, and proposed title to the human, with links to the exact diff
 and evidence. Independently inspect the measurement and relevant edge cases;
 do not treat the author's check or recommendation as an independent oracle.
+Recommend revision when the evidence covers only an isolated fix, even if its
+shared function has many callers. Assess the changed mechanism and the results
+across distinct workflows, including complexity removed or introduced.
 Request authorization for the specific apply/commit/PR action only after this
 presentation, unless the human already authorized that action for this exact
 reviewed proposal. Review does not authorize publication or activation. The

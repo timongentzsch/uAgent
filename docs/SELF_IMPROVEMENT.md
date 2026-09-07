@@ -1,6 +1,6 @@
 # Self-improvement
 
-`self-improve` runs one bounded source-improvement attempt and prepares a human
+`self-improve` targets one architectural harness improvement and prepares a human
 review package. Optional trials compare incumbent and successor executors on
 the same source. It replaces the former
 prompt-overlay experiment. General-purpose eval overlays remain available in
@@ -16,9 +16,21 @@ There are two independent identities:
 The fixed instruction is [INSTRUCTION.md](../skills/self-improve/INSTRUCTION.md).
 The agent is instructed to record one hypothesis and falsification check before
 the substantive edit, implement one change, and stop. The controller reads the
-claim after execution, so preregistration is not mechanically enforced. A
-focused fix needs a reproducible check; a broader performance claim needs
-representative held-out tasks. A no-op is a valid outcome, but cannot win.
+claim after execution, so preregistration is not mechanically enforced.
+
+The target is a shared architectural mechanism with effects across distinct
+development workflows: context construction, tool execution, state ownership,
+recovery or duplicated runtime paths, for example. The agent compares promising
+options by expected impact, evidence, complexity and verification cost, then
+implements one coherent change with before/after evidence per workflow.
+Structural simplification can be demonstrated through removed duplication and
+preserved consumer behavior; it does not imply a measured performance gain.
+Patch size is not a selection criterion. An isolated edge-case fix remains an
+incidental finding even when it lives in a widely used function. If the frozen
+budget cannot support a justified architectural change, the agent reports the
+proposal and missing evidence instead of substituting an easy micro fix.
+Broader performance claims still need representative held-out tasks. A no-op
+is a valid outcome, but cannot win.
 
 ## One generation
 
@@ -49,6 +61,9 @@ is worthwhile and whether its measurement rewards useful behavior.
 and the successor bundle is built. That result is retained even if later A/B
 comparisons are inconclusive: a validated source fix and a demonstrated gain
 in recursive improvement are separate results.
+Architectural scope is an instruction and human-review criterion, not an
+automatic controller classification. `source_validated` alone does not satisfy
+that criterion; the reviewer checks the mechanism and per-workflow evidence.
 
 Before discovery, the unchanged snapshot must pass the same build and existing
 gates in a fresh source tree and HOME. Failure records `preflight_failed`, uses
@@ -109,7 +124,8 @@ python3 skills/self-improve/scripts/experiment.py --root /private/experiment ini
 
 `init` returns the pinned controller path. Use it for subsequent commands:
 `discover`, `gate`, `review`, then present the report and patch to the human.
-An ordinary source fix can stop here without running recursive trials.
+An architectural source change can reach human review without recursive trials;
+the reviewer still assesses its scope and evidence across affected workflows.
 For an exploratory executor comparison, run `replay`, `continue`, `verdict`,
 then regenerate `review`. After explicit human approval of that review,
 `promote --approve --review-id ID` requires a promoting verdict and a current

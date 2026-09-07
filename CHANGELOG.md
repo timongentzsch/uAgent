@@ -13,6 +13,9 @@
 
 ### Changed
 
+- Target self-improvement at shared architectural mechanisms with evidence
+  across distinct workflows; treat isolated fixes as incidental findings and
+  distinguish source validation from architectural impact in human review.
 - Default self-improvement to unlimited model calls; subscription authority can
   declare `max_model_calls: 0` while retaining token, time, tool and run limits.
 - Replace prompt-overlay self-improvement with one bounded source/binary loop:

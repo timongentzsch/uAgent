@@ -4,11 +4,17 @@
 
 ### Added
 
+- Self-improvement baseline preflight and a human review packet with the exact
+  patch, measured evidence, agent-assessed impact/generality and recommendation.
+  Bind promotion approval to the current review ID; document research support
+  and the limits of exploratory recursive comparisons.
 - `scratch` accepts script arguments; `grep` supports literal searches and
   returning only the names of files with matching content.
 
 ### Changed
 
+- Default self-improvement to unlimited model calls; subscription authority can
+  declare `max_model_calls: 0` while retaining token, time, tool and run limits.
 - Replace prompt-overlay self-improvement with one bounded source/binary loop:
   immutable executors, same-source replay and continuation, independently
   reproduced claims, conservative selection, explicit promotion and rollback.
@@ -26,6 +32,9 @@
 
 ### Fixed
 
+- Verify self-improvement proposals in clean source copies and HOME; allow
+  predeclared host verification for tests that exercise native sandboxing.
+  Report validated source fixes separately from recursive A/B verdicts.
 - Render scratch output as an ordinary tool result instead of hiding it behind
   a repeated script diff. Mark truncated whole-file diffs.
 - Preserve model/tool Unicode content when UI symbols fall back to ASCII.

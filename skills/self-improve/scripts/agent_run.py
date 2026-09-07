@@ -292,20 +292,34 @@ def session_environment(spec: RunSpec) -> dict[str, str]:
     return env
 
 
-def run_process(argv, *, workspace, env, timeout, sandbox_binary, writable_roots, monitor=None):
+def run_process(
+    argv,
+    *,
+    workspace,
+    env,
+    timeout,
+    sandbox_binary,
+    writable_roots,
+    monitor=None,
+    binary_output=False,
+):
     """One bounded process group, shared by executor sessions and verifier commands."""
     # Native startup and shell redirection need device files, as in the runtime
     # sandbox. Do not grant /tmp: authoritative experiment state may live there.
     roots = sorted({"/dev", *(str(path.resolve()) for path in writable_roots)})
-    command = [
-        str(sandbox_binary),
-        "--sandbox-child",
-        "net=1",
-        f"roots={len(roots)}",
-        *roots,
-        "--",
-        *argv,
-    ]
+    command = (
+        [
+            str(sandbox_binary),
+            "--sandbox-child",
+            "net=1",
+            f"roots={len(roots)}",
+            *roots,
+            "--",
+            *argv,
+        ]
+        if sandbox_binary is not None
+        else argv
+    )
     started = time.monotonic()
     reason = None
     output = {"stdout": bytearray(), "stderr": bytearray()}
@@ -375,7 +389,10 @@ def run_process(argv, *, workspace, env, timeout, sandbox_binary, writable_roots
         "timed_out": reason == "wall-clock limit exceeded",
         "limit_error": reason,
         "elapsed_seconds": round(time.monotonic() - started, 3),
-        **{key: bytes(value).decode(errors="replace") for key, value in output.items()},
+        **{
+            key: bytes(value) if binary_output else bytes(value).decode(errors="replace")
+            for key, value in output.items()
+        },
     }
 
 

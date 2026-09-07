@@ -33,6 +33,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
@@ -81,6 +82,7 @@ TEST_PREFIXES = ("tests/", "benchmarks/")
 VARIANTS = ("control", "candidate")
 STATUSES = (
     "initialized",
+    "preflight_failed",
     "discovered",
     "gated",
     "replayed",
@@ -398,6 +400,8 @@ def compose_prompt(manifest: dict[str, Any], history) -> str:
         "",
         "Existing gates that must still pass, run from the workspace root:",
         *(f"- {command}" for command in [gates["build"], *gates["checks"]] if command),
+        "The controller repeats verification in a clean source copy and HOME, using "
+        f"{gates.get('mode', 'sandbox')} verification. Your executor remains sandboxed.",
         "",
         f"Write your single claim to {CLAIM_FILE} at the workspace root, as JSON:",
         json.dumps(
@@ -406,15 +410,27 @@ def compose_prompt(manifest: dict[str, Any], history) -> str:
                 "hypothesis": "one falsifiable sentence",
                 "measurement": "what the check demonstrates",
                 "verify_command": "the command that reproduces the claimed gain",
+                "assessment": {
+                    "change_summary": "what you changed and why",
+                    "impact": "observed before/after results, with units where applicable",
+                    "generality": "which inputs, users or workflows should benefit, and why",
+                    "limitations": "untested cases, risks and evidence still needed",
+                    "recommendation": "propose, revise or reject",
+                    "proposed_title": "suggested commit or PR title",
+                },
             },
             sort_keys=True,
         ),
         "",
         "The controller reruns verify_command in a clean copy of your tree. A missing, "
         "unreproducible or trivially passing check counts as no validated improvement.",
+        "Write the hypothesis and check before editing, then complete assessment after "
+        "verification. Assessment is your judgment, not independent evidence. "
+        "Propose only: do not commit, open a PR or activate the candidate.",
         "",
         f"Hard limits enforced outside this session: ${limits['max_cost_usd']:.2f}, "
-        f"{limits['max_wall_seconds']}s wall clock, {limits['max_model_calls']} model calls, "
+        f"{limits['max_wall_seconds']}s wall clock, "
+        f"{limits['max_model_calls'] or 'unlimited'} model calls, "
         f"{limits['max_tool_calls']} tool calls.",
         "",
         f"Prior generations: {json.dumps(history, sort_keys=True)}",
@@ -480,7 +496,8 @@ def run_attempt(
         ("UAGENT_MAX_STEPS", "max_model_calls"),
         ("UAGENT_MAX_TOOL_CALLS", "max_tool_calls"),
     ):
-        env[variable] = str(min(int(env[variable]), remaining[key]))
+        caps = [cap for cap in (int(env[variable]), remaining[key]) if cap]
+        env[variable] = str(min(caps) if caps else 0)
     env["UAGENT_SANDBOX"] = "0"  # the outer pinned process already confines every write
     env["UAGENT_ADVISOR_MODEL"] = ""
     env["UAGENT_TRUST_PROJECT_CONFIG"] = "0"
@@ -573,6 +590,7 @@ def read_claim(workspace: pathlib.Path) -> tuple[dict[str, Any] | None, str | No
             "hypothesis": claim["hypothesis"],
             "measurement": claim["measurement"],
             "verify_command": claim["verify_command"],
+            "assessment": claim.get("assessment"),
         },
         None,
     )
@@ -581,6 +599,9 @@ def read_claim(workspace: pathlib.Path) -> tuple[dict[str, Any] | None, str | No
 def run_gate(
     command: str, workspace: pathlib.Path, log: pathlib.Path, seconds: int, manifest: dict
 ) -> dict:
+    mode = manifest["gates"].get("mode", "sandbox")
+    if mode not in ("sandbox", "host"):
+        raise ControllerError(f"unknown gate mode: {mode}")
     home = workspace.parent / "gate-home"
     home.mkdir(exist_ok=True)
     spec = RunSpec(
@@ -596,12 +617,62 @@ def run_gate(
         workspace=workspace,
         env=session_environment(spec),
         timeout=seconds,
-        sandbox_binary=spec.binary,
+        sandbox_binary=spec.binary if mode == "sandbox" else None,
         writable_roots=(workspace, home),
     )
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(result.pop("stdout") + result.pop("stderr"), encoding="utf-8")
-    return {"command": command, **result, "log": str(log)}
+    return {
+        "command": command,
+        "mode": mode,
+        **result,
+        "log": str(log),
+    }
+
+
+@contextmanager
+def verification_workspace(workspace: pathlib.Path):
+    """Verify source alone, away from discovery artifacts and ancestor skills."""
+    with tempfile.TemporaryDirectory(prefix="uagent-verify-") as temporary:
+        root = pathlib.Path(temporary)
+        snapshot = write_snapshot(workspace, root / "snapshot")
+        source = root / "source"
+        extract_snapshot(pathlib.Path(snapshot["archive"]), source)
+        yield source
+
+
+def run_checks(manifest: dict, workspace: pathlib.Path, logs: pathlib.Path) -> list[dict]:
+    """Run the same frozen build and regression gates for baseline and candidate."""
+    results = []
+    for index, command in enumerate([manifest["gates"]["build"], *manifest["gates"]["checks"]]):
+        result = run_gate(
+            command,
+            workspace,
+            logs / f"gate-{index}.log",
+            manifest["limits"]["gate_seconds"],
+            manifest,
+        )
+        results.append(result)
+        if result["returncode"] or result["limit_error"]:
+            break
+    return results
+
+
+def preflight(path: pathlib.Path, manifest: dict) -> bool:
+    """Refuse to spend model calls when the unchanged source cannot pass its gates."""
+    with tempfile.TemporaryDirectory(prefix="uagent-preflight-") as temporary:
+        workspace = pathlib.Path(temporary) / "source"
+        extract_snapshot(pathlib.Path(manifest["subject"]["archive"]), workspace)
+        before = tree_digests(workspace)
+        gates = run_checks(manifest, workspace, path / "logs" / "preflight")
+        unchanged = tree_digests(workspace) == before
+    passed = unchanged and all(not gate["returncode"] and not gate["limit_error"] for gate in gates)
+    write_json(
+        path / "preflight.json", {"passed": passed, "source_unchanged": unchanged, "gates": gates}
+    )
+    if not passed:
+        save_manifest(path, manifest, "preflight_failed")
+    return passed
 
 
 def evaluate_tree(
@@ -643,14 +714,9 @@ def evaluate_tree(
         reasons.append(f"change is {change['classification']}")
     if eligible and substantive and claim is not None and run_gates:
         seconds = int(manifest["limits"]["gate_seconds"])
-        commands = [manifest["gates"]["build"], *manifest["gates"]["checks"]]
-        for index, command in enumerate(command for command in commands if command):
-            gates.append(
-                run_gate(command, workspace, logs / f"gate-{index}.log", seconds, manifest)
-            )
-            if gates[-1]["returncode"] != 0:
-                reasons.append(f"gate failed: {command}")
-                break
+        gates = run_checks(manifest, workspace, logs)
+        if any(gate["returncode"] or gate["limit_error"] for gate in gates):
+            reasons.append(f"gate failed: {gates[-1]['command']}")
         else:
             gates.append(
                 run_gate(claim["verify_command"], workspace, logs / "verify.log", seconds, manifest)
@@ -971,7 +1037,9 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
         raise ControllerError("the instruction must contain 1..32768 bytes")
     try:
         authority = load_authority(
-            arguments.cost_authority.expanduser().resolve(), [arguments.route]
+            arguments.cost_authority.expanduser().resolve(),
+            [arguments.route],
+            allow_unlimited_model_calls=True,
         )
     except AuthorityError as error:
         raise ControllerError(f"route authority is invalid: {error}") from error
@@ -1041,7 +1109,7 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
                 require_number(arguments.max_wall_seconds, "max_wall_seconds", 30, 86_400)
             ),
             "max_model_calls": int(
-                require_number(arguments.max_model_calls, "max_model_calls", 1, 1000)
+                require_number(arguments.max_model_calls, "max_model_calls", 0, 1000)
             ),
             "max_tool_calls": int(
                 require_number(arguments.max_tool_calls, "max_tool_calls", 1, 5000)
@@ -1051,6 +1119,7 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
             "gate_seconds": int(require_number(arguments.gate_seconds, "gate_seconds", 10, 86_400)),
         },
         "gates": {
+            "mode": arguments.gate_mode,
             "build": arguments.build_command or "",
             "checks": list(arguments.gate or []),
             "artifact": arguments.artifact,
@@ -1116,6 +1185,13 @@ def command_discover(arguments: argparse.Namespace) -> dict[str, Any]:
     path = resolve_generation(root, arguments.generation)
     manifest = load_manifest(path)
     require_status(manifest, ("initialized",))
+    if not preflight(path, manifest):
+        return {
+            "generation": manifest["generation"],
+            "status": "preflight_failed",
+            "reason": "unchanged source failed verification; discovery was not run",
+            "preflight": str(path / "preflight.json"),
+        }
     record, workspace = run_attempt(
         root,
         path,
@@ -1168,26 +1244,29 @@ def command_gate(arguments: argparse.Namespace) -> dict[str, Any]:
         blocking.append("the discovery session exceeded its wall-clock limit")
     if run.get("returncode"):
         blocking.append(f"the discovery session exited with {run['returncode']}")
-    evaluation = evaluate_tree(manifest, manifest["subject"], workspace, path / "logs" / "gate")
-    write_json(
-        path / "gate.json",
-        {"schema": SCHEMA, "evaluation": evaluation, "blocking": blocking},
-    )
-    if blocking or not evaluation["outcome"]:
-        return reject_generation(
-            path, manifest, [f"discovery: {reason}" for reason in blocking + evaluation["reasons"]]
+    with verification_workspace(workspace) as verified:
+        evaluation = evaluate_tree(manifest, manifest["subject"], verified, path / "logs" / "gate")
+        write_json(
+            path / "gate.json",
+            {"schema": SCHEMA, "evaluation": evaluation, "blocking": blocking},
         )
-    (workspace / CLAIM_FILE).unlink(missing_ok=True)
-    subject = snapshot_subject(root, workspace)
-    artifact = workspace / manifest["gates"]["artifact"]
-    if not artifact.is_file():
-        return reject_generation(
-            path,
-            manifest,
-            [f"the gated build produced no artifact at {manifest['gates']['artifact']}"],
-        )
-    skills = workspace / "skills"
-    bundle = build_bundle(root, artifact, skills if skills.is_dir() else None)
+        if blocking or not evaluation["outcome"]:
+            return reject_generation(
+                path,
+                manifest,
+                [f"discovery: {reason}" for reason in blocking + evaluation["reasons"]],
+            )
+        (verified / CLAIM_FILE).unlink(missing_ok=True)
+        subject = snapshot_subject(root, verified)
+        artifact = verified / manifest["gates"]["artifact"]
+        if not artifact.is_file():
+            return reject_generation(
+                path,
+                manifest,
+                [f"the gated build produced no artifact at {manifest['gates']['artifact']}"],
+            )
+        skills = verified / "skills"
+        bundle = build_bundle(root, artifact, skills if skills.is_dir() else None)
     write_json(
         path / "gate.json",
         {
@@ -1201,11 +1280,154 @@ def command_gate(arguments: argparse.Namespace) -> dict[str, Any]:
     save_manifest(path, manifest, "gated")
     return {
         "generation": manifest["generation"],
+        "source_validated": True,
         "claim": evaluation["claim"],
         "changed": evaluation["change"]["changed"],
         "candidate_bundle": bundle["identity"],
         "candidate_subject": subject["identity"],
-        "next": "replay",
+        "next": "review",
+    }
+
+
+def review_packet(path: pathlib.Path, manifest: dict) -> tuple[dict, bytes]:
+    """Bind the agent's assessment and controller evidence to the exact source diff."""
+    gate = read_json(path / "gate.json")
+    if not gate.get("candidate_subject"):
+        raise ControllerError("review requires a validated source candidate")
+    assessment = gate["evaluation"]["claim"].get("assessment")
+    fields = (
+        "change_summary",
+        "impact",
+        "generality",
+        "limitations",
+        "recommendation",
+        "proposed_title",
+    )
+    if not isinstance(assessment, dict) or any(
+        not isinstance(assessment.get(field), str)
+        or not 1 <= len(assessment[field].strip()) <= MAX_COMMAND_CHARS
+        for field in fields
+    ):
+        raise ControllerError(
+            "review requires the agent's complete assessment: " + ", ".join(fields)
+        )
+    if assessment["recommendation"] not in ("propose", "revise", "reject"):
+        raise ControllerError("assessment recommendation must be propose, revise or reject")
+    with tempfile.TemporaryDirectory(prefix="uagent-review-") as temporary:
+        workspace = pathlib.Path(temporary)
+        for name, subject in (("a", manifest["subject"]), ("b", gate["candidate_subject"])):
+            extract_snapshot(pathlib.Path(subject["archive"]), workspace / name)
+            if tree_identity(tree_digests(workspace / name)) != subject["identity"]:
+                raise ControllerError("review source snapshot identity changed")
+        result = run_process(
+            [
+                "git",
+                "diff",
+                "--no-index",
+                "--binary",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-prefix",
+                "--",
+                "a",
+                "b",
+            ],
+            workspace=workspace,
+            env={
+                "PATH": os.environ.get("PATH", os.defpath),
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": os.devnull,
+            },
+            timeout=30,
+            sandbox_binary=None,
+            writable_roots=(),
+            binary_output=True,
+        )
+        if result["returncode"] != 1 or result["limit_error"]:
+            raise ControllerError(
+                "could not produce a complete proposal patch: "
+                + result["stderr"].decode(errors="replace")
+            )
+        patch = result["stdout"]
+    packet = {
+        "schema": "uagent.improvement.review.v1",
+        "generation": manifest["generation"],
+        "source_validated": True,
+        "original_subject": manifest["subject"]["identity"],
+        "candidate_subject": gate["candidate_subject"]["identity"],
+        "candidate_bundle": gate["candidate_bundle"]["identity"],
+        "patch_sha256": digest_bytes(patch),
+        "agent_assessment": {field: assessment[field] for field in fields},
+        "controller_evidence": {
+            "preflight": read_json(path / "preflight.json"),
+            "evaluation": gate["evaluation"],
+            "discovery": read_json(path / "discovery.json")["run"],
+            "verdict": read_json(path / "verdict.json")
+            if (path / "verdict.json").exists()
+            else None,
+        },
+        "limitations": [
+            "The agent designed the improvement check; independent human review is still required.",
+            "Claim-before-edit is an instruction, not controller-enforced preregistration.",
+            "Generality is the agent's assessment; held-out generalization is not established.",
+        ],
+        "authorization": "Pending human review; no apply, commit, PR, installation or promotion authorized.",
+    }
+    packet["review_id"] = digest_bytes(json.dumps(packet, sort_keys=True).encode())
+    return packet, patch
+
+
+def command_review(arguments: argparse.Namespace) -> dict[str, Any]:
+    path = resolve_generation(root_path(arguments), arguments.generation)
+    manifest = load_manifest(path)
+    require_status(manifest, ("gated", "replayed", "continued", "decided"))
+    packet, patch = review_packet(path, manifest)
+    assessment = packet["agent_assessment"]
+    evidence = packet["controller_evidence"]
+    lines = [
+        f"# Proposed change: {assessment['proposed_title']}",
+        "",
+        f"Review ID: `{packet['review_id']}`",
+        "",
+    ]
+    for field in ("change_summary", "impact", "generality", "limitations", "recommendation"):
+        lines += [f"## Agent assessment: {field.replace('_', ' ')}", "", assessment[field], ""]
+    lines += [
+        "## Controller evidence",
+        "",
+        "Baseline preflight and existing candidate gates passed. The claimed check passed on the candidate (exit 0) and failed on the original (exit 1).",
+        "",
+        "Changed paths:",
+        "",
+    ]
+    lines += [f"- `{name}`" for name in evidence["evaluation"]["change"]["changed"]]
+    lines += [
+        "",
+        "Recursive verdict: "
+        + (evidence["verdict"]["verdict"] if evidence["verdict"] else "not run (optional)."),
+        "",
+        "See `review.json` for commands, measurements and log paths; `proposal.patch` is the exact proposed diff.",
+        "",
+    ]
+    lines += [f"- {limitation}" for limitation in packet["limitations"]]
+    lines += [
+        "",
+        packet["authorization"],
+        "",
+        "Before a commit or PR, the operator must present this report and patch, independently assess the check and edge cases, and obtain human authorization for the specific action. Revalidate any revision.",
+        "",
+    ]
+    write_json(path / "review.json", packet)
+    (path / "review.md").write_text("\n".join(lines), encoding="utf-8")
+    (path / "proposal.patch").write_bytes(patch)
+    return {
+        "generation": manifest["generation"],
+        "review_id": packet["review_id"],
+        "report": str(path / "review.md"),
+        "evidence": str(path / "review.json"),
+        "patch": str(path / "proposal.patch"),
+        "recommendation": assessment["recommendation"],
+        "next": "present the report and diff to the human before requesting a commit or PR",
     }
 
 
@@ -1232,7 +1454,9 @@ def run_phase(arguments: argparse.Namespace, phase: str) -> dict[str, Any]:
         if number > MAX_PAIRS:
             raise ControllerError(f"{phase} already ran {MAX_PAIRS} pairs")
         pair: dict[str, Any] = {"pair": number}
-        for variant in VARIANTS:
+        # Alternate first position to reduce systematic cache/load ordering bias.
+        order = VARIANTS if number % 2 else tuple(reversed(VARIANTS))
+        for variant in order:
             label = f"{phase}-{number}-{variant}"
             record, workspace = run_attempt(
                 root,
@@ -1244,9 +1468,10 @@ def run_phase(arguments: argparse.Namespace, phase: str) -> dict[str, Any]:
                 phase=phase,
                 variant=variant,
             )
-            record["evaluation"] = evaluate_tree(
-                manifest, subject, workspace, path / "logs" / label
-            )
+            with verification_workspace(workspace) as verified:
+                record["evaluation"] = evaluate_tree(
+                    manifest, subject, verified, path / "logs" / label
+                )
             pair[variant] = record
             if not arguments.keep_workspaces:
                 shutil.rmtree(path / "work" / label, ignore_errors=True)
@@ -1285,6 +1510,8 @@ def command_verdict(arguments: argparse.Namespace) -> dict[str, Any]:
         "decided_at": now(),
         "tolerances": manifest["tolerances"],
         **decision,
+        "evidence_scope": "exploratory_recursive_comparison",
+        "generalization_established": False,
     }
     write_json(path / "verdict.json", verdict)
     save_manifest(path, manifest, "decided")
@@ -1298,6 +1525,16 @@ def command_promote(arguments: argparse.Namespace) -> dict[str, Any]:
     require_status(manifest, ("decided",))
     if not arguments.approve:
         raise ControllerError("promotion requires an explicit --approve")
+    if not arguments.review_id or not (path / "review.json").exists():
+        raise ControllerError("promotion requires a presented review and its --review-id")
+    current_review, current_patch = review_packet(path, manifest)
+    if (
+        arguments.review_id != current_review["review_id"]
+        or read_json(path / "review.json") != current_review
+        or not (path / "proposal.patch").is_file()
+        or (path / "proposal.patch").read_bytes() != current_patch
+    ):
+        raise ControllerError("review is stale or does not match; regenerate and present it again")
     verdict = read_json(path / "verdict.json")
     if verdict.get("verdict") != "promote":
         raise ControllerError(
@@ -1333,6 +1570,7 @@ def command_promote(arguments: argparse.Namespace) -> dict[str, Any]:
         "schema": SCHEMA,
         "promoted_at": state["active"]["promoted_at"],
         "generation": manifest["generation"],
+        "review_id": arguments.review_id,
         "executor": gate["candidate_bundle"]["identity"],
         "subject": gate["candidate_subject"]["identity"],
         "previous": (state["previous"] or {}).get("executor", {}).get("identity"),
@@ -1396,6 +1634,8 @@ def command_status(arguments: argparse.Namespace) -> dict[str, Any]:
             }
             if (path / "verdict.json").exists():
                 entry["verdict"] = read_json(path / "verdict.json").get("verdict")
+            if (path / "gate.json").exists():
+                entry["source_validated"] = "candidate_bundle" in read_json(path / "gate.json")
             generations.append(entry)
     active = state.get("active") or {}
     return {
@@ -1443,12 +1683,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     initialize.add_argument("--cost-authority", type=pathlib.Path, required=True)
     initialize.add_argument("--max-cost", type=float, required=True)
     initialize.add_argument("--max-wall-seconds", type=int, default=1800)
-    initialize.add_argument("--max-model-calls", type=int, default=80)
+    initialize.add_argument(
+        "--max-model-calls", type=int, default=0, help="model calls per run (0: unlimited, default)"
+    )
     initialize.add_argument("--max-tool-calls", type=int, default=200)
     initialize.add_argument("--max-runs", type=int, default=8)
     initialize.add_argument("--gate-seconds", type=int, default=1800)
     initialize.add_argument("--build-command", default="")
     initialize.add_argument("--gate", action="append", default=[])
+    initialize.add_argument(
+        "--gate-mode",
+        choices=("sandbox", "host"),
+        default="sandbox",
+        help="verification isolation, frozen at init; host runs candidate code without an outer sandbox",
+    )
     initialize.add_argument("--artifact", required=True)
     initialize.add_argument("--protected", action="append")
     initialize.add_argument("--test-prefix", action="append")
@@ -1459,6 +1707,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     for name, handler, help_text in (
         ("discover", command_discover, "run the incumbent against a fresh subject copy"),
         ("gate", command_gate, "verify the candidate source and build its bundle"),
+        ("review", command_review, "prepare the patch and evidence for human review"),
         ("verdict", command_verdict, "compute the deterministic selection verdict"),
     ):
         sub = subparsers.add_parser(name, help=help_text)
@@ -1478,6 +1727,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     promote = subparsers.add_parser("promote", help="advance the version pointer")
     promote.add_argument("--generation", type=int)
     promote.add_argument("--approve", action="store_true")
+    promote.add_argument(
+        "--review-id", help="identity of the review presented to and approved by the human"
+    )
     promote.set_defaults(handler=command_promote)
 
     rollback = subparsers.add_parser("rollback", help="restore the previous version pointer")

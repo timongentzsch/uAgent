@@ -902,6 +902,14 @@ def eval_self_test() -> int:
         failures.append("valid reported-cost authority did not normalize")
     blocked_authorities = [
         {
+            "name": "unlimited-model-calls-in-live-eval",
+            "value": {
+                "non_billable": True,
+                "cheap": True,
+                "limits": {**cheap["limits"], "max_model_calls": 0},
+            },
+        },
+        {
             "name": "cheap-without-explicit-cheap-flag",
             "value": {"non_billable": True, "limits": cheap["limits"]},
         },

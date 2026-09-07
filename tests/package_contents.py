@@ -57,6 +57,7 @@ def main():
         "OPERATIONS",
         "PERSISTENCE",
         "SELF_IMPROVEMENT",
+        "SELF_IMPROVEMENT_RESEARCH",
         "TESTING",
         "TOOLS",
     ):

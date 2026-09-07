@@ -311,6 +311,7 @@ set(UAGENT_GUIDES
     docs/OPERATIONS.md
     docs/PERSISTENCE.md
     docs/SELF_IMPROVEMENT.md
+    docs/SELF_IMPROVEMENT_RESEARCH.md
     docs/TESTING.md
     docs/TOOLS.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE

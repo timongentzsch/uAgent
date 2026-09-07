@@ -28,7 +28,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "self_improve" / "source"
 sys.path.insert(0, str(ROOT / "skills" / "self-improve" / "scripts"))
 
 from agent_run import run_process, tree_digests  # noqa: E402
-from experiment import ControllerError, compare, decide  # noqa: E402
+from experiment import ControllerError, compare, decide, run_gate  # noqa: E402
 from integration_support import Server, base_env, event  # noqa: E402
 
 ROUTE = "fixture/model"
@@ -64,6 +64,14 @@ def plan(
             "hypothesis": "The improved version reaches the same result for less.",
             "measurement": "The subject gate still passes with the new module present.",
             "verify_command": verify,
+            "assessment": {
+                "change_summary": "Add an increment to the fixture module.",
+                "impact": "Increment check changes from exit 1 to exit 0.",
+                "generality": "Only this scripted fixture is exercised.",
+                "limitations": "No live model or held-out workloads tested.",
+                "recommendation": "propose",
+                "proposed_title": "Improve fixture increment",
+            },
         }
     return body
 
@@ -235,6 +243,7 @@ class ControllerTest(unittest.TestCase):
         gate = self.run_command("gate")
         self.assertIn("src/improvement.py", gate["changed"])
         self.assertIn("src/improvement.py", gate["claim"]["verify_command"])
+        early_review = self.run_command("review")
 
         replay = self.run_command("replay", "--pairs", "1", "--keep-workspaces")
         self.assertEqual(replay["summary"]["control"]["successes"], 1)
@@ -246,7 +255,28 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(verdict["verdict"], "promote")
         self.assertIsNotNone(verdict["continuation"])
 
-        promotion = self.run_command("promote", "--approve")
+        self.assertIn("review", self.run_command("promote", "--approve", ok=False)["error"])
+        self.assertIn(
+            "stale",
+            self.run_command(
+                "promote", "--approve", "--review-id", early_review["review_id"], ok=False
+            )["error"],
+        )
+        review = self.run_command("review")
+        self.assertIn(
+            "review",
+            self.run_command("promote", "--approve", "--review-id", "wrong", ok=False)["error"],
+        )
+        patch_path = pathlib.Path(review["patch"])
+        patch_path.write_text(patch_path.read_text() + "modified after presentation\n")
+        self.assertIn(
+            "stale",
+            self.run_command("promote", "--approve", "--review-id", review["review_id"], ok=False)[
+                "error"
+            ],
+        )
+        review = self.run_command("review")
+        promotion = self.run_command("promote", "--approve", "--review-id", review["review_id"])
         state = self.read_state()
         self.assertEqual(state["active"]["generation"], 1)
         self.assertEqual(state["active"]["executor"]["identity"], promotion["executor"])
@@ -260,6 +290,59 @@ class ControllerTest(unittest.TestCase):
         )
         # The user's own checkout is never the workspace of an experiment.
         self.assertEqual(tree_digests(self.source), before)
+
+    def test_preflight_failure_spends_no_model_calls(self):
+        self.install_plan(improvement_plan(plan()))
+        (self.source / "broken.marker").write_text("baseline already broken")
+        self.initialize()
+        result = self.run_command("discover")
+        self.assertEqual(result["status"], "preflight_failed")
+        generation = self.generation_dir()
+        self.assertFalse((generation / "discovery.json").exists())
+        self.assertFalse((generation / "verdict.json").exists())
+        self.assertFalse((generation / "work").exists())
+        self.assertFalse(json.loads((generation / "preflight.json").read_text())["passed"])
+
+    def test_review_exposes_evidence_and_applicable_patch_without_activation(self):
+        (self.source / "src/non_utf8.txt").write_bytes(b"old \xff\n")
+        (self.source / "src/binary.dat").write_bytes(b"old\x00bytes")
+        (self.source / "src/removed.py").write_text("old = True\n")
+        body = improvement_plan(plan())
+        body["writes"].update({"src/non_utf8.txt": "new\n", "src/binary.dat": "new\x00bytes"})
+        body["deletes"] = ["src/removed.py"]
+        self.install_plan(body)
+        self.initialize()
+        before = self.read_state()
+        self.run_command("discover")
+        self.assertEqual(self.run_command("gate")["next"], "review")
+        review = self.run_command("review")
+        packet = json.loads(pathlib.Path(review["evidence"]).read_text())
+        self.assertTrue(packet["source_validated"])
+        self.assertIsNone(packet["controller_evidence"]["verdict"])
+        self.assertIn("held-out", packet["agent_assessment"]["limitations"])
+        self.assertIn("Pending human", packet["authorization"])
+        report = pathlib.Path(review["report"]).read_text()
+        self.assertIn("original (exit 1)", report)
+        self.assertIn("Agent assessment: generality", report)
+        self.assertEqual(self.run_command("review")["review_id"], review["review_id"])
+        applied = subprocess.run(
+            ["git", "apply", review["patch"]], cwd=self.source, capture_output=True
+        )
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertEqual((self.source / "src/improvement.py").read_text(), IMPROVEMENT)
+        self.assertEqual((self.source / "src/non_utf8.txt").read_bytes(), b"new\n")
+        self.assertEqual((self.source / "src/binary.dat").read_bytes(), b"new\x00bytes")
+        self.assertFalse((self.source / "src/removed.py").exists())
+        self.assertEqual(self.read_state(), before)
+
+    def test_review_requires_assessment_even_for_validated_source(self):
+        body = improvement_plan(plan())
+        del body["claim"]["assessment"]
+        self.install_plan(body)
+        self.initialize()
+        self.run_command("discover")
+        self.assertTrue(self.run_command("gate")["source_validated"])
+        self.assertIn("complete assessment", self.run_command("review", ok=False)["error"])
 
     def test_pair_receives_identical_inputs_from_the_recorded_bundles(self):
         successor = improvement_plan(plan(), cost=0.01)
@@ -307,6 +390,69 @@ class ControllerTest(unittest.TestCase):
         self.assertEqual(run["tool_failures"], 1)
         self.assertEqual(run["tokens"], 500)
         self.assertEqual(run["cost_usd"], 0.03)
+
+    def test_host_verification_runs_native_sandbox_gates_in_clean_copies(self):
+        # These gates must be able to exercise the native sandbox themselves.
+        # They also reject discovery's stale build output and ancestor path.
+        gate = self.source / "tests" / "native_gate.py"
+        gate.write_text(
+            "import pathlib, subprocess, sys\n"
+            f"assert not pathlib.Path.cwd().is_relative_to({str(self.base)!r})\n"
+            "assert not pathlib.Path('build/discovery-only').exists()\n"
+            "assert not pathlib.Path.home().is_relative_to(pathlib.Path.cwd())\n"
+            f"subprocess.run([{str(SANDBOX)!r}, '--sandbox-child', 'net=1', 'roots=1', "
+            "str(pathlib.Path.cwd()), '--', sys.executable, '-c', "
+            "\"from pathlib import Path; Path('build/nested-ok').write_text('ok')\"], check=True)\n"
+        )
+        self.install_plan(improvement_plan(improvement_plan(plan())))
+        initialized = self.initialize(
+            "--gate-mode", "host", "--gate", "python3 tests/native_gate.py"
+        )
+        self.run_command("discover")
+        discovery = self.generation_dir() / "work/discovery/source"
+        (discovery / "build").mkdir()
+        (discovery / "build/discovery-only").write_text("stale")
+        before = tree_digests(discovery)
+        gate_result = self.run_command("gate")
+        self.assertTrue(gate_result["source_validated"])
+        evaluation = json.loads((self.generation_dir() / "gate.json").read_text())["evaluation"]
+        self.assertTrue(evaluation["outcome"])
+        self.assertTrue(all(gate["mode"] == "host" for gate in evaluation["gates"]))
+        self.assertEqual(evaluation["gates"][-1]["returncode"], 1)
+        self.assertEqual(tree_digests(discovery), before)
+        self.run_command("replay")
+        self.run_command("continue")
+        self.assertEqual(self.run_command("status")["generations"][0]["status"], "continued")
+        self.run_command("verdict")
+        self.assertTrue(self.run_command("status")["generations"][0]["source_validated"])
+        manifest = json.loads((pathlib.Path(initialized["path"]) / "manifest.json").read_text())
+        self.assertEqual(manifest["gates"]["mode"], "host")
+
+    def test_host_gates_still_reject_a_broken_candidate(self):
+        self.install_plan(plan(writes={"src/improvement.py": IMPROVEMENT, "broken.marker": "x\n"}))
+        self.assert_rejected("--gate-mode", "host", contains="gate failed")
+
+    def test_host_gates_still_reject_an_always_passing_claim(self):
+        self.install_plan(improvement_plan(plan(), verify="python3 -c 'pass'"))
+        self.assert_rejected("--gate-mode", "host", contains="fail on the original")
+
+    def test_host_verification_does_not_disable_executor_sandbox(self):
+        target = self.state / "escaped.txt"
+        self.install_plan(plan(writes={str(target): "escaped"}))
+        self.initialize("--gate-mode", "host")
+        run = self.run_command("discover")["run"]
+        self.assertNotEqual(run["returncode"], 0)
+        self.assertFalse(target.exists())
+
+    def test_unknown_gate_mode_is_refused(self):
+        with self.assertRaisesRegex(ControllerError, "unknown gate mode"):
+            run_gate(
+                "python3 -c 'pass'",
+                self.source,
+                self.base / "gate.log",
+                60,
+                {"gates": {"mode": "typo"}},
+            )
 
     # --- gate rejections ---
 
@@ -373,9 +519,67 @@ class ControllerTest(unittest.TestCase):
 
     def test_model_call_overrun_is_rejected(self):
         self.install_plan(improvement_plan(plan(), model_requests=81))
-        self.initialize()
+        self.initialize("--max-model-calls", "80")
         run = self.run_command("discover")["run"]
         self.assertIn("model_requests", run["budget_breach"])
+
+    def test_default_has_no_model_call_cap(self):
+        self.install_plan(improvement_plan(plan(), model_requests=81))
+        self.initialize()
+        run = self.run_command("discover")["run"]
+        self.assertEqual(run["returncode"], 0)
+        self.assertIsNone(run["budget_breach"])
+        session = json.loads(
+            (self.generation_dir() / "work/discovery/home/session.json").read_text()
+        )
+        self.assertEqual(session["limits"]["UAGENT_MAX_STEPS"], "0")
+
+    def test_subscription_without_model_cap_preserves_other_limits(self):
+        declaration = {
+            "non_billable": True,
+            "cheap": True,
+            "limits": {
+                "max_sessions": 5,
+                "max_model_calls": 0,
+                "max_tool_calls": 32,
+                "max_output_tokens_per_call": 8192,
+                "max_session_seconds": 60,
+            },
+        }
+        for authority_cap, extra, tool_calls, breach in (
+            (0, (), 2, None),
+            (8, (), 2, "model calls"),
+            (0, ("--max-model-calls", "8"), 2, "model_requests"),
+            (0, ("--max-tokens", "499"), 2, "token limit"),
+            (0, (), 33, "tool"),
+        ):
+            with self.subTest(authority_cap=authority_cap, extra=extra, tool_calls=tool_calls):
+                declaration["limits"]["max_model_calls"] = authority_cap
+                self.authority.write_text(
+                    json.dumps(
+                        {"schema": "uagent.eval.cost-authority.v1", "routes": {ROUTE: declaration}}
+                    )
+                )
+                self.install_plan(
+                    improvement_plan(plan(), model_requests=81, tool_calls=tool_calls)
+                )
+                initialized = self.initialize(*extra, max_cost="0")
+                run = self.run_command("discover")["run"]
+                if breach:
+                    self.assertIn(breach, run["budget_breach"])
+                else:
+                    self.assertEqual(run["returncode"], 0)
+                    self.assertIsNone(run["budget_breach"])
+                    session = json.loads(
+                        (
+                            self.generation_dir(initialized["generation"])
+                            / "work/discovery/home/session.json"
+                        ).read_text()
+                    )
+                    self.assertEqual(session["limits"]["UAGENT_MAX_STEPS"], "0")
+                    self.assertEqual(session["limits"]["UAGENT_MAX_TOOL_CALLS"], "32")
+                    self.assertEqual(session["limits"]["UAGENT_MAX_TOKENS"], "8192")
+                    self.assertEqual(session["limits"]["UAGENT_MAX_TURN_SECONDS"], "60")
 
     def test_budget_exhaustion_leaves_the_incumbent_active(self):
         self.install_plan(improvement_plan(plan(), cost=0.50))

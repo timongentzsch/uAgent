@@ -24,7 +24,9 @@ class AuthorityError(RuntimeError):
     pass
 
 
-def normalize_route_authority(model: str, declaration: Any) -> dict[str, Any]:
+def normalize_route_authority(
+    model: str, declaration: Any, *, allow_unlimited_model_calls: bool = False
+) -> dict[str, Any]:
     if not isinstance(declaration, dict):
         raise AuthorityError(f"{model} has no route declaration")
     for name in ("reports_cost", "enforces_hard_budget", "non_billable", "cheap"):
@@ -51,13 +53,16 @@ def normalize_route_authority(model: str, declaration: Any) -> dict[str, Any]:
     normalized_limits = {}
     for name, ceiling in CHEAP_LIMIT_CEILINGS.items():
         value = limits.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= ceiling:
-            raise AuthorityError(f"{model} {name} must be an integer in 1..{ceiling}")
+        minimum = 0 if name == "max_model_calls" and allow_unlimited_model_calls else 1
+        if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= ceiling:
+            raise AuthorityError(f"{model} {name} must be an integer in {minimum}..{ceiling}")
         normalized_limits[name] = value
     return {"mode": "non-billable-cheap", "limits": normalized_limits}
 
 
-def load_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
+def load_authority(
+    path: Path | None, models: list[str], *, allow_unlimited_model_calls: bool = False
+) -> dict[str, Any]:
     if path is None:
         raise AuthorityError(
             "--cost-authority is required; each route must declare reported cost with a hard "
@@ -77,7 +82,12 @@ def load_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
     routes = authority.get("routes")
     if not isinstance(routes, dict):
         raise AuthorityError("cost authority has no routes object")
-    normalized = {model: normalize_route_authority(model, routes.get(model)) for model in models}
+    normalized = {
+        model: normalize_route_authority(
+            model, routes.get(model), allow_unlimited_model_calls=allow_unlimited_model_calls
+        )
+        for model in models
+    }
     return {
         "schema": SCHEMA,
         "routes": normalized,
@@ -146,7 +156,7 @@ def account_result(
         ),
     }
     for name, (used, maximum) in checks.items():
-        if used > maximum:
+        if maximum and used > maximum:
             raise AuthorityError(
                 f"blocked after {route}: {name} {used} exceeded the enforced cheap-route "
                 f"limit {maximum}"

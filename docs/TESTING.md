@@ -123,6 +123,10 @@ children so the exact attested route cannot silently escape to a different
 billing path. The planned session count is rejected before the first call.
 Results are checked against the same limits afterward.
 
+The self-improvement controller additionally accepts `max_model_calls: 0` to
+disable that cap while retaining its total-token and other run limits. This
+exception does not apply to general-purpose live eval.
+
 A route without one complete declaration is blocked rather than tried
 optimistically. `--max-cost` applies only to reported-cost routes; a
 non-billable declaration does not turn unavailable provider cost into a
@@ -180,9 +184,11 @@ controller tests retain the platform matrix. Both runners report case times.
 
 Self-improvement is measured separately and does not use overlays:
 `tests/self_improve_controller_test.py` (CTest `self_improve_controller`) drives
-the whole recursive A/B loop — discovery, gate, paired replay, continuation,
-verdict, promotion and rollback — against a scripted stand-in binary, so every
-controller invariant is covered without a model call. `benchmarks/eval.py` and
+baseline preflight, discovery, gate, human review artifacts, paired replay,
+continuation, verdict, review-bound promotion and rollback against a scripted
+stand-in binary. It checks failure before model calls, patch applicability and
+approval binding without a model call. This verifies controller behavior, not
+live-model improvement or generalization. `benchmarks/eval.py` and
 `benchmarks/audit.py` share that loop's run, metric and authority primitives
 from `skills/self-improve/scripts/`, so a change there is exercised by the eval
 self-test as well. See `docs/SELF_IMPROVEMENT.md`.

@@ -289,7 +289,9 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
             "real_mix": dict(list(live.items())[:8]),
             "uncovered_above_floor": uncovered,
             "retired_names_in_history": retired,
-        },
+        }
+        if arguments.history
+        else None,
     }
 
 
@@ -342,7 +344,8 @@ def render(report: dict[str, Any]) -> None:
             + (f", added: {profile['only_with_profile']}" if profile["only_with_profile"] else "")
         )
     fanout = report["speed"]["rebuild_fanout"]
-    print(f"speed         rebuild fanout (TUs per header): {fanout}")
+    if fanout:
+        print(f"speed         rebuild fanout (TUs per header): {fanout}")
     capability = report["capability"]
     print(
         f"capability    {capability['surface_tools']} tools in the drift gate; "
@@ -361,6 +364,8 @@ def render(report: dict[str, Any]) -> None:
             "(descriptive, no global ceiling)".format(**baseline_trajectory)
         )
     representativeness = report["representativeness"]
+    if representativeness is None:
+        return
     if representativeness["real_calls"]:
         share = {
             name: f"{100 * count / representativeness['real_calls']:.0f}%"
@@ -375,7 +380,7 @@ def render(report: dict[str, Any]) -> None:
                 f"{representativeness['retired_names_in_history']}"
             )
     else:
-        print("real usage    no session journals found; coverage check skipped")
+        print("real usage    requested history contains no current-tool calls")
 
 
 def parse_args():

@@ -12,6 +12,7 @@ from integration_support import (
     assert_token_budget_stop,
     assert_true,
     base_env,
+    budget,
     descendant_pids,
     event,
     function_names,
@@ -58,7 +59,7 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *,
             )
         results = tool_results(messages)
         if any("[started] subagent id " in result for result in results):
-            assert_true(child_requested.wait(2), "child request did not arrive")
+            assert_true(child_requested.wait(budget(2)), "child request did not arrive")
             time.sleep(0.3)
             return event({"content": "parent-answer"})
         return tool_call("subagent", {"prompt": "late-budget-child"})

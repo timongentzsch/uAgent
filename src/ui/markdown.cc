@@ -110,6 +110,9 @@ size_t MathSpan(const std::string& text, size_t position) {
 }
 
 std::string PrettyMath(const std::string& text) {
+  // Transliteration produces the same Unicode the fallback would have to undo,
+  // so a terminal that cannot decode it keeps the source spelling instead.
+  if (!g_unicode) return text;
   return TransliterateMath(text);
 }
 

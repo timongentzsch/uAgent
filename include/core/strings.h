@@ -97,6 +97,10 @@ std::string OneLine(const std::string& s, size_t cap = 80);
 // execute terminal commands. Piped output is not a terminal and remains exact.
 std::string TerminalSafe(std::string_view s);
 
+// The agent's own row scaffolding in ASCII, for a terminal whose locale cannot
+// decode UTF-8. Returns the text unchanged while `g_unicode` holds.
+std::string AsciiGlyphs(std::string_view s);
+
 std::string FmtCount(int64_t n);
 std::string FmtCost(double cost);
 

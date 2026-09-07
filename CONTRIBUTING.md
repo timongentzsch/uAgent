@@ -39,8 +39,8 @@ cmake --preset debug
 cmake --build --preset debug
 ctest --preset debug --output-on-failure
 
-uv run --frozen ruff check tests benchmarks
-uv run --frozen ruff format --check tests benchmarks
+uv run --frozen ruff check tests benchmarks skills
+uv run --frozen ruff format --check tests benchmarks skills
 git diff --check
 ```
 

@@ -291,6 +291,44 @@ std::string OneLine(const std::string& s, size_t cap) {
   return Utf8Trunc(FirstLine(s), cap);
 }
 
+// The chrome the agent draws itself: row scaffolding, separators and the
+// spinner. Model and tool text keeps whatever Unicode it carries -- only what
+// this program chose to print is downgraded, and only when the locale says the
+// terminal cannot decode it.
+std::string AsciiGlyphs(std::string_view s) {
+  if (g_unicode) return std::string(s);
+  static constexpr std::pair<std::string_view, std::string_view> kGlyphs[] = {
+      {"·", "-"},   {"—", "--"}, {"…", "..."}, {"→", "->"}, {"←", "<-"},
+      {"≤", "<="},  {"≥", ">="}, {"≠", "!="},  {"×", "x"},  {"µ", "u"},
+      {"◆", "*"},   {"◇", "o"},  {"•", "*"},   {"│", "|"},  {"↵", "\\n"},
+      {"⇥", "\\t"}, {"⠋", "|"},  {"⠙", "/"},   {"⠹", "-"},  {"⠸", "\\"},
+      {"⠼", "|"},   {"⠴", "/"},  {"⠦", "-"},   {"⠧", "\\"}, {"⠇", "|"},
+      {"⠏", "/"},
+  };
+  std::string out;
+  out.reserve(s.size());
+  for (size_t at = 0; at < s.size();) {
+    if (static_cast<unsigned char>(s[at]) < 0x80) {
+      out.push_back(s[at++]);
+      continue;
+    }
+    const std::pair<std::string_view, std::string_view>* hit = nullptr;
+    for (const auto& glyph : kGlyphs) {
+      if (s.compare(at, glyph.first.size(), glyph.first) == 0) {
+        hit = &glyph;
+        break;
+      }
+    }
+    if (hit == nullptr) {
+      out.push_back(s[at++]);
+      continue;
+    }
+    out += hit->second;
+    at += hit->first.size();
+  }
+  return out;
+}
+
 // Unconditional: sanitising is a property of the sink, not of isatty. A
 // redirected transcript would otherwise keep escapes that cat(1) executes.
 std::string TerminalSafe(std::string_view s) {

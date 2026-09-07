@@ -4,34 +4,33 @@
 
 ### Added
 
-- `scratch` takes an optional `args` array, passed to the script as `sys.argv`
-  or `$@`, so a saved script answers a family of questions instead of being
-  rewritten for each one. Across 711 measured `scratch` calls only 58 were
-  reruns: 535 were repeat writes to a path already written in the same
-  session, resending 963 KB of code of which 51% was text that had not
-  changed. The receipt and the call row report the argv a run used, so two
-  runs of one script stay distinguishable in the transcript.
+- `scratch` accepts script arguments; `grep` supports literal searches and
+  returning only the names of files with matching content.
 
 ### Changed
 
-- A rewritten scratch script shows its body once per path and reports only
-  `Replaced <path> (+n -m)` after that. Scratch rewrites are wholesale rather
-  than incremental -- median similarity to the previous version is 0.37 over
-  535 measured rewrites -- so repeating the body buried what the run printed
-  under the code that printed it.
+- Replace prompt-overlay self-improvement with one bounded source/binary loop:
+  immutable executors, same-source replay and continuation, independently
+  reproduced claims, conservative selection, explicit promotion and rollback.
+- Remove slopscan and duplicate audit/lint work. Keep deterministic telemetry
+  and source contracts; make personal history and host reports opt-in.
+- Consolidate cache parity and test support, run source-only CI checks once,
+  and move MCP/skill implementation out of shared headers.
+- Install bundled skills only under the selected prefix and documentation in
+  its source-relative layout; preserve user-owned skills and configuration.
+- `write_file` creates new files by default; replacing a file requires explicit
+  `overwrite=true`. Normalize irrelevant grep context and clarify conditional
+  tool arguments, including activity waits.
+- Complete MCP discovery, subscriptions and bounded input continuations while
+  preserving tool arguments, response correlation and cancellation.
 
 ### Fixed
 
-- A `scratch` call that wrote a script showed the diff and never the output.
-  The terminal treated any change receipt as the whole result and returned
-  before rendering the row, so 653 of 711 measured calls -- every successful
-  write -- displayed the code that ran and nothing it returned, in `/verbose`
-  as well. A receipt and a result are now separate fields: the diff is drawn,
-  then the output below it, bounded to twelve lines outside `/verbose` and
-  whole inside it. Replay and the application projection carry both.
-
-- A whole-file diff cut at the 400-line display cap ended mid-file without
-  saying so; it now marks the cut the way a delete receipt already did.
+- Render scratch output as an ordinary tool result instead of hiding it behind
+  a repeated script diff. Mark truncated whole-file diffs.
+- Preserve model/tool Unicode content when UI symbols fall back to ASCII.
+- Wake the idle terminal when SIGINT reaches another thread, so the second
+  Ctrl+C exits reliably and restores terminal modes.
 
 ## v1.0.0 - 2026-09-03
 

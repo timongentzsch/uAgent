@@ -317,6 +317,7 @@ inline std::string ToolDescription(const Tool& tool) {
 }
 
 inline json ToolParameters(const Tool& tool) {
+  if (tool.provider.starts_with("mcp:")) return tool.parameters;
   json parameters = tool.parameters;
   if (!parameters.is_object()) parameters = json::object();
   if (!parameters.contains("type")) parameters["type"] = "object";

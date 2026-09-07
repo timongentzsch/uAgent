@@ -11,7 +11,12 @@
 #include "include/api/openai_stream.h"
 #include "include/api/retry.h"
 #include "include/core/term.h"
+#include "include/tools/files.h"
+#include "include/tools/jobs.h"
+#include "include/tools/process.h"
+#include "include/tools/registry.h"
 #include "include/ui/presentation.h"
+#include "include/ui/tool_output.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -408,7 +413,7 @@ void TestBackgroundValidation() {
   const Tool* write = FindTool(tools, "write_file");
   CHECK(write &&
         write->parameters["required"] == json::array({"path", "content"}));
-  CHECK(write && write->parameters["properties"].size() == 2);
+  CHECK(write && write->parameters["properties"].size() == 3);
   CHECK(write && write->parameters["properties"].contains("content"));
   const Tool* edit = FindTool(tools, "edit_file");
   CHECK(edit && edit->parameters["required"] == json::array({"path", "edits"}));
@@ -419,12 +424,12 @@ void TestBackgroundValidation() {
     CHECK(ToolSummary(*edit, {{"path", "x"},
                               {"edits",
                                json::array({{{"old", "a"}, {"new", "b"}}})}}) ==
-          "x (1 edit)");
+          "edit x · 1 edit");
     CHECK(ToolSummary(*edit, {{"path", "x"},
                               {"edits",
                                json::array({{{"old", "a"}, {"new", "b"}},
                                             {{"old", "c"}, {"new", "d"}}})}}) ==
-          "x (2 edits)");
+          "edit x · 2 edits");
   }
   // read-only and independent-process tools must be able to overlap, and the
   // schema has to say so or the model has no reason to batch them

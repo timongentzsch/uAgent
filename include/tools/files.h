@@ -18,11 +18,13 @@ namespace uagent {
 
 ToolErrorCode FileToolError(const std::error_code& error);
 ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
-                           mode_t create_mode, bool preserve_mode);
+                           mode_t create_mode, bool preserve_mode,
+                           bool overwrite = true);
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit);
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
 ToolResult ToolWriteFileWithDisplay(const std::string& path,
-                                    const std::string& content);
+                                    const std::string& content,
+                                    bool overwrite = false);
 ToolResult ToolDeleteFileWithDisplay(const std::string& path);
 std::optional<std::string> DiffableContents(const std::string& path);
 // +/- receipt for a whole-file write; empty when the content is unchanged.

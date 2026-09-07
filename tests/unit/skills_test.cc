@@ -1,16 +1,33 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/core/skills.h"
+
 #include <sys/stat.h>
 
 #include <string>
 #include <vector>
 
+#include "include/core/fs.h"
+#include "include/core/signals.h"
+#include "include/tools/files.h"
+#include "include/tools/registry.h"
+#include "include/tools/skill.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
 void TestSkillDiscovery() {
   namespace fs = std::filesystem;
+  {
+    ScopedEnv bundled("UAGENT_SKILL_PATH",
+                      std::string(UAGENT_TEST_SOURCE_DIR) + "/skills");
+    const auto skills = LoadSkills(UAGENT_TEST_SOURCE_DIR);
+    CHECK(!skills.empty());
+    for (const Skill& skill : skills) {
+      CHECK(!skill.description.empty());
+      CHECK(ReadSkillBody(skill).ok);
+    }
+  }
   TestWorkspace test("skill");
   const fs::path& workspace = test.workspace;
   const fs::path& home = test.home;

@@ -25,8 +25,12 @@ namespace uagent {
 // asks for colour down a pipe.
 extern bool g_tty;
 extern bool g_color;
+// A terminal whose locale cannot decode UTF-8 renders the row scaffolding as
+// mojibake, so the glyphs fall back to ASCII at the point they are written.
+extern bool g_unicode;
 extern volatile sig_atomic_t g_signal_tty;
 bool ResolveColorEnabled(bool tty);
+bool ResolveUnicodeEnabled();
 // True while the REPL owns a pinned composer, which paints its own status row
 // and must not be raced by the spinner thread. State-free header: the flag
 // itself lives in src/core/term.cc, like the activity registry below.

@@ -250,8 +250,10 @@ constrain misuse without guessing task difficulty.
 The MCP JSON-RPC boundary requires `2026-07-28` through `server/discover`.
 Requests carry protocol, client identity, and client capabilities in `_meta`;
 a server that does not advertise that version and tools capability is rejected
-rather than downgraded. Server `roots/list` requests remain bounded by the
-canonical workspace/global/per-server root policy.
+rather than downgraded. Roots are supplied through bounded `input_required`
+continuations using the canonical workspace/global/per-server root policy.
+Optional empty arguments are preserved; trust determines both capability and
+approval classification. Legacy server-initiated JSON-RPC requests are ignored.
 Default lean delegated children do not clone the root session's MCP fleet;
 request a full child when the delegated task actually needs MCP tools.
 

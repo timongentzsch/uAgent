@@ -142,7 +142,7 @@ inline std::string ProjectConfigFilePath() {
 // file in the target directory makes replacement crash-safe.
 inline bool AtomicWriteFile(const std::string& path, const std::string& content,
                             mode_t create_mode, bool preserve_mode,
-                            std::string& error) {
+                            std::string& error, bool overwrite = true) {
   namespace fs = std::filesystem;
   std::error_code ec;
   fs::path target(path);
@@ -153,7 +153,7 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
     error = "cannot create parent directory for " + path + ": " + ec.message();
     return false;
   }
-  if (fs::is_symlink(target, ec)) {
+  if (overwrite && fs::is_symlink(target, ec)) {
     target = fs::canonical(target, ec);
     if (ec) {
       error = "cannot resolve symlink " + path + ": " + ec.message();
@@ -191,9 +191,12 @@ inline bool AtomicWriteFile(const std::string& path, const std::string& content,
   if (failure) {
     return fail("write to " + path + " failed: " + strerror(failure));
   }
-  if (rename(temp.c_str(), target.c_str()) != 0) {
-    return fail("cannot replace " + path + ": " + strerror(errno));
+  if ((overwrite ? rename(temp.c_str(), target.c_str())
+                 : link(temp.c_str(), target.c_str())) != 0) {
+    return fail("cannot write " + path + ": " + strerror(errno) +
+                (errno == EEXIST ? "; use edit_file or overwrite=true" : ""));
   }
+  if (!overwrite) unlink(temp.c_str());
   // The rename is already atomic; syncing the directory is what makes it
   // durable, so a crash cannot leave the entry pointing at nothing. A failure
   // here means the new contents may not survive power loss, not that the

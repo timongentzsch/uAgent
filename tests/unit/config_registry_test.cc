@@ -208,8 +208,6 @@ void TestConfigRegistryContract() {
   // process-internal plumbing. Scan the production source so a new bypass
   // fails here instead of silently escaping diagnostics and generated docs.
   const std::filesystem::path source_root = UAGENT_TEST_SOURCE_DIR;
-  size_t matched_lookups = 0;
-  size_t internal_lookups = 0;
   for (const char* directory : {"src", "include"}) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(
              source_root / directory)) {
@@ -221,9 +219,7 @@ void TestConfigRegistryContract() {
                          std::istreambuf_iterator<char>());
       for (const std::string& environment :
            DirectRuntimeSettingLookups(source)) {
-        ++matched_lookups;
         if (environment.starts_with("UAGENT_INTERNAL_")) {
-          ++internal_lookups;
           continue;
         }
         const ConfigDescriptor* descriptor = FindConfigDescriptor(environment);
@@ -235,8 +231,10 @@ void TestConfigRegistryContract() {
       }
     }
   }
-  CHECK(matched_lookups >= 20);
-  CHECK(internal_lookups > 0);
+  CHECK(DirectRuntimeSettingLookups(R"(EnvStr("UAGENT_MODEL"))") ==
+        std::vector<std::string>{"UAGENT_MODEL"});
+  CHECK(DirectRuntimeSettingLookups(R"(getenv("PATH"))").empty());
+  CHECK(DirectRuntimeSettingLookups("EnvStr(dynamic_name)").empty());
 }
 
 // The bug this pins: before strict parsing, every spelling except "0" read as

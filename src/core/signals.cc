@@ -28,6 +28,7 @@ volatile sig_atomic_t g_mcp_pids[kMcpMax] = {};
 volatile sig_atomic_t g_bg_pids[kBgMax] = {};
 bool g_tty = false;
 bool g_color = false;
+bool g_unicode = true;
 volatile sig_atomic_t g_signal_tty = 0;
 
 namespace {
@@ -215,21 +216,22 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
   }
 }
 
-std::atomic_flag g_signal_idle_interrupt = ATOMIC_FLAG_INIT;
+static_assert(std::atomic<bool>::is_always_lock_free);
+std::atomic<bool> g_signal_idle_interrupt{false};
 volatile sig_atomic_t g_quit_gesture = 0;
 
 void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
 
 bool TakeIdleInterrupt() {
-  bool seen = g_signal_idle_interrupt.test(std::memory_order_relaxed);
-  g_signal_idle_interrupt.clear(std::memory_order_relaxed);
-  return seen;
+  return g_signal_idle_interrupt.exchange(false, std::memory_order_relaxed);
 }
 
 void SigintHandler(int signal_number) {
   if (signal_number == SIGINT && !g_streaming && g_quit_gesture) {
     // Nothing to kill: the composer asks before the next press exits.
-    g_signal_idle_interrupt.test_and_set(std::memory_order_relaxed);
+    g_signal_idle_interrupt.store(true, std::memory_order_relaxed);
+    // SIGINT may run on another thread, leaving the composer's poll asleep.
+    WakeDescriptor(g_terminal_wake_write);
     return;
   }
   if (signal_number == SIGINT && g_streaming) {

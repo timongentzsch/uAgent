@@ -159,33 +159,33 @@ spent time, tokens and turns. It cohorts canonical, allowlisted
 `session.ready` provenance (`legacy` is explicit), supports `--cohort`, and
 derives failed-call recovery, identical repeats, argument issues, quiet/terminal
 activity polls and turn outcomes offline. `benchmarks/audit.py` prints the
-dashboard — hardware, token, speed, capability, readability, and whether the
-scenario suite still resembles real usage — and fails on a baseline regression:
+request/schema report and checks deterministic measurements against its baseline:
 
 ```sh
 python3 benchmarks/session_metrics.py --since 2026-08-01
-python3 benchmarks/session_metrics.py --cohort legacy
 python3 benchmarks/session_metrics.py --self-test
 python3 benchmarks/audit.py build/debug/uagent --check
-python3 benchmarks/audit.py build/debug/uagent --update   # review the diff
-python3 benchmarks/slopscan.py --verbose
-python3 benchmarks/slopscan.py --self-test   # check the checks
+python3 benchmarks/audit.py build/debug/uagent --profile --host --history ~/.uagent/history
 ```
 
-`slopscan.py` scans the tree, not only the latest diff, for unreachable code,
-unused declarations, duplicated blocks, stale file references, and duplicated
-documentation. Its low-noise heuristics are baselined in
-`benchmarks/baselines/slop.json`; exceeding a baseline exits nonzero. Review
-findings, not just counts.
+The check uses a fresh HOME, validated request telemetry and explicit source
+contracts. Missing telemetry or a baseline is an error. Personal profile,
+history and build observations are opt-in reports and cannot affect the gate.
+Ruff runs once in CI over tests, benchmarks and shipped skill scripts. Regex
+reachability, prose/style and clone-count gates have been removed; compiler
+warnings, clang-tidy, package/discovery and generated-reference checks remain.
+Python/source-only tests carry the `source` CTest label and run in one CI job;
+`ctest --preset debug` still runs the complete local suite. Native and sandbox
+controller tests retain the platform matrix. Both runners report case times.
 
-Because a broken scanner could also report zero, `--self-test` checks
-`tests/fixtures/slop`, which contains one intentional instance of each defect.
-CI runs the self-test before the scan.
-
-The audit reads session journals and a configured build tree, so it stays a
-local tool. The `self-improve` skill drives the whole loop.
-`--prompt-overlay` is what makes a before/after cohort comparable without
-rebuilding.
+Self-improvement is measured separately and does not use overlays:
+`tests/self_improve_controller_test.py` (CTest `self_improve_controller`) drives
+the whole recursive A/B loop — discovery, gate, paired replay, continuation,
+verdict, promotion and rollback — against a scripted stand-in binary, so every
+controller invariant is covered without a model call. `benchmarks/eval.py` and
+`benchmarks/audit.py` share that loop's run, metric and authority primitives
+from `skills/self-improve/scripts/`, so a change there is exercised by the eval
+self-test as well. See `docs/SELF_IMPROVEMENT.md`.
 
 Keep tests proportional: pure helpers get focused unit coverage; externally
 visible behavior gets one hermetic integration path. Avoid duplicating the

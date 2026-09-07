@@ -18,6 +18,10 @@ namespace uagent {
 // model, or inferred reasoning syntax.
 std::string StripDisplayMarkdown(const std::string& text);
 
+// Unified-diff line styling shared by change receipts and approval previews.
+const char* DiffLineStyle(std::string_view line);
+std::string ColorizeDiffLines(std::string_view text);
+
 class TerminalPresenter {
  public:
   TerminalPresenter();

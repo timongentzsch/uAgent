@@ -4,6 +4,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import time
 
 import integration_delegation
 import integration_mcp
@@ -98,7 +99,9 @@ def main():
             home = root / (name + ".home")
             case_root.mkdir(parents=True)
             home.mkdir(parents=True)
-            ALL_TESTS[name](case_root, home)
+            started = time.monotonic()
+            ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
+            print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
         print(f"all {len(names)} {label} integration tests passed")
 
 

@@ -51,6 +51,20 @@ def main():
     if f"{root}/bin/uagent" not in files:
         fail("bin/uagent is missing")
 
+    docs = f"{root}/share/doc/uagent/"
+    for name in (
+        "ARCHITECTURE",
+        "OPERATIONS",
+        "PERSISTENCE",
+        "SELF_IMPROVEMENT",
+        "TESTING",
+        "TOOLS",
+    ):
+        if f"{docs}docs/{name}.md" not in files:
+            fail(f"canonical guide docs/{name}.md is missing")
+        if f"{docs}{name}.md" in files:
+            fail(f"duplicate flat guide {name}.md")
+
     runner = f"{root}/share/uagent/skills/self-improve/scripts/experiment.py"
     runner_member = next((member for member in members if member.name == runner), None)
     if runner_member is None or not runner_member.isfile():

@@ -8,16 +8,24 @@
 #include <string>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/prompt.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
+#include "include/app/options.h"
+#include "include/app/runtime.h"
 #include "include/cli.h"
 #include "include/md.h"
+#include "include/providers.h"
 #include "include/tools/adapt_system.h"
+#include "include/tools/files.h"
+#include "include/tools/registry.h"
+#include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
-#include "tests/unit/test_support.h"
+#include "include/ui/tool_output.h"
+#include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
 
@@ -881,7 +889,7 @@ void TestCapsAndEscaping() {
   CHECK(TextLines("one\ntwo\n") == 2);
   CHECK(ToolResultSummary(ToolSuccess(""), "", false) == "(empty)");
   CHECK(ToolResultSummary(ToolSuccess("one\ntwo"), "one\ntwo", false) ==
-        "one … · 2 lines · 7 chars");
+        "one … · +1 lines · 7 chars");
   CHECK(ToolResultSummary(ToolTimedOut("late"), "late", true) ==
         "timed_out: late · truncated");
   // Verbose rendering shows the tool's own bounded output rather than the

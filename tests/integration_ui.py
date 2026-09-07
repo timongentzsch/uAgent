@@ -1,15 +1,16 @@
+import json
+import re
+import signal
+import termios
+import time
+
 from integration_support import (
     Server,
     assert_true,
     base_env,
     event,
-    json,
-    re,
     run_dialog,
     run_pty,
-    signal,
-    termios,
-    time,
     tool_call,
     wait_for_echo,
     wait_until_stopped,
@@ -19,7 +20,7 @@ from integration_support import (
 from memory_fixture import project_memory_dir
 
 
-def test_yolo_toggle_refreshes_approval_state(root, home):
+def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         system = messages[0].get("content", "")
@@ -54,6 +55,7 @@ def test_yolo_toggle_refreshes_approval_state(root, home):
             root,
             base_env(home, server.url),
             "/yolo\ncheck-on\n/yolo\ncheck-off\ny\n/q\n",
+            binary=binary,
         )
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("env-on-ok" in result.stdout, result.stdout)
@@ -62,9 +64,11 @@ def test_yolo_toggle_refreshes_approval_state(root, home):
         assert_true(len(server.requests) == 4, server.requests)
 
 
-def test_command_help(root, home):
+def test_command_help(root, home, *, binary):
     with Server([event({"content": "unused"})]) as server:
-        result = run_dialog(root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n")
+        result = run_dialog(
+            root, base_env(home, server.url), "/models\n/wat\n/recap\n/help\n/q\n", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("unknown command /wat; use /help" in result.stdout, result.stdout)
         assert_true("unknown command /recap; use /help" in result.stdout, result.stdout)
@@ -78,7 +82,7 @@ def test_command_help(root, home):
         assert_true(not server.get_requests, server.get_requests)
 
 
-def test_reasoning_modes_render_consistently(root, home):
+def test_reasoning_modes_render_consistently(root, home, *, binary):
     def streamed(handler, _):
         write_sse_sequence(
             handler,
@@ -122,6 +126,7 @@ def test_reasoning_modes_render_consistently(root, home):
                 b"/q\n",
             ],
             timeout=10,
+            binary=binary,
         )
         assert_true(code == 0, verbose)
         assert_true(b"\xc2\xb7 thinking" in verbose, verbose)
@@ -141,6 +146,7 @@ def test_reasoning_modes_render_consistently(root, home):
                 b"/q\n",
             ],
             timeout=10,
+            binary=binary,
         )
         assert_true(code == 0, compact)
         assert_true(b"thinking \xc2\xb7" in compact, compact)
@@ -150,7 +156,7 @@ def test_reasoning_modes_render_consistently(root, home):
         assert_true(b"\xc2\xb7 thinking" not in compact, compact)
 
 
-def test_multiline_bracketed_paste(root, home):
+def test_multiline_bracketed_paste(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")
         return event(
@@ -173,6 +179,7 @@ def test_multiline_bracketed_paste(root, home):
             base_env(home, server.url),
             [(paste, b"second"), b"\n", b"\x04"],
             columns=24,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
@@ -189,7 +196,7 @@ def test_multiline_bracketed_paste(root, home):
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
-def test_enter_arriving_with_paste_does_not_submit(root, home):
+def test_enter_arriving_with_paste_does_not_submit(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")
         return event(
@@ -205,13 +212,14 @@ def test_enter_arriving_with_paste_does_not_submit(root, home):
                 b"\n",
                 b"\x04",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"paste-enter-ok" in output, output)
         assert_true(len(server.requests) == 1, server.requests)
 
 
-def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
+def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home, *, binary):
     write_session(
         home,
         "resume-picker",
@@ -237,6 +245,7 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
             args=("--resume",),
             startup_marker=b"resume #: ",
             configure_terminal=disable_icrnl,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"resumed" in output, output)
@@ -245,7 +254,7 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home):
         assert_true(len(server.requests) == 0, server.requests)
 
 
-def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
+def test_input_redraw_focus_switch_preserves_multiline_draft(root, home, *, binary):
     def verify(_, body):
         pasted = body["messages"][-1].get("content")
         return event(
@@ -273,6 +282,7 @@ def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
             base_env(home, server.url),
             [(input_fragments, b"third"), b"\n", b"\x04"],
             columns=24,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"focus-draft-ok" in output, output)
@@ -281,7 +291,7 @@ def test_input_redraw_focus_switch_preserves_multiline_draft(root, home):
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
-def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
+def test_input_redraw_bare_escape_still_clears_idle_draft(root, home, *, binary):
     def verify(_, body):
         user = body["messages"][-1].get("content")
         return event({"content": "bare-escape-ok" if user == "kept" else "bare-escape-bad"})
@@ -296,13 +306,14 @@ def test_input_redraw_bare_escape_still_clears_idle_draft(root, home):
                 b"kept\n",
                 b"\x04",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"bare-escape-ok" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
-def test_input_redraw_history_restores_current_draft(root, home):
+def test_input_redraw_history_restores_current_draft(root, home, *, binary):
     def verify_draft(_, body):
         user = body["messages"][-1].get("content")
         return event({"content": "history-draft-ok" if user == "draft" else "history-draft-bad"})
@@ -319,13 +330,14 @@ def test_input_redraw_history_restores_current_draft(root, home):
                 b"\x1b[B\n",
                 b"\x04",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"history-draft-ok" in output, output)
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_input_redraw_approval_does_not_pollute_history(root, home):
+def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
     def verify_recalled(_, body):
         user = body["messages"][-1].get("content")
         return event({"content": "approval-history-ok" if user == "go" else "approval-history-bad"})
@@ -352,6 +364,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
                 (b"\n", b"approval-history-ok"),
                 b"\x04",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"approval-history-ok" in output, output)
@@ -359,7 +372,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_multiline_run_keeps_action_color(root, home):
+def test_multiline_run_keeps_action_color(root, home, *, binary):
     # Large enough to cross the old 2 KiB call-label cap and stdio write
     # boundaries. Every line carries its own cyan SGR so a concurrent composer
     # repaint cannot turn the tail into the terminal default foreground.
@@ -368,7 +381,7 @@ def test_multiline_run_keeps_action_color(root, home):
     command = "\n".join(lines)
     with Server([tool_call("run", {"command": command}), event({"content": "color-ok"})]) as server:
         code, output = run_pty(
-            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
+            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",), binary=binary
         )
         # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
         assert_true(b"\x01" not in output, output)
@@ -379,7 +392,7 @@ def test_multiline_run_keeps_action_color(root, home):
             assert_true(marker in output, (index, output))
 
 
-def test_multiline_rejected_call_shows_arguments(root, home):
+def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
     bad = {
         "path": "visible-target",
         "content": "replacement",
@@ -387,7 +400,7 @@ def test_multiline_rejected_call_shows_arguments(root, home):
     }
     with Server([tool_call("edit_file", bad), event({"content": "rejected-ok"})]) as server:
         code, output = run_pty(
-            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",)
+            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",), binary=binary
         )
         assert_true(code == 0 and b"rejected-ok" in output, output)
         assert_true(b"\xe2\x86\x92 edit_file(" in output, output)
@@ -395,7 +408,7 @@ def test_multiline_rejected_call_shows_arguments(root, home):
         assert_true(b"unknown argument" in output, output)
 
 
-def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
+def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home, *, binary):
     def delayed(_, __):
         time.sleep(2)
         return event({"content": "too-late"})
@@ -406,13 +419,14 @@ def test_input_redraw_enter_then_escape_same_packet_interrupts_turn(root, home):
             base_env(home, server.url),
             [(b"work\n\x1b", b"\xc2\xb7 interrupted"), b"/q\n"],
             timeout=8,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"\xc2\xb7 interrupted" in output, output)
         assert_true(b"too-late" not in output, output)
 
 
-def test_input_redraw_streaming_tail_survives_resize(root, home):
+def test_input_redraw_streaming_tail_survives_resize(root, home, *, binary):
     def streamed(handler, _):
         write_sse_sequence(
             handler,
@@ -434,6 +448,7 @@ def test_input_redraw_streaming_tail_survives_resize(root, home):
             ],
             columns=80,
             timeout=10,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"TAIL-BEGIN-TAIL-END" in output, output)
@@ -441,7 +456,7 @@ def test_input_redraw_streaming_tail_survives_resize(root, home):
         assert_true(re.search(rb"\x1b\[\d+A\x1b\[J", output) is not None, output)
 
 
-def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
+def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, binary):
     def delayed(_, __):
         time.sleep(0.7)
         return event({"content": "status-redraw-ok"})
@@ -455,6 +470,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
                 (b"pending draft", b"status-redraw-ok"),
                 b"\x15/q\n",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(output.count(b"status-redraw-ok") == 1, output)
@@ -462,7 +478,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home):
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 
-def test_suspend_restores_and_rearms_terminal(root, home):
+def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
     # Ctrl+Z stops the process, so it cannot restore anything on the way down:
     # the handler has to hand back a cooked line discipline before the stop and
     # re-arm raw mode on SIGCONT, or the resumed session echoes every keypress.
@@ -503,6 +519,7 @@ def test_suspend_restores_and_rearms_terminal(root, home):
             # phase then ran out and the child was killed, which reads as a
             # wrong exit code rather than the timeout it is.
             timeout=30,
+            binary=binary,
         )
     # It really suspended, and SIGINT still ends the session afterwards.
     assert_true(seen["stop_signal"] == signal.SIGTSTP, seen)
@@ -517,7 +534,7 @@ def test_suspend_restores_and_rearms_terminal(root, home):
     assert_true(output.count(b"\x1b[?2004h") >= 2, output)
 
 
-def test_signal_exit_restores_terminal(root, home):
+def test_signal_exit_restores_terminal(root, home, *, binary):
     # A signal exit out of the raw-mode composer must hand back a cooked line
     # discipline too, or the surviving shell has no echo until `stty sane`.
     final = {}
@@ -540,6 +557,7 @@ def test_signal_exit_restores_terminal(root, home):
             ],
             configure_terminal=cooked,
             after_exit=capture,
+            binary=binary,
         )
         restore = b"\x1b[0m\x1b[39m\x1b[49m"
         assert_true(code == 130, (code, output))
@@ -550,7 +568,7 @@ def test_signal_exit_restores_terminal(root, home):
         assert_true(final["lflag"] & termios.ICANON, oct(final["lflag"]))
 
 
-def test_input_redraw_survives_terminal_resize_and_delete(root, home):
+def test_input_redraw_survives_terminal_resize_and_delete(root, home, *, binary):
     original = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
     expected = original[:-10] + "XYZ"
 
@@ -572,6 +590,7 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
                 b"/q\n",
             ],
             columns=80,
+            binary=binary,
         )
         text = output.decode(errors="replace")
         assert_true(code == 0, text)
@@ -579,7 +598,7 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
-def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home):
+def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home, *, binary):
     """A wrap boundary that falls inside double-width text.
 
     The composer maps the cursor to a row by subtracting each row's display
@@ -607,13 +626,14 @@ def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home):
             base_env(home, server.url),
             [original.encode(), b"\x7f" * 2 + b"ok\n", b"/q\n"],
             columns=80,
+            binary=binary,
         )
         text = output.decode(errors="replace")
         assert_true(code == 0, text)
         assert_true("wide-ok" in text, text)
 
 
-def test_resize_replaces_the_status_row_instead_of_appending(root, home):
+def test_resize_replaces_the_status_row_instead_of_appending(root, home, *, binary):
     """Repeated resizes must not stack status rows down the scrollback.
 
     A resize repaints the pinned region, and the status row sits *above* the
@@ -638,6 +658,7 @@ def test_resize_replaces_the_status_row_instead_of_appending(root, home):
             ],
             columns=80,
             timeout=15,
+            binary=binary,
         )
         text = output.decode(errors="replace")
         assert_true(code == 0, text)
@@ -654,7 +675,7 @@ def test_resize_replaces_the_status_row_instead_of_appending(root, home):
         assert_true(len(walks) <= 8, len(walks))
 
 
-def test_context_command_shows_memory_and_skills(root, home):
+def test_context_command_shows_memory_and_skills(root, home, *, binary):
     workspace = root / "context-workspace"
     workspace.mkdir()
     memory_dir = project_memory_dir(home, workspace)
@@ -685,7 +706,12 @@ def test_context_command_shows_memory_and_skills(root, home):
         code, output = run_pty(
             workspace,
             base_env(home, server.url),
-            [b"/context\n", b"/memory\n", b"/q\n"],
+            [
+                (b"/context\n", b"context-skill-description-sentinel", b"\x1b[36m> \x1b[0m", None),
+                (b"/memory\n", b"project/browser", b"\x1b[36m> \x1b[0m", None),
+                b"/q\n",
+            ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"Context" in output and b"Skills" in output, output)
@@ -703,9 +729,10 @@ def test_context_command_shows_memory_and_skills(root, home):
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
         assert_true(b"memory on" in output, output)
+        assert_true(not server.requests, server.requests)
 
 
-def test_input_slash_suggestions_and_tab_completion(root, home):
+def test_input_slash_suggestions_and_tab_completion(root, home, *, binary):
     """Typing a command shows what it could still become; Tab commits it.
 
     The rows hang below the draft inside the composer's own block, so they are
@@ -720,6 +747,7 @@ def test_input_slash_suggestions_and_tab_completion(root, home):
                 (b"\t", b"/model "),
                 b"\x15/q\n",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         # Both candidates are offered, with the same description /help prints.
@@ -731,7 +759,7 @@ def test_input_slash_suggestions_and_tab_completion(root, home):
         assert_true(not server.get_requests, server.get_requests)
 
 
-def test_input_at_path_suggestions_and_tab_completion(root, home):
+def test_input_at_path_suggestions_and_tab_completion(root, home, *, binary):
     """`@` completes a path a segment at a time, the way a shell does.
 
     Naming a file costs the draft a few keystrokes; describing one costs the
@@ -767,6 +795,7 @@ def test_input_at_path_suggestions_and_tab_completion(root, home):
                 (b"\t\n", b"path-ok"),
                 b"/q\n",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         # Both candidates are offered; a dotfile nobody asked for is not.
@@ -778,7 +807,7 @@ def test_input_at_path_suggestions_and_tab_completion(root, home):
         assert_true(b"path-ok" in output, output)
 
 
-def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home):
+def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home, *, binary):
     """Ctrl+X Ctrl+E hands the draft to $EDITOR and takes back what it saved.
 
     The terminal has to come back cooked for the editor and raw for the
@@ -809,12 +838,13 @@ def test_input_ctrl_x_ctrl_e_round_trips_through_an_editor(root, home):
             env,
             # Ctrl+X Ctrl+E, then keep typing: the composer must be raw again.
             [(b"draft\x18\x05", b"draft-edited"), (b"!\n", b"editor-ok"), b"/q\n"],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"editor-ok" in output, output)
 
 
-def test_input_shift_enter_keeps_the_draft_open(root, home):
+def test_input_shift_enter_keeps_the_draft_open(root, home, *, binary):
     """Shift+Enter is a newline in the draft; Enter is still the submission."""
 
     def route(_, body):
@@ -831,6 +861,7 @@ def test_input_shift_enter_keeps_the_draft_open(root, home):
                 (b"\n", b"multiline-ok"),
                 b"/q\n",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         # The draft newline renders as the glyph the echo also uses.
@@ -838,7 +869,7 @@ def test_input_shift_enter_keeps_the_draft_open(root, home):
         assert_true(b"multiline-ok" in output, output)
 
 
-def test_input_ctrl_c_asks_once_then_quits(root, home):
+def test_input_ctrl_c_asks_once_then_quits(root, home, *, binary):
     """An idle SIGINT is half a gesture: the row says so, the second one exits."""
     with Server([event({"content": "unused"})]) as server:
         code, output = run_pty(
@@ -849,6 +880,7 @@ def test_input_ctrl_c_asks_once_then_quits(root, home):
                 lambda process: process.send_signal(signal.SIGINT),
             ],
             timeout=10,
+            binary=binary,
         )
         # The confirmed press leaves through the signal path, so the shell
         # still sees the interrupt status it always saw.

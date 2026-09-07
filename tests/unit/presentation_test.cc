@@ -8,11 +8,13 @@
 #include <cstdio>
 #include <string>
 
+#include "include/app/options.h"
 #include "include/core/term.h"
 #include "include/tools/child_agent.h"
+#include "include/tools/registry.h"
 #include "include/ui/display.h"
 #include "include/ui/tool_output.h"
-#include "tests/unit/test_support.h"
+#include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
 namespace {
@@ -184,21 +186,19 @@ void TestPollCollapse() {
   // A file write is fully told by its diff: there is no output row under it.
   CHECK(redrawn.detail.empty());
   CHECK(!redrawn.multiline);
-  // A script that was written and then run owes the person what it printed,
-  // so the receipt and the output are both kept.
+  // A script draws no receipt of its own, so it replays as the summary row
+  // every non-mutating tool gets.
   PresentationRecord ran = StoredToolResultPresentation(
-      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n",
-      "x.py\n+print(6*7)");
-  CHECK(ran.change == "x.py\n+print(6*7)");
-  CHECK(ran.multiline);
-  CHECK(ran.detail == "42");
+      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n");
+  CHECK(ran.change.empty());
+  CHECK(!ran.multiline);
+  CHECK(ran.summary.find("[script:") != std::string::npos);
   // A failure is still a failure, receipt or not.
   CHECK(StoredToolResultPresentation("edit_file", "error: no such file", "x")
             .status == PresentationStatus::kFailed);
 
-  // A script that was written and then run renders both: the receipt above,
-  // the bounded output below. Without this the terminal showed the code that
-  // ran and never what it returned.
+  // A script that was written and then run summarises like every other
+  // reading tool: its header line, then the size of what it printed.
   bool tty = g_tty;
   g_tty = true;
   CallTask script;
@@ -207,24 +207,21 @@ void TestPollCollapse() {
   script.ordinal = "[2] ";
   std::string body;
   for (int line = 1; line <= 30; ++line) body += std::to_string(line) + "\n";
-  script.result = ToolSuccess("[script: .uagent/scratch/x.py · wrote]\n" + body);
-  script.result.display = "Created x.py\n+print(1)";
+  script.result =
+      ToolSuccess("[script: .uagent/scratch/x.py · wrote]\n" + body);
   PresentationRecord compact =
       ToolResultPresentation(script, call, script.result.output, false);
-  CHECK(compact.change == "Created x.py\n+print(1)");
-  CHECK(compact.multiline);
-  CHECK(compact.detail.starts_with("1\n2\n"));
-  CHECK(compact.detail.find("30 lines") != std::string::npos);
-  CHECK(compact.detail.find("\n30\n") == std::string::npos);  // bounded
+  CHECK(compact.change.empty());
+  CHECK(!compact.multiline);
+  CHECK(compact.summary.starts_with("[script: .uagent/scratch/x.py · wrote]"));
+  CHECK(compact.summary.find("+30 lines") != std::string::npos);
   PresentationRecord loud =
       ToolResultPresentation(script, call, script.result.output, true);
-  CHECK(loud.change == compact.change);
+  CHECK(loud.multiline);
   CHECK(loud.detail.find("\n30") != std::string::npos);  // /verbose is whole
   std::string drawn = CaptureStdout([&] { PrintPresentation(compact); });
-  CHECK(drawn.find("Created x.py") != std::string::npos);
-  CHECK(drawn.find("+print(1)") != std::string::npos);
   CHECK(drawn.find("← [2] activity") != std::string::npos);
-  CHECK(drawn.find("\n1\n") != std::string::npos);
+  CHECK(drawn.find("[script:") != std::string::npos);
   // A file write is told entirely by its diff: no empty row is drawn under it.
   CallTask wrote = script;
   wrote.result = ToolSuccess("wrote 9 bytes to a.txt");
@@ -234,16 +231,66 @@ void TestPollCollapse() {
   CHECK(receipt.detail.empty() && receipt.summary.empty());
   CHECK(CaptureStdout([&] { PrintPresentation(receipt); }).find("←") ==
         std::string::npos);
-  // Without a terminal the row summarises the output, not the receipt line.
+  // Without a terminal a receipt collapses into an ordinary summary row.
   g_tty = false;
   PresentationRecord headless =
-      ToolResultPresentation(script, call, script.result.output, false);
+      ToolResultPresentation(wrote, call, wrote.result.output, false);
   CHECK(headless.change.empty());
-  CHECK(headless.summary.find("[script:") == std::string::npos);
-  CHECK(headless.summary.find("1") != std::string::npos);
+  CHECK(headless.summary.find("wrote 9 bytes") != std::string::npos);
   g_tty = tty;
 
+  // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
+  // rather than mojibake. Model/tool content must remain byte-preserved.
+  bool prior_unicode = g_unicode;
+  g_unicode = false;
+  std::string plain = CaptureStdout([&] { PrintPresentation(compact); });
+  CHECK(plain.find("<- [2]") != std::string::npos);
+  CHECK(plain.find("←") == std::string::npos);
+  compact.multiline = true;
+  compact.detail = "model text: µ · ← …";
+  CHECK(CaptureStdout([&] {
+          PrintPresentation(compact);
+        }).find(compact.detail) != std::string::npos);
+  CHECK(StatusBarLine("thinking · 2s").find("thinking - 2s") !=
+        std::string::npos);
+  g_unicode = prior_unicode;
+
+  // Only an explicitly non-UTF-8 locale downgrades; an unset one is no
+  // evidence that the terminal is incapable.
+  const char* prior_lc_all = getenv("LC_ALL");
+  setenv("LC_ALL", "C", 1);
+  CHECK(!ResolveUnicodeEnabled());
+  setenv("LC_ALL", "en_US.UTF-8", 1);
+  CHECK(ResolveUnicodeEnabled());
+  if (prior_lc_all) {
+    setenv("LC_ALL", prior_lc_all, 1);
+  } else {
+    unsetenv("LC_ALL");
+  }
+
   ClearPollAnchor(4242);
+}
+
+void TestDiffLineColoring() {
+  const std::string diff =
+      "target: /tmp/config\n\n--- /tmp/config\n+++ /tmp/config\n"
+      "  KEEP=1\n- OLD=1\n+ NEW=1\n";
+  bool prior = g_color;
+  g_color = true;
+  std::string colored = ColorizeDiffLines(diff);
+  CHECK(colored.find(std::string(RED()) + "--- /tmp/config" + RST()) !=
+        std::string::npos);
+  CHECK(colored.find(std::string(GREEN()) + "+++ /tmp/config" + RST()) !=
+        std::string::npos);
+  CHECK(colored.find(std::string(RED()) + "- OLD=1" + RST()) !=
+        std::string::npos);
+  CHECK(colored.find(std::string(GREEN()) + "+ NEW=1" + RST()) !=
+        std::string::npos);
+  CHECK(colored.find("  KEEP=1") != std::string::npos);
+
+  g_color = false;
+  CHECK(ColorizeDiffLines(diff) == diff);
+  g_color = prior;
 }
 
 // A search the provider runs is the one long wait the status row could not

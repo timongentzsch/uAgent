@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
@@ -26,10 +27,31 @@
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
+#include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+namespace {
+// Blocks until the activity behind `job` has drained its output, or until the
+// timeout expires; returns whether it drained.
+inline bool WaitForActivityDrain(
+    ProcessSupervisor& supervisor, const BgJob& job,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+  if (!job.session) return false;
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lock(job.session->mutex);
+      if (job.session->state == ActivityState::kDrained) return true;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    const uint64_t generation = supervisor.Generation();
+    supervisor.WaitForChange(generation, deadline);
+  }
+}
+
+}  // namespace
 
 void TestSignalAndFileWatch() {
   RequestAbort();
@@ -40,17 +62,30 @@ void TestSignalAndFileWatch() {
   stale_abort.revents = 0;
   CHECK(poll(&stale_abort, 1, 0) == 0);
 
-  int resize_wake[2] = {-1, -1};
-  CHECK(pipe(resize_wake) == 0);
-  if (resize_wake[0] >= 0) {
-    SetTerminalWakeFd(resize_wake[1]);
+  int terminal_wake[2] = {-1, -1};
+  CHECK(pipe(terminal_wake) == 0);
+  if (terminal_wake[0] >= 0) {
+    SetTerminalWakeFd(terminal_wake[1]);
     InstallSigwinchHandler();
     raise(SIGWINCH);
-    pollfd resize_event = {resize_wake[0], POLLIN, 0};
+    pollfd resize_event = {terminal_wake[0], POLLIN, 0};
     CHECK(poll(&resize_event, 1, 100) == 1);
+    char wake_byte = 0;
+    CHECK(read(terminal_wake[0], &wake_byte, 1) == 1);
+
+    // A process-directed SIGINT can land on a worker, so the UI must receive
+    // its own wake instead of relying on poll returning EINTR in that thread.
+    SetQuitGesture(true);
+    std::thread interrupted([] { SigintHandler(SIGINT); });
+    resize_event.revents = 0;
+    CHECK(poll(&resize_event, 1, 1000) == 1);
+    interrupted.join();
+    SetQuitGesture(false);
+    CHECK(TakeIdleInterrupt());
+    CHECK(!TakeIdleInterrupt());
     SetTerminalWakeFd(-1);
-    close(resize_wake[0]);
-    close(resize_wake[1]);
+    close(terminal_wake[0]);
+    close(terminal_wake[1]);
     g_terminal_resized = 0;
   }
 
@@ -303,10 +338,13 @@ void TestActivitySessions() {
                                  context)
                  : ToolFailure(ToolErrorCode::kInternal, "missing activity");
     CHECK(input.Ok());
-    CHECK(input.output.find("got:hello") != std::string::npos);
     ToolResult completed =
         ToolActivityWait(pty_processes, {id}, "all", BudgetMs(2000), context);
     CHECK(completed.Ok());
+    // write may return as soon as the PTY echoes input; the command's response
+    // can arrive in the following wait result.
+    CHECK((input.output + completed.output).find("got:hello") !=
+          std::string::npos);
     CHECK(completed.output.find("exit code 0") != std::string::npos);
   }
 

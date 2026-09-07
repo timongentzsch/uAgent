@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "include/core/config.h"
+#include "include/core/env.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

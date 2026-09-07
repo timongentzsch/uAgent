@@ -357,7 +357,7 @@ std::vector<std::string> SandboxWrapperArgv(const SandboxStatus& status) {
 }
 
 int SandboxChildMain(int argc, char** argv) {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
   // argv[0] is the binary and argv[1] the flag that routed us here; the policy
   // words start after them.
   std::vector<std::string> words;
@@ -377,8 +377,19 @@ int SandboxChildMain(int argc, char** argv) {
     fprintf(stderr, "uagent: sandbox: missing command\n");
     return 125;
   }
+#if defined(__APPLE__)
+  const std::string profile = SeatbeltProfile(policy);
+  if (profile.empty()) return 125;
+  std::vector<char*> command{const_cast<char*>("/usr/bin/sandbox-exec"),
+                             const_cast<char*>("-p"),
+                             const_cast<char*>(profile.c_str())};
+  for (int index = first; index < argc; ++index) command.push_back(argv[index]);
+  command.push_back(nullptr);
+  execv(command[0], command.data());
+#else
   if (!ApplyLandlock(policy)) return 125;
   execvp(argv[first], argv + first);
+#endif
   fprintf(stderr, "uagent: sandbox: exec %s failed (errno %d)\n", argv[first],
           errno);
   return errno == ENOENT ? 127 : 126;

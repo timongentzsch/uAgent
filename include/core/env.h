@@ -21,10 +21,6 @@ int64_t EnvLong(const char* name, int64_t dflt);
 
 double EnvDouble(const char* name, double dflt);
 
-// Strict: only the ParseBool spellings count, so a misspelled switch reads as
-// the default rather than as "set, therefore on".
-bool EnvBool(const char* name, bool dflt);
-
 // Accessors shared by their consumers and the session_ready diagnostic.
 int64_t ToolResultCap();
 int64_t ToolBatchResultCap();

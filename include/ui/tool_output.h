@@ -36,44 +36,22 @@ inline std::string ToolResultSummary(const ToolResult& result,
                                      bool truncated) {
   std::string summary = output.empty() ? "(empty)" : FirstLine(output);
   size_t lines = TextLines(output);
+  // The first line is shown, so the count reports what is elided: a header
+  // line and a total would otherwise print two numbers for one result.
   if (lines > 1) {
-    summary += " … · " + std::to_string(lines) + " lines · " +
+    summary += AsciiGlyphs(" … · +") + std::to_string(lines - 1) +
+               AsciiGlyphs(" lines · ") +
                FmtCount(static_cast<int64_t>(output.size())) + " chars";
   }
-  if (truncated) summary += " · truncated";
+  if (truncated) summary += AsciiGlyphs(" · truncated");
   if (!result.Ok()) {
     summary = std::string(CompletionStatusName(result.status)) + ": " + summary;
   }
   return summary;
 }
 
-// A tool that draws a change receipt says what changed in the receipt, so the
-// first line of its output only restates it. What follows does not: a file
-// write has nothing there, a script that was written and then run has its
-// whole result there.
-inline std::string OutputBelowReceipt(const std::string& output) {
-  size_t newline = output.find('\n');
-  if (newline == std::string::npos) return "";
-  std::string body = output.substr(newline + 1);
-  while (!body.empty() && body.back() == '\n') body.pop_back();
-  return body;
-}
-
-// Compact rows stay bounded: a long result keeps its head and reports the rest
-// by count, and /verbose prints the whole thing.
-inline constexpr size_t kChangeResultLines = 12;
-
-inline std::string BoundedLines(const std::string& text, size_t max_lines) {
-  size_t at = 0;
-  for (size_t line = 0; line < max_lines; ++line) {
-    size_t newline = text.find('\n', at);
-    if (newline == std::string::npos) return text;
-    at = newline + 1;
-  }
-  return text.substr(0, at) + "… · " + std::to_string(TextLines(text)) +
-         " lines · " + FmtCount(static_cast<int64_t>(text.size())) + " chars";
-}
-
+// Compact rows stay bounded: a long result is summarised by its first line
+// and a count, and /verbose prints the whole thing.
 inline PresentationRecord ToolCallPresentation(const CallTask& task,
                                                const ToolCall& call) {
   PresentationRecord record;
@@ -117,28 +95,15 @@ inline PresentationRecord ToolResultPresentation(
     }
     ClearPollAnchor(activity_id);
   }
+  // A change is told entirely by its diff, so the receipt is the whole row.
   if (g_tty && task.result.Ok() && !task.result.display.empty()) {
     record.change = task.result.display;
-    std::string body = OutputBelowReceipt(
-        verbose ? ModelResultText(task.result, ResultCharLimit(task))
-                : model_output);
-    if (body.empty()) return record;
-    record.detail = verbose ? std::move(body)
-                            : BoundedLines(body, kChangeResultLines);
-    record.multiline = true;
     return record;
   }
 
   std::string shown = verbose
                           ? ModelResultText(task.result, ResultCharLimit(task))
                           : model_output;
-  // Without a terminal there is no diff block above the row, but the receipt
-  // line is still the first thing the tool printed. Summarising from it would
-  // report `[script: ...]` and never the script's result.
-  if (task.result.Ok() && !task.result.display.empty()) {
-    std::string body = OutputBelowReceipt(shown);
-    if (!body.empty()) shown = std::move(body);
-  }
   if (verbose && shown.find('\n') != std::string::npos) {
     record.detail = shown;
     record.multiline = true;
@@ -175,11 +140,6 @@ inline PresentationRecord StoredToolResultPresentation(
   // A kept receipt replays as it was drawn, the way the live row showed it.
   if (replayed.Ok() && !display.empty()) {
     record.change = display;
-    std::string body = OutputBelowReceipt(output);
-    if (!body.empty()) {
-      record.detail = BoundedLines(body, kChangeResultLines);
-      record.multiline = true;
-    }
     return record;
   }
   record.summary = TerminalSummary(ToolResultSummary(replayed, output,

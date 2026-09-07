@@ -3,7 +3,15 @@
 #include <string>
 #include <vector>
 
+#include "include/app/options.h"
+#include "include/core/config.h"
+#include "include/core/fs.h"
+#include "include/core/signals.h"
+#include "include/core/term.h"
+#include "include/tools/files.h"
+#include "include/tools/jobs.h"
 #include "include/tools/path_policy.h"
+#include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -119,7 +127,7 @@ void TestFileTools() {
   CHECK(create_result.display.find("+two") != std::string::npos);
 
   ToolResult replace_result =
-      ToolWriteFileWithDisplay(created.string(), "one\nthree\n");
+      ToolWriteFileWithDisplay(created.string(), "one\nthree\n", true);
   CHECK(replace_result.Ok());
   CHECK(replace_result.display.find("Replaced " + created.string() +
                                     " (+1 -1)") != std::string::npos);
@@ -127,9 +135,15 @@ void TestFileTools() {
   CHECK(replace_result.display.find("+three") != std::string::npos);
 
   ToolResult identical_result =
-      ToolWriteFileWithDisplay(created.string(), "one\nthree\n");
+      ToolWriteFileWithDisplay(created.string(), "one\nthree\n", true);
   CHECK(identical_result.Ok());
   CHECK(identical_result.display.empty());
+  CHECK(!ToolWriteFileWithDisplay(created.string(), "lost").Ok());
+  CHECK(contents(created) == "one\nthree\n");
+  fs::path create_link = root / "create-link";
+  fs::create_symlink(created, create_link);
+  CHECK(!ToolWriteFileWithDisplay(create_link.string(), "lost").Ok());
+  CHECK(contents(created) == "one\nthree\n");
 
   fs::path binary_target = root / "created.bin";
   ToolResult binary_result = ToolWriteFileWithDisplay(

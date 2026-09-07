@@ -9,16 +9,30 @@
   rewritten for each one. Across 711 measured `scratch` calls only 58 were
   reruns: 535 were repeat writes to a path already written in the same
   session, resending 963 KB of code of which 51% was text that had not
-  changed. The receipt and the call row report the argv a run used, so two
-  runs of one script stay distinguishable in the transcript.
+  changed. The result header and the call row report the argv a run used, so
+  two runs of one script stay distinguishable in the transcript.
 
 ### Changed
 
-- A rewritten scratch script shows its body once per path and reports only
-  `Replaced <path> (+n -m)` after that. Scratch rewrites are wholesale rather
-  than incremental -- median similarity to the previous version is 0.37 over
-  535 measured rewrites -- so repeating the body buried what the run printed
-  under the code that printed it.
+- Replace prompt-overlay self-improvement with one bounded source/binary loop:
+  immutable executor and subject identities, fresh A/B replay and continuation,
+  independently reproduced claims, conservative selection, explicit promotion
+  and exact rollback. Use a pinned native sandbox around trials and gates.
+- Remove the heuristic source/prose scanner and its baseline. Token audit now
+  checks only deterministic telemetry and source contracts; personal history
+  and host observations are opt-in reports. Consolidate cache parity and test
+  support; run source-only CI checks once and lint shipped Python scripts.
+- Install bundled skills only under the selected prefix. Preserve user skills;
+  retired shadow-copy and flat-document installation paths are no longer written.
+- Move MCP and skill discovery implementation out of shared headers.
+
+
+- A `scratch` result is presented as an ordinary tool result: its
+  `[script: ...]` header line and the output below it, summarised in the row
+  like `run` or `grep` rather than drawn as a change receipt. The script body
+  is on disk and in the call, so repeating it as a diff spent scrollback to
+  restate the call and pushed what the run printed further away. Removing the
+  receipt also removed the renderer's only receipt-plus-body case.
 
 ### Fixed
 
@@ -26,9 +40,8 @@
   The terminal treated any change receipt as the whole result and returned
   before rendering the row, so 653 of 711 measured calls -- every successful
   write -- displayed the code that ran and nothing it returned, in `/verbose`
-  as well. A receipt and a result are now separate fields: the diff is drawn,
-  then the output below it, bounded to twelve lines outside `/verbose` and
-  whole inside it. Replay and the application projection carry both.
+  as well. A script no longer draws a receipt at all, so its output is what
+  the row and the replayed transcript show.
 
 - A whole-file diff cut at the 400-line display cap ended mid-file without
   saying so; it now marks the cut the way a delete receipt already did.

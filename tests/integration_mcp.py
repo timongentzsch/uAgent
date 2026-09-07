@@ -1,4 +1,7 @@
 import base64
+import json
+import sys
+import time
 
 from integration_support import (
     SMALL_PNG,
@@ -8,17 +11,63 @@ from integration_support import (
     budget,
     event,
     function_names,
-    json,
     run,
-    sys,
-    time,
     tool_call,
     tool_results,
     write_mcp_server,
 )
 
 
-def test_mcp_image_reaches_the_model(root, home):
+def test_mcp_roots_continuation_preserves_arguments(root, home, *, binary):
+    workspace = root / "mcp-roots-continuation"
+    workspace.mkdir()
+    fake = workspace / "server.py"
+    write_mcp_server(
+        fake,
+        "    assert message.get('jsonrpc') == '2.0'\n"
+        "    params = message.get('params', {})\n"
+        "    assert params['_meta']['io.modelcontextprotocol/clientCapabilities'] == {'roots': {}}\n"
+        "    if method == 'server/discover':\n"
+        "        result = {'supportedVersions': ['2026-07-28'], 'capabilities': {'tools': {}}}\n"
+        "    elif method == 'tools/list':\n"
+        "        result = {'tools': [{'name': 'echo', 'inputSchema': {'type': 'object', "
+        "'properties': {'value': {'type': 'string'}}}}]}\n"
+        "    elif method == 'tools/call':\n"
+        "        assert params['arguments'] == {'value': ''}\n"
+        "        if 'requestState' not in params:\n"
+        "            initial_id = message['id']\n"
+        "            result = {'resultType': 'input_required', 'requestState': 'opaque-state', "
+        "'inputRequests': {'scope': {'method': 'roots/list'}}}\n"
+        "        else:\n"
+        "            assert message['id'] != initial_id\n"
+        "            assert params['requestState'] == 'opaque-state'\n"
+        "            assert params['inputResponses']['scope']['roots'][0]['uri'] == ROOT\n"
+        "            result = {'content': [{'type': 'text', 'text': 'roots-and-empty-ok'}]}\n"
+        "    result.setdefault('resultType', 'complete')\n",
+        setup=f"ROOT = {workspace.resolve().as_uri()!r}\n",
+    )
+    (workspace / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"probe": {"command": sys.executable, "args": [str(fake)]}}})
+    )
+
+    def verify(_, body):
+        assert_true("roots-and-empty-ok" in "".join(tool_results(body["messages"])), body)
+        return event({"content": "ok"})
+
+    with Server([tool_call("probe_echo", {"value": ""}), verify]) as server:
+        result = run(
+            workspace,
+            base_env(home, server.url),
+            "--trust-project-config",
+            "--yolo",
+            "-p",
+            "exercise roots",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+
+
+def test_mcp_image_reaches_the_model(root, home, *, binary):
     """An MCP screenshot has to end up in the model's context, not just on disk.
 
     A tool result is text-only, so the image travels as an attachment on the
@@ -73,12 +122,14 @@ def test_mcp_image_reaches_the_model(root, home):
 
     with Server([tool_call("cam_shot", {}), verify]) as server:
         env = base_env(home, server.url)
-        result = run(workspace, env, "--trust-project-config", "--yolo", "-p", "screenshot")
+        result = run(
+            workspace, env, "--trust-project-config", "--yolo", "-p", "screenshot", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "image-ok", result.stdout + result.stderr)
 
 
-def test_invalid_mcp_config_not_executed(root, home):
+def test_invalid_mcp_config_not_executed(root, home, *, binary):
     workspace = root / "mcp-invalid-config"
     workspace.mkdir()
     marker = root / "invalid-mcp-marker"
@@ -105,13 +156,14 @@ def test_invalid_mcp_config_not_executed(root, home):
             "--trust-project-config",
             "-p",
             "reply",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
         assert_true(not marker.exists(), "invalid MCP server config executed")
 
 
-def test_legacy_mcp_server_is_rejected_without_initialize_fallback(root, home):
+def test_legacy_mcp_server_is_rejected_without_initialize_fallback(root, home, *, binary):
     workspace = root / "mcp-legacy-rejected"
     workspace.mkdir()
     marker = workspace / "initialize-called"
@@ -176,13 +228,14 @@ def test_legacy_mcp_server_is_rejected_without_initialize_fallback(root, home):
             "--yolo",
             "-p",
             "check",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "legacy-absent", result.stdout)
         assert_true(not marker.exists(), "legacy initialize fallback was attempted")
 
 
-def test_required_mcp_failure_stops_bootstrap(root, home):
+def test_required_mcp_failure_stops_bootstrap(root, home, *, binary):
     workspace = root / "mcp-required-failure"
     workspace.mkdir()
     fake = workspace / "fake_mcp.py"
@@ -209,13 +262,14 @@ def test_required_mcp_failure_stops_bootstrap(root, home):
             "--trust-project-config",
             "-p",
             "check",
+            binary=binary,
         )
         assert_true(result.returncode != 0, result.stdout)
         assert_true("required MCP server `needed`" in result.stderr, result.stderr)
         assert_true(not server.requests, server.requests)
 
 
-def test_mcp_tool_round_trip(root, home):
+def test_mcp_tool_round_trip(root, home, *, binary):
     workspace = root / "mcp-round-trip"
     workspace.mkdir()
     fake = workspace / "fake_mcp.py"
@@ -270,6 +324,7 @@ def test_mcp_tool_round_trip(root, home):
             "--yolo",
             "-p",
             "probe",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "mcp-ok", result.stdout)
@@ -277,7 +332,7 @@ def test_mcp_tool_round_trip(root, home):
         assert_true("probe_echo" in names, names)
 
 
-def test_optional_mcp_servers_share_startup_grace(root, home):
+def test_optional_mcp_servers_share_startup_grace(root, home, *, binary):
     workspace = root / "mcp-optional-startup"
     workspace.mkdir()
     slow = workspace / "slow_mcp.py"
@@ -337,12 +392,7 @@ def test_optional_mcp_servers_share_startup_grace(root, home):
         env["UAGENT_MCP_TIMEOUT"] = "8"
         started = time.monotonic()
         result = run(
-            workspace,
-            env,
-            "--trust-project-config",
-            "--yolo",
-            "-p",
-            "probe",
+            workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
         )
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 0, result.stderr)
@@ -350,7 +400,7 @@ def test_optional_mcp_servers_share_startup_grace(root, home):
         assert_true(elapsed < budget(4), f"optional startup took {elapsed:.2f}s")
 
 
-def test_optional_mcp_refresh_never_blocks_a_model_step(root, home):
+def test_optional_mcp_refresh_never_blocks_a_model_step(root, home, *, binary):
     workspace = root / "mcp-optional-nonblocking"
     workspace.mkdir()
     fake = workspace / "fake_mcp.py"
@@ -393,12 +443,7 @@ def test_optional_mcp_refresh_never_blocks_a_model_step(root, home):
         env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         started = time.monotonic()
         result = run(
-            workspace,
-            env,
-            "--trust-project-config",
-            "--yolo",
-            "-p",
-            "probe",
+            workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
         )
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 0, result.stderr)
@@ -406,7 +451,7 @@ def test_optional_mcp_refresh_never_blocks_a_model_step(root, home):
         assert_true(elapsed < budget(3), f"optional refresh blocked for {elapsed:.2f}s")
 
 
-def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home):
+def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home, *, binary):
     workspace = root / "mcp-optional-notification"
     workspace.mkdir()
     fake = workspace / "fake_mcp.py"
@@ -463,18 +508,13 @@ def test_optional_mcp_notification_before_discovery_is_not_fatal(root, home):
         env = base_env(home, server.url)
         env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         result = run(
-            workspace,
-            env,
-            "--trust-project-config",
-            "--yolo",
-            "-p",
-            "probe",
+            workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "notification-ok", result.stdout)
 
 
-def test_optional_mcp_slow_tool_list_resumes_one_request(root, home):
+def test_optional_mcp_slow_tool_list_resumes_one_request(root, home, *, binary):
     workspace = root / "mcp-optional-slow-tools"
     workspace.mkdir()
     requests = workspace / "tools-list-count"
@@ -533,12 +573,7 @@ def test_optional_mcp_slow_tool_list_resumes_one_request(root, home):
         env["UAGENT_MCP_STARTUP_GRACE"] = "1"
         env["UAGENT_MCP_TIMEOUT"] = "8"
         result = run(
-            workspace,
-            env,
-            "--trust-project-config",
-            "--yolo",
-            "-p",
-            "probe",
+            workspace, env, "--trust-project-config", "--yolo", "-p", "probe", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "delayed-ready", result.stdout)

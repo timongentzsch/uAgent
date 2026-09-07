@@ -42,6 +42,11 @@ inline ToolResult McpResultText(const McpServer& s, const json& resp) {
     return ToolFailure(ToolErrorCode::kRemoteError,
                        "error: mcp(" + s.name + "): result must be an object");
   }
+  if (JsonValue(r, "resultType", "complete") != "complete") {
+    return ToolFailure(ToolErrorCode::kUnavailable,
+                       "error: MCP request requires unsupported input or "
+                       "exceeded continuation limits");
+  }
   std::string text;
   ToolErrorCode local_error = ToolErrorCode::kNone;
   if (r.contains("content") && r["content"].is_array()) {

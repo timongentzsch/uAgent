@@ -1,3 +1,10 @@
+import json
+import os
+import pathlib
+import shlex
+import signal
+import time
+
 from integration_support import (
     SMALL_PNG,
     Server,
@@ -8,24 +15,18 @@ from integration_support import (
     event,
     function_names,
     has_message,
-    json,
     json_sentinel_command,
     large_json_command,
-    os,
-    pathlib,
     run,
     run_dialog,
     run_pty,
-    shlex,
-    signal,
     signal_process_group,
-    time,
     tool_call,
     tool_results,
 )
 
 
-def test_attach_tool_puts_bytes_in_context(root, home):
+def test_attach_tool_puts_bytes_in_context(root, home, *, binary):
     """The model can pull an image and a document into its own context, and the
     encoded bytes do not stay in history afterwards."""
     workspace = root / "attach-workspace"
@@ -67,13 +68,7 @@ def test_attach_tool_puts_bytes_in_context(root, home):
         env["UAGENT_CONTEXT"] = "4096"
         trace = workspace / "trace.jsonl"
         result = run(
-            workspace,
-            env,
-            "--yolo",
-            f"--debug={trace}",
-            "-p",
-            "look",
-            timeout=40,
+            workspace, env, "--yolo", f"--debug={trace}", "-p", "look", timeout=40, binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "attach-ok", result.stdout)
@@ -90,7 +85,7 @@ def test_attach_tool_puts_bytes_in_context(root, home):
         assert_true(not blobs, blobs)
 
 
-def test_full_run_and_python_terminal_trace(root, home):
+def test_full_run_and_python_terminal_trace(root, home, *, binary):
     shell_command = "printf 'shell-one\\n'\nprintf 'shell-two\\n'"
     python_code = "print('python-one')\nprint('python-two')"
     with Server(
@@ -106,11 +101,7 @@ def test_full_run_and_python_terminal_trace(root, home):
         env = base_env(home, server.url)
         env["UAGENT_TOOL_BATCH_RESULT_CHARS"] = "8"
         result = run_dialog(
-            root,
-            env,
-            "/verbose\ntrace\n/trace\n/q\n",
-            "--yolo",
-            timeout=20,
+            root, env, "/verbose\ntrace\n/trace\n/q\n", "--yolo", timeout=20, binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         for expected in (
@@ -118,7 +109,7 @@ def test_full_run_and_python_terminal_trace(root, home):
             "printf 'shell-two",
             "shell-one",
             "shell-two",
-            "scratch(write/replace trace.py → execute)",
+            "scratch(write trace.py · execute)",
             "[script: .uagent/scratch/trace.py · wrote · executed]",
             "python-one",
             "python-two",
@@ -130,7 +121,7 @@ def test_full_run_and_python_terminal_trace(root, home):
             assert_true(expected in result.stdout, result.stdout)
 
 
-def test_large_run_output_is_recoverable(root, home):
+def test_large_run_output_is_recoverable(root, home, *, binary):
     command, expected_bytes = large_json_command()
     artifact = {}
 
@@ -160,13 +151,13 @@ def test_large_run_output_is_recoverable(root, home):
         env = base_env(home, server.url)
         env["UAGENT_TOOL_RESULT_CHARS"] = "512"
         env["UAGENT_CONTEXT"] = "131072"
-        result = run(root, env, "--yolo", "-p", "inspect large output")
+        result = run(root, env, "--yolo", "-p", "inspect large output", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "artifact-ok", result.stdout)
         assert_true(artifact["path"].exists(), artifact)
 
 
-def test_run_rejects_python_and_sudo_before_execution(root, home):
+def test_run_rejects_python_and_sudo_before_execution(root, home, *, binary):
     def after_python(_, body):
         results = tool_results(body["messages"])
         assert_true(any("use scratch" in value for value in results), results)
@@ -187,12 +178,12 @@ def test_run_rejects_python_and_sudo_before_execution(root, home):
             after_sudo,
         ]
     ) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "work")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "work", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "guarded", result.stdout)
 
 
-def test_delete_file_removes_and_receipts(root, home):
+def test_delete_file_removes_and_receipts(root, home, *, binary):
     """Deleting reports what was removed, and refuses what it must not touch.
 
     The receipt is what a person reads before approving, so it carries the
@@ -220,14 +211,16 @@ def test_delete_file_removes_and_receipts(root, home):
         return event({"content": "delete-ok"})
 
     with Server([remove, remove_missing, finish]) as server:
-        result = run(workspace, base_env(home, server.url), "--yolo", "-p", "remove it")
+        result = run(
+            workspace, base_env(home, server.url), "--yolo", "-p", "remove it", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("delete-ok"), result.stdout)
         assert_true(not doomed.exists(), "file was not deleted")
         assert_true(keep.read_text() == "KEEP\n", "an unrelated file changed")
 
 
-def test_grep_tool_round_trip(root, home):
+def test_grep_tool_round_trip(root, home, *, binary):
     workspace = root / "grep-workspace"
     workspace.mkdir()
     (workspace / "one.cpp").write_text("alpha\nproject_wide_symbol\nomega\n", encoding="utf-8")
@@ -274,7 +267,7 @@ def test_grep_tool_round_trip(root, home):
     ) as server:
         env = base_env(home, server.url)
         env["UAGENT_IMAGE_PROTOCOL"] = "iterm"
-        result = run(workspace, env, "-p", "search")
+        result = run(workspace, env, "-p", "search", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "grep-ok", result.stdout)
         names = function_names(server.requests[0][1])
@@ -282,7 +275,7 @@ def test_grep_tool_round_trip(root, home):
         assert_true("show_image" not in names, names)
 
 
-def test_skill_tool_offers_and_opens(root, home):
+def test_skill_tool_offers_and_opens(root, home, *, binary):
     workspace = root / "skill-workspace"
     skill = workspace / ".uagent" / "skills" / "demo"
     skill.mkdir(parents=True)
@@ -332,6 +325,7 @@ def test_skill_tool_offers_and_opens(root, home):
                 b"\x04",
             ],
             columns=24,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"skill-ok" in output and b"Skills" in output, output)
@@ -344,7 +338,7 @@ def test_skill_tool_offers_and_opens(root, home):
         )
 
 
-def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
+def test_tool_trace_repeated_rounds_are_telemetry_only(root, home, *, binary):
     trace = root / "repeated-tools.jsonl"
     source = root / "rounds.txt"
     source.write_text("\n".join(str(i) for i in range(8)), encoding="utf-8")
@@ -358,7 +352,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
         env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
-        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines")
+        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect lines", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("rounds-finished"), result.stdout)
         records = [json.loads(line) for line in trace.read_text().splitlines()]
@@ -368,7 +362,7 @@ def test_tool_trace_repeated_rounds_are_telemetry_only(root, home):
         assert_true(signals[0]["data"]["rounds"] == 8, signals)
 
 
-def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home):
+def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, binary):
     trace = root / "rejected-tools.jsonl"
     dimensions = [(0, 80), (24, 0), (1001, 80)]
     responses = [
@@ -388,7 +382,13 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home):
     responses.append(event({"content": "fourth-round-should-not-run"}))
     with Server(responses) as server:
         result = run(
-            root, base_env(home, server.url), "--yolo", f"--debug={trace}", "-p", "inspect"
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            f"--debug={trace}",
+            "-p",
+            "inspect",
+            binary=binary,
         )
         assert_true(result.returncode != 0, result.stdout)
         assert_true(
@@ -405,12 +405,12 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home):
         assert_true(loops[0]["data"]["operation"] == "resize", loops)
 
 
-def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home):
+def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home, *, binary):
     call = {"operation": "list", "wait_ms": 1}
     responses = [tool_call("activity", call) for _ in range(4)]
     responses.append(event({"content": "fifth-round-should-not-run"}))
     with Server(responses) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "list")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "list", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true(
             "model repeated the same tool call more than 3 times" in result.stderr,
@@ -419,7 +419,7 @@ def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, 
         assert_true(len(server.requests) == 4, len(server.requests))
 
 
-def test_activity_wait_outlives_the_per_call_budget(root, home):
+def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):
     """A wait is bounded by wait_ms, not by the budget meant for running work."""
     workspace = root / "wait-budget-workspace"
     workspace.mkdir()
@@ -453,14 +453,14 @@ def test_activity_wait_outlives_the_per_call_budget(root, home):
         env = base_env(home, server.url)
         env["UAGENT_TOOL_TIMEOUT"] = "1"
         started = time.time()
-        result = run(workspace, env, "--yolo", "-p", "wait for it", timeout=60)
+        result = run(workspace, env, "--yolo", "-p", "wait for it", timeout=60, binary=binary)
         elapsed = time.time() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "wait-budget-ok", result.stdout)
         assert_true(elapsed > waited, f"returned in {elapsed:.1f}s, before the activity ended")
 
 
-def test_parallel_run_overlaps(root, home):
+def test_parallel_run_overlaps(root, home, *, binary):
     """`run` is parallel_safe: independent commands must overlap, not queue."""
     sleep, count = 3, 4
     batch = event(
@@ -481,7 +481,9 @@ def test_parallel_run_overlaps(root, home):
     )
     with Server([batch, event({"content": "parallel-run-ok"})]) as server:
         started = time.time()
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "go", timeout=90)
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "go", timeout=90, binary=binary
+        )
         elapsed = time.time() - started
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "parallel-run-ok", result.stdout)
@@ -489,7 +491,7 @@ def test_parallel_run_overlaps(root, home):
         assert_true(elapsed < sleep * count * 0.7, f"{elapsed:.1f}s for {count}x{sleep}s")
 
 
-def test_detached_terminal_survives_and_is_readable(root, home):
+def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
     workspace = root / "detached-terminal-workspace"
     workspace.mkdir()
     pid_file = workspace / "pid"
@@ -519,6 +521,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "launch the server\n/ps\n/q\n",
                 "--yolo",
                 timeout=8,
+                binary=binary,
             )
             for _ in range(40):
                 if pid_file.exists():
@@ -539,6 +542,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 base_env(home, fresh_server.url),
                 "status\n/q\n",
                 timeout=8,
+                binary=binary,
             )
             assert_true(fresh.returncode == 0, fresh.stderr)
             assert_true("terminals:" not in fresh.stdout, fresh.stdout)
@@ -564,6 +568,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "-p",
                 "launch the same detached server again",
                 timeout=8,
+                binary=binary,
             )
             assert_true(reused.returncode == 0, reused.stderr)
             assert_true(reused.stdout.strip() == "terminal-reuse-ok", reused.stdout)
@@ -600,6 +605,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "-p",
                 "inspect the server from this new session",
                 timeout=8,
+                binary=binary,
             )
             assert_true(result.returncode == 0, result.stderr)
             assert_true(result.stdout.strip() == "terminal-ok", result.stdout)
@@ -632,6 +638,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
                 "-p",
                 "stop the detached server",
                 timeout=8,
+                binary=binary,
             )
             assert_true(stopped.returncode == 0, stopped.stderr)
             assert_true(stopped.stdout.strip() == "terminal-stop-ok", stopped.stdout)
@@ -649,7 +656,7 @@ def test_detached_terminal_survives_and_is_readable(root, home):
         signal_process_group(pid)
 
 
-def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
+def test_detached_terminal_tracks_group_after_wrapper_exit(root, home, *, binary):
     state = {"pid": None, "child": None}
     child_file = root / "detached-child-pid"
     child_tmp = root / "detached-child-pid.tmp"
@@ -710,7 +717,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
     )
     try:
         env = base_env(home, server.url)
-        result = run(root, env, "--yolo", "-p", "manage server", timeout=10)
+        result = run(root, env, "--yolo", "-p", "manage server", timeout=10, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(result.stdout.strip() == "group-tracking-ok", result.stdout)
     finally:
@@ -718,7 +725,7 @@ def test_detached_terminal_tracks_group_after_wrapper_exit(root, home):
         signal_process_group(state["pid"], signal.SIGKILL)
 
 
-def test_process_hardening_scrubs_loader_variables(root, home):
+def test_process_hardening_scrubs_loader_variables(root, home, *, binary):
     """Loader-injection variables never reach a spawned child process."""
 
     def inspect(_, __):
@@ -736,12 +743,12 @@ def test_process_hardening_scrubs_loader_variables(root, home):
     with Server([inspect, finish]) as server:
         env = base_env(home, server.url)
         env["LD_PRELOAD"] = "/nonexistent-injection.so"
-        result = run(root, env, "--yolo", "-p", "inspect")
+        result = run(root, env, "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("hardening-ok"), result.stdout)
 
 
-def test_self_configuration_asks_even_under_yolo(root, home):
+def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
     """--yolo stops applying to this class; it still asks at a real terminal."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
@@ -770,6 +777,7 @@ def test_self_configuration_asks_even_under_yolo(root, home):
             ],
             args=("--yolo",),
             timeout=20,
+            binary=binary,
         )
         assert_true(status == 0, output)
         # The prompt appeared despite --yolo, and only then was the file written.
@@ -778,13 +786,15 @@ def test_self_configuration_asks_even_under_yolo(root, home):
         # The diff belongs to the approval prompt alone: the call label is a
         # one-liner, so file contents stay out of traces and evidence.
         assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
+        assert_true(b"\x1b[31m- UAGENT_MAX_TOOL_CALLS=40" in output, output)
+        assert_true(b"\x1b[32m+ UAGENT_MAX_TOOL_CALLS=200" in output, output)
         assert_true(b"uagent_configure(user " in output, output)
         written = config.read_text()
         assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
         assert_true("# keep me" in written, written)
 
 
-def test_composite_configuration_requires_exact_human_approval(root, home):
+def test_composite_configuration_requires_exact_human_approval(root, home, *, binary):
     """Safe credential references reach a redacted prompt, even under --yolo."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
@@ -832,18 +842,19 @@ def test_composite_configuration_requires_exact_human_approval(root, home):
             ],
             args=("--yolo",),
             timeout=25,
+            binary=binary,
         )
         assert_true(status == 0, output)
         assert_true(b"allow uagent_configure? " in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
-        assert_true(b'\r\n+   "codex-local": {' in output, output)
+        assert_true(b'\r\n\x1b[32m+   "codex-local": {' in output, output)
         written = config.read_text()
         assert_true(proposed in written, written)
         assert_true("# keep me" in written, written)
 
 
-def test_composite_configuration_rejects_literal_credentials(root, home):
+def test_composite_configuration_rejects_literal_credentials(root, home, *, binary):
     """A literal credential is rejected without a prompt or terminal leak."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
@@ -885,6 +896,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home):
             ],
             args=("--yolo",),
             timeout=20,
+            binary=binary,
         )
         assert_true(status == 0, output)
         assert_true(b"allow uagent_configure? " not in output, output)
@@ -892,7 +904,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home):
         assert_true(config.read_text() == original, config.read_text())
 
 
-def test_self_configuration_requires_a_person(root, home):
+def test_self_configuration_requires_a_person(root, home, *, binary):
     """With nobody to ask, the tool is not offered and the file is untouched.
 
     The approver denies a mandatory-human call whenever no interactive
@@ -915,13 +927,15 @@ def test_self_configuration_requires_a_person(root, home):
         return event({"content": "configure-absent"})
 
     with Server([refuse]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "raise the limit")
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "raise the limit", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("configure-absent"), result.stdout)
         assert_true(config.read_text() == original, config.read_text())
 
 
-def test_self_configuration_commits_after_approval(root, home):
+def test_self_configuration_commits_after_approval(root, home, *, binary):
     """An approved change preserves comments and reports when it takes effect."""
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True, exist_ok=True)
@@ -956,6 +970,7 @@ def test_self_configuration_commits_after_approval(root, home):
                 b"/quit\n",
             ],
             timeout=20,
+            binary=binary,
         )
         assert_true(status == 0, output)
         assert_true(b"configure-ok" in output, output)
@@ -966,7 +981,7 @@ def test_self_configuration_commits_after_approval(root, home):
         assert_true("UNKNOWN_KEY=kept" in written, written)
 
 
-def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home):
+def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home, *, binary):
     """An exact command is remembered; a different command still asks."""
     refusal = {}
 
@@ -998,6 +1013,7 @@ def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home):
                 b"/quit\n",
             ],
             timeout=25,
+            binary=binary,
         )
         assert_true(status == 0, output)
         assert_true(b"[y] once" in output and b"[n] no" in output, output)

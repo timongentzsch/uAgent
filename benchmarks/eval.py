@@ -53,8 +53,17 @@ sys.path.insert(0, str(ROOT / "skills" / "self-improve" / "scripts"))
 
 # isort: off
 from integration_support import Server, event  # noqa: E402
+from agent_run import (  # noqa: E402
+    measured_command,
+    peak_rss,
+    read_trace,
+)
+from agent_run import trace_metrics as run_trace_metrics  # noqa: E402
 from live_authority import (  # noqa: E402
     AuthorityError,
+    account_reported_cost,
+    account_result,
+    apply_authority,
     load_authority,
     normalize_route_authority,
 )
@@ -63,7 +72,32 @@ from session_metrics import provenance_cohort, safe_provenance  # noqa: E402
 # isort: on
 
 
+def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Trajectory aggregates with this harness's provenance redaction applied."""
+    return run_trace_metrics(records, provenance_fn=safe_provenance, cohort_fn=provenance_cohort)
+
+
 # --- scenarios ---------------------------------------------------------------
+
+
+def validate_predicates(when: Any) -> None:
+    if not isinstance(when, dict):
+        raise ValueError("scenario predicates must be an object")
+    for key, value in when.items():
+        if key == "no_tools":
+            valid = isinstance(value, bool)
+        elif key in ("tool_results", "min_tool_results", "max_tool_results"):
+            valid = type(value) is int and value >= 0
+        elif key == "last_starts_with":
+            valid = isinstance(value, str)
+        elif key in ("contains", "absent"):
+            valid = isinstance(value, str) or (
+                isinstance(value, list) and all(isinstance(v, str) for v in value)
+            )
+        else:
+            raise ValueError(f"unknown scenario predicate: {key}")
+        if not valid:
+            raise ValueError(f"invalid scenario predicate {key}: {value!r}")
 
 
 def load_scenarios(selected: list[str]) -> list[dict[str, Any]]:
@@ -73,6 +107,8 @@ def load_scenarios(selected: list[str]) -> list[dict[str, Any]]:
         scenario.setdefault("name", path.stem)
         if selected and scenario["name"] not in selected:
             continue
+        for rule in scenario.get("script", []):
+            validate_predicates(rule.get("when", {}))
         scenarios.append(scenario)
     unknown = sorted(set(selected) - {scenario["name"] for scenario in scenarios})
     if unknown:
@@ -119,6 +155,8 @@ class Script:
     """
 
     def __init__(self, rules: list[dict[str, Any]], capture: dict[str, str]) -> None:
+        for rule in rules:
+            validate_predicates(rule.get("when", {}))
         self.rules = rules
         # Some arguments only exist at run time - a process id, a session id -
         # so a scenario names a pattern and later calls refer to ${name}.
@@ -214,25 +252,6 @@ def as_list(value: Any) -> list[str]:
 # --- running -----------------------------------------------------------------
 
 
-def measured_command(binary: Path, arguments: list[str]) -> list[str]:
-    timer = Path("/usr/bin/time")
-    if not timer.is_file():
-        return [str(binary), *arguments]
-    if sys.platform == "darwin":
-        return [str(timer), "-l", str(binary), *arguments]
-    if sys.platform.startswith("linux"):
-        return [str(timer), "-v", str(binary), *arguments]
-    return [str(binary), *arguments]
-
-
-def peak_rss(stderr: str) -> int:
-    macos = re.search(r"(\d+)\s+maximum resident set size", stderr)
-    if macos:
-        return int(macos.group(1))
-    linux = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", stderr)
-    return int(linux.group(1)) * 1024 if linux else 0
-
-
 def copy_user_config(home: Path) -> None:
     source = Path.home() / ".uagent" / ".config"
     if source.is_file():
@@ -240,156 +259,6 @@ def copy_user_config(home: Path) -> None:
         target.parent.mkdir(parents=True)
         shutil.copyfile(source, target)
         target.chmod(0o600)
-
-
-def read_trace(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    records = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(record, dict):
-            records.append(record)
-    return records
-
-
-def trace_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """Reconstruct per-request context and privacy-safe trajectory aggregates."""
-    events: collections.Counter[str] = collections.Counter()
-    batches: list[int] = []
-    calls: list[dict[str, Any]] = []
-    request_chars: list[int] = []
-    result_chars_by_tool: collections.Counter[str] = collections.Counter()
-    issue_codes: collections.Counter[str] = collections.Counter()
-    current_messages = 0
-    first: dict[str, Any] = {}
-    compactions = 0
-    model_duration_ms = 0.0
-    request_preparation_ms = 0.0
-    tool_result_chars = 0
-    tool_result_texts: list[str] = []
-    browser_snapshot_chars = 0
-    browser_calls: set[str] = set()
-    pending_failures: collections.Counter[tuple[Any, str]] = collections.Counter()
-    failed_call_recoveries = 0
-    failed_calls = 0
-    usage: collections.Counter[str] = collections.Counter()
-    provenance = None
-    route = ""
-    for record in records:
-        name = str(record.get("event", ""))
-        data = record.get("data", {}) or {}
-        events[name] += 1
-        if name == "session_ready":
-            provenance = safe_provenance(data.get("provenance"))
-            route = str(data.get("route") or "")
-        elif name == "model_request":
-            first = first or data
-            batches.append(0)
-            if data.get("projected_context"):
-                message_chars = int(data.get("message_chars") or 0)
-            elif "message_chars" in data:
-                current_messages = int(data.get("message_chars") or 0)
-                message_chars = current_messages
-            else:
-                current_messages += int(data.get("new_message_chars") or 0)
-                message_chars = current_messages
-            schema_chars = int(data.get("schema_chars") or 0) if data.get("native_tools") else 0
-            request_chars.append(message_chars + schema_chars)
-        elif name == "model_response":
-            model_duration_ms += float(data.get("end_to_end_ms") or data.get("duration_ms") or 0)
-            request_preparation_ms += float(data.get("request_preparation_ms") or 0)
-        elif name == "tool_call":
-            arguments = data.get("arguments", {})
-            if isinstance(arguments, str):
-                try:
-                    arguments = json.loads(arguments)
-                except json.JSONDecodeError:
-                    arguments = {}
-            call = {
-                "id": str(data.get("id") or ""),
-                "turn": data.get("turn"),
-                "step": data.get("step"),
-                "name": data.get("name"),
-                "arguments": arguments,
-            }
-            calls.append(call)
-            if call["name"] == "run" and isinstance(arguments, dict):
-                if "playwright-cli" in str(arguments.get("command", "")):
-                    browser_calls.add(call["id"])
-            if batches:
-                batches[-1] += 1
-        elif name == "tool_result":
-            chars = int(data.get("result_chars") or 0)
-            tool_result_texts.append(str(data.get("result") or ""))
-            tool_name = str(data.get("name") or "?")
-            tool_result_chars += chars
-            result_chars_by_tool[tool_name] += chars
-            if str(data.get("id") or "") in browser_calls:
-                browser_snapshot_chars += chars
-            issue = str(data.get("issue_code") or "")
-            if issue:
-                issue_codes[issue] += 1
-            key = (data.get("turn"), tool_name)
-            status = str(data.get("status") or "")
-            if status not in ("ok", "succeeded", "success"):
-                failed_calls += 1
-                pending_failures[key] += 1
-            elif pending_failures[key]:
-                failed_call_recoveries += 1
-                pending_failures[key] = 0
-        elif name == "turn_end":
-            turn_usage = data.get("usage") or {}
-            if isinstance(turn_usage, dict):
-                for field in (
-                    "input",
-                    "output",
-                    "cache_read",
-                    "cache_write",
-                    "reasoning",
-                    "web_searches",
-                ):
-                    usage[field] += int(turn_usage.get(field) or 0)
-                usage["cost"] += float(turn_usage.get("cost") or 0)
-                if turn_usage.get("cost_reported"):
-                    usage["cost_reported_turns"] += 1
-        elif name == "compact_end" and data.get("outcome") == "ok":
-            compactions += 1
-    no_action = max(len([count for count in batches[:-1] if count == 0]), 0)
-    cohort = provenance_cohort(provenance)
-    cumulative_request_chars = sum(request_chars)
-    return {
-        "model_requests": len(batches),
-        "tool_calls": len(calls),
-        "calls": calls,
-        "max_batch": max(batches, default=0),
-        "no_action_rounds": no_action,
-        "compactions": compactions,
-        "events": events,
-        "estimated_request_chars": cumulative_request_chars,
-        "cumulative_estimated_request_chars": cumulative_request_chars,
-        "estimated_request_chars_progression": request_chars,
-        "max_estimated_request_chars": max(request_chars, default=0),
-        "initial_schema_chars": int(first.get("schema_chars") or 0),
-        "tool_result_chars": tool_result_chars,
-        "tool_result_text": "\n".join(tool_result_texts),
-        "tool_result_chars_by_tool": result_chars_by_tool,
-        "model_duration_ms": model_duration_ms,
-        "request_preparation_ms": request_preparation_ms,
-        "usage": usage,
-        "issue_codes": issue_codes,
-        "failed_calls": failed_calls,
-        "failed_call_recoveries": failed_call_recoveries,
-        "unrecovered_failed_calls": sum(pending_failures.values()),
-        "browser_commands": len(browser_calls),
-        "browser_snapshot_chars": browser_snapshot_chars,
-        "provenance": provenance,
-        "cohort": cohort,
-        "route": route,
-    }
 
 
 def case_environment(scenario: dict[str, Any], variant: str, arguments, mock) -> dict[str, str]:
@@ -953,6 +822,26 @@ def load_cost_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
         raise LiveCostBlocker(f"live evaluation blocked: {error}") from error
 
 
+def apply_live_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
+    apply_authority(env, declaration)
+
+
+def account_live_result(
+    result: dict[str, Any], declaration: dict[str, Any], spent: float, cap: float
+) -> float:
+    try:
+        return account_result(result, declaration, spent, cap)
+    except AuthorityError as error:
+        raise LiveCostBlocker(f"live evaluation {error}") from error
+
+
+def account_live_cost(result: dict[str, Any], spent: float, cap: float) -> float:
+    try:
+        return account_reported_cost(result, spent, cap)
+    except AuthorityError as error:
+        raise LiveCostBlocker(f"live evaluation {error}") from error
+
+
 def validate_live_plan(authority: dict[str, Any], jobs: list[tuple[Any, ...]], trials: int) -> None:
     sessions = collections.Counter(model for _, _, model in jobs)
     for model, count in sessions.items():
@@ -968,74 +857,6 @@ def validate_live_plan(authority: dict[str, Any], jobs: list[tuple[Any, ...]], t
             )
 
 
-def apply_live_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
-    if declaration["mode"] != "non-billable-cheap":
-        return
-    limits = declaration["limits"]
-    env.update(
-        {
-            "UAGENT_MAX_STEPS": str(limits["max_model_calls"]),
-            "UAGENT_MAX_TOOL_CALLS": str(limits["max_tool_calls"]),
-            "UAGENT_MAX_TOKENS": str(limits["max_output_tokens_per_call"]),
-            "UAGENT_MAX_TURN_SECONDS": str(limits["max_session_seconds"]),
-            "UAGENT_REQUEST_TIMEOUT": str(limits["max_session_seconds"]),
-            "UAGENT_FIRST_EVENT_TIMEOUT": str(limits["max_session_seconds"]),
-            "UAGENT_STREAM_IDLE_TIMEOUT": str(limits["max_session_seconds"]),
-            "UAGENT_MAX_TURN_COST": "0",
-            "UAGENT_SESSION_BUDGET": "0",
-            "UAGENT_OPENROUTER_FALLBACKS": "0",
-        }
-    )
-
-
-def account_live_result(
-    result: dict[str, Any], declaration: dict[str, Any], spent: float, cap: float
-) -> float:
-    if declaration["mode"] == "reported-cost":
-        return account_live_cost(result, spent, cap)
-    limits = declaration["limits"]
-    usage = result.get("usage")
-    if not isinstance(usage, dict):
-        usage = {}
-    checks = {
-        "model calls": (int(result.get("model_requests") or 0), limits["max_model_calls"]),
-        "tool calls": (int(result.get("tool_calls") or 0), limits["max_tool_calls"]),
-        "output tokens": (
-            int(usage.get("output") or 0),
-            limits["max_model_calls"] * limits["max_output_tokens_per_call"],
-        ),
-        "session milliseconds": (
-            int(float(result.get("elapsed_seconds") or 0) * 1000),
-            limits["max_session_seconds"] * 1000,
-        ),
-    }
-    for name, (used, maximum) in checks.items():
-        if used > maximum:
-            raise LiveCostBlocker(
-                f"live evaluation blocked after {result.get('model')}: {name} {used} exceeded "
-                f"the enforced cheap-route limit {maximum}"
-            )
-    return spent
-
-
-def account_live_cost(result: dict[str, Any], spent: float, cap: float) -> float:
-    usage = result.get("usage") or {}
-    if not isinstance(usage, dict) or not usage.get("cost_reported"):
-        raise LiveCostBlocker(
-            f"live evaluation blocked after {result.get('model')}: provider cost was unavailable"
-        )
-    cost = float(usage.get("cost") or 0)
-    if cost < 0:
-        raise LiveCostBlocker("live evaluation blocked: provider reported a negative cost")
-    updated = spent + cost
-    if updated > cap + 1e-9:
-        raise LiveCostBlocker(
-            f"live evaluation stopped: reported aggregate cost ${updated:.6f} exceeded "
-            f"the ${cap:.6f} ceiling"
-        )
-    return updated
-
-
 def deterministic_jobs(jobs: list[tuple[Any, ...]], seed: int, trial: int) -> list[tuple[Any, ...]]:
     ordered = list(jobs)
     random.Random(seed + trial).shuffle(ordered)
@@ -1043,6 +864,18 @@ def deterministic_jobs(jobs: list[tuple[Any, ...]], seed: int, trial: int) -> li
 
 
 def eval_self_test() -> int:
+    for invalid in (
+        {"tool_result": 999},
+        {"no_tools": 1},
+        {"tool_results": True},
+        {"contains": [2]},
+    ):
+        try:
+            Script([{"when": invalid, "respond": {}}], {})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted invalid predicate: {invalid}")
     fixture = json.loads(SELF_TEST_PATH.read_text(encoding="utf-8"))
     summary = trial_summaries(fixture["results"], fixture["k"])
     failures = []

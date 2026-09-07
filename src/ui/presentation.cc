@@ -100,6 +100,31 @@ std::string StripDisplayMarkdown(const std::string& text) {
   return plain;
 }
 
+const char* DiffLineStyle(std::string_view line) {
+  if (line.starts_with('+')) return GREEN();
+  if (line.starts_with('-')) return RED();
+  return "";
+}
+
+std::string ColorizeDiffLines(std::string_view text) {
+  std::string output;
+  output.reserve(text.size());
+  size_t begin = 0;
+  while (begin < text.size()) {
+    size_t end = text.find('\n', begin);
+    bool newline = end != std::string_view::npos;
+    if (!newline) end = text.size();
+    std::string_view line = text.substr(begin, end - begin);
+    const char* style = DiffLineStyle(line);
+    if (*style) output += style;
+    output += line;
+    if (*style) output += RST();
+    if (newline) output += '\n';
+    begin = end + (newline ? 1 : 0);
+  }
+  return output;
+}
+
 // Bounded single-line rolling buffer for the live reasoning ticker: collapse
 // newlines to spaces so the status row never wraps, keep UTF-8 boundaries.
 void AppendRolling(std::string& buffer, std::string_view value) {
@@ -301,12 +326,13 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     // A skill is a procedure the rest of the turn follows, so it is worth
     // finding in the scrollback later; ◆ already marks that class of event.
     if (record.skill && !record.summary.empty()) {
-      WriteTerminalRecord(std::string(BOLD()) + BLUE() + "◆ skill " +
+      WriteTerminalRecord(std::string(BOLD()) + BLUE() +
+                          AsciiGlyphs("◆ skill ") +
                           TerminalSafe(record.summary) + RST() + "\n");
       return;
     }
     if (record.poll) return;
-    std::string body = "→ " + TerminalSafe(record.title);
+    std::string body = AsciiGlyphs("→ ") + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       body += '\n' + TerminalSafe(record.detail);
     } else if (!record.summary.empty()) {
@@ -319,7 +345,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
-    WriteTerminalRecord(std::string(style) + "• " +
+    WriteTerminalRecord(std::string(style) + AsciiGlyphs("• ") +
                         TerminalSafe(record.summary) + RST() + "\n");
     return;
   }
@@ -328,25 +354,22 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     std::istringstream input(record.change);
     std::string line;
     if (std::getline(input, line)) {
-      std::string output = std::string(DIM()) + "•" + RST() + " " + BOLD() +
-                           TerminalSafe(line) + RST() + "\n";
+      std::string output = std::string(DIM()) + AsciiGlyphs("•") + RST() + " " +
+                           BOLD() + TerminalSafe(line) + RST() + "\n";
       while (std::getline(input, line)) {
-        const char* style = DIM();
-        if (!line.empty() && line[0] == '+') style = GREEN();
-        if (!line.empty() && line[0] == '-') style = RED();
+        const char* style = DiffLineStyle(line);
+        if (!*style) style = DIM();
         if (!line.empty() && line[0] == '@') line = "@@ " + line.substr(1);
         output +=
             std::string(style) + "    " + TerminalSafe(line) + RST() + "\n";
       }
       WriteTerminalRecord(output);
     }
-    // A change that also produced output (a script that was written and then
-    // run) still owes the person that output, so only a bare receipt ends here.
-    if (record.detail.empty() && record.summary.empty()) return;
+    return;  // a change is told entirely by its diff
   }
 
   const char* style = ResultStyle(record.status);
-  std::string prefix = "  ← " + TerminalSafe(record.title);
+  std::string prefix = AsciiGlyphs("  ← ") + TerminalSafe(record.title);
   if (record.multiline && !record.detail.empty()) {
     WriteTerminalRecord(std::string(style) + prefix + RST() + "\n" +
                         TerminalSafe(record.detail) + "\n");

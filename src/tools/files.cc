@@ -206,9 +206,11 @@ ToolErrorCode FileToolError(const std::error_code& error) {
 }
 
 ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
-                           mode_t create_mode, bool preserve_mode) {
+                           mode_t create_mode, bool preserve_mode,
+                           bool overwrite) {
   std::string error;
-  if (!AtomicWriteFile(path, content, create_mode, preserve_mode, error)) {
+  if (!AtomicWriteFile(path, content, create_mode, preserve_mode, error,
+                       overwrite)) {
     return ToolFailure(ToolErrorCode::kInternal, "error: " + error);
   }
   return ToolSuccess("wrote " + std::to_string(content.size()) + " bytes to " +
@@ -738,7 +740,11 @@ ToolResult ToolDeleteFileWithDisplay(const std::string& path) {
 }
 
 ToolResult ToolWriteFileWithDisplay(const std::string& path,
-                                    const std::string& content) {
+                                    const std::string& content,
+                                    bool overwrite) {
+  if (auto invalid = ValidatePathTarget(path, PathTarget::kWritableFile)) {
+    return std::move(*invalid);
+  }
   std::error_code ec;
   bool existed = std::filesystem::is_regular_file(path, ec);
   std::optional<std::string> previous;
@@ -747,7 +753,8 @@ ToolResult ToolWriteFileWithDisplay(const std::string& path,
   } else if (LikelyTextSample(std::string_view(content).substr(0, 4096))) {
     previous.emplace();
   }
-  ToolResult result = ToolWriteFile(path, content);
+  ToolResult result =
+      ToolAtomicWrite(path, content, kSharedFileMode, true, overwrite);
   if (!result.Ok() || !previous) return result;
   result.display = WholeFileDiffDisplay(path, *previous, content, existed);
   return result;

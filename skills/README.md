@@ -1,9 +1,11 @@
 # Bundled skills
 
 Binary archives include the release-matched tree under `share/uagent/skills`;
-the runtime finds it relative to the executable. `install.sh` also refreshes
-`~/.uagent/skills`. User copies override vendor copies, and workspace skills
-under `./.uagent/skills` override both.
+the runtime finds it relative to the executable. Normal and staged installs
+write only to the requested prefix. Existing user skills are preserved; the
+release bundle outranks older user copies, and workspace skills override both.
+For a bare development binary, set `UAGENT_SKILL_PATH` explicitly. The former
+installer-only `UAGENT_SKILLS_DIR` override is retired.
 
 Only the front matter of each `SKILL.md` is read at startup; the body is sent
 to the model when it opens the skill.
@@ -23,9 +25,8 @@ not know, so a third-party skill written to the spec loads here unchanged.
 key, and a skill carrying it is not valid to upload elsewhere. That is a
 deliberate trade — the spec's home for client-specific fields is a nested
 `metadata:` map, and parsing one would mean a YAML map reader in the startup
-path for a portability nobody is currently using. `benchmarks/slopscan.py`
-enforces exactly the union above, so a misspelling fails the build instead of
-being silently ignored.
+path. Unknown keys are ignored by the loader. Bundled-skill discovery,
+package contents and generated-reference checks validate the actual contracts.
 
 The `skill` tool replaces `$ARGUMENTS` and `${SKILL_DIR}` when the body is
 loaded.
@@ -42,10 +43,12 @@ loaded.
 runtime, install, and integration environment reference. It keeps that detail
 out of the base system prompt and loads it only for configuration work.
 
-`self-improve` runs one bounded personal prompt-overlay experiment. It
-pre-registers the hypothesis and limits, records control and treatment trials,
-calculates a deterministic verdict, requires human-approved activation, and
-preserves exact rollback without storing session text.
+`self-improve` performs one bounded, verified improvement attempt on µAgent's
+own source, and drives the generation loop that compares the incumbent binary
+with a candidate built from that source on byte-identical fresh copies of the
+same snapshot. Its controller owns identity, isolation, budgets, gates, the
+deterministic verdict and the promotion pointer; promotion needs explicit human
+approval and rollback restores the exact prior version.
 
 `browser-use` drives Playwright CLI through the existing approved `run` tool.
 Its daemon reuses one browser across concise calls while snapshots stay outside

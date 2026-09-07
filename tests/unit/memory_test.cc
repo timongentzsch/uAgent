@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 
+#include "include/core/config.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

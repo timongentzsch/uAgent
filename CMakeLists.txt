@@ -120,10 +120,16 @@ add_library(
   src/core/sandbox.cc
   src/core/sandbox_posix.cc
   src/core/signals.cc
+  src/core/skills.cc
   src/core/steering.cc
   src/core/strings.cc
   src/core/term.cc
+  src/mcp/discover.cc
+  src/mcp/invoke.cc
+  src/mcp/register.cc
   src/mcp/result.cc
+  src/mcp/rpc.cc
+  src/mcp/server.cc
   src/media/attachments.cc
   src/providers.cc
   src/tools/adapt_system.cc
@@ -236,13 +242,18 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
                    --self-test)
-  add_test(NAME self_improve_experiment
+  # The controller drives real subprocesses through disposable source copies,
+  # so it gets more room than a pure unit test while staying model-free.
+  add_test(NAME self_improve_controller
            COMMAND ${Python3_EXECUTABLE}
-                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/self_improve_experiment_test.py)
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/self_improve_controller_test.py
+                   $<TARGET_FILE:uagent>)
+  set_tests_properties(self_improve_controller PROPERTIES TIMEOUT 300)
   add_test(NAME eval_harness_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/eval.py
                    --self-test)
+  set_tests_properties(session_metrics_self_test eval_harness_self_test PROPERTIES LABELS source)
   # Behavioral scoreboard: every scenario is scored and compared against the
   # committed baseline, so a harness change that costs rounds, batching or
   # answer quality fails here rather than being noticed later.
@@ -253,11 +264,7 @@ if(BUILD_TESTING)
   # Each scenario enforces its own subprocess deadline. Leave enough wrapper
   # headroom for loaded hosted macOS runners to report that diagnostic.
   set_tests_properties(behavior_eval PROPERTIES TIMEOUT 120)
-  # Token scoreboard: the bytes charged to every request. `compare()` gates only
-  # the machine-independent axes, so binary size and peak RSS are reported and
-  # never fail; a host with no session journals skips the coverage check rather
-  # than failing it. Without this the schema could grow release over release
-  # with the measurement already written and nothing reading it.
+  # Fresh-HOME request/schema measurements only; personal history is report-only.
   add_test(NAME token_audit
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/audit.py
@@ -306,8 +313,8 @@ set(UAGENT_GUIDES
     docs/SELF_IMPROVEMENT.md
     docs/TESTING.md
     docs/TOOLS.md)
-install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE ${UAGENT_GUIDES}
+install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an
-# installed documentation tree while retaining the historical flat copies.
+# installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)

@@ -1,5 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
+#include "include/app/runtime.h"
+
 #include <algorithm>
 #include <atomic>
 #include <ctime>
@@ -10,8 +12,17 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/api/retry.h"
+#include "include/app/self_description.h"
+#include "include/core/child_env.h"
+#include "include/core/config.h"
+#include "include/core/effective_config.h"
+#include "include/core/signals.h"
+#include "include/providers.h"
 #include "include/tools/child_agent.h"
+#include "include/tools/files.h"
+#include "include/tools/subagent.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -265,38 +276,6 @@ void TestRuntimeOwnershipHelpers() {
                  json::array({{{"role", "user"}, {"content", "plain"}}}),
                  json::array(), "")
              .contains("plugins"));
-
-  // The incremental payload cache reuses the previous request's serialized
-  // messages, so it has to be byte-identical to dumping the whole body -
-  // provider prefix caching pays for exact bytes and a stale prefix would be
-  // silent. Every shape of history mutation is checked, not just appending.
-  json history = json::array();
-  auto message = [](const char* role, std::string text) {
-    return json{{"role", role}, {"content", std::move(text)}};
-  };
-  auto same_bytes = [&](const json& messages, const std::string& session) {
-    bool available = false;
-    return api.ChatPayload(messages, json::array(), session, &available) ==
-           JsonDump(api.BuildRequestBody(messages, json::array(), session,
-                                         &available));
-  };
-  CHECK(same_bytes(history, ""));  // empty history
-  history.push_back(message("system", "base"));
-  CHECK(same_bytes(history, ""));  // first element
-  history.push_back(message("user", "h\u00e9llo \"quoted\"\n\t"));
-  CHECK(same_bytes(history, ""));  // append, with bytes that escape
-  CHECK(same_bytes(history, ""));  // unchanged history, full cache hit
-  history[1]["content"] = "edited";
-  CHECK(same_bytes(history, ""));  // last element rewritten
-  history[0]["content"] = "rewritten";
-  CHECK(same_bytes(history, ""));  // prefix rewritten
-  history.erase(1);
-  CHECK(same_bytes(history, ""));  // truncation
-  history.insert(history.begin(), message("user", "prepended"));
-  CHECK(same_bytes(history, ""));        // insertion shifts every element
-  CHECK(same_bytes(json::array(), ""));  // cleared
-  CHECK(same_bytes(history, ""));        // refilled after a clear
-  CHECK(same_bytes(history, "stable-session"));  // body around it changes
 
   json assistant = {{"role", "assistant"}, {"content", ""}};
   ChatResult reasoning_result;

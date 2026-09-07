@@ -10,7 +10,9 @@
 #include <system_error>
 #include <vector>
 
+#include "include/core/fs.h"
 #include "include/tools/files.h"
+#include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -105,16 +107,12 @@ void TestPythonTool() {
   CHECK(result.error == ToolErrorCode::kInvalidArguments);
   CHECK(result.output.find("args must be strings") != std::string::npos);
 
-  // The body is worth the scrollback once per path; a rewrite reports counts.
-  result = ToolRunScratch(supervisor, root, "receipt.py", "print(1)",
-                          json::array());
-  CHECK(result.display.starts_with("Created "));
-  CHECK(result.display.find("+print(1)") != std::string::npos);
-  result = ToolRunScratch(supervisor, root, "receipt.py", "print(2)",
-                          json::array());
-  CHECK(result.display.starts_with("Replaced "));
-  CHECK(result.display.find('\n') == result.display.size() - 1);
-  CHECK(result.display.find("print(2)") == std::string::npos);
+  // A script is not a change receipt: the row reports what it printed.
+  result =
+      ToolRunScratch(supervisor, root, "receipt.py", "print(1)", json::array());
+  CHECK(result.display.empty());
+  CHECK(result.output ==
+        "[script: .uagent/scratch/receipt.py · wrote · executed]\n1\n");
 
   fs::path marker = root / "injected";
   result = ToolRunScratch(supervisor, root, "safe.py", "print('safe')",

@@ -66,11 +66,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // at this path — and took the same three arguments as separate tools.
   Tool& read = path_tool(MakeTool(
       "read_path",
-      "Read what is at a path: a text file's contents or line range, or a "
-      "directory's entries. Results remain in context; do not reread an "
-      "unchanged range. Reread after edits or external changes when exact "
-      "current text matters. Use grep when the file or symbol is unknown; "
-      "batch independent paths.",
+      "Read a text file/range or directory entries. Use grep for unknown "
+      "paths or symbols. Reread only after changes when current text matters.",
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line or entry (default 1)"},
@@ -98,24 +95,25 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
 
   Tool& write = path_tool(MakeTool(
       "write_file",
-      "Create a file or replace it whole. Use edit_file for changes to an "
-      "existing file.",
+      "Create a file. Use edit_file for existing files; overwrite=true "
+      "explicitly permits whole-file replacement.",
       schema(R"json({"type":"object","properties":{
                   "path":{"type":"string"},
-                  "content":{"type":"string"}},
+                  "content":{"type":"string"},
+                  "overwrite":{"type":"boolean"}},
                   "required":["path","content"]})json"),
       [](const json& a, const ToolContext&) {
         return ToolWriteFileWithDisplay(JsonValue(a, "path", ""),
-                                        JsonValue(a, "content", ""));
+                                        JsonValue(a, "content", ""),
+                                        JsonValue(a, "overwrite", false));
       }));
   write.mutating = true;
   write.capabilities = Capability(ToolCapability::kMutate);
   write.available_in_lean = false;
   write.summary = [](const json& a) {
-    return JsonValue(a, "path", "") + " (" +
+    return "write " + JsonValue(a, "path", "") + " · " +
            FmtBytes(static_cast<int64_t>(
-               JsonValue(a, "content", std::string()).size())) +
-           ")";
+               JsonValue(a, "content", std::string()).size()));
   };
   write.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
@@ -151,8 +149,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
     size_t count = 0;
     auto edits = a.find("edits");
     if (edits != a.end() && edits->is_array()) count = edits->size();
-    return JsonValue(a, "path", "") + " (" + std::to_string(count) +
-           (count == 1 ? " edit)" : " edits)");
+    return "edit " + JsonValue(a, "path", "") + " · " + std::to_string(count) +
+           (count == 1 ? " edit" : " edits");
   };
   edit.approval_preview = [](const json& a) {
     std::string path = JsonValue(a, "path", "");
@@ -186,24 +184,27 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   };
   Tool& grep = path_tool(MakeTool(
       "grep",
-      "Locate file paths or matching content with a regex under an optional "
-      "path and glob. Use mode=files to match paths and read_path afterward.",
+      "Search regex or literal text. mode: content returns lines; files "
+      "matches paths; matching_files returns paths whose contents match.",
       schema(R"json({"type":"object","properties":{
                     "pattern":{"type":"string","minLength":1},"path":{"type":"string"},
                     "glob":{"type":"string"},
-                    "mode":{"type":"string","enum":["content","files"]},
+                    "mode":{"type":"string","enum":["content","files","matching_files"]},
+                    "literal":{"type":"boolean"},
                     "context":{"type":"integer","minimum":0,"maximum":10,
                       "description":"surrounding content lines"}},"required":["pattern"]})json"),
       [&supervisor](const json& a, const ToolContext& context) {
         return ToolGrep(supervisor, JsonValue(a, "pattern", ""),
                         JsonValue(a, "path", "."), JsonValue(a, "glob", ""),
                         JsonValue(a, "context", int64_t{0}), context,
-                        JsonValue(a, "mode", "content") == "files");
+                        JsonValue(a, "mode", "content") == "files",
+                        JsonValue(a, "literal", false),
+                        JsonValue(a, "mode", "content") == "matching_files");
       }));
   reads_only(grep);
   grep.clamped_arguments = {"context"};
   grep.canonicalize = [](json& arguments) {
-    if (JsonValue(arguments, "mode", "content") == "files") {
+    if (JsonValue(arguments, "mode", "content") != "content") {
       arguments.erase("context");
     }
   };
@@ -215,8 +216,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   grep.dedupe_output = true;
   grep.summary = [](const json& a) {
     std::string mode = JsonValue(a, "mode", "content");
-    return (mode == "files" ? "files /" : "/") + JsonValue(a, "pattern", "") +
-           "/ in " + JsonValue(a, "path", ".");
+    return "search " + (mode == "files" ? std::string("files ") : "") + "/" +
+           JsonValue(a, "pattern", "") + "/ in " + JsonValue(a, "path", ".");
   };
 
   if (inline_images) {
@@ -259,13 +260,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   Tool& run = AddTool(
       tools,
       MakeTool("run",
-               "Execute a non-privileged build, test, or shell command in cwd "
-               "(bash default; omit cd; no sudo). Set tty=true only when the "
-               "process needs interactive stdin. Do not use it for file "
-               "search, reading, or editing when a dedicated tool exists. "
-               "Use a project's existing Python runner such as uv run or "
-               "pytest. Detach only for a persistent terminal that may outlive "
-               "the current session.",
+               "Execute a command in cwd; omit cd. Use the project's Python "
+               "runner (uv run/pytest). tty=true enables interactive stdin; "
+               "detach persists a terminal beyond this session.",
                schema(R"json({"type":"object","properties":{
                     "command":{"type":"string"},
                     "shell":{"type":"string","description":"default bash"},
@@ -372,7 +369,7 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       std::string path = JsonValue(a, "path", "");
       std::string argv = ScratchArgvLabel(JsonValue(a, "args", json(nullptr)));
       return a.contains("code") && a["code"].is_string()
-                 ? "write/replace " + path + " → execute" + argv
+                 ? "write " + path + argv + " · execute"
                  : "execute " + path + argv;
     };
     python.stable_argument = "path";
@@ -383,24 +380,28 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       tools,
       MakeTool(
           "activity",
-          "Inspect or drive activities with an explicit operation: list, poll "
-          "one, wait for any/all, write to one, resize its PTY, or stop one "
-          "— stop terminates its complete process group and cleans its log. "
-          "Completion never starts a model turn.",
+          "Inspect or drive activities. poll drains output; wait joins "
+          "any/all; "
+          "write sends stdin; resize sets PTY dimensions; stop terminates the "
+          "process group and removes its log.",
           schema(
               R"json({"type":"object","additionalProperties":false,"properties":{
                   "operation":{"type":"string","enum":["list","poll","wait","write","resize","stop"]},
                   "id":{"type":"integer","minimum":1,"maximum":2147483647,
-                    "description":"activity for poll, write, resize, or stop"},
+                    "description":"required for poll, write, resize, stop"},
+                  "ids":{"type":"array","minItems":1,"maxItems":64,
+                    "items":{"type":"integer","minimum":1,"maximum":2147483647},
+                    "description":"wait targets; omitted means all eligible activities"},
                   "chars":{"type":"string","maxLength":65536,
                     "description":"bytes for write; empty is intentional"},
-                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000},
+                  "wait_ms":{"type":"integer","minimum":0,"maximum":300000,
+                    "description":"required for wait"},
                   "until":{"type":"string","maxLength":256,
                     "description":"readiness marker for poll"},
                   "mode":{"type":"string","enum":["any","all"],
                     "description":"completion mode for wait"},
-                  "rows":{"type":"integer","description":"PTY rows in 1..1000"},
-                  "cols":{"type":"integer","description":"PTY columns in 1..1000"},
+                  "rows":{"type":"integer","description":"required for resize; 1..1000"},
+                  "cols":{"type":"integer","description":"required for resize; 1..1000"},
                   "max_output_chars":{"type":"integer","minimum":256,"maximum":65536}},
                   "required":["operation"]})json"),
           [&supervisor](const json& a, const ToolContext& context) {
@@ -417,9 +418,9 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                         cap);
             }
             if (operation == "wait") {
-              return ToolActivityWait(supervisor, {},
-                                      JsonValue(a, "mode", "any"), wait_ms,
-                                      context, cap);
+              return ToolActivityWait(
+                  supervisor, JsonValue(a, "ids", std::vector<int64_t>{}),
+                  JsonValue(a, "mode", "any"), wait_ms, context, cap);
             }
             if (operation == "write") {
               return ToolActivityInput(
@@ -453,11 +454,12 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
       if (field == "wait_ms") return operation != "list" && operation != "stop";
       if (field == "until") return operation == "poll";
       if (field == "mode") return operation == "wait";
+      if (field == "ids") return operation == "wait";
       if (field == "rows" || field == "cols") return operation == "resize";
       return false;
     };
     for (std::string_view field :
-         {"id", "chars", "wait_ms", "until", "mode", "rows", "cols"}) {
+         {"id", "ids", "chars", "wait_ms", "until", "mode", "rows", "cols"}) {
       if (!relevant(field)) a.erase(std::string(field));
     }
     auto cap = a.find("max_output_chars");
@@ -515,19 +517,6 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   activity.summary = [](const json& a) {
     std::string operation = JsonValue(a, "operation", "");
     int64_t id = JsonValue(a, "id", int64_t{0});
-    if (operation.empty()) {
-      if (a.contains("chars")) {
-        operation = "write";
-      } else if (a.contains("rows") || a.contains("cols")) {
-        operation = "resize";
-      } else if (id > 0) {
-        operation = "poll";
-      } else if (JsonValue(a, "wait_ms", int64_t{0}) > 0) {
-        operation = "wait";
-      } else {
-        operation = "list";
-      }
-    }
     int64_t wait_ms = JsonValue(a, "wait_ms", int64_t{0});
     std::string wait =
         wait_ms > 0
@@ -535,8 +524,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
             : std::string();
     if (operation == "list") return std::string("list activities");
     if (operation == "wait") {
-      return "wait for " + JsonValue(a, "mode", "any") + " · all current" +
-             wait;
+      return "wait for " + JsonValue(a, "mode", "any") + " · " +
+             (a.contains("ids") ? JsonDump(a["ids"]) : "all current") + wait;
     }
     std::string target = "activity " + std::to_string(id);
     if (operation == "write") {

@@ -223,7 +223,8 @@ Their stdio and shutdown waits share pollable abort/SIGCHLD notifications, so
 an idle server or cancellation does not depend on a periodic check. When a
 server reports an error without diagnostic text, the result points to that
 server's private stderr log under `~/.uagent/mcp/`.
-µAgent advertises MCP roots and answers `roots/list`; the current workspace is
+µAgent advertises MCP roots and answers `roots/list` via `input_required`
+continuations (at most eight calls within the original deadline); the current workspace is
 the default root. Set
 colon-separated `UAGENT_MCP_ROOTS`, or a server's
 `roots` string array in `.mcp.json`, to authorize a different bounded set.
@@ -231,6 +232,17 @@ Per-server paths are relative to that configuration file and override the
 global default. `--yolo` controls tool approval, not an MCP server's root
 boundary. Roots are cooperative protocol scope, not an OS sandbox; MCP servers
 still run with the user's process permissions.
+
+Tool-list changes use one `subscriptions/listen` stream per server, accepted
+only after acknowledgment and with the matching subscription ID. Unsupported
+subscriptions leave the initial tool list usable. Timed-out stdio requests send
+`notifications/cancelled`; unsupported continuation requests fail explicitly.
+µAgent implements a deliberately narrow MCP client: stdio tools, roots and
+tool-list notifications, not HTTP, sampling, elicitation, or task extensions.
+Schema checks cover the local validator's supported keywords, not complete
+JSON Schema 2020-12 validation (including `$ref` and output-schema validation).
+Servers are not automatically restarted or mutating calls retried after exit.
+These are explicit limitations, not a claim of full MCP conformance.
 
 Browser automation is a deferred `browser-use` skill over `playwright-cli`, not
 MCP. CLI calls use the existing approved `run` tool and a per-process session;

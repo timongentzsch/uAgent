@@ -27,6 +27,18 @@ bool ResolveColorEnabled(bool tty) {
   return tty;
 }
 
+// Only an explicitly non-UTF-8 locale downgrades the glyphs. An unset locale
+// is ordinary on capable terminals, so it is not evidence of the opposite.
+bool ResolveUnicodeEnabled() {
+  for (const char* name : {"LC_ALL", "LC_CTYPE", "LANG"}) {
+    const std::string value = AsciiLower(EnvStr(name));
+    if (value.empty()) continue;
+    return value.find("utf-8") != std::string::npos ||
+           value.find("utf8") != std::string::npos;
+  }
+  return true;
+}
+
 namespace {
 std::atomic<bool>& PersistentComposerFlag() {
   static std::atomic<bool> active{false};

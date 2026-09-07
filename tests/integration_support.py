@@ -21,19 +21,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
-def _binary_from_argv():
-    """The suite is invoked as `integration.py BINARY ...`.
-
-    Importing this module for its HTTP/SSE fixture alone — the eval harness
-    reuses `Server`, `sse` and `event` rather than keeping a second copy — must
-    not require that argument.
-    """
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-        return pathlib.Path(sys.argv[1]).resolve()
-    return None
-
-
-BINARY = _binary_from_argv()
 # A sanitized or coverage-instrumented binary starts and renders several times
 # slower than a plain one, which turns every wall-clock budget below into a
 # coin flip on a shared runner. Those jobs raise the multiplier instead of each
@@ -234,9 +221,9 @@ def provider_env(home, url, providers, model=None):
     return env
 
 
-def run(cwd, env, *args, timeout=10):
+def run(cwd, env, *args, timeout=10, binary):
     return subprocess.run(
-        [str(BINARY), *args],
+        [str(binary), *args],
         cwd=cwd,
         env=env,
         stdin=subprocess.DEVNULL,
@@ -264,9 +251,9 @@ def write_mcp_server(path, body, *, setup="", extra_imports=()):
     path.write_text(source, encoding="utf-8")
 
 
-def run_dialog(cwd, env, text, *args, timeout=10):
+def run_dialog(cwd, env, text, *args, timeout=10, binary):
     return subprocess.run(
-        [str(BINARY), *args],
+        [str(binary), *args],
         cwd=cwd,
         env=env,
         input=text,
@@ -288,6 +275,8 @@ def run_pty(
     before_payload=None,
     after_exit=None,
     suspend=None,
+    *,
+    binary,
 ):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
@@ -299,7 +288,7 @@ def run_pty(
     # group inside this session, the way a shell's job control provides one.
     placement = {"process_group": 0} if suspend else {"start_new_session": True}
     process = subprocess.Popen(
-        [str(BINARY), *args],
+        [str(binary), *args],
         cwd=cwd,
         env=env,
         stdin=slave,
@@ -435,13 +424,13 @@ def assert_true(value, message):
         raise AssertionError(message)
 
 
-def assert_token_budget_stop(root, home, server, *args):
+def assert_token_budget_stop(root, home, server, *args, binary):
     """Run headless to a session-token-budget stop and return the envelope.
 
     Three cases share the same invocation and the same two assertions about how
     it ends; only the flags before them and the accounting after them differ.
     """
-    result = run(root, base_env(home, server.url), *args, "--json")
+    result = run(root, base_env(home, server.url), *args, "--json", binary=binary)
     envelope = json.loads(result.stdout)
     assert_true(result.returncode == 1, envelope)
     assert_true(envelope["stop"]["reason"] == "session_token_budget", envelope)

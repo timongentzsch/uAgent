@@ -35,12 +35,6 @@ double EnvDouble(const char* name, double dflt) {
   return ParseFiniteDouble(v, value) ? value : dflt;
 }
 
-bool EnvBool(const char* name, bool dflt) {
-  bool value = dflt;
-  ParseBool(EnvStr(name), value);
-  return value;
-}
-
 namespace {
 
 bool OneOf(std::string_view value,

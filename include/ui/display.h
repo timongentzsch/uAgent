@@ -231,14 +231,15 @@ inline size_t StatusOverflowRows(size_t columns, size_t width) {
 // needs to erase it again after a terminal that rewraps has resized.
 inline std::string StatusBarLine(const std::string& status,
                                  size_t* columns = nullptr) {
-  std::string text = DisplayTrunc(TerminalSafe(status), TerminalWidth(1));
+  std::string text =
+      DisplayTrunc(AsciiGlyphs(TerminalSafe(status)), TerminalWidth(1));
   if (columns) *columns = DisplayWidth(text);
   return std::string(RST()) + DIM() + text + "\033[K" + RST();
 }
 
 inline void PrintStatusBar(const std::string& status) {
   if (!g_tty) {
-    printf("%s\n", TerminalSafe(status).c_str());
+    printf("%s\n", AsciiGlyphs(TerminalSafe(status)).c_str());
     return;
   }
   printf("%s\n", StatusBarLine(status).c_str());

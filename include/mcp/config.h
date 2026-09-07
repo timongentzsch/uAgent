@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"

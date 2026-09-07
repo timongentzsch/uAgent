@@ -29,10 +29,12 @@
 #include "include/core/json.h"
 #include "include/core/project.h"
 #include "include/core/sandbox.h"
+#include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/mcp/discover.h"
 #include "include/mcp/register.h"
 #include "include/media.h"
 #include "include/providers.h"
@@ -45,6 +47,7 @@
 #include "include/tools/web_fetch.h"
 #include "include/tools/web_search.h"
 #include "include/ui/display.h"
+#include "include/ui/presentation.h"
 
 namespace uagent {
 namespace {
@@ -494,8 +497,9 @@ Agent::Approver MakeApprover(AppContext* app) {
       if (!app->channel) {
         std::string headline = "allow " + TerminalSafe(tool.name) + RST();
         if (mandatory) headline += " \u2014 " + reason;
+        std::string styled_payload = ColorizeDiffLines(payload);
         fprintf(stdout, "%s%s\n%s\n%s\n", YEL(), headline.c_str(),
-                payload.c_str(), RST());
+                styled_payload.c_str(), RST());
       }
       if (mandatory && !InteractiveApprovalAvailable()) {
         fprintf(stdout,

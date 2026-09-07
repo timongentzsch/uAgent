@@ -12,8 +12,9 @@ normal turn-boundary work can still change the next wire request.
 | --- | --- | --- |
 | `read_path` | Read a known text file or bounded line range, or list a directory | standard and lean toolsets |
 | `grep` | Search paths or file contents with a regex and optional glob | standard and lean toolsets |
-| `write_file` | Create a file or replace it whole, including with empty content | standard toolset; mutating |
+| `write_file` | Create a file; whole-file replacement requires `overwrite=true` | standard toolset; mutating |
 | `edit_file` | Apply ordered exact replacements atomically to an existing file | standard toolset; mutating |
+| `delete_file` | Delete a regular file with a change receipt | standard toolset; mutating |
 | `attach` | Add a local image or document to the next model request | when attachments are enabled |
 | `show_image` | Render a local image with the terminal's native inline protocol | interactive terminals with inline-image support |
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
@@ -24,6 +25,12 @@ normal turn-boundary work can still change the next wire request.
 
 `read_path` decodes text only: a file whose first bytes are not text is refused
 with a pointer to `attach` rather than decoded into replacement characters.
+
+`grep` defaults to regex content matches. `literal=true` searches exact text;
+`mode=files` matches filenames, while `mode=matching_files` returns only paths
+whose contents match. Both path-only modes ignore `context`.
+Create-only writes publish atomically without replacing an existing path,
+including a symlink. Use `edit_file` for targeted changes to existing files.
 
 `run`, `scratch` and `grep` execute inside the OS sandbox: writes land in the
 workspace, the temporary directories and the package caches, and are refused
@@ -41,7 +48,9 @@ environment described in [SECURITY.md](../SECURITY.md).
 
 ## Activity tools
 
-These tools are advertised when supervised background work makes them useful:
+These tools are advertised when supervised background work makes them useful.
+`activity.wait` requires `wait_ms`; optional `ids` selects a batch, otherwise
+it waits on all eligible activities. `resize` requires `id`, `rows` and `cols`.
 
 | Tool | Purpose |
 | --- | --- |

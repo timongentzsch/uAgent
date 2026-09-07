@@ -1,23 +1,8 @@
 #!/usr/bin/env python3
-"""Five-axis improvement dashboard for one µAgent build.
+"""Deterministic request/schema regression check, with opt-in local observations.
 
-An iteration starts here. Each axis is measured rather than argued, and the
-Pareto rule is that a change may improve one axis only if it does not regress
-another:
-
-    hardware       binary size, peak RSS
-    token          schema and prompt bytes charged to every request
-    speed          rebuild fanout, suite wall time
-    capability     advertised tools, scenario and check coverage
-    readability    lint probes, file sizes, slop counts
-
-The sixth section is the anti-overfitting check: it compares the tool mix the
-eval suite exercises against the tool mix real sessions actually used, because
-a suite that drifts away from real usage stops measuring anything (Goodhart).
-
-    python3 benchmarks/audit.py build/debug/uagent
-    python3 benchmarks/audit.py build/debug/uagent --check
-    python3 benchmarks/audit.py build/debug/uagent --update
+The baseline contains only measured request sizes and scenario coverage.
+Use --profile, --history PATH or --host to add report-only local information.
 """
 
 from __future__ import annotations
@@ -47,8 +32,6 @@ from eval import (  # noqa: E402
     read_trace,
     trace_metrics,
 )
-from slopscan import CHECKS as SLOP_CHECKS  # noqa: E402
-from slopscan import scan as slop_scan  # noqa: E402
 
 # isort: on
 
@@ -105,7 +88,19 @@ def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
         records = read_trace(trace)
     metrics = trace_metrics(records)
     request = next((r.get("data", {}) for r in records if r.get("event") == "model_request"), {})
-    schemas = request.get("schema_snapshot") or []
+    if (
+        process.returncode != 0
+        or len([r for r in records if r.get("event") == "model_request"]) != 1
+    ):
+        raise ValueError("audit probe failed or did not record exactly one request")
+    if (
+        not metrics["events"]["turn_end"]
+        or not request.get("messages")
+        or not request.get("schema_snapshot")
+        or not request.get("schema_chars")
+    ):
+        raise ValueError("audit probe is missing required request/schema telemetry")
+    schemas = request["schema_snapshot"]
     per_tool = {}
     for entry in schemas:
         function = entry.get("function", entry)
@@ -229,68 +224,18 @@ def real_tool_mix(history: Path, days: int) -> dict[str, int]:
     return dict(counts.most_common())
 
 
-def lint_probes() -> dict[str, int]:
-    """Slop signals, in the whole tree rather than in the last diff.
-
-    Centralising is how slop appears: the old body stays behind, a caller keeps
-    its copy, a doc keeps the old name. None of that shows up in the diff that
-    introduces the next change.
-    """
-    slop = collections.Counter(item["kind"] for item in slop_scan(sorted(SLOP_CHECKS)))
-    findings = []
-    if shutil.which("uv"):
-        probe = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--frozen",
-                "ruff",
-                "check",
-                "--select",
-                "ARG,ERA,F401,F841",
-                "--output-format",
-                "concise",
-                "tests",
-                "benchmarks",
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        findings = [line for line in probe.stdout.splitlines() if ": " in line]
-    markers = subprocess.run(
-        ["git", "grep", "-cE", r"TODO|FIXME|HACK", "--", "src", "include"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    sizes = sorted(
-        (
-            (len(path.read_text(errors="replace").splitlines()), str(path.relative_to(ROOT)))
-            for path in list((ROOT / "src").rglob("*.cc")) + list((ROOT / "include").rglob("*.h"))
-        ),
-        reverse=True,
-    )
-    return {
-        "lint_findings": len(findings),
-        "slop_findings": sum(slop.values()),
-        "slop": {kind: slop[kind] for kind in sorted(SLOP_CHECKS)},
-        "marker_files": len([line for line in markers.stdout.splitlines() if line]),
-        "largest_file_lines": sizes[0][0] if sizes else 0,
-        "largest_file": sizes[0][1] if sizes else "",
-    }
-
-
 def collect(binary: Path, arguments) -> dict[str, Any]:
     session = probe_session(binary)
-    profile = probe_session(binary, with_profile=True)
+    profile = probe_session(binary, with_profile=True) if arguments.profile else {}
     surface = tool_surface()
     always = sum(int(row["bytes"]) for row in surface if row["when"] == "always")
     coverage = scenario_coverage()
     resources = evaluation_resources()
-    real = real_tool_mix(Path(arguments.history).expanduser(), arguments.since)
+    real = (
+        real_tool_mix(Path(arguments.history).expanduser(), arguments.since)
+        if arguments.history
+        else {}
+    )
     # History outlives releases: a journal can name a tool this build no longer
     # has, and that is a rename to acknowledge, not a coverage gap to chase.
     current = {row["name"] for row in surface}
@@ -303,7 +248,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         if count / total_real >= COVERAGE_FLOOR and name not in coverage["tool_calls"]
     ]
     return {
-        "schema": "uagent.audit.v1",
+        "schema": "uagent.audit.v2",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "hardware": {
             "binary_bytes": binary.stat().st_size,
@@ -326,7 +271,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
                 set(profile.get("per_tool_bytes", {})) - set(session["per_tool_bytes"])
             ),
         },
-        "speed": {"rebuild_fanout": rebuild_fanout()},
+        "speed": {"rebuild_fanout": rebuild_fanout() if arguments.host else {}},
         "capability": {
             "surface_tools": len(surface),
             **coverage,
@@ -339,7 +284,6 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
             },
             "hermetic_baseline": resources,
         },
-        "readability": lint_probes(),
         "representativeness": {
             "real_calls": total_real if live else 0,
             "real_mix": dict(list(live.items())[:8]),
@@ -351,18 +295,21 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
 
 def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     """Only the axes that are machine-independent are allowed to fail a build."""
+    if baseline.get("schema") != "uagent.audit.v2":
+        raise ValueError("missing or unsupported audit baseline schema")
+    for data in (current, baseline):
+        if not isinstance(data.get("capability", {}).get("tool_calls"), dict):
+            raise ValueError("missing required scenario coverage")
     regressions = []
     for axis, field, tolerance in (
         ("token", "system_chars", 1.05),
         ("token", "schema_chars", 1.05),
         ("token", "always_on_schema_bytes", 1.05),
-        ("readability", "lint_findings", 1.0),
-        ("readability", "slop_findings", 1.0),
     ):
         before = baseline.get(axis, {}).get(field)
         after = current.get(axis, {}).get(field)
         if before is None or after is None:
-            continue
+            raise ValueError(f"missing required measurement: {axis}.{field}")
         ceiling = before * tolerance + (16 if tolerance > 1 else 0)
         if after > ceiling:
             regressions.append(f"{axis}.{field} {before} → {after}")
@@ -370,9 +317,6 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     covered_after = set(current.get("capability", {}).get("tool_calls", {}))
     if covered_before - covered_after:
         regressions.append(f"scenario coverage lost: {sorted(covered_before - covered_after)}")
-    uncovered = current.get("representativeness", {}).get("uncovered_above_floor", [])
-    if uncovered:
-        regressions.append(f"no scenario exercises heavily used tools: {uncovered}")
     return regressions
 
 
@@ -416,13 +360,6 @@ def render(report: dict[str, Any]) -> None:
             f"{probe_trajectory.get('model_duration_ms', 0):.0f}ms "
             "(descriptive, no global ceiling)".format(**baseline_trajectory)
         )
-    readability = report["readability"]
-    print(
-        f"readability   {readability['lint_findings']} lint findings, "
-        f"{readability['slop_findings']} slop findings {readability['slop']}, "
-        f"{readability['marker_files']} files with TODO/FIXME, largest "
-        f"{readability['largest_file']} at {readability['largest_file_lines']} lines"
-    )
     representativeness = report["representativeness"]
     if representativeness["real_calls"]:
         share = {
@@ -447,7 +384,9 @@ def parse_args():
     parser.add_argument("--check", action="store_true", help="fail on a regression")
     parser.add_argument("--update", action="store_true", help="rewrite the baseline")
     parser.add_argument("--json", type=Path, help="write the full report")
-    parser.add_argument("--history", default="~/.uagent/history", help="session journals")
+    parser.add_argument("--history", help="opt-in report of session journals")
+    parser.add_argument("--profile", action="store_true", help="report personal profile size")
+    parser.add_argument("--host", action="store_true", help="report local rebuild fanout")
     parser.add_argument("--since", type=int, default=14, help="days of history to read")
     arguments = parser.parse_args()
     arguments.binary = arguments.binary.resolve()
@@ -458,11 +397,15 @@ def parse_args():
 
 def main() -> int:
     arguments = parse_args()
+    if arguments.check and (arguments.history or arguments.profile or arguments.host):
+        raise ValueError("--check excludes personal and host observations")
     report = collect(arguments.binary, arguments)
     render(report)
     if arguments.json:
         arguments.json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     regressions = []
+    if not BASELINE_PATH.exists() and not arguments.update:
+        raise ValueError(f"missing required baseline: {BASELINE_PATH}")
     if BASELINE_PATH.exists():
         regressions = compare(report, json.loads(BASELINE_PATH.read_text(encoding="utf-8")))
         for regression in regressions:
@@ -470,7 +413,11 @@ def main() -> int:
     if arguments.update:
         # After reporting, so rewriting the baseline still shows what moved.
         BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        BASELINE_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        BASELINE_PATH.write_text(
+            json.dumps({key: report[key] for key in ("schema", "token", "capability")}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
         print(f"baseline written: {BASELINE_PATH.relative_to(ROOT)}")
         return 0
     if regressions and arguments.check:

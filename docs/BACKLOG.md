@@ -39,9 +39,13 @@ route/model/provenance cohort. The scripted fixture proves the grader, not that
 new wording persuades a model.
 
 No browser guidance changes until a live A/B wins on outcome-adjusted rounds.
-The currently available local route does not report enforceable dollar cost,
-so the live run is blocked rather than launched without an authoritative
-aggregate cap.
+The local routes report no cost, so the reported-cost authority mode stays
+unavailable and `--max-cost` cannot bound this run. The eval's second mode can:
+an operator declaration that names the exact route non-billable and cheap, with
+all five limits, buys a bounded live run inside the global ceilings — and a
+two-arm five-trial A/B is ten sessions, under the twelve-session cap. That
+declaration is a human policy statement, never a model-name inference, so the
+run waits on the operator rather than on a missing mechanism.
 
 Risk: a chain reports one exit status, so a mid-chain failure is harder to
 attribute than a failed single call. Weigh that against the rounds saved.

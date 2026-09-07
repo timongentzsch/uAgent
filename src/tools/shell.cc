@@ -25,7 +25,6 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -692,16 +691,6 @@ std::string ScratchArgvLabel(const json& args) {
   return label;
 }
 
-// A script's body earns the scrollback once per path. Rewrites are wholesale
-// rather than incremental in practice, so repeating the body would bury the
-// output the run produced under the code that produced it.
-bool FirstScriptDisplay(const std::filesystem::path& script) {
-  static std::mutex mutex;
-  static std::unordered_set<std::string> shown;
-  std::lock_guard<std::mutex> lock(mutex);
-  return shown.insert(script.string()).second;
-}
-
 ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
                           const std::filesystem::path& workspace,
                           const std::string& relative_path, const json& code,
@@ -881,14 +870,6 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     result.result.output =
         "error: Python execution failed." + hint + "\n" + result.result.output;
   }
-  if (create) {
-    std::string diff =
-        WholeFileDiffDisplay(script.string(), prior, source, replaced);
-    if (!diff.empty() && !FirstScriptDisplay(script)) {
-      diff = FirstLine(diff) + "\n";
-    }
-    result.result.display = std::move(diff);
-  }
   std::string lifecycle =
       create ? (replaced ? " · overwrote" : " · wrote") : "";
   lifecycle +=
@@ -905,7 +886,7 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,
                     int64_t context_lines, const ToolContext& context,
-                    bool files_only) {
+                    bool files_only, bool literal, bool matching_files) {
   std::string target = path.empty() ? "." : path;
   std::error_code path_error;
   auto status = std::filesystem::status(target, path_error);
@@ -931,19 +912,23 @@ ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
       command = std::string("rg --files --color=never") + sorted;
       if (!glob.empty()) command += " --glob " + ShellQuote(glob);
       command += " -- " + ShellQuote(target) +
-                 " | rg --line-number --color=never -- " + ShellQuote(pattern);
+                 " | rg --line-number --color=never " + (literal ? "-F " : "") +
+                 "-- " + ShellQuote(pattern);
     } else {
       command = "find " + ShellQuote(target) + " -type f";
       if (!glob.empty()) command += " -name " + ShellQuote(glob);
-      command += " -print | grep -E -n -- " + ShellQuote(pattern);
+      command += std::string(" -print | grep ") + (literal ? "-F" : "-E") +
+                 " -n -- " + ShellQuote(pattern);
     }
   } else {
     command = ripgrep ? std::string(
                             "rg --line-number --column --no-heading "
                             "--color=never") +
                             sorted
-                      : std::string("grep -r -E -n -H -I --exclude-dir=.git");
-    if (context_lines > 0) {
+                      : std::string("grep -r -n -H -I --exclude-dir=.git");
+    command += literal ? " -F" : (ripgrep ? "" : " -E");
+    if (matching_files) command += " -l";
+    if (context_lines > 0 && !matching_files) {
       command += ripgrep ? " --context " : " -C ";
       command += std::to_string(context_lines);
     }

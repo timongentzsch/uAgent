@@ -1,8 +1,13 @@
+import json
 import os
 import re
+import signal
+import subprocess
+import sys
+import threading
+import time
 
 from integration_support import (
-    BINARY,
     Server,
     assert_token_budget_stop,
     assert_true,
@@ -11,14 +16,8 @@ from integration_support import (
     event,
     function_names,
     has_message,
-    json,
     run,
     run_dialog,
-    signal,
-    subprocess,
-    sys,
-    threading,
-    time,
     tool_call,
     tool_results,
     wait_for_processes_stopped,
@@ -28,7 +27,7 @@ from integration_support import (
 )
 
 
-def test_subagent_usage_counts_toward_parent_token_budget(root, home):
+def test_subagent_usage_counts_toward_parent_token_budget(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child-budget"):
@@ -40,13 +39,13 @@ def test_subagent_usage_counts_toward_parent_token_budget(root, home):
 
     with Server([route]) as server:
         envelope = assert_token_budget_stop(
-            root, home, server, "--yolo", "--token-budget", "3", "-p", "delegate"
+            root, home, server, "--yolo", "--token-budget", "3", "-p", "delegate", binary=binary
         )
         assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_completed_parent_answer_survives_late_child_budget_usage(root, home):
+def test_completed_parent_answer_survives_late_child_budget_usage(root, home, *, binary):
     child_requested = threading.Event()
 
     def route(_, body):
@@ -75,6 +74,7 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home):
             "-p",
             "delegate",
             timeout=10,
+            binary=binary,
         )
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 0, envelope)
@@ -83,7 +83,7 @@ def test_completed_parent_answer_survives_late_child_budget_usage(root, home):
         assert_true(envelope["stop"]["session_generated_tokens"] == 4, envelope)
 
 
-def test_subagent_inherits_only_remaining_session_token_budget(root, home):
+def test_subagent_inherits_only_remaining_session_token_budget(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child-remainder"):
@@ -96,14 +96,14 @@ def test_subagent_inherits_only_remaining_session_token_budget(root, home):
 
     with Server([route]) as server:
         assert_token_budget_stop(
-            root, home, server, "--yolo", "--token-budget", "5", "-p", "delegate"
+            root, home, server, "--yolo", "--token-budget", "5", "-p", "delegate", binary=binary
         )
         # The child inherited the two-token remainder and stopped before
         # executing its call or requesting a second model round.
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_subagent_auto_join_continues_turn(root, home):
+def test_subagent_auto_join_continues_turn(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
@@ -123,7 +123,7 @@ def test_subagent_auto_join_continues_turn(root, home):
         env = base_env(home, server.url)
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "4"
         env["UAGENT_STREAM_IDLE_TIMEOUT"] = "4"
-        result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "late-task-ok", result.stdout)
         request_summary = [
@@ -136,7 +136,7 @@ def test_subagent_auto_join_continues_turn(root, home):
         assert_true(len(server.requests) == 4, request_summary)
 
 
-def test_subagent_foreground_returns_result_without_wait_round(root, home):
+def test_subagent_foreground_returns_result_without_wait_round(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         if has_message(messages, "user", "child"):
@@ -150,7 +150,7 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(root, env, "--yolo", "-p", "delegate", timeout=8)
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "foreground-task-ok", result.stdout)
         parent_requests = [
@@ -164,7 +164,7 @@ def test_subagent_foreground_returns_result_without_wait_round(root, home):
         assert_true(len(parent_requests) == 2, len(parent_requests))
 
 
-def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home):
+def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home, *, binary):
     marker = root / "mcp-starts"
     fake = root / "fake_mcp.py"
     write_mcp_server(
@@ -195,14 +195,14 @@ def test_lean_subagent_does_not_clone_parent_mcp_fleet(root, home):
         return tool_call("subagent", {"prompt": "child", "background": False})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "lean-mcp-ok", result.stdout)
         starts = marker.read_text(encoding="utf-8").splitlines()
         assert_true(starts == ["0"], starts)
 
 
-def test_subagent_followup_resumes_durable_conversation(root, home):
+def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         child_prompts = [
@@ -243,7 +243,7 @@ def test_subagent_followup_resumes_durable_conversation(root, home):
         )
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "collaborate")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "collaborate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "persistent-collaborator-ok", result.stdout)
         records = list((home / ".uagent" / "collaborators").glob("agent-*.json"))
@@ -257,7 +257,7 @@ def test_subagent_followup_resumes_durable_conversation(root, home):
         assert_true("[collaborator:" in session.read_text(encoding="utf-8"), session)
 
 
-def test_completed_child_answer_survives_collaborator_save_failure(root, home):
+def test_completed_child_answer_survives_collaborator_save_failure(root, home, *, binary):
     # chmod cannot deny root, so the save failure this test needs is not
     # reachable there.
     if os.geteuid() == 0:
@@ -282,7 +282,9 @@ def test_completed_child_answer_survives_collaborator_save_failure(root, home):
 
     try:
         with Server([route]) as server:
-            result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate")
+            result = run(
+                root, base_env(home, server.url), "--yolo", "-p", "delegate", binary=binary
+            )
             assert_true(result.returncode == 0, result.stderr)
             assert_true(result.stdout.strip() == "save-warning-ok", result.stdout)
     finally:
@@ -290,7 +292,7 @@ def test_completed_child_answer_survives_collaborator_save_failure(root, home):
             collaborators.chmod(0o700)
 
 
-def test_failed_followup_consumes_queued_guidance_after_launch(root, home):
+def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, binary):
     collaborator_id = {"value": ""}
 
     def route(_, body):
@@ -362,7 +364,7 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home):
             ("fail coordinator", "failure-observed"),
             ("retry coordinator", "mailbox-ok"),
         ):
-            result = run(root, env, "--yolo", "-p", prompt)
+            result = run(root, env, "--yolo", "-p", prompt, binary=binary)
             assert_true(result.returncode == 0, result.stderr)
             assert_true(result.stdout.strip() == expected, result.stdout)
         # Guidance lives in files beside the record until it is delivered, so a
@@ -371,7 +373,7 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home):
         assert_true(not left, left)
 
 
-def test_message_reaches_running_child(root, home):
+def test_message_reaches_running_child(root, home, *, binary):
     """A message to a running child is delivered without waiting for a followup."""
     scale = max(1, int(float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))))
 
@@ -403,7 +405,15 @@ def test_message_reaches_running_child(root, home):
         return tool_call("subagent", {"prompt": "wait-for-guidance", "background": True})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "coordinate", timeout=60)
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "coordinate",
+            timeout=60,
+            binary=binary,
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "live-message-ok", result.stdout)
         collaborators = home / ".uagent" / "collaborators"
@@ -417,7 +427,7 @@ def test_message_reaches_running_child(root, home):
         assert_true(not list(collaborators.glob("*.mail-*")), "delivered mail was left behind")
 
 
-def test_agents_command_lists_a_running_child(root, home):
+def test_agents_command_lists_a_running_child(root, home, *, binary):
     """/agents answers from the records and the supervisor, without a turn."""
 
     def route(_, body):
@@ -438,7 +448,12 @@ def test_agents_command_lists_a_running_child(root, home):
 
     with Server([route]) as server:
         result = run_dialog(
-            root, base_env(home, server.url), "delegate\n/agents\n/q\n", "--yolo", timeout=30
+            root,
+            base_env(home, server.url),
+            "delegate\n/agents\n/q\n",
+            "--yolo",
+            timeout=30,
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("collaborators" in result.stdout, result.stdout)
@@ -448,7 +463,7 @@ def test_agents_command_lists_a_running_child(root, home):
         assert_true(re.search(r"agent-[0-9a-f]{8}\s+running · lean", listing), listing)
 
 
-def test_parallel_subagents_auto_join(root, home):
+def test_parallel_subagents_auto_join(root, home, *, binary):
     children_lock = threading.Lock()
     active_children = 0
     max_active_children = 0
@@ -499,14 +514,7 @@ def test_parallel_subagents_auto_join(root, home):
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        result = run(
-            root,
-            env,
-            "--yolo",
-            "-p",
-            "delegate twice",
-            timeout=8,
-        )
+        result = run(root, env, "--yolo", "-p", "delegate twice", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "parallel-task-ok", result.stdout)
         assert_true(max_active_children == 2, max_active_children)
@@ -523,7 +531,7 @@ def test_parallel_subagents_auto_join(root, home):
             assert_true("subagent" in function_names(request), request)
 
 
-def test_subagent_interrupt_reaps_child(root, home):
+def test_subagent_interrupt_reaps_child(root, home, *, binary):
     """A soft interrupt during the tool batch must not orphan delegation."""
     batch = event(
         {
@@ -567,7 +575,7 @@ def test_subagent_interrupt_reaps_child(root, home):
     try:
         process = subprocess.Popen(
             [
-                str(BINARY),
+                str(binary),
                 "--yolo",
                 f"--debug={trace}",
                 "-p",
@@ -610,7 +618,7 @@ def test_subagent_interrupt_reaps_child(root, home):
         server.close()
 
 
-def test_subagent_uses_selected_model_route(root, home):
+def test_subagent_uses_selected_model_route(root, home, *, binary):
     child_output = root / "delegated-by-child.txt"
 
     def child_action(_, body):
@@ -672,12 +680,7 @@ def test_subagent_uses_selected_model_route(root, home):
                 }
             }
         )
-        result = run_dialog(
-            root,
-            env,
-            "delegate locally\ny\n/q\n",
-            timeout=20,
-        )
+        result = run_dialog(root, env, "delegate locally\ny\n/q\n", timeout=20, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("route-ok" in result.stdout, result.stdout)
         assert_true(
@@ -690,7 +693,7 @@ def test_subagent_uses_selected_model_route(root, home):
         child.close()
 
 
-def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home):
+def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home, *, binary):
     def reject_child(handler, body):
         assert_true(body.get("model") == "unsupported-model", body)
         payload = json.dumps(
@@ -743,7 +746,7 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
                 }
             }
         )
-        result = run(root, env, "--yolo", "-p", "delegate failure", timeout=12)
+        result = run(root, env, "--yolo", "-p", "delegate failure", timeout=12, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "child-diagnostic-ok", result.stdout)
         assert_true(len(child.requests) == 1, len(child.requests))
@@ -753,7 +756,7 @@ def test_subagent_failure_reports_route_stage_and_bounded_diagnostics(root, home
         child.close()
 
 
-def test_subagent_recursion_is_depth_bounded(root, home):
+def test_subagent_recursion_is_depth_bounded(root, home, *, binary):
     """Full agents honor depth; lean workers never expose recursive delegation."""
 
     def has_task(body):
@@ -769,7 +772,7 @@ def test_subagent_recursion_is_depth_bounded(root, home):
             env = base_env(home, server.url)
             env["UAGENT_DEPTH"] = depth
             env["UAGENT_SUBAGENT_DEPTH"] = cap
-            result = run(root, env, "-p", "probe")
+            result = run(root, env, "-p", "probe", binary=binary)
             assert_true(result.returncode == 0, result.stderr)
             assert_true(
                 result.stdout.strip() == str(expected),
@@ -781,12 +784,12 @@ def test_subagent_recursion_is_depth_bounded(root, home):
         env["UAGENT_DEPTH"] = "1"
         env["UAGENT_SUBAGENT_DEPTH"] = "2"
         env["UAGENT_TOOLSET"] = "lean"
-        result = run(root, env, "-p", "probe")
+        result = run(root, env, "-p", "probe", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "False", result.stdout)
 
 
-def test_subagent_reports_the_limit_that_stopped_the_child(root, home):
+def test_subagent_reports_the_limit_that_stopped_the_child(root, home, *, binary):
     """A child that hits a ceiling says which one, so the caller can decide."""
 
     def route(_, body):
@@ -826,12 +829,14 @@ def test_subagent_reports_the_limit_that_stopped_the_child(root, home):
         )
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30)
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=30, binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "limit-reported-ok", result.stdout)
 
 
-def test_subagent_answer_survives_a_record_larger_than_the_cap(root, home):
+def test_subagent_answer_survives_a_record_larger_than_the_cap(root, home, *, binary):
     """A child's record is read whole, however much trace it drags behind it."""
 
     def route(_, body):
@@ -853,12 +858,14 @@ def test_subagent_answer_survives_a_record_larger_than_the_cap(root, home):
         return tool_call("subagent", {"prompt": "child", "background": False})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=60)
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "delegate", timeout=60, binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "recovered-ok", result.stdout)
 
 
-def test_subagent_foreground_outlives_the_per_call_budget(root, home):
+def test_subagent_foreground_outlives_the_per_call_budget(root, home, *, binary):
     """A child the caller waits for is bounded by limits.seconds, not by the
     budget that stops a runaway command.
 
@@ -881,12 +888,12 @@ def test_subagent_foreground_outlives_the_per_call_budget(root, home):
     with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_TOOL_TIMEOUT"] = "1"
-        result = run(root, env, "--yolo", "-p", "delegate", timeout=40)
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=40, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "slow-child-ok", result.stdout)
 
 
-def test_subagent_clamps_are_reported_not_silent(root, home):
+def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):
     """A background launch and its completion both retain host clamps."""
 
     def route(_, body):
@@ -913,6 +920,6 @@ def test_subagent_clamps_are_reported_not_silent(root, home):
     with Server([route]) as server:
         env = base_env(home, server.url)
         env["UAGENT_SUBAGENT_TIMEOUT"] = "2"
-        result = run(root, env, "--yolo", "-p", "delegate", timeout=30)
+        result = run(root, env, "--yolo", "-p", "delegate", timeout=30, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "clamp-reported-ok", result.stdout)

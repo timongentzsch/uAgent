@@ -186,6 +186,7 @@ Image bytes are not embedded in the session.
 - [Tools](docs/TOOLS.md)
 - [Persistence](docs/PERSISTENCE.md)
 - [Testing](docs/TESTING.md)
+- [Bounded self-improvement](docs/SELF_IMPROVEMENT.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 

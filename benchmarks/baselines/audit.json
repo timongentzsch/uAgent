@@ -1,10 +1,5 @@
 {
-  "schema": "uagent.audit.v1",
-  "generated_at": "2026-09-03T07:45:02Z",
-  "hardware": {
-    "binary_bytes": 2675368,
-    "peak_rss_bytes": 11091968
-  },
+  "schema": "uagent.audit.v2",
   "token": {
     "system_chars": 2712,
     "schema_chars": 9407,
@@ -16,25 +11,6 @@
       "uagent_info": 1033,
       "scratch": 899,
       "read_path": 663
-    }
-  },
-  "profile_token": {
-    "system_chars": 2712,
-    "schema_chars": 11490,
-    "advertised_tools": 13,
-    "only_with_profile": [
-      "memory",
-      "skill"
-    ]
-  },
-  "speed": {
-    "rebuild_fanout": {
-      "include/core/strings.h": 83,
-      "include/core/checked.h": 82,
-      "include/core/json.h": 82,
-      "include/core/env.h": 68,
-      "include/core/platform.h": 60,
-      "include/core/fd.h": 59
     }
   },
   "capability": {
@@ -52,50 +28,5 @@
       "edit_file": 1,
       "grep": 2
     }
-  },
-  "trajectory": {
-    "probe": {
-      "cumulative_request_chars": 12448,
-      "tool_result_chars": 0,
-      "model_duration_ms": 3.795042
-    },
-    "hermetic_baseline": {
-      "cases": 13,
-      "cumulative_request_chars": 625903,
-      "tool_result_chars": 48437,
-      "max_request_chars": 46540
-    }
-  },
-  "readability": {
-    "lint_findings": 0,
-    "slop_findings": 0,
-    "slop": {
-      "duplicate_block": 0,
-      "duplicate_sentence": 0,
-      "skill_frontmatter": 0,
-      "stale_doc_path": 0,
-      "unreachable": 0,
-      "unused_declaration": 0
-    },
-    "marker_files": 0,
-    "largest_file_lines": 1023,
-    "largest_file": "src/agent/turn.cc"
-  },
-  "representativeness": {
-    "real_calls": 6274,
-    "real_mix": {
-      "run": 3030,
-      "read_path": 952,
-      "edit_file": 837,
-      "grep": 528,
-      "activity": 440,
-      "scratch": 140,
-      "subagent": 73,
-      "web_fetch": 60
-    },
-    "uncovered_above_floor": [],
-    "retired_names_in_history": [
-      "activity_stop"
-    ]
   }
 }

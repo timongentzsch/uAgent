@@ -73,7 +73,8 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
 ToolResult ToolGrep(ProcessSupervisor& supervisor, const std::string& pattern,
                     const std::string& path, const std::string& glob,
                     int64_t context_lines = 0, const ToolContext& context = {},
-                    bool files_only = false);
+                    bool files_only = false, bool literal = false,
+                    bool matching_files = false);
 
 }  // namespace uagent
 

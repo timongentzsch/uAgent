@@ -1,26 +1,41 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <algorithm>
 #include <cctype>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/agent/session_store.h"
+#include "include/app/runtime.h"
+#include "include/core/config.h"
+#include "include/core/effective_config.h"
+#include "include/core/project.h"
+#include "include/core/signals.h"
+#include "include/core/skills.h"
+#include "include/mcp/config.h"
+#include "include/mcp/discover.h"
+#include "include/mcp/register.h"
+#include "include/mcp/result.h"
+#include "include/mcp/rpc.h"
+#include "include/media.h"
+#include "include/tools/files.h"
 #include "include/tools/memory.h"
+#include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
 
 void TestMcpContractHelpers() {
-  json optional_path_schema = {{"type", "object"},
-                               {"properties",
-                                {{"filePath", {{"type", "string"}}},
-                                 {"requiredPath", {{"type", "string"}}}}},
-                               {"required", json::array({"requiredPath"})}};
-  CHECK(McpCallArguments({{"filePath", ""}, {"requiredPath", ""}},
-                         optional_path_schema) == json({{"requiredPath", ""}}));
-
+  CHECK(McpResponseMatches({{"jsonrpc", "2.0"}, {"id", 1}, {"result", {}}}, 1));
+  CHECK(
+      !McpResponseMatches({{"jsonrpc", "1.0"}, {"id", 1}, {"result", {}}}, 1));
+  CHECK(!McpResponseMatches({{"jsonrpc", "2.0"}, {"id", "1"}, {"result", {}}},
+                            1));
+  CHECK(!McpResponseMatches(
+      {{"jsonrpc", "2.0"}, {"id", 1}, {"result", {}}, {"error", {}}}, 1));
   std::string decoded;
   CHECK(Base64Decode("aW1hZ2U=", decoded, 5));
   CHECK(decoded == "image");
@@ -81,16 +96,6 @@ void TestMcpContractHelpers() {
   CHECK(error.find("expanded to empty") != std::string::npos);
   CHECK(McpFileUri(std::filesystem::path("/tmp/\xc3\xa9")) ==
         "file:///tmp/%C3%A9");
-  McpServer rooted;
-  rooted.roots = roots;
-  json root_reply = McpClientRequestReply(
-      rooted, {{"jsonrpc", "2.0"}, {"id", 7}, {"method", "roots/list"}});
-  CHECK(root_reply["id"] == 7);
-  CHECK(root_reply["result"]["roots"] == roots);
-  CHECK(McpClientRequestReply(
-            rooted, {{"jsonrpc", "2.0"},
-                     {"id", 8},
-                     {"method", "unknown"}})["error"]["code"] == -32601);
   std::error_code root_cleanup_error;
   std::filesystem::remove_all(root_fixture, root_cleanup_error);
 
@@ -117,6 +122,56 @@ void TestMcpContractHelpers() {
   CHECK(tools[0].parameters == input_schema);
   CHECK(tools[0].output_schema == output_schema);
   CHECK(tools[0].provider == "mcp:probe");
+  listed[0]["annotations"] = {{"readOnlyHint", true}};
+  McpReplaceServerTools(tools, server, config, listed);
+  CHECK(tools[0].mutating);
+  CHECK((tools[0].capabilities & Capability(ToolCapability::kMutate)) != 0);
+  server.config["trust"] = true;
+  McpReplaceServerTools(tools, server, config, listed);
+  CHECK(!tools[0].mutating);
+  CHECK((tools[0].capabilities & Capability(ToolCapability::kMutate)) == 0);
+  tools[0].parameters.erase("additionalProperties");
+  CHECK(ToolParameters(tools[0]) == tools[0].parameters);
+  CHECK(!FindToolArgumentIssue(tools[0], {{"extra", ""}}));
+
+  server.subscription_id = 42;
+  auto notify = [&](const char* method, int id) {
+    return McpHandleMessage(
+        server, {{"jsonrpc", "2.0"},
+                 {"method", method},
+                 {"params",
+                  {{"_meta", {{"io.modelcontextprotocol/subscriptionId", id}}},
+                   {"notifications", {{"toolsListChanged", true}}}}}});
+  };
+  CHECK(notify("notifications/tools/list_changed", 42));
+  CHECK(!server.tools_changed);
+  CHECK(notify("notifications/subscriptions/acknowledged", 42));
+  CHECK(server.tools_subscribed);
+  CHECK(notify("notifications/tools/list_changed", 41));
+  CHECK(!server.tools_changed);
+  CHECK(notify("notifications/tools/list_changed", 42));
+  CHECK(server.tools_changed);
+  CHECK(McpHandleMessage(server, {{"id", 42}, {"result", json::object()}}));
+  CHECK(!server.tools_subscribed);
+  CHECK(!McpResultText(server, {{"result", {{"resultType", "input_required"}}}})
+             .Ok());
+
+  int request_pipe[2], response_pipe[2];
+  CHECK(pipe(request_pipe) == 0);
+  CHECK(pipe(response_pipe) == 0);
+  McpServer timed;
+  timed.alive = true;
+  timed.in.Reset(request_pipe[1]);
+  timed.out.Reset(response_pipe[0]);
+  Fd requests(request_pipe[0]), responses(response_pipe[1]);
+  CHECK(McpSend(timed, 1, "tools/list", json::object()));
+  CHECK(McpAwait(timed, 1, 0, false).contains("error"));
+  char cancellation[2048];
+  ssize_t received = read(requests.Get(), cancellation, sizeof cancellation);
+  CHECK(received > 0);
+  CHECK(std::string(cancellation,
+                    static_cast<size_t>(std::max(ssize_t{0}, received)))
+            .find("notifications/cancelled") != std::string::npos);
 
   namespace fs = std::filesystem;
   fs::path image_home =

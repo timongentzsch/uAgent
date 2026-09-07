@@ -8,6 +8,11 @@
 #include <system_error>
 #include <vector>
 
+#include "include/core/fs.h"
+#include "include/tools/files.h"
+#include "include/tools/jobs.h"
+#include "include/tools/process.h"
+#include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -55,6 +60,14 @@ void TestGrepTool() {
         "(no matches)");
   CHECK(ToolGrep(supervisor, "(", root.string(), "").error ==
         ToolErrorCode::kProcessFailed);
+  CHECK(
+      ToolGrep(supervisor, "(", root.string(), "", 0, {}, false, true).output ==
+      "(no matches)");
+  ToolResult paths = ToolGrep(supervisor, "needle", root.string(), "*.cpp", 0,
+                              {}, false, true, true);
+  CHECK(paths.Ok());
+  CHECK(paths.output.find("one.cpp") != std::string::npos);
+  CHECK(paths.output.find("needle one") == std::string::npos);
   setenv("UAGENT_MAX_BACKGROUND_JOBS", "1", 1);
   CHECK(supervisor.TryAdd({999991, "", "busy", false, ""}, 1));
   ToolResult limited = ToolGrep(supervisor, "needle", root.string(), "");
@@ -80,11 +93,20 @@ void TestGrepTool() {
     activity_ids.push_back(ActivityId(job));
   }
   CHECK(activity_ids.size() == 2);
-  ToolResult waited =
-      ToolActivityWait(supervisor, activity_ids, "all", 2000, activity_context);
+  auto activity_tools = BuiltinTools(supervisor, root, false);
+  const Tool* wait_tool = FindTool(activity_tools, "activity");
+  CHECK(wait_tool != nullptr);
+  ToolResult waited = wait_tool->run({{"operation", "wait"},
+                                      {"ids", {activity_ids[0]}},
+                                      {"mode", "all"},
+                                      {"wait_ms", 2000}},
+                                     activity_context);
   CHECK(waited.Ok());
   CHECK(waited.output.find("activity-one") != std::string::npos);
-  CHECK(waited.output.find("activity-two") != std::string::npos);
+  CHECK(waited.output.find("activity-two") == std::string::npos);
+  CHECK(ToolActivityWait(supervisor, {activity_ids[1]}, "all", 2000,
+                         activity_context)
+            .output.find("activity-two") != std::string::npos);
   CHECK(supervisor.PendingCount() == 0);
 
   fs::path marker = root / "injected";
@@ -106,6 +128,11 @@ void TestGrepTool() {
   result = ToolGrep(supervisor, "needle", source.string(), "");
   CHECK(result.output.find("[grep") == 0);
   CHECK(result.output.find("needle one") != std::string::npos);
+  CHECK(ToolGrep(supervisor, "(", source.string(), "", 0, {}, false, true)
+            .output == "(no matches)");
+  CHECK(ToolGrep(supervisor, "needle", source.string(), "", 0, {}, false, true,
+                 true)
+            .output.find("needle one") == std::string::npos);
   if (prior_path_value) {
     setenv("PATH", prior_path.c_str(), 1);
   } else {

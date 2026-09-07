@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/platform.h"
@@ -26,10 +27,31 @@
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/output_buffer.h"
+#include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+namespace {
+// Blocks until the activity behind `job` has drained its output, or until the
+// timeout expires; returns whether it drained.
+inline bool WaitForActivityDrain(
+    ProcessSupervisor& supervisor, const BgJob& job,
+    std::chrono::milliseconds timeout = std::chrono::seconds(2)) {
+  if (!job.session) return false;
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  for (;;) {
+    {
+      std::lock_guard<std::mutex> lock(job.session->mutex);
+      if (job.session->state == ActivityState::kDrained) return true;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) return false;
+    const uint64_t generation = supervisor.Generation();
+    supervisor.WaitForChange(generation, deadline);
+  }
+}
+
+}  // namespace
 
 void TestSignalAndFileWatch() {
   RequestAbort();

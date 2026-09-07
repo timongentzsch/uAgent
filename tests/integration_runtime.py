@@ -1,4 +1,11 @@
+import json
+import os
+import pathlib
+import re
+import shlex
 import stat
+import threading
+import time
 
 from integration_support import (
     SMALL_PNG,
@@ -11,18 +18,11 @@ from integration_support import (
     event,
     function_names,
     has_message,
-    json,
     midturn_compaction_env,
-    os,
-    pathlib,
-    re,
     run,
     run_dialog,
     run_pty,
-    shlex,
     sse,
-    threading,
-    time,
     tool_call,
     tool_calls,
     tool_results,
@@ -33,19 +33,19 @@ from integration_support import (
 from memory_fixture import global_memory_dir, project_memory_dir
 
 
-def test_plain_turn(root, home):
+def test_plain_turn(root, home, *, binary):
     def reply(_, body):
         names = function_names(body)
         assert_true("activity" not in names, names)
         return event({"content": "ok"}, usage={"prompt_tokens": 2, "completion_tokens": 1})
 
     with Server([reply]) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply")
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "ok", result.stdout)
 
 
-def test_adaptive_system_revises_replaces_and_clears(root, home):
+def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
     def initial(_, body):
         assert_true("adapt_system" in function_names(body), function_names(body))
         assert_true("MUTABLE SELF-DIRECTIVE" not in body["messages"][0]["content"], body)
@@ -94,7 +94,9 @@ def test_adaptive_system_revises_replaces_and_clears(root, home):
         trace = root / "adaptive-system.jsonl"
         env = base_env(home, server.url)
         env["UAGENT_ADAPT_SYSTEM"] = "1"
-        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "adapt as needed")
+        result = run(
+            root, env, "--yolo", f"--debug={trace}", "-p", "adapt as needed", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("adaptive-system-ok"), result.stdout)
         records = [json.loads(line) for line in trace.read_text().splitlines()]
@@ -112,24 +114,24 @@ def test_adaptive_system_revises_replaces_and_clears(root, home):
         return event({"content": "static-system-ok"})
 
     with Server([static_reply]) as server:
-        result = run(root, base_env(home, server.url), "-p", "work normally")
+        result = run(root, base_env(home, server.url), "-p", "work normally", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "static-system-ok", result.stdout)
 
 
-def test_stream_error_is_not_an_empty_response(root, home):
+def test_stream_error_is_not_an_empty_response(root, home, *, binary):
     with Server(
         [{"error": {"message": "upstream overloaded", "type": "server_error"}}],
         repeat_last=True,
     ) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply")
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("upstream overloaded" in result.stderr, result.stderr)
         assert_true("empty response" not in result.stderr, result.stderr)
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home):
+def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home, *, binary):
     def completed_after_partial(_, body):
         assistants = [
             str(message.get("content", ""))
@@ -149,7 +151,7 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home):
     with Server(
         [event({"content": "partial answer"}, finish="length"), completed_after_partial]
     ) as server:
-        result = run(root, base_env(home, server.url), "-p", "finish safely")
+        result = run(root, base_env(home, server.url), "-p", "finish safely", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "continued-ok", result.stdout)
         assert_true(len(server.requests) == 2, len(server.requests))
@@ -163,7 +165,7 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home):
         return event({"content": "call-salvaged" if valid else "call-lost"})
 
     with Server([cutoff_call, completed_after_call]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "call-salvaged", result.stdout)
         assert_true(len(server.requests) == 2, len(server.requests))
@@ -183,19 +185,19 @@ def test_partial_stop_policy_continues_prose_and_salvages_calls(root, home):
         return event({"content": "unknown-recovered" if valid else "unknown-unsafe"})
 
     with Server([unknown_call, completed_after_unknown]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "unknown-recovered", result.stdout)
         assert_true(len(server.requests) == 2, len(server.requests))
 
     with Server([event({"content": "unsafe partial"}, finish="content_filter")]) as server:
-        result = run(root, base_env(home, server.url), "-p", "answer")
+        result = run(root, base_env(home, server.url), "-p", "answer", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("content_filter" in result.stderr, result.stderr)
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
-def test_empty_partial_stop_fails_without_invalid_continuation(root, home):
+def test_empty_partial_stop_fails_without_invalid_continuation(root, home, *, binary):
     empty_thinking = event(
         {},
         finish="length",
@@ -206,7 +208,7 @@ def test_empty_partial_stop_fails_without_invalid_continuation(root, home):
         },
     )
     with Server([empty_thinking]) as server:
-        result = run(root, base_env(home, server.url), "-p", "finish safely")
+        result = run(root, base_env(home, server.url), "-p", "finish safely", binary=binary)
         assert_true(result.returncode == 1, result.stdout)
         assert_true(
             "model response stopped before completion (length)" in result.stderr,
@@ -215,7 +217,7 @@ def test_empty_partial_stop_fails_without_invalid_continuation(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
-def test_empty_response_after_tools_recovers(root, home):
+def test_empty_response_after_tools_recovers(root, home, *, binary):
     def recovered(_, body):
         contents = [
             message.get("content", "")
@@ -246,13 +248,13 @@ def test_empty_response_after_tools_recovers(root, home):
             recovered,
         ]
     ) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "recovered", result.stdout)
         assert_true(len(server.requests) == 4, len(server.requests))
 
 
-def test_foreign_tool_markup_recovers_as_prose(root, home):
+def test_foreign_tool_markup_recovers_as_prose(root, home, *, binary):
     markup = '<｜DSML｜tool_calls:\n    edit_file:\n      path: path="test.cc"'
 
     def recovered(_, body):
@@ -265,12 +267,12 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         return event({"content": "markup-recovered"})
 
     with Server([event({"content": markup}), recovered]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "answer")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "answer", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "markup-recovered", result.stdout)
 
     with Server([event({"content": markup}), event({"content": markup})]) as repeated:
-        result = run(root, base_env(home, repeated.url), "--yolo", "-p", "answer")
+        result = run(root, base_env(home, repeated.url), "--yolo", "-p", "answer", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("repeatedly returned invalid tool markup" in result.stderr, result.stderr)
         assert_true(len(repeated.requests) == 2, len(repeated.requests))
@@ -298,7 +300,7 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
         return event({"content": "native-markup-recovered"})
 
     with Server([event({"content": own_markup}), native_recovered]) as native:
-        result = run(root, base_env(home, native.url), "--yolo", "-p", "answer")
+        result = run(root, base_env(home, native.url), "--yolo", "-p", "answer", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "native-markup-recovered", result.stdout)
         assert_true(not marker.exists(), marker)
@@ -311,13 +313,13 @@ def test_foreign_tool_markup_recovers_as_prose(root, home):
             event(),
         ]
     ) as exhausted:
-        result = run(root, base_env(home, exhausted.url), "--yolo", "-p", "inspect")
+        result = run(root, base_env(home, exhausted.url), "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true("model returned an empty response" in result.stderr, result.stderr)
         assert_true(len(exhausted.requests) == 4, len(exhausted.requests))
 
 
-def test_transient_stream_errors_retry_before_progress(root, home):
+def test_transient_stream_errors_retry_before_progress(root, home, *, binary):
     with Server(
         [
             {
@@ -339,13 +341,13 @@ def test_transient_stream_errors_retry_before_progress(root, home):
             event({"content": "retry-ok"}),
         ]
     ) as server:
-        result = run(root, base_env(home, server.url), "-p", "reply")
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "retry-ok", result.stdout)
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_config_reload_applies_only_at_turn_boundaries(root, home):
+def test_config_reload_applies_only_at_turn_boundaries(root, home, *, binary):
     config = home / ".uagent" / ".config"
     config.parent.mkdir(parents=True)
     config.write_text("UAGENT_MAX_TOOL_CALLS=2\n", encoding="utf-8")
@@ -387,10 +389,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home):
         ]
     ) as server:
         result = run_dialog(
-            root,
-            base_env(home, server.url),
-            "first\nsecond\n/q\n",
-            timeout=12,
+            root, base_env(home, server.url), "first\nsecond\n/q\n", timeout=12, binary=binary
         )
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true("first-turn-used-snapshot" in result.stdout, result.stdout)
@@ -399,7 +398,7 @@ def test_config_reload_applies_only_at_turn_boundaries(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_prompt_overlay_reaches_the_live_prompt(root, home):
+def test_prompt_overlay_reaches_the_live_prompt(root, home, *, binary):
     """The overlay file reaches the request; its semantics are protocol_test.cc's."""
     workspace = root / "overlay-workspace"
     workspace.mkdir(parents=True)
@@ -424,7 +423,7 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home):
     with Server([verify]) as server:
         env = base_env(home, server.url)
         env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
-        result = run(workspace, env, "-p", "reply")
+        result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "overlay-ok", result.stdout)
 
@@ -438,11 +437,11 @@ def test_prompt_overlay_reaches_the_live_prompt(root, home):
     with Server([baseline]) as server:
         env = base_env(home, server.url)
         env["UAGENT_PROMPT_OVERLAY"] = str(overlay)
-        result = run(workspace, env, "-p", "reply")
+        result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.stdout.strip() == "base-ok", result.stdout)
 
 
-def test_project_instructions_precede_first_turn(root, home):
+def test_project_instructions_precede_first_turn(root, home, *, binary):
     workspace = root / "instructions-workspace"
     nested = workspace / "nested"
     (workspace / ".git").mkdir(parents=True)
@@ -470,12 +469,12 @@ def test_project_instructions_precede_first_turn(root, home):
         return event({"content": "instructions-ok" if valid else "instructions-bad"})
 
     with Server([verify]) as server:
-        result = run(nested, base_env(home, server.url), "-p", "reply")
+        result = run(nested, base_env(home, server.url), "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "instructions-ok", result.stdout)
 
 
-def test_session_journal_records_digests_not_argument_values(root, home):
+def test_session_journal_records_digests_not_argument_values(root, home, *, binary):
     """The journal must say what happened without saying what was in it.
 
     Argument values stay out by design, which also meant a later reader could
@@ -501,6 +500,7 @@ def test_session_journal_records_digests_not_argument_values(root, home):
             root,
             base_env(home, server.url),
             [(b"inspect\n", b"journal-ok"), b"", b"/q\n"],
+            binary=binary,
         )
         assert_true(code == 0, output)
 
@@ -531,7 +531,7 @@ def test_session_journal_records_digests_not_argument_values(root, home):
     assert_true("absent.txt" not in text, "argument value leaked")
 
 
-def test_session_title_replaces_initial_greeting(root, home):
+def test_session_title_replaces_initial_greeting(root, home, *, binary):
     with Server([event({"content": "hello-ok"}), event({"content": "task-ok"})]) as server:
         code, output = run_pty(
             root,
@@ -543,6 +543,7 @@ def test_session_title_replaces_initial_greeting(root, home):
                 b"",
                 b"/q\n",
             ],
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"task-ok" in output, output)
@@ -563,7 +564,7 @@ def test_session_title_replaces_initial_greeting(root, home):
         assert_true("investigate browser efficiency" not in journal.read_text(), records)
 
 
-def test_input_steering_yields_activity_wait(root, home):
+def test_input_steering_yields_activity_wait(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         results = tool_results(messages)
@@ -597,6 +598,7 @@ def test_input_steering_yields_activity_wait(root, home):
             ],
             args=("--yolo",),
             timeout=8,
+            binary=binary,
         )
         elapsed = time.monotonic() - started
         assert_true(code == 0, output)
@@ -607,7 +609,7 @@ def test_input_steering_yields_activity_wait(root, home):
         assert_true(elapsed < budget(8), elapsed)
 
 
-def test_input_idle_background_completion_is_observational(root, home):
+def test_input_idle_background_completion_is_observational(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
         results = tool_results(messages)
@@ -635,6 +637,7 @@ def test_input_idle_background_completion_is_observational(root, home):
             ],
             args=("--yolo",),
             timeout=8,
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"notified" in output, output)
@@ -643,7 +646,7 @@ def test_input_idle_background_completion_is_observational(root, home):
         assert_true(len(server.requests) == 3, server.requests)
 
 
-def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
+def test_headless_json_envelope_contains_trace_usage_and_exit(root, home, *, binary):
     first = tool_call("run", {"command": "printf tool-json"})
     first["usage"] = {
         "prompt_tokens": 7,
@@ -661,12 +664,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
         ]
     ) as server:
         result = run(
-            root,
-            base_env(home, server.url),
-            "--yolo",
-            "-p",
-            "run a tool",
-            "--json",
+            root, base_env(home, server.url), "--yolo", "-p", "run a tool", "--json", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         envelope = json.loads(result.stdout)
@@ -687,7 +685,7 @@ def test_headless_json_envelope_contains_trace_usage_and_exit(root, home):
         assert_true("tool-json" in call["result"], call)
 
 
-def test_headless_json_stream_emits_lifecycle_events(root, home):
+def test_headless_json_stream_emits_lifecycle_events(root, home, *, binary):
     with Server(
         [
             tool_call(
@@ -712,6 +710,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
             "--json-stream",
             "-p",
             "inspect",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         records = [json.loads(line) for line in result.stdout.splitlines()]
@@ -744,7 +743,7 @@ def test_headless_json_stream_emits_lifecycle_events(root, home):
         assert_true(records[-1]["data"]["answer"] == "stream-answer", records[-1])
 
 
-def test_turn_token_budget_stops_after_one_response_overshoot(root, home):
+def test_turn_token_budget_stops_after_one_response_overshoot(root, home, *, binary):
     marker = root / "token-budget-marker"
     response = tool_call("run", {"command": f"touch {marker}"})
     response["usage"] = {
@@ -755,7 +754,7 @@ def test_turn_token_budget_stops_after_one_response_overshoot(root, home):
     with Server([response]) as server:
         env = base_env(home, server.url)
         env["UAGENT_MAX_TURN_TOKENS"] = "5"
-        result = run(root, env, "--yolo", "--json", "-p", "inspect")
+        result = run(root, env, "--yolo", "--json", "-p", "inspect", binary=binary)
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 1, envelope)
         assert_true(envelope["stop"]["reason"] == "turn_tokens", envelope)
@@ -765,7 +764,7 @@ def test_turn_token_budget_stops_after_one_response_overshoot(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
-def test_resumed_session_token_budget_stops_before_model_call(root, home):
+def test_resumed_session_token_budget_stops_before_model_call(root, home, *, binary):
     write_session(
         home,
         "token-budget-resume",
@@ -779,13 +778,13 @@ def test_resumed_session_token_budget_stops_before_model_call(root, home):
     )
     with Server([event({"content": "too-late"})]) as server:
         envelope = assert_token_budget_stop(
-            root, home, server, "-c", "--token-budget", "5", "-p", "continue"
+            root, home, server, "-c", "--token-budget", "5", "-p", "continue", binary=binary
         )
         assert_true(envelope["stop"]["session_generated_tokens"] == 5, envelope)
         assert_true(len(server.requests) == 0, server.requests)
 
 
-def test_session_budget_stops_before_the_next_call(root, home):
+def test_session_budget_stops_before_the_next_call(root, home, *, binary):
     expensive = tool_call("read_path", {"path": "."})
     expensive["usage"] = {
         "prompt_tokens": 10,
@@ -802,6 +801,7 @@ def test_session_budget_stops_before_the_next_call(root, home):
             "--json",
             "-p",
             "inspect",
+            binary=binary,
         )
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 1, envelope)
@@ -809,7 +809,7 @@ def test_session_budget_stops_before_the_next_call(root, home):
         assert_true(len(server.requests) == 1, server.requests)
 
 
-def test_turn_cost_is_unlimited_by_default(root, home):
+def test_turn_cost_is_unlimited_by_default(root, home, *, binary):
     expensive = tool_call("read_path", {"path": "."})
     expensive["usage"] = {
         "prompt_tokens": 10,
@@ -817,13 +817,13 @@ def test_turn_cost_is_unlimited_by_default(root, home):
         "cost": 1.50,
     }
     with Server([expensive, event({"content": "cost-unlimited-ok"})]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect")
+        result = run(root, base_env(home, server.url), "--yolo", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("cost-unlimited-ok"), result.stdout)
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_tool_policy_scopes_schema_and_runtime(root, home):
+def test_tool_policy_scopes_schema_and_runtime(root, home, *, binary):
     marker = root / "tool-policy-marker"
 
     def request_forbidden(_, body):
@@ -847,13 +847,13 @@ def test_tool_policy_scopes_schema_and_runtime(root, home):
                 "PYTHONDONTWRITEBYTECODE": "1",
             }
         )
-        result = run(root, env, "--yolo", "-p", "inspect only")
+        result = run(root, env, "--yolo", "-p", "inspect only", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "policy-ok", result.stdout)
         assert_true(not marker.exists(), marker)
 
 
-def test_collaborator_retention_prunes_whole_records(root, home):
+def test_collaborator_retention_prunes_whole_records(root, home, *, binary):
     collaborators = home / ".uagent" / "collaborators"
     collaborators.mkdir(parents=True)
     now = time.time()
@@ -866,7 +866,7 @@ def test_collaborator_retention_prunes_whole_records(root, home):
     with Server([event({"content": "retention-ok"})]) as server:
         env = base_env(home, server.url)
         env["UAGENT_DEBUG_FILES"] = "1"
-        result = run(root, env, "-p", "reply")
+        result = run(root, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "retention-ok", result.stdout)
 
@@ -874,7 +874,7 @@ def test_collaborator_retention_prunes_whole_records(root, home):
     assert_true(remaining == ["new.json", "new.session.json"], remaining)
 
 
-def test_project_agent_config_trust(root, home):
+def test_project_agent_config_trust(root, home, *, binary):
     workspace = root / "config-workspace"
     (workspace / ".uagent").mkdir(parents=True)
     (home / ".uagent").mkdir(exist_ok=True)
@@ -886,11 +886,11 @@ def test_project_agent_config_trust(root, home):
         env.pop("UAGENT_MODEL")
         # Untrusted the workspace file is ignored, but the run still works off
         # the global config instead of failing.
-        ignored = run(workspace, env, "-p", "reply")
+        ignored = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(ignored.returncode == 0, ignored.stderr)
         assert_true("untrusted" in ignored.stderr, ignored.stderr)
         assert_true(server.requests[0][1]["model"] == "global/model", server.requests[0][1])
-        trusted = run(workspace, env, "--trust-project-config", "-p", "reply")
+        trusted = run(workspace, env, "--trust-project-config", "-p", "reply", binary=binary)
         assert_true(trusted.returncode == 0, trusted.stderr)
         assert_true(server.requests[1][1]["model"] == "project/model", server.requests[1][1])
     finally:
@@ -899,7 +899,7 @@ def test_project_agent_config_trust(root, home):
         (home / ".uagent" / ".config").unlink(missing_ok=True)
 
 
-def test_memory_reaches_context_by_scope(root, home):
+def test_memory_reaches_context_by_scope(root, home, *, binary):
     workspace = root / "memory-workspace"
     workspace.mkdir()
     project_dir = project_memory_dir(home, workspace)
@@ -957,10 +957,10 @@ def test_memory_reaches_context_by_scope(root, home):
     server = Server([verify, verify_isolated])
     try:
         env = base_env(home, server.url)
-        result = run(workspace, env, "-p", "reply")
+        result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "memory-ok", result.stdout)
-        elsewhere = run(other, env, "-p", "reply")
+        elsewhere = run(other, env, "-p", "reply", binary=binary)
         assert_true(elsewhere.returncode == 0, elsewhere.stderr)
         assert_true(elsewhere.stdout.strip() == "isolated-ok", elsewhere.stdout)
     finally:
@@ -969,7 +969,7 @@ def test_memory_reaches_context_by_scope(root, home):
         (global_dir / "style.md").unlink(missing_ok=True)
 
 
-def test_configured_redaction_keywords_apply(root, home):
+def test_configured_redaction_keywords_apply(root, home, *, binary):
     # The keyword list is read once per process, so this needs a fresh agent
     # rather than a unit test. Configured keywords must extend the built-ins,
     # never replace them, and must be matched literally.
@@ -1003,7 +1003,7 @@ def test_configured_redaction_keywords_apply(root, home):
         env = base_env(home, server.url)
         # ".*" must be treated as a literal keyword, not a pattern.
         env["UAGENT_MEMORY_REDACT_KEYWORDS"] = "db_dsn, .*"
-        result = run(workspace, env, "-p", "reply")
+        result = run(workspace, env, "-p", "reply", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "redact-ok", result.stdout)
     finally:
@@ -1012,7 +1012,7 @@ def test_configured_redaction_keywords_apply(root, home):
         (global_dir / "creds.md").unlink(missing_ok=True)
 
 
-def test_memory_background_extractor_is_bounded(root, home):
+def test_memory_background_extractor_is_bounded(root, home, *, binary):
     workspace = root / "memory-extract-workspace"
     workspace.mkdir()
     session = write_session(
@@ -1084,6 +1084,7 @@ def test_memory_background_extractor_is_bounded(root, home):
             before_payload=lambda: wait_until(
                 extracted, "background memory extraction did not finish", timeout=5
             ),
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(target.read_text(encoding="utf-8") == "Keep repository fixes concise.", target)
@@ -1093,22 +1094,21 @@ def test_memory_background_extractor_is_bounded(root, home):
 
         # A completed source is not processed again. Disabling generation also
         # prevents a changed source from becoming eligible.
-        code, output = run_pty(workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2))
+        code, output = run_pty(
+            workspace, env, b"/q\n", before_payload=lambda: time.sleep(0.2), binary=binary
+        )
         assert_true(code == 0 and len(server.requests) == 5, output)
         time.sleep(0.01)
         os.utime(session, None)
         disabled = dict(env)
         disabled["UAGENT_MEMORY_GENERATE"] = "0"
         code, output = run_pty(
-            workspace,
-            disabled,
-            b"/q\n",
-            before_payload=lambda: time.sleep(0.2),
+            workspace, disabled, b"/q\n", before_payload=lambda: time.sleep(0.2), binary=binary
         )
         assert_true(code == 0 and len(server.requests) == 5, output)
 
 
-def test_memory_background_extractor_releases_failed_claims(root, _home):
+def test_memory_background_extractor_releases_failed_claims(root, _home, *, binary):
     def scenario(name, kinds=None):
         case_home = root / f"memory-{name}-home"
         workspace = root / f"memory-{name}-workspace"
@@ -1146,10 +1146,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
             )
 
         code, output = run_pty(
-            no_write_workspace,
-            env,
-            b"/q\n",
-            before_payload=wait_for_done,
+            no_write_workspace, env, b"/q\n", before_payload=wait_for_done, binary=binary
         )
         assert_true(code == 0, output)
         assert_true(len(server.requests) == 1, server.requests)
@@ -1206,6 +1203,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
                 args=(f"--debug={trace}",),
                 before_payload=wait_for_cleanup,
                 timeout=40,
+                binary=binary,
             )
             assert_true(code == 0, output)
             if name != "terminated":
@@ -1283,7 +1281,7 @@ def test_memory_background_extractor_releases_failed_claims(root, _home):
     assert_true(request_started.is_set(), "termination case never entered the provider request")
 
 
-def test_no_memory_hides_index_and_tool(root, home):
+def test_no_memory_hides_index_and_tool(root, home, *, binary):
     workspace = root / "no-memory-workspace"
     workspace.mkdir()
     project_dir = project_memory_dir(home, workspace)
@@ -1306,11 +1304,7 @@ def test_no_memory_hides_index_and_tool(root, home):
     server = Server([verify])
     try:
         result = run(
-            workspace,
-            base_env(home, server.url),
-            "--no-memory",
-            "-p",
-            "inspect",
+            workspace, base_env(home, server.url), "--no-memory", "-p", "inspect", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "no-memory-ok", result.stdout)
@@ -1319,7 +1313,7 @@ def test_no_memory_hides_index_and_tool(root, home):
         (global_dir / "global.md").unlink(missing_ok=True)
 
 
-def test_first_event_timeout(root, home):
+def test_first_event_timeout(root, home, *, binary):
     def stall(handler, _):
         time.sleep(2)
         try:
@@ -1335,7 +1329,7 @@ def test_first_event_timeout(root, home):
         env = base_env(home, server.url)
         env["UAGENT_FIRST_EVENT_TIMEOUT"] = "1"
         started = time.monotonic()
-        result = run(root, env, "-p", "probe")
+        result = run(root, env, "-p", "probe", binary=binary)
         elapsed = time.monotonic() - started
         assert_true(result.returncode == 1, result.returncode)
         assert_true("no event within 1s" in result.stderr, result.stderr)
@@ -1347,7 +1341,7 @@ def test_first_event_timeout(root, home):
         assert_true(3.0 < elapsed < budget(6.5), elapsed)
 
 
-def test_midturn_compaction_preserves_progress_and_usage(root, home):
+def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
     trace = root / "midturn-compact.jsonl"
     source = root / "midturn-source.txt"
     source.write_text("RAW-TOOL-RESULT-" + "x" * 7800, encoding="utf-8")
@@ -1443,14 +1437,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
 
     with Server([first, compact, finish, final]) as server:
         env = midturn_compaction_env(home, server.url)
-        result = run(
-            root,
-            env,
-            "--yolo",
-            f"--debug={trace}",
-            "-p",
-            "inspect",
-        )
+        result = run(root, env, "--yolo", f"--debug={trace}", "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true("midturn-finished-ok" in result.stdout, result.stdout)
         assert_true(len(server.requests) == 4, server.requests)
@@ -1462,7 +1449,7 @@ def test_midturn_compaction_preserves_progress_and_usage(root, home):
         assert_true(len(folds) == 1, folds)
 
 
-def test_absolute_compaction_ceiling(root, home):
+def test_absolute_compaction_ceiling(root, home, *, binary):
     write_session(
         home,
         "absolute",
@@ -1504,7 +1491,7 @@ def test_absolute_compaction_ceiling(root, home):
                 "UAGENT_AUTO_COMPACT_TOKENS": "2000",
             }
         )
-        result = run(root, env, "-c", f"--debug={trace}", "-p", "continue")
+        result = run(root, env, "-c", f"--debug={trace}", "-p", "continue", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("absolute-compact-ok"), result.stdout)
         records = [json.loads(line) for line in trace.read_text().splitlines()]
@@ -1513,7 +1500,7 @@ def test_absolute_compaction_ceiling(root, home):
         assert_true(compacted[0]["data"]["projected_tokens"] >= 2000, compacted)
 
 
-def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home):
+def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *, binary):
     state = {"requests": 0, "id": 0}
     trigger_prefix = root / "poll-trigger"
     ack_prefix = root / "poll-ack"
@@ -1554,13 +1541,13 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home):
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
         env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
-        result = run(root, env, "--yolo", "-p", "monitor", timeout=12)
+        result = run(root, env, "--yolo", "-p", "monitor", timeout=12, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("progress-polls-ok"), result.stdout)
         assert_true(len(server.requests) == 6, len(server.requests))
 
 
-def test_activity_no_change_polls_are_steered_then_stopped(root, home):
+def test_activity_no_change_polls_are_steered_then_stopped(root, home, *, binary):
     state = {"requests": 0, "id": 0}
 
     def route(_, body):
@@ -1583,7 +1570,9 @@ def test_activity_no_change_polls_are_steered_then_stopped(root, home):
         return event({"content": "fourteenth-round-should-not-run"})
 
     with Server([route]) as server:
-        result = run(root, base_env(home, server.url), "--yolo", "-p", "monitor", timeout=20)
+        result = run(
+            root, base_env(home, server.url), "--yolo", "-p", "monitor", timeout=20, binary=binary
+        )
         assert_true(result.returncode != 0, result.stdout)
         assert_true(
             f"activity {state['id']} is still running, but the model polled it 12 times"
@@ -1593,7 +1582,7 @@ def test_activity_no_change_polls_are_steered_then_stopped(root, home):
         assert_true(len(server.requests) == 13, len(server.requests))
 
 
-def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home):
+def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home, *, binary):
     state = {"requests": 0, "id": 0}
     source = root / "productive-batches.txt"
     source.write_text("one\ntwo\nthree\n", encoding="utf-8")
@@ -1629,13 +1618,13 @@ def test_activity_poll_in_productive_batches_does_not_form_a_loop(root, home):
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
         env["UAGENT_AUTO_COMPACT_TOKENS"] = "0"
-        result = run(root, env, "--yolo", "-p", "monitor and inspect", timeout=8)
+        result = run(root, env, "--yolo", "-p", "monitor and inspect", timeout=8, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("productive-batches-ok"), result.stdout)
         assert_true(len(server.requests) == 5, len(server.requests))
 
 
-def test_tool_call_budget_is_unlimited_by_default(root, home):
+def test_tool_call_budget_is_unlimited_by_default(root, home, *, binary):
     source = root / "many-lines.txt"
     source.write_text("\n".join(str(i) for i in range(101)), encoding="utf-8")
     calls = [
@@ -1650,12 +1639,12 @@ def test_tool_call_budget_is_unlimited_by_default(root, home):
     with Server([tool_calls(calls), finish]) as server:
         env = base_env(home, server.url)
         env["UAGENT_AUTO_COMPACT_PCT"] = "0"
-        result = run(root, env, "--yolo", "-p", "read every line")
+        result = run(root, env, "--yolo", "-p", "read every line", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("unlimited-tools-ok"), result.stdout)
 
 
-def test_image_fallback_reaches_another_provider(root, home):
+def test_image_fallback_reaches_another_provider(root, home, *, binary):
     """A vision route on a different provider stands in for native image input."""
     picture = root / "shot.png"
     picture.write_bytes(SMALL_PNG)
@@ -1710,6 +1699,7 @@ def test_image_fallback_reaches_another_provider(root, home):
             "-p",
             "what is this",
             timeout=20,
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "saw-it", result.stdout)
@@ -1719,7 +1709,7 @@ def test_image_fallback_reaches_another_provider(root, home):
         vision.close()
 
 
-def test_headless_reaps_timed_out_process(root, home):
+def test_headless_reaps_timed_out_process(root, home, *, binary):
     workspace = root / "timed-out-process-workspace"
     workspace.mkdir()
     pid_file = workspace / "pid"
@@ -1731,13 +1721,7 @@ def test_headless_reaps_timed_out_process(root, home):
         env = base_env(home, server.url)
         env["UAGENT_MAX_TURN_SECONDS"] = "1"
         result = run(
-            workspace,
-            env,
-            "--yolo",
-            f"--debug={trace}",
-            "-p",
-            "probe",
-            timeout=8,
+            workspace, env, "--yolo", f"--debug={trace}", "-p", "probe", timeout=8, binary=binary
         )
         assert_true(result.returncode == 1, (result.stdout, result.stderr))
         events = [json.loads(line) for line in trace.read_text().splitlines()]

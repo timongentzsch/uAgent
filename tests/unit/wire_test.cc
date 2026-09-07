@@ -9,6 +9,7 @@
 
 #include "include/api.h"
 #include "include/api/stream.h"
+#include "include/core/config.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -137,58 +138,6 @@ void TestWireAdapters() {
       json::parse(switched.ChatPayload(messages, schemas), nullptr, false);
   CHECK(switched_payload.is_object());
   CHECK(!switched_payload["messages"][2].contains(kWireReplayField));
-
-  // Cache reuse must preserve exact bytes through role merging, edits,
-  // shrinking history, tool changes, and switches between wire dialects.
-  for (WireApi wire : {WireApi::kResponses, WireApi::kAnthropicMessages,
-                       WireApi::kChatCompletions}) {
-    switched.capabilities.wire_api = wire;
-    json history = messages;
-    history[3][kReadRangeField] = {"README.md", 1, 10};
-    json tools = schemas;
-    auto parity = [&] {
-      CHECK(switched.ChatPayload(history, tools, "session") ==
-            JsonDump(switched.BuildRequestBody(history, tools, "session")));
-      CHECK(switched.ChatPayload(history, tools, "session")
-                .find(kReadRangeField) == std::string::npos);
-    };
-    parity();
-    parity();
-    history.push_back({{"role", "tool"},
-                       {"tool_call_id", "call-2"},
-                       {"content", "second output"}});
-    parity();
-    history.push_back({{"role", "user"}, {"content", "same role group"}});
-    parity();
-    history[0]["content"] = "updated system";
-    history[1]["content"] = "changed before the cached tail";
-    parity();
-    tools[0]["function"]["description"] = "new description";
-    parity();
-    history.erase(history.begin() + 3, history.end());
-    parity();
-    switched.capabilities.native_tools = false;
-    parity();
-    switched.capabilities.native_tools = true;
-    switched.capabilities.parallel_tools = false;
-    parity();
-    switched.capabilities.parallel_tools = true;
-    switched.capabilities.hosted_web_search = true;
-    parity();
-    switched.config.web_search_backend = "off";
-    parity();
-    switched.config.web_search_backend = "auto";
-    switched.capabilities.hosted_web_search = false;
-    history[2][kWireReplayField] = {
-        {"wire_api", "responses"},
-        {"items", json::array({{{"type", "reasoning"},
-                                {"encrypted_content", "changed replay"}}})}};
-    parity();
-    history.push_back(nullptr);
-    parity();
-    history = json::array();
-    parity();
-  }
 
   RuntimeConfig config;
   config.web_search_backend = "auto";
@@ -747,6 +696,78 @@ void TestWireStreamMalformedValues() {
   CHECK(fresh_content != nullptr && fresh_content->size() == 1);
   if (fresh_content && !fresh_content->empty()) {
     CHECK((*fresh_content)[0]["citations"].size() == 1);
+  }
+}
+
+void TestWireCacheParity() {
+  Api switched(RuntimeConfig{});
+  switched.model = "cache-test";
+  json messages = json::array({{{"role", "system"}, {"content", "base"}},
+                               {{"role", "user"}, {"content", "question"}},
+                               {{"role", "assistant"}, {"content", "answer"}},
+                               {{"role", "user"}, {"content", "follow-up"}}});
+  json schemas = json::array({FunctionSchema("read_path")});
+  // Cache reuse must preserve exact bytes through role merging, edits,
+  // shrinking history, tool changes, and switches between wire dialects.
+  for (WireApi wire : {WireApi::kResponses, WireApi::kAnthropicMessages,
+                       WireApi::kChatCompletions}) {
+    switched.capabilities.wire_api = wire;
+    json history = messages;
+    history[3][kReadRangeField] = {"README.md", 1, 10};
+    json tools = schemas;
+    std::string session = "session";
+    auto parity = [&] {
+      CHECK(switched.ChatPayload(history, tools, session) ==
+            JsonDump(switched.BuildRequestBody(history, tools, session)));
+      CHECK(
+          switched.ChatPayload(history, tools, session).find(kReadRangeField) ==
+          std::string::npos);
+    };
+    parity();
+    parity();
+    history.push_back({{"role", "tool"},
+                       {"tool_call_id", "call-2"},
+                       {"content", "second output"}});
+    parity();
+    history.push_back({{"role", "user"}, {"content", "same role group"}});
+    parity();
+    history[0]["content"] = "updated system";
+    history[1]["content"] = "changed before the cached tail";
+    parity();
+    tools[0]["function"]["description"] = "new description";
+    parity();
+    history.erase(history.begin() + 3, history.end());
+    parity();
+    switched.capabilities.native_tools = false;
+    parity();
+    switched.capabilities.native_tools = true;
+    switched.capabilities.parallel_tools = false;
+    parity();
+    switched.capabilities.parallel_tools = true;
+    switched.capabilities.hosted_web_search = true;
+    parity();
+    switched.config.web_search_backend = "off";
+    parity();
+    switched.config.web_search_backend = "auto";
+    switched.capabilities.hosted_web_search = false;
+    history[2][kWireReplayField] = {
+        {"wire_api", "responses"},
+        {"items", json::array({{{"type", "reasoning"},
+                                {"encrypted_content", "changed replay"}}})}};
+    parity();
+    history.push_back(nullptr);
+    parity();
+    history = json::array();
+    parity();
+    history.push_back({{"role", "user"}, {"content", "héllo \"quoted\"\n\t"}});
+    parity();
+    history.insert(history.begin(),
+                   {{"role", "user"}, {"content", "prepended"}});
+    parity();
+    history.back()["content"] = "rewritten tail";
+    parity();
+    session = "another-session";
+    parity();
   }
 }
 

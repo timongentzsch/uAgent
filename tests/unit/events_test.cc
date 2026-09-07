@@ -14,8 +14,11 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/app/reference.h"
+#include "include/app/runtime.h"
 #include "include/cli.h"
+#include "include/core/config.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

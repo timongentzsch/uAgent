@@ -1,10 +1,11 @@
+import json
+
 from integration_support import (
     Server,
     assert_true,
     base_env,
     event,
     function_names,
-    json,
     provider_env,
     run,
     run_dialog,
@@ -18,7 +19,7 @@ from integration_support import (
 )
 
 
-def test_streamed_search_citations(root, home):
+def test_streamed_search_citations(root, home, *, binary):
     citation = {
         "type": "url_citation",
         "url_citation": {
@@ -64,7 +65,9 @@ def test_streamed_search_citations(root, home):
             },
         ]
     ) as server:
-        result = run_dialog(root, base_env(home, server.url), "probe\nagain\n/trace\n/q\n")
+        result = run_dialog(
+            root, base_env(home, server.url), "probe\nagain\n/trace\n/q\n", binary=binary
+        )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("grounded\n  ← web_search" in result.stdout, result.stdout)
         assert_true("web_search ×1 · 1 source" in result.stdout, result.stdout)
@@ -74,7 +77,7 @@ def test_streamed_search_citations(root, home):
         assert_true("legacy snippet" in result.stdout, result.stdout)
 
 
-def test_openrouter_named_search_contract_and_errors(root, home):
+def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
     citation = {
         "type": "url_citation",
         "url_citation": {"url": "https://example.com/current", "title": "Current"},
@@ -128,7 +131,7 @@ def test_openrouter_named_search_contract_and_errors(root, home):
                     "UAGENT_WEB_SEARCH_MODEL": "search-model",
                 }
             )
-            result = run(root, env, "--yolo", "--json", "-p", "search")
+            result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
             envelope = json.loads(result.stdout)
             assert_true(result.returncode == 0, (result.stderr, envelope))
             assert_true(envelope["answer"] == "search-contract-ok", envelope)
@@ -143,7 +146,7 @@ def test_openrouter_named_search_contract_and_errors(root, home):
             )
 
 
-def test_openrouter_reasoning_details_survive_tool_step(root, home):
+def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):
     details = [
         {
             "type": "reasoning.text",
@@ -188,12 +191,12 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home):
     with Server([first, verify_tool_step]) as server:
         env = base_env(home, server.url)
         env["UAGENT_OPENROUTER_COMPATIBLE"] = "1"
-        result = run(root, env, "-p", "inspect")
+        result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
 
 
-def test_provider_context_overflow_compacts_once(root, home):
+def test_provider_context_overflow_compacts_once(root, home, *, binary):
     prompt = "preserve-overflow-goal " + ("evidence " * 2500)
 
     def reject(handler, _):
@@ -226,7 +229,7 @@ def test_provider_context_overflow_compacts_once(root, home):
         return event({"content": "context-recovery-ok"})
 
     with Server([reject, compact, recovered]) as server:
-        result = run(root, base_env(home, server.url), "-p", prompt, timeout=15)
+        result = run(root, base_env(home, server.url), "-p", prompt, timeout=15, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(result.stdout.strip() == "context-recovery-ok", result.stdout)
         assert_true(len(server.requests) == 3, server.requests)
@@ -237,12 +240,12 @@ def test_provider_context_overflow_compacts_once(root, home):
     # If the bounded compaction request is also rejected, do not loop or replay
     # the original request. A later user turn can retry deliberately.
     with Server([reject_413]) as server:
-        failed = run(root, base_env(home, server.url), "-p", prompt, timeout=15)
+        failed = run(root, base_env(home, server.url), "-p", prompt, timeout=15, binary=binary)
         assert_true(failed.returncode == 1, (failed.stdout, failed.stderr))
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_provider_background_completion_does_not_trigger_model_turns(root, home):
+def test_provider_background_completion_does_not_trigger_model_turns(root, home, *, binary):
     def launch(_, __):
         return tool_calls(
             [
@@ -272,13 +275,14 @@ def test_provider_background_completion_does_not_trigger_model_turns(root, home)
             ],
             timeout=10,
             args=("--yolo",),
+            binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(b"first" in output and b"second" in output, output)
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_model_route_switch(root, home):
+def test_model_route_switch(root, home, *, binary):
     first = Server([event({"content": "wrong-provider"})])
 
     def switched(_, body):
@@ -298,9 +302,7 @@ def test_model_route_switch(root, home):
         # the switched route still has to carry it.
         env["UAGENT_MAX_TOKENS"] = "16000"
         result = run_dialog(
-            root,
-            env,
-            "/models all\n2\n/effort default\n/effort high\nprobe\n/q\n",
+            root, env, "/models all\n2\n/effort default\n/effort high\nprobe\n/q\n", binary=binary
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("first/main" in result.stdout and "second/fast" in result.stdout, result.stdout)
@@ -314,7 +316,7 @@ def test_model_route_switch(root, home):
         second.close()
 
 
-def test_openrouter_variant_is_scoped_to_openrouter(root, home):
+def test_openrouter_variant_is_scoped_to_openrouter(root, home, *, binary):
     router = Server(
         [
             event({"content": "nitro-ok"}),
@@ -345,6 +347,7 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home):
             "/variant\n/variant :nitro\none\n/variant floor\ntwo\n"
             "/variant exacto\nthree\n/variant default\nfour\n"
             "/model generic/main\n/variant nitro\nfive\n/q\n",
+            binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true("choose default, nitro, floor, or exacto" in result.stdout, result.stdout)
@@ -370,7 +373,7 @@ def test_openrouter_variant_is_scoped_to_openrouter(root, home):
         generic.close()
 
 
-def test_dynamic_provider_catalog_and_model(root, home):
+def test_dynamic_provider_catalog_and_model(root, home, *, binary):
     active_catalog = {"data": [{"id": "active-live"}]}
     first = Server(
         [event({"content": "original-route-ok"})],
@@ -400,11 +403,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         # route with no advertised effort support must replace, not inherit,
         # that state.
         env["UAGENT_REASONING_EFFORT"] = "high"
-        catalog_result = run_dialog(
-            root,
-            env,
-            "/models live\n\x1b\nprobe\n/q\n",
-        )
+        catalog_result = run_dialog(root, env, "/models live\n\x1b\nprobe\n/q\n", binary=binary)
         assert_true(catalog_result.returncode == 0, catalog_result.stderr)
         assert_true(
             "searching all model catalogs for live" in catalog_result.stdout,
@@ -416,25 +415,17 @@ def test_dynamic_provider_catalog_and_model(root, home):
         assert_true("original-route-ok" in catalog_result.stdout, catalog_result.stdout)
         assert_true(len(first.requests) == 1, first.requests)
 
-        wildcard = run_dialog(
-            root,
-            env,
-            "/models second/*\n\x1b\n/q\n",
-        )
+        wildcard = run_dialog(root, env, "/models second/*\n\x1b\n/q\n", binary=binary)
         assert_true(wildcard.returncode == 0, wildcard.stderr)
         assert_true("second/gpt-live" in wildcard.stdout, wildcard.stdout)
 
-        selected = run_dialog(
-            root,
-            env,
-            "/models gpt-live\n1\nprobe\n/q\n",
-        )
+        selected = run_dialog(root, env, "/models gpt-live\n1\nprobe\n/q\n", binary=binary)
         assert_true(selected.returncode == 0, selected.stderr)
         assert_true("dynamic-route-ok" in selected.stdout, selected.stdout)
         assert_true(len(second.get_requests) == 3, second.get_requests)
 
         restart_env = provider_env(home, first.url, providers)
-        restarted = run(root, restart_env, "-p", "probe")
+        restarted = run(root, restart_env, "-p", "probe", binary=binary)
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
         assert_true(len(first.requests) == 1, first.requests)
@@ -443,7 +434,7 @@ def test_dynamic_provider_catalog_and_model(root, home):
         second.close()
 
 
-def test_model_preference_survives_restart(root, home):
+def test_model_preference_survives_restart(root, home, *, binary):
     first = Server([event({"content": "explicit-model-ok"})])
 
     def remembered(_, body):
@@ -455,7 +446,7 @@ def test_model_preference_survives_restart(root, home):
     providers["second"]["context"] = 8192
     try:
         choose_env = provider_env(home, first.url, providers, "first/main")
-        chosen = run_dialog(root, choose_env, "/model second/fast\n/q\n")
+        chosen = run_dialog(root, choose_env, "/model second/fast\n/q\n", binary=binary)
         assert_true(chosen.returncode == 0, chosen.stderr)
 
         preference = home / ".uagent" / "config" / "model-preference.json"
@@ -464,14 +455,14 @@ def test_model_preference_survives_restart(root, home):
         assert_true(preference.stat().st_mode & 0o777 == 0o600, oct(preference.stat().st_mode))
 
         restart_env = provider_env(home, first.url, providers)
-        restarted = run(root, restart_env, "-p", "probe")
+        restarted = run(root, restart_env, "-p", "probe", binary=binary)
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "remembered-model-ok", restarted.stdout)
         assert_true(not first.requests, first.requests)
 
         override_env = dict(restart_env)
         override_env["UAGENT_MODEL"] = "first/main"
-        overridden = run(root, override_env, "-p", "probe")
+        overridden = run(root, override_env, "-p", "probe", binary=binary)
         assert_true(overridden.returncode == 0, overridden.stderr)
         assert_true(overridden.stdout.strip() == "explicit-model-ok", overridden.stdout)
     finally:
@@ -479,7 +470,7 @@ def test_model_preference_survives_restart(root, home):
         second.close()
 
 
-def test_provider_responses_native_search_and_function_replay(root, home):
+def test_provider_responses_native_search_and_function_replay(root, home, *, binary):
     # The replayed function_call lists the workspace, so it needs an entry to
     # list: an empty directory reports itself as empty and never gets there.
     (root / "listed.txt").write_text("x\n", encoding="utf-8")
@@ -594,7 +585,7 @@ def test_provider_responses_native_search_and_function_replay(root, home):
                 "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
             }
         )
-        result = run(root, env, "--yolo", "--json", "-p", "inspect and search")
+        result = run(root, env, "--yolo", "--json", "-p", "inspect and search", binary=binary)
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 0, (result.stderr, envelope))
         assert_true(envelope["answer"].startswith("responses-native-ok"), envelope)
@@ -602,7 +593,7 @@ def test_provider_responses_native_search_and_function_replay(root, home):
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_hosted_search_reports_one_lifecycle_on_either_route(root, home):
+def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, binary):
     """A provider-run search must look the same whichever provider ran it.
 
     Without this the wait is indistinguishable from thinking: the decoders
@@ -719,7 +710,7 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home):
                     "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
                 }
             )
-            result = run(root, env, "--yolo", "--json-stream", "-p", "search")
+            result = run(root, env, "--yolo", "--json-stream", "-p", "search", binary=binary)
             assert_true(result.returncode == 0, result.stderr)
             return [json.loads(line) for line in result.stdout.splitlines()]
 
@@ -748,7 +739,7 @@ def test_hosted_search_reports_one_lifecycle_on_either_route(root, home):
         assert_true(usage["data"]["usage"]["web_searches"] == 1, usage)
 
 
-def test_provider_anthropic_native_search_pause_turn_replay(root, home):
+def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binary):
     def first(handler, body):
         assert_true(handler.path == "/v1/messages", handler.path)
         assert_true(handler.headers.get("x-api-key") == "anthropic-key", handler.headers)
@@ -863,7 +854,7 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home):
                 "UAGENT_WEB_SEARCH_API_KEY": "fallback-key",
             }
         )
-        result = run(root, env, "--yolo", "--json", "-p", "search")
+        result = run(root, env, "--yolo", "--json", "-p", "search", binary=binary)
         envelope = json.loads(result.stdout)
         assert_true(result.returncode == 0, (result.stderr, envelope))
         assert_true(envelope["answer"].startswith("anthropic-native-ok"), envelope)
@@ -871,7 +862,7 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home):
         assert_true(len(server.requests) == 2, server.requests)
 
 
-def test_self_info_reports_live_configuration(root, home):
+def test_self_info_reports_live_configuration(root, home, *, binary):
     """uagent_info answers from the running binary and never leaks secrets."""
     config = home / ".uagent"
     config.mkdir(parents=True, exist_ok=True)
@@ -957,14 +948,14 @@ def test_self_info_reports_live_configuration(root, home):
                 ),
             }
         )
-        result = run(root, env, "--yolo", "-p", "describe yourself")
+        result = run(root, env, "--yolo", "-p", "describe yourself", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("self-info-ok"), result.stdout)
         assert_true("canary-search-key" not in result.stdout, result.stdout)
         assert_true("canary-route-key" not in result.stdout, result.stdout)
 
 
-def test_effort_and_variant_persist_like_model(root, home):
+def test_effort_and_variant_persist_like_model(root, home, *, binary):
     """/effort updates the saved selection instead of evaporating on restart."""
     preference = home / ".uagent" / "config" / "model-preference.json"
     preference.parent.mkdir(parents=True, exist_ok=True)
@@ -974,13 +965,13 @@ def test_effort_and_variant_persist_like_model(root, home):
 
     with Server([event({"content": "ready"})]) as server:
         env = base_env(home, server.url)
-        session = run_dialog(root, env, "/effort high\n/quit\n")
+        session = run_dialog(root, env, "/effort high\n/quit\n", binary=binary)
         assert_true(session.returncode == 0, session.stderr)
         saved = json.loads(preference.read_text())
         assert_true(saved["selection"] == "demo-model:high", saved)
 
         # Clearing back to the provider default rewrites the same entry.
-        session = run_dialog(root, env, "/effort default\n/quit\n")
+        session = run_dialog(root, env, "/effort default\n/quit\n", binary=binary)
         assert_true(session.returncode == 0, session.stderr)
         saved = json.loads(preference.read_text())
         assert_true(saved["selection"] == "demo-model", saved)
@@ -989,6 +980,6 @@ def test_effort_and_variant_persist_like_model(root, home):
     preference.unlink()
     with Server([event({"content": "ready"})]) as server:
         env = base_env(home, server.url)
-        session = run_dialog(root, env, "/effort high\n/quit\n")
+        session = run_dialog(root, env, "/effort high\n/quit\n", binary=binary)
         assert_true("this session only" in session.stdout, session.stdout)
         assert_true(not preference.exists(), "must not invent a preference")

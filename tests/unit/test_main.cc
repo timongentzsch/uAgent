@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/core/sandbox.h"
+#include "tests/unit/test_cases.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -68,7 +69,12 @@ int RunTests(int argc, char** argv) {
     if (!match.empty() && name.find(match) == std::string_view::npos) continue;
     ++selected;
     std::cerr << "[ run ] " << test.name << '\n';
+    const auto started = std::chrono::steady_clock::now();
     test.run();
+    const auto elapsed = std::chrono::duration<double>(
+                             std::chrono::steady_clock::now() - started)
+                             .count();
+    std::cerr << "[ done ] " << test.name << " (" << elapsed << "s)\n";
   }
   curl_global_cleanup();
 

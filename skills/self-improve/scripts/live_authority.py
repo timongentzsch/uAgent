@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -82,3 +83,72 @@ def load_authority(path: Path | None, models: list[str]) -> dict[str, Any]:
         "routes": normalized,
         "sha256": hashlib.sha256(body).hexdigest(),
     }
+
+
+def apply_authority(env: dict[str, str], declaration: dict[str, Any]) -> None:
+    """Impose an explicitly declared cheap route's hard limits on a child."""
+    if declaration["mode"] != "non-billable-cheap":
+        return
+    limits = declaration["limits"]
+    env.update(
+        {
+            "UAGENT_MAX_STEPS": str(limits["max_model_calls"]),
+            "UAGENT_MAX_TOOL_CALLS": str(limits["max_tool_calls"]),
+            "UAGENT_MAX_TOKENS": str(limits["max_output_tokens_per_call"]),
+            "UAGENT_MAX_TURN_SECONDS": str(limits["max_session_seconds"]),
+            "UAGENT_REQUEST_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_FIRST_EVENT_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_STREAM_IDLE_TIMEOUT": str(limits["max_session_seconds"]),
+            "UAGENT_MAX_TURN_COST": "0",
+            "UAGENT_SESSION_BUDGET": "0",
+            "UAGENT_OPENROUTER_FALLBACKS": "0",
+        }
+    )
+
+
+def account_reported_cost(result: dict[str, Any], spent: float, cap: float) -> float:
+    """Add one run's provider-reported cost to the aggregate, or refuse."""
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    reported = bool(usage.get("cost_reported")) or bool(result.get("cost_reported"))
+    route = result.get("model") or result.get("route") or "route"
+    if not reported:
+        raise AuthorityError(f"blocked after {route}: provider cost was unavailable")
+    cost = float(usage.get("cost") or result.get("cost_usd") or 0)
+    if not math.isfinite(cost) or cost < 0:
+        raise AuthorityError("blocked: provider reported an invalid cost")
+    updated = spent + cost
+    if updated > cap + 1e-9:
+        raise AuthorityError(
+            f"stopped: reported aggregate cost ${updated:.6f} exceeded the ${cap:.6f} ceiling"
+        )
+    return updated
+
+
+def account_result(
+    result: dict[str, Any], declaration: dict[str, Any], spent: float, cap: float
+) -> float:
+    """Check one finished run against the authority it was launched under."""
+    if declaration["mode"] == "reported-cost":
+        return account_reported_cost(result, spent, cap)
+    limits = declaration["limits"]
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    route = result.get("model") or result.get("route") or "route"
+    checks = {
+        "model calls": (int(result.get("model_requests") or 0), limits["max_model_calls"]),
+        "tool calls": (int(result.get("tool_calls") or 0), limits["max_tool_calls"]),
+        "output tokens": (
+            int(usage.get("output") or result.get("output_tokens") or 0),
+            limits["max_model_calls"] * limits["max_output_tokens_per_call"],
+        ),
+        "session milliseconds": (
+            int(float(result.get("elapsed_seconds") or 0) * 1000),
+            limits["max_session_seconds"] * 1000,
+        ),
+    }
+    for name, (used, maximum) in checks.items():
+        if used > maximum:
+            raise AuthorityError(
+                f"blocked after {route}: {name} {used} exceeded the enforced cheap-route "
+                f"limit {maximum}"
+            )
+    return spent

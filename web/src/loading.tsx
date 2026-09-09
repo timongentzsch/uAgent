@@ -63,6 +63,7 @@ export function SettingsSkeleton() {
         >
           <Control />
         </Field>
+        <button disabled>System prompt</button>
         <button disabled>Advanced configuration</button>
       </div>
       {["Install", "Notifications", "Paired devices"].map((label) => (

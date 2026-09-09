@@ -100,8 +100,10 @@ SandboxPolicyResult BuildSandboxPolicy(const SandboxInputs& inputs) {
   // say it: Landlock has no deny form, so expressing this there would mean not
   // granting the workspace at all.
   if (!inputs.workspace.empty()) {
-    result.policy.denied_writes = {inputs.workspace + "/.uagent/.config",
-                                   inputs.workspace + "/.mcp.json"};
+    result.policy.denied_writes = {
+        inputs.workspace + "/.uagent/.config",
+        inputs.workspace + "/.uagent/system-prompt.json",
+        inputs.workspace + "/.mcp.json"};
   }
   return result;
 }

@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/adaptive_system.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -28,6 +29,7 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/editor.h"
 
 namespace uagent {
 
@@ -479,66 +481,27 @@ void RawComposer::Remount() {
 // edits a long shell command the same way. The composer holds 16KB and renders
 // newlines as a glyph, which is writable but not somewhere to compose a long
 // prompt.
-bool RawComposer::EditExternally() {
-  const char* editor = getenv("VISUAL");
-  if (editor == nullptr || *editor == 0) editor = getenv("EDITOR");
-  if (editor == nullptr || *editor == 0) return false;
-
-  std::string path =
-      UagentDir("drafts") + "/draft-" + std::to_string(getpid()) + ".md";
-  std::string error;
-  if (!AtomicWriteFile(path, buffer_, kPrivateFileMode, /*preserve_mode=*/false,
-                       error)) {
-    return false;
-  }
-
-  // Cooked, and the signal-safe restore disarmed, for as long as the editor
-  // owns the terminal. Its stdio is the real terminal rather than the
-  // descriptors this process holds, because stdout here is the transcript pipe.
+bool RawComposer::EditTextExternally(std::string& text) {
   Stop();
-  posix_spawn_file_actions_t actions;
-  posix_spawn_file_actions_init(&actions);
-  for (int fd : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
-    posix_spawn_file_actions_adddup2(&actions, output_.TerminalFd(), fd);
-  }
-  // Through a shell because an editor is routinely configured with arguments.
-  std::string command = std::string(editor) + " " + ShellQuote(path);
-  const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
-  pid_t pid = 0;
-  int spawned =
-      posix_spawnp(&pid, "sh", &actions, nullptr,
-                   const_cast<char* const*>(argv), ProcessEnvironment());
-  posix_spawn_file_actions_destroy(&actions);
-  if (spawned == 0) {
-    int status = 0;
-    while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
-    }
-  }
+  const bool edited =
+      EditExternalText(text, output_.TerminalFd(), kAdaptiveSystemBytes);
   Start();
-
-  bool restored = false;
-  if (spawned == 0) {
-    std::ifstream saved(path, std::ios::binary);
-    if (saved) {
-      std::string text((std::istreambuf_iterator<char>(saved)),
-                       std::istreambuf_iterator<char>());
-      // An editor adds the trailing newline a file is supposed to end with;
-      // the draft is a line of input and does not want it.
-      while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
-        text.pop_back();
-      }
-      buffer_ = Utf8Prefix(std::move(text), kInputBufferBytes);
-      cursor_ = buffer_.size();
-      restored = true;
-    }
-  }
-  std::error_code ignored;
-  std::filesystem::remove(path, ignored);
-  // The editor painted over the screen, so nothing that was drawn is still
-  // there to erase.
   Detach();
+  return edited;
+}
+
+bool RawComposer::EditExternally() {
+  auto text = buffer_;
+  const bool edited = EditTextExternally(text);
+  if (edited) {
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
+      text.pop_back();
+    }
+    buffer_ = Utf8Prefix(std::move(text), kInputBufferBytes);
+    cursor_ = buffer_.size();
+  }
   RenderFromTop();
-  return restored;
+  return edited;
 }
 
 void RawComposer::Detach() {
@@ -876,11 +839,13 @@ InputBroker::InputBroker() {
 InputBroker::~InputBroker() { Shutdown(); }
 
 std::string InputBroker::Read(const std::string& prompt, bool* eof,
-                              bool keep_history, const std::string& initial) {
+                              bool keep_history, const std::string& initial,
+                              bool editor) {
   std::unique_lock<std::mutex> lock(mutex_);
   prompt_ = prompt;
   initial_ = initial;
   keep_history_ = keep_history;
+  editor_ = editor;
   pending_ = true;
   answered_ = false;
   Notify();
@@ -892,13 +857,14 @@ std::string InputBroker::Read(const std::string& prompt, bool* eof,
 void InputBroker::DrainWake() const { DrainDescriptor(wake_read_.Get()); }
 
 bool InputBroker::Take(std::string& prompt, std::string& initial,
-                       bool& keep_history) {
+                       bool& keep_history, bool* editor) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!pending_) return false;
   pending_ = false;
   prompt = prompt_;
   initial = initial_;
   keep_history = keep_history_;
+  if (editor) *editor = editor_;
   return true;
 }
 

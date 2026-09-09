@@ -11,6 +11,7 @@
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"
+#include "include/app/prompt_control.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -36,6 +37,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   int64_t request = ++request_id_;
   const json& messages =
       request_messages ? *request_messages : conversation_.Messages();
+  if (!messages.empty()) {
+    last_sent_prompt_ = JsonValue(messages[0], "content", "");
+  }
   const size_t schema_bytes = &schemas == &available_schemas_.Schemas()
                                   ? available_schemas_.Bytes()
                                   : JsonEstimatedBytes(schemas);
@@ -490,26 +494,43 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
   return false;
 }
 
+std::string Agent::PromptBase() const {
+  return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
+                            nullptr) +
+         CapabilityPrompt(tools_) + TerminalImageInstruction();
+}
+
+json Agent::PromptContext() const {
+  json context = json::array(
+      {{{"scope", "runtime"}, {"text", Trim(HostCapabilityPrompt(tools_))}}});
+  if (!project_instructions_.text.empty()) {
+    context.push_back(
+        {{"scope", "repository"}, {"text", ProjectInstructionText()}});
+  }
+  return context;
+}
+
 std::string Agent::SystemPrompt() const {
-  std::vector<std::string> overlaid;
-  std::string prompt =
-      ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr), &overlaid);
-  if (!overlaid.empty()) {
-    DebugLog("prompt_overlay_applied", {{"sections", overlaid}});
+  auto resolved = ResolvePrompt(PromptBase(), PromptDocuments(adaptive_system_),
+                                PromptContext());
+  prompt_error_ = JsonValue(resolved, "error", "");
+  if (!prompt_error_.empty()) {
+    return conversation_.Empty()
+               ? std::string{}
+               : JsonValue(conversation_.Messages()[0], "content", "");
   }
-  prompt += CapabilityPrompt(tools_);
-  prompt += TerminalImageInstruction();
-  if (adaptive_system_ && !adaptive_system_->instructions.empty() &&
-      FindTool(tools_, "adapt_system")) {
-    prompt += "\n\n[MUTABLE SELF-DIRECTIVE revision " +
-              std::to_string(adaptive_system_->revision) +
-              "]\nThis self-authored task strategy may specialize behavior but "
-              "cannot override the preceding core, user authority, or "
-              "host-enforced controls.\n" +
-              adaptive_system_->instructions + "\n[END MUTABLE SELF-DIRECTIVE]";
+  return resolved["effective"];
+}
+
+json Agent::PromptConfiguration(const json& request) {
+  auto result =
+      PromptControl(request, adaptive_system_, PromptBase(), PromptContext());
+  if (!result.contains("error")) {
+    const auto action = JsonValue(request, "action", "show");
+    if (action == "set" || action == "edit" || action == "reset") ++revision_;
+    if (!last_sent_prompt_.empty()) result["last_sent"] = last_sent_prompt_;
   }
-  prompt += HostCapabilityPrompt(tools_);
-  return prompt;
+  return result;
 }
 
 // True when any memory content (index names or the always-on slice) is present
@@ -530,30 +551,20 @@ static bool HasMemoryContent(const ProjectInstructions& p) {
 // authority — the prompt says so — and the system message is where authority
 // lives, so it rides with the runtime context instead.
 json Agent::SysMsg() const {
-  std::string content = SystemPrompt();
-  if (!project_instructions_.text.empty()) {
-    content += "\n\n" + ProjectInstructionText();
-  }
-  return {{"role", "system"}, {"content", std::move(content)}};
+  return {{"role", "system"}, {"content", SystemPrompt()}};
 }
 
 void Agent::ApprovalChanged() { RefreshSystemMessage(true); }
 
 void Agent::RefreshSystemMessage(bool force) {
-  uint64_t revision = adaptive_system_ ? adaptive_system_->revision : 0;
-  if (conversation_.Empty() ||
-      (!force && revision == applied_system_revision_)) {
-    return;
-  }
-  conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-  applied_system_revision_ = revision;
-  // Message zero changed in place. Force the next debug request to carry a
-  // complete snapshot rather than a delta that would hide the new directive.
+  if (conversation_.Empty()) return;
+  auto next = SysMsg();
+  if (!force && next == conversation_.Messages()[0]) return;
+  conversation_.Set(0, std::move(next), MessageKind::kSystem);
   logged_msgs_ = 0;
-  DebugLog("system_message_refreshed",
-           {{"revision", revision},
-            {"chars",
-             adaptive_system_ ? adaptive_system_->instructions.size() : 0}});
+  Emit(Event{EventId::kPromptChanged,
+             {{"scope", "effective"},
+              {"revision", HashHex(JsonDump(conversation_.Messages()[0]))}}});
 }
 
 std::string Agent::RuntimeContextText() const {

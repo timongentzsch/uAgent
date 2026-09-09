@@ -319,6 +319,7 @@ export interface Configuration {
   effects: { key: string; effect: string }[];
 }
 export interface CommandResults {
+  prompt: PromptResult;
   memory: LibraryResult;
   skills: LibraryResult;
   schedule: ScheduleResult;
@@ -403,10 +404,32 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
+  | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
   | { type: "image"; url: string }
   | { type: "new" | "settings" };
+
+export interface PromptDocument {
+  scope: string;
+  mode: "inherit" | "overlay" | "replace";
+  text: string;
+  revision: string;
+  path?: string;
+  active?: boolean;
+}
+export interface PromptResult {
+  item: PromptDocument;
+  effective: string;
+  last_sent?: string;
+  inherited: Record<string, string>;
+  sources: PromptDocument[];
+  bytes: number;
+  digest: string;
+  diff?: string;
+  applies?: string;
+  preview_kind?: string;
+}
 
 export interface LibraryItem {
   provenance?: {

@@ -131,11 +131,15 @@ std::string PromptMarkdown() {
   std::string out = "# System prompt\n\n";
   out += kGenerated;
   out +=
-      "This is the immutable base every session starts from. Host "
-      "capabilities, runtime context, project instructions, the memory index "
-      "and any mutable self-directive are assembled per session and recorded "
-      "by `--debug`. `UAGENT_PROMPT_OVERLAY` may replace the sections listed "
-      "below for an experiment; it changes prompt text only.\n\n";
+      "This is the built-in behavioral prompt. Global, project and "
+      "conversation "
+      "documents can overlay it or replace it completely. Runtime facts and "
+      "repository instructions remain separate context sources; memory stays "
+      "outside the system message. Use `/prompt` or `--show-system-prompt "
+      "--json` "
+      "to inspect effective text and sources. `UAGENT_PROMPT_OVERLAY` retains "
+      "its section-editing behavior for experiments before scope "
+      "resolution.\n\n";
   out += "## Base (" +
          std::to_string(JsonValue(surface, "base_chars", int64_t{0})) +
          " chars)\n\n```text\n" + JsonValue(surface, "base", std::string()) +

@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent.h"
 #include "include/agent/prompt.h"
 #include "include/api.h"
 #include "include/app/config_proposal.h"
@@ -257,37 +258,18 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kPrompt: {
-      // Identity, not a copy: message zero is already in the model's context,
-      // so what cannot be seen from there is which base, which conditional
-      // sections and which experiment produced it.
-      std::string base = SystemPromptBase();
-      json sections = json::array();
-      for (std::string_view section : PromptSections()) {
-        sections.push_back(section);
+      if (inputs.agent) {
+        return inputs.agent->PromptConfiguration({{"action", "show"}});
       }
-      std::string capabilities = CapabilityPrompt(inputs.tools);
-      json triggers = json::array();
-      for (const char* trigger :
-           {"activity", "web_search", "web_fetch", "adapt_system"}) {
-        if (FindTool(inputs.tools, trigger)) triggers.push_back(trigger);
-      }
-      out["base"] = {{"chars", base.size()},
-                     {"digest", HashHex(base).substr(0, 12)},
-                     {"sections", std::move(sections)}};
-      out["capabilities"] = {{"chars", capabilities.size()},
-                             {"triggers", std::move(triggers)}};
-      out["host_capabilities"] = {
-          {"chars", HostCapabilityPrompt(inputs.tools).size()}};
-      std::string digest;
-      json overlay = PromptOverlay(&digest);
-      std::vector<std::string> applied;
-      ApplyPromptOverlay(base, overlay, &applied);
-      out["overlay"] = {{"path", PromptOverlayPath()},
-                        {"digest", digest},
-                        {"applied", applied}};
-      out["note"] =
-          "Project instructions, the memory index and any mutable directive "
-          "are appended per session; --debug records the exact bytes sent.";
+      out.update(ResolvePrompt(
+          ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
+                             nullptr) +
+              CapabilityPrompt(inputs.tools),
+          PromptDocuments(nullptr),
+          {{{"scope", "runtime"},
+            {"text", Trim(HostCapabilityPrompt(inputs.tools))}}}));
+      out["preview_kind"] =
+          "Base prompt without active conversation or repository context.";
       break;
     }
     case SelfTopic::kTools: {

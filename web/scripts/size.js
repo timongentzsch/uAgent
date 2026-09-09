@@ -37,7 +37,7 @@ for (const path of await readdir(root, {
 const budgets = {
   initial_js: { raw: 56 * 1024, gzip: 21 * 1024 },
   initial_css: { raw: 16 * 1024, gzip: 4.5 * 1024 },
-  total: { raw: 850 * 1024, gzip: 500 * 1024 },
+  total: { raw: 860 * 1024, gzip: 500 * 1024 },
 };
 console.log(JSON.stringify({ bytes: sizes, budgets }, null, 2));
 for (const [group, limits] of Object.entries(budgets)) {

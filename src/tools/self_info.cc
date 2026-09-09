@@ -47,7 +47,15 @@ Tool SelfInfoTool(SelfDescriptionProvider describe) {
         }
         std::string name = Trim(JsonValue(arguments, "name", ""));
         json described = describe(topic, name);
-        return ToolSuccess(JsonDump(described, 2));
+        if (topic == SelfTopic::kPrompt) {
+          described.erase("inherited");
+          described.erase("last_sent");
+        }
+        std::string output = JsonDump(described, 2);
+        const auto limit = topic == SelfTopic::kPrompt
+                               ? static_cast<int64_t>(output.size())
+                               : -1;
+        return ToolSuccess(std::move(output), limit);
       });
   // Inspect-only and never a workspace mutation. Withheld from lean children
   // all the same: a delegated task is briefed, not left to introspect the

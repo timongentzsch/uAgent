@@ -14,7 +14,7 @@
 namespace uagent::web {
 inline constexpr int kProtocol = 1;
 inline constexpr size_t kFrameBytes = size_t{1024} * 1024;
-inline constexpr size_t kCommandBytes = size_t{64} * 1024;
+inline constexpr size_t kCommandBytes = size_t{512} * 1024;
 inline constexpr size_t kEventBytes = size_t{64} * 1024;
 inline constexpr size_t kQueueBytes = size_t{4} * 1024 * 1024;
 inline constexpr size_t kWorkerLimit = 4;

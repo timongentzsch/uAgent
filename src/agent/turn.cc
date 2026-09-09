@@ -294,6 +294,10 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   DrainCollaboratorMailIntoSteering();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
+  if (!prompt_error_.empty()) {
+    FailTurn(state, prompt_error_);
+    return StepFlow::kEndTurn;
+  }
   if (SteeringState().Requested()) return InterruptTurn(state);
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
@@ -770,11 +774,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();
-  if (!conversation_.Empty()) {
-    conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-    applied_system_revision_ =
-        adaptive_system_ ? adaptive_system_->revision : 0;
-  }
+  RefreshSystemMessage();
   Emit(Event{EventId::kTurnStarted,
              {{"turn", turn_id_},
               {"origin", "user"},

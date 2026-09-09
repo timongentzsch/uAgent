@@ -431,7 +431,7 @@ choices, not a claim of guaranteed notification delivery.
 | --- | --- |
 | Persistent agent workers | 4 |
 | HTTP threads / pending requests / SSE views | 12 / 24 / 4 |
-| IPC frame / command / individual live event | 1 MiB / 64 KiB / 64 KiB |
+| IPC frame / command / individual live event | 1 MiB / 512 KiB / 64 KiB |
 | Worker output queue / master event replay | 4 MiB each |
 | Master replay / per-worker live events | 2,048 / 512 (also byte bounded) |
 | Active history page / browser retained DOM messages | 64 / 256 plus bounded live preview |
@@ -528,10 +528,11 @@ The complete bundle is 857,416 raw bytes / 464,317 gzip level-6 bytes. The serve
 serves identity bytes; gzip is a comparison, not measured transfer compression.
 The baseline also records initial JS/CSS, lazy assets and service-worker precache.
 CI caps initial JS at 56/21 KiB raw/gzip, CSS at 16/4.5 KiB and total assets at
-850/500 KiB. Native review triggers are 4 MiB stripped and 32 MiB idle master RSS.
+860/500 KiB. The total raw asset ceiling includes 10 KiB of additional headroom
+for the lazy system-prompt editor; initial JS/CSS ceilings are unchanged. Native review triggers are 4 MiB stripped and 32 MiB idle master RSS.
 CLI growth is 255,008 bytes over the earlier reference, exceeding the original
 128 KiB review trigger; the shared management, configuration, fork and HTTP
-inspection capabilities account for additional CLI code. No budget was raised.
+inspection capabilities account for additional CLI code.
 
 The 2,000-message browser fixture must open its 64-message window within three
 seconds and retain no more than 256 rendered history blocks. Ten browser tests

@@ -32,6 +32,11 @@ inline bool SelfConfigurationPath(const std::string& path) {
   auto matches = [&](const std::string& target) {
     return !target.empty() && CanonicalAccessPath(target) == candidate;
   };
+  if ((candidate.filename() == "system-prompt.json" &&
+       candidate.parent_path().filename() == ".uagent") ||
+      matches((std::filesystem::path(GlobalBase()) / "system-prompt.json")
+                  .string()))
+    return true;
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
       matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE"))) {
     return true;
@@ -54,7 +59,8 @@ inline ApprovalClass PathApprovalClass(const std::string& path,
                                        PathAccess access) {
   if (!SelfConfigurationPath(path)) return ApprovalClass::kNone;
   if (access == PathAccess::kRead &&
-      CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath())) {
+      (CanonicalAccessPath(path) == CanonicalAccessPath(TrustStorePath()) ||
+       CanonicalAccessPath(path).filename() == "system-prompt.json")) {
     return ApprovalClass::kNone;
   }
   return ApprovalClass::kMandatoryHuman;

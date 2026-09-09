@@ -58,6 +58,7 @@ const composer = () => import("./composer.tsx");
 const messages = () => import("./message.tsx");
 const rawDialog = () => import("./raw.tsx");
 const statisticsDialog = () => import("./statistics.tsx");
+const promptDialog = () => import("./prompt.tsx");
 const settingsDialog = () => import("./settings.tsx");
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
@@ -68,10 +69,20 @@ function App() {
     () => matchMedia("(max-width: 900px)").matches,
   );
   const [modal, setModal] = useState<AppModal | null>(null);
-  const onResult = useCallback(
-    (value: JSONValue) => setModal({ type: "raw", value }),
-    [],
-  );
+  const onResult = useCallback((value: JSONValue) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      value.editor === true
+    ) {
+      setModal({
+        type: "prompt",
+        scope: String(value.scope || "conversation"),
+        edit: true,
+      });
+    } else setModal({ type: "raw", value });
+  }, []);
   const {
     managementVersion,
     authenticated,
@@ -298,6 +309,18 @@ function App() {
         await command("activate", { id: result.result.id, generation: "" });
         await load(result.result.id);
       }
+    } else if (
+      name === "/prompt" &&
+      (!argument ||
+        /^(show|edit)(?: --scope (global|project|conversation))?$/.test(
+          argument,
+        ))
+    ) {
+      setModal({
+        type: "prompt",
+        scope: argument.match(/--scope (\w+)/)?.[1],
+        edit: argument.startsWith("edit"),
+      });
     } else if (name === "/http") {
       const exchanges = snapshot?.state?.http || [];
       const [number, part = "request"] = argument.split(/\s+/);
@@ -954,6 +977,7 @@ function App() {
         >
           <Deferred
             load={rawDialog}
+            prompt={() => setModal({ type: "prompt" })}
             fallback={
               <RawSkeleton
                 http={modal.context || modal.exchanges !== undefined}
@@ -969,6 +993,24 @@ function App() {
             context={modal.context}
             prepare={modal.prepare}
             part={modal.part}
+          />
+        </Modal>
+      )}
+      {modal?.type === "prompt" && (
+        <Modal
+          title="System prompt"
+          className="raw-view"
+          close={() => setModal(null)}
+        >
+          <Deferred
+            load={promptDialog}
+            fallback={<Skeleton rows={12} label="Loading system prompt…" />}
+            session={session}
+            projects={projects}
+            online={online}
+            version={managementVersion}
+            scope={modal.scope}
+            edit={modal.edit}
           />
         </Modal>
       )}
@@ -1002,6 +1044,7 @@ function App() {
             selected={selected}
             session={session}
             logout={logout}
+            prompt={() => setModal({ type: "prompt" })}
           />
         </Modal>
       )}

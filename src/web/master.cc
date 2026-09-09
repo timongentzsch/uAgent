@@ -1168,6 +1168,7 @@ class Master {
   std::deque<std::string> request_order_;
   std::atomic<bool> stopping_{false};
   FileStamp library_stamp_, schedule_stamp_;
+  std::map<std::string, FileStamp> prompt_stamps_;
   json schedule_state_ = json::object(), scheduled_view_;
   std::unique_ptr<PushSender> push_;
 };
@@ -1243,6 +1244,21 @@ void Master::StartScheduledRun(const json& run) {
 void Master::TickSchedules() {
   auto pending_updates = std::exchange(run_updates_, {});
   for (const auto& update : pending_updates) RecordRun(update);
+  std::map<std::string, FileStamp> prompts;
+  prompts[(std::filesystem::path(GlobalBase()) / "system-prompt.json")
+              .string()] = {};
+  {
+    std::lock_guard lock(mutex_);
+    for (const auto& [id, session] : sessions_) {
+      prompts[(ProjectBase(session->cwd) / "system-prompt.json").string()] = {};
+    }
+  }
+  for (auto& [path, stamp] : prompts) stamp = SnapshotFile(path);
+  if (prompts != prompt_stamps_) {
+    prompt_stamps_ = std::move(prompts);
+    std::lock_guard lock(mutex_);
+    Publish("", "", {{"kind", "management.changed"}});
+  }
   const auto library = SnapshotFile(LibraryChangePath());
   if (library != library_stamp_) {
     library_stamp_ = library;
@@ -1516,7 +1532,7 @@ void Master::Command(const Request& request, Response& response) {
   json command = json::parse(request.body, nullptr, false);
   const auto category = JsonValue(command, "kind", "");
   if (request.body.size() > size_t{64} * 1024 && category != "memory" &&
-      category != "skills") {
+      category != "skills" && category != "prompt") {
     Error(response, "command exceeds limit", 413);
     return;
   }
@@ -1593,7 +1609,9 @@ void Master::Command(const Request& request, Response& response) {
       error = "push is unavailable or queue is full";
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
-             kind == "models") {
+             kind == "models" ||
+             (kind == "prompt" &&
+              JsonValue(command, "session_id", "").empty())) {
     lock.unlock();
     auto result = ControlProcess(command);
     lock.lock();
@@ -1726,7 +1744,7 @@ void Master::Command(const Request& request, Response& response) {
                  kind == "reply" || kind == "refresh" || kind == "rename" ||
                  kind == "model" || kind == "activity" ||
                  kind == "permissions" || kind == "config" ||
-                 kind == "context" || kind == "fork") {
+                 kind == "context" || kind == "fork" || kind == "prompt") {
         command["attachments"] = json::array();
         if (const json* ids = JsonArray(command, "attachment_ids");
             ids && !ids->empty()) {

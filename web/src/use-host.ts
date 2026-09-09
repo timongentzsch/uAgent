@@ -252,7 +252,10 @@ export function useHost(
           setOnline(false);
           return;
         }
-        if (event.kind === "management.changed") {
+        if (
+          event.kind === "management.changed" ||
+          (event.kind === "event" && event.type === "prompt.changed")
+        ) {
           setManagementVersion((version) => version + 1);
           return;
         }

@@ -22,7 +22,7 @@ namespace uagent {
 void TestToolExecutionPolicy() {
   AdaptiveSystemState adaptive;
   Tool adapt = AdaptSystemTool(adaptive);
-  CHECK(adapt.capabilities == 0);
+  CHECK(adapt.capabilities == Capability(ToolCapability::kMutate));
   CHECK(adapt.description.find("exception, not a planning ritual") !=
         std::string::npos);
   CHECK(adapt.description.find("triggering observation") != std::string::npos);

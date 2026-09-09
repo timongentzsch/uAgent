@@ -195,6 +195,7 @@ Image bytes are not embedded in the session.
 - [Persistence](docs/PERSISTENCE.md)
 - [Web interface](docs/WEB.md)
 - [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
+- [System prompts](docs/SYSTEM_PROMPTS.md)
 - [Prompt caching](docs/CACHING.md)
 - [Testing](docs/TESTING.md)
 - [Bounded self-improvement](docs/SELF_IMPROVEMENT.md)

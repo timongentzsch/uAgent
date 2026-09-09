@@ -45,6 +45,48 @@ def test_plain_turn(root, home, *, binary):
         assert_true(result.stdout.strip() == "ok", result.stdout)
 
 
+def test_prompt_documents_refresh_and_standalone_inspection(root, home, *, binary):
+    global_path = home / ".uagent" / "system-prompt.json"
+    project_path = root / ".uagent" / "system-prompt.json"
+    project_path.parent.mkdir(parents=True, exist_ok=True)
+    global_path.parent.mkdir(parents=True, exist_ok=True)
+    global_path.write_text(json.dumps({"mode": "overlay", "text": "global-old"}))
+    project_path.write_text(json.dumps({"mode": "replace", "text": "project replacement"}))
+    with Server([event({"content": "unexpected model call"})]) as server:
+        env = base_env(home, server.url)
+        result = run(root, env, "--show-system-prompt", "--json", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        described = json.loads(result.stdout)
+        assert_true(described["effective"].startswith("project replacement\n\n"), described)
+        assert_true("global-old" not in described["effective"], described)
+        assert_true(server.requests == [], server.requests)
+    project_path.unlink()
+
+    def initial(_, body):
+        assert_true("global-old" in body["messages"][0]["content"], body)
+        global_path.write_text(json.dumps({"mode": "overlay", "text": "global-new"}))
+        return tool_call("uagent_info", {"topic": "prompt"}, call_id="inspect-prompt")
+
+    def refreshed(_, body):
+        prompt = body["messages"][0]["content"]
+        assert_true("global-new" in prompt and "global-old" not in prompt, prompt)
+        described = json.loads(tool_results(body["messages"])[-1])
+        assert_true(described["effective"] == prompt, described)
+        return event({"content": "prompt-refreshed"})
+
+    with Server([initial, refreshed]) as server:
+        result = run(root, base_env(home, server.url), "-p", "inspect", binary=binary)
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "prompt-refreshed", result.stdout)
+    global_path.write_text("invalid json")
+    with Server([event({"content": "unexpected model call"})]) as server:
+        result = run(root, base_env(home, server.url), "-p", "inspect", binary=binary)
+        assert_true(result.returncode != 0, result.stdout)
+        assert_true("Invalid system prompt" in result.stderr, result.stderr)
+        assert_true(server.requests == [], server.requests)
+        assert_true(global_path.read_text() == "invalid json", "invalid file was changed")
+
+
 def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
     def initial(_, body):
         assert_true("adapt_system" in function_names(body), function_names(body))
@@ -60,9 +102,12 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
 
     def replace(_, body):
         system = body["messages"][0]["content"]
-        assert_true("MUTABLE SELF-DIRECTIVE revision 1" in system, system)
+        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
         assert_true("Inspect broadly and challenge" in system, system)
-        assert_true(system.rfind("[HOST CAPABILITIES]") > system.rfind("[END MUTABLE"), system)
+        assert_true(
+            system.rfind("[HOST CAPABILITIES]") > system.rfind("Inspect broadly and challenge"),
+            system,
+        )
         return tool_call(
             "adapt_system",
             {
@@ -74,7 +119,7 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
 
     def clear(_, body):
         system = body["messages"][0]["content"]
-        assert_true("MUTABLE SELF-DIRECTIVE revision 2" in system, system)
+        assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
         assert_true("validate the localized invariant" in system, system)
         assert_true("Inspect broadly and challenge" not in system, system)
         return tool_call(
@@ -87,7 +132,7 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         system = body["messages"][0]["content"]
         assert_true("MUTABLE SELF-DIRECTIVE" not in system, system)
         results = tool_results(body["messages"])
-        assert_true(any("revision 3 cleared" in result for result in results), results)
+        assert_true(any("Next model request" in result for result in results), results)
         return event({"content": "adaptive-system-ok"})
 
     with Server([initial, replace, clear, finish]) as server:
@@ -101,9 +146,10 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         assert_true(result.stdout.strip().endswith("adaptive-system-ok"), result.stdout)
         records = [json.loads(line) for line in trace.read_text().splitlines()]
         revisions = [
-            record["data"]["revision"]
+            int(record["data"]["revision"])
             for record in records
-            if record.get("event") == "system_adapted"
+            if record.get("event") == "prompt_changed"
+            and record["data"].get("scope") == "conversation"
         ]
         assert_true(revisions == [1, 2, 3], revisions)
         snapshots = [record["data"] for record in records if record.get("event") == "model_request"]

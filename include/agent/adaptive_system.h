@@ -10,16 +10,18 @@
 
 namespace uagent {
 
-inline constexpr size_t kAdaptiveSystemBytes = 4096;
+inline constexpr size_t kAdaptiveSystemBytes = size_t{64} * 1024;
 inline constexpr size_t kAdaptiveSystemReasonBytes = 512;
 
 struct AdaptiveSystemState {
   std::string instructions;
   uint64_t revision = 0;
+  std::string mode = "overlay";
 
   void Reset() {
     instructions.clear();
     revision = 0;
+    mode = "overlay";
   }
 };
 

@@ -38,6 +38,7 @@
 #include "include/mcp/register.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/adapt_system.h"
 #include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
@@ -322,7 +323,7 @@ std::vector<Tool> BuildTools(AppContext& context,
             topic, name,
             SelfDescriptionInputs{app->config_manager, app->runtime.config,
                                   app->runtime.api, app->tools,
-                                  ApprovalIsAutomatic()});
+                                  ApprovalIsAutomatic(), app->agent.get()});
       }));
   // Persisting configuration is a mandatory-human action, so it is offered
   // only where a person can actually answer. The approver denies the same
@@ -682,8 +683,12 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   json trusted_snapshot = nullptr;
   std::string error;
   int exit_code = 1;
-  if (!memory_child && !ResolveProjectTrust(options, trusted, trusted_snapshot,
-                                            error, exit_code)) {
+  if (options.show_system_prompt) {
+    trusted = ProjectConfigTrusted(&trusted_snapshot);
+  }
+  if (!options.show_system_prompt && !memory_child &&
+      !ResolveProjectTrust(options, trusted, trusted_snapshot, error,
+                           exit_code)) {
     return Failure(std::move(error), exit_code);
   }
 
@@ -752,14 +757,14 @@ BootstrapResult Bootstrap(Options options, const char* executable,
 
   context->provider = ConfigureProvider(api);
   PrintWarning(context->provider.warning);
-  if (api.base_url.empty()) {
+  if (api.base_url.empty() && !context->options.show_system_prompt) {
     DebugLog("startup_error", {{"error", "UAGENT_BASE_URL is not set"}});
     return Failure(
         "no provider configured — set OPENROUTER_API_KEY or point "
         "UAGENT_BASE_URL at a supported API endpoint, e.g.\n"
         "  export UAGENT_BASE_URL=http://localhost:8080/v1");
   }
-  if (!ProbeModel(api)) {
+  if (!context->options.show_system_prompt && !ProbeModel(api)) {
     DebugLog("startup_error",
              {{"error", "no usable model"}, {"base_url", api.base_url}});
     return Failure("UAGENT_MODEL is not set and " + api.base_url +
@@ -772,6 +777,14 @@ BootstrapResult Bootstrap(Options options, const char* executable,
   context->tools =
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
+  for (auto& tool : context->tools) {
+    if (tool.name == "adapt_system") {
+      tool = AdaptSystemTool(context->runtime.adaptive_system,
+                             [app = context.get()](const json& request) {
+                               return app->agent->PromptConfiguration(request);
+                             });
+    }
+  }
   if (context->options.prompt.empty() && !channel) PrintStartupHints();
   context->permission_override.store(context->options.yolo ? 1 : -1);
   AppContext* app = context.get();

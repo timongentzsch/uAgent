@@ -49,6 +49,7 @@ class Agent {
         AdaptiveSystemState* adaptive_system = nullptr);
 
   void Reset();
+  json PromptConfiguration(const json& request);
 
   const Usage& SessionUsage() const { return session_usage_; }
   json RouteUsageJson() const { return uagent::RouteUsageJson(route_usage_); }
@@ -286,6 +287,8 @@ class Agent {
   bool DegradeAndRetry(const ChatResult& result);
 
   std::string SystemPrompt() const;
+  std::string PromptBase() const;
+  json PromptContext() const;
   void RefreshSystemMessage(bool force = false);
   std::string RuntimeContextText() const;
 
@@ -337,7 +340,8 @@ class Agent {
   ProjectInstructions project_instructions_;
   std::vector<Skill> skills_;
   AdaptiveSystemState* adaptive_system_ = nullptr;
-  uint64_t applied_system_revision_ = 0;
+  mutable std::string prompt_error_;
+  std::string last_sent_prompt_;
   Conversation conversation_;
   mutable std::atomic<int64_t> context_snapshot_{0};
   SearchTrace turn_search_trace_;

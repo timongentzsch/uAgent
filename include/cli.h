@@ -21,6 +21,7 @@ enum class SlashCommandId {
   kConfig,
   kFork,
   kPermissions,
+  kPrompt,
   kHttp,
   kDiff,
   kEffort,

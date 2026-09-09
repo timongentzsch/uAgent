@@ -16,6 +16,7 @@
 #include "include/agent/session_view.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
+#include "include/app/prompt_control.h"
 #include "include/app/self_description.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -585,8 +586,12 @@ json AgentsJson(const AppSession& session) {
 }
 
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
-  return {session.context.config_manager, session.Runtime().config,
-          session.ApiClient(), session.context.tools, ApprovalIsAutomatic()};
+  return {session.context.config_manager,
+          session.Runtime().config,
+          session.ApiClient(),
+          session.context.tools,
+          ApprovalIsAutomatic(),
+          &session.ActiveAgent()};
 }
 
 json CommandResult(const AppSession& session,
@@ -613,6 +618,7 @@ json CommandResult(const AppSession& session,
       return {{"routes", session.ActiveAgent().RouteUsageJson()},
               {"total", UsageJson(session.ActiveAgent().SessionUsage())},
               {"session_budget", session.ApiClient().config.session_budget}};
+    case SlashCommandId::kPrompt:
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:
     case SlashCommandId::kSchedule:
@@ -670,6 +676,9 @@ json PermissionControl(AppContext& context, const json& request) {
 
 json SessionControl(AppSession& session, const json& request) {
   std::string kind = JsonValue(request, "kind", "");
+  if (kind == "prompt") {
+    return session.ActiveAgent().PromptConfiguration(request);
+  }
   if (kind == "permissions") return PermissionControl(session.context, request);
   if (kind == "fork") {
     std::string error;
@@ -1019,6 +1028,20 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kCost:
       HandleCost(session);
       break;
+    case SlashCommandId::kPrompt:
+      result = PromptCommand(
+          command.argument,
+          [&session](const json& request) {
+            return session.ActiveAgent().PromptConfiguration(request);
+          },
+          session.context.channel != nullptr);
+      if (!session.context.channel) {
+        printf("%s\n", TerminalSafe(result.contains("error")
+                                        ? JsonValue(result, "error", "")
+                                        : JsonValue(result, "effective", ""))
+                           .c_str());
+      }
+      return false;
     case SlashCommandId::kMemory:
     case SlashCommandId::kSkills:
     case SlashCommandId::kSchedule:

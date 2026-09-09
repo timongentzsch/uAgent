@@ -13,10 +13,11 @@ export default function Raw({
   value,
   exchanges,
   latest,
+  prompt,
   context,
   prepare,
   part = "request",
-}: RawOptions & { latest?: Exchange[] }) {
+}: RawOptions & { latest?: Exchange[]; prompt?: () => void }) {
   const http = context || exchanges !== undefined;
   const [captured, setCaptured] = useState(exchanges || []);
   const [attempt, setAttempt] = useState(
@@ -167,6 +168,7 @@ export default function Raw({
           <p class="muted small">This capture is incomplete.</p>
         )}
       </div>
+      {context && prompt && <button onClick={prompt}>System prompt</button>}
       <div
         class="raw-body"
         id={`${prefix}-body`}

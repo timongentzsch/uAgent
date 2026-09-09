@@ -156,6 +156,32 @@ int Main(int argc, char** argv) {
     return ControlMain(parsed.options.control);
   }
 
+  if (parsed.options.show_system_prompt) {
+    if (parsed.options.web || !parsed.options.prompt.empty() ||
+        parsed.options.json_stream || parsed.options.resume_latest ||
+        parsed.options.resume_pick || !parsed.options.attach_paths.empty()) {
+      fprintf(stderr,
+              "--show-system-prompt is a standalone inspection command\n");
+      return 2;
+    }
+    const bool structured = parsed.options.json;
+    HeadlessOutput silence;
+    if (!silence.Silence()) return 1;
+    auto boot = Bootstrap(std::move(parsed.options), argv[0], observability);
+    json result =
+        boot.Ok()
+            ? boot.context->agent->PromptConfiguration({{"action", "show"}})
+            : json{{"error", boot.error}};
+    boot.context.reset();
+    silence.Restore();
+    printf("%s\n",
+           structured
+               ? JsonDump(result, 2).c_str()
+               : JsonValue(result,
+                           result.contains("error") ? "error" : "effective", "")
+                     .c_str());
+    return result.contains("error") ? 1 : 0;
+  }
   const bool json_stream = parsed.options.json_stream;
   if (parsed.options.web) {
 #ifdef UAGENT_WEB

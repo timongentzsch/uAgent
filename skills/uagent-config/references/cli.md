@@ -5,7 +5,8 @@
 
 | Flag | Value | Description |
 | --- | --- | --- |
-| `--control` | `JSON|-` | run a native memory, skills or schedule operation without a model |
+| `--show-system-prompt` | — | show the resolved system prompt without a model call; --json includes sources |
+| `--control` | `JSON|-` | run a native memory, skills, schedule or prompt operation without a model |
 | `--web` | — | start or reuse this user's global web application |
 | `--web-port` | `PORT` | loopback web listener port (default 8080) |
 | `--web-origin` | `ORIGIN` | exact browser origin behind a local HTTPS or tailnet proxy |

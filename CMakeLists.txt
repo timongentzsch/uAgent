@@ -87,6 +87,7 @@ add_library(
   src/agent/agent.cc
   src/agent/conversation.cc
   src/agent/prompt.cc
+  src/agent/prompt_profile.cc
   src/agent/request.cc
   src/agent/session_store.cc
   src/agent/session_view.cc
@@ -105,6 +106,7 @@ add_library(
   src/app/config_proposal.cc
   src/app/config_control.cc
   src/app/library.cc
+  src/app/prompt_control.cc
   src/app/control.cc
   src/app/schedule.cc
   src/core/capture.cc
@@ -160,6 +162,7 @@ add_library(
   src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/interactive.cc
+  src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
@@ -238,6 +241,7 @@ if(BUILD_TESTING)
     tests/unit/openrouter_server_search_test.cc
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
+    tests/unit/prompt_test.cc
     tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/sandbox_test.cc

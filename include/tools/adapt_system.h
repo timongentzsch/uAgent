@@ -4,11 +4,12 @@
 #define UAGENT_INCLUDE_TOOLS_ADAPT_SYSTEM_H_
 
 #include "include/agent/adaptive_system.h"
+#include "include/app/prompt_control.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
-Tool AdaptSystemTool(AdaptiveSystemState& state);
+Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control = {});
 
 }  // namespace uagent
 

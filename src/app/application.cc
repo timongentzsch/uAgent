@@ -673,7 +673,7 @@ class Application {
       SetInteractiveReadHandler(
           [this](const InteractionRequest& request, bool* eof) {
             return broker.Read(request.prompt, eof, request.keep_history,
-                               request.initial);
+                               request.initial, request.kind == "editor");
           });
       SetPersistentComposer(true);
 
@@ -772,7 +772,15 @@ class Application {
           std::string prompt;
           std::string initial;
           bool keep_history = false;
-          if (broker.Take(prompt, initial, keep_history)) {
+          bool editor = false;
+          if (broker.Take(prompt, initial, keep_history, &editor)) {
+            if (editor) {
+              const auto draft = composer.Buffer();
+              const bool edited = composer.EditTextExternally(initial);
+              broker.Answer(std::move(initial), !edited);
+              Mount(InputPrompt(), draft);
+              continue;
+            }
             saved_draft = composer.Buffer();
             answering = true;
             Mount(prompt, initial, keep_history);

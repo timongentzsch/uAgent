@@ -1,6 +1,111 @@
 import { test, expect } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 
+test("system prompt editing shares revisions, replacement and request previews", async ({
+  page,
+  context,
+}, testInfo) => {
+  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
+  try {
+    await context.addCookies(
+      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
+        .cookies,
+    );
+  } catch {
+    /* first device */
+  }
+  await page.goto("/");
+  await expect(
+    page
+      .getByText("Connected", { exact: true })
+      .or(page.getByLabel("Single-use pairing code")),
+  ).toBeVisible();
+  if (await page.getByLabel("Single-use pairing code").isVisible()) {
+    await page.getByLabel("Single-use pairing code").fill(fixture.code);
+    await page
+      .getByRole("button", { name: "Connect device", exact: true })
+      .click();
+  }
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await context.storageState({ path: "test-results/device-state.json" });
+  await page
+    .getByRole("complementary")
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  await page.getByLabel("Directory on the host").fill(fixture.project);
+  await page
+    .getByRole("button", { name: "Start conversation", exact: true })
+    .click();
+  await expect(page.locator(".status")).toHaveText("idle");
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("/prompt");
+  await composer.press("Tab");
+  await composer.press("Enter");
+  const dialog = page.getByRole("dialog", {
+    name: "System prompt",
+    exact: true,
+  });
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "You are a coding agent",
+  );
+  await dialog.getByRole("button", { name: "Edit inherited prompt" }).click();
+  const editor = dialog.getByLabel("System prompt text");
+  await editor.fill(
+    "Only the project-specific instruction.\nKeep this line break.",
+  );
+  await dialog.getByRole("button", { name: "Preview changes" }).click();
+  await expect(dialog.getByLabel("Effective system prompt")).not.toContainText(
+    "You are a coding agent",
+  );
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "[HOST CAPABILITIES]",
+  );
+  const expected = await dialog
+    .getByLabel("Effective system prompt")
+    .textContent();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(dialog.getByLabel("Effective system prompt")).toHaveText(
+    expected,
+  );
+  await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+  await editor.fill("Unsent prompt draft");
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await composer.fill("/prompt");
+  await composer.press("Enter");
+  await expect(editor).toHaveValue("Unsent prompt draft");
+  await dialog.getByRole("button", { name: "Discard edit" }).click();
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.screenshot({
+    path: `test-results/${testInfo.project.name}-prompt-phone.png`,
+  });
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Raw context" })).toContainText(
+    "Only the project-specific instruction.",
+  );
+  await page
+    .getByRole("dialog", { name: "Raw context" })
+    .getByRole("button", { name: "System prompt", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Instructions", exact: true })
+    .click();
+  await dialog.getByRole("button", { name: "Reset to inherited" }).click();
+  await dialog
+    .getByRole("button", { name: "Effective prompt", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "You are a coding agent",
+  );
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await composer.fill("/quit");
+  await composer.press("Enter");
+});
+
 test("compact surfaces stay anchored, accessible and usable while loading", async ({
   page,
   context,

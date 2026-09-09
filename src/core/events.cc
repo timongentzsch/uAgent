@@ -56,6 +56,9 @@ constexpr EventPolicy kPolicies[] = {
     {EventId::kConfigChanged, "config.changed", "config_changed", nullptr,
      "config.changed", EventDurability::kDurable,
      EventRedaction::kPublicProjection},
+    {EventId::kPromptChanged, "prompt.changed", "prompt_changed", nullptr,
+     "prompt.changed", EventDurability::kDurable,
+     EventRedaction::kPublicProjection},
     {EventId::kAnswer, "answer", nullptr, "answer", nullptr,
      EventDurability::kTransient, EventRedaction::kPublicProjection},
     {EventId::kError, "error", nullptr, "error", nullptr,
@@ -305,6 +308,10 @@ json JournalProjection(const Event& event) {
       copy("changed");
       copy("deferred");
       copy("source");
+      break;
+    case EventId::kPromptChanged:
+      copy("scope");
+      copy("revision");
       break;
     default:
       break;

@@ -118,7 +118,7 @@ void Agent::Reset() {
   DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                              {"prior_usage", UsageJson(session_usage_)}});
   if (adaptive_system_) adaptive_system_->Reset();
-  applied_system_revision_ = 0;
+  last_sent_prompt_.clear();
   conversation_.Reset(BaselineMessages(), BaselineKinds());
   turn_search_trace_.Reset();
   session_usage_ = Usage{};
@@ -190,6 +190,7 @@ json Agent::HttpExchanges() const {
       "http", json::array());
 }
 json Agent::PreviewContext() {
+  RefreshSystemMessage();
   json preview = ContextPreview(ModelRequest());
   if (!preview.contains("error")) {
     conversation_.RecordDisplay("http-preview",
@@ -230,6 +231,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .usage = session_usage_,
       .route_usage = route_usage_,
       .adaptive_system = adaptive_system_ ? adaptive_system_->instructions : "",
+      .adaptive_system_mode =
+          adaptive_system_ ? adaptive_system_->mode : "overlay",
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
       .tool_displays = conversation_.ToolDisplays(),
@@ -268,9 +271,11 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
+  last_sent_prompt_.clear();
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
+    adaptive_system_->mode = std::move(record.state.adaptive_system_mode);
     // A self-authored directive is the least supervised thing a resume can
     // reinstate, so it is announced rather than silently reapplied.
     if (!adaptive_system_->instructions.empty()) {
@@ -282,7 +287,6 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
     }
   }
   RefreshBaseline();
-  applied_system_revision_ = adaptive_system_ ? adaptive_system_->revision : 0;
   session_usage_ = record.state.usage;
   api_.session_cost = session_usage_.cost;
   api_.session_generated_tokens = session_usage_.GeneratedTokens();
@@ -794,9 +798,7 @@ void Agent::RebuildToolSchemas() {
   schemas_ = ToolSchemas(tools_);
   schema_chars_ = JsonDump(schemas_).size();
   logged_schemas_.clear();
-  if (!conversation_.Empty()) {
-    conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-  }
+  RefreshSystemMessage();
   DebugLog("tool_registry_refreshed",
            {{"tools", tools_.size()}, {"schema_chars", schema_chars_}});
 }

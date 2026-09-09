@@ -373,7 +373,7 @@ class WorkerChannel final : public ApplicationChannel {
                                    : json{{"error", "session not ready"}});
       return true;
     } else if (kind == "model" || kind == "activity" || kind == "config" ||
-               kind == "context" || kind == "fork") {
+               kind == "context" || kind == "fork" || kind == "prompt") {
       if (busy_ || input_) {
         error = "this control requires an idle session";
       } else {

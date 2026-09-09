@@ -943,3 +943,31 @@ def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
             (root / "first.txt").exists() and not (root / "second.txt").exists(),
             "fork inherited an approval grant",
         )
+
+
+def test_system_prompt_editor_updates_next_request(root, home, *, binary):
+    editor = root / "prompt-editor.sh"
+    editor.write_text('#!/bin/sh\nprintf "Only editor behavior.\\nPreserve newlines.\\n" > "$1"\n')
+    editor.chmod(0o755)
+
+    def answer(_, body):
+        prompt = body["messages"][0]["content"]
+        assert_true(prompt.startswith("Only editor behavior.\nPreserve newlines.\n"), prompt)
+        assert_true("Gather only" not in prompt, prompt)
+        return event({"content": "prompt-editor-ok"})
+
+    with Server([answer]) as server:
+        env = base_env(home, server.url)
+        env["VISUAL"] = str(editor)
+        code, output = run_pty(
+            root,
+            env,
+            [
+                (b"/prompt edit\n", b"Only editor behavior."),
+                (b"reply\n", b"prompt-editor-ok"),
+                b"/q\n",
+            ],
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        assert_true(len(server.requests) == 1, server.requests)

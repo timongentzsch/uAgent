@@ -59,6 +59,7 @@ namespace uagent {
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \
   X(TestMemoryAlwaysOnSelection)               \
+  X(TestEarlyTurnInterruption)                 \
   X(TestRuntimeOwnershipHelpers)               \
   X(TestAgentConfigAllowlist)                  \
   X(TestEffectiveConfigReload)                 \

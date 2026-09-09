@@ -18,7 +18,9 @@
 #include "include/core/child_env.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
+#include "include/core/events.h"
 #include "include/core/signals.h"
+#include "include/core/steering.h"
 #include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/files.h"
@@ -26,6 +28,38 @@
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+void TestEarlyTurnInterruption() {
+  TestWorkspace workspace("early-turn-interruption");
+  for (const bool before_turn : {true, false}) {
+    Api api(RuntimeConfig{});
+    std::vector<Tool> tools;
+    ProcessSupervisor processes;
+    UsageAccumulator usage;
+    Agent agent(api, tools, processes, usage,
+                [](const Tool&, const json&) { return false; });
+    Observability observable;
+    auto* previous = ActiveObservability();
+    int notices = 0, responses = 0;
+    observable.Subscribe([&](const AppEvent& event) {
+      if (!before_turn && event.type == "message.changed") {
+        SteeringState().Request();
+      }
+      if (event.type == "notice" &&
+          JsonValue(event.data, "text", "") == "· interrupted") {
+        ++notices;
+      }
+      if (event.type == "response.started") ++responses;
+    });
+    SetObservability(&observable);
+    if (before_turn) SteeringState().Request();
+    agent.Turn("cancel before the model call");
+    SteeringState().Take();
+    SetObservability(previous);
+    CHECK(notices == 1);
+    CHECK(responses == 0);
+  }
+}
 
 void TestRuntimeOwnershipHelpers() {
   {

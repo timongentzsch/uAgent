@@ -122,7 +122,7 @@ test("corrupt browser preferences fall back without breaking the app", () => {
     );
 });
 
-test("saved-history browsing retains only the selected and active views", async () => {
+test("saved-history browsing retains the selected view and four recent views", async () => {
   const { retainedViews } = await import("../src/store.ts");
   const views = Object.fromEntries(
     Array.from({ length: 100 }, (_, index) => [
@@ -134,6 +134,9 @@ test("saved-history browsing retains only the selected and active views", async 
   views.crashed = { metadata: { status: "interrupted", generation: "old" } };
   assert.deepEqual(Object.keys(retainedViews(views, "42")).sort(), [
     "42",
+    "98",
+    "99",
     "active",
+    "crashed",
   ]);
 });

@@ -292,18 +292,11 @@ export function retainedViews(
   views: Record<string, Snapshot>,
   selected: string,
 ): Record<string, Snapshot> {
-  const active = Object.entries(views)
-    .filter(
-      ([id, value]) =>
-        id !== selected &&
-        ["idle", "running", "waiting", "starting"].includes(
-          value.metadata?.status || "",
-        ) &&
-        value.metadata?.generation,
-    )
+  const recent = Object.entries(views)
+    .filter(([id]) => id !== selected)
     .slice(-4);
   return Object.fromEntries([
-    ...active,
+    ...recent,
     ...(views[selected] ? [[selected, views[selected]]] : []),
   ]);
 }

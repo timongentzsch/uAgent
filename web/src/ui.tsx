@@ -164,6 +164,8 @@ export function Modal({
   );
 }
 
+const modules = new WeakMap<object, unknown>();
+
 // The caller owns the surface, so lazy code and data use the same visible shell.
 export function Deferred<P extends object>({
   load,
@@ -173,7 +175,9 @@ export function Deferred<P extends object>({
   load: () => Promise<{ default: ComponentType<P> }>;
   fallback?: ComponentChildren;
 }) {
-  const [Component, setComponent] = useState<ComponentType<P> | null>(null);
+  const [Component, setComponent] = useState<ComponentType<P> | null>(
+    () => (modules.get(load) as ComponentType<P> | undefined) || null,
+  );
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -181,6 +185,7 @@ export function Deferred<P extends object>({
     setError(null);
     load()
       .then((module) => {
+        modules.set(load, module.default);
         if (active) setComponent(() => module.default);
       })
       .catch((failure) => {

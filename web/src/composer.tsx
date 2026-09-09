@@ -1,9 +1,12 @@
 import "./attachments.css";
+import { useCommandSuggestions } from "./command-suggestions.tsx";
+import { parseSlash } from "./slash.ts";
 import { ModelSkeleton } from "./loading.tsx";
 import { bytes } from "./quantities.ts";
 import { contextSummary } from "./context.ts";
 import { observeResize } from "./layout.ts";
 import type {
+  SlashCommand,
   Session,
   Snapshot,
   Draft,
@@ -32,6 +35,7 @@ const decisionPanel = () => import("./decision.tsx");
 
 export default function Composer({
   session,
+  commands,
   snapshot,
   online,
   draft,
@@ -50,6 +54,7 @@ export default function Composer({
   sizes,
 }: {
   session: Session;
+  commands: SlashCommand[];
   snapshot?: Snapshot;
   online: boolean;
   draft: Draft;
@@ -68,6 +73,22 @@ export default function Composer({
   sizes: Sizes;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const suggestions = useCommandSuggestions(
+    commands,
+    draft.text,
+    (text) => setDraft({ ...draft, text }),
+    input,
+  );
+  const send = (event: Event) => {
+    const slash = parseSlash(commands, draft.text);
+    if (slash.name === "/attach" && !slash.argument) {
+      event.preventDefault();
+      input.current?.form
+        ?.querySelector<HTMLInputElement>("input[type=file]")
+        ?.click();
+      setDraft({ ...draft, text: "" });
+    } else submit(event);
+  };
   const pending = snapshot?.pending;
   const running = !!session.turn_active;
   const state = snapshot?.state;
@@ -122,11 +143,13 @@ export default function Composer({
             : "Resume in this host directory"}
         </button>
       ) : (
-        <form onSubmit={submit}>
+        <form onSubmit={send}>
+          {suggestions.list}
           <label class="sr-only" for="prompt">
             Message or guidance
           </label>
           <textarea
+            {...suggestions.attributes}
             id="prompt"
             ref={input}
             rows={1}
@@ -143,6 +166,7 @@ export default function Composer({
               }
             }}
             onKeyDown={(event) => {
+              if (suggestions.keyDown(event)) return;
               if (
                 event.key === "Enter" &&
                 !event.shiftKey &&
@@ -150,10 +174,16 @@ export default function Composer({
                 event.keyCode !== 229
               ) {
                 event.preventDefault();
-                if (!event.repeat) submit(event);
+                if (!event.repeat) send(event);
               }
             }}
           />
+          {!!state?.attachments && (
+            <small class="muted">
+              {state.attachments} file(s) attached on the host · /attach clear
+              to remove
+            </small>
+          )}
           {draft.files.length > 0 && (
             <div class="attachments">
               {draft.files.map((asset) => (

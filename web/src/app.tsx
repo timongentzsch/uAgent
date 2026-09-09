@@ -18,6 +18,7 @@ import { render } from "preact";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -42,6 +43,7 @@ import {
 } from "./loading.tsx";
 
 import { useHost } from "./use-host.ts";
+import { parseSlash } from "./slash.ts";
 import { observeResize, trackViewport } from "./layout.ts";
 import "./style.css";
 const sidebarModule = () => import("./sidebar.tsx");
@@ -114,6 +116,7 @@ function App() {
     () => localStorage.getItem("uagent-theme") || "system",
   );
   const transcript = useRef<HTMLDivElement>(null);
+  const scrollPositions = useRef(new Map<string, number>());
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
   const session =
@@ -156,10 +159,13 @@ function App() {
         ),
       );
   }, [sizes]);
-  useEffect(() => {
-    if (following && transcript.current)
-      transcript.current.scrollTop = transcript.current.scrollHeight;
-  }, [blocks, following]);
+  useLayoutEffect(() => {
+    const element = transcript.current;
+    if (element)
+      element.scrollTop = following
+        ? element.scrollHeight
+        : scrollPositions.current.get(selected) || 0;
+  }, [selected, blocks, following]);
   useEffect(() => {
     const element = transcript.current;
     if (element && following)
@@ -228,9 +234,28 @@ function App() {
     const result = await command(kind, session, fields);
     return result;
   };
+  useEffect(() => {
+    const openSession = (event: MessageEvent) => {
+      if (
+        event.data?.type === "OPEN_SESSION" &&
+        /^[a-f0-9]{16,64}$/.test(event.data.id || "")
+      )
+        choose(event.data.id);
+    };
+    const back = () => {
+      setPage("chat");
+      setDrawer(false);
+      setModal(null);
+    };
+    navigator.serviceWorker?.addEventListener("message", openSession);
+    addEventListener("popstate", back);
+    return () => {
+      navigator.serviceWorker?.removeEventListener("message", openSession);
+      removeEventListener("popstate", back);
+    };
+  }, []);
   async function choose(id: string) {
     setPage("chat");
-    location.hash = `session=${id}`;
     setSelected(id);
     setDrawer(false);
   }
@@ -238,21 +263,65 @@ function App() {
     event.preventDefault();
     setBusy(true);
     try {
-      const created = await command("create", null, { cwd: folder });
-      if (created.pending) return;
-      setCatalogue((prior) => ({
-        ...prior,
-        sessions: [created.session, ...prior.sessions],
-      }));
-      await choose(created.session.id);
+      await startConversation(folder);
       setModal(null);
-      await command("activate", created.session);
-      await load(created.session.id);
     } catch (failure) {
       report(failure);
     } finally {
       setBusy(false);
     }
+  }
+  async function startConversation(cwd: string) {
+    const created = await command("create", null, { cwd });
+    if (created.pending) return;
+    setCatalogue((prior) => ({
+      ...prior,
+      sessions: [created.session, ...prior.sessions],
+    }));
+    await choose(created.session.id);
+    await command("activate", created.session);
+    await load(created.session.id);
+  }
+  async function localCommand(text: string) {
+    const { name, argument } = parseSlash(catalogue.commands || [], text);
+    if (name === "/context") showContext();
+    else if (name === "/sessions") setDrawer(true);
+    else if (name === "/reset") await startConversation(session!.cwd!);
+    else if (name === "/quit") {
+      await act("close");
+      await load(selected);
+    } else if (name === "/fork") {
+      const result = await command("fork", session, { title: argument });
+      if (!result.pending) {
+        await refresh();
+        await choose(result.result.id);
+        await command("activate", { id: result.result.id, generation: "" });
+        await load(result.result.id);
+      }
+    } else if (name === "/http") {
+      const exchanges = snapshot?.state?.http || [];
+      const [number, part = "request"] = argument.split(/\s+/);
+      const index = number ? Number(number) : exchanges.length;
+      if (
+        !Number.isInteger(index) ||
+        index < 1 ||
+        index > exchanges.length ||
+        !["request", "response"].includes(part)
+      )
+        throw new Error(
+          exchanges.length
+            ? "Use /http INDEX request|response"
+            : "No HTTP exchange captured",
+        );
+      setModal({
+        type: "raw",
+        session: selected,
+        exchanges: [exchanges[index - 1]],
+        part: part as "request" | "response",
+      });
+    } else if (name === "/trace" && argument) inspect(argument);
+    else return false;
+    return true;
   }
   async function submit(event: Event) {
     event.preventDefault();
@@ -268,6 +337,32 @@ function App() {
     const id = selected,
       sent = draft,
       request_id = requestId();
+    if (sent.text.startsWith("/")) {
+      try {
+        if (running)
+          throw new Error(
+            "Wait for this turn to finish before running a slash command.",
+          );
+        if (await localCommand(sent.text)) {
+          setDrafts((current) =>
+            current[id] === sent
+              ? { ...current, [id]: { ...sent, text: "" } }
+              : current,
+          );
+          setBusy(false);
+          return;
+        }
+        if (
+          parseSlash(catalogue.commands || [], sent.text).name === "/attach" &&
+          sent.text.trim().endsWith(" clear")
+        )
+          setDrafts((current) => ({ ...current, [id]: emptyDraft() }));
+      } catch (error) {
+        report(error);
+        setBusy(false);
+        return;
+      }
+    }
     const kind = running && !pending ? "steer" : "submit";
     const visible = !sent.text.startsWith("/") || sent.files.length;
     if (kind === "steer" && sent.files.length) {
@@ -452,7 +547,6 @@ function App() {
       await command("logout");
       reset();
       setModal(null);
-      location.hash = "";
     } catch (failure) {
       report(failure);
     }
@@ -641,6 +735,11 @@ function App() {
                   onScroll={() => {
                     const element = transcript.current;
                     if (!element) return;
+                    scrollPositions.current.set(selected, element.scrollTop);
+                    if (scrollPositions.current.size > 64)
+                      scrollPositions.current.delete(
+                        scrollPositions.current.keys().next().value!,
+                      );
                     setFollowing(
                       element.scrollHeight -
                         element.scrollTop -
@@ -728,6 +827,7 @@ function App() {
                   fallback={<ComposerSkeleton />}
                   key={selected}
                   session={session}
+                  commands={catalogue.commands || []}
                   snapshot={snapshot}
                   online={online}
                   draft={draft}
@@ -868,6 +968,7 @@ function App() {
             }
             context={modal.context}
             prepare={modal.prepare}
+            part={modal.part}
           />
         </Modal>
       )}

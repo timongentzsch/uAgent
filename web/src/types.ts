@@ -181,6 +181,7 @@ export interface Session {
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
 export interface State {
+  attachments?: number;
   title?: string;
   route?: string;
   effort?: string;
@@ -210,7 +211,15 @@ export interface Snapshot {
   streamed?: Block[];
   live_truncated?: boolean;
 }
+export interface SlashCommand {
+  command: string;
+  argument: string;
+  aliases: string[];
+  usage: string;
+  description: string;
+}
 export interface Catalogue {
+  commands?: SlashCommand[];
   scheduled?: ScheduledState;
   epoch?: string;
   cursor?: number;
@@ -385,6 +394,7 @@ export type StatisticsModal =
       snapshot?: Snapshot;
     };
 export interface RawOptions {
+  part?: "request" | "response";
   session?: string;
   id?: string;
   value?: JSONValue;

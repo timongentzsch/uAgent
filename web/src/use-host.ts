@@ -19,8 +19,7 @@ import {
   readStored,
   writeStored,
 } from "./store.ts";
-export const selectedFromURL = () =>
-  new URLSearchParams(location.hash.slice(1)).get("session") || "";
+import { selectedFromURL, writeSelection } from "./navigation.ts";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -49,7 +48,12 @@ export function useHost(
   const [outgoing, setOutgoing] = useState(() =>
     readStored<Outgoing[]>(sessionStorage, "uagent-outgoing", []),
   );
-  const [following, setFollowing] = useState(true);
+  const [followed, setFollowed] = useState<Record<string, boolean>>({});
+  const following = followed[selected] !== false;
+  const setFollowing = (value: boolean) =>
+    setFollowed((prior) =>
+      prior[selected] === value ? prior : { ...prior, [selected]: value },
+    );
   const stream = useRef<EventSource>();
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
@@ -97,7 +101,12 @@ export function useHost(
         if (newer?.epoch === value.epoch && newer.cursor > value.cursor)
           return newer;
         live.current = retainedViews(
-          { ...live.current, [id]: value },
+          {
+            ...Object.fromEntries(
+              Object.entries(live.current).filter(([key]) => key !== id),
+            ),
+            [id]: value,
+          },
           selection.current,
         );
         setSnapshots({ ...live.current });
@@ -139,7 +148,7 @@ export function useHost(
     }));
     if (selection.current === id) {
       selection.current = "";
-      location.hash = "";
+      writeSelection("", true);
       setSelected("");
     }
   }, []);
@@ -479,6 +488,7 @@ export function useHost(
     addEventListener("offline", offline);
     addEventListener("pageshow", recover);
     addEventListener("hashchange", hash);
+    addEventListener("popstate", hash);
     document.addEventListener("visibilitychange", recover);
     let timer: ReturnType<typeof setTimeout> | undefined;
     flush.current = () => {
@@ -496,12 +506,12 @@ export function useHost(
       removeEventListener("offline", offline);
       removeEventListener("pageshow", recover);
       removeEventListener("hashchange", hash);
+      removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
     };
   }, [refresh]);
   useEffect(() => {
     if (selected && authenticated) load(selected).catch(() => {});
-    setFollowing(true);
   }, [selected, authenticated, load, report]);
   useEffect(() => {
     writeStored(localStorage, "uagent-unread", [...unread]);
@@ -547,7 +557,7 @@ export function useHost(
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     setOnline(false);
     setAuthenticated(false);
-    location.hash = "";
+    writeSelection("", true);
     setSelected("");
   }
   return {
@@ -560,7 +570,11 @@ export function useHost(
     setCatalogue,
     snapshots,
     selected,
-    setSelected,
+    setSelected: (id: string) => {
+      selection.current = id;
+      writeSelection(id);
+      setSelected(id);
+    },
     drafts,
     setDrafts,
     error,

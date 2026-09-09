@@ -124,6 +124,33 @@ application payload level; it is not a TLS or compressed packet capture.
 
 ## Conversation controls and statistics
 
+Conversation selection uses the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState)
+to update the existing fragment deep links without loading a document. Back and
+Forward restore selection; the shell and event stream stay mounted. The five
+most recent views and already-loaded modules render immediately while snapshots
+revalidate. Drafts and reading positions stay with their conversations. Existing
+notification windows receive a navigation message instead of a page reload.
+This follows [PWA guidance on deep links, responsiveness and accessibility](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Best_practices);
+it does not require installation or a service worker.
+
+The composer offers slash-command suggestions from the same registry used by CLI
+help, parsing and completion. Tab fills the common prefix, adding a space for a
+single command with arguments. Arrow keys select a suggestion; Enter or a tap
+completes it without executing it. Escape dismisses suggestions. Focus stays in
+the editor, following the keyboard interaction principles of the
+[WAI-ARIA autocomplete pattern](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/).
+A subsequent Enter submits the command through the shared event-driven worker.
+`/commands` aliases `/help` in both interfaces.
+
+Commands that control a web surface use its existing action: `/context`, `/http`
+and `/trace ID` open raw inspectors, `/sessions` opens the conversation list,
+`/fork` opens a fork, `/reset` opens a fresh conversation, and `/quit` closes only
+the selected worker. Aliases follow the shared registry. `/attach` opens the
+device picker; `/attach PATH` queues a host file using the CLI handler, and
+`/attach clear` removes queued files. Pending host attachments survive intervening
+commands until a model turn consumes them.
+
+
 The application shell, dialogs and menus share the visible viewport's size and
 offset, updated from resize/scroll events once per animation frame. This follows
 the [VisualViewport API](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport):

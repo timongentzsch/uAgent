@@ -65,7 +65,7 @@ self.addEventListener("notificationclick", (event) => {
         (window) => new URL(window.url).origin === self.location.origin,
       );
       if (existing) {
-        await existing.navigate(target);
+        existing.postMessage({ type: "OPEN_SESSION", id });
         await existing.focus();
       } else await self.clients.openWindow(target);
     })(),

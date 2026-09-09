@@ -1241,3 +1241,43 @@ def test_web_presence_tracks_idle_terminal_exit_crash_and_new_history(root, home
                     stream.sock.shutdown(socket.SHUT_RDWR)
                 reader.join(timeout=2)
                 stream.close()
+
+
+def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
+    attached = root / "slash-note.txt"
+    attached.write_text("RETAINED_SLASH_ATTACHMENT")
+    with Server([event({"content": "Attachment received"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            catalog = client.json("/api/sessions")[1]
+            help_command = next(row for row in catalog["commands"] if row["command"] == "/help")
+            assert_true("/commands" in help_command["aliases"], help_command)
+            session = client.create(root)
+            client.command("submit", session, text=f"/attach {attached}")
+            client.until(
+                session,
+                lambda value: (
+                    value["state"].get("attachments") == 1 and value["metadata"]["status"] == "idle"
+                ),
+            )
+            client.command("submit", session, text="/status")
+            client.until(
+                session,
+                lambda value: (
+                    value["state"].get("attachments") == 1 and value["metadata"]["status"] == "idle"
+                ),
+            )
+            client.command("submit", session, text="Read the attachment")
+            client.until(
+                session,
+                lambda value: (
+                    value["state"].get("attachments") == 0 and value["metadata"]["status"] == "idle"
+                ),
+            )
+            assert_true(len(provider.requests) == 1, provider.requests)
+            content = provider.requests[0][1]["messages"][-1]["content"]
+            file = next(block["file"] for block in content if block["type"] == "file")
+            assert_true(file["filename"] == attached.name, file)
+            assert_true(
+                base64.b64decode(file["file_data"].split(",", 1)[1]) == attached.read_bytes(), file
+            )

@@ -929,7 +929,9 @@ class Application {
         SaveSession(true);
         channel_->CompleteControl(input->request_id, result);
       } else if (!input->wake) {
-        attachments_ = std::move(input->attachments);
+        for (auto& attachment : input->attachments) {
+          attachments_.push_back(std::move(attachment));
+        }
         quit = ProcessInput(std::move(input->text));
       }
       SaveSession(input->title.has_value());

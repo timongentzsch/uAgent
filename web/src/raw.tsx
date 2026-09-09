@@ -15,6 +15,7 @@ export default function Raw({
   latest,
   context,
   prepare,
+  part = "request",
 }: RawOptions & { latest?: Exchange[] }) {
   const http = context || exchanges !== undefined;
   const [captured, setCaptured] = useState(exchanges || []);
@@ -22,7 +23,7 @@ export default function Raw({
     Math.max(0, (exchanges?.length || 1) - 1),
   );
   const [body, setBody] = useState<JSONValue | undefined>(value);
-  const [tab, setTab] = useState<"request" | "response">("request");
+  const [tab, setTab] = useState<"request" | "response">(part);
   const [source, setSource] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);

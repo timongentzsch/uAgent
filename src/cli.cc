@@ -108,6 +108,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kVerbose, "/verbose", "",
      "toggle full reasoning and expanded tool output"},
     {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval"},
+    {SlashCommandId::kHelp, "/commands", "", ""},
     {SlashCommandId::kQuit, "/exit", "", ""},
     {SlashCommandId::kQuit, "/q", "", ""},
     {SlashCommandId::kReset, "/clear", "", ""},

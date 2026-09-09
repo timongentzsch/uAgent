@@ -150,7 +150,15 @@ export default function Sidebar({
   return (
     <>
       <div class="sidebar-head">
-        <a class="brand" href="#" aria-label="uAgent home">
+        <a
+          class="brand"
+          href="#"
+          aria-label="uAgent home"
+          onClick={(event) => {
+            event.preventDefault();
+            choose("");
+          }}
+        >
           <Mark />
         </a>
         <button class="quiet with-icon" onClick={create} disabled={!online}>

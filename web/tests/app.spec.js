@@ -370,6 +370,11 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     fullPage: true,
   });
   await page.setViewportSize({ width: 1280, height: 900 });
+  // Navigation now restores the reader's position. Read the existing tail
+  // before testing only the other conversation's offline completion badge.
+  const latest = page.getByRole("button", { name: "Jump to latest" });
+  if (await latest.isVisible()) await latest.click();
+  await expect(latest).toHaveCount(0);
   const originalHash = await page.evaluate(() => location.hash);
   await page
     .getByRole("complementary", { name: "Projects and sessions" })

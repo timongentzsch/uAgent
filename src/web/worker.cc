@@ -421,13 +421,13 @@ class WorkerChannel final : public ApplicationChannel {
         if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
                            slash.spec->id == SlashCommandId::kFork ||
                            slash.spec->id == SlashCommandId::kSessions ||
-                           slash.spec->id == SlashCommandId::kQuit ||
-                           slash.spec->id == SlashCommandId::kAttach)) {
+                           slash.spec->id == SlashCommandId::kQuit)) {
           error = "use conversation controls or the attachment button";
         }
         if (slash.spec && (slash.spec->id == SlashCommandId::kContext ||
                            slash.spec->id == SlashCommandId::kHttp ||
-                           slash.spec->id == SlashCommandId::kTrace)) {
+                           (slash.spec->id == SlashCommandId::kTrace &&
+                            !slash.argument.empty()))) {
           error =
               "use Raw context below the composer, HTTP request/response in a "
               "message menu, or Tool input/output";

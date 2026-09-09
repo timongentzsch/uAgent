@@ -37,6 +37,7 @@
 #include "include/app/control.h"
 #include "include/app/library.h"
 #include "include/app/schedule.h"
+#include "include/app/self_description.h"
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
 #include "include/core/effective_config.h"
@@ -359,6 +360,7 @@ class Master {
                        {"epoch", epoch_},
                        {"cursor", sequence_},
                        {"sessions", list},
+                       {"commands", CommandSchemaJson()},
                        {"worker_limit", kWorkerLimit},
                        {"capabilities", push_->Capabilities(DeviceId(request))},
                        {"devices", PublicDevices()},

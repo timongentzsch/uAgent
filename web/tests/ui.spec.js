@@ -998,3 +998,224 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await context.close();
   }
 });
+
+test.describe("mobile navigation and commands", () => {
+  test.use({
+    isMobile: true,
+    hasTouch: true,
+    viewport: { width: 390, height: 600 },
+  });
+  test("conversation navigation preserves the document and drafts; slash commands complete without sending", async ({
+    page,
+    context,
+  }, testInfo) => {
+    const fixture = JSON.parse(
+      await readFile("test-results/host.json", "utf8"),
+    );
+    try {
+      await context.addCookies(
+        JSON.parse(await readFile("test-results/device-state.json", "utf8"))
+          .cookies,
+      );
+    } catch {}
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto("/");
+    await expect(
+      page
+        .getByText("Connected", { exact: true })
+        .or(page.getByLabel("Single-use pairing code")),
+    ).toBeVisible();
+    if (await page.getByLabel("Single-use pairing code").isVisible()) {
+      await page.getByLabel("Single-use pairing code").fill(fixture.code);
+      await page
+        .getByRole("button", { name: "Connect device", exact: true })
+        .click();
+    }
+    await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+    await context.storageState({ path: "test-results/device-state.json" });
+    const call = async (kind, session, extra = {}) => {
+      const response = await page.request.post("/api/command", {
+        headers: { Origin: "http://127.0.0.1:8765" },
+        data: {
+          v: 1,
+          request_id: crypto.randomUUID().replaceAll("-", ""),
+          kind,
+          ...(session
+            ? { session_id: session.id, generation: session.generation || "" }
+            : {}),
+          ...extra,
+        },
+      });
+      const result = await response.json();
+      expect(response.ok(), JSON.stringify(result)).toBe(true);
+      return result;
+    };
+    // Other tests leave saved workers in this hermetic host. Release their
+    // idle slots before this test owns two; never raise the production limit.
+    const catalogue = await (await page.request.get("/api/sessions")).json();
+    for (const session of catalogue.sessions)
+      if (session.generation && !session.turn_active && !session.pending)
+        await call("close", session);
+    const make = async (title) => {
+      const { session } = await call("create", null, { cwd: fixture.project });
+      await call("rename", session, { title });
+      await call("activate", session);
+      return session.id;
+    };
+    const firstTitle = `Navigation A ${testInfo.project.name}`;
+    const secondTitle = `Navigation B ${testInfo.project.name}`;
+    const first = await make(firstTitle),
+      second = await make(secondTitle);
+    let documents = 0,
+      streams = 0;
+    page.on("request", (request) => {
+      if (request.resourceType() === "document") documents++;
+      if (new URL(request.url()).pathname === "/api/events") streams++;
+    });
+    await page.evaluate(() => {
+      window.navigationProof = "same-document";
+    });
+    await page.setViewportSize({ width: 390, height: 600 });
+    const choose = async (title) => {
+      await page
+        .getByRole("button", { name: "Open sessions", exact: true })
+        .click();
+      await page.getByRole("button", { name: new RegExp(title) }).click();
+    };
+    await choose(firstTitle);
+    const prompt = page.getByLabel("Message or guidance");
+    await expect(prompt).toBeVisible();
+    await expect(page.locator(".status")).toHaveText("idle");
+    await prompt.fill("/model mock/model-b");
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Model and effort", exact: true }),
+    ).toContainText("model-b");
+    await prompt.fill("Navigation message");
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "Verified response" }),
+    ).toBeVisible();
+    await expect(page.locator(".status")).toHaveText("idle");
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate((element) => element.scrollHeight - element.clientHeight),
+      )
+      .toBeGreaterThan(80);
+    await page.locator(".transcript").evaluate((element) => {
+      element.scrollTop = 24;
+      element.dispatchEvent(new Event("scroll"));
+    });
+    await expect(
+      page.getByRole("button", { name: "Jump to latest" }),
+    ).toBeVisible();
+    await prompt.fill("Draft A");
+    await choose(secondTitle);
+    await expect(prompt).toBeVisible();
+    await prompt.fill("Draft B");
+    await choose(firstTitle);
+    await expect(prompt).toHaveValue("Draft A");
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate((element) => Math.abs(element.scrollTop - 24)),
+      )
+      .toBeLessThan(2);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(second));
+    await expect(prompt).toHaveValue("Draft B");
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(first));
+    await expect(prompt).toHaveValue("Draft A");
+    await expect
+      .poll(() =>
+        page
+          .locator(".transcript")
+          .evaluate((element) => Math.abs(element.scrollTop - 24)),
+      )
+      .toBeLessThan(2);
+    expect(await page.evaluate(() => window.navigationProof)).toBe(
+      "same-document",
+    );
+    expect(documents).toBe(0);
+    expect(streams).toBe(0);
+    await prompt.fill("/mo");
+    await prompt.press("Tab");
+    await expect(prompt).toHaveValue("/model");
+    await prompt.fill("/hel");
+    await prompt.press("Tab");
+    await expect(prompt).toHaveValue("/help");
+    await expect(page.locator(".message.user")).toHaveCount(1);
+    await prompt.fill("/");
+    await prompt.press("ArrowDown");
+    await expect(prompt).toHaveAttribute("aria-activedescendant", "command-0");
+    await prompt.press("Enter");
+    await expect(prompt).toHaveValue("/agents ");
+    await prompt.fill("/sta");
+    await page.getByRole("option", { name: /\/status/ }).tap();
+    await expect(prompt).toHaveValue("/status");
+    await expect(prompt).toBeFocused();
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("dialog", { name: "Full content" }),
+    ).toContainText('"topic": "status"');
+    await page.keyboard.press("Escape");
+    await prompt.fill("/ctx");
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("dialog", { name: "Raw context", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await prompt.fill("/commands");
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("dialog", { name: "Full content" }),
+    ).toContainText("/permissions");
+    await page.keyboard.press("Escape");
+    await prompt.fill("/http 1 response");
+    await prompt.press("Enter");
+    await expect(
+      page
+        .getByRole("dialog")
+        .getByRole("tab", { name: "Response", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("dialog")).toContainText("Verified response");
+    await page.keyboard.press("Escape");
+    const chooser = page.waitForEvent("filechooser");
+    await prompt.fill("/attach");
+    await prompt.press("Enter");
+    await (await chooser).setFiles([]);
+    await prompt.fill("/fork Slash fork");
+    await prompt.press("Enter");
+    await expect(page.locator(".conversation-head h1")).toHaveText(
+      "Slash fork",
+    );
+    await expect(page.locator(".status")).toHaveText("idle");
+    await prompt.fill("/sessions");
+    await prompt.press("Enter");
+    await expect(page.getByLabel("Find a session")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Close sessions", exact: true })
+      .tap();
+    await prompt.fill("/new");
+    await prompt.press("Enter");
+    await expect(page.locator(".status")).toHaveText("idle");
+    await expect(page.locator(".message.user")).toHaveCount(0);
+    await prompt.fill("/q");
+    await prompt.press("Enter");
+    await expect(
+      page.getByRole("button", { name: "Resume in this host directory" }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Resume in this host directory" })
+      .tap();
+    await expect(prompt).toBeVisible();
+    await prompt.fill("/att");
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-slash-phone.png`,
+    });
+  });
+});

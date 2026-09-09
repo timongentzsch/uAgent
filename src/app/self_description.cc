@@ -101,7 +101,15 @@ json FlagJson(const FlagSpec& spec) {
 json CommandJson(const SlashCommandSpec& command) {
   std::string usage = command.name;
   if (*command.argument) usage += std::string(" ") + command.argument;
+  json aliases = json::array();
+  for (const auto& entry : SlashCommandRegistry()) {
+    if (entry.id == command.id && !*entry.description) {
+      aliases.push_back(entry.name);
+    }
+  }
   return {{"command", command.name},
+          {"argument", command.argument},
+          {"aliases", std::move(aliases)},
           {"usage", std::move(usage)},
           {"description", command.description},
           {"alias", !*command.description}};

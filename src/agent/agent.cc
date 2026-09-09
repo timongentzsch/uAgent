@@ -191,6 +191,7 @@ json Agent::HttpExchanges() const {
 }
 json Agent::PreviewContext() {
   RefreshSystemMessage();
+  if (!prompt_error_.empty()) return {{"error", prompt_error_}};
   json preview = ContextPreview(ModelRequest());
   if (!preview.contains("error")) {
     conversation_.RecordDisplay("http-preview",

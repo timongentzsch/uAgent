@@ -130,5 +130,7 @@ void TestPromptRequestParity() {
   CHECK(agent.Load(path, workspace.workspace.string(), error));
   CHECK(state.mode == "replace");
   CHECK(agent.PromptConfiguration({})["effective"] == proposed["effective"]);
+  CHECK(ToolWritePrivateFile(PromptDocumentPath("project"), "invalid").Ok());
+  CHECK(agent.PreviewContext().contains("error"));
 }
 }  // namespace uagent

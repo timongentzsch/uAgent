@@ -999,7 +999,28 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   }
 });
 
+async function closeIdleWorkers(page) {
+  // This hermetic host is shared across browser projects. Release idle slots
+  // around the multi-session test without changing the production limit.
+  const catalogue = await (await page.request.get("/api/sessions")).json();
+  for (const session of catalogue.sessions) {
+    if (!session.generation || session.turn_active || session.pending) continue;
+    const response = await page.request.post("/api/command", {
+      headers: { Origin: "http://127.0.0.1:8765" },
+      data: {
+        v: 1,
+        kind: "close",
+        request_id: crypto.randomUUID().replaceAll("-", ""),
+        session_id: session.id,
+        generation: session.generation,
+      },
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+}
+
 test.describe("mobile navigation and commands", () => {
+  test.afterEach(async ({ page }) => closeIdleWorkers(page));
   test.use({
     isMobile: true,
     hasTouch: true,
@@ -1050,12 +1071,7 @@ test.describe("mobile navigation and commands", () => {
       expect(response.ok(), JSON.stringify(result)).toBe(true);
       return result;
     };
-    // Other tests leave saved workers in this hermetic host. Release their
-    // idle slots before this test owns two; never raise the production limit.
-    const catalogue = await (await page.request.get("/api/sessions")).json();
-    for (const session of catalogue.sessions)
-      if (session.generation && !session.turn_active && !session.pending)
-        await call("close", session);
+    await closeIdleWorkers(page);
     const make = async (title) => {
       const { session } = await call("create", null, { cwd: fixture.project });
       await call("rename", session, { title });

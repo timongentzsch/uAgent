@@ -186,7 +186,14 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toHaveCount(0);
   await expect
-    .poll(() => readFile(`${fixture.project}/browser-proof.txt`, "utf8"))
+    .poll(() =>
+      readFile(`${fixture.project}/browser-proof.txt`, "utf8").catch(
+        (error) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        },
+      ),
+    )
     .toBe("approved from browser");
   await expect(page.locator(".status")).toHaveText("idle");
   const toolResult = page.locator(".message.tool").last();

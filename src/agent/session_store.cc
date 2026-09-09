@@ -60,7 +60,7 @@ constexpr Field kStateFields[] = {
     {"usage", json::value_t::object, true},
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
-    {"tool_displays", json::value_t::object, true},
+    {"tool_displays", json::value_t::object, false},
     {"display", json::value_t::object, false}};
 
 constexpr Field kHeaderFields[] = {
@@ -221,7 +221,9 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
   record.state.adaptive_system_revision =
       JsonValue(state, "adaptive_system_revision", uint64_t{0});
-  record.state.tool_displays = std::move(state["tool_displays"]);
+  if (state.contains("tool_displays")) {
+    record.state.tool_displays = std::move(state["tool_displays"]);
+  }
   record.state.display = JsonValue(state, "display", json::object());
   return {{}, std::move(record)};
 }

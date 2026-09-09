@@ -281,6 +281,15 @@ void TestWorkspaceScopedSession() {
           "Persist this task strategy.");
     CHECK(payload.value("adaptive_system_revision", uint64_t{0}) == 4);
     payload["context_tokens"] = 1'900'000;
+    payload["tool_displays"] = json::array();
+    CHECK(ToolWritePrivateFile(session.string(),
+                               header.dump() + "\n" + payload.dump())
+              .Ok());
+    CHECK(SessionStore::Inspect(session.string()).status.error ==
+          SessionStoreError::kCorrupt);
+    // Earlier format-3 sessions omit both kinds of display metadata.
+    payload.erase("tool_displays");
+    payload.erase("display");
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .output.starts_with("wrote "));
@@ -311,12 +320,11 @@ void TestWorkspaceScopedSession() {
   CHECK(!contender.Acquire(session.string() + ".lock", error));
   CHECK(agent.SessionId() == session_id);
 
-  // Format-3 sessions written before the Web UI have no display metadata.
-  // Forking must normalize that state before adding fork provenance.
+  // Resume and fork normalize absent presentation metadata to empty objects.
   auto older = SessionStore::Inspect(session.string());
   CHECK(older.record.has_value());
-  older.record->state.display = json::object();
-  CHECK(SessionStore::Save(session.string(), *older.record).Ok());
+  CHECK(older.record->state.tool_displays == json::object());
+  CHECK(older.record->state.display == json::object());
   auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);
   CHECK(!forked.contains("error"));
   const auto fork_path = forked.value("path", "");

@@ -363,6 +363,7 @@ set(UAGENT_GUIDES
     docs/TESTING.md
     docs/TOOLS.md
     docs/WEB.md
+    docs/SYSTEM_PROMPTS.md
     docs/MANAGEMENT.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})

@@ -305,6 +305,22 @@ uagent --web --web-origin https://your-host.example
 a path or trailing slash. These settings belong in user configuration, not a
 project. An already-running master's settings take precedence.
 
+For ordinary browser testing on an encrypted tailnet without HTTPS, an explicit
+HTTP origin with a literal IPv4 address in `100.64.0.0/10` is also accepted:
+
+```sh
+uagent --web --web-port 18080 --web-origin http://100.64.0.9:18080
+tailscale serve --bg --tcp=18080 tcp://127.0.0.1:18080
+```
+
+Open that exact origin from another tailnet device and pair normally. The TCP
+forwarder exposes the loopback service only to the tailnet; Host/Origin checks
+and device authentication remain enforced. Other HTTP origins are rejected.
+[Tailscale encrypts traffic between nodes](https://tailscale.com/docs/concepts/tailscale-encryption),
+but HTTP does not provide a browser secure context: installation, service workers
+and background push still require trusted HTTPS. Copy buttons use the browser's
+user-initiated copy fallback where the Clipboard API is unavailable.
+
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) is one
 private HTTPS proxy option. Obtain its stable tailnet HTTPS hostname and use that
 exact origin; route it to the native loopback port. The phone must be able to

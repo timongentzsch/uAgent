@@ -25,6 +25,41 @@ PNG = base64.b64decode(
 )
 
 
+def test_web_external_origin_pairing(root, home, *, binary):
+    with Server([event({"content": "unused"})]) as provider:
+        for origin in ("https://browser.example", "http://100.64.0.9:18080"):
+            with web_host(
+                binary, root, home, provider.url, extra_env={"UAGENT_WEB_ORIGIN": origin}
+            ) as (client, code, _, env):
+                client.origin = origin
+                host = {"Host": origin.split("://", 1)[1]}
+                status, value, headers = client.json("/api/auth", {"code": code}, headers=host)
+                assert_true(status == 200, value)
+                cookie = headers["Set-Cookie"]
+                assert_true(("; Secure" in cookie) == origin.startswith("https://"), cookie)
+                client.cookie = cookie.split(";", 1)[0]
+                assert_true(client.json("/api/sessions", headers=host)[0] == 200, "pairing failed")
+                assert_true(
+                    client.json("/api/sessions", headers={**host, "Origin": "http://evil.example"})[
+                        0
+                    ]
+                    == 403,
+                    "foreign origin accepted",
+                )
+                assert_true(client.json("/api/sessions")[0] == 403, "foreign host accepted")
+        for origin in (
+            "http://example.com",
+            "http://127.0.0.1",
+            "http://100.63.255.255",
+            "http://100.128.0.0",
+            "http://100.64.0.9@evil.example",
+            "http://100.64.0.9/path",
+            "http://100.64.0.9:99999",
+        ):
+            rejected = run(root, env, "--web", "--web-origin", origin, binary=binary)
+            assert_true(rejected.returncode != 0 and "origin" in rejected.stderr, rejected.stderr)
+
+
 def test_web_singleton_auth_persistence(root, home, *, binary):
     project = root / "outside-launch"
     project.mkdir()

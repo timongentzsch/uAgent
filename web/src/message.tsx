@@ -21,7 +21,7 @@ import {
 } from "preact/hooks";
 import { Check, ChevronRight, Copy } from "lucide-preact";
 import { readPages } from "./store.ts";
-import { Mark, cleanText, Skeleton, LoadError } from "./ui.tsx";
+import { Mark, cleanText, copyText, Skeleton, LoadError } from "./ui.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
 import { formatBody } from "./format.ts";
 
@@ -43,7 +43,7 @@ function CopyButton({
       aria-label={copied ? "Copied" : label}
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(cleanText(text));
+          await copyText(cleanText(text));
           setCopied(true);
         } catch (failure) {
           report(failure);

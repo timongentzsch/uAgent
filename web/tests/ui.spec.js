@@ -176,6 +176,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .selectOption({ label: "mock/model-b" });
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
   await prompt.fill("Compact layout proof");
+  await prompt.evaluate((element) =>
+    element.setSelectionRange(element.value.length, element.value.length),
+  );
   await prompt.press("Shift+Enter");
   await expect(prompt).toHaveValue("Compact layout proof\n");
   for (const keyboard of [
@@ -196,6 +199,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     page.getByRole("button", { name: "Raw context", exact: true }),
   ).toContainText("/1.3M · 99% left");
   const reply = page.locator(".message.response").last();
+  // Tailnet HTTP has no Clipboard API; a user click must still copy.
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", { value: undefined }),
+  );
+  await reply.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect(
+    reply.getByRole("button", { name: "Copied", exact: true }),
+  ).toBeVisible();
   const thinking = reply.locator(".thinking");
   await thinking.locator("summary").click();
   await expect(thinking).toContainText("I checked the supplied evidence.");

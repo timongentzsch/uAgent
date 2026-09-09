@@ -3,6 +3,7 @@
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
 
+#include <arpa/inet.h>
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <httplib.h>
@@ -256,18 +257,27 @@ class Master {
     }
     if (!options_.origin.empty()) {
       // No path, query, userinfo or forwarding-header origin inference.
-      if (!origin_.starts_with("https://") || origin_.size() > 255 ||
-          origin_.substr(8).find_first_of("/@?#\\ \t\r\n") !=
-              std::string::npos ||
-          origin_.size() == 8) {
-        error = "web origin must be a bare HTTPS origin";
+      bool http = origin_.starts_with("http://");
+      size_t prefix = http ? 7 : 8;
+      in_addr address{};
+      std::string host =
+          http ? origin_.substr(7, origin_.find(':', 7) - 7) : "";
+      bool tailnet = http && inet_pton(AF_INET, host.c_str(), &address) == 1 &&
+                     (ntohl(address.s_addr) & 0xffc00000U) == 0x64400000U;
+      if ((!origin_.starts_with("https://") && !tailnet) ||
+          origin_.size() <= prefix || origin_.size() > 255 ||
+          origin_.substr(prefix).find_first_of("/@?#\\ \t\r\n") !=
+              std::string::npos) {
+        error =
+            "web origin must be bare HTTPS, or HTTP on a 100.64.0.0/10 "
+            "tailnet address";
         return false;
       }
       std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> url(curl_url(),
                                                               curl_url_cleanup);
       if (!url || curl_url_set(url.get(), CURLUPART_URL, origin_.c_str(), 0) !=
                       CURLUE_OK) {
-        error = "web origin is not a valid HTTPS URL";
+        error = "web origin is not a valid URL";
         return false;
       }
     }

@@ -2,7 +2,7 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "./types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Copy, Download } from "lucide-preact";
-import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
+import { Field, Select, Skeleton, LoadError, copyText } from "./ui.tsx";
 import { readPages, command } from "./store.ts";
 import { formatBody } from "./format.ts";
 import { formatEventStream } from "./event-stream.ts";
@@ -205,9 +205,7 @@ export default function Raw({
           type="button"
           class="with-icon"
           disabled={body === undefined}
-          onClick={() =>
-            navigator.clipboard.writeText(original).catch(setError)
-          }
+          onClick={() => copyText(original).catch(setError)}
         >
           <Copy />
           Copy raw body

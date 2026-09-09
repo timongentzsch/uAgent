@@ -6,6 +6,24 @@ import { markPath } from "./mark.ts";
 
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+export async function copyText(text: string) {
+  if (navigator.clipboard) return navigator.clipboard.writeText(text);
+  // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.readOnly = true;
+  field.style.cssText = "position:fixed;left:-9999px";
+  const focused = document.activeElement;
+  document.body.append(field);
+  field.select();
+  try {
+    if (!document.execCommand("copy"))
+      throw new Error("Copy is unavailable in this browser");
+  } finally {
+    field.remove();
+    if (focused instanceof HTMLElement) focused.focus();
+  }
+}
 export function Mark({ className = "" }: { className?: string }) {
   return (
     <svg

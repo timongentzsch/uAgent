@@ -21,7 +21,7 @@ constexpr FlagSpec kFlags[] = {
     {"--web-port", FlagKind::kConfig, nullptr, "UAGENT_WEB_PORT", "PORT",
      "loopback web listener port (default 8080)"},
     {"--web-origin", FlagKind::kConfig, nullptr, "UAGENT_WEB_ORIGIN", "ORIGIN",
-     "stable HTTPS browser origin behind a local reverse proxy"},
+     "exact browser origin behind a local HTTPS or tailnet proxy"},
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
     {"--yolo", FlagKind::kToggle, &Options::yolo, nullptr, nullptr,

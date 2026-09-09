@@ -176,7 +176,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
      Sensitivity::kPublic,
      kScopeUser,
      "web",
-     "stable HTTPS browser origin via an explicitly configured local proxy"},
+     "exact browser origin via an explicitly configured HTTPS or tailnet "
+     "proxy"},
     {"UAGENT_WEB_PUSH_CONTACT",
      {},
      ConfigType::kString,

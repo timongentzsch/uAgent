@@ -1,0 +1,239 @@
+.management {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.management-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.management-toolbar > .field {
+  flex: 1;
+  max-width: 34rem;
+}
+.management-toolbar > p {
+  flex: 1;
+  margin: 0;
+}
+.segmented,
+.document-toolbar,
+.weekdays {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.segmented button[aria-pressed="true"],
+.weekdays button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--bg);
+}
+.management-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.management-list {
+  flex: 0 0 15rem;
+  padding: 0.75rem;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+.management-list > input,
+.management-list > .select {
+  margin-bottom: 0.6rem;
+  width: 100%;
+}
+.library-row {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  gap: 0.25rem;
+  border: 0;
+  background: none;
+  padding: 0.65rem;
+  overflow-wrap: anywhere;
+}
+.library-row small,
+.run-row small {
+  color: var(--muted);
+}
+.library-row.selected {
+  background: var(--raised);
+}
+.library-group + .library-group {
+  margin-top: 0.6rem;
+}
+.library-group h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.library-group h2 > .folder-label,
+.library-group h2 > button {
+  padding: 0.5rem;
+}
+.library-group h2 > button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  gap: 0.4rem;
+}
+.library-group .folder-label {
+  min-width: 0;
+  flex: 1;
+}
+.library-group button[aria-expanded="false"] > svg {
+  transform: rotate(-90deg);
+}
+.management-editor {
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1rem 1.25rem;
+  min-width: 0;
+  overflow: auto;
+  flex: 1;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.editor-head > strong {
+  flex: 1;
+}
+.editor-head > button {
+  display: none;
+}
+.document-toolbar {
+  align-items: center;
+}
+.document-toolbar small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.document-input {
+  flex: 1;
+  min-height: 14rem;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.document-preview {
+  flex: 1;
+  min-height: 14rem;
+  overflow: auto;
+  padding: 0.75rem;
+}
+.document-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  font-size: 0.85em;
+}
+.document-details dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.editor-actions > small {
+  margin-right: auto;
+}
+.schedule-editor .field-row {
+  align-items: start;
+}
+.schedule-editor > .field,
+.schedule-editor .field-row {
+  flex: none;
+}
+.run-history {
+  border-top: 1px solid var(--line);
+  padding-top: 0.7rem;
+}
+.run-history h2 {
+  font-size: 1em;
+}
+.run-row {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.run-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.3rem;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+@media (max-width: 900px) {
+  .management-toolbar {
+    flex-wrap: wrap;
+    padding: 0.75rem;
+    gap: 0.6rem;
+  }
+  .management-toolbar .field {
+    order: 3;
+    min-width: 100%;
+  }
+  .management-toolbar > button {
+    margin-left: auto;
+  }
+  .management-list {
+    flex: 1;
+    border-right: 0;
+  }
+  .management-editor {
+    margin: 0;
+    border: 0;
+    display: none;
+    padding: 0.75rem;
+  }
+  .management-body.has-selection .management-list {
+    display: none;
+  }
+  .management-body.has-selection .management-editor {
+    margin: 0;
+    border: 0;
+    display: flex;
+  }
+  .editor-head > button {
+    display: flex;
+  }
+  .management-body:not(.has-selection) .schedule-editor {
+    display: flex;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) .management-list {
+    flex: none;
+  }
+  .management-body:not(.has-selection) .schedule-editor {
+    overflow: visible;
+    flex: none;
+  }
+}

@@ -368,7 +368,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"approval-history-ok" in output, output)
-        assert_true(b"/16.4K" in output, output)  # used/window, not used alone
+        assert_true(b"/16.4k" in output, output)  # used/window, not used alone
         assert_true(len(server.requests) == 3, server.requests)
 
 
@@ -728,7 +728,7 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
         assert_true(b'"web_search_api_key": "<set>"' in output, output)
         assert_true(b"context-secret-sentinel" not in output, output)
         assert_true(b"user:pass" not in output, output)
-        assert_true(b"memory on" in output, output)
+        assert_true(b'"enabled": true' in output, output)
         assert_true(not server.requests, server.requests)
 
 
@@ -887,3 +887,59 @@ def test_input_ctrl_c_asks_once_then_quits(root, home, *, binary):
         assert_true(code == 130, (code, output))
         assert_true(b"ctrl+c again to quit" in output, output)
         assert_true(not server.get_requests, server.get_requests)
+
+
+def test_cli_permissions_config_http_and_fork(root, home, *, binary):
+    with Server([lambda _, _body: event({"content": "CLI capture proof"})]) as server:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "/permissions yolo\n/config user UAGENT_MAX_STEPS=23\nFirst CLI turn\n/http\n/http 1 response\n/fork CLI fork\nSecond CLI turn\n/q\n",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(
+            '"effective": "yolo"' in result.stdout and '"continued": true' in result.stdout,
+            result.stdout,
+        )
+        assert_true("data: [DONE]" in result.stdout and '"tools"' in result.stdout, result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+        assert_true("First CLI turn" in json.dumps(server.requests[1][1]), "fork lost CLI history")
+        files = list((home / ".uagent/history").rglob("*.json"))
+        assert_true(len(files) == 2, files)
+        original = next(path for path in files if not path.name.startswith("fork-"))
+        fork = next(path for path in files if path.name.startswith("fork-"))
+        assert_true(
+            "Second CLI turn" not in original.read_text() and "Second CLI turn" in fork.read_text(),
+            "fork modified source",
+        )
+        assert_true(
+            "UAGENT_MAX_STEPS=23" in (home / ".uagent/.config").read_text(),
+            "CLI config not persisted",
+        )
+
+
+def test_cli_fork_does_not_inherit_remembered_approvals(root, home, *, binary):
+    def answer(_, body):
+        messages = body["messages"]
+        start = max(
+            index for index, message in enumerate(messages) if message.get("role") == "user"
+        )
+        if any(message.get("role") == "tool" for message in messages[start:]):
+            return event({"content": "Approval handled"})
+        name = "first.txt" if messages[start]["content"] == "First approval" else "second.txt"
+        return tool_call("write_file", {"path": name, "content": "Scoped approval"}, call_id=name)
+
+    with Server([answer]) as server:
+        result = run_dialog(
+            root,
+            base_env(home, server.url),
+            "First approval\na\n/fork\nSecond approval\nn\n/q\n",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.count("allow write_file?") == 2, result.stdout)
+        assert_true(
+            (root / "first.txt").exists() and not (root / "second.txt").exists(),
+            "fork inherited an approval grant",
+        )

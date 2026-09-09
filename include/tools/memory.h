@@ -47,11 +47,13 @@ bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content);
+json MemoryControl(const json& request, const std::filesystem::path& workspace);
 
 // Native writable memories plus read-only Codex/Claude memory files drive
 // startup discovery, the tool, and /memory.
 std::vector<MemoryEntry> ListMemories();
-std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd);
+std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
+                                      size_t limit = 0);
 MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes);
 // Behavioral always-on slice: full content of global-scope memories, capped.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,

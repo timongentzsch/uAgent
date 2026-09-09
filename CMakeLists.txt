@@ -89,11 +89,13 @@ add_library(
   src/agent/prompt.cc
   src/agent/request.cc
   src/agent/session_store.cc
+  src/agent/session_view.cc
   src/agent/tool_loop.cc
   src/agent/trace.cc
   src/agent/turn.cc
   src/api/capabilities.cc
   src/api/client.cc
+  src/api/exchange.cc
   src/api/openai_stream.cc
   src/api/wire_request.cc
   src/api/wire_stream.cc
@@ -101,6 +103,11 @@ add_library(
   src/app/bootstrap.cc
   src/app/commands.cc
   src/app/config_proposal.cc
+  src/app/config_control.cc
+  src/app/library.cc
+  src/app/control.cc
+  src/app/schedule.cc
+  src/core/capture.cc
   src/app/options.cc
   src/app/reference.cc
   src/app/runtime.cc
@@ -158,7 +165,27 @@ add_library(
 target_link_libraries(uagent_core PUBLIC uagent_options)
 
 add_executable(uagent src/main.cc)
-target_link_libraries(uagent PRIVATE uagent_core)
+option(UAGENT_WEB "Embed the native web master and PWA" ON)
+option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
+if(UAGENT_WEB)
+  include(cmake/embed_web.cmake)
+  add_library(uagent_web src/web/protocol.cc src/web/worker.cc src/web/master.cc src/web/push.cc
+                          "${_web_generated}")
+  target_link_libraries(uagent_web PUBLIC uagent_core)
+  target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
+  target_compile_definitions(uagent PRIVATE UAGENT_WEB)
+  target_link_libraries(uagent PRIVATE uagent_web)
+  if(UAGENT_WEB_PUSH)
+    find_package(OpenSSL 3 REQUIRED COMPONENTS Crypto)
+    target_sources(uagent_web PRIVATE src/web/push_crypto.cc)
+    target_compile_definitions(uagent_web PRIVATE UAGENT_WEB_PUSH)
+    target_link_libraries(uagent_web PUBLIC OpenSSL::Crypto)
+  endif()
+elseif(UAGENT_WEB_PUSH)
+  message(FATAL_ERROR "UAGENT_WEB_PUSH requires UAGENT_WEB")
+else()
+  target_link_libraries(uagent PRIVATE uagent_core)
+endif()
 
 # `third_party/json.hpp` is 25k lines and reaches 82 of the ~90 translation
 # units through include/core/json.h. Measured on an M-series host it costs
@@ -186,6 +213,9 @@ if(ipo_ok)
   set_property(TARGET uagent_core PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE
                                            TRUE)
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+  if(UAGENT_WEB)
+    set_property(TARGET uagent_web PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+  endif()
 endif()
 
 include(CTest)
@@ -224,6 +254,19 @@ if(BUILD_TESTING)
     uagent_tests PRIVATE UAGENT_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME core COMMAND uagent_tests)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  if(UAGENT_WEB)
+    add_test(NAME integration_web COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:uagent> --group web)
+    set_tests_properties(integration_web PROPERTIES TIMEOUT 180)
+    add_test(NAME integration_management COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:uagent> --group management)
+    set_tests_properties(integration_management PROPERTIES TIMEOUT 120)
+    if(UAGENT_WEB_PUSH)
+      add_executable(uagent_push_tests tests/unit/web_push_test.cc)
+      target_link_libraries(uagent_push_tests PRIVATE uagent_web)
+      add_test(NAME web_push COMMAND uagent_push_tests)
+    endif()
+  endif()
   foreach(group IN ITEMS runtime tools ui providers mcp delegation sandbox)
     add_test(NAME integration_${group}
              COMMAND ${Python3_EXECUTABLE}
@@ -308,14 +351,24 @@ install(
   RENAME architecture.md)
 set(UAGENT_GUIDES
     docs/ARCHITECTURE.md
+    docs/CACHING.md
     docs/OPERATIONS.md
     docs/PERSISTENCE.md
     docs/SELF_IMPROVEMENT.md
     docs/SELF_IMPROVEMENT_RESEARCH.md
     docs/TESTING.md
-    docs/TOOLS.md)
+    docs/TOOLS.md
+    docs/WEB.md
+    docs/MANAGEMENT.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 # Keep the source-relative paths used by README and CONTRIBUTING valid in an
 # installed documentation tree.
 install(FILES ${UAGENT_GUIDES} DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs)
+install(FILES benchmarks/baselines/web.json
+        DESTINATION ${CMAKE_INSTALL_DOCDIR}/benchmarks/baselines)
+if(UAGENT_WEB)
+  install(FILES web/THIRD_PARTY_NOTICES.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+  install(FILES third_party/cpp-httplib/LICENSE
+          DESTINATION ${CMAKE_INSTALL_DOCDIR}/licenses RENAME cpp-httplib.txt)
+endif()

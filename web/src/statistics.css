@@ -1,0 +1,22 @@
+.statistics-view {
+  height: min(680px, calc(var(--viewport-height) - 32px));
+}
+.stats {
+  margin: 0;
+}
+.stats > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+.stats dt {
+  color: var(--muted);
+}
+.stats dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}

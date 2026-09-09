@@ -112,7 +112,7 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
         mcp_present ? (agent_config_present ? ".mcp.json and .uagent/.config"
                                             : ".mcp.json")
                     : ".uagent/.config";
-    if (!isatty(STDIN_FILENO) || !options.prompt.empty()) {
+    if (!InteractiveApprovalAvailable() || !options.prompt.empty()) {
       if (mcp_present) {
         error =
             "project .mcp.json is untrusted; rerun with "
@@ -250,47 +250,6 @@ void PrintRoutes(const RuntimeConfig& config) {
                   {std::move(list)});
 }
 
-bool ProbeModel(Api& api) {
-  if (!api.model.empty() && api.ctx_window > 0) return true;
-  // A known model with an unknown window still needs the catalog: the window
-  // is what context headroom and the compaction budget are measured against,
-  // and providers that do not need the catalog to *choose* a model still
-  // publish it there. That probe is a courtesy, so it gets a shorter deadline
-  // and a failure leaves the session usable — unlike discovering a model,
-  // without which there is nothing to run.
-  bool window_only = !api.model.empty();
-  auto started = std::chrono::steady_clock::now();
-  json models = api.Get("/models", /*abortable=*/false, window_only ? 8 : 15);
-  size_t offered = 0;
-  if (models.is_object() && models.contains("data") &&
-      models["data"].is_array()) {
-    const json& data = models["data"];
-    offered = data.size();
-    if (api.model.empty()) {
-      for (const json& candidate : data) {
-        if (!candidate.is_object()) continue;
-        api.model = JsonValue(candidate, "id", "");
-        if (!api.model.empty()) break;
-      }
-    }
-    std::string base = api.CatalogModel();
-    if (api.ctx_window == 0) {
-      for (const json& model : data) {
-        if (!model.is_object()) continue;
-        std::string id = JsonValue(model, "id", "");
-        if (id != api.model && id != base) continue;
-        api.ctx_window = CatalogContextLength(model);
-        break;
-      }
-    }
-  }
-  DebugLog("models_probe", {{"duration_ms", ElapsedMs(started)},
-                            {"models_offered", offered},
-                            {"model", api.model},
-                            {"context_window", api.ctx_window}});
-  return !api.model.empty();
-}
-
 // Project docs and memory context share one byte budget: what the project
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
@@ -357,13 +316,14 @@ std::vector<Tool> BuildTools(AppContext& context,
   if (toolset == "none") return {};
   // Read-only self-description, answered from the live registries when the
   // model asks rather than injected into every prompt.
-  tools.push_back(SelfInfoTool([app = &context](SelfTopic topic,
-                                                const std::string& name) {
-    return DescribeSelf(
-        topic, name,
-        SelfDescriptionInputs{app->config_manager, app->runtime.config,
-                              app->runtime.api, app->tools, app->options.yolo});
-  }));
+  tools.push_back(
+      SelfInfoTool([app = &context](SelfTopic topic, const std::string& name) {
+        return DescribeSelf(
+            topic, name,
+            SelfDescriptionInputs{app->config_manager, app->runtime.config,
+                                  app->runtime.api, app->tools,
+                                  ApprovalIsAutomatic()});
+      }));
   // Persisting configuration is a mandatory-human action, so it is offered
   // only where a person can actually answer. The approver denies the same
   // cases outright, and advertising a kilobyte of schema for a call that can
@@ -376,7 +336,7 @@ std::vector<Tool> BuildTools(AppContext& context,
                          const std::vector<ConfigChange>& changes) {
           return PrepareConfigProposal(scope, changes, app->config_manager,
                                        app->runtime.config,
-                                       app->options.trust_project);
+                                       app->config_manager.ProjectTrusted());
         },
         proposals));
   }
@@ -468,7 +428,7 @@ Agent::Approver MakeApprover(AppContext* app) {
         !mandatory &&
         std::find(app->session_approvals.begin(), app->session_approvals.end(),
                   key) != app->session_approvals.end();
-    bool automatic = (app->options.yolo || remembered) && !mandatory;
+    bool automatic = (ApprovalIsAutomatic() || remembered) && !mandatory;
     bool granted = true;
     std::string request_id =
         "approval-" + std::to_string(sequence.fetch_add(1) + 1);
@@ -538,8 +498,7 @@ Agent::Approver MakeApprover(AppContext* app) {
         std::string choice = AsciiLower(answer);
         bool always = choice == "a" || choice == "always";
         granted =
-            !cancelled && !eof &&
-            (choice.empty() || choice == "y" || choice == "yes" || always);
+            !cancelled && !eof && (choice == "y" || choice == "yes" || always);
         if (granted && always) app->session_approvals.push_back(key);
         if (!granted && !cancelled && !eof && !answer.empty() &&
             choice != "n" && choice != "no") {
@@ -621,7 +580,7 @@ void LogReady(const AppContext& context) {
       {"memory", config.memory_enabled},
       {"memory_generate", config.memory_generate},
       {"run_mode", run_mode},
-      {"approval", context.options.yolo ? "yolo" : "prompt"},
+      {"approval", ApprovalIsAutomatic() ? "yolo" : "prompt"},
       {"auto_compact_pct", AutoCompactPct()},
       {"auto_compact_tokens", AutoCompactTokens()},
       {"tool_concurrency", ToolConcurrency()},
@@ -653,7 +612,7 @@ void LogReady(const AppContext& context) {
        {"output_mode", context.options.json_stream
                            ? "json-stream"
                            : (context.options.json ? "json" : "text")},
-       {"yolo", context.options.yolo},
+       {"yolo", ApprovalIsAutomatic()},
        {"auto_compact_pct", AutoCompactPct()},
        {"auto_compact_tokens", AutoCompactTokens()},
        {"openrouter_provider", config.openrouter_provider},
@@ -736,11 +695,9 @@ BootstrapResult Bootstrap(Options options, const char* executable,
     return Failure(std::move(error), 2);
   }
   MaintainArtifacts();
-  if (!options.yolo) options.yolo = EnvStr("UAGENT_APPROVAL") == "yolo";
-  // One resolved source of truth for the approval mode, so the prompt and the
-  // approver cannot disagree however the session was launched.
-  setenv("UAGENT_APPROVAL", options.yolo ? "yolo" : "prompt", 1);
-  SetApprovalAutomatic(options.yolo);
+  // Keep the explicit CLI flag distinct from the configured default so a
+  // resumed conversation can restore its own override.
+  SetApprovalAutomatic(options.yolo || config.approval == "yolo");
   if (!options.debug) {
     options.debug_path = EnvStr("UAGENT_DEBUG_LOG");
     options.debug = !options.debug_path.empty();
@@ -816,6 +773,7 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       BuildTools(*context, workspace, trusted_snapshot, skills, tool_error);
   if (!tool_error.empty()) return Failure(tool_error);
   if (context->options.prompt.empty() && !channel) PrintStartupHints();
+  context->permission_override.store(context->options.yolo ? 1 : -1);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(
       api, context->tools, context->runtime.processes,

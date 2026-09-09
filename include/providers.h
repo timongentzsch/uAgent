@@ -55,6 +55,10 @@ struct ModelSearch {
   std::vector<std::string> unavailable;
 };
 
+json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
+                    const std::vector<NamedProvider>& providers,
+                    const std::string& query = "all");
+
 struct ModelPreference {
   std::string selection, base_url;
   bool route = false;
@@ -105,7 +109,7 @@ ModelSelection ParseModelSelection(const std::string& selection);
 // only the execution paths treat as an error. Shared by the subagent, vision
 // and memory-extraction paths so one selection means one thing.
 struct SideRoute {
-  std::string selection, model, base_url, api_key, effort, variant;
+  std::string selection{}, model{}, base_url{}, api_key{}, effort{}, variant{};
   int64_t context = 0;
   ProviderProtocol protocol = ProviderProtocol::kOpenAi;
   WireApi wire_api = WireApi::kChatCompletions;
@@ -156,6 +160,8 @@ void ApplyRoute(Api& api, const ModelRoute& route);
 void ApplySideRoute(Api& api, const SideRoute& route);
 void ActivateRoute(Api& api);
 ProviderSetup ConfigureProvider(Api& api);
+// Discover a missing model or context limit; a failed limit probe is advisory.
+bool ProbeModel(Api& api, bool discover_efforts = false);
 bool CanUseRawModel(const Api& api, std::string_view name);
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                         const std::vector<NamedProvider>& providers,

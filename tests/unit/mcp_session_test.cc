@@ -298,6 +298,36 @@ void TestWorkspaceScopedSession() {
   CHECK(!agent.Load(session.string(), root.string(), error));
   CHECK(error.find("session belongs to") != std::string::npos);
 
+  // A rejected resume keeps the current writer lease, and claims a new
+  // snapshot before attempting to deserialize it.
+  const auto blocked = (root / "blocked.json").string();
+  CHECK(ToolWritePrivateFile(blocked, "invalid snapshot").Ok());
+  FileLease contender;
+  CHECK(contender.Acquire(blocked + ".lock", error));
+  CHECK(!agent.Load(blocked, CanonicalCwd(), error));
+  CHECK(error.find("already owned") != std::string::npos);
+  contender.Reset();
+  CHECK(!agent.Load(blocked, CanonicalCwd(), error));
+  CHECK(!contender.Acquire(session.string() + ".lock", error));
+  CHECK(agent.SessionId() == session_id);
+
+  // Format-3 sessions written before the Web UI have no display metadata.
+  // Forking must normalize that state before adding fork provenance.
+  auto older = SessionStore::Inspect(session.string());
+  CHECK(older.record.has_value());
+  older.record->state.display = json::object();
+  CHECK(SessionStore::Save(session.string(), *older.record).Ok());
+  auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);
+  CHECK(!forked.contains("error"));
+  const auto fork_path = forked.value("path", "");
+  CHECK(agent.Load(fork_path, CanonicalCwd(), error));
+  CHECK(agent.SessionId() != session_id);
+  CHECK(!FileLease::HasLiveOwner(session.string() + ".lock"));
+  CHECK(FileLease::HasLiveOwner(fork_path + ".lock"));
+  CHECK(agent.Load(session.string(), CanonicalCwd(), error));
+  CHECK(agent.SessionId() == session_id);
+  CHECK(!FileLease::HasLiveOwner(fork_path + ".lock"));
+
   SessionLoadResult missing =
       SessionStore::Load((root / "missing.json").string(), CanonicalCwd());
   CHECK(missing.status.error == SessionStoreError::kNotFound);

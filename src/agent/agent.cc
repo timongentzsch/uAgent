@@ -16,7 +16,9 @@
 
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
+#include "include/agent/session_view.h"
 #include "include/agent/trace.h"
+#include "include/api/exchange.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/fs.h"
@@ -72,7 +74,47 @@ void Agent::PrintHistory() const {
   PrintConversationHistory(conversation_, tools_);
 }
 
+json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
+
+json Agent::RawExchange(const std::string& id, size_t offset) const {
+  return ConversationExchange(
+      conversation_,
+      id.starts_with("m-") || id.starts_with("t-") ? id : "t-" + id, offset);
+}
+
+void Agent::PublishMessage(const std::string& request_id) {
+  ++revision_;
+  auto kind = conversation_.KindAt(conversation_.Size() - 1);
+  if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
+    reply_to_ = conversation_.LastDisplayId();
+    if (turn_root_.empty()) turn_root_ = reply_to_;
+    auto view = LastMessageView(conversation_);
+    reply_excerpt_ = Utf8Trunc(JsonValue(view, "text", ""), 160);
+  }
+  json links = {{"turn_root", turn_root_},
+                {"reply_to", reply_to_},
+                {"reply_excerpt", reply_excerpt_}};
+  if (kind == MessageKind::kAssistant) links["http"] = api_.http_exchanges;
+  conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(links));
+  if (conversation_.KindAt(conversation_.Size() - 1) ==
+      MessageKind::kAssistant) {
+    conversation_.AddStatistics({{"incoming", 1}});
+    conversation_.RecordDisplay(
+        conversation_.LastDisplayId(),
+        {{"incoming", conversation_.Statistics()["incoming"]}});
+  }
+  if (!request_id.empty()) {
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                {{"request_id", request_id}});
+  }
+  json block = LastMessageView(conversation_);
+  if (!block.is_null()) {
+    Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+  }
+}
+
 void Agent::Reset() {
+  writer_.Reset();
   DebugLog("session_reset", {{"dropped_messages", conversation_.Size()},
                              {"prior_usage", UsageJson(session_usage_)}});
   if (adaptive_system_) adaptive_system_->Reset();
@@ -87,6 +129,7 @@ void Agent::Reset() {
   logged_schemas_.clear();
   total_user_turns_ = 0;
   session_title_.clear();
+  custom_title_ = false;
   session_id_ = MakeSessionId();
   ++revision_;
 }
@@ -132,6 +175,30 @@ int64_t Agent::UserTurns() const {
   return conversation_.UserTurns();
 }
 
+json Agent::SessionSettings() const {
+  return JsonValue(conversation_.DisplayFacts(), "session-settings",
+                   json::object());
+}
+void Agent::SessionSettings(const json& settings) {
+  if (settings == SessionSettings()) return;
+  conversation_.RecordDisplay("session-settings", settings);
+  ++revision_;
+}
+json Agent::HttpExchanges() const {
+  return JsonValue(
+      JsonValue(conversation_.DisplayFacts(), "http-latest", json::object()),
+      "http", json::array());
+}
+json Agent::PreviewContext() {
+  json preview = ContextPreview(ModelRequest());
+  if (!preview.contains("error")) {
+    conversation_.RecordDisplay("http-preview",
+                                {{"http", json::array({preview})}});
+    ++revision_;
+  }
+  return preview;
+}
+
 json Agent::ModelRequest() const {
   return api_.BuildRequestBody(conversation_.Messages(), schemas_, session_id_);
 }
@@ -139,6 +206,11 @@ json Agent::ModelRequest() const {
 void Agent::PrintContext() const { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
+  CreatePrivateDirectories(std::filesystem::path(path).parent_path());
+  if (!writer_.Acquire(CanonicalAccessPath(path).string() + ".lock", error,
+                       true)) {
+    return false;
+  }
   SessionRecord record;
   // Named, not positional: fifteen fields across the two structs, several of
   // them adjacent same-typed strings and integers, so a field inserted in the
@@ -147,7 +219,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .model = api_.RequestModel(),
                      .session_id = session_id_,
                      .turns = UserTurns(),
-                     .title = FirstUserText()};
+                     .title = Utf8Prefix(FirstUserText(), 256),
+                     .custom_title = custom_title_};
   record.state = {
       .messages = conversation_.Messages(),
       .message_kinds = conversation_.Kinds(),
@@ -159,7 +232,8 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .adaptive_system = adaptive_system_ ? adaptive_system_->instructions : "",
       .adaptive_system_revision =
           adaptive_system_ ? adaptive_system_->revision : 0,
-      .tool_displays = conversation_.ToolDisplays()};
+      .tool_displays = conversation_.ToolDisplays(),
+      .display = conversation_.DisplayMetadata()};
   SessionStoreStatus status = SessionStore::Save(path, record);
   if (!status.Ok()) {
     error = std::move(status.message);
@@ -170,20 +244,30 @@ bool Agent::Save(const std::string& path, std::string& error) const {
 
 bool Agent::Load(const std::string& path, const std::string& expected_cwd,
                  std::string& error) {
+  const auto lock_path = CanonicalAccessPath(path).string() + ".lock";
+  FileLease next;
+  // Claim before reading; keep the current conversation owned on failure.
+  if (!writer_.Owns(lock_path) && !next.Acquire(lock_path, error, true)) {
+    return false;
+  }
   SessionLoadResult loaded = SessionStore::Load(path, expected_cwd);
   if (!loaded.status.Ok() || !loaded.record) {
     error = std::move(loaded.status.message);
     return false;
   }
   SessionRecord record = std::move(*loaded.record);
-  if (!conversation_.Restore(std::move(record.state.messages),
-                             std::move(record.state.message_kinds),
-                             std::move(record.state.archive),
-                             record.state.archive_dropped_segments,
-                             std::move(record.state.tool_displays))) {
+  Conversation restored;
+  if (!restored.Restore(std::move(record.state.messages),
+                        std::move(record.state.message_kinds),
+                        std::move(record.state.archive),
+                        record.state.archive_dropped_segments,
+                        std::move(record.state.tool_displays),
+                        record.state.display)) {
     error = "session conversation state is invalid";
     return false;
   }
+  if (next.Owns(lock_path)) writer_.Swap(next);
+  conversation_ = std::move(restored);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
@@ -207,6 +291,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
+  custom_title_ = record.metadata.custom_title;
   logged_msgs_ = 0;
   logged_schemas_.clear();
   turn_search_trace_.Reset();
@@ -608,6 +693,12 @@ void Agent::DeliverActivityCompletions(
                         : std::string("activity ")) +
                    std::to_string(completion.activity_id);
     record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
+    json block = conversation_.RecordActivity(
+        {{"text", record.title + (succeeded ? " completed" : " failed")},
+         {"activity_id", completion.activity_id},
+         {"agent_id", completion.source_id},
+         {"status", succeeded ? "completed" : "failed"}});
+    Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     Event display{
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},

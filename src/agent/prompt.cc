@@ -54,12 +54,7 @@ constexpr const char kBase[] =
     "dependent or context-heavy work here, with direct parallel tools. "
     "Never ask the user to do work a tool can do, or claim success "
     "without tool evidence.\n\n## Answer\nLead with the outcome and "
-    "any blocker. Cite code as path:line. Fit Markdown tables to "
-    "terminal_columns; bullets when cramped. Math in $...$ or $$...$$ "
-    "renders to Unicode, not LaTeX: Greek, operators, super/subscripts, "
-    "frac and "
-    "sqrt have glyphs; anything else prints literally, so never use "
-    "\\begin environments.";
+    "any blocker. Cite code as path:line.";
 
 constexpr std::string_view kSections[] = {
     "## Evidence", "## Tools", "## Changes", "## Delegation", "## Answer"};

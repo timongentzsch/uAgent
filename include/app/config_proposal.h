@@ -70,7 +70,12 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
                                      const RuntimeConfig& active,
-                                     bool project_trusted);
+                                     bool project_trusted,
+                                     bool direct_user = false);
+
+// Human CLI/UI controls share schema, validation, scope and atomic persistence.
+json ConfigurationControl(const json& request, const ConfigManager& manager,
+                          const RuntimeConfig& active, bool project_trusted);
 
 // Re-reads the target and refuses when its bytes no longer match the snapshot
 // the human approved, then replaces it atomically. A project-scope commit also

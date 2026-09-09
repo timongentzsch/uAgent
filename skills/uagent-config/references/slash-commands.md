@@ -5,27 +5,33 @@
 
 | Command | Description |
 | --- | --- |
-| `/agents` | list delegated collaborators and what they are doing |
+| `/agents [ID [output|stop|message TEXT|followup TEXT]]` | inspect, guide or resume delegated collaborators |
 | `/attach PATH|clear` | attach a file to the next turn |
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
+| `/config [user|project KEY=VALUE|unset KEY]` | inspect or change configuration |
+| `/fork [NAME]` | fork the completed conversation |
+| `/permissions [default|ask|yolo]` | show or change permission mode |
+| `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |
 | `/debug-config [SETTING]` | show configuration layers, sources and restart-required fields |
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
 | `/init` | create an AGENTS.md file with instructions for µAgent |
-| `/memory` | show memory state and keys |
+| `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
+| `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
+| `/schedule [list|JSON]` | manage scheduled tasks and runs |
 | `/model NAME` | choose what model to use |
 | `/models [QUERY]` | search and select across providers |
-| `/ps` | list background work |
+| `/ps [ID [output|stop]]` | inspect or stop background work |
 | `/quit` | exit µAgent |
 | `/reset` | start a new chat |
 | `/review [TARGET]` | review my current changes and find issues |
 | `/sessions` | resume a saved chat |
 | `/status` | show current session configuration and token usage |
 | `/tools` | show tools available right now |
-| `/trace` | show latest tool and search trace |
+| `/trace [CALL_ID]` | show latest trace or full tool request/response |
 | `/variant MODE` | set OpenRouter provider routing |
 | `/verbose` | toggle full reasoning and expanded tool output |
 | `/yolo` | toggle automatic approval |

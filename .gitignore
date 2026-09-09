@@ -26,3 +26,7 @@ install_manifest.txt
 uagent
 uagent_tests
 uagent_bench
+
+web/node_modules/
+web/test-results/
+web/playwright-report/

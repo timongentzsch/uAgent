@@ -7,10 +7,15 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
+#include "include/agent/session_view.h"
+#include "include/app/config_proposal.h"
+#include "include/app/control.h"
 #include "include/app/self_description.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -24,6 +29,7 @@
 #include "include/core/term.h"
 #include "include/media.h"
 #include "include/providers.h"
+#include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
 #include "include/tools/process.h"
@@ -32,10 +38,39 @@
 
 namespace uagent {
 
+void SaveSessionSettings(AppSession& session) {
+  session.ActiveAgent().SessionSettings(
+      {{"route", RouteSelection(session.ApiClient(),
+                                session.context.provider.providers)},
+       {"permissions", session.context.permission_override.load()}});
+}
+
 void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
+  const json settings = session.ActiveAgent().SessionSettings();
+  const std::string route = JsonValue(settings, "route", "");
+  if (!route.empty() &&
+      !session.context.options.overrides.contains("UAGENT_MODEL")) {
+    if (SelectModel(session.ApiClient(), session.context.provider.routes,
+                    session.context.provider.providers, route)
+            .empty()) {
+      Emit(NoticeEvent(PresentationStatus::kFailed,
+                       "Saved model is unavailable: " + route));
+    } else {
+      ActivateRoute(session.ApiClient());
+      session.ActiveAgent().RouteChanged();
+    }
+  }
+  if (!session.context.options.yolo) {
+    int mode = JsonValue(settings, "permissions", -1);
+    session.context.permission_override.store(mode >= -1 && mode <= 1 ? mode
+                                                                      : -1);
+    PermissionControl(session.context, json::object());
+    session.ActiveAgent().ApprovalChanged();
+  }
   if (session.session_file.empty() || session.session_file == previous_path) {
     return;
   }
+  session.context.session_approvals.clear();
   std::string error;
   if (!session.context.observability.Journal().Load(
           session.session_file + ".events.jsonl", error)) {
@@ -57,7 +92,7 @@ StatusView SessionStatusView(const AppSession& session) {
                     .model = std::move(model),
                     .host = std::move(host),
                     .verbose = session.ActiveAgent().Verbose(),
-                    .yolo = session.context.options.yolo,
+                    .yolo = ApprovalIsAutomatic(),
                     .attachments = session.attachments.size(),
                     .background = session.Runtime().processes.Count()};
 }
@@ -96,7 +131,8 @@ void SaveSelectedModel(AppSession& session, const std::string& selected) {
 
 // The interactive catalog picker: prints the matches, then reads a choice.
 // Its only caller is /models, so it stays here rather than in a header.
-std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
+std::optional<ModelCandidate> PickModel(
+    ModelSearch search, Api& api, const std::vector<NamedProvider>& providers) {
   std::string current = RouteSelection(api, {});
   json options = json::array();
   for (size_t i = 0; i < search.matches.size(); ++i) {
@@ -125,7 +161,14 @@ std::optional<ModelCandidate> PickModel(ModelSearch search, Api& api) {
       }
     }
     printf("%s\n", RST());
+    std::string route_label =
+        active ? RouteSelection(api, providers)
+               : RouteSelection(SideRoute{.model = candidate.route.model,
+                                          .base_url = candidate.route.base_url,
+                                          .effort = effort},
+                                providers);
     options.push_back({{"value", std::to_string(i + 1)},
+                       {"route", std::move(route_label)},
                        {"label", candidate.selection},
                        {"active", active},
                        {"effort", effort},
@@ -186,8 +229,22 @@ void HandleModels(AppSession& session, const std::string& argument) {
     printf("%s· model search cancelled%s\n", YEL(), RST());
     return;
   }
+  if (session.context.channel && search.matches.empty()) {
+    Emit(NoticeEvent(
+        PresentationStatus::kFailed,
+        search.unavailable.empty()
+            ? "No matching models."
+            : "Model catalogs are unavailable. Check provider settings."));
+  }
+  if (session.context.channel && search.matches.size() > 256) {
+    search.matches.resize(256);
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "Showing the first 256 models; use /models QUERY to "
+                     "narrow the catalog."));
+  }
   std::optional<ModelCandidate> selected =
-      PickModel(search, session.ApiClient());
+      PickModel(std::move(search), session.ApiClient(),
+                session.context.provider.providers);
   if (!selected) return;
   ApplyRoute(session.ApiClient(), selected->route);
   SaveSelectedModel(session, selected->selection);
@@ -239,6 +296,9 @@ void PersistSelectionSuffix(AppSession& session) {
 }
 
 void HandleEffort(AppSession& session, const std::string& argument) {
+  if (ValidEffort(argument)) {
+    ProbeModel(session.ApiClient(), /*discover_efforts=*/true);
+  }
   if (argument.empty()) {
     printf("%s· effort %s%s\n", DIM(),
            session.ApiClient().reasoning_effort.empty()
@@ -416,12 +476,11 @@ void HandleContext(AppSession& session) {
 // /context is the deep live-context view. /status answers the everyday
 // questions in one screen and /debug-config explains provenance.
 void HandleStatus(const AppSession& session) {
-  json status =
-      DescribeSelf(SelfTopic::kStatus, "",
-                   SelfDescriptionInputs{
-                       session.context.config_manager, session.Runtime().config,
-                       session.ApiClient(), session.context.tools,
-                       session.context.options.yolo});
+  json status = DescribeSelf(
+      SelfTopic::kStatus, "",
+      SelfDescriptionInputs{session.context.config_manager,
+                            session.Runtime().config, session.ApiClient(),
+                            session.context.tools, ApprovalIsAutomatic()});
   auto row = [](const char* label, const std::string& value) {
     printf("  %s%-16s%s %s\n", DIM(), label, RST(),
            TerminalSafe(value).c_str());
@@ -452,12 +511,11 @@ void HandleStatus(const AppSession& session) {
 }
 
 void HandleDebugConfig(const AppSession& session, const std::string& argument) {
-  json described =
-      DescribeSelf(SelfTopic::kConfig, argument,
-                   SelfDescriptionInputs{
-                       session.context.config_manager, session.Runtime().config,
-                       session.ApiClient(), session.context.tools,
-                       session.context.options.yolo});
+  json described = DescribeSelf(
+      SelfTopic::kConfig, argument,
+      SelfDescriptionInputs{session.context.config_manager,
+                            session.Runtime().config, session.ApiClient(),
+                            session.context.tools, ApprovalIsAutomatic()});
   const json& settings = described["settings"];
   if (settings.empty()) {
     printf("%s\u00b7 no setting named %s%s\n", RED(),
@@ -504,67 +562,6 @@ void HandleTools(const AppSession& session) {
   }
 }
 
-void HandleMemory(const AppSession& session) {
-  printf("%s· memory %s%s\n", DIM(),
-         session.ApiClient().config.memory_enabled ? "on" : "off", RST());
-  if (!session.ApiClient().config.memory_enabled) return;
-  std::vector<MemoryEntry> entries = ListMemories();
-  if (entries.empty()) {
-    printf("%s· no saved memories%s\n", DIM(), RST());
-    return;
-  }
-  std::map<std::string, MemoryEvent> latest;
-  for (MemoryEvent& event : LoadMemoryEvents()) {
-    if (!event.key.empty()) {
-      latest[event.key + "\n" + event.workspace] = std::move(event);
-    }
-  }
-  for (const MemoryEntry& entry : entries) {
-    std::string workspace = entry.key.starts_with("project/")
-                                ? std::filesystem::path(entry.path)
-                                      .parent_path()
-                                      .filename()
-                                      .string()
-                                : "";
-    auto found = latest.find(entry.key + "\n" + workspace);
-    if (found == latest.end()) {
-      printf("%s· %s · %s%s\n", DIM(), TerminalSafe(entry.key).c_str(),
-             TerminalSafe(Tilde(entry.path)).c_str(), RST());
-      continue;
-    }
-    const MemoryEvent& event = found->second;
-    printf("%s· %s · %s · %s", DIM(), TerminalSafe(entry.key).c_str(),
-           TerminalSafe(event.action).c_str(),
-           TerminalSafe(event.timestamp).c_str());
-    if (event.automatic) {
-      printf(" · automatic");
-      if (!event.source_session.empty()) {
-        printf(" · source %s", TerminalSafe(event.source_session).c_str());
-      }
-    } else {
-      printf(" · explicit");
-    }
-    printf("%s\n", RST());
-    if (!event.preview.empty()) {
-      printf("%s  %s%s\n", DIM(), TerminalSafe(event.preview).c_str(), RST());
-    }
-    if (!event.previous.empty()) {
-      printf("%s  replaced: %s%s\n", DIM(),
-             TerminalSafe(event.previous).c_str(), RST());
-    }
-  }
-}
-
-void HandleProcesses(const AppSession& session) {
-  ToolResult activities = ToolActivityList(session.Runtime().processes);
-  if (activities.output.starts_with('(')) {
-    printf("%s· %s%s\n", DIM(), activities.output.c_str(), RST());
-    return;
-  }
-  printf("%sbackground work%s\n%s%s%s", BOLD(), RST(), DIM(),
-         TerminalSafe(activities.output).c_str(), RST());
-}
-
 // The collaborator records the subagent tool reports, joined with what the
 // supervisor knows about the ones still running. The id is the join key: it is
 // what the spawn stamped on the job, and it is what the human types back.
@@ -587,36 +584,9 @@ json AgentsJson(const AppSession& session) {
   return rows;
 }
 
-// The working row has one line for the newest child; this is the whole set,
-// including the collaborators that have gone idle and can still be resumed.
-void HandleAgents(const AppSession& session) {
-  json rows = AgentsJson(session);
-  printf("%scollaborators%s\n", BOLD(), RST());
-  if (rows.empty()) {
-    printf("  %sno collaborators in this workspace%s\n", DIM(), RST());
-    return;
-  }
-  for (const json& row : rows) {
-    std::string detail = JsonValue(row, "status", std::string());
-    detail += " · " + JsonValue(row, "mode", std::string());
-    std::string model = JsonValue(row, "model", std::string());
-    if (!model.empty()) detail += " · " + model;
-    int64_t elapsed = JsonValue(row, "elapsed_ms", int64_t{0});
-    if (elapsed > 0) {
-      detail += " · " + FmtDuration(static_cast<double>(elapsed) / 1000.0);
-    }
-    std::string progress = JsonValue(row, "progress", std::string());
-    if (!progress.empty()) detail += " · " + progress;
-    printf("  %s%-16s%s %s\n", DIM(),
-           TerminalSafe(JsonValue(row, "id", std::string())).c_str(), RST(),
-           TerminalSafe(detail).c_str());
-  }
-}
-
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
   return {session.context.config_manager, session.Runtime().config,
-          session.ApiClient(), session.context.tools,
-          session.context.options.yolo};
+          session.ApiClient(), session.context.tools, ApprovalIsAutomatic()};
 }
 
 json CommandResult(const AppSession& session,
@@ -643,14 +613,11 @@ json CommandResult(const AppSession& session,
       return {{"routes", session.ActiveAgent().RouteUsageJson()},
               {"total", UsageJson(session.ActiveAgent().SessionUsage())},
               {"session_budget", session.ApiClient().config.session_budget}};
-    case SlashCommandId::kMemory: {
-      json entries = json::array();
-      for (const MemoryEntry& entry : ListMemories()) {
-        entries.push_back({{"key", entry.key}, {"path", entry.path}});
-      }
-      return {{"enabled", session.ApiClient().config.memory_enabled},
-              {"entries", std::move(entries)}};
-    }
+    case SlashCommandId::kMemory:
+    case SlashCommandId::kSkills:
+    case SlashCommandId::kSchedule:
+      return json::object();  // management commands return their operation
+                              // result directly
     case SlashCommandId::kProcesses: {
       ToolResult activities = ToolActivityList(session.Runtime().processes);
       return {{"activities", activities.output}};
@@ -673,6 +640,202 @@ json CommandResult(const AppSession& session,
 
 }  // namespace
 
+json PermissionControl(AppContext& context, const json& request) {
+  std::string mode = JsonValue(request, "mode", "");
+  if (!mode.empty()) {
+    if (mode != "default" && mode != "ask" && mode != "yolo") {
+      return {{"error", "unknown permission mode"}};
+    }
+    context.permission_override.store(mode == "default" ? -1
+                                      : mode == "yolo"  ? 1
+                                                        : 0);
+  }
+  auto configured = context.config_manager.Read();
+  auto value = configured.values.find("UAGENT_APPROVAL");
+  bool automatic = value != configured.values.end() && value->second == "yolo";
+  const std::string default_mode = automatic ? "yolo" : "ask";
+  int override = context.permission_override.load();
+  if (override >= 0) automatic = override == 1;
+  SetApprovalAutomatic(automatic);
+  json result = {{"mode", override < 0 ? "default"
+                          : override   ? "yolo"
+                                       : "ask"},
+                 {"effective", automatic ? "yolo" : "ask"},
+                 {"default", default_mode}};
+  if (!mode.empty()) {
+    Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
+  }
+  return result;
+}
+
+json SessionControl(AppSession& session, const json& request) {
+  std::string kind = JsonValue(request, "kind", "");
+  if (kind == "permissions") return PermissionControl(session.context, request);
+  if (kind == "fork") {
+    std::string error;
+    if (session.session_file.empty()) {
+      session.session_file = UagentDir(kHistoryDir) + "/" +
+                             WorkspaceId(CanonicalCwd()) + "/" +
+                             MakeSessionId() + ".json";
+    }
+    SaveSessionSettings(session);
+    if (!session.ActiveAgent().Save(session.session_file, error)) {
+      return {{"error", error}};
+    }
+    return SessionStore::Fork(session.session_file,
+                              JsonValue(request, "title", ""), true);
+  }
+  if (kind == "config") {
+    return ConfigurationControl(
+        request, session.context.config_manager, session.Runtime().config,
+        session.context.config_manager.ProjectTrusted());
+  }
+  if (kind == "context") {
+    auto exchanges = session.ActiveAgent().HttpExchanges();
+    return {{"exchanges",
+             exchanges.empty()
+                 ? json::array({session.ActiveAgent().PreviewContext()})
+                 : exchanges}};
+  }
+
+  if (JsonValue(request, "kind", "") == "activity") {
+    if (JsonValue(request, "operation", "") != "followup") {
+      return ActivityControl(session.Runtime().processes, request);
+    }
+    Tool tool =
+        SubagentTool(session.ApiClient(), session.Runtime().processes,
+                     session.context.provider.routes,
+                     session.context.provider.providers, Debug().Enabled());
+    ToolResult result =
+        tool.run({{"operation", "followup"},
+                  {"agent_id", JsonValue(request, "agent_id", "")},
+                  {"prompt", JsonValue(request, "text", "")},
+                  {"background", true}},
+                 ToolContext{});
+    return result.Ok() ? json{{"output", result.output}}
+                       : json{{"error", result.output}};
+  }
+  if (JsonValue(request, "operation", "") == "catalog") {
+    return ModelCatalogue(session.ApiClient(), session.context.provider.routes,
+                          session.context.provider.providers,
+                          JsonValue(request, "query", "all"));
+  }
+  if (JsonValue(request, "operation", "") != "select") {
+    return {{"error", "unknown model operation"}};
+  }
+  std::string value = JsonValue(request, "model", "");
+  ModelSelection selection = ParseModelSelection(value);
+  std::string variant = JsonValue(request, "variant", "default");
+  std::string effort = JsonValue(request, "effort", "default");
+  if (variant == "default") variant.clear();
+  if (effort == "default") effort.clear();
+  if (selection.base.empty() || !ValidOpenRouterVariant(variant) ||
+      (!effort.empty() && !ValidEffort(effort))) {
+    return {{"error", "invalid model selection"}};
+  }
+  value = selection.base;
+  if (!variant.empty()) value += ":" + variant;
+  if (!effort.empty()) value += ":" + effort;
+  std::string selected =
+      SelectModel(session.ApiClient(), session.context.provider.routes,
+                  session.context.provider.providers, value);
+  if (selected.empty()) return {{"error", "unknown model"}};
+  SaveSelectedModel(session, selected);
+  return {{"route", RouteSelection(session.ApiClient(),
+                                   session.context.provider.providers)}};
+}
+
+json ActivityControl(ProcessSupervisor& processes, const json& request) {
+  std::string operation = JsonValue(request, "operation", "list");
+  if (operation == "list") return {{"activities", processes.ActivityViews()}};
+  int64_t id = JsonValue(request, "activity_id", int64_t{0});
+  auto job = processes.Find(id);
+  std::string agent = job ? job->source_id : JsonValue(request, "agent_id", "");
+  if (operation == "inspect") {
+    json result = job ? processes.InspectActivity(id) : json::object();
+    if (!agent.empty()) {
+      result.update(InspectCollaborator(
+          processes, agent, JsonValue(request, "before", uint64_t{0})));
+    }
+    return result.empty()
+               ? json{{"error", "activity unavailable in this conversation"}}
+               : result;
+  }
+  if (!job) return {{"error", "activity unavailable in this conversation"}};
+  ToolResult result;
+  if (operation == "stop") {
+    result = ToolActivityStop(processes, id);
+  } else if (operation == "message" && !job->source_id.empty() &&
+             !JsonValue(request, "text", "").empty()) {
+    result =
+        WriteCollaboratorMail(job->source_id, JsonValue(request, "text", ""));
+  } else {
+    return {{"error", "unsupported activity operation"}};
+  }
+  return result.Ok() ? json{{"output", result.output}, {"operation", operation}}
+                     : json{{"error", result.output}};
+}
+
+std::string ActivityText(const json& result) {
+  for (const char* key : {"activities", "collaborators"}) {
+    if (const json* rows = JsonArray(result, key)) {
+      std::string text =
+          std::string(std::string_view(key) == "activities" ? "background work"
+                                                            : key) +
+          " (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
+      for (const json& row : *rows) {
+        if (JsonValue(row, "detached", false)) text += "[detached] activity ";
+        auto id = row.find("id");
+        text += id == row.end()   ? "—"
+                : id->is_string() ? id->get<std::string>()
+                                  : JsonDump(*id);
+        text += "  " + JsonValue(row, "status", "") + " · " +
+                JsonValue(row, "mode", JsonValue(row, "label", ""));
+        for (const char* field : {"model", "progress"}) {
+          const std::string value = JsonValue(row, field, "");
+          if (!value.empty()) text += " · " + value;
+        }
+        text += "\n";
+      }
+      return text;
+    }
+  }
+  return JsonDump(result, 2) + "\n";
+}
+
+json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
+  std::istringstream input(command.argument);
+  std::string target, operation, text;
+  input >> target >> operation;
+  std::getline(input, text);
+  text = Trim(text);
+  auto& processes = session.Runtime().processes;
+  if (target.empty()) {
+    return command.spec->id == SlashCommandId::kAgents
+               ? json{{"collaborators", AgentsJson(session)}}
+               : json{{"activities", processes.ActivityViews()}};
+  }
+  json request = {{"kind", "activity"},
+                  {"operation", operation.empty() ? "inspect" : operation},
+                  {"text", text}};
+  if (operation == "output") request["operation"] = "inspect";
+  if (command.spec->id == SlashCommandId::kAgents) {
+    request["agent_id"] = target;
+    for (const json& row : processes.ActivityViews()) {
+      if (JsonValue(row, "agent_id", "") == target) {
+        request["activity_id"] = row["id"];
+      }
+    }
+  } else {
+    int64_t id = 0;
+    if (!ParseInt64(target.c_str(), id)) {
+      return {{"error", "invalid activity id"}};
+    }
+    request["activity_id"] = id;
+  }
+  return SessionControl(session, request);
+}
+
 bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                      json& result) {
   bool quit = false;
@@ -681,6 +844,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       quit = true;
       break;
     case SlashCommandId::kReset:
+      session.context.session_approvals.clear();
       session.ActiveAgent().Reset();
       session.context.observability.Journal().Clear();
       session.attachments.clear();
@@ -701,6 +865,19 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       break;
     }
     case SlashCommandId::kTrace:
+      if (!command.argument.empty()) {
+        size_t offset = 0;
+        do {
+          result = session.ActiveAgent().RawExchange(command.argument, offset);
+          printf("%s", TerminalSafe(JsonValue(result, "text",
+                                              JsonValue(result, "error", "")))
+                           .c_str());
+          offset = JsonValue(result, "next", size_t{0});
+        } while (JsonValue(result, "more", false));
+        printf("\n");
+        fflush(stdout);
+        return false;
+      }
       if (session.context.channel == nullptr) {
         session.ActiveAgent().PrintTrace();
       }
@@ -728,14 +905,110 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kEffort:
       HandleEffort(session, command.argument);
       break;
-    case SlashCommandId::kYolo:
-      session.context.options.yolo = !session.context.options.yolo;
-      SetApprovalAutomatic(session.context.options.yolo);
+    case SlashCommandId::kFork: {
+      result = SessionControl(session,
+                              {{"kind", "fork"}, {"title", command.argument}});
+      if (!result.contains("error") &&
+          session.Runtime().processes.Count() == 0) {
+        std::string previous = session.session_file;
+        if (ResumeInto(session.ActiveAgent(), JsonValue(result, "path", ""),
+                       session.session_file, false)) {
+          LoadSessionJournal(session, previous);
+          session.Runtime().processes.SetOwner(HashHex(session.session_file));
+          session.attachments.clear();
+          result["continued"] = true;
+        }
+      } else if (!result.contains("error")) {
+        result["note"] =
+            "Fork saved. This terminal remains with its background activity; "
+            "open the fork using /sessions.";
+      }
+      if (session.context.channel == nullptr) {
+        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+        fflush(stdout);
+      }
+      return false;
+    }
+    case SlashCommandId::kPermissions:
+      result = PermissionControl(session.context, {{"mode", command.argument}});
       session.ActiveAgent().ApprovalChanged();
-      printf("%s· yolo %s%s\n", DIM(),
-             session.context.options.yolo ? "ON — auto-approving everything"
-                                          : "off",
-             RST());
+      if (session.context.channel == nullptr) {
+        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+        fflush(stdout);
+      }
+      return false;
+    case SlashCommandId::kConfig: {
+      json request = {{"kind", "config"}};
+      if (!command.argument.empty()) {
+        std::istringstream input(command.argument);
+        std::string scope, change;
+        input >> scope;
+        std::getline(input, change);
+        change = Trim(change);
+        bool unset = change.starts_with("unset ");
+        size_t equal = change.find('=');
+        if (unset) change = Trim(change.substr(6));
+        request.update(
+            {{"operation", "apply"},
+             {"scope", scope},
+             {"changes",
+              json::array({{{"key", unset ? change : change.substr(0, equal)},
+                            {"value", unset || equal == std::string::npos
+                                          ? ""
+                                          : change.substr(equal + 1)},
+                            {"unset", unset}}})}});
+      }
+      result = SessionControl(session, request);
+      if (session.context.channel == nullptr) {
+        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+        fflush(stdout);
+      }
+      return false;
+    }
+    case SlashCommandId::kHttp: {
+      auto exchanges = session.ActiveAgent().HttpExchanges();
+      if (exchanges.empty()) {
+        result = {{"error", "No HTTP exchange captured"}};
+      } else {
+        size_t index = exchanges.size();
+        std::string part = "request";
+        std::istringstream input(command.argument);
+        if (!command.argument.empty()) input >> index >> part;
+        if (index == 0 || index > exchanges.size() ||
+            (part != "request" && part != "response")) {
+          result = {{"error", "Use /http INDEX request|response"}};
+        } else {
+          result = exchanges[index - 1];
+          if (session.context.channel == nullptr) {
+            printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+            size_t offset = 0;
+            for (;;) {
+              auto page = ReadPrivateArtifact(
+                  JsonValue(result, (part + "_path").c_str(), ""), offset);
+              printf("%s", TerminalSafe(JsonValue(page, "text", JsonDump(page)))
+                               .c_str());
+              if (!JsonValue(page, "more", false)) break;
+              offset = JsonValue(page, "next", offset);
+            }
+            printf("\n");
+            fflush(stdout);
+          }
+          return false;
+        }
+      }
+      if (session.context.channel == nullptr) {
+        printf("%s\n", JsonDump(result).c_str());
+      }
+      return false;
+    }
+    case SlashCommandId::kYolo:
+      result = PermissionControl(
+          session.context, {{"mode", ApprovalIsAutomatic() ? "ask" : "yolo"}});
+      session.ActiveAgent().ApprovalChanged();
+      printf(
+          "%s· yolo %s%s\n", DIM(),
+          ApprovalIsAutomatic() ? "ON — automatic ordinary approvals" : "off",
+          RST());
       break;
     case SlashCommandId::kCompact:
       HandleCompact(session);
@@ -747,8 +1020,17 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       HandleCost(session);
       break;
     case SlashCommandId::kMemory:
-      HandleMemory(session);
-      break;
+    case SlashCommandId::kSkills:
+    case SlashCommandId::kSchedule:
+      result = ManagementCommand(
+          command.spec->id == SlashCommandId::kMemory   ? "memory"
+          : command.spec->id == SlashCommandId::kSkills ? "skills"
+                                                        : "schedule",
+          command.argument);
+      if (!session.context.channel) {
+        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+      }
+      return false;
     case SlashCommandId::kTools:
       HandleTools(session);
       break;
@@ -762,11 +1044,13 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       HandleAttach(session, command.argument);
       break;
     case SlashCommandId::kProcesses:
-      HandleProcesses(session);
-      break;
     case SlashCommandId::kAgents:
-      HandleAgents(session);
-      break;
+      result = ActivityCommand(session, command);
+      if (session.context.channel == nullptr) {
+        printf("%s", TerminalSafe(ActivityText(result)).c_str());
+        fflush(stdout);
+      }
+      return false;
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
     case SlashCommandId::kReview:

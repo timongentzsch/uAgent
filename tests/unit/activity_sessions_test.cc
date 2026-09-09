@@ -197,6 +197,19 @@ void TestActivityBufferAndAdmission() {
     delegated->transcript.Push("{\"format\":3,\"answer\":\"done\"}\n");
   }
   CHECK(delegating.SubagentViews()[0].tail.empty());
+  CHECK(!delegating.ActivityViews()[0].contains("progress"));
+  const int64_t delegated_id = views[0].id;
+  const json first_inspection = delegating.InspectActivity(delegated_id);
+  CHECK(first_inspection == delegating.InspectActivity(delegated_id));
+  CHECK(JsonValue(first_inspection, "output", "").find("done") !=
+        std::string::npos);
+  {
+    std::lock_guard lock(delegated->mutex);
+    delegated->state = ActivityState::kExited;
+    delegated->wait_status = 0;
+    delegated->exited_at = std::chrono::steady_clock::now();
+  }
+  CHECK(delegating.ActivityViews()[0]["status"] == "finishing");
 
   ProcessSupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);
@@ -278,7 +291,9 @@ void TestActivityStateGraph() {
   std::optional<BgJob> job = supervisor.Take(id);
   REQUIRE(job.has_value());
   supervisor.Retain(std::move(*job));
-  CHECK(!supervisor.Find(id).has_value());
+  CHECK(supervisor.Find(id).has_value());
+  CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
+  CHECK(BgTakeCompleted(supervisor).empty());
 }
 
 void TestActivitySessions() {

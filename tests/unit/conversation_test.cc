@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/session_view.h"
 #include "include/agent/trace.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
@@ -345,6 +346,74 @@ void TestConversation() {
   CHECK(
       legacy.Restore(receipts.Messages(), receipts.Kinds(), json::array(), 0));
   CHECK(legacy.ToolDisplay("a") == nullptr);
+
+  Conversation browser;
+  browser.Push({{"role", "system"}, {"content", "private system"}},
+               MessageKind::kSystem);
+  std::string private_id = browser.LastDisplayId();
+  browser.Push({{"role", "user"}, {"content", "visible question"}},
+               MessageKind::kUser);
+  std::string user_id = browser.LastDisplayId();
+  browser.Push({{"role", "assistant"}, {"content", "visible answer"}},
+               MessageKind::kAssistant);
+  std::string answer_id = browser.LastDisplayId();
+  browser.RecordDisplay(answer_id,
+                        {{"reasoning", "actual supplied reasoning"}});
+  browser.AddStatistics(
+      {{"model_calls", 2}, {"tool_calls", 3}, {"model_ms", 123.5}});
+  browser.AddStatistics({{"model_calls", 1}, {"model_ms", 10.0}});
+  CHECK(browser.Statistics()["model_calls"] == 3);
+  CHECK(browser.Statistics()["model_ms"] == 133.5);
+  CHECK(legacy.Statistics()["complete"] == false);
+  json projection = ConversationView(browser);
+  CHECK(projection["blocks"][0].contains("time"));
+  CHECK(projection["blocks"][1].contains("time"));
+  CHECK(!browser.Messages()[1].contains("time"));
+  CHECK(projection["blocks"].size() == 2);
+  CHECK(JsonDump(projection).find("private system") == std::string::npos);
+  CHECK(ConversationDetail(browser, private_id, 0)["text"] == "");
+  CHECK(ConversationDetail(browser, user_id, 0)["text"] == "visible question");
+  CHECK(JsonDump(ConversationDetail(browser, answer_id, 0))
+            .find("actual supplied reasoning") == std::string::npos);
+  Conversation persisted;
+  CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
+                          browser.Archive(), 0, browser.ToolDisplays(),
+                          browser.DisplayMetadata()));
+  CHECK(ConversationView(persisted) == projection);
+  CHECK(persisted.Statistics() == browser.Statistics());
+  json invalid_display = browser.DisplayMetadata();
+  invalid_display["ids"] = {1, 1, 1};
+  CHECK(!persisted.Restore(browser.Messages(), browser.Kinds(),
+                           browser.Archive(), 0, browser.ToolDisplays(),
+                           invalid_display));
+  CHECK(ConversationView(persisted) == projection);
+  CHECK(LastMessageView(browser) == projection["blocks"].back());
+  const size_t model_messages = browser.Size();
+  const json completed = browser.RecordActivity(
+      {{"text", "Command completed"}, {"activity_id", 42}});
+  CHECK(browser.Size() == model_messages);
+  CHECK(completed["incoming"] == 1);
+  CHECK(ConversationView(browser)["blocks"].back()["kind"] == "activity");
+  CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
+                          browser.Archive(), 0, browser.ToolDisplays(),
+                          browser.DisplayMetadata()));
+  CHECK(ConversationView(persisted) == ConversationView(browser));
+  json before_compaction = browser.Statistics();
+  browser.ArchiveAll("compact", 1, 1, int64_t{1024} * 1024);
+  browser.ResetHistory(
+      json::array({{{"role", "system"}, {"content", "summary"}}}),
+      {MessageKind::kSystem});
+  CHECK(browser.Statistics() == before_compaction);
+  CHECK(ConversationView(browser)["blocks"][0]["time"] ==
+        projection["blocks"][0]["time"]);
+  for (int index = 0; index < 200; ++index) {
+    browser.Push({{"role", "user"}, {"content", std::string(8192, 'x')}},
+                 MessageKind::kUser);
+  }
+  projection = ConversationView(browser);
+  CHECK(projection["blocks"].size() == 64);
+  CHECK(projection["more"] == true);
+  CHECK(JsonDump(projection).size() < size_t{384} * 1024);
 }
 
 }  // namespace uagent

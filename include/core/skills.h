@@ -50,6 +50,8 @@ std::vector<std::filesystem::path> SkillSearchPath(
 
 bool SkillExcluded(const std::string& name);
 
+std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd);
+std::vector<Skill> SelectSkills(std::vector<Skill> discovered);
 std::vector<Skill> LoadSkills(const std::filesystem::path& cwd);
 
 // The complete body without its front matter, bounded. Oversized skills fail

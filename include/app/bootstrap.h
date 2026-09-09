@@ -3,6 +3,7 @@
 #ifndef UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 #define UAGENT_INCLUDE_APP_BOOTSTRAP_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,12 +18,22 @@
 #include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/usage.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
 struct InteractionRequest;
+
+struct ApplicationInput {
+  std::string text{};
+  std::string request_id{};
+  json control{};
+  std::vector<Attachment> attachments{};
+  bool wake = false;
+  std::optional<std::string> title{};
+};
 
 // Transport-neutral input half of the application protocol. A terminal, a
 // JSON-RPC app server, or an in-process GUI can supply commands and answer
@@ -31,9 +42,17 @@ struct InteractionRequest;
 class ApplicationChannel {
  public:
   virtual ~ApplicationChannel() = default;
-  virtual std::optional<std::string> NextInput() = 0;
+  virtual std::optional<ApplicationInput> NextInput() = 0;
   virtual std::string ReadInteraction(const InteractionRequest& request,
                                       bool* eof) = 0;
+  virtual int WakeFd() const { return -1; }
+  virtual std::string SessionPath() const { return {}; }
+  virtual std::string InitialTitle() const { return {}; }
+  // Called only at serialized application boundaries, after saving.
+  virtual void PublishState(const json&) {}
+  virtual void CompleteControl(const std::string&, const json&) {}
+  // Only thread-safe, non-model activity operations may use this entry point.
+  virtual void SetActivityControl(const std::function<json(const json&)>&) {}
 };
 
 class HeadlessOutput {
@@ -69,6 +88,7 @@ struct AppContext {
   // What "don't ask again" granted, bound to the tool's current provider,
   // schema and approval policy. Session-scoped by construction: it dies here.
   std::vector<std::string> session_approvals;
+  std::atomic<int> permission_override{-1};
   std::unique_ptr<Agent> agent;
   HeadlessOutput output;
 };

@@ -95,7 +95,8 @@ bool ValidateProviderNode(const json& node, const std::string& path,
   return true;
 }
 
-bool ValidateProviderProposal(const std::string& value, std::string& error) {
+bool ValidateProviderProposal(const std::string& value, std::string& error,
+                              bool direct_user = false) {
   json providers = json::parse(value, nullptr, false);
   if (!providers.is_object()) {
     error = "UAGENT_PROVIDERS expects a JSON object";
@@ -133,7 +134,8 @@ bool ValidateProviderProposal(const std::string& value, std::string& error) {
       }
     }
   }
-  return ValidateProviderNode(providers, "UAGENT_PROVIDERS", false, error);
+  return direct_user ||
+         ValidateProviderNode(providers, "UAGENT_PROVIDERS", false, error);
 }
 
 void SanitizeCompositeNode(json& node, bool& changed) {
@@ -291,6 +293,11 @@ bool ValidateValue(const ConfigDescriptor& descriptor, std::string& value,
       return true;
     }
     case ConfigType::kString:
+      if (name == "UAGENT_APPROVAL" && !value.empty() && value != "prompt" &&
+          value != "ask" && value != "yolo") {
+        error = "UAGENT_APPROVAL expects prompt, ask or yolo";
+        return false;
+      }
       return true;
   }
   return true;
@@ -300,7 +307,8 @@ ConfigEffect ClassifyEffect(const ConfigDescriptor& descriptor,
                             const std::string& source, bool user_scope) {
   // A layer above the file keeps winning after the file changes, so saying the
   // value is now active would be false.
-  bool shadowed = source == "command-line" || source == "process" ||
+  bool shadowed = source == "cli" || source == "environment" ||
+                  source == "command-line" || source == "process" ||
                   (user_scope && source == "project-config");
   if (shadowed) return ConfigEffect::kPersistedButShadowed;
   return descriptor.reload == ReloadPolicy::kNextUserTurn
@@ -351,8 +359,8 @@ std::string ConfigProposal::Preview() const {
 ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
                                      const std::vector<ConfigChange>& changes,
                                      const ConfigManager& manager,
-                                     const RuntimeConfig& active,
-                                     bool project_trusted) {
+                                     const RuntimeConfig&, bool project_trusted,
+                                     bool direct_user) {
   ConfigProposal proposal;
   if (changes.empty()) {
     proposal.error = "no changes requested";
@@ -384,8 +392,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
   // (a boolean spelling becomes 0/1), and the read-back check below has to
   // compare against what was written, not what was asked for.
   std::map<std::string, std::string> written;
-  json diagnostics = manager.DiagnosticJson(active);
-  const json& sources = diagnostics["sources"];
+  const json sources = manager.Read().sources;
   proposal.snapshot = ReadFileBytes(proposal.target, proposal.existed);
   ConfigDocument document = ConfigDocument::Parse(proposal.snapshot);
   EnvValues before = ParseEnvValues(proposal.snapshot);
@@ -400,7 +407,8 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
       proposal.error = change.key + " appears twice in one request";
       return proposal;
     }
-    if (!change.unset && descriptor->sensitivity == Sensitivity::kSecret) {
+    if (!direct_user && !change.unset &&
+        descriptor->sensitivity == Sensitivity::kSecret) {
       proposal.error =
           change.key +
           " holds a credential and cannot be set through a tool argument; "
@@ -409,7 +417,7 @@ ConfigProposal PrepareConfigProposal(ConfigProposalScope scope,
     }
     if (!change.unset &&
         descriptor->sensitivity == Sensitivity::kCompositeSecret &&
-        !ValidateProviderProposal(change.value, proposal.error)) {
+        !ValidateProviderProposal(change.value, proposal.error, direct_user)) {
       return proposal;
     }
     unsigned wanted =

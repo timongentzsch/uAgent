@@ -116,7 +116,7 @@ bool SkillExcluded(const std::string& name) {
   return false;
 }
 
-std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
+std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   std::vector<Skill> found;
   auto scan = [&](const fs::path& base) {
@@ -131,6 +131,7 @@ std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
         continue;
       }
       dirs.push_back(it->path().parent_path());
+      if (dirs.size() >= 4096) break;
     }
     std::sort(dirs.begin(), dirs.end());
     for (const fs::path& dir : dirs) {
@@ -145,7 +146,6 @@ std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
       // The directory name wins: it is what the model names, and it cannot
       // collide with another skill or carry a path separator.
       std::string name = SafeFileComponent(dir.filename().string());
-      if (SkillExcluded(name) || Trim(description).empty()) continue;
       description = Utf8Trunc(std::move(description),
                               static_cast<size_t>(SkillDescriptionBytes()));
       argument_hint = Utf8Trunc(OneLine(argument_hint), 128);
@@ -155,17 +155,6 @@ std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
                   file.string(),
                   std::move(required_tools),
                   std::move(argument_hint)};
-      auto same = std::find_if(found.begin(), found.end(), [&](const Skill& s) {
-        return s.name == skill.name;
-      });
-      if (same != found.end()) {
-        found.erase(same);
-      } else if (static_cast<int64_t>(found.size()) >= MaxSkills()) {
-        found.erase(found.begin());
-      }
-      // Discovery runs from low to high precedence. Moving every accepted
-      // skill to the end means a full catalogue evicts the oldest, lowest-
-      // precedence entry rather than hiding a workspace skill.
       found.push_back(std::move(skill));
     }
   };
@@ -179,6 +168,24 @@ std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
     scan(base);
   }
   return found;
+}
+
+std::vector<Skill> SelectSkills(std::vector<Skill> discovered) {
+  std::vector<Skill> selected;
+  for (auto& skill : discovered) {
+    if (SkillExcluded(skill.name) || Trim(skill.description).empty()) continue;
+    std::erase_if(selected,
+                  [&](const Skill& prior) { return prior.name == skill.name; });
+    if (static_cast<int64_t>(selected.size()) >= MaxSkills()) {
+      selected.erase(selected.begin());
+    }
+    selected.push_back(std::move(skill));
+  }
+  return selected;
+}
+
+std::vector<Skill> LoadSkills(const std::filesystem::path& cwd) {
+  return SelectSkills(DiscoverSkills(cwd));
 }
 
 SkillReadResult ReadSkillBody(const Skill& skill,

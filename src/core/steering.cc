@@ -44,11 +44,11 @@ std::string TakeStrandedSteering() {
   return prompt;
 }
 
-void Steering::Queue(std::string input) {
+void Steering::Queue(std::string input, std::string request_id) {
   size_t queued = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    queued_.push_back(std::move(input));
+    queued_.push_back({std::move(input), std::move(request_id)});
     queued = queued_.size();
   }
   NotifySteeringWake();
@@ -57,6 +57,14 @@ void Steering::Queue(std::string input) {
 
 std::vector<std::string> Steering::TakeQueued() {
   std::vector<std::string> result;
+  for (Message& message : TakeMessages()) {
+    result.push_back(std::move(message.text));
+  }
+  return result;
+}
+
+std::vector<Steering::Message> Steering::TakeMessages() {
+  std::vector<Message> result;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
     result.reserve(queued_.size());

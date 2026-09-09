@@ -81,9 +81,11 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   if (usage.input || usage.output) add(4, TokenSummary(usage));
   add(5, CacheSummary(usage));
   if (usage.cost > 0) add(2, FmtCost(usage.cost));
-  if (view.background) add(3, "bg:" + std::to_string(view.background));
+  if (view.background) {
+    add(3, "bg:" + FmtCount(static_cast<int64_t>(view.background)));
+  }
   if (view.attachments) {
-    add(3, std::to_string(view.attachments) + " attached");
+    add(3, FmtCount(static_cast<int64_t>(view.attachments)) + " attached");
   }
   if (view.verbose) add(6, "verbose");
   add(7, "/help for shortcuts");
@@ -170,16 +172,21 @@ inline std::string ActivityBar(const ActivityView& view) {
   std::string suffix = " · " + seconds;
   suffix += " · " + ContextSummary(view.context_used, view.context_window);
   if (view.subagents > 0) {
-    suffix += " · agents:" + std::to_string(view.subagents);
+    suffix += " · agents:" + FmtCount(static_cast<int64_t>(view.subagents));
   }
-  if (view.background > 0) suffix += " · bg:" + std::to_string(view.background);
+  if (view.background > 0) {
+    suffix += " · bg:" + FmtCount(static_cast<int64_t>(view.background));
+  }
   if (view.foreground > 0) {
     suffix += " · Ctrl+B background";
     if (view.foreground > 1) {
-      suffix += " " + std::to_string(view.foreground) + " commands";
+      suffix +=
+          " " + FmtCount(static_cast<int64_t>(view.foreground)) + " commands";
     }
   }
-  if (view.queued > 0) suffix += " · steer:" + std::to_string(view.queued);
+  if (view.queued > 0) {
+    suffix += " · steer:" + FmtCount(static_cast<int64_t>(view.queued));
+  }
   size_t width = TerminalWidth(1);
   // The route is the part of this row that yields when a rolling ticker wants
   // the same columns: it never changes during a turn and the idle row names it

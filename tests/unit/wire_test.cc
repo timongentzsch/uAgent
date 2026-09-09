@@ -108,7 +108,8 @@ void TestWireAdapters() {
                                 true,          true};
   json anthropic =
       EncodeWireRequest(WireApi::kAnthropicMessages, anthropic_request);
-  CHECK(anthropic["system"] == "baseline");
+  CHECK(anthropic["system"][0]["text"] == "baseline");
+  CHECK(anthropic["system"][0]["cache_control"]["type"] == "ephemeral");
   CHECK(anthropic["max_tokens"] == 2048);
   CHECK(anthropic["cache_control"]["type"] == "ephemeral");
   CHECK(anthropic["thinking"]["type"] == "adaptive");

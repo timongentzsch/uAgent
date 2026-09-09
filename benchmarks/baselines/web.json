@@ -1,0 +1,132 @@
+{
+  "date": "2026-09-09",
+  "baseline_revision": "5ceaad97b48bf833353964584af57856d7b30484",
+  "build": "Release, LTO, AppleClang, arm64",
+  "earlier_cli_stripped_bytes": 2168808,
+  "native": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "binary_bytes": 4771640,
+    "stripped_bytes": 3820360,
+    "cli_only_bytes": 3011192,
+    "cli_only_stripped_bytes": 2423816,
+    "asset_totals": {
+      "raw": 857416,
+      "gzip": 464317
+    },
+    "idle_master": {
+      "rss_kib": 9296,
+      "cpu_seconds": 0.01,
+      "threads": 19,
+      "sample_seconds": 3.02,
+      "cpu_delta_seconds": 0.0
+    },
+    "master_with_two_workers": {
+      "rss_kib": 10736,
+      "cpu_seconds": 0.02,
+      "threads": 21
+    },
+    "two_workers": [
+      {
+        "rss_kib": 11904,
+        "cpu_seconds": 0.02,
+        "threads": 7
+      },
+      {
+        "rss_kib": 11888,
+        "cpu_seconds": 0.01,
+        "threads": 7
+      }
+    ]
+  },
+  "push_enabled": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "binary_bytes": 4814408,
+    "stripped_bytes": 3858856,
+    "cli_only_bytes": 3011192,
+    "cli_only_stripped_bytes": 2423816,
+    "asset_totals": {
+      "raw": 857416,
+      "gzip": 464317
+    },
+    "idle_master": {
+      "rss_kib": 12736,
+      "cpu_seconds": 0.01,
+      "threads": 20,
+      "sample_seconds": 3.02,
+      "cpu_delta_seconds": 0.0
+    },
+    "master_with_two_workers": {
+      "rss_kib": 14112,
+      "cpu_seconds": 0.02,
+      "threads": 22
+    },
+    "two_workers": [
+      {
+        "rss_kib": 12000,
+        "cpu_seconds": 0.02,
+        "threads": 7
+      },
+      {
+        "rss_kib": 12176,
+        "cpu_seconds": 0.02,
+        "threads": 7
+      }
+    ]
+  },
+  "additional_push_dependency": {
+    "name": "OpenSSL 3.6.3 libcrypto",
+    "bytes": 4846032
+  },
+  "frontend": {
+    "bytes": {
+      "initial_js": {
+        "raw": 51042,
+        "gzip": 18783
+      },
+      "initial_css": {
+        "raw": 15830,
+        "gzip": 4230
+      },
+      "lazy_and_shell": {
+        "raw": 790544,
+        "gzip": 441304
+      },
+      "total": {
+        "raw": 857416,
+        "gzip": 464317
+      }
+    },
+    "budgets": {
+      "initial_js": {
+        "raw": 57344,
+        "gzip": 21504
+      },
+      "initial_css": {
+        "raw": 16384,
+        "gzip": 4608
+      },
+      "total": {
+        "raw": 870400,
+        "gzip": 512000
+      }
+    }
+  },
+  "service_worker_precache_raw_bytes": 841349,
+  "large_history": {
+    "messages": 2000,
+    "visible": 64,
+    "open_ms": 123
+  },
+  "native_review_budgets": {
+    "macos_arm64_release_stripped_bytes": 4194304,
+    "cli_only_delta_bytes": 131072,
+    "idle_master_rss_kib": 32768
+  },
+  "cli_growth_review": {
+    "baseline_delta_bytes": 255008,
+    "note": "Exceeds the original 128 KiB review trigger. The CLI includes shared management, configuration, fork and HTTP inspection capabilities. Budgets are unchanged."
+  },
+  "limits": "Local mock-provider measurement; RSS and wall times vary. Gzip level 6 is a comparison, native HTTP serves identity bytes. No physical-phone or live push-service measurements."
+}

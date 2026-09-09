@@ -49,6 +49,9 @@ enum class EventId : uint16_t {
   kInteractionResolved,
   kCommandCompleted,
   kNotice,
+  kMessageChanged,
+  kActivitiesChanged,
+  kHttpExchange,
   kPresentation,
 };
 

@@ -30,14 +30,15 @@ struct Usage {
     return SaturatingNonnegativeAdd(output, reasoning);
   }
 
-  // `input` excludes the cached part, so the two together are the whole
-  // prompt. Zero when nothing has been counted yet.
+  // Input, cache reads and cache writes are disjoint parts of the prompt.
+  // Zero when nothing has been counted yet.
   // A percentage of two token counts: double carries far more precision than
   // the integer result needs.
   int64_t CacheHitPercent() const {
     int64_t fresh = Nonnegative(input);
     int64_t cached = Nonnegative(cache_read);
-    double prompt = static_cast<double>(fresh) + static_cast<double>(cached);
+    double prompt = static_cast<double>(fresh) + static_cast<double>(cached) +
+                    static_cast<double>(Nonnegative(cache_write));
     if (prompt <= 0) return 0;
     double percent = 100.0 * static_cast<double>(cached) / prompt;
     return static_cast<int64_t>(std::clamp(percent, 0.0, 100.0));
@@ -96,17 +97,21 @@ struct Usage {
                         ? nested_cache
                         : Nonnegative(JsonValue(
                               value, "cache_read_input_tokens", int64_t{0}));
-    int64_t cache_write_tokens =
+    int64_t nested_write =
         Nonnegative(first({{"prompt_tokens_details", "cache_write_tokens"},
                            {"prompt_tokens_details", "cache_creation_tokens"},
-                           {"cache_details", "cache_write_tokens"},
-                           {nullptr, "cache_write_tokens"},
-                           {nullptr, "cache_creation_input_tokens"}}));
+                           {"input_tokens_details", "cache_write_tokens"}}));
+    int64_t cache_write_tokens =
+        nested_write
+            ? nested_write
+            : Nonnegative(first({{"cache_details", "cache_write_tokens"},
+                                 {nullptr, "cache_write_tokens"},
+                                 {nullptr, "cache_creation_input_tokens"}}));
     // Compatibility providers occasionally report detail counts larger than
     // their parent totals. Never surface impossible negative token counts.
     input = SaturatingNonnegativeAdd(
         input,
-        nested_cache ? Nonnegative(input_tokens - nested_cache) : input_tokens);
+        Nonnegative(Nonnegative(input_tokens - nested_cache) - nested_write));
     output =
         SaturatingNonnegativeAdd(output, Nonnegative(output_tokens - reason));
     cache_read = SaturatingNonnegativeAdd(cache_read, cache);

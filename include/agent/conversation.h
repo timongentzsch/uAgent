@@ -43,6 +43,14 @@ class Conversation {
   // Rendered tool receipts, keyed by call id. The model never sees these; they
   // exist so a resumed transcript can redraw a diff instead of a grey line.
   const json& ToolDisplays() const { return tool_displays_; }
+  json DisplayMetadata() const;
+  const json& Statistics() const { return statistics_; }
+  void AddStatistics(const json& delta);
+  const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
+  const json& DisplayFacts() const { return display_facts_; }
+  void RecordDisplay(std::string key, json facts);
+  json RecordActivity(json facts);
+  std::string LastDisplayId() const;
 
   bool Empty() const { return messages_.empty(); }
   size_t Size() const { return messages_.size(); }
@@ -56,7 +64,8 @@ class Conversation {
 
   void Reset(json baseline, std::vector<MessageKind> kinds);
   bool Restore(json messages, std::vector<MessageKind> kinds, json archive,
-               int64_t dropped_segments, json tool_displays = json::object());
+               int64_t dropped_segments, json tool_displays = json::object(),
+               const json& display = json::object());
   void ResetHistory(json baseline, std::vector<MessageKind> kinds);
   void RefreshBaseline(json system);
 
@@ -108,6 +117,11 @@ class Conversation {
   json messages_ = json::array();
   std::vector<MessageKind> kinds_;
   json tool_displays_ = json::object();
+  std::vector<uint64_t> display_ids_;
+  json display_facts_ = json::object();
+  json statistics_ = {{"complete", true}};
+  uint64_t next_display_id_ = 1;
+  size_t display_bytes_ = 0;
   json archive_ = json::array();
   std::vector<int64_t> archive_sizes_;
   int64_t archive_bytes_ = 0;

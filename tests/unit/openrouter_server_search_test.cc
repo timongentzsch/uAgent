@@ -110,7 +110,7 @@ void TestOpenRouterServerSearch() {
   CHECK(restored.cost == 0 && restored.web_searches == 0);
 
   // Every OpenAI-compatible spelling must land on the same invariant: `input`
-  // excludes the cached part, so input + cache_read is the whole prompt, and
+  // excludes cache reads and writes, so their sum is the whole prompt, and
   // the hit percentage is the cached share of it. Chat Completions and
   // Responses report cached tokens inside the prompt total; Anthropic-style
   // reports them beside an input count that already excludes them, and
@@ -147,13 +147,13 @@ void TestOpenRouterServerSearch() {
             {"output_tokens", 5},
             {"cache_read_input_tokens", 3},
             {"cache_creation_input_tokens", 7}},
-       8, 5, 3, 7, 0, 27},
+       8, 5, 3, 7, 0, 16},
       {"anthropic translated to chat completions",
        json{{"prompt_tokens", 18},
             {"prompt_tokens_details",
              {{"cached_tokens", 3}, {"cache_creation_tokens", 7}}},
             {"completion_tokens", 5}},
-       15, 5, 3, 7, 0, 16},
+       8, 5, 3, 7, 0, 16},
       {"fully cached prompt",
        json{{"prompt_tokens", 10},
             {"prompt_tokens_details", {{"cached_tokens", 10}}}},
@@ -191,14 +191,14 @@ void TestOpenRouterServerSearch() {
                          .yolo = true};
   setenv("COLUMNS", "200", 1);
   std::string wide = StatusBar(status_api, status_usage, status_view);
-  CHECK(wide.find("ctx 4.7K/1.0M") != std::string::npos);
-  CHECK(wide.find("1.2M in · 45.3K out") != std::string::npos);
+  CHECK(wide.find("ctx 4.7k/1M") != std::string::npos);
+  CHECK(wide.find("1.2M in · 45.3k out") != std::string::npos);
   CHECK(wide.find("cache 72%") != std::string::npos);
   CHECK(wide.find("openrouter/vendor/model:high") != std::string::npos);
   CHECK(wide.find("YOLO") != std::string::npos);
   // An unknown context window degrades to the used figure alone.
   status_api.ctx_window = 0;
-  CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7K ") !=
+  CHECK(StatusBar(status_api, status_usage, status_view).find("ctx 4.7k ") !=
         std::string::npos);
   unsetenv("COLUMNS");
 

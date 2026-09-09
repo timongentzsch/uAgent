@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "include/api.h"
+#include "include/api/exchange.h"
 #include "include/api/retry.h"
 #include "include/api/stream.h"
 #include "include/api/wire.h"
@@ -462,6 +463,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      bool render_output, size_t estimated_bytes,
                      bool full_reasoning) {
   ChatResult res;
+  http_exchanges = json::array();
   auto overall_started = std::chrono::steady_clock::now();
   size_t estimated = estimated_bytes;
   if (estimated == 0) {
@@ -521,11 +523,27 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                             : remaining.count();
     }
     auto attempt_started = std::chrono::steady_clock::now();
+    json metadata = exchange_context;
+    metadata.update(
+        {{"method", "POST"},
+         {"url", RedactedUrl(base_url +
+                             std::string(WireEndpoint(capabilities.wire_api)))},
+         {"attempt", attempt},
+         {"model", RequestModel()}});
+    HttpExchange exchange(capture_http, payload, std::move(metadata));
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      render_output, full_reasoning);
+                      render_output, full_reasoning, &exchange);
+    json recorded =
+        exchange.Finish(res.http_status, res.interrupted, res.error);
+    if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
     res.request_preparation_ms = preparation_ms;
     if (res.first_event_ms >= 0) {
       res.first_event_ms +=
+          std::chrono::duration<double, std::milli>(attempt_started - started)
+              .count();
+    }
+    if (res.first_token_ms >= 0) {
+      res.first_token_ms +=
           std::chrono::duration<double, std::milli>(attempt_started - started)
               .count();
     }
@@ -653,7 +671,8 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
 
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
-                            bool render_output, bool full_reasoning) {
+                            bool render_output, bool full_reasoning,
+                            HttpExchange* exchange) {
   ChatResult res;
   CURL* h =
       Prepare(base_url + std::string(WireEndpoint(capabilities.wire_api)));
@@ -675,7 +694,9 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   bool headers_ok = headers.Add("Content-Type: application/json") &&
                     AddApiHeaders(headers, capabilities.wire_api, api_key) &&
                     headers.Add("Accept: text/event-stream");
-  if (capabilities.session_passthrough && !session_id.empty()) {
+  // Proxies use this transport hint for account affinity across every dialect.
+  // Keep it independent of OpenRouter's separate session_id body extension.
+  if (!session_id.empty()) {
     headers_ok = headers_ok && headers.Add("X-Session-Id: " + session_id);
   }
   if (!headers_ok) {
@@ -686,13 +707,31 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   curl_easy_setopt(h, CURLOPT_POSTFIELDS, payload.c_str());
   curl_easy_setopt(h, CURLOPT_POSTFIELDSIZE_LARGE,
                    static_cast<curl_off_t>(payload.size()));
+  struct Reader {
+    StreamCtx* stream;
+    HttpExchange* exchange;
+  } reader{&ctx, exchange};
+  curl_easy_setopt(h, CURLOPT_VERBOSE, exchange->Enabled() ? 1L : 0L);
+  curl_easy_setopt(
+      h, CURLOPT_DEBUGFUNCTION,
+      +[](CURL*, curl_infotype type, char* data, size_t length,
+          void* user) -> int {
+        if (type == CURLINFO_HEADER_IN || type == CURLINFO_HEADER_OUT)
+          static_cast<HttpExchange*>(user)->Headers(
+              std::string_view(data, length), type == CURLINFO_HEADER_OUT);
+        return 0;
+      });
+  curl_easy_setopt(h, CURLOPT_DEBUGDATA, exchange);
   curl_easy_setopt(
       h, CURLOPT_WRITEFUNCTION,
       +[](char* data, size_t size, size_t count, void* user) -> size_t {
         std::optional<size_t> bytes = CheckedMul(size, count);
-        return bytes ? static_cast<StreamCtx*>(user)->Feed(data, *bytes) : 0;
+        if (!bytes) return 0;
+        auto* receiving = static_cast<Reader*>(user);
+        receiving->exchange->Body(std::string_view(data, *bytes));
+        return receiving->stream->Feed(data, *bytes);
       });
-  curl_easy_setopt(h, CURLOPT_WRITEDATA, &ctx);
+  curl_easy_setopt(h, CURLOPT_WRITEDATA, &reader);
   SetAbortable(h, &ctx);
   if (timeout_s > 0) {
     curl_easy_setopt(h, CURLOPT_TIMEOUT, CurlTimeout(timeout_s));
@@ -707,6 +746,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   CURLcode rc = CURLE_OK;
   bool cancelled =
       RunCancellable([&] { rc = PerformWithAbortWake(multi_, h, &ctx); });
+  curl_easy_setopt(h, CURLOPT_VERBOSE, 0L);
+  curl_easy_setopt(h, CURLOPT_DEBUGFUNCTION, nullptr);
+  curl_easy_setopt(h, CURLOPT_DEBUGDATA, nullptr);
+  curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &res.http_status);
   CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
   ctx.Finish();

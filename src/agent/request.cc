@@ -105,8 +105,40 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
             active_deadline_ - now + std::chrono::milliseconds(999))
             .count());
   }
+  api_.exchange_context = {{"turn_root", turn_root_},
+                           {"reply_to", reply_to_},
+                           {"reply_excerpt", reply_excerpt_},
+                           {"request", request},
+                           {"step", step},
+                           {"purpose", purpose}};
+  std::string started_at = UtcStamp();
   ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
                                 render_output, estimated_bytes, verbose_);
+  result.started_at = std::move(started_at);
+  ++revision_;  // Preserve failed attempts and their accounting after the user
+                // checkpoint.
+  if (!api_.http_exchanges.empty()) {
+    conversation_.RecordDisplay("http-latest", {{"http", api_.http_exchanges}});
+    // Failed calls have no assistant message to own their capture.
+    if ((result.interrupted || !result.error.empty()) && !reply_to_.empty()) {
+      conversation_.RecordDisplay(reply_to_, {{"http", api_.http_exchanges}});
+    }
+  }
+  Usage usage;
+  usage.Add(result.usage);
+  json metrics = {{"model_calls", 1}, {"model_ms", result.duration_ms}};
+  if (result.usage.is_object() && !result.usage.empty()) {
+    metrics["usage_samples"] = 1;
+  }
+  if (result.first_token_ms >= 0) {
+    metrics["ttft_ms"] = result.first_token_ms;
+    metrics["ttft_samples"] = 1;
+  }
+  if (result.duration_ms > 0 && usage.GeneratedTokens() > 0) {
+    metrics["generation_ms"] = result.duration_ms;
+    metrics["generated_tokens"] = usage.GeneratedTokens();
+  }
+  conversation_.AddStatistics(metrics);
   if (Debug().Enabled()) {
     json calls = json::array();
     for (const ToolCall& call : result.tool_calls) {
@@ -123,6 +155,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
          {"request_preparation_ms", result.request_preparation_ms},
          {"end_to_end_ms", result.end_to_end_ms},
          {"first_event_ms", result.first_event_ms},
+         {"first_token_ms", result.first_token_ms},
          {"dns_ms", result.dns_ms},
          {"connect_ms", result.connect_ms},
          {"tls_ms", result.tls_ms},

@@ -117,6 +117,17 @@ void TestConfigProposalAndCommit() {
       {{"UAGENT_WEB_SEARCH_API_KEY", "leaked", false}}, manager, active, false);
   CHECK(!secret.ok);
   CHECK(secret.error.find("credential") != std::string::npos);
+  auto human_secret = PrepareConfigProposal(
+      ConfigProposalScope::kUser,
+      {{"UAGENT_WEB_SEARCH_API_KEY", "human-secret-replacement", false}},
+      manager, active, false, true);
+  CHECK(human_secret.ok);
+  CHECK(human_secret.Preview().find("human-secret-replacement") ==
+        std::string::npos);
+  auto invalid_human_provider = PrepareConfigProposal(
+      ConfigProposalScope::kUser, {{"UAGENT_PROVIDERS", "[]", false}}, manager,
+      active, false, true);
+  CHECK(!invalid_human_provider.ok);
 
   // Removing a credential does not carry one through the tool arguments.
   ConfigProposal unset_secret = PrepareConfigProposal(

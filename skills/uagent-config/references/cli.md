@@ -5,6 +5,10 @@
 
 | Flag | Value | Description |
 | --- | --- | --- |
+| `--control` | `JSON|-` | run a native memory, skills or schedule operation without a model |
+| `--web` | — | start or reuse this user's global web application |
+| `--web-port` | `PORT` | loopback web listener port (default 8080) |
+| `--web-origin` | `ORIGIN` | stable HTTPS browser origin behind a local reverse proxy |
 | `-p` | `PROMPT` | run one turn, print only the final answer, exit |
 | `--yolo` | — | approve every requested mutation automatically |
 | `--json` | — | emit a stable JSON envelope in headless mode |

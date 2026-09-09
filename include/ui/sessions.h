@@ -28,51 +28,6 @@
 
 namespace uagent {
 
-// One file per conversation under ~/.uagent/history, written by Agent::save as
-// two lines: a cheap header (read here for the picker) and the full payload.
-
-struct SessionInfo {
-  std::string path, cwd, title;
-  int64_t turns = 0;
-  int64_t bytes = 0;
-  std::filesystem::file_time_type mtime;
-};
-
-// newest first; malformed files still list, with a fallback title
-inline std::vector<SessionInfo> ListSessions() {
-  namespace fs = std::filesystem;
-  std::vector<SessionInfo> out;
-  std::error_code ec;
-  std::string current = CanonicalCwd();
-  std::string base = UagentDir(kHistoryDir);
-  std::string scoped = base + "/" + WorkspaceId(current);
-  CreatePrivateDirectories(scoped);
-  for (const std::string& dir : {scoped, base}) {
-    for (auto& e : fs::directory_iterator(dir, ec)) {
-      if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;
-      std::ifstream f(e.path());
-      std::string head;
-      std::getline(f, head);
-      json h = json::parse(head, nullptr, false);
-      if (!h.is_object() || JsonValue(h, "cwd", "") != current) continue;
-      SessionInfo s;
-      s.path = e.path().string();
-      s.mtime = e.last_write_time(ec);
-      s.cwd = JsonValue(h, kSessionHeaderCwd, "");
-      s.turns = JsonValue(h, kSessionHeaderTurns, int64_t{0});
-      s.title = JsonValue(h, kSessionHeaderTitle, "(untitled)");
-      std::error_code size_error;
-      s.bytes = static_cast<int64_t>(fs::file_size(e.path(), size_error));
-      out.push_back(std::move(s));
-    }
-  }
-  std::sort(out.begin(), out.end(),
-            [](const SessionInfo& a, const SessionInfo& b) {
-              return a.mtime > b.mtime;
-            });
-  return out;
-}
-
 // print a numbered list and read a choice; returns the chosen path or "".
 inline std::string PickSession(bool render = true) {
   std::vector<SessionInfo> sessions = ListSessions();
@@ -90,9 +45,9 @@ inline std::string PickSession(bool render = true) {
     std::string safe_cwd = TerminalSafe(Tilde(s.cwd));
     std::string safe_title = TerminalSafe(FirstLine(s.title));
     if (render) {
-      printf("%s[%zu]%s %s · %s · %" PRId64 " turn%s · %s%s · \"%s\"%s\n",
-             CYAN(), i + 1, RST(), FmtAgo(secs).c_str(),
-             FmtBytes(s.bytes).c_str(), s.turns, s.turns == 1 ? "" : "s", DIM(),
+      printf("%s[%zu]%s %s · %s · %s turn%s · %s%s · \"%s\"%s\n", CYAN(), i + 1,
+             RST(), FmtAgo(secs).c_str(), FmtBytes(s.bytes).c_str(),
+             FmtCount(s.turns).c_str(), s.turns == 1 ? "" : "s", DIM(),
              safe_cwd.c_str(), safe_title.c_str(), RST());
     }
     options.push_back({{"value", std::to_string(i + 1)},
@@ -119,9 +74,9 @@ inline std::string PickSession(bool render = true) {
 }
 
 // load `path` into the agent; on success the session continues in that file
-inline void ResumeInto(Agent& agent, const std::string& path,
+inline bool ResumeInto(Agent& agent, const std::string& path,
                        std::string& session_file, bool render = true) {
-  if (path.empty()) return;
+  if (path.empty()) return false;
   std::string error;
   if (!agent.Load(path, CanonicalCwd(), error)) {
     std::string safe_path = TerminalSafe(path);
@@ -130,7 +85,8 @@ inline void ResumeInto(Agent& agent, const std::string& path,
       printf("%s· could not resume %s: %s%s\n", RED(), safe_path.c_str(),
              safe_error.c_str(), RST());
     }
-    return;
+    Emit(Event{EventId::kError, {{"error", "cannot resume: " + error}}});
+    return false;
   }
   session_file = path;
   if (render) {
@@ -139,6 +95,7 @@ inline void ResumeInto(Agent& agent, const std::string& path,
     agent.PrintHistory();
     printf("%s· end of history, continuing%s\n", DIM(), RST());
   }
+  return true;
 }
 
 }  // namespace uagent

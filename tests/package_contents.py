@@ -60,6 +60,9 @@ def main():
         "SELF_IMPROVEMENT_RESEARCH",
         "TESTING",
         "TOOLS",
+        "WEB",
+        "MANAGEMENT",
+        "CACHING",
     ):
         if f"{docs}docs/{name}.md" not in files:
             fail(f"canonical guide docs/{name}.md is missing")

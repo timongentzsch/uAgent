@@ -12,8 +12,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cwchar>
+#include <initializer_list>
 #include <iomanip>
 #include <limits>
+#include <locale>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -542,21 +544,26 @@ bool ExecutableOnPath(const std::string& name) {
   return false;
 }
 
-std::string FmtCount(int64_t number) {
-  if (number < 1000) return std::to_string(number);
-  const char* suffix = "K";
-  double divisor = 1000.0;
-  if (number >= 1'000'000'000) {
-    suffix = "B";
-    divisor = 1'000'000'000.0;
-  } else if (number >= 1'000'000) {
-    suffix = "M";
-    divisor = 1'000'000.0;
+namespace {
+std::string FmtScaled(int64_t number, std::initializer_list<const char*> units,
+                      const char* separator = "") {
+  double value = static_cast<double>(number);
+  size_t unit = 0;
+  while (std::abs(value) >= 999.95 && unit + 1 < units.size()) {
+    value /= 1000;
+    ++unit;
   }
   std::ostringstream output;
-  output << std::fixed << std::setprecision(1)
-         << static_cast<double>(number) / divisor << suffix;
-  return output.str();
+  output.imbue(std::locale::classic());
+  output << std::fixed << std::setprecision(1) << std::round(value * 10) / 10;
+  std::string text = output.str();
+  if (text.ends_with(".0")) text.resize(text.size() - 2);
+  return text + separator + *(units.begin() + unit);
+}
+}  // namespace
+
+std::string FmtCount(int64_t number) {
+  return FmtScaled(number, {"", "k", "M", "B", "T", "P", "E"});
 }
 
 std::string FmtCost(double cost) {
@@ -590,17 +597,7 @@ std::string FmtDuration(double seconds) {
 }
 
 std::string FmtBytes(int64_t bytes) {
-  if (bytes < 1024) return std::to_string(bytes) + " B";
-  static constexpr const char* kUnits[] = {"KB", "MB", "GB", "TB", "PB"};
-  size_t unit = 0;
-  double value = static_cast<double>(bytes) / 1024.0;
-  while (value >= 1024.0 && unit + 1 < std::size(kUnits)) {
-    value /= 1024.0;
-    ++unit;
-  }
-  std::ostringstream output;
-  output << std::fixed << std::setprecision(1) << value << ' ' << kUnits[unit];
-  return output.str();
+  return FmtScaled(bytes, {"B", "kB", "MB", "GB", "TB", "PB", "EB"}, " ");
 }
 
 std::string FmtAgo(int64_t seconds) {

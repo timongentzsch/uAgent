@@ -18,20 +18,24 @@ namespace uagent {
 
 class Steering {
  public:
+  struct Message {
+    std::string text, request_id;
+  };
   bool Requested() const { return requested_; }
 
   void Request();
 
   bool Take();
 
-  void Queue(std::string input);
+  void Queue(std::string input, std::string request_id = "");
+  std::vector<Message> TakeMessages();
   std::vector<std::string> TakeQueued();
   size_t QueuedCount() const;
 
  private:
   std::atomic<bool> requested_{false};
   mutable std::mutex queue_mutex_;
-  std::deque<std::string> queued_;
+  std::deque<Message> queued_;
 };
 
 Steering& SteeringState();

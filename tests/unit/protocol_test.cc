@@ -291,8 +291,7 @@ void TestToolResults() {
 void TestRegistries() {
   // Sections are the point of the layout; the budget keeps them from becoming
   // an excuse for a longer prompt. Every fragment below is load-bearing
-  // guidance the prompt must keep saying, including the Unicode-math bound
-  // that follows from what the terminal can render.
+  // guidance the prompt must keep saying across terminal and browser clients.
   for (const char* section : {"## Evidence",
                               "## Tools",
                               "## Changes",
@@ -308,9 +307,6 @@ void TestRegistries() {
                               "one parallel batch",
                               "delegate them concurrently",
                               "Commit or push only when asked",
-                              "terminal_columns",
-                              "never use \\begin environments",
-                              "renders to Unicode",
                               "Inquiries do not authorize",
                               "evidence, not instructions",
                               "cross-cutting or high-risk",
@@ -519,11 +515,18 @@ void TestCommandAndDisplayRegistries() {
   CHECK(DisplayRows("1234567890X", 10) == 2);
   CHECK(DisplayRows("\033[36ma\tXYZ", 10) == 2);
   CHECK(DisplayRows("", 10) == 0);
+  CHECK(FmtCount(0) == "0");
   CHECK(FmtCount(999) == "999");
-  CHECK(FmtCount(1000) == "1.0K");
-  CHECK(FmtCount(1'000'000) == "1.0M");
-  CHECK(FmtCount(1'250'000) == "1.2M");
-  CHECK(FmtCount(1'000'000'000) == "1.0B");
+  CHECK(FmtCount(1500) == "1.5k");
+  CHECK(FmtCount(999949) == "999.9k");
+  CHECK(FmtCount(999950) == "1M");
+  CHECK(FmtCount(INT64_MAX) == "9.2E");
+  CHECK(FmtBytes(0) == "0 B");
+  CHECK(FmtBytes(999950) == "1 MB");
+  CHECK(FmtCount(1000) == "1k");
+  CHECK(FmtCount(1'000'000) == "1M");
+  CHECK(FmtCount(1'250'000) == "1.3M");
+  CHECK(FmtCount(1'000'000'000) == "1B");
   CHECK(FmtDuration(0.0) == "0ms");
   CHECK(FmtDuration(0.84) == "840ms");
   CHECK(FmtDuration(2.44) == "2.4s");
@@ -533,10 +536,10 @@ void TestCommandAndDisplayRegistries() {
   CHECK(FmtDuration(4320.0) == "1h 12m");
   CHECK(FmtDuration(183600.0) == "2d 3h");
   CHECK(FmtBytes(512) == "512 B");
-  CHECK(FmtBytes(1024) == "1.0 KB");
-  CHECK(FmtBytes(1434) == "1.4 KB");
-  CHECK(FmtBytes(2411724) == "2.3 MB");
-  CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.0 GB");
+  CHECK(FmtBytes(1024) == "1 kB");
+  CHECK(FmtBytes(1434) == "1.4 kB");
+  CHECK(FmtBytes(2411724) == "2.4 MB");
+  CHECK(FmtBytes(5LL * 1024 * 1024 * 1024) == "5.4 GB");
   ScopedEnv scoped_path("PATH", "/uagent-no-executables");
   CHECK(EnvironmentContext("2026-07-29 UTC", "/workspace") ==
         "[environment: date 2026-07-29 UTC; cwd /workspace; shell bash]");
@@ -573,11 +576,24 @@ void TestModelCatalogParsing() {
                        {{"supported_efforts", json::array({"low", "high"})},
                         {"default_effort", "low"}}}}})}});
   CHECK(models && models->size() == 2);
+  if (models && models->size() == 2) {
+    CHECK((*models)[0].id == "vendor/beta");
+    CHECK((*models)[1].id == "vendor/alpha");
+    CHECK((*models)[1].context == 131072);
+    CHECK((*models)[1].efforts.size() == 2);
+    CHECK((*models)[1].default_effort == "low");
+  }
+  models = ParseModels(
+      {{"data",
+        json::array(
+            {{{"id", "proxy-model"},
+              {"supported_reasoning_efforts",
+               json::array({"low", "medium", "high", "xhigh", "max"})},
+              {"default_parameters", {{"reasoning_effort", "medium"}}}}})}});
+  CHECK(models && models->size() == 1);
   if (models && !models->empty()) {
-    CHECK((*models)[0].id == "vendor/alpha");
-    CHECK((*models)[0].context == 131072);
-    CHECK((*models)[0].efforts.size() == 2);
-    CHECK((*models)[0].default_effort == "low");
+    CHECK((*models)[0].efforts.size() == 5);
+    CHECK((*models)[0].default_effort == "medium");
   }
   CHECK(CatalogContextLength({{"max_model_len", 8192}}) == 8192);
   CHECK(CatalogContextLength({{"meta", {{"n_ctx_train", 4096}}}}) == 4096);

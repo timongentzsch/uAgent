@@ -14,6 +14,7 @@
 #include <thread>
 #include <utility>
 
+#include "include/core/env.h"
 #include "include/core/platform.h"
 #include "include/core/term.h"
 
@@ -149,7 +150,18 @@ bool ExecutableReplaced() {
 }
 
 void SetExecutablePath(std::string path) {
-  MutableExecutablePath() = std::move(path);
+  if (!std::filesystem::path(path).has_parent_path()) {
+    for (const auto& root : SplitPathList(EnvStr("PATH"))) {
+      auto candidate = std::filesystem::path(root) / path;
+      if (access(candidate.c_str(), X_OK) == 0) {
+        path = candidate.string();
+        break;
+      }
+    }
+  }
+  std::error_code error;
+  auto canonical = std::filesystem::canonical(path, error);
+  MutableExecutablePath() = error ? std::move(path) : canonical.string();
   StartupExecutableIdentity() = FileIdentity(MutableExecutablePath());
 }
 
@@ -192,6 +204,9 @@ void RequestAbort() {
   InitializeSignalNotifications();
   g_thread_abort.store(true, std::memory_order_relaxed);
   WakeDescriptor(g_abort_wake_write);
+  // Condition-variable process waits need the same wake as a child event.
+  // Programmatic cancellation has no SIGCHLD until the waiter kills its child.
+  WakeDescriptor(g_child_dispatch_write);
 }
 
 void ClearAbort() {

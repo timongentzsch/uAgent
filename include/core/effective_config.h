@@ -37,6 +37,9 @@ class ConfigManager {
   // environment layer and are re-applied with overwrite, so a flag beats an
   // inherited variable however the session was launched.
   static ConfigManager Capture(bool trust_project, RuntimeConfig::Values cli);
+  // Inspect resolved values without exporting them as process overrides.
+  EffectiveConfigSnapshot Read() const;
+  bool ProjectTrusted() const { return trust_project_; }
 
   RuntimeConfig Initialize();
   std::optional<ConfigReload> Reload(const RuntimeConfig& active);
@@ -45,7 +48,6 @@ class ConfigManager {
  private:
   ConfigManager(RuntimeConfig::Values process, bool trust_project,
                 RuntimeConfig::Values cli);
-  EffectiveConfigSnapshot Read() const;
   bool FilesChanged() const;
 
   RuntimeConfig::Values process_;

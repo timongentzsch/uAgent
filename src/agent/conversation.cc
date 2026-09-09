@@ -3,8 +3,10 @@
 #include "include/agent/conversation.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -14,6 +16,7 @@
 #include "include/agent/protocol.h"
 #include "include/api/wire.h"
 #include "include/core/checked.h"
+#include "include/core/debug.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 
@@ -156,6 +159,11 @@ bool ParseMessageKind(const std::string& name, MessageKind& kind) {
 }
 
 void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
+  next_display_id_ = 1;
+  tool_displays_ = json::object();
+  display_facts_ = json::object();
+  statistics_ = {{"complete", true}};
+  display_bytes_ = 0;
   ResetHistory(std::move(baseline), std::move(kinds));
   archive_ = json::array();
   archive_sizes_.clear();
@@ -165,12 +173,45 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
 
 bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
                            json archive, int64_t dropped_segments,
-                           json tool_displays) {
+                           json tool_displays, const json& display) {
   if (!messages.is_array() || messages.empty() ||
       messages.size() != kinds.size() || !archive.is_array() ||
       !tool_displays.is_object()) {
     return false;
   }
+  std::vector<uint64_t> restored_ids;
+  json restored_facts = json::object();
+  uint64_t next_id = 1;
+  if (!display.empty()) {
+    const json* ids = JsonArray(display, "ids");
+    const json* facts = JsonObject(display, "facts");
+    if (!ids || ids->size() != messages.size() || !facts ||
+        JsonEstimatedBytes(*facts) > size_t{4} * 1024 * 1024) {
+      return false;
+    }
+    next_id = JsonValue(display, "next", uint64_t{0});
+    if (next_id == 0 || next_id >= UINT64_MAX - 1000000) return false;
+    std::unordered_set<uint64_t> unique;
+    for (const json& id : *ids) {
+      if (!id.is_number_unsigned() || id.get<uint64_t>() == 0 ||
+          id.get<uint64_t>() >= next_id ||
+          !unique.insert(id.get<uint64_t>()).second) {
+        return false;
+      }
+      restored_ids.push_back(id.get<uint64_t>());
+    }
+    restored_facts = *facts;
+  } else {
+    for (size_t index = 0; index < messages.size(); ++index) {
+      restored_ids.push_back(next_id++);
+    }
+  }
+  json statistics = JsonValue(display, "statistics", json{{"complete", false}});
+  if (!statistics.is_object() || JsonEstimatedBytes(statistics) > 4096) {
+    return false;
+  }
+  // Validate before adopting: a failed resume must leave the live session
+  // intact.
   tool_displays_ = std::move(tool_displays);
   NormalizeRoles(messages, kinds);
   messages_ = std::move(messages);
@@ -184,6 +225,11 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
         archive_sizes_.back() + (archive_sizes_.size() > 1 ? 1 : 0);
   }
   dropped_segments_ = std::max(int64_t{0}, dropped_segments);
+  display_ids_ = std::move(restored_ids);
+  display_facts_ = std::move(restored_facts);
+  display_bytes_ = JsonEstimatedBytes(display_facts_);
+  next_display_id_ = next_id;
+  statistics_ = std::move(statistics);
   return true;
 }
 
@@ -191,7 +237,10 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
   NormalizeRoles(baseline, kinds);
   messages_ = std::move(baseline);
   kinds_ = std::move(kinds);
-  tool_displays_ = json::object();
+  display_ids_.clear();
+  for (size_t index = 0; index < messages_.size(); ++index) {
+    display_ids_.push_back(next_display_id_++);
+  }
 }
 
 // A receipt is worth keeping only while the call it describes is still in the
@@ -199,7 +248,9 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
 // leave -- compaction, archiving, an explicit erase -- without hooking each.
 void Conversation::PruneToolDisplays() {
   json kept = json::object();
-  for (const json& message : messages_) {
+  for (auto message_it = messages_.rbegin();
+       message_it != messages_.rend() && kept.size() < 127; ++message_it) {
+    const json& message = *message_it;
     if (!message.is_object()) continue;
     auto id = message.find("tool_call_id");
     if (id == message.end() || !id->is_string()) continue;
@@ -213,11 +264,11 @@ void Conversation::PruneToolDisplays() {
 void Conversation::RecordToolDisplay(const std::string& call_id,
                                      std::string display) {
   if (call_id.empty() || display.empty()) return;
+  // Make space before insertion: the current call's result is appended later.
+  if (tool_displays_.size() >= 128 && !tool_displays_.contains(call_id)) {
+    PruneToolDisplays();
+  }
   tool_displays_[call_id] = std::move(display);
-  // Each receipt is already bounded when it is rendered; this only stops a
-  // very long session from accumulating ones whose calls are long gone.
-  constexpr size_t kMaxStoredToolDisplays = 128;
-  if (tool_displays_.size() > kMaxStoredToolDisplays) PruneToolDisplays();
 }
 
 const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
@@ -226,10 +277,76 @@ const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
   return &stored->get_ref<const std::string&>();
 }
 
+json Conversation::DisplayMetadata() const {
+  return {{"ids", display_ids_},
+          {"facts", display_facts_},
+          {"statistics", statistics_},
+          {"next", next_display_id_}};
+}
+
+void Conversation::AddStatistics(const json& delta) {
+  for (auto it = delta.begin(); it != delta.end(); ++it) {
+    if (!it->is_number() || !std::isfinite(it->get<double>()) ||
+        it->get<double>() < 0) {
+      continue;
+    }
+    if (it->is_number_integer()) {
+      statistics_[it.key()] = SaturatingNonnegativeAdd(
+          JsonValue(statistics_, it.key().c_str(), int64_t{0}),
+          it->get<int64_t>());
+    } else {
+      statistics_[it.key()] = std::min(
+          std::numeric_limits<double>::max(),
+          JsonValue(statistics_, it.key().c_str(), 0.0) + it->get<double>());
+    }
+  }
+}
+
+std::string Conversation::LastDisplayId() const {
+  return display_ids_.empty() ? "" : "m-" + std::to_string(display_ids_.back());
+}
+
+json Conversation::RecordActivity(json facts) {
+  facts["sequence"] = next_display_id_++;
+  facts["id"] = "m-" + std::to_string(next_display_id_ - 1);
+  facts["kind"] = "activity";
+  facts["time"] = UtcStamp();
+  AddStatistics({{"incoming", 1}});
+  facts["incoming"] = statistics_["incoming"];
+  RecordDisplay(facts["id"].get<std::string>(), facts);
+  return facts;
+}
+
+void Conversation::RecordDisplay(std::string key, json facts) {
+  constexpr size_t kFactBytes = size_t{64} * 1024;
+  if (key.empty() || !facts.is_object()) return;
+  auto existing = display_facts_.find(key);
+  if (existing != display_facts_.end() && existing->is_object()) {
+    json merged = *existing;
+    merged.update(facts);
+    facts = std::move(merged);
+  }
+  if (JsonEstimatedBytes(facts) > kFactBytes) return;
+  if (existing != display_facts_.end()) {
+    display_bytes_ -= JsonEstimatedBytes(*existing) + key.size();
+  }
+  display_bytes_ += JsonEstimatedBytes(facts) + key.size();
+  display_facts_[std::move(key)] = std::move(facts);
+  // Metadata is independently bounded. Deterministic eviction by key leaves
+  // an explicit not-recorded fallback when the byte/count ceiling is reached.
+  while (display_facts_.size() > 4096 ||
+         display_bytes_ > size_t{4} * 1024 * 1024) {
+    auto oldest = display_facts_.begin();
+    display_bytes_ -= JsonEstimatedBytes(*oldest) + oldest.key().size();
+    display_facts_.erase(oldest);
+  }
+}
+
 void Conversation::RefreshBaseline(json system) {
   if (messages_.empty()) {
     messages_ = json::array({std::move(system)});
     kinds_ = {MessageKind::kSystem};
+    display_ids_ = {next_display_id_++};
   } else {
     Set(0, std::move(system), MessageKind::kSystem);
   }
@@ -247,6 +364,11 @@ void Conversation::Push(json message, MessageKind kind) {
   NormalizeRole(message, kind);
   messages_.push_back(std::move(message));
   kinds_.push_back(kind);
+  display_ids_.push_back(next_display_id_++);
+  if (kind == MessageKind::kUser || kind == MessageKind::kAssistant ||
+      kind == MessageKind::kToolResult || kind == MessageKind::kAttachment) {
+    RecordDisplay(LastDisplayId(), {{"time", UtcStamp()}});
+  }
 }
 
 void Conversation::Upsert(json message, MessageKind kind) {
@@ -259,8 +381,8 @@ void Conversation::Upsert(json message, MessageKind kind) {
   Push(std::move(message), kind);
 }
 
-// Refresh volatile harness context at the tail so a change (terminal width,
-// date) never invalidates the cacheable prefix of the history.
+// Keep only the latest runtime context. Refreshing it preserves the system
+// prefix, but removing its old position invalidates the following history.
 void Conversation::UpsertTail(json message, MessageKind kind) {
   NormalizeRole(message, kind);
   if (!kinds_.empty() && kinds_.back() == kind && messages_.back() == message) {
@@ -295,6 +417,8 @@ void Conversation::Erase(size_t begin, size_t end) {
                   messages_.begin() + static_cast<json::difference_type>(end));
   kinds_.erase(kinds_.begin() + static_cast<std::ptrdiff_t>(begin),
                kinds_.begin() + static_cast<std::ptrdiff_t>(end));
+  display_ids_.erase(display_ids_.begin() + static_cast<std::ptrdiff_t>(begin),
+                     display_ids_.begin() + static_cast<std::ptrdiff_t>(end));
 }
 
 bool Conversation::HasKind(MessageKind kind) const {
@@ -333,6 +457,14 @@ std::string Conversation::FirstUserText() const {
     if (JsonValue(message, "role", "") == "user" &&
         message.contains("content") && message["content"].is_string()) {
       return FirstLine(message["content"].get<std::string>());
+    }
+    if (const json* parts = JsonArray(message, "content")) {
+      for (const json& part : *parts) {
+        if (JsonValue(part, "type", "") != "text") continue;
+        std::string text = FirstLine(JsonValue(part, "text", ""));
+        if (!text.empty()) return text;
+      }
+      return "(image attachment)";
     }
   }
   return "(no messages)";
@@ -491,17 +623,20 @@ bool Conversation::ArchiveRange(const char* reason, size_t begin, size_t end,
   end = std::min(end, messages_.size());
   json saved = json::array();
   json saved_kinds = json::array();
+  json saved_ids = json::array();
   if (begin < end) {
     for (size_t index = begin; index < end; ++index) {
       saved.push_back(messages_[index]);
       saved_kinds.push_back(MessageKindName(kinds_[index]));
+      saved_ids.push_back(display_ids_[index]);
     }
   }
   if (saved.empty() && metadata.empty()) return false;
   json segment = {{"turn", turn},
                   {"reason", reason},
                   {"messages", std::move(saved)},
-                  {"message_kinds", std::move(saved_kinds)}};
+                  {"message_kinds", std::move(saved_kinds)},
+                  {"display_ids", std::move(saved_ids)}};
   for (auto& [key, value] : metadata.items()) {
     if (!segment.contains(key)) segment[key] = std::move(value);
   }

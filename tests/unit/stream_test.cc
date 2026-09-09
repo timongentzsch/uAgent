@@ -123,6 +123,7 @@ void TestSseChunkPartitions() {
     CHECK(parsed.result.error.empty());
     CHECK(parsed.result.finish_reason == "tool_calls");
     CHECK(parsed.result.first_event_ms >= 0);
+    CHECK(parsed.result.first_token_ms >= parsed.result.first_event_ms);
     CHECK(parsed.result.usage["prompt_tokens"] == 7);
     CHECK(parsed.result.usage["completion_tokens"] == 3);
     CHECK(parsed.result.annotations.size() == 1);
@@ -210,6 +211,25 @@ void TestSseChunkPartitions() {
   CHECK(result.content.empty());
   stream.Finish();
   CHECK(result.content == "complete");
+
+  ChatResult timed;
+  StreamCtx timing;
+  timing.res = &timed;
+  timing.status = 200;
+  timing.started = std::chrono::steady_clock::now();
+  timing.MarkEvent();  // Hosted activity keeps the timeout alive, but is not a
+                       // token.
+  CHECK(timed.first_event_ms >= 0);
+  CHECK(timed.first_token_ms < 0);
+  timing.started -= std::chrono::milliseconds(20);
+  std::string thinking =
+      event({{"choices", {{{"delta", {{"reasoning_content", "think"}}}}}}});
+  timing.Feed(thinking.data(), thinking.size());
+  CHECK(timed.first_token_ms >= 20);
+  double first_token = timed.first_token_ms;
+  timing.started -= std::chrono::milliseconds(20);
+  timing.Feed(thinking.data(), thinking.size());
+  CHECK(timed.first_token_ms == first_token);
 
   // Provider-specific tool syntax is held across arbitrary SSE chunking. It
   // is classified as invalid by the turn loop and never flashes as an answer.

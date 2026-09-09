@@ -160,7 +160,7 @@ struct RuntimeConfig : TurnBudgets {
   int64_t response_bytes = int64_t{32} * 1024 * 1024;
   int64_t tool_timeout_s = 30;
   int64_t web_search_timeout_s = 60;
-  int64_t web_search_max_tokens = 1200;
+  int64_t web_search_max_tokens = 5000;
   int64_t web_search_calls = 4;
   int64_t web_search_max_results = 5;
   int64_t web_search_max_uses = 3;
@@ -176,6 +176,7 @@ struct RuntimeConfig : TurnBudgets {
   int64_t memory_always_bytes = 2048;
   int64_t project_doc_bytes = int64_t{32} * 1024;
   int64_t session_archive_bytes = int64_t{16} * 1024 * 1024;
+  std::string approval;
   std::string openrouter_provider;
   std::string openrouter_variant;
   std::string web_search_backend = "auto";

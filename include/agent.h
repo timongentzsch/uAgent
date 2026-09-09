@@ -13,6 +13,7 @@
 #include <functional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "include/agent/adaptive_system.h"
@@ -20,6 +21,7 @@
 #include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
 #include "include/core/project.h"
 #include "include/core/skills.h"
 #include "include/core/usage.h"
@@ -89,6 +91,23 @@ class Agent {
   // language (user prompts, rendered assistant prose, dim tool traffic), so a
   // resumed session shows the context it is picking up from.
   void PrintHistory() const;
+  json DisplaySnapshot() const;
+  json RawExchange(const std::string& id, size_t offset = 0) const;
+  void RetainExchanges(bool enabled) {
+    retain_exchanges_ = enabled;
+    api_.capture_http = enabled;
+  }
+  json HttpExchanges() const;
+  json SessionSettings() const;
+  void SessionSettings(const json& settings);
+  json PreviewContext();
+  void PublishMessage(const std::string& request_id = "");
+  const json& Statistics() const { return conversation_.Statistics(); }
+  void Rename(std::string title) {
+    session_title_ = std::move(title);
+    custom_title_ = true;
+    ++revision_;
+  }
 
   json ModelRequest() const;
   void PrintContext() const;
@@ -129,7 +148,8 @@ class Agent {
   bool DrainAttachments();
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
-  void Turn(const std::string& user_input, json user_content = nullptr);
+  void Turn(const std::string& user_input, json user_content = nullptr,
+            json images = json::array(), const std::string& request_id = "");
 
  private:
   struct TurnExecution;
@@ -290,7 +310,7 @@ class Agent {
 
   // Keep receipts and read metadata from the original; send only `result`.
   void AppendToolResult(const ToolCall& call, const std::string& result,
-                        const ToolResult& original);
+                        const ToolResult& original, double duration_ms);
 
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
@@ -324,7 +344,11 @@ class Agent {
   Usage session_usage_;
   RouteUsage route_usage_;
   std::string session_id_;
+  bool retain_exchanges_ = false;
+  std::string turn_root_, reply_to_, reply_excerpt_;
+  mutable FileLease writer_;
   std::string session_title_;
+  bool custom_title_ = false;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

@@ -4,6 +4,7 @@
 #define UAGENT_INCLUDE_AGENT_SESSION_STORE_H_
 
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -24,6 +25,23 @@ inline constexpr const char* kSessionHeaderSessionId = "session_id";
 inline constexpr const char* kSessionHeaderTurns = "turns";
 inline constexpr const char* kSessionHeaderTitle = "title";
 inline constexpr int64_t kSessionFormat = 3;
+inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
+inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
+
+enum class SessionScope { kWorkspace, kAll };
+
+struct SessionInfo {
+  std::string path, cwd, title;
+  int64_t turns = 0;
+  uint64_t incoming = 0;
+  int64_t bytes = 0;
+  std::filesystem::file_time_type mtime;
+  std::string error;
+};
+
+// A read-only catalogue: bounded headers, one known directory level, no links.
+std::vector<SessionInfo> ListSessions(
+    SessionScope scope = SessionScope::kWorkspace);
 
 enum class SessionStoreError {
   kNone,
@@ -41,6 +59,7 @@ struct SessionMetadata {
   std::string session_id;
   int64_t turns = 0;
   std::string title;
+  bool custom_title = false;
 };
 
 struct SessionState {
@@ -56,6 +75,7 @@ struct SessionState {
   // Rendered tool receipts keyed by call id, so a resumed transcript can
   // redraw a diff instead of a grey summary line.
   json tool_displays = json::object();
+  json display = json::object();
 };
 
 struct SessionRecord {
@@ -75,12 +95,21 @@ struct SessionLoadResult {
   std::optional<SessionRecord> record;
 };
 
+bool ValidSessionTitle(const std::string& title);
+
 class SessionStore {
  public:
   static SessionStoreStatus Save(const std::string& path,
                                  const SessionRecord& record);
   static SessionLoadResult Load(const std::string& path,
                                 const std::string& expected_cwd);
+  static SessionLoadResult Inspect(const std::string& path);
+  static json Fork(const std::string& path, const std::string& title = "",
+                   bool source_owned = false);
+  static SessionStoreStatus Rename(const std::string& path,
+                                   const std::string& title);
+  static SessionStoreStatus Remove(const std::string& path,
+                                   const std::string& draft_path = "");
 };
 
 }  // namespace uagent

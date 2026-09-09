@@ -7,7 +7,7 @@
     "platform": "macOS-26.6.2-arm64-arm-64bit",
     "machine": "arm64",
     "binary_bytes": 4771640,
-    "stripped_bytes": 3820360,
+    "stripped_bytes": 3820376,
     "cli_only_bytes": 3011192,
     "cli_only_stripped_bytes": 2423816,
     "asset_totals": {
@@ -42,8 +42,8 @@
   "push_enabled": {
     "platform": "macOS-26.6.2-arm64-arm-64bit",
     "machine": "arm64",
-    "binary_bytes": 4814408,
-    "stripped_bytes": 3858856,
+    "binary_bytes": 4814424,
+    "stripped_bytes": 3858880,
     "cli_only_bytes": 3011192,
     "cli_only_stripped_bytes": 2423816,
     "asset_totals": {

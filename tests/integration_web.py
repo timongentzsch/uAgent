@@ -1028,6 +1028,8 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
 
 
 def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
+    import http.client
+
     def unavailable(handler, _body):
         write_json_response(handler, {"error": {"message": "temporary unavailable"}}, status=503)
 
@@ -1048,7 +1050,31 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             assert_true(
                 json.loads(first["text"])["error"]["message"] == "temporary unavailable", first
             )
+            listing = client.json("/api/sessions")[1]
             client.command("submit", session, text="Fail this request")
+            stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            try:
+                stream.request(
+                    "GET",
+                    f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                    headers={"Cookie": client.cookie},
+                )
+                response = stream.getresponse()
+                assert_true(response.status == 200, response.status)
+                # Replay every transition: polling can miss a premature idle state.
+                while line := response.readline():
+                    if not line.startswith(b"data: "):
+                        continue
+                    frame = json.loads(line[6:])
+                    if frame.get("session_id") != session["id"]:
+                        continue
+                    if frame.get("kind") == "state" and not frame["busy"]:
+                        assert_true(frame["checkpoint"], "idle preceded the final checkpoint")
+                        break
+                else:
+                    raise AssertionError("worker stream ended before the final checkpoint")
+            finally:
+                stream.close()
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             exchange = snapshot["state"]["http"][-1]
             failed_user = next(

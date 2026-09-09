@@ -19,7 +19,7 @@ using PushTransport = std::function<int64_t(
 class PushSender {
  public:
   PushSender(const std::string& directory, const std::string& contact,
-             PushTransport transport = {});
+             const PushTransport& transport = {});
   ~PushSender();
   PushSender(const PushSender&) = delete;
   PushSender& operator=(const PushSender&) = delete;

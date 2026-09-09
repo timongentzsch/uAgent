@@ -114,11 +114,10 @@ class WorkerChannel final : public ApplicationChannel {
       std::lock_guard lock(mutex_);
       approval_ = data;
     }
-    if (event.type == "turn.started" || event.type == "turn.completed" ||
-        event.type == "turn.stopped") {
+    if (event.type == "turn.started") {
       std::lock_guard lock(mutex_);
-      turn_active_ = event.type == "turn.started";
-      if (turn_active_) BeginTurn();
+      turn_active_ = true;
+      BeginTurn();
       SendState();
     }
     std::string phase;
@@ -137,7 +136,7 @@ class WorkerChannel final : public ApplicationChannel {
     } else if (event.type == "response.hosted_tool") {
       phase = "Searching";
     } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
-      phase = "Ready";
+      phase = "Finishing";
     }
     if (!phase.empty()) {
       std::lock_guard lock(mutex_);
@@ -251,7 +250,10 @@ class WorkerChannel final : public ApplicationChannel {
     state_["activity"] = activity;
     busy_ = input_.has_value();
     if (!busy_) {
+      // Completion events precede saved display/HTTP metadata. Only the final
+      // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
+      state_["activity"] = "Ready";
       ClearAbort();
       NormalizeAbortWake();
       auto queued = SteeringState().TakeMessages();

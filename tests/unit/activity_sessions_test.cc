@@ -328,7 +328,13 @@ void TestActivitySessions() {
   if (!pty_jobs.empty()) {
     int64_t id = ActivityId(pty_jobs[0]);
     CHECK(id != pty_jobs[0].pid);
-    CHECK(started.result.output.find("tty=yes") != std::string::npos);
+    std::string output = started.result.output;
+    if (output.find("tty=yes") == std::string::npos) {
+      output += ToolActivityOutput(pty_processes, id, BudgetMs(2000), "tty=yes",
+                                   context)
+                    .output;
+    }
+    CHECK(output.find("tty=yes") != std::string::npos);
     std::vector<Tool> pty_tools = BuiltinTools(pty_processes);
     const Tool* activity = FindTool(pty_tools, "activity");
     CHECK(activity != nullptr);

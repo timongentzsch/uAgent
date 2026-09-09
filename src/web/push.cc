@@ -303,12 +303,12 @@ struct PushSender::Impl {
 };
 
 PushSender::PushSender(const std::string& directory, const std::string& contact,
-                       PushTransport transport)
+                       const PushTransport& transport)
     : impl_(std::make_unique<Impl>()) {
 #ifdef UAGENT_WEB_PUSH
   impl_->directory = directory;
   impl_->contact = contact;
-  impl_->transport = std::move(transport);
+  impl_->transport = transport;
   bool valid_contact = contact.size() <= 200 &&
                        contact.find_first_of("\r\n\t ") == std::string::npos &&
                        ((contact.starts_with("mailto:") &&

@@ -451,11 +451,11 @@ The earlier CLI reference is revision `5ceaad97`.
 | --- | ---: |
 | Earlier CLI reference | 2,168,808 |
 | Current CLI-only | 2,423,816 |
-| Default web | 3,820,360 |
-| Optional push | 3,858,856 |
+| Default web | 3,820,376 |
+| Optional push | 3,858,880 |
 
 The default build adds no dynamic library dependency. Push adds OpenSSL libcrypto
-and 38,496 stripped bytes. The default idle master used 9,296 KiB RSS / 19 threads;
+and 38,504 stripped bytes. The default idle master used 9,296 KiB RSS / 19 threads;
 with two completed workers, 10,736 KiB / 21 threads. Workers used 11,904 and 11,888
 KiB / 7 threads each. Configured push without subscriptions used 12,736 KiB / 20
 threads while idle. Both idle samples recorded 0.00 seconds CPU over three seconds,

@@ -1,3 +1,4 @@
+import "./attachments.css";
 import Markdown from "./markdown-view.tsx";
 import { duration } from "./duration.ts";
 import "./message.css";

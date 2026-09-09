@@ -1,6 +1,6 @@
 .settings-fields {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 .settings-fields > button {
   justify-self: start;
@@ -10,12 +10,12 @@
 }
 .settings-section {
   border-top: 1px solid var(--line);
-  margin-top: 16px;
-  padding-top: 8px;
+  margin-top: 12px;
+  padding-top: 4px;
 }
 .settings-section > summary {
   cursor: pointer;
-  padding: 8px 0;
+  padding: 6px 0;
 }
 .settings-section button + button {
   margin-left: 8px;
@@ -23,9 +23,9 @@
 .subview-head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--gap);
   position: sticky;
-  top: -16px;
+  top: calc(-1 * var(--pad));
   background: var(--bg);
   padding: 8px 0;
   z-index: 1;

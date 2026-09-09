@@ -1,0 +1,48 @@
+.attachments,
+.images {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  max-height: calc(var(--viewport-height) * 0.16);
+  overflow: auto;
+}
+.composer .attachments {
+  padding: 4px 8px;
+}
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  max-width: 100%;
+  min-width: 0;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+.file-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-chip small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.file-chip img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+}
+.images img {
+  width: 80px;
+  height: 64px;
+  object-fit: cover;
+}
+.image {
+  display: block;
+  padding: 0;
+}

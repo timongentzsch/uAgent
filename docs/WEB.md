@@ -124,6 +124,24 @@ application payload level; it is not a TLS or compressed packet capture.
 
 ## Conversation controls and statistics
 
+The application shell, dialogs and menus share the visible viewport's size and
+offset, updated from resize/scroll events once per animation frame. This follows
+the [VisualViewport API](https://developer.mozilla.org/en-US/docs/Web/API/VisualViewport):
+an on-screen keyboard can shrink or pan that viewport independently of the page.
+Chrome also receives [`interactive-widget=resizes-content`](https://developer.chrome.com/blog/viewport-resize-behavior).
+Only width changes switch sidebar layouts. Scrollable content stays inside its
+surface; pinch zoom does not trigger a second layout shrink. Bottom padding
+accounts for [Safari retaining the safe-area inset above the keyboard](https://bugs.webkit.org/show_bug.cgi?id=217754).
+
+Touch text fields retain a 16 px minimum even at reduced display/text settings.
+The compact composer fits one toolbar row at ordinary phone sizes and wraps only
+when its controls need more room. Primary touch controls remain 44 px; message
+actions use 32 px, above the [WCAG 2.2 minimum target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html).
+Shared spacing and control dimensions also size the loading skeletons. Browser
+tests exercise independent viewport resizing/panning, focus and draft retention,
+menus, configuration, library and schedule editors in Chromium and WebKit; they
+simulate keyboard geometry, not a physical device's keyboard animation.
+
 The geometric mark is shared by the interface and generated PWA icons. The
 composer toolbar sits below the text input: attach, canonical
 `provider/model:variant:effort`, and send. Model, effort and variant controls use

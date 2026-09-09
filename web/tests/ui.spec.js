@@ -22,6 +22,11 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
+  await expect(
+    page
+      .getByText("Connected", { exact: true })
+      .or(page.getByLabel("Single-use pairing code")),
+  ).toBeVisible();
   if (await page.getByLabel("Single-use pairing code").isVisible()) {
     await page.getByLabel("Single-use pairing code").fill(fixture.code);
     await page
@@ -364,11 +369,15 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settings.getByRole("button", { name: "Close settings" }).click();
   await measure("mobile-scaled");
   expect(
-    await prompt.evaluate(
-      (element) =>
+    await prompt.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return (
         element.clientHeight >=
-        parseFloat(getComputedStyle(element).lineHeight) + 20,
-    ),
+        parseFloat(style.lineHeight) +
+          parseFloat(style.paddingTop) +
+          parseFloat(style.paddingBottom)
+      );
+    }),
   ).toBe(true);
   await settingsButton.click();
   await settings
@@ -802,4 +811,190 @@ test("late snapshots and retired streams cannot replace current session state", 
   await expect(context).toContainText("ctx 12k/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.locator(".error-banner")).toHaveCount(0);
+});
+
+test("keyboard viewport preserves focus and contains chat, dialogs and editors", async ({
+  browser,
+}, testInfo) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    storageState: "test-results/device-state.json",
+  });
+  const page = await context.newPage(),
+    errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/sw.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: "" }),
+  );
+  // Desktop engines cannot open a phone keyboard. Model an independently
+  // resized/panned visual viewport; a window resize alone misses this bug.
+  const viewport = async (height, top = 0, scale = 1) => {
+    await page.evaluate(
+      ({ height, top, scale }) => {
+        for (const [key, value] of Object.entries({
+          height,
+          offsetTop: top,
+          scale,
+        }))
+          Object.defineProperty(visualViewport, key, {
+            configurable: true,
+            value,
+          });
+        visualViewport.dispatchEvent(new Event("resize"));
+        visualViewport.dispatchEvent(new Event("scroll"));
+      },
+      { height, top, scale },
+    );
+    if (scale === 1)
+      await expect
+        .poll(async () =>
+          Math.round((await page.locator("#app").boundingBox()).height),
+        )
+        .toBe(height);
+  };
+  const contained = async (locator, height, top = 0) => {
+    await expect
+      .poll(async () => {
+        const box = await locator.boundingBox();
+        return (
+          !!box &&
+          box.y >= top - 1 &&
+          box.y + box.height <= top + height + 1 &&
+          box.x >= -1 &&
+          box.x + box.width <= 391
+        );
+      })
+      .toBe(true);
+  };
+  const input = async (locator, text) => {
+    await locator.fill(text);
+    await viewport(390, 70);
+    await expect(locator).toBeFocused();
+    expect(
+      await locator.evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
+    ).toBeGreaterThanOrEqual(16);
+    await contained(locator, 390, 70);
+  };
+  try {
+    const catalogue = await (
+      await context.request.get("http://127.0.0.1:8765/api/sessions")
+    ).json();
+    const session = catalogue.sessions.find(
+      (s) => s.generation && !s.turn_active && !s.pending,
+    );
+    await page.goto(`http://127.0.0.1:8765/#session=${session.id}`);
+    const prompt = page.getByLabel("Message or guidance");
+    await expect(prompt).toBeVisible();
+    expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
+      150,
+    );
+    const draft = "Keep my draft and focus as the keyboard moves";
+    await input(prompt, draft);
+    for (const [height, top] of [
+      [330, 110],
+      [460, 30],
+      [844, 0],
+    ]) {
+      await viewport(height, top);
+      await contained(page.locator(".composer"), height, top);
+      await expect(prompt).toHaveValue(draft);
+      await expect(prompt).toBeFocused();
+      expect(await page.evaluate(() => scrollY)).toBe(0);
+    }
+    await viewport(422, 100, 2);
+    expect(Math.round((await page.locator("#app").boundingBox()).height)).toBe(
+      844,
+    );
+    await viewport(430, 60);
+    await page
+      .getByRole("button", { name: "Model and effort", exact: true })
+      .tap();
+    const picker = page.getByRole("dialog", {
+      name: "Model and effort",
+      exact: true,
+    });
+    await contained(picker, 430, 60);
+    // Safari also sends pans without resize events.
+    await page.evaluate(() => {
+      Object.defineProperty(visualViewport, "offsetTop", {
+        configurable: true,
+        value: 90,
+      });
+      visualViewport.dispatchEvent(new Event("scroll"));
+    });
+    await expect
+      .poll(async () =>
+        Math.round((await page.locator("#app").boundingBox()).y),
+      )
+      .toBe(90);
+    await contained(picker, 430, 90);
+    await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
+    await viewport(844);
+    await page.getByRole("button", { name: "Settings", exact: true }).tap();
+    const settings = page.getByRole("dialog", {
+      name: "Settings",
+      exact: true,
+    });
+    await settings.getByLabel("Display size", { exact: true }).fill("50");
+    await settings.getByLabel("Text size", { exact: true }).fill("50");
+    await settings
+      .getByRole("button", { name: "Advanced configuration", exact: true })
+      .tap();
+    await input(settings.getByLabel("Find a setting"), "web");
+    await contained(settings, 390, 70);
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-keyboard-settings.png`,
+    });
+    await settings.getByRole("button", { name: "← Back", exact: true }).tap();
+    await settings
+      .getByRole("button", { name: "Reset sizes", exact: true })
+      .tap();
+    await settings
+      .getByRole("button", { name: "Close settings", exact: true })
+      .tap();
+    await viewport(844);
+    await page
+      .getByRole("button", { name: "Open sessions", exact: true })
+      .tap();
+    const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
+    await input(drawer.getByRole("searchbox"), "");
+    await contained(drawer, 390, 70);
+    await drawer.getByRole("button", { name: "Library", exact: true }).tap();
+    await viewport(844);
+    await page.getByRole("button", { name: "Add memory", exact: true }).tap();
+    await input(page.getByLabel("Name", { exact: true }), "keyboard draft");
+    await input(
+      page.getByLabel("Document content", { exact: true }),
+      "Editable above the keyboard.",
+    );
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-keyboard-memory.png`,
+    });
+    await viewport(844);
+    await page
+      .getByRole("button", { name: "Open sessions", exact: true })
+      .tap();
+    await drawer.getByRole("button", { name: /^Scheduled/ }).tap();
+    await page.getByRole("button", { name: "New task", exact: true }).tap();
+    await input(
+      page.getByLabel("Instructions", { exact: true }),
+      "Do not schedule this draft.",
+    );
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-keyboard-schedule.png`,
+    });
+    await viewport(844);
+    await input(page.getByLabel("Timezone", { exact: true }), "UTC");
+    await viewport(844);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });

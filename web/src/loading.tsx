@@ -105,9 +105,18 @@ export function ComposerSkeleton() {
       <form>
         <textarea rows={1} disabled aria-hidden="true" />
         <div class="composer-actions">
-          <Control />
-          <Control />
-          <Control />
+          <span class="icon-button">
+            <Control />
+          </span>
+          <div class="model-control">
+            <Control />
+          </div>
+          <span class="icon-button">
+            <Control />
+          </span>
+          <span class="icon-button">
+            <Control />
+          </span>
         </div>
       </form>
       <div class="status-line">
@@ -157,7 +166,9 @@ export function ManagementPageSkeleton({ compact }: { compact: boolean }) {
       {...busy}
       aria-label="Loading workspace controls…"
     >
-      <div style={{ padding: "1rem", borderBottom: "1px solid var(--line)" }}>
+      <div
+        style={{ padding: "var(--pad)", borderBottom: "1px solid var(--line)" }}
+      >
         <Skeleton decorative rows={2} />
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
@@ -165,14 +176,14 @@ export function ManagementPageSkeleton({ compact }: { compact: boolean }) {
           <div
             style={{
               flex: "0 0 15rem",
-              padding: ".75rem",
+              padding: "var(--gap)",
               borderRight: "1px solid var(--line)",
             }}
           >
             <Skeleton decorative rows={8} />
           </div>
         )}
-        <div style={{ flex: 1, padding: "1rem 1.25rem" }}>
+        <div style={{ flex: 1, padding: "var(--pad)" }}>
           <Skeleton decorative rows={12} />
         </div>
       </div>

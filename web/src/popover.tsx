@@ -1,4 +1,4 @@
-import { observeResize } from "./layout.ts";
+import { observeResize, observeViewport, viewportBounds } from "./layout.ts";
 import type { ComponentChildren, JSX } from "preact";
 import { useId, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Ellipsis } from "lucide-preact";
@@ -43,11 +43,7 @@ export function Popover({
     if (!element || !button) return;
     element.showPopover({ source: button });
     const place = () => {
-      const viewport = globalThis.visualViewport;
-      const x = viewport?.offsetLeft || 0,
-        y = viewport?.offsetTop || 0;
-      const width = viewport?.width || innerWidth,
-        height = viewport?.height || innerHeight;
+      const { left: x, top: y, width, height } = viewportBounds();
       const target = button.getBoundingClientRect();
       const above = Math.max(0, target.top - y - 16);
       const below = Math.max(0, y + height - target.bottom - 16);
@@ -77,15 +73,13 @@ export function Popover({
       if (event.newState === "closed") setOpen(false);
     };
     element.addEventListener("toggle", toggled);
-    addEventListener("resize", place);
+    const stopViewport = observeViewport(place);
     document.addEventListener("scroll", scroll, true);
-    globalThis.visualViewport?.addEventListener("resize", place);
     return () => {
       stopObserving();
       element.removeEventListener("toggle", toggled);
-      removeEventListener("resize", place);
+      stopViewport();
       document.removeEventListener("scroll", scroll, true);
-      globalThis.visualViewport?.removeEventListener("resize", place);
     };
   }, [open]);
   return (

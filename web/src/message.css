@@ -1,10 +1,11 @@
 .message {
+  --control: max(28px, 2rem);
   width: 100%;
   min-width: 0;
   text-align: left;
   overflow-wrap: anywhere;
-  padding: 8px 12px;
-  margin: 8px 0;
+  padding: 6px 8px;
+  margin: 6px 0;
 }
 .message.user {
   --text: #111;
@@ -28,7 +29,7 @@
   background: #000;
 }
 .message.turn-start {
-  margin-top: 20px;
+  margin-top: 12px;
 }
 .message > header {
   display: flex;
@@ -89,7 +90,7 @@
   padding-left: 12px;
 }
 .markdown {
-  line-height: 1.65;
+  line-height: 1.55;
   min-width: 0;
 }
 .markdown p:first-child {
@@ -119,7 +120,7 @@
 .markdown th,
 .markdown td {
   border: 1px solid var(--line);
-  padding: 6px 10px;
+  padding: 4px 8px;
 }
 .markdown blockquote {
   border-left: 2px solid var(--accent);
@@ -152,4 +153,25 @@
 }
 .hljs-deletion {
   text-decoration: line-through;
+}
+
+@media (pointer: coarse) {
+  .message {
+    --control: 32px;
+  }
+  .message summary {
+    min-height: 32px;
+  }
+}
+@media (max-width: 600px) {
+  .message {
+    padding: 4px 6px;
+  }
+  .message > header,
+  .tool-toggle {
+    gap: 4px;
+  }
+  .tool-toggle {
+    flex-wrap: wrap;
+  }
 }

@@ -1,3 +1,4 @@
+import "./attachments.css";
 import { ModelSkeleton } from "./loading.tsx";
 import { bytes } from "./quantities.ts";
 import { contextSummary } from "./context.ts";
@@ -78,12 +79,7 @@ export default function Composer({
       element.style.height = `${element.scrollHeight}px`;
     };
     resize();
-    const stopObserving = observeResize(resize, element.parentElement!);
-    globalThis.visualViewport?.addEventListener("resize", resize);
-    return () => {
-      stopObserving();
-      globalThis.visualViewport?.removeEventListener("resize", resize);
-    };
+    return observeResize(resize, element.parentElement!);
   }, [draft.text, sizes.text, sizes.display, pending?.id, session.generation]);
   const permission = state?.permissions;
   const effective =

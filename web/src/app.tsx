@@ -42,6 +42,7 @@ import {
 } from "./loading.tsx";
 
 import { useHost } from "./use-host.ts";
+import { observeResize, trackViewport } from "./layout.ts";
 import "./style.css";
 const sidebarModule = () => import("./sidebar.tsx");
 const menuModule = () =>
@@ -62,7 +63,7 @@ function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
   const [drawer, setDrawer] = useState(false);
   const [compact, setCompact] = useState(
-    () => matchMedia("(max-width: 900px), (max-height: 500px)").matches,
+    () => matchMedia("(max-width: 900px)").matches,
   );
   const [modal, setModal] = useState<AppModal | null>(null);
   const onResult = useCallback(
@@ -160,7 +161,14 @@ function App() {
       transcript.current.scrollTop = transcript.current.scrollHeight;
   }, [blocks, following]);
   useEffect(() => {
-    const media = matchMedia("(max-width: 900px), (max-height: 500px)");
+    const element = transcript.current;
+    if (element && following)
+      return observeResize(() => {
+        element.scrollTop = element.scrollHeight;
+      }, element);
+  }, [session?.id, page, following]);
+  useEffect(() => {
+    const media = matchMedia("(max-width: 900px)");
     const changed = () => {
       setCompact(media.matches);
       setDrawer(false);
@@ -168,17 +176,7 @@ function App() {
     media.addEventListener("change", changed);
     return () => media.removeEventListener("change", changed);
   }, []);
-  useEffect(() => {
-    const resize = () =>
-      document.documentElement.style.setProperty(
-        "--viewport-height",
-        `${globalThis.visualViewport?.height || innerHeight}px`,
-      );
-    resize();
-    globalThis.visualViewport?.addEventListener("resize", resize);
-    return () =>
-      globalThis.visualViewport?.removeEventListener("resize", resize);
-  }, []);
+  useEffect(trackViewport, []);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {

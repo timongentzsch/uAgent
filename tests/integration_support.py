@@ -117,7 +117,9 @@ class Server:
                 if get_response is None:
                     self.send_error(404)
                     return
-                write_json_response(self, get_response)
+                write_json_response(
+                    self, get_response(self) if callable(get_response) else get_response
+                )
 
             def do_POST(self):
                 size = int(self.headers.get("Content-Length", "0"))

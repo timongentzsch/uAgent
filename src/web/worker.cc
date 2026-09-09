@@ -384,7 +384,9 @@ class WorkerChannel final : public ApplicationChannel {
         return true;  // Completion carries the catalog or validated selection.
       }
     } else if (kind == "submit") {
-      if (busy_ || input_) {
+      // Reuse the one-slot queue while a non-turn control finishes. The
+      // application consumes it after publishing that control's checkpoint.
+      if (turn_active_ || input_) {
         error = "session is busy";
       } else {
         ApplicationInput input;

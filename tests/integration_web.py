@@ -692,8 +692,15 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
         return event({"content": "Confirmed response"})
 
     efforts = ["low", "medium", "high", "xhigh", "max"]
-    catalog = {"data": [{"id": "test", "supported_reasoning_efforts": efforts}]}
-    with Server([answer], get_response=catalog) as provider:
+    catalog_started = threading.Event()
+    release_catalog = threading.Event()
+
+    def catalog_response(_handler):
+        catalog_started.set()
+        assert release_catalog.wait(timeout=budget(10)), "test did not release catalog"
+        return {"data": [{"id": "test", "supported_reasoning_efforts": efforts}]}
+
+    with Server([answer], get_response=catalog_response) as provider:
         providers = {
             "local": {
                 "base_url": provider.url,
@@ -710,22 +717,35 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
         ) as (client, code, _, _):
             client.pair(code)
             session = client.create(project)
-            catalog = client.command("model", session, operation="catalog")
+            catalogs = []
+            reader = threading.Thread(
+                target=lambda: catalogs.append(
+                    client.command("model", session, operation="catalog")
+                )
+            )
+            reader.start()
+            try:
+                assert catalog_started.wait(timeout=budget(5))
+                snapshot = client.snapshot(session)
+                assert_true(
+                    not snapshot["metadata"]["turn_active"] and not snapshot["pending"], snapshot
+                )
+                # One input can wait behind a control without becoming guidance.
+                client.command("submit", session, text="Visible before provider responds")
+                request_id = f"{client.sequence:032x}"
+                assert_true(not provider.requests, "input ran before the model control finished")
+            finally:
+                release_catalog.set()
+                reader.join(timeout=budget(10))
+            assert_true(not reader.is_alive() and catalogs, "catalog receipt did not complete")
+            catalog = catalogs[0]
             models = catalog.get("result", {}).get("models", [])
             assert_true(len(models) == 1 and models[0]["value"] == "local/main", catalog)
             assert_true(models[0]["efforts"] == efforts, catalog)
-            snapshot = client.until(
-                session, lambda value: value["state"]["efforts"] == ["default", *efforts]
-            )
-            assert_true(
-                not snapshot["metadata"]["turn_active"] and not snapshot["pending"], snapshot
-            )
-            assert_true(not provider.requests, "model picker invoked a completion")
-            client.command("submit", session, text="Visible before provider responds")
-            request_id = f"{client.sequence:032x}"
             try:
                 assert started.wait(timeout=budget(5))
                 snapshot = client.snapshot(session)
+                assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
                 rows = snapshot["state"]["view"]["blocks"]
                 assert_true(len(rows) == 1 and rows[0]["kind"] == "user", rows)
                 assert_true(rows[0]["request_id"] == request_id, rows)

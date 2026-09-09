@@ -35,8 +35,9 @@ inline bool SelfConfigurationPath(const std::string& path) {
   if ((candidate.filename() == "system-prompt.json" &&
        candidate.parent_path().filename() == ".uagent") ||
       matches((std::filesystem::path(GlobalBase()) / "system-prompt.json")
-                  .string()))
+                  .string())) {
     return true;
+  }
   if (matches(UagentConfigPath()) || matches(ProjectConfigFilePath()) ||
       matches(TrustStorePath()) || matches(EnvStr("UAGENT_CONFIG_FILE"))) {
     return true;

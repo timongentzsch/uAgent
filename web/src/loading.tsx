@@ -12,7 +12,7 @@ function Control() {
 export function ModelSkeleton() {
   return (
     <div class="model-form" {...busy} aria-label="Loading models…">
-      <Field label="Model">
+      <Field label="Model · loading…">
         <Control />
       </Field>
       <div class="field-row">
@@ -46,7 +46,7 @@ export function SettingsSkeleton() {
   return (
     <div class="settings-content" {...busy} aria-label="Loading settings…">
       <div class="settings-fields">
-        <Field label="Appearance">
+        <Field label="Appearance · loading…">
           <Control />
         </Field>
         {["Display size", "Text size"].map((label) => (
@@ -77,7 +77,7 @@ export function RawSkeleton({ http = false }: { http?: boolean }) {
   return (
     <div class="raw-content" {...busy} aria-label="Loading full body…">
       <div class="raw-controls">
-        <Skeleton decorative rows={1} />
+        <small class="loading-label">Loading full body…</small>
         {http && (
           <div class="raw-tabs">
             <button disabled>Request</button>
@@ -103,7 +103,12 @@ export function ComposerSkeleton() {
   return (
     <section class="composer" {...busy} aria-label="Loading composer…">
       <form>
-        <textarea rows={1} disabled aria-hidden="true" />
+        <textarea
+          rows={1}
+          placeholder="Loading composer…"
+          disabled
+          aria-hidden="true"
+        />
         <div class="composer-actions">
           <span class="icon-button">
             <Control />

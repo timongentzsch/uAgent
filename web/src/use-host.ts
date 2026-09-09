@@ -473,6 +473,8 @@ export function useHost(
     }
   }, [load, report, forget, onResult]);
   useEffect(() => {
+    const restoration = history.scrollRestoration;
+    history.scrollRestoration = "manual";
     refresh();
     const recover = () => {
       if (document.visibilityState === "visible") refresh();
@@ -499,6 +501,7 @@ export function useHost(
       }, 80);
     };
     return () => {
+      history.scrollRestoration = restoration;
       lifetime.current.abort();
       stream.current?.close();
       clearTimeout(timer);

@@ -523,12 +523,26 @@ std::optional<BgJob> ProcessSupervisor::Find(int64_t id) const {
                                    : std::optional<BgJob>(retained_[index]);
 }
 
-std::optional<BgJob> ProcessSupervisor::Take(int64_t id) {
+std::optional<BgJob> ProcessSupervisor::Take(int64_t id, bool retain) {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t index = IndexOfLocked(id);
   if (index == jobs_.size()) return std::nullopt;
+  const auto& session = jobs_[index].session;
+  retain = retain && session && !jobs_[index].detached;
+  if (retain) {
+    std::lock_guard state_lock(session->mutex);
+    if (session->state != ActivityState::kStopped &&
+        !TransitionActivityLocked(*session, ActivityState::kDelivered)) {
+      return std::nullopt;
+    }
+    session->last_used = std::chrono::steady_clock::now();
+  }
   BgJob job = std::move(jobs_[index]);
   jobs_.erase(jobs_.begin() + static_cast<std::ptrdiff_t>(index));
+  if (retain) {
+    retained_.push_back(job);
+    PruneRetainedLocked();
+  }
   NotifyLocked();
   return job;
 }
@@ -569,23 +583,6 @@ void ProcessSupervisor::PruneRetainedLocked() {
     if (oldest == retained_.end()) break;
     retained_.erase(oldest);
   }
-}
-
-void ProcessSupervisor::Retain(BgJob job) {
-  if (!job.session || job.detached) return;
-  {
-    std::lock_guard<std::mutex> lock(job.session->mutex);
-    // A stopped activity is terminal but intentionally never deliverable.
-    if (job.session->state != ActivityState::kStopped &&
-        !TransitionActivityLocked(*job.session, ActivityState::kDelivered)) {
-      return;
-    }
-    job.session->last_used = std::chrono::steady_clock::now();
-  }
-  std::lock_guard<std::mutex> lock(mutex_);
-  retained_.push_back(std::move(job));
-  PruneRetainedLocked();
-  NotifyLocked();
 }
 
 uint64_t ProcessSupervisor::Generation() const {

@@ -182,10 +182,11 @@ class ProcessSupervisor {
   std::string Owner() const;
   bool IsLive(int64_t id) const;
   std::optional<BgJob> Find(int64_t id) const;
-  std::optional<BgJob> Take(int64_t id);
+  // Retaining a terminal activity keeps inspection continuous while its result
+  // is consumed exactly once. Removal and retention share the same lock.
+  std::optional<BgJob> Take(int64_t id, bool retain = false);
   std::vector<BgJob> Snapshot() const;
   std::vector<BgJob> TakeAllForShutdown();
-  void Retain(BgJob job);
 
   uint64_t Generation() const;
   void Wake();

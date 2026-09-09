@@ -1,3 +1,4 @@
+import "./activity.css";
 import { count } from "./quantities.ts";
 import { duration } from "./duration.ts";
 import type {

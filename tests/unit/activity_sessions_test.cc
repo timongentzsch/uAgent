@@ -252,14 +252,17 @@ void TestActivityBufferAndAdmission() {
         32));
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
-    std::optional<BgJob> completed = retained.Take(id);
-    REQUIRE(completed.has_value());
     {
       std::lock_guard<std::mutex> lock(session->mutex);
       CHECK(TransitionActivityLocked(*session, ActivityState::kExited));
       CHECK(TransitionActivityLocked(*session, ActivityState::kDrained));
     }
-    retained.Retain(std::move(*completed));
+    std::optional<BgJob> completed = retained.Take(id, /*retain=*/true);
+    REQUIRE(completed.has_value());
+    CHECK(retained.Find(id).has_value());
+    CHECK(!retained.InspectActivity(id).contains("error"));
+    CHECK(!retained.IsLive(id));
+    CHECK(!retained.Take(id, /*retain=*/true).has_value());
   }
   CHECK(!retained.Find(retained_ids.front()).has_value());
   CHECK(retained.Find(retained_ids.back()).has_value());
@@ -288,9 +291,8 @@ void TestActivityStateGraph() {
   ProcessSupervisor supervisor;
   CHECK(supervisor.TryAdd({899990, "", "stopped", false, "", 0, stopped}, 1));
   int64_t id = ActivityId(supervisor.Snapshot().front());
-  std::optional<BgJob> job = supervisor.Take(id);
+  std::optional<BgJob> job = supervisor.Take(id, /*retain=*/true);
   REQUIRE(job.has_value());
-  supervisor.Retain(std::move(*job));
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
   CHECK(BgTakeCompleted(supervisor).empty());

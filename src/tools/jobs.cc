@@ -591,9 +591,7 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
                                    ActivityState::kStopped);
   }
   if (supervised) {
-    if (auto stopped = supervisor.Take(requested)) {
-      supervisor.Retain(std::move(*stopped));
-    }
+    (void)supervisor.Take(requested, /*retain=*/true);
   }
   if (!detached) BgTrackSignal(pid, false);
   if (detached) unlink(DetachedRecordPath(pid).c_str());

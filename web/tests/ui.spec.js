@@ -616,6 +616,10 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.getByRole("status")).toContainText(
     "Loading full tool output",
   );
+  await expect(tool.locator(".loading-label")).toBeVisible();
+  await page.screenshot({
+    path: `test-results/${testInfo.project.name}-tool-loading.png`,
+  });
   releaseOutput();
   await expect(tool.getByRole("alert")).toHaveText(
     "Tool output temporarily unavailable",
@@ -647,6 +651,28 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.screenshot({
     path: `test-results/${testInfo.project.name}-model-loading.png`,
   });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => {
+      document.documentElement.dataset.theme = value;
+    }, theme);
+    await page.setViewportSize({ width: 390, height: 600 });
+    const bars = picker.locator(".skeleton > div");
+    expect(
+      await bars
+        .first()
+        .evaluate((element) => getComputedStyle(element).animationName),
+    ).toBe("none");
+    await expect(picker).toContainText("loading…");
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-model-loading-${theme}-phone.png`,
+    });
+  }
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+  });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   releaseModel();
   await expect(
     picker.getByRole("combobox", { name: "Model", exact: true }),
@@ -1140,6 +1166,7 @@ test.describe("mobile navigation and commands", () => {
           .evaluate((element) => Math.abs(element.scrollTop - 24)),
       )
       .toBeLessThan(2);
+    expect(await page.evaluate(() => history.scrollRestoration)).toBe("manual");
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(second));
     await expect(prompt).toHaveValue("Draft B");

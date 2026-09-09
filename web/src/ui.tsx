@@ -88,7 +88,7 @@ export function Skeleton({
       aria-busy={decorative ? undefined : "true"}
       aria-hidden={decorative || undefined}
     >
-      {!decorative && <span class="sr-only">{label}</span>}
+      {!decorative && <small class="loading-label">{label}</small>}
       <div aria-hidden="true">
         {Array.from({ length: rows }, (_, index) => (
           <span key={index} />

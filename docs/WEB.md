@@ -124,6 +124,8 @@ application payload level; it is not a TLS or compressed packet capture.
 
 ## Conversation controls and statistics
 
+The app owns scroll restoration (`history.scrollRestoration = "manual") so
+browser history cannot overwrite a conversation’s saved reading position.
 Conversation selection uses the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState)
 to update the existing fragment deep links without loading a document. Back and
 Forward restore selection; the shell and event stream stay mounted. The five

@@ -1,0 +1,34 @@
+.activity-list {
+  max-height: min(160px, calc(var(--viewport-height) * 0.2));
+  overflow: auto;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.activity-row {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+.activity-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+}
+.activity-row span {
+  flex: 1;
+  min-width: 0;
+}
+.activity-row strong,
+.activity-row small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.activity-row small,
+.activity-row time {
+  color: var(--muted);
+  font-size: 0.75rem;
+}

@@ -109,7 +109,8 @@ std::vector<std::string> TakeCompleted(
       if (!completed) continue;
     }
 
-    std::optional<BgJob> taken = supervisor.Take(ActivityId(candidate));
+    std::optional<BgJob> taken =
+        supervisor.Take(ActivityId(candidate), /*retain=*/true);
     if (!taken) continue;  // another waiter owns exactly-once delivery
     BgJob job = std::move(*taken);
     if (!job.detached) BgTrackSignal(job.pid, false);
@@ -161,7 +162,6 @@ std::vector<std::string> TakeCompleted(
                           std::move(output), job.display_label,
                           job.receipt_path, job.source_id});
     }
-    if (!job.detached) supervisor.Retain(std::move(job));
   }
   return notes;
 }

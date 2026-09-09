@@ -107,13 +107,13 @@ export function ManagementSkeleton() {
       class="management-body"
       role="status"
       aria-busy="true"
-      aria-label="Loading library…"
+      aria-label="Loading scheduled tasks…"
     >
       <div class="management-list">
-        <Skeleton rows={8} />
+        <Skeleton rows={8} label="Loading tasks…" />
       </div>
       <div class="management-editor">
-        <Skeleton rows={12} />
+        <Skeleton rows={12} decorative />
       </div>
     </div>
   );

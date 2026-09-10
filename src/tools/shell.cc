@@ -600,47 +600,7 @@ bool StartsWithShellWord(const std::string& command, const std::string& word) {
           std::isspace(static_cast<unsigned char>(trimmed[word.size()])));
 }
 
-std::string PrivilegedCommandError(const std::string& command) {
-  if (StartsWithShellWord(command, "sudo")) {
-    return "error: privileged commands are unavailable. Do not use sudo; "
-           "use workspace or user-local tools, or adapt to installed "
-           "dependencies.";
-  }
-  return "";
-}
-
-// The same rule read over a script instead of a command. `run`'s check looks
-// at a first word, so against a multi-line body it would only ever inspect
-// line one. Only the privileged-command half carries over: the other half
-// routes bare Python at `scratch`, which is circular advice to give from
-// inside it.
-//
-// This is parity with `run`, not better than it -- neither sees `x && sudo y`,
-// because neither parses shell. The boundary that does hold is the OS sandbox,
-// and a scratch script is always inside it.
-std::string ScriptCommandPolicyError(const std::string& script) {
-  size_t number = 0;
-  for (size_t at = 0; at <= script.size();) {
-    size_t end = script.find('\n', at);
-    if (end == std::string::npos) end = script.size();
-    std::string line = Trim(script.substr(at, end - at));
-    ++number;
-    if (!line.empty() && line.front() != '#') {
-      std::string error = PrivilegedCommandError(line);
-      if (!error.empty()) {
-        return "error: line " + std::to_string(number) + ": " +
-               error.substr(std::string_view("error: ").size());
-      }
-    }
-    if (end == script.size()) break;
-    at = end + 1;
-  }
-  return "";
-}
-
 std::string RunCommandPolicyError(const std::string& command) {
-  std::string privileged = PrivilegedCommandError(command);
-  if (!privileged.empty()) return privileged;
   for (const char* executable : {"python", "python3", "pip", "pip3"}) {
     if (StartsWithShellWord(command, executable)) {
       return "error: do not invoke bare Python or pip through run. For project "
@@ -839,12 +799,6 @@ ToolResult ToolRunScratch(ProcessSupervisor& supervisor,
     }
   }
   if (shell_script) {
-    // Checked here rather than at write: a rerun executes whatever is on disk,
-    // and the file is writable by edit_file between the two.
-    std::string policy = ScriptCommandPolicyError(source);
-    if (!policy.empty()) {
-      return ToolFailure(ToolErrorCode::kPermissionDenied, policy);
-    }
     command = "sh " + ShellQuote(script.string()) + argv;
   } else {
     bool uv = ExecutableOnPath("uv");

@@ -167,8 +167,7 @@ void TestGrepTool() {
               .find("scratch") != std::string::npos);
     CHECK(ValidationMessage(*run, {{"command", "pip install reportlab"}})
               .find("PEP 723") != std::string::npos);
-    CHECK(ValidationMessage(*run, {{"command", "sudo tlmgr install tcolorbox"}})
-              .find("privileged commands") != std::string::npos);
+    CHECK(!run->validate({{"command", "sudo -n true"}}));
   }
   const Tool* grep = FindTool(lean_tools, "grep");
   json file_search = {

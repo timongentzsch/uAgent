@@ -310,7 +310,10 @@ untrusted fork code; pin both the Action ref and release version.
   which always asks a person.
 - On Linux the trampoline sets `no_new_privs`, which disables setuid: a
   sandboxed `ping`, `sudo` or any other setuid binary fails where it worked
-  unconfined. `UAGENT_SANDBOX=0` is the way out; there is no partial one.
+  unconfined. Authorized privileged work requires unconfined execution:
+  YOLO, `UAGENT_SANDBOX=0`, or a human-approved `run(sandbox=false)`.
+  `run` and shell `scratch` use the same spawn policy; neither rejects `sudo`
+  by name. Unconfined execution still requires OS permission to elevate.
 - `UAGENT_SANDBOX=1` on a kernel without Landlock refuses every command; the
   same host with the setting untouched runs them unconfined and warns. If the
   startup line says `degraded`, nothing is confining that session.

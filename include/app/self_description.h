@@ -14,6 +14,7 @@
 #include "include/core/json.h"
 
 namespace uagent {
+class Agent;
 
 class Api;
 class ConfigManager;
@@ -37,6 +38,7 @@ struct SelfDescriptionInputs {
   const Api& api;
   const std::vector<Tool>& tools;
   bool yolo = false;
+  Agent* agent = nullptr;
 };
 
 bool ParseSelfTopic(std::string_view name, SelfTopic& topic);

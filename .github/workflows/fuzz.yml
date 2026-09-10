@@ -32,14 +32,14 @@ jobs:
       - name: Build fuzzer
         run: >-
           cmake --build --preset fuzz
-          --target uagent_fuzz_${{ matrix.fuzzer }} --parallel
+          --target uagent_fuzz_${{ matrix.fuzzer }} --parallel 4
       # -max_total_time bounds the search; a crash still fails the step, and
       # -print_final_stats records how far the run got in the log.
       - name: Fuzz
         run: |
           cp -r tests/fuzz/corpus/${{ matrix.fuzzer }} /tmp/corpus
           build/fuzz/uagent_fuzz_${{ matrix.fuzzer }} \
-            -max_total_time=300 -print_final_stats=1 /tmp/corpus
+            -max_total_time=300 -print_final_stats=1 -artifact_prefix=/tmp/corpus/ /tmp/corpus
       # The grown corpus is an artifact rather than a commit: promoting inputs
       # back into tests/fuzz/corpus/ is a human decision, since every one of
       # them is replayed by every later CI smoke run.

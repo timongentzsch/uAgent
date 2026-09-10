@@ -88,7 +88,7 @@ before SSE/JSON parsing. Each retry retains its own status, timestamp and header
 Bodies are streamed into private files; only bounded metadata enters app events.
 Headers containing credentials and URL query strings are redacted. Body contents
 remain verbatim and can contain sensitive conversation material. The viewer loads
-16 KiB pages on demand and offers original-body copy/download. **Readable**
+16 KiB pages on demand and offers original-body download. **Readable**
 indents JSON and decodes text values: newlines become line breaks, quote escapes
 become quotes, and nested JSON strings such as tool arguments are expanded up to
 four levels. This is a readable text projection, not a JSON serialization.
@@ -124,8 +124,10 @@ application payload level; it is not a TLS or compressed packet capture.
 
 ## Conversation controls and statistics
 
-The app owns scroll restoration (`history.scrollRestoration = "manual") so
-browser history cannot overwrite a conversation’s saved reading position.
+The app owns scroll restoration (`history.scrollRestoration = "manual"`).
+History selection waits until the browser finishes traversal, and scroll events
+from the departing conversation cannot overwrite its saved reading position.
+This accounts for [browser state restoration after `popstate`](https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event#when_popstate_is_sent).
 Conversation selection uses the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState)
 to update the existing fragment deep links without loading a document. Back and
 Forward restore selection; the shell and event stream stay mounted. The five
@@ -161,6 +163,16 @@ Chrome also receives [`interactive-widget=resizes-content`](https://developer.ch
 Only width changes switch sidebar layouts. Scrollable content stays inside its
 surface; pinch zoom does not trigger a second layout shrink. Bottom padding
 accounts for [Safari retaining the safe-area inset above the keyboard](https://bugs.webkit.org/show_bug.cgi?id=217754).
+
+The body, fixed app shell and header paint the active background explicitly.
+Header padding and drawer placement respect the top safe-area inset; modal
+backdrops leave that strip opaque. A small blocking `theme.js` applies the saved
+or system theme before the main bundle loads, without inline-script CSP exceptions.
+It is served with revalidation and included in the service worker's precache and
+initial JavaScript budget. This follows [WebKit's safe-area guidance](https://webkit.org/blog/7929/designing-websites-for-iphone-x/)
+and [viewport-edge colour sampling explanation](https://bugs.webkit.org/show_bug.cgi?id=301756#c2).
+These layout measures still need physical-iPhone validation: browser emulation
+does not reproduce native status-bar tinting or launch blur.
 
 Touch text fields retain a 16 px minimum even at reduced display/text settings.
 The compact composer fits one toolbar row at ordinary phone sizes and wraps only
@@ -217,9 +229,13 @@ available for an idle active conversation. Runtime-backed options reload at the
 next user turn; restart-only and shadowed changes say so. `/config` lists the same
 schema; `/config user KEY=VALUE` and `/config project unset KEY` edit it.
 
-Each message has a local timestamp (full date on hover), quick copy and a
-statistics menu. Expanded thinking uses the theme's muted grey, including its
-Markdown and code, in both light and dark appearances. Assistant facts preserve the actual route, reported token/cache
+Each message has a local timestamp (full date on hover) and a statistics menu.
+Copy controls appear only on Markdown code blocks: top-right on hover or keyboard
+focus, always visible with a 44px target on touch screens. They copy the code
+without Markdown fences or highlighting markup, with brief success feedback.
+The same renderer handles conversations and library previews. Expanded thinking
+uses the theme's muted grey, including its Markdown and code, in both light and
+dark appearances. Assistant facts preserve the actual route, reported token/cache
 usage, request duration, TTFT and request-average throughput. Tool results show
 the tool, call ID, status and duration. Missing legacy facts stay unrecorded.
 
@@ -431,7 +447,7 @@ choices, not a claim of guaranteed notification delivery.
 | --- | --- |
 | Persistent agent workers | 4 |
 | HTTP threads / pending requests / SSE views | 12 / 24 / 4 |
-| IPC frame / command / individual live event | 1 MiB / 64 KiB / 64 KiB |
+| IPC frame / command / individual live event | 1 MiB / 512 KiB / 64 KiB |
 | Worker output queue / master event replay | 4 MiB each |
 | Master replay / per-worker live events | 2,048 / 512 (also byte bounded) |
 | Active history page / browser retained DOM messages | 64 / 256 plus bounded live preview |
@@ -528,14 +544,16 @@ The complete bundle is 857,416 raw bytes / 464,317 gzip level-6 bytes. The serve
 serves identity bytes; gzip is a comparison, not measured transfer compression.
 The baseline also records initial JS/CSS, lazy assets and service-worker precache.
 CI caps initial JS at 56/21 KiB raw/gzip, CSS at 16/4.5 KiB and total assets at
-850/500 KiB. Native review triggers are 4 MiB stripped and 32 MiB idle master RSS.
+860/500 KiB. The total raw asset ceiling includes 10 KiB of additional headroom
+for the lazy system-prompt editor; initial JS/CSS ceilings are unchanged. Native review triggers are 4 MiB stripped and 32 MiB idle master RSS.
 CLI growth is 255,008 bytes over the earlier reference, exceeding the original
 128 KiB review trigger; the shared management, configuration, fork and HTTP
-inspection capabilities account for additional CLI code. No budget was raised.
+inspection capabilities account for additional CLI code.
 
 The 2,000-message browser fixture must open its 64-message window within three
-seconds and retain no more than 256 rendered history blocks. Ten browser tests
+seconds and retain no more than 256 rendered history blocks. Browser tests
 cover Chromium and WebKit, including phone layouts and 200% display / 300% text.
+Each test owns its host, project and pairing state; see [TESTING.md](TESTING.md).
 Performance on a physical phone remains unmeasured.
 
 ```sh

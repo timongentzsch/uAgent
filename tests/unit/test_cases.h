@@ -36,6 +36,8 @@ namespace uagent {
   X(TestSandboxProbe)                          \
   X(TestStrictBooleanSettings)                 \
   X(TestSelfDescriptionSchemas)                \
+  X(TestPromptScopes)                          \
+  X(TestPromptRequestParity)                   \
   X(TestSseFraming)                            \
   X(TestWireCacheParity)                       \
   X(TestWireAdapters)                          \
@@ -57,6 +59,7 @@ namespace uagent {
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \
   X(TestMemoryAlwaysOnSelection)               \
+  X(TestEarlyTurnInterruption)                 \
   X(TestRuntimeOwnershipHelpers)               \
   X(TestAgentConfigAllowlist)                  \
   X(TestEffectiveConfigReload)                 \

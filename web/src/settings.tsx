@@ -34,6 +34,7 @@ export default function Settings({
   selected,
   session,
   logout,
+  prompt,
 }: {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
@@ -56,6 +57,7 @@ export default function Settings({
   selected: string;
   session?: Session;
   logout: () => Promise<void>;
+  prompt: () => void;
 }) {
   const [advanced, setAdvanced] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -205,6 +207,9 @@ export default function Settings({
               </Field>
             )}
             {permission !== null && error && <LoadError error={error} />}
+            <button type="button" onClick={prompt}>
+              System prompt
+            </button>
             <button type="button" onClick={() => setAdvanced(true)}>
               Advanced configuration
             </button>

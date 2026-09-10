@@ -6,7 +6,9 @@
 #include <sstream>
 #include <string>
 
+#include "include/agent/prompt.h"
 #include "include/app/library.h"
+#include "include/app/prompt_control.h"
 #include "include/app/schedule.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
@@ -17,6 +19,16 @@
 
 namespace uagent {
 json ManagementControl(const json& request) {
+  if (JsonValue(request, "kind", "") == "prompt") {
+    auto result = PromptControl(
+        request, nullptr,
+        ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr), nullptr),
+        json::array());
+    result["preview_kind"] =
+        "Base prompt; select an active conversation to include its tools and "
+        "repository context.";
+    return result;
+  }
   if (JsonValue(request, "kind", "") == "models") {
     Api api(RuntimeConfig::FromEnvironment());
     auto provider = ConfigureProvider(api);

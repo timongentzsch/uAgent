@@ -13,6 +13,7 @@
 #include <string_view>
 #include <vector>
 
+#include "include/agent/adaptive_system.h"
 #include "include/core/json.h"
 #include "include/tools/tool.h"
 
@@ -45,6 +46,15 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools);
 // Host facts the model may not infer from its own claims: which capabilities
 // the registry actually offers, and whether mutations need consent.
 std::string HostCapabilityPrompt(const std::vector<Tool>& tools);
+
+// Scope documents are bounded and revisioned. Resolution retains source text
+// even when shadowed, so inspection and replacement previews tell the truth.
+json ReadPromptDocument(const std::string& scope,
+                        const AdaptiveSystemState* state);
+json ResolvePrompt(const std::string& base, const json& documents,
+                   const json& context = json::array());
+json PromptDocuments(const AdaptiveSystemState* state);
+std::string PromptDocumentPath(const std::string& scope);
 
 std::string EnvironmentContext(const std::string& date, const std::string& cwd,
                                int64_t terminal_columns = 0);

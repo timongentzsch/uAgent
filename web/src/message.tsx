@@ -20,41 +20,11 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { Check, ChevronRight, Copy } from "lucide-preact";
+import { ChevronRight } from "lucide-preact";
 import { readPages } from "./store.ts";
-import { Mark, cleanText, copyText, Skeleton, LoadError } from "./ui.tsx";
+import { Mark, cleanText, Skeleton, LoadError } from "./ui.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
 import { formatBody } from "./format.ts";
-
-function CopyButton({
-  text,
-  label = "Copy",
-  report,
-}: {
-  text?: string;
-  label?: string;
-  report: Report;
-}) {
-  const [copied, setCopied] = useState(false);
-  useEffect(() => setCopied(false), [text]);
-  return (
-    <button
-      class="quiet with-icon"
-      title={copied ? "Copied" : label}
-      aria-label={copied ? "Copied" : label}
-      onClick={async () => {
-        try {
-          await copyText(cleanText(text));
-          setCopied(true);
-        } catch (failure) {
-          report(failure);
-        }
-      }}
-    >
-      {copied ? <Check /> : <Copy />}
-    </button>
-  );
-}
 
 function Message({
   block,
@@ -177,7 +147,6 @@ function Message({
               })
             : "—"}
         </time>
-        <CopyButton text={text} report={report} />
         <Menu label="Message menu">
           <MenuItem onClick={() => statistics(block)}>Statistics</MenuItem>
           {block.source && (
@@ -330,25 +299,21 @@ function Message({
 
 export default function Messages({
   blocks,
-  following,
+  restoreScroll,
   ...props
 }: Omit<ComponentProps<typeof Message>, "block"> & {
   blocks: Block[];
-  following: boolean;
+  restoreScroll: () => void;
 }) {
   const rows = useMemo(() => presentMessages(blocks), [blocks]);
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = content.current;
-    const transcript = element?.closest(".transcript");
-    if (!element || !transcript || !following) return;
-    const follow = () => {
-      transcript.scrollTop = transcript.scrollHeight;
-    };
-    const stopObserving = observeResize(follow, element);
-    follow();
+    if (!element) return;
+    const stopObserving = observeResize(restoreScroll, element);
+    restoreScroll();
     return stopObserving;
-  }, [following]);
+  }, [restoreScroll]);
   return (
     <div ref={content}>
       {rows.map((block) => (

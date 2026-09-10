@@ -404,8 +404,7 @@ void TestRegistries() {
 
   AdaptiveSystemState adaptive_state;
   Tool adaptive = AdaptSystemTool(adaptive_state);
-  CHECK(adaptive.parameters["required"] ==
-        json::array({"instructions", "reason"}));
+  CHECK(!adaptive.parameters.contains("required"));
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;

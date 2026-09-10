@@ -36,6 +36,7 @@ enum class EventId : uint16_t {
   kActivityCompleted,
   kCapabilityChanged,
   kConfigChanged,
+  kPromptChanged,
   kAnswer,
   kError,
   kResponseStarted,

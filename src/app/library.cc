@@ -22,12 +22,6 @@ void LibraryChanged() {
   AtomicWriteFile(LibraryChangePath(), MakeSessionId(), kPrivateFileMode, false,
                   error);
 }
-std::string DocumentRevision(const std::string& path, const std::string& body) {
-  const auto stamp = SnapshotFile(path);
-  return HashHex(body + std::to_string(stamp.inode) + ":" +
-                 std::to_string(stamp.modified_seconds) + ":" +
-                 std::to_string(stamp.modified_nanoseconds));
-}
 bool LibraryName(const std::string& name) {
   return !name.empty() && name.size() <= 100 && name != "." && name != ".." &&
          SafeFileComponent(name) == name &&

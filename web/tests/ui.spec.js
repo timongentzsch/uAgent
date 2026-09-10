@@ -1,40 +1,190 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
+
+test("mobile chrome keeps an opaque safe area and applies the theme before app startup", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => localStorage.setItem("uagent-theme", "light"));
+  let release;
+  const startup = new Promise((resolve) => (release = resolve));
+  await page.route("**/assets/index-*.js", async (route) => {
+    await startup;
+    await route.continue();
+  });
+  try {
+    await page.goto("/", { waitUntil: "commit" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    await expect(page.locator("#app")).toBeEmpty();
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      "content",
+      "#ffffff",
+    );
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Your workspace" }),
+  ).toBeVisible();
+  // Desktop WebKit does not expose an iPhone's system inset or status-bar paint.
+  // Exercise our safe-area layout independently of that native rendering.
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty("--safe-top", "47px"),
+  );
+  for (const selector of ["body", "#app", ".conversation-head"])
+    await expect(page.locator(selector)).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+  await expect(page.locator(".conversation-head")).toHaveCSS(
+    "padding-top",
+    "47px",
+  );
+  for (let i = 0; i < 2; i++) {
+    await page
+      .getByRole("button", { name: "Open sessions", exact: true })
+      .click();
+    const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
+    await expect(drawer).toBeVisible();
+    expect((await drawer.boundingBox()).y).toBe(47);
+    expect(
+      await drawer.evaluate((element) => {
+        const style = getComputedStyle(element, "::backdrop");
+        return [style.borderTopWidth, style.borderTopColor];
+      }),
+    ).toEqual(["47px", "rgb(255, 255, 255)"]);
+    await drawer
+      .getByRole("button", { name: "Close sessions", exact: true })
+      .click();
+    await expect(drawer).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
+  await expect(page.locator("#app")).toHaveCSS(
+    "background-color",
+    "rgb(0, 0, 0)",
+  );
+  expect(
+    await settings.evaluate(
+      (element) => getComputedStyle(element, "::backdrop").borderTopColor,
+    ),
+  ).toBe("rgb(0, 0, 0)");
+});
+
+test("system prompt editing shares revisions, replacement and request previews", async ({
+  page,
+  host: fixture,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+
+  let releaseSnapshot;
+  const snapshotHeld = new Promise((resolve) => (releaseSnapshot = resolve));
+  await page.route(
+    "**/api/sessions/*",
+    async (route) => {
+      const response = await route.fetch();
+      await snapshotHeld;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  await page
+    .getByRole("complementary")
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  await page.getByLabel("Directory on the host").fill(fixture.project);
+  await page
+    .getByRole("button", { name: "Start conversation", exact: true })
+    .click();
+  await expect(page.locator(".status")).toHaveText("idle");
+  releaseSnapshot();
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("/prompt");
+  await composer.press("Tab");
+  await composer.press("Enter");
+  const dialog = page.getByRole("dialog", {
+    name: "System prompt",
+    exact: true,
+  });
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "You are a coding agent",
+  );
+  await dialog.getByRole("button", { name: "Edit inherited prompt" }).click();
+  const editor = dialog.getByLabel("System prompt text");
+  await editor.fill(
+    "Only the project-specific instruction.\nKeep this line break.",
+  );
+  await dialog.getByRole("button", { name: "Preview changes" }).click();
+  await expect(dialog.getByLabel("Effective system prompt")).not.toContainText(
+    "You are a coding agent",
+  );
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "[HOST CAPABILITIES]",
+  );
+  const expected = await dialog
+    .getByLabel("Effective system prompt")
+    .textContent();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(dialog.getByLabel("Effective system prompt")).toHaveText(
+    expected,
+  );
+  await dialog.getByRole("button", { name: "Edit", exact: true }).click();
+  await editor.fill("Unsent prompt draft");
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await composer.fill("/prompt");
+  await composer.press("Enter");
+  await expect(editor).toHaveValue("Unsent prompt draft");
+  await dialog.getByRole("button", { name: "Discard edit" }).click();
+  await page.setViewportSize({ width: 390, height: 600 });
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Raw context" })).toContainText(
+    "Only the project-specific instruction.",
+  );
+  await page
+    .getByRole("dialog", { name: "Raw context" })
+    .getByRole("button", { name: "System prompt", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Instructions", exact: true })
+    .click();
+  await dialog.getByRole("button", { name: "Reset to inherited" }).click();
+  await dialog
+    .getByRole("button", { name: "Effective prompt", exact: true })
+    .click();
+  await expect(dialog.getByLabel("Effective system prompt")).toContainText(
+    "You are a coding agent",
+  );
+  await dialog.getByRole("button", { name: "Close system prompt" }).click();
+  await composer.fill("/quit");
+  await composer.press("Enter");
+});
 
 test("compact surfaces stay anchored, accessible and usable while loading", async ({
   page,
-  context,
+  host: fixture,
 }, testInfo) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // A valid empty worker keeps cold lazy-module tests independent of precaching.
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
-  try {
-    await context.addCookies(
-      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-        .cookies,
-    );
-  } catch {
-    /* First test may pair directly. */
-  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page
-      .getByText("Connected", { exact: true })
-      .or(page.getByLabel("Single-use pairing code")),
-  ).toBeVisible();
-  if (await page.getByLabel("Single-use pairing code").isVisible()) {
-    await page.getByLabel("Single-use pairing code").fill(fixture.code);
-    await page
-      .getByRole("button", { name: "Connect device", exact: true })
-      .click();
-  }
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   await page
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
@@ -97,9 +247,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
         page.getByRole("button", { name: /^Reply to:/ }),
       ).toHaveCount(0);
     }
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-${name}.png`,
-    });
   };
   await measure("desktop-compact");
   expect(metrics["desktop-compact"].transcript.height).toBeGreaterThanOrEqual(
@@ -118,9 +265,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     panel = await picker.boundingBox();
   expect(Math.abs(anchor.x - panel.x)).toBeLessThan(2);
   expect(Math.abs(anchor.y - panel.y - panel.height - 8)).toBeLessThan(2);
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-model.png`,
-  });
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
@@ -151,16 +295,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     settings.getByRole("button", { name: "Close settings" }),
   ).toBeFocused();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings-loading.png`,
-  });
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
   await expect(settings.getByLabel("Default permissions")).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings.png`,
-  });
   expect(
     Math.abs((await settings.boundingBox()).height - settingsLoadingBox.height),
   ).toBeLessThan(6);
@@ -180,6 +318,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .getByRole("combobox", { name: "Model", exact: true })
     .selectOption({ label: "mock/model-b" });
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(model).toContainText("mock/model-b");
   await prompt.fill("Compact layout proof");
   await prompt.evaluate((element) =>
     element.setSelectionRange(element.value.length, element.value.length),
@@ -203,147 +343,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
   ).toContainText("/1.3M · 99% left");
-  const reply = page.locator(".message.response").last();
-  // Tailnet HTTP has no Clipboard API; a user click must still copy.
-  await page.evaluate(() =>
-    Object.defineProperty(navigator, "clipboard", { value: undefined }),
-  );
-  await reply.getByRole("button", { name: "Copy", exact: true }).click();
-  await expect(
-    reply.getByRole("button", { name: "Copied", exact: true }),
-  ).toBeVisible();
-  const thinking = reply.locator(".thinking");
-  await thinking.locator("summary").click();
-  await expect(thinking).toContainText("I checked the supplied evidence.");
-  const thinkingColor = await thinking.evaluate(
-    (element) => getComputedStyle(element).color,
-  );
-  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
-    "color",
-    thinkingColor,
-  );
-  expect(thinkingColor).not.toBe(
-    await reply.evaluate((element) => getComputedStyle(element).color),
-  );
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-thinking-grey.png`,
-  });
-  await page.emulateMedia({ colorScheme: "dark" });
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  const darkThinking = await thinking.evaluate(
-    (element) => getComputedStyle(element).color,
-  );
-  expect(darkThinking).not.toBe(thinkingColor);
-  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
-    "color",
-    darkThinking,
-  );
-  expect(darkThinking).not.toBe(
-    await reply.evaluate((element) => getComputedStyle(element).color),
-  );
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-thinking-grey-dark.png`,
-  });
-  await page.emulateMedia({ colorScheme: "light" });
-
-  await reply
-    .getByRole("button", { name: "Message menu", exact: true })
-    .click();
-  const rawAction = page.getByRole("menuitem", {
-    name: "HTTP request/response",
-    exact: true,
-  });
-  await expect(rawAction).toBeVisible();
-  expect(
-    await rawAction.evaluate((element) => {
-      const r = element.getBoundingClientRect();
-      return element.contains(
-        document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
-      );
-    }),
-  ).toBe(true);
-  let releaseRaw;
-  const rawGate = new Promise((resolve) => (releaseRaw = resolve));
-  await page.route("**/assets/raw-*.js", async (route) => {
-    await rawGate;
-    await route.continue();
-  });
-  await rawAction.click();
-  const raw = page.getByRole("dialog", {
-    name: "HTTP request/response",
-    exact: true,
-  });
-  await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  await expect(
-    raw.getByRole("button", { name: "Download", exact: true }),
-  ).toBeDisabled();
-  const rawLoadingBox = await raw.boundingBox();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-raw-loading.png`,
-  });
-  releaseRaw();
-  await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
-    '\n  "',
-  );
-  expect(
-    Math.abs((await raw.boundingBox()).height - rawLoadingBox.height),
-  ).toBeLessThan(3);
-  await expect(raw.getByRole("checkbox")).toHaveCount(0);
-  await expect(
-    raw.getByRole("button", { name: "Readable", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  const readableRequest = await raw.locator(".raw-body > pre").textContent();
-  await raw.getByRole("button", { name: "Source", exact: true }).click();
-  const sourceRequest = await raw.locator(".raw-body > pre").textContent();
-  expect(sourceRequest).toContain("\\n");
-  expect(readableRequest).not.toBe(sourceRequest);
-  await raw.getByRole("button", { name: "Readable", exact: true }).click();
-  await expect(raw.locator(".raw-body > pre")).toHaveText(readableRequest, {
-    useInnerText: false,
-  });
-  const requestDownload = page.waitForEvent("download");
-  await raw.getByRole("button", { name: "Download", exact: true }).click();
-  expect(await readFile(await (await requestDownload).path(), "utf8")).toBe(
-    sourceRequest,
-  );
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-readable-request.png`,
-  });
-
-  await raw.getByRole("tab", { name: "Response", exact: true }).click();
-  await expect(raw.getByRole("tabpanel")).toContainText("[DONE]");
-  await expect(
-    raw.getByRole("button", { name: "Events", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await expect(raw.locator(".raw-body > pre")).not.toContainText("data:");
-  await raw.getByRole("button", { name: "Source", exact: true }).click();
-  await expect(raw.locator(".raw-body > pre")).toContainText("data: [DONE]");
-  await raw.getByRole("button", { name: "Events", exact: true }).click();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-raw.png`,
-  });
-  await raw.getByRole("tabpanel").evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(
-    raw.getByRole("button", { name: "Copy raw body", exact: true }),
-  ).toBeVisible();
-  const downloadEvent = page.waitForEvent("download");
-  await raw.getByRole("button", { name: "Download", exact: true }).click();
-  const downloaded = await downloadEvent;
-  const bytes = await readFile(await downloaded.path(), "utf8");
-  const request = page.waitForResponse(
-    (response) =>
-      response.url().includes("&part=response") && response.status() === 200,
-  );
-  await raw.getByRole("tab", { name: "Request", exact: true }).click();
-  await expect(raw.getByRole("tabpanel")).toContainText('"tools"');
-  await raw.getByRole("tab", { name: "Response", exact: true }).click();
-  expect(bytes).toBe((await (await request).json()).text);
-  await raw
-    .getByRole("button", { name: "Close http request/response", exact: true })
-    .click();
-
   await page.setViewportSize({ width: 390, height: 844 });
   await measure("mobile-compact");
   expect(metrics["mobile-compact"].transcript.height).toBeGreaterThanOrEqual(
@@ -358,9 +357,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settingsButton.click();
   await settings.getByLabel("Display size", { exact: true }).fill("200");
   await settings.getByLabel("Text size", { exact: true }).fill("300");
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings-scaled.png`,
-  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -395,9 +391,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   const shortPanel = await picker.boundingBox();
   expect(shortPanel.y).toBeGreaterThanOrEqual(0);
   expect(shortPanel.y + shortPanel.height).toBeLessThanOrEqual(390);
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-landscape-picker.png`,
-  });
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 450 });
   await measure("short-mobile");
@@ -425,9 +418,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toHaveCount(0);
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-history-loading.png`,
-  });
   releaseHistory();
   await expect(page.locator(".transcript").getByRole("alert")).toHaveText(
     "History temporarily unavailable",
@@ -439,32 +429,183 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .click();
   await expect(page.locator(".message")).toHaveCount(2);
   await writeFile(
-    `test-results/${testInfo.project.name}-layout.json`,
+    testInfo.outputPath(`layout.json`),
     JSON.stringify(metrics, null, 2),
   );
   expect(errors).toEqual([]);
 });
 
+test("code blocks, thinking and HTTP dialogs preserve content and loading geometry", async ({
+  page,
+  session,
+  command,
+}) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.route("**/sw.js", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: "" }),
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`/#session=${session.id}`);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("HTTP body proof");
+  await prompt.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Verified response" }),
+  ).toBeVisible();
+  await expect(page.locator(".status")).toHaveText("idle");
+  const reply = page.locator(".message.response").last();
+  // Tailnet HTTP has no Clipboard API; a user click must still copy.
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, "clipboard", { value: undefined }),
+  );
+  const code = reply.locator(".code-block");
+  const copy = code.getByRole("button", { name: "Copy code", exact: true });
+  await expect(copy).toHaveCount(1);
+  await copy.focus();
+  await expect(code.locator(".code-copy")).toHaveCSS("opacity", "1");
+  await copy.press("Enter");
+  await expect(
+    reply.getByRole("button", { name: "Copied!", exact: true }),
+  ).toBeVisible();
+  const thinking = reply.locator(".thinking");
+  await thinking.locator("summary").click();
+  await expect(thinking).toContainText("I checked the supplied evidence.");
+  const thinkingColor = await thinking.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
+    "color",
+    thinkingColor,
+  );
+  expect(thinkingColor).not.toBe(
+    await reply.evaluate((element) => getComputedStyle(element).color),
+  );
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  const darkThinking = await thinking.evaluate(
+    (element) => getComputedStyle(element).color,
+  );
+  expect(darkThinking).not.toBe(thinkingColor);
+  await expect(thinking.locator(".markdown, .plain")).toHaveCSS(
+    "color",
+    darkThinking,
+  );
+  expect(darkThinking).not.toBe(
+    await reply.evaluate((element) => getComputedStyle(element).color),
+  );
+  await page.emulateMedia({ colorScheme: "light" });
+
+  await reply
+    .getByRole("button", { name: "Message menu", exact: true })
+    .click();
+  const rawAction = page.getByRole("menuitem", {
+    name: "HTTP request/response",
+    exact: true,
+  });
+  await expect(rawAction).toBeVisible();
+  expect(
+    await rawAction.evaluate((element) => {
+      const r = element.getBoundingClientRect();
+      return element.contains(
+        document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2),
+      );
+    }),
+  ).toBe(true);
+  let releaseRaw;
+  const rawGate = new Promise((resolve) => (releaseRaw = resolve));
+  await page.route("**/assets/raw-*.js", async (route) => {
+    await rawGate;
+    await route.continue();
+  });
+  await rawAction.click();
+  const raw = page.getByRole("dialog", {
+    name: "HTTP request/response",
+    exact: true,
+  });
+  await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
+  await expect(
+    raw.getByRole("button", { name: "Download", exact: true }),
+  ).toBeDisabled();
+  const rawLoadingBox = await raw.boundingBox();
+  releaseRaw();
+  await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
+    '\n  "',
+  );
+  expect(
+    Math.abs((await raw.boundingBox()).height - rawLoadingBox.height),
+  ).toBeLessThan(3);
+  await expect(raw.getByRole("checkbox")).toHaveCount(0);
+  await expect(
+    raw.getByRole("button", { name: "Readable", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const readableRequest = await raw.locator(".raw-body > pre").textContent();
+  await raw.getByRole("button", { name: "Source", exact: true }).click();
+  const sourceRequest = await raw.locator(".raw-body > pre").textContent();
+  expect(sourceRequest).toContain("\\n");
+  expect(readableRequest).not.toBe(sourceRequest);
+  await raw.getByRole("button", { name: "Readable", exact: true }).click();
+  await expect(raw.locator(".raw-body > pre")).toHaveText(readableRequest, {
+    useInnerText: false,
+  });
+  const requestDownload = page.waitForEvent("download");
+  await raw.getByRole("button", { name: "Download", exact: true }).click();
+  expect(await readFile(await (await requestDownload).path(), "utf8")).toBe(
+    sourceRequest,
+  );
+
+  await raw.getByRole("tab", { name: "Response", exact: true }).click();
+  await expect(raw.getByRole("tabpanel")).toContainText("[DONE]");
+  await expect(
+    raw.getByRole("button", { name: "Events", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(raw.locator(".raw-body > pre")).not.toContainText("data:");
+  await raw.getByRole("button", { name: "Source", exact: true }).click();
+  await expect(raw.locator(".raw-body > pre")).toContainText("data: [DONE]");
+  await raw.getByRole("button", { name: "Events", exact: true }).click();
+  await raw.getByRole("tabpanel").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await expect(raw.getByRole("button", { name: /Copy/ })).toHaveCount(0);
+  const downloadEvent = page.waitForEvent("download");
+  await raw.getByRole("button", { name: "Download", exact: true }).click();
+  const downloaded = await downloadEvent;
+  const bytes = await readFile(await downloaded.path(), "utf8");
+  const request = page.waitForResponse(
+    (response) =>
+      response.url().includes("&part=response") && response.status() === 200,
+  );
+  await raw.getByRole("tab", { name: "Request", exact: true }).click();
+  await expect(raw.getByRole("tabpanel")).toContainText('"tools"');
+  await raw.getByRole("tab", { name: "Response", exact: true }).click();
+  expect(bytes).toBe((await (await request).json()).text);
+  await raw
+    .getByRole("button", { name: "Close http request/response", exact: true })
+    .click();
+
+  expect(errors).toEqual([]);
+});
+
 test("touch controls remain reachable at phone width", async ({
   browser,
-}, testInfo) => {
-  const state = JSON.parse(
-    await readFile("test-results/device-state.json", "utf8"),
-  );
+  host: fixture,
+  storageState,
+  session,
+}) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
-    storageState: state,
+    storageState,
   });
   const page = await context.newPage();
   try {
-    const catalogue = await (
-      await context.request.get("http://127.0.0.1:8765/api/sessions")
-    ).json();
-    const session = catalogue.sessions.find(
-      (item) => item.generation && !item.turn_active,
-    );
-    await page.goto(`http://127.0.0.1:8765/#session=${session.id}`);
+    await page.goto(`${fixture.origin}/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     expect(
       await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
@@ -488,9 +629,6 @@ test("touch controls remain reachable at phone width", async ({
     ).toBeVisible();
     const box = await picker.boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(390);
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-touch-picker.png`,
-    });
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
     await page.getByLabel("Appearance").selectOption("dark");
@@ -498,9 +636,6 @@ test("touch controls remain reachable at phone width", async ({
       .getByRole("button", { name: "Close settings", exact: true })
       .tap();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-touch-dark.png`,
-    });
   } finally {
     await context.close();
   }
@@ -509,17 +644,11 @@ test("touch controls remain reachable at phone width", async ({
 test("polished skeletons, whole-row hover and folded tool output", async ({
   page,
   context,
-}, testInfo) => {
-  await context.addCookies(
-    JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-      .cookies,
-  );
+  session,
+  host: fixture,
+}) => {
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
-  const catalogue = await (await context.request.get("/api/sessions")).json();
-  const session = catalogue.sessions.find(
-    (item) => item.presence === "web" && !item.turn_active,
   );
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
@@ -609,17 +738,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-sidebar-hover.png`,
-  });
   await tool.locator(".tool-toggle").click();
   await expect(tool.getByRole("status")).toContainText(
     "Loading full tool output",
   );
   await expect(tool.locator(".loading-label")).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-tool-loading.png`,
-  });
   releaseOutput();
   await expect(tool.getByRole("alert")).toHaveText(
     "Tool output temporarily unavailable",
@@ -632,9 +755,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.locator(".tool-toggle").click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-tool-expanded.png`,
-  });
   await page
     .getByRole("button", { name: "Model and effort", exact: true })
     .click();
@@ -648,9 +768,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     picker.getByRole("button", { name: "Apply", exact: true }),
   ).toBeDisabled();
   const loadingBox = await picker.boundingBox();
-  await page.screenshot({
-    path: `test-results/${testInfo.project.name}-model-loading.png`,
-  });
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const theme of ["light", "dark"]) {
     await page.evaluate((value) => {
@@ -664,9 +781,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
         .evaluate((element) => getComputedStyle(element).animationName),
     ).toBe("none");
     await expect(picker).toContainText("loading…");
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-model-loading-${theme}-phone.png`,
-    });
   }
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "light";
@@ -841,12 +955,15 @@ test("late snapshots and retired streams cannot replace current session state", 
 
 test("keyboard viewport preserves focus and contains chat, dialogs and editors", async ({
   browser,
-}, testInfo) => {
+  host: fixture,
+  storageState,
+  session,
+}) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
-    storageState: "test-results/device-state.json",
+    storageState,
   });
   const page = await context.newPage(),
     errors = [];
@@ -904,13 +1021,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await contained(locator, 390, 70);
   };
   try {
-    const catalogue = await (
-      await context.request.get("http://127.0.0.1:8765/api/sessions")
-    ).json();
-    const session = catalogue.sessions.find(
-      (s) => s.generation && !s.turn_active && !s.pending,
-    );
-    await page.goto(`http://127.0.0.1:8765/#session=${session.id}`);
+    await page.goto(`${fixture.origin}/#session=${session.id}`);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
@@ -970,9 +1081,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       .tap();
     await input(settings.getByLabel("Find a setting"), "web");
     await contained(settings, 390, 70);
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-settings.png`,
-    });
     await settings.getByRole("button", { name: "← Back", exact: true }).tap();
     await settings
       .getByRole("button", { name: "Reset sizes", exact: true })
@@ -995,9 +1103,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       page.getByLabel("Document content", { exact: true }),
       "Editable above the keyboard.",
     );
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-memory.png`,
-    });
     await viewport(844);
     await page
       .getByRole("button", { name: "Open sessions", exact: true })
@@ -1008,9 +1113,6 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       page.getByLabel("Instructions", { exact: true }),
       "Do not schedule this draft.",
     );
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-schedule.png`,
-    });
     await viewport(844);
     await input(page.getByLabel("Timezone", { exact: true }), "UTC");
     await viewport(844);
@@ -1025,28 +1127,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   }
 });
 
-async function closeIdleWorkers(page) {
-  // This hermetic host is shared across browser projects. Release idle slots
-  // around the multi-session test without changing the production limit.
-  const catalogue = await (await page.request.get("/api/sessions")).json();
-  for (const session of catalogue.sessions) {
-    if (!session.generation || session.turn_active || session.pending) continue;
-    const response = await page.request.post("/api/command", {
-      headers: { Origin: "http://127.0.0.1:8765" },
-      data: {
-        v: 1,
-        kind: "close",
-        request_id: crypto.randomUUID().replaceAll("-", ""),
-        session_id: session.id,
-        generation: session.generation,
-      },
-    });
-    expect(response.ok(), await response.text()).toBe(true);
-  }
-}
-
 test.describe("mobile navigation and commands", () => {
-  test.afterEach(async ({ page }) => closeIdleWorkers(page));
   test.use({
     isMobile: true,
     hasTouch: true,
@@ -1055,34 +1136,26 @@ test.describe("mobile navigation and commands", () => {
   test("conversation navigation preserves the document and drafts; slash commands complete without sending", async ({
     page,
     context,
+    host: fixture,
   }, testInfo) => {
-    const fixture = JSON.parse(
-      await readFile("test-results/host.json", "utf8"),
-    );
-    try {
-      await context.addCookies(
-        JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-          .cookies,
-      );
-    } catch {}
+    await page.addInitScript(() => {
+      // Emulate browser scroll restoration after the URL changes but before
+      // the app replaces the departing transcript.
+      addEventListener("popstate", () => {
+        const element = document.querySelector(".transcript");
+        if (element) {
+          element.scrollTop = 0;
+          element.dispatchEvent(new Event("scroll"));
+        }
+      });
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await expect(
-      page
-        .getByText("Connected", { exact: true })
-        .or(page.getByLabel("Single-use pairing code")),
-    ).toBeVisible();
-    if (await page.getByLabel("Single-use pairing code").isVisible()) {
-      await page.getByLabel("Single-use pairing code").fill(fixture.code);
-      await page
-        .getByRole("button", { name: "Connect device", exact: true })
-        .click();
-    }
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-    await context.storageState({ path: "test-results/device-state.json" });
+
     const call = async (kind, session, extra = {}) => {
       const response = await page.request.post("/api/command", {
-        headers: { Origin: "http://127.0.0.1:8765" },
+        headers: { Origin: fixture.origin },
         data: {
           v: 1,
           request_id: crypto.randomUUID().replaceAll("-", ""),
@@ -1097,7 +1170,6 @@ test.describe("mobile navigation and commands", () => {
       expect(response.ok(), JSON.stringify(result)).toBe(true);
       return result;
     };
-    await closeIdleWorkers(page);
     const make = async (title) => {
       const { session } = await call("create", null, { cwd: fixture.project });
       await call("rename", session, { title });
@@ -1139,6 +1211,20 @@ test.describe("mobile navigation and commands", () => {
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
     await expect(page.locator(".status")).toHaveText("idle");
+    await expect(
+      page.getByText("[image: blocked]", { exact: true }),
+    ).toBeVisible();
+    if (testInfo.project.name === "chromium")
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const code = page.locator(".code-block");
+    const copy = code.getByRole("button", { name: "Copy code", exact: true });
+    await expect(code.locator(".code-copy")).toHaveCSS("opacity", "1");
+    const copyBox = await copy.boundingBox();
+    expect(Math.min(copyBox.width, copyBox.height)).toBeGreaterThanOrEqual(44);
+    await copy.tap();
+    await expect(
+      code.getByRole("button", { name: "Copied!", exact: true }),
+    ).toBeVisible();
     await expect
       .poll(() =>
         page
@@ -1157,8 +1243,15 @@ test.describe("mobile navigation and commands", () => {
     await choose(secondTitle);
     await expect(prompt).toBeVisible();
     await prompt.fill("Draft B");
+    const retiredTranscript = await page.locator(".transcript").elementHandle();
     await choose(firstTitle);
     await expect(prompt).toHaveValue("Draft A");
+    // A queued scroll from the previous surface cannot rewrite this session.
+    await retiredTranscript.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+    });
+    await retiredTranscript.dispose();
     await expect
       .poll(() =>
         page
@@ -1257,8 +1350,5 @@ test.describe("mobile navigation and commands", () => {
       .tap();
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
-    await page.screenshot({
-      path: `test-results/${testInfo.project.name}-slash-phone.png`,
-    });
   });
 });

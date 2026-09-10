@@ -1,0 +1,31 @@
+.code-block {
+  position: relative;
+  margin: 8px 0;
+}
+.code-block pre {
+  margin: 0;
+  min-height: calc(var(--control) + 12px);
+  padding-right: calc(var(--control) + 16px);
+}
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.code-copy button {
+  background: var(--surface);
+}
+@media (hover: hover) and (pointer: fine) {
+  .code-copy {
+    opacity: 0;
+  }
+  .code-block:hover .code-copy,
+  .code-block:focus-within .code-copy {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .code-block {
+    --control: max(44px, 2.4rem);
+  }
+}

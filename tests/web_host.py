@@ -114,7 +114,13 @@ with (
         args.fixture.parent.mkdir(parents=True, exist_ok=True)
         args.fixture.write_text(
             json.dumps(
-                {"code": code, "project": str(project), "home": str(home), "pid": process.pid}
+                {
+                    "code": code,
+                    "project": str(project),
+                    "home": str(home),
+                    "pid": process.pid,
+                    "origin": client.origin,
+                }
             )
         )
         args.fixture.chmod(0o600)

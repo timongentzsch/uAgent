@@ -87,6 +87,7 @@ add_library(
   src/agent/agent.cc
   src/agent/conversation.cc
   src/agent/prompt.cc
+  src/agent/prompt_profile.cc
   src/agent/request.cc
   src/agent/session_store.cc
   src/agent/session_view.cc
@@ -105,6 +106,7 @@ add_library(
   src/app/config_proposal.cc
   src/app/config_control.cc
   src/app/library.cc
+  src/app/prompt_control.cc
   src/app/control.cc
   src/app/schedule.cc
   src/core/capture.cc
@@ -160,6 +162,7 @@ add_library(
   src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/interactive.cc
+  src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
 target_link_libraries(uagent_core PUBLIC uagent_options)
@@ -238,6 +241,7 @@ if(BUILD_TESTING)
     tests/unit/openrouter_server_search_test.cc
     tests/unit/presentation_test.cc
     tests/unit/protocol_test.cc
+    tests/unit/prompt_test.cc
     tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/sandbox_test.cc
@@ -281,6 +285,10 @@ if(BUILD_TESTING)
     # (TSan runtime, ~5min) so the runner always wins the race.
     set_tests_properties(integration_${group} PROPERTIES TIMEOUT 900)
   endforeach()
+  add_test(NAME ci_changes
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/ci_changes_test.py)
+  set_tests_properties(ci_changes PROPERTIES LABELS source)
   add_test(NAME session_metrics_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py
@@ -359,6 +367,7 @@ set(UAGENT_GUIDES
     docs/TESTING.md
     docs/TOOLS.md
     docs/WEB.md
+    docs/SYSTEM_PROMPTS.md
     docs/MANAGEMENT.md)
 install(FILES README.md SECURITY.md CONTRIBUTING.md LICENSE
         DESTINATION ${CMAKE_INSTALL_DOCDIR})

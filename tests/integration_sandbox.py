@@ -10,6 +10,7 @@ neither the workspace nor under any other default root, so a write to one is
 denied on both platforms.
 """
 
+import shlex
 import socket
 import sys
 
@@ -99,6 +100,69 @@ def test_yolo_disables_the_sandbox_from_cli_and_config(root, home, *, binary):
             result = run(workspace(root), env, *flags, "-p", "go", timeout=30, binary=binary)
         assert_true(result.returncode == 0, (result.stdout, result.stderr))
         assert_true(outside.exists(), f"{source} yolo still used the sandbox")
+
+
+def test_sudo_uses_shared_approval_and_sandbox_policy(root, home, *, binary):
+    """A harmless sudo stand-in exercises dispatch without needing root."""
+    enforced = sandbox_enforced(root, home, binary=binary)
+    ws = workspace(root)
+    executables = ws / "bin"
+    executables.mkdir()
+    sudo = executables / "sudo"
+    sudo.write_text('#!/bin/sh\nprintf "SUDO_FIXTURE\\n"\nexec "$@"\n')
+    sudo.chmod(0o755)
+    for tool in ("run", "scratch"):
+        for mode in ("yolo", "confined", "approved", "denied"):
+            if mode == "approved" and tool == "scratch":
+                continue  # scratch has no per-command escape hatch
+            if mode in ("confined", "approved") and not enforced:
+                continue
+            outside = root / f"{tool}-{mode}.txt"
+            command = "sudo sh -c " + shlex.quote(f"echo written > {shlex.quote(str(outside))}")
+            arguments = (
+                {"command": command}
+                if tool == "run"
+                else {"path": f"{mode}.sh", "code": command, "packages": []}
+            )
+            if mode == "approved":
+                arguments["sandbox"] = False
+            seen = []
+
+            def finish(_, body, seen=seen):
+                seen.extend(
+                    str(m.get("content", "")) for m in body["messages"] if m.get("role") == "tool"
+                )
+                return event({"content": "policy-ok"})
+
+            with Server([tool_call(tool, arguments), finish]) as server:
+                env = sandbox_env(home, server.url)
+                env["PATH"] = str(executables) + ":" + env["PATH"]
+                flags = ("--yolo",) if mode == "yolo" else ()
+                if mode == "approved":
+                    code, transcript = run_pty(
+                        ws,
+                        env,
+                        [(b"go\n", b"allow run? [y/N] "), (b"y\n", b"policy-ok"), b"", b"/q\n"],
+                        timeout=30,
+                        binary=binary,
+                    )
+                    assert_true(code == 0, transcript)
+                else:
+                    result = run_dialog(
+                        ws,
+                        env,
+                        "n\n" if mode == "denied" else "y\n",
+                        *flags,
+                        "-p",
+                        "run the fixture",
+                        timeout=30,
+                        binary=binary,
+                    )
+                    assert_true(result.returncode == 0, (tool, mode, result.stdout, result.stderr))
+            output = "\n".join(seen)
+            assert_true("privileged commands are unavailable" not in output, output)
+            assert_true(("SUDO_FIXTURE" in output) == (mode != "denied"), (tool, mode, output))
+            assert_true(outside.exists() == (mode in ("yolo", "approved")), (tool, mode, output))
 
 
 def test_yolo_toggle_changes_sandboxing_for_the_next_command(root, home, *, binary):

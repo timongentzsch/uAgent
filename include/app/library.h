@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <string>
 
+#include "include/core/file_watch.h"
 #include "include/core/json.h"
 
 namespace uagent {
@@ -14,7 +15,6 @@ json LibraryControl(const json& request,
 json SkillControl(const json& request, const std::filesystem::path& workspace);
 std::string LibraryChangePath();
 void LibraryChanged();
-std::string DocumentRevision(const std::string& path, const std::string& body);
 bool LibraryPath(const std::filesystem::path& root,
                  const std::filesystem::path& path);
 bool LibraryName(const std::string& name);

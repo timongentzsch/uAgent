@@ -71,6 +71,7 @@ struct SessionState {
   Usage usage;
   RouteUsage route_usage;
   std::string adaptive_system;
+  std::string adaptive_system_mode = "overlay";
   uint64_t adaptive_system_revision = 0;
   // Rendered tool receipts keyed by call id, so a resumed transcript can
   // redraw a diff instead of a grey summary line.

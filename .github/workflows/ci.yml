@@ -14,7 +14,25 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.select.outputs.native }}
+      web: ${{ steps.select.outputs.web }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: select
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 .github/changes.py
+
   build-and-test:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -71,7 +89,7 @@ jobs:
       - name: Verify native architecture
         run: test "$(uname -m)" = "${{ matrix.arch }}"
       - name: Test
-        run: ctest --test-dir build --output-on-failure -j 4 -LE source
+        run: ctest --test-dir build --output-on-failure -j 2 -LE source
       - name: Check generated skill references
         if: matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
         run: |
@@ -84,6 +102,13 @@ jobs:
               'uagent --emit-reference skills/uagent-config/references'
             exit 1
           fi
+      - name: CLI-only build
+        if: matrix.build_type == 'Release' && matrix.target == 'linux-x86_64'
+        run: |
+          cmake -S . -B build/cli-only -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
+          cmake --build build/cli-only --parallel 4
+          ctest --test-dir build/cli-only --output-on-failure -j 2 -R '^(core|integration_runtime|integration_providers)$'
+
       - name: Package
         if: matrix.build_type == 'Release'
         shell: bash
@@ -113,6 +138,8 @@ jobs:
           retention-days: 7
 
   sanitizers:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     # Instrumented startup and rendering cost several times the plain build, so
@@ -128,9 +155,11 @@ jobs:
       - name: Build
         run: cmake --build --preset sanitize --parallel 4
       - name: Test
-        run: ctest --preset sanitize -LE source
+        run: ctest --preset sanitize -j 2 -LE source
 
   thread-sanitizer:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # Instrumented, and now driving real subprocesses, so the terminal cases
@@ -150,9 +179,11 @@ jobs:
       - name: Build tests and agent
         run: cmake --build --preset tsan --target uagent_tests uagent --parallel 4
       - name: Test concurrent paths
-        run: ctest --preset tsan -R '^(core|integration_(runtime|tools))$'
+        run: ctest --preset tsan -j 2 -R '^(core|integration_(runtime|tools))$'
 
   fuzzers:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -180,6 +211,8 @@ jobs:
             /tmp/corpus/input_decoder
 
   coverage:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -196,7 +229,7 @@ jobs:
       - name: Build and test
         run: |
           cmake --build --preset coverage --target uagent_tests uagent --parallel 4
-          ctest --preset coverage -R '^(core|integration_.*)$'
+          ctest --preset coverage -j 2 -R '^(core|integration_.*)$'
       # The floor sits ~2 points below the measured line rate. Measured on this
       # job's own test selection and filters, locally, with gcovr driving
       # llvm-cov gcov: 69.7%. That local number is trustworthy here because the
@@ -234,8 +267,8 @@ jobs:
         with:
           version: "0.11.28"
           enable-cache: true
-      - run: uv run --frozen ruff check tests benchmarks skills
-      - run: uv run --frozen ruff format --check tests benchmarks skills
+      - run: uv run --frozen ruff check .github tests benchmarks skills
+      - run: uv run --frozen ruff format --check .github tests benchmarks skills
       - name: Source and Python contracts
         run: |
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
@@ -243,6 +276,8 @@ jobs:
           ctest --preset debug -L source
 
   web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -266,7 +301,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
           cmake --preset release -DUAGENT_WEB_PUSH=ON
           cmake --build --preset release --parallel 4
-          ctest --preset release -R '^(core|integration_web|web_push)$'
+          ctest --preset release -j 2 -R '^(core|integration_web|web_push)$'
           python3 benchmarks/web.py build/release/uagent --push-contact mailto:benchmark@example.invalid --output build/web-footprint.json
       - name: Browser integration against native host
         run: |
@@ -280,13 +315,10 @@ jobs:
           path: web/test-results
           if-no-files-found: ignore
           retention-days: 3
-      - name: CLI-only build
-        run: |
-          cmake -S . -B build/cli-only -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
-          cmake --build build/cli-only --parallel 4
-          ctest --test-dir build/cli-only --output-on-failure -j 4 -R '^(core|integration_runtime|integration_providers)$'
 
   cpp-style:
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -317,11 +349,29 @@ jobs:
           -p build/tidy
           -header-filter='.*/(include|src|tests|benchmarks)/.*'
 
+  checks:
+    name: CI result
+    if: always()
+    needs: [changes, build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require successful checks
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os, sys
+          results = {name: value["result"] for name, value in json.loads(os.environ["RESULTS"]).items()}
+          print(json.dumps(results, indent=2))
+          sys.exit(results["changes"] != "success" or any(value not in ("success", "skipped") for value in results.values()))
+          PYTHON
+
   release:
     if: >-
       github.event_name == 'push' && github.ref_type == 'tag' &&
       startsWith(github.ref_name, 'v')
-    needs: [build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, web]
+    needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

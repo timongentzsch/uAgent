@@ -294,6 +294,10 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   DrainCollaboratorMailIntoSteering();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
+  if (!prompt_error_.empty()) {
+    FailTurn(state, prompt_error_);
+    return StepFlow::kEndTurn;
+  }
   if (SteeringState().Requested()) return InterruptTurn(state);
   if (TurnDeadlineExceeded(state)) return StepFlow::kEndTurn;
   if (refresh_tools_ && refresh_tools_(state.deadline)) RebuildToolSchemas();
@@ -341,7 +345,6 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
     // outcome is overwritten by whatever ends it.
     InterruptTurn(state);
     printf("\n");
-    Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
     conversation_.Push(
         HarnessMessage("(response interrupted; partial output was "
                        "discarded)"),
@@ -716,9 +719,6 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   if (cancelled) BgCancelSubagents(processes_);
   if (foreground_interrupted) {
     if (steering_applied) return StepFlow::kNextStep;
-    if (cancelled) {
-      Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
-    }
     return InterruptTurn(state);
   }
   if (HandleActivityPollResults(activity_polls, calls.size() == 1, state,
@@ -770,11 +770,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();
-  if (!conversation_.Empty()) {
-    conversation_.Set(0, SysMsg(), MessageKind::kSystem);
-    applied_system_revision_ =
-        adaptive_system_ ? adaptive_system_->revision : 0;
-  }
+  RefreshSystemMessage();
   Emit(Event{EventId::kTurnStarted,
              {{"turn", turn_id_},
               {"origin", "user"},
@@ -813,6 +809,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
                                   {{"files", images}});
     }
     PublishMessage(request_id);
+    Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_},
                 {"outcome", "steered_during_compaction"},
@@ -998,6 +995,7 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
         reason = "completed";
         break;
       case TurnOutcome::kInterrupted:
+        Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
         reason = "cancelled";
         break;
       case TurnOutcome::kError:

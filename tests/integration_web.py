@@ -798,6 +798,63 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
             assert_true(len(provider.requests) == 1, "control or inspection invoked the model")
 
 
+def test_web_control_queues_behind_inflight_catalog(root, home, *, binary):
+    catalog_started = threading.Event()
+    release = threading.Event()
+
+    def catalog(_handler):
+        catalog_started.set()
+        assert release.wait(timeout=budget(10)), "catalog was not released"
+        return {"data": [{"id": "test"}]}
+
+    with Server([event({"content": "unexpected model call"})], get_response=catalog) as provider:
+        providers = {
+            "local": {
+                "base_url": provider.url,
+                "context": 16384,
+                "models": {"main": {"id": "test"}},
+            }
+        }
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={
+                "UAGENT_PROVIDERS": json.dumps(providers),
+                "UAGENT_MODEL": "local/main",
+            },
+        ) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            catalogs = []
+            reader = threading.Thread(
+                target=lambda: catalogs.append(
+                    client.command("model", session, operation="catalog")
+                )
+            )
+            reader.start()
+            try:
+                assert catalog_started.wait(timeout=budget(5)), "catalog did not start"
+                queued = client.command("prompt", session, action="show", scope="conversation")
+                request_id = f"{client.sequence:032x}"
+                assert_true(queued.get("pending"), "control ran before catalog finished")
+            finally:
+                release.set()
+                reader.join(timeout=budget(10))
+            assert_true(not reader.is_alive() and catalogs, "catalog did not complete")
+
+            def completed():
+                receipt = client.json(f"/api/receipts/{request_id}")[1]
+                if receipt.get("pending"):
+                    return False
+                assert_true(receipt.get("accepted") and "effective" in receipt["result"], receipt)
+                return True
+
+            wait_until(completed, "queued prompt inspection did not complete")
+            assert_true(not provider.requests, "controls invoked the model")
+
+
 def test_web_background_inspection_and_full_exchange(root, home, *, binary):
     project = root / "background-inspection"
     project.mkdir()

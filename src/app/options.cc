@@ -14,8 +14,13 @@ namespace uagent {
 namespace {
 
 constexpr FlagSpec kFlags[] = {
+    {"--show-system-prompt", FlagKind::kToggle, &Options::show_system_prompt,
+     nullptr, nullptr,
+     "show the resolved system prompt without a model call; --json includes "
+     "sources"},
     {"--control", FlagKind::kControl, nullptr, nullptr, "JSON|-",
-     "run a native memory, skills or schedule operation without a model"},
+     "run a native memory, skills, schedule or prompt operation without a "
+     "model"},
     {"--web", FlagKind::kToggle, &Options::web, nullptr, nullptr,
      "start or reuse this user's global web application"},
     {"--web-port", FlagKind::kConfig, nullptr, "UAGENT_WEB_PORT", "PORT",
@@ -179,17 +184,19 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
     }
   }
   if (!parsed.options.control.empty() &&
-      (parsed.options.web || parsed.options.yolo ||
-       parsed.options.trust_project || parsed.options.debug ||
-       parsed.options.json || parsed.options.json_stream ||
-       parsed.options.resume_latest || parsed.options.resume_pick ||
-       !parsed.options.prompt.empty() || !parsed.options.attach_paths.empty() ||
+      (parsed.options.show_system_prompt || parsed.options.web ||
+       parsed.options.yolo || parsed.options.trust_project ||
+       parsed.options.debug || parsed.options.json ||
+       parsed.options.json_stream || parsed.options.resume_latest ||
+       parsed.options.resume_pick || !parsed.options.prompt.empty() ||
+       !parsed.options.attach_paths.empty() ||
        !parsed.options.overrides.empty())) {
     parsed.error = "--control is a standalone management command";
   } else if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&
-             parsed.options.prompt.empty()) {
+             parsed.options.prompt.empty() &&
+             !parsed.options.show_system_prompt) {
     parsed.error = "JSON output requires -p PROMPT";
   }
   return parsed;

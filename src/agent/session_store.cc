@@ -60,6 +60,7 @@ constexpr Field kStateFields[] = {
     {"usage", json::value_t::object, true},
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
+    {"adaptive_system_mode", json::value_t::string, false},
     {"tool_displays", json::value_t::object, false},
     {"display", json::value_t::object, false}};
 
@@ -77,6 +78,8 @@ bool ValidState(const json& value) {
       adaptive->get_ref<const std::string&>().size() > kAdaptiveSystemBytes) {
     return false;
   }
+  const auto mode = JsonValue(value, "adaptive_system_mode", "overlay");
+  if (mode != "overlay" && mode != "replace") return false;
   return !value["messages"].empty() &&
          value["message_kinds"].size() == value["messages"].size();
 }
@@ -104,6 +107,7 @@ json StateJson(const SessionState& state) {
           {"usage", UsageJson(state.usage)},
           {"route_usage", RouteUsageJson(state.route_usage)},
           {"adaptive_system", state.adaptive_system},
+          {"adaptive_system_mode", state.adaptive_system_mode},
           {"adaptive_system_revision", state.adaptive_system_revision},
           {"tool_displays", state.tool_displays},
           {"display", state.display}};
@@ -219,6 +223,8 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.route_usage =
       RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
   record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
+  record.state.adaptive_system_mode =
+      JsonValue(state, "adaptive_system_mode", "overlay");
   record.state.adaptive_system_revision =
       JsonValue(state, "adaptive_system_revision", uint64_t{0});
   if (state.contains("tool_displays")) {

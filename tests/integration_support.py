@@ -112,14 +112,25 @@ class Server:
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
+            def invoke(self, callback, *args):
+                # Handler-thread failures must fail the owning test at close().
+                try:
+                    return callback(self, *args)
+                except Exception as error:  # noqa: BLE001 - reported in close()
+                    owner.route_failures.append(f"{type(error).__name__}: {error}")
+                    write_json_response(
+                        self, {"error": {"message": f"route failed: {error}"}}, status=500
+                    )
+                    return None
+
             def do_GET(self):
                 owner.get_requests.append(self.path)
                 if get_response is None:
                     self.send_error(404)
                     return
-                write_json_response(
-                    self, get_response(self) if callable(get_response) else get_response
-                )
+                response = self.invoke(get_response) if callable(get_response) else get_response
+                if response is not None:
+                    write_json_response(self, response)
 
             def do_POST(self):
                 size = int(self.headers.get("Content-Length", "0"))
@@ -136,18 +147,7 @@ class Server:
                     return
                 response = owner.responders[min(index, len(owner.responders) - 1)]
                 if callable(response):
-                    # A route runs on this handler thread, so an assertion here
-                    # would otherwise surface only as an aborted connection.
-                    try:
-                        response = response(self, body)
-                    except Exception as error:  # noqa: BLE001 - reported in close()
-                        owner.route_failures.append(f"{type(error).__name__}: {error}")
-                        write_json_response(
-                            self,
-                            {"error": {"message": f"route failed: {error}"}},
-                            status=500,
-                        )
-                        return
+                    response = self.invoke(response, body)
                     if response is None:
                         return
                 streaming = body.get("stream", True)

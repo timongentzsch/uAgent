@@ -12,6 +12,7 @@
 | `/config [user|project KEY=VALUE|unset KEY]` | inspect or change configuration |
 | `/fork [NAME]` | fork the completed conversation |
 | `/permissions [default|ask|yolo]` | show or change permission mode |
+| `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
 | `/diff` | show git diff (including untracked files) |
 | `/cost` | show tokens and spend by route |

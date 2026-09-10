@@ -171,6 +171,10 @@ export function useHost(
       });
       if (signal.aborted) return;
       setCatalogue(list);
+      // Activation can precede the first snapshot of a newly created session.
+      const knownSessions = new Map(
+        list.sessions.map((session) => [session.id, session]),
+      );
       setUnread(
         (prior) =>
           new Set([
@@ -252,7 +256,10 @@ export function useHost(
           setOnline(false);
           return;
         }
-        if (event.kind === "management.changed") {
+        if (
+          event.kind === "management.changed" ||
+          (event.kind === "event" && event.type === "prompt.changed")
+        ) {
           setManagementVersion((version) => version + 1);
           return;
         }
@@ -316,6 +323,7 @@ export function useHost(
           ["activated", "deactivated", "metadata"].includes(event.kind) &&
           event.metadata
         ) {
+          knownSessions.set(id, event.metadata!);
           setCatalogue((prior) => ({
             ...prior,
             sessions: [
@@ -332,11 +340,13 @@ export function useHost(
               pending: event.kind === "metadata" ? current.pending : null,
             };
         }
-        if (event.kind === "deleted") forget(id);
+        if (event.kind === "deleted") {
+          knownSessions.delete(id);
+          forget(id);
+        }
         if (event.kind === "state") {
           const metadata = {
-            ...(current?.metadata ||
-              list.sessions.find((item) => item.id === id)),
+            ...(current?.metadata || knownSessions.get(id)),
             id,
             generation: event.generation,
             presence: "web" as const,
@@ -485,7 +495,13 @@ export function useHost(
       stream.current = undefined;
       setOnline(false);
     };
-    const hash = () => setSelected(selectedFromURL());
+    let navigation: ReturnType<typeof setTimeout> | undefined;
+    const hash = () => {
+      clearTimeout(navigation);
+      // History traversal restores browser state after popstate. Mount the
+      // selected transcript only once that traversal has finished.
+      navigation = setTimeout(() => setSelected(selectedFromURL()), 0);
+    };
     addEventListener("online", refresh);
     addEventListener("offline", offline);
     addEventListener("pageshow", recover);
@@ -505,6 +521,7 @@ export function useHost(
       lifetime.current.abort();
       stream.current?.close();
       clearTimeout(timer);
+      clearTimeout(navigation);
       removeEventListener("online", refresh);
       removeEventListener("offline", offline);
       removeEventListener("pageshow", recover);

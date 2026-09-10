@@ -71,6 +71,16 @@ test("rendering escapes HTML and never loads remote images", async () => {
     assert.equal(safeURL(url), true);
 });
 
+test("only Markdown code blocks receive copy controls", async () => {
+  const html = await renderMarkdown(
+    "Prose with `inline code`.\n\n    indented <code> & spaces\n\n```text\nfenced <code> & spaces\n```",
+  );
+  assert.equal((html.match(/class="code-copy"/g) || []).length, 2);
+  assert.ok(html.includes("<p>Prose with <code>inline code</code>.</p>"));
+  assert.ok(html.includes("indented &lt;code&gt; &amp; spaces\n</code>"));
+  assert.ok(html.includes("fenced &lt;code&gt; &amp; spaces\n</code>"));
+});
+
 test("a pending receipt remains pending and SSE may acknowledge before HTTP", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => {

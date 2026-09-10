@@ -1,5 +1,5 @@
 import type { CommandFields, CommandKind, CommandResults } from "./types.ts";
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { command } from "./store.ts";
 import { Field, Select, Skeleton } from "./ui.tsx";
 import "./management.css";
@@ -66,11 +66,14 @@ export function ProjectField({
   projects: string[];
   change: (value: string) => void;
 }) {
+  const [draft, setDraft] = useState(value);
+  useLayoutEffect(() => setDraft(value), [value]);
   return (
     <Field label="Project">
       <input
         list="management-projects"
-        value={value}
+        value={draft}
+        onInput={(event) => setDraft(event.currentTarget.value)}
         placeholder="Absolute directory on the host"
         onChange={(event) => change(event.currentTarget.value)}
       />

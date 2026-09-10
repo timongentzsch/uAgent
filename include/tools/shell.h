@@ -60,8 +60,6 @@ ToolResult ToolRunApprovedShell(ProcessSupervisor& supervisor,
                                 bool sandbox = true);
 bool StartsWithShellWord(const std::string& command, const std::string& word);
 std::string RunCommandPolicyError(const std::string& command);
-// The privileged-command half of the above, applied to every line of a script.
-std::string ScriptCommandPolicyError(const std::string& script);
 bool PythonScriptHasDependencies(const std::string& source);
 // argv as the receipt and the call row show it: quoted only where a shell
 // would need it, because neither is re-executed.

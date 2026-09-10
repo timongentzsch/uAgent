@@ -373,8 +373,9 @@ class WorkerChannel final : public ApplicationChannel {
                                    : json{{"error", "session not ready"}});
       return true;
     } else if (kind == "model" || kind == "activity" || kind == "config" ||
-               kind == "context" || kind == "fork") {
-      if (busy_ || input_) {
+               kind == "context" || kind == "fork" || kind == "prompt") {
+      // Reuse the one-slot queue while a preceding non-turn control finishes.
+      if (turn_active_ || input_) {
         error = "this control requires an idle session";
       } else {
         input_ = ApplicationInput{.request_id = request, .control = command};

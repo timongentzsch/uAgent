@@ -1,40 +1,20 @@
-import { test, expect } from "@playwright/test";
-import { mkdir, readFile } from "node:fs/promises";
+import { test, expect } from "./fixtures.js";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 test("library drafts, shared controls and scheduled results", async ({
   page,
-  context,
-}, testInfo) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
+  host: fixture,
+}) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
-  try {
-    await context.addCookies(
-      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-        .cookies,
-    );
-  } catch {
-    /* First test pairs below. */
-  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page
-      .getByLabel("Single-use pairing code")
-      .or(page.getByText("Connected", { exact: true })),
-  ).toBeVisible();
-  if (await page.getByLabel("Single-use pairing code").isVisible()) {
-    await page.getByLabel("Single-use pairing code").fill(fixture.code);
-    await page
-      .getByRole("button", { name: "Connect device", exact: true })
-      .click();
-  }
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.getByLabel("Project", { exact: true }).fill(fixture.project);
@@ -66,10 +46,6 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("library-desktop.png"),
-    fullPage: true,
-  });
   const projectGroup = page.getByRole("region", {
     name: fixture.project,
     exact: true,
@@ -151,20 +127,12 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("library-folder-groups.png"),
-    fullPage: true,
-  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await filter.selectOption(`project:${secondProject}`);
   await expect(secondGroup.locator(".library-row")).toBeVisible();
   await expect(secondGroup.getByRole("status")).toHaveCount(0);
   await expect(projectGroup).toHaveCount(0);
-  await page.screenshot({
-    path: testInfo.outputPath("library-mobile-folders.png"),
-    fullPage: true,
-  });
   await secondGroup.locator(".library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
@@ -219,10 +187,6 @@ test("library drafts, shared controls and scheduled results", async ({
   const run = page.locator(".run-row").first();
   await expect(run).toContainText("completed", { timeout: 20000 });
   await expect(nav.getByLabel("Unread scheduled results")).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("scheduled-desktop.png"),
-    fullPage: true,
-  });
   await run.getByRole("button").first().click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
@@ -246,10 +210,6 @@ test("library drafts, shared controls and scheduled results", async ({
       ),
     )
     .toBe(844);
-  await page.screenshot({
-    path: testInfo.outputPath("scheduled-mobile.png"),
-    fullPage: true,
-  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

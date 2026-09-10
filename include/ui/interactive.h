@@ -103,6 +103,8 @@ class RawComposer {
 
   InteractiveInputEvent Read();
 
+  bool EditTextExternally(std::string& text);
+
   // These describe the block actually on screen, not a newly computed layout.
   // That distinction matters after a resize and while an edit changes wrapping.
   bool Drawn() const { return drawn_rows_ > 0; }
@@ -169,9 +171,10 @@ class InputBroker {
   ~InputBroker();
 
   std::string Read(const std::string& prompt, bool* eof, bool keep_history,
-                   const std::string& initial);
+                   const std::string& initial, bool editor = false);
   void DrainWake() const;
-  bool Take(std::string& prompt, std::string& initial, bool& keep_history);
+  bool Take(std::string& prompt, std::string& initial, bool& keep_history,
+            bool* editor = nullptr);
   void Answer(std::string answer, bool eof);
   void Notify() const;
   void Shutdown();
@@ -187,6 +190,7 @@ class InputBroker {
   std::string initial_;
   std::string answer_;
   bool keep_history_ = false;
+  bool editor_ = false;
   bool pending_ = false;
   bool answered_ = false;
   bool eof_ = false;

@@ -13,9 +13,11 @@
 #include <string>
 #include <utility>
 
+#include "include/agent/adaptive_system.h"
 #include "include/core/events.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/editor.h"
 
 namespace uagent {
 
@@ -67,6 +69,10 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "fork the completed conversation"},
     {SlashCommandId::kPermissions, "/permissions", "[default|ask|yolo]",
      "show or change permission mode"},
+    {SlashCommandId::kPrompt, "/prompt",
+     "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
+     "overlay|replace] [--file PATH]",
+     "inspect or edit the system prompt"},
     {SlashCommandId::kHttp, "/http", "[INDEX [request|response]]",
      "inspect captured HTTP attempts (latest by default)"},
     {SlashCommandId::kDiff, "/diff", "",
@@ -226,6 +232,10 @@ std::string ReadInteraction(InteractionRequest request, bool* eof) {
   std::string answer;
   if (ReadHandler()) {
     answer = ReadHandler()(request, eof);
+  } else if (request.kind == "editor") {
+    ScopedCookedInput cooked_input;
+    answer = request.initial;
+    *eof = !EditExternalText(answer, STDIN_FILENO, kAdaptiveSystemBytes);
   } else {
     ScopedCookedInput cooked_input;
     fputs(request.prompt.c_str(), stdout);

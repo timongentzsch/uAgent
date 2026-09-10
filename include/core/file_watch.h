@@ -22,6 +22,7 @@ struct FileStamp {
 };
 
 FileStamp SnapshotFile(const std::string& path);
+std::string DocumentRevision(const std::string& path, const std::string& body);
 
 // Wait for a detached log owned by another process. macOS and Linux use native
 // file notifications; unsupported POSIX targets retain a bounded fallback.

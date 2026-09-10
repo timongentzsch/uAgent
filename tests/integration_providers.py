@@ -954,23 +954,12 @@ def test_self_info_reports_live_configuration(root, home, *, binary):
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
         prompt = body["messages"][0]["content"]
-        assert_true(described["base"]["chars"] > 1000, described)
-        assert_true(len(described["base"]["digest"]) == 12, described)
-        assert_true("## Evidence" in described["base"]["sections"], described)
-        assert_true(described["overlay"]["applied"] == [], described)
-        assert_true(described["overlay"]["path"] == "", described)
-        # The reported sizes must match the message the model actually got.
-        # Triggers are registry names: `activity` is registered but its schema
-        # is advertised only once a detached activity exists, so this is
-        # deliberately not compared against the advertised schema list.
-        start = prompt.find("\n\n## Capabilities\n")
-        host = prompt.find("\n\n[HOST CAPABILITIES]")
-        assert_true(start >= 0 and host > start, prompt[:200])
-        assert_true(described["capabilities"]["chars"] == host - start, described)
-        assert_true(
-            described["host_capabilities"]["chars"] == len(prompt) - host,
-            described,
-        )
+        assert_true(described["effective"] == prompt, described)
+        assert_true(described["bytes"] == len(prompt.encode()), described)
+        sources = {source["scope"]: source for source in described["sources"]}
+        assert_true(sources["built-in"]["active"], sources)
+        assert_true(sources["runtime"]["active"], sources)
+        assert_true(sources["project"]["mode"] == "inherit", sources)
         serialized = json.dumps(body["messages"])
         assert_true("canary-search-key" not in serialized, "secret leaked into transcript")
         assert_true("canary-api-key" not in serialized, "secret leaked into transcript")

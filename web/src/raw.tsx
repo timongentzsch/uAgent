@@ -1,8 +1,8 @@
 import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "./types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
-import { Copy, Download } from "lucide-preact";
-import { Field, Select, Skeleton, LoadError, copyText } from "./ui.tsx";
+import { Download } from "lucide-preact";
+import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
 import { readPages, command } from "./store.ts";
 import { formatBody } from "./format.ts";
 import { formatEventStream } from "./event-stream.ts";
@@ -13,10 +13,11 @@ export default function Raw({
   value,
   exchanges,
   latest,
+  prompt,
   context,
   prepare,
   part = "request",
-}: RawOptions & { latest?: Exchange[] }) {
+}: RawOptions & { latest?: Exchange[]; prompt?: () => void }) {
   const http = context || exchanges !== undefined;
   const [captured, setCaptured] = useState(exchanges || []);
   const [attempt, setAttempt] = useState(
@@ -167,6 +168,7 @@ export default function Raw({
           <p class="muted small">This capture is incomplete.</p>
         )}
       </div>
+      {context && prompt && <button onClick={prompt}>System prompt</button>}
       <div
         class="raw-body"
         id={`${prefix}-body`}
@@ -202,15 +204,6 @@ export default function Raw({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          class="with-icon"
-          disabled={body === undefined}
-          onClick={() => copyText(original).catch(setError)}
-        >
-          <Copy />
-          Copy raw body
-        </button>
         <button
           type="button"
           class="with-icon"

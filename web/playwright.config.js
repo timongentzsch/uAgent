@@ -6,7 +6,7 @@ export default defineConfig({
   workers: process.env.CI ? 2 : 1,
   fullyParallel: true,
   timeout: 30000,
-  use: { trace: "retain-on-failure" },
+  use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {

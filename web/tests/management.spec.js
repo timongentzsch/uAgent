@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 test("library drafts, shared controls and scheduled results", async ({
   page,
   host: fixture,
-}, testInfo) => {
+}) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/sw.js", (route) =>
@@ -46,10 +46,6 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("library-desktop.png"),
-    fullPage: true,
-  });
   const projectGroup = page.getByRole("region", {
     name: fixture.project,
     exact: true,
@@ -131,20 +127,12 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("library-folder-groups.png"),
-    fullPage: true,
-  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await filter.selectOption(`project:${secondProject}`);
   await expect(secondGroup.locator(".library-row")).toBeVisible();
   await expect(secondGroup.getByRole("status")).toHaveCount(0);
   await expect(projectGroup).toHaveCount(0);
-  await page.screenshot({
-    path: testInfo.outputPath("library-mobile-folders.png"),
-    fullPage: true,
-  });
   await secondGroup.locator(".library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
@@ -199,10 +187,6 @@ test("library drafts, shared controls and scheduled results", async ({
   const run = page.locator(".run-row").first();
   await expect(run).toContainText("completed", { timeout: 20000 });
   await expect(nav.getByLabel("Unread scheduled results")).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("scheduled-desktop.png"),
-    fullPage: true,
-  });
   await run.getByRole("button").first().click();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
@@ -226,10 +210,6 @@ test("library drafts, shared controls and scheduled results", async ({
       ),
     )
     .toBe(844);
-  await page.screenshot({
-    path: testInfo.outputPath("scheduled-mobile.png"),
-    fullPage: true,
-  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

@@ -187,8 +187,12 @@ each owns its native host, temporary HOME and project, mock provider, pairing co
 and output directory. No test depends on a preceding test's conversation or login.
 They wait for visible state or an API condition, not a fixed delay. This follows
 [Playwright's isolation and assertion guidance](https://playwright.dev/docs/best-practices).
-Failure traces and native host logs are retained; retries are disabled. CI uses
+Screenshots, traces and native host logs are retained on failure; retries are disabled. CI uses
 two browser workers and two concurrent native test groups to bound contention.
+Messaging, settings, conversation lifecycle and large-history checks have separate
+fixtures and deadlines; adding one flow does not consume another flow's timeout.
+Layout checks assert geometry and state directly instead of taking unasserted
+screenshots throughout successful runs.
 Delays that deliberately simulate a stalled provider or timeout remain part of
 those tests. Mock GET and POST callback failures both fail the owning test.
 

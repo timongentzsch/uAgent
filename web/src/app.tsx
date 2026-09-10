@@ -129,7 +129,12 @@ function App() {
   );
   const transcript = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
-  const restoredScroll = useRef<{ element: HTMLElement; top: number }>();
+  const restoredScroll = useRef<{
+    element: HTMLElement;
+    top: number;
+    height: number;
+    client: number;
+  }>();
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
   const session =
@@ -179,7 +184,12 @@ function App() {
       ? element.scrollHeight
       : scrollPositions.current.get(selected) || 0;
     // A clamped restoration is not a user scroll or a request to follow output.
-    restoredScroll.current = { element, top: element.scrollTop };
+    restoredScroll.current = {
+      element,
+      top: element.scrollTop,
+      height: element.scrollHeight,
+      client: element.clientHeight,
+    };
   }, [selected, following]);
   useLayoutEffect(restoreScroll, [restoreScroll, blocks]);
   useEffect(() => {
@@ -768,6 +778,15 @@ function App() {
                     )
                       return;
                     const restored = restoredScroll.current;
+                    if (
+                      restored?.element === element &&
+                      (restored.height !== element.scrollHeight ||
+                        restored.client !== element.clientHeight)
+                    ) {
+                      // Layout can clamp scroll before ResizeObserver restores it.
+                      restoreScroll();
+                      return;
+                    }
                     if (
                       restored?.element === element &&
                       restored.top === element.scrollTop

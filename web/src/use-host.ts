@@ -171,6 +171,10 @@ export function useHost(
       });
       if (signal.aborted) return;
       setCatalogue(list);
+      // Activation can precede the first snapshot of a newly created session.
+      const knownSessions = new Map(
+        list.sessions.map((session) => [session.id, session]),
+      );
       setUnread(
         (prior) =>
           new Set([
@@ -319,6 +323,7 @@ export function useHost(
           ["activated", "deactivated", "metadata"].includes(event.kind) &&
           event.metadata
         ) {
+          knownSessions.set(id, event.metadata!);
           setCatalogue((prior) => ({
             ...prior,
             sessions: [
@@ -335,11 +340,13 @@ export function useHost(
               pending: event.kind === "metadata" ? current.pending : null,
             };
         }
-        if (event.kind === "deleted") forget(id);
+        if (event.kind === "deleted") {
+          knownSessions.delete(id);
+          forget(id);
+        }
         if (event.kind === "state") {
           const metadata = {
-            ...(current?.metadata ||
-              list.sessions.find((item) => item.id === id)),
+            ...(current?.metadata || knownSessions.get(id)),
             id,
             generation: event.generation,
             presence: "web" as const,

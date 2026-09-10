@@ -87,8 +87,8 @@ export const test = base.extend({
       origins: [],
     });
   },
-  session: async ({ host, request }, use) => {
-    const command = async (kind, fields = {}) => {
+  command: async ({ host, request }, use) => {
+    await use(async (kind, fields = {}) => {
       const response = await request.post("/api/command", {
         headers: { Origin: host.origin },
         data: {
@@ -100,7 +100,9 @@ export const test = base.extend({
       });
       expect(response.ok(), await response.text()).toBe(true);
       return response.json();
-    };
+    });
+  },
+  session: async ({ host, request, command }, use) => {
     let { session } = await command("create", { cwd: host.project });
     ({ session } = await command("activate", { session_id: session.id }));
     await expect

@@ -488,7 +488,13 @@ export function useHost(
       stream.current = undefined;
       setOnline(false);
     };
-    const hash = () => setSelected(selectedFromURL());
+    let navigation: ReturnType<typeof setTimeout> | undefined;
+    const hash = () => {
+      clearTimeout(navigation);
+      // History traversal restores browser state after popstate. Mount the
+      // selected transcript only once that traversal has finished.
+      navigation = setTimeout(() => setSelected(selectedFromURL()), 0);
+    };
     addEventListener("online", refresh);
     addEventListener("offline", offline);
     addEventListener("pageshow", recover);
@@ -508,6 +514,7 @@ export function useHost(
       lifetime.current.abort();
       stream.current?.close();
       clearTimeout(timer);
+      clearTimeout(navigation);
       removeEventListener("online", refresh);
       removeEventListener("offline", offline);
       removeEventListener("pageshow", recover);

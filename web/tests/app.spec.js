@@ -48,6 +48,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.getByRole("button", { name: "Send guidance", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Model and effort" }),
+  ).toHaveCount(0);
   await expect(model).toHaveText("mock/model-a:floor:high");
   await model.click();
   await page
@@ -55,6 +58,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .selectOption({ label: "mock/model-b" });
   await page.getByLabel("Effort", { exact: true }).selectOption("high");
   await page.getByLabel("Variant", { exact: true }).selectOption("floor");
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
+    "mock/model-b",
+  );
   await expect(model).toHaveText("mock/model-a:floor:high");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText("mock/model-b:floor:high");

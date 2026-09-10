@@ -44,6 +44,7 @@ import {
 
 import { useHost } from "./use-host.ts";
 import { parseSlash } from "./slash.ts";
+import { selectedFromURL } from "./navigation.ts";
 import { observeResize, trackViewport } from "./layout.ts";
 import "./style.css";
 const sidebarModule = () => import("./sidebar.tsx");
@@ -761,7 +762,11 @@ function App() {
                   ref={transcript}
                   onScroll={(event) => {
                     const element = event.currentTarget;
-                    if (!element.isConnected) return;
+                    if (
+                      !element.isConnected ||
+                      element.dataset.session !== selectedFromURL()
+                    )
+                      return;
                     const restored = restoredScroll.current;
                     if (
                       restored?.element === element &&

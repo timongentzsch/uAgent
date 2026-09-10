@@ -1091,6 +1091,17 @@ test.describe("mobile navigation and commands", () => {
     context,
     host: fixture,
   }, testInfo) => {
+    await page.addInitScript(() => {
+      // Emulate browser scroll restoration after the URL changes but before
+      // the app replaces the departing transcript.
+      addEventListener("popstate", () => {
+        const element = document.querySelector(".transcript");
+        if (element) {
+          element.scrollTop = 0;
+          element.dispatchEvent(new Event("scroll"));
+        }
+      });
+    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();

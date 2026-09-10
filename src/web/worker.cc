@@ -374,7 +374,8 @@ class WorkerChannel final : public ApplicationChannel {
       return true;
     } else if (kind == "model" || kind == "activity" || kind == "config" ||
                kind == "context" || kind == "fork" || kind == "prompt") {
-      if (busy_ || input_) {
+      // Reuse the one-slot queue while a preceding non-turn control finishes.
+      if (turn_active_ || input_) {
         error = "this control requires an idle session";
       } else {
         input_ = ApplicationInput{.request_id = request, .control = command};

@@ -128,6 +128,7 @@ function App() {
   );
   const transcript = useRef<HTMLDivElement>(null);
   const scrollPositions = useRef(new Map<string, number>());
+  const restoredScroll = useRef<{ element: HTMLElement; top: number }>();
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
   const session =
@@ -170,20 +171,20 @@ function App() {
         ),
       );
   }, [sizes]);
-  useLayoutEffect(() => {
+  const restoreScroll = useCallback(() => {
     const element = transcript.current;
-    if (element)
-      element.scrollTop = following
-        ? element.scrollHeight
-        : scrollPositions.current.get(selected) || 0;
-  }, [selected, blocks, following]);
+    if (!element) return;
+    element.scrollTop = following
+      ? element.scrollHeight
+      : scrollPositions.current.get(selected) || 0;
+    // A clamped restoration is not a user scroll or a request to follow output.
+    restoredScroll.current = { element, top: element.scrollTop };
+  }, [selected, following]);
+  useLayoutEffect(restoreScroll, [restoreScroll, blocks]);
   useEffect(() => {
     const element = transcript.current;
-    if (element && following)
-      return observeResize(() => {
-        element.scrollTop = element.scrollHeight;
-      }, element);
-  }, [session?.id, page, following]);
+    if (element) return observeResize(restoreScroll, element);
+  }, [restoreScroll, session?.id, page]);
   useEffect(() => {
     const media = matchMedia("(max-width: 900px)");
     const changed = () => {
@@ -559,8 +560,10 @@ function App() {
     });
     if (!applied) return;
     requestAnimationFrame(() => {
-      if (element.dataset.session === id)
+      if (element.isConnected && element.dataset.session === id) {
         element.scrollTop += element.scrollHeight - height;
+        scrollPositions.current.set(id, element.scrollTop);
+      }
     });
   }
   async function logout() {
@@ -752,12 +755,19 @@ function App() {
               <>
                 <div
                   class="transcript"
+                  key={selected}
                   data-session={selected}
                   aria-busy={(!snapshot && !loadErrors[selected]) || undefined}
                   ref={transcript}
-                  onScroll={() => {
-                    const element = transcript.current;
-                    if (!element) return;
+                  onScroll={(event) => {
+                    const element = event.currentTarget;
+                    if (!element.isConnected) return;
+                    const restored = restoredScroll.current;
+                    if (
+                      restored?.element === element &&
+                      restored.top === element.scrollTop
+                    )
+                      return;
                     scrollPositions.current.set(selected, element.scrollTop);
                     if (scrollPositions.current.size > 64)
                       scrollPositions.current.delete(
@@ -817,9 +827,8 @@ function App() {
                   {snapshot && (
                     <Deferred
                       load={messages}
-                      key={selected}
                       blocks={blocks}
-                      following={following}
+                      restoreScroll={restoreScroll}
                       session={session}
                       report={report}
                       inspect={inspect}

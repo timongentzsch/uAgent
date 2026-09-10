@@ -285,6 +285,8 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .getByRole("combobox", { name: "Model", exact: true })
     .selectOption({ label: "mock/model-b" });
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(model).toContainText("mock/model-b");
   await prompt.fill("Compact layout proof");
   await prompt.evaluate((element) =>
     element.setSelectionRange(element.value.length, element.value.length),
@@ -313,9 +315,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.evaluate(() =>
     Object.defineProperty(navigator, "clipboard", { value: undefined }),
   );
-  await reply.getByRole("button", { name: "Copy", exact: true }).click();
+  const code = reply.locator(".code-block");
+  const copy = code.getByRole("button", { name: "Copy code", exact: true });
+  await expect(copy).toHaveCount(1);
+  await copy.focus();
+  await expect(code.locator(".code-copy")).toHaveCSS("opacity", "1");
+  await copy.press("Enter");
   await expect(
-    reply.getByRole("button", { name: "Copied", exact: true }),
+    reply.getByRole("button", { name: "Copied!", exact: true }),
   ).toBeVisible();
   const thinking = reply.locator(".thinking");
   await thinking.locator("summary").click();
@@ -430,9 +437,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await raw.getByRole("tabpanel").evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  await expect(
-    raw.getByRole("button", { name: "Copy raw body", exact: true }),
-  ).toBeVisible();
+  await expect(raw.getByRole("button", { name: /Copy/ })).toHaveCount(0);
   const downloadEvent = page.waitForEvent("download");
   await raw.getByRole("button", { name: "Download", exact: true }).click();
   const downloaded = await downloadEvent;
@@ -1244,6 +1249,23 @@ test.describe("mobile navigation and commands", () => {
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
     await expect(page.locator(".status")).toHaveText("idle");
+    await expect(
+      page.getByText("[image: blocked]", { exact: true }),
+    ).toBeVisible();
+    if (testInfo.project.name === "chromium")
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const code = page.locator(".code-block");
+    const copy = code.getByRole("button", { name: "Copy code", exact: true });
+    await expect(code.locator(".code-copy")).toHaveCSS("opacity", "1");
+    const copyBox = await copy.boundingBox();
+    expect(Math.min(copyBox.width, copyBox.height)).toBeGreaterThanOrEqual(44);
+    await copy.tap();
+    await expect(
+      code.getByRole("button", { name: "Copied!", exact: true }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: `test-results/${testInfo.project.name}-code-copy-phone.png`,
+    });
     await expect
       .poll(() =>
         page

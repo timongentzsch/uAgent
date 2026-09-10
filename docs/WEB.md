@@ -88,7 +88,7 @@ before SSE/JSON parsing. Each retry retains its own status, timestamp and header
 Bodies are streamed into private files; only bounded metadata enters app events.
 Headers containing credentials and URL query strings are redacted. Body contents
 remain verbatim and can contain sensitive conversation material. The viewer loads
-16 KiB pages on demand and offers original-body copy/download. **Readable**
+16 KiB pages on demand and offers original-body download. **Readable**
 indents JSON and decodes text values: newlines become line breaks, quote escapes
 become quotes, and nested JSON strings such as tool arguments are expanded up to
 four levels. This is a readable text projection, not a JSON serialization.
@@ -217,9 +217,13 @@ available for an idle active conversation. Runtime-backed options reload at the
 next user turn; restart-only and shadowed changes say so. `/config` lists the same
 schema; `/config user KEY=VALUE` and `/config project unset KEY` edit it.
 
-Each message has a local timestamp (full date on hover), quick copy and a
-statistics menu. Expanded thinking uses the theme's muted grey, including its
-Markdown and code, in both light and dark appearances. Assistant facts preserve the actual route, reported token/cache
+Each message has a local timestamp (full date on hover) and a statistics menu.
+Copy controls appear only on Markdown code blocks: top-right on hover or keyboard
+focus, always visible with a 44px target on touch screens. They copy the code
+without Markdown fences or highlighting markup, with brief success feedback.
+The same renderer handles conversations and library previews. Expanded thinking
+uses the theme's muted grey, including its Markdown and code, in both light and
+dark appearances. Assistant facts preserve the actual route, reported token/cache
 usage, request duration, TTFT and request-average throughput. Tool results show
 the tool, call ID, status and duration. Missing legacy facts stay unrecorded.
 

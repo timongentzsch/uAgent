@@ -18,6 +18,12 @@ markdown.renderer.rules.link_open = (
   tokens[index].attrSet("target", "_blank");
   return renderer.renderToken(tokens, index, options);
 };
+// Keep copy controls outside the scrollable code and never attach them to prose.
+for (const rule of ["fence", "code_block"]) {
+  const render = markdown.renderer.rules[rule]!;
+  markdown.renderer.rules[rule] = (...args) =>
+    `<div class="code-block">${render(...args)}<span class="code-copy"></span></div>`;
+}
 let math: Promise<void> | undefined;
 let highlighting: Promise<void> | undefined;
 export async function renderMarkdown(text: string) {

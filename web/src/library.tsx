@@ -79,7 +79,8 @@ export default function Library({
     setNewScope(saved?.scope || "project");
     setEditing(!!saved);
   }, [kind, cwd]);
-  useEffect(() => {
+  // Persist before navigation can unmount the editor ahead of the next paint.
+  useLayoutEffect(() => {
     if (!item || !dirty) return;
     const key = `${storage}-${item.key || "new"}`;
     writeStored(sessionStorage, key, { item, content, name, scope: newScope });

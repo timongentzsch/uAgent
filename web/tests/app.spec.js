@@ -112,12 +112,18 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Close http request/response", exact: true })
     .click();
-  await reply.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect(reply.locator("header button[aria-label^='Copy']")).toHaveCount(
+    0,
+  );
+  const code = reply.locator(".code-block");
+  await expect(code).toHaveCount(1);
+  await code.hover();
+  await code.getByRole("button", { name: "Copy code", exact: true }).click();
   await expect(
-    reply.getByRole("button", { name: "Copied", exact: true }),
+    reply.getByRole("button", { name: "Copied!", exact: true }),
   ).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(
-    "# Verified response",
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "print('hello')\n",
   );
   await expect(reply.locator("time")).toHaveAttribute("datetime", /T/);
   await reply.getByLabel("Message menu", { exact: true }).click();
@@ -207,9 +213,9 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.getByRole("dialog")).toContainText("approved from browser");
   await page.getByRole("tab", { name: "Response", exact: true }).click();
   await expect(page.getByRole("dialog").locator("pre")).not.toHaveText("");
-  await page
-    .getByRole("button", { name: "Copy raw body", exact: true })
-    .click();
+  await expect(
+    page.getByRole("dialog").getByRole("button", { name: /Copy/ }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Close tool input/output", exact: true })
     .click();

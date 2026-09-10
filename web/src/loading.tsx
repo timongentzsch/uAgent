@@ -94,7 +94,6 @@ export function RawSkeleton({ http = false }: { http?: boolean }) {
           <button disabled>Readable</button>
           <button disabled>Source</button>
         </div>
-        <button disabled>Copy raw body</button>
         <button disabled>Download</button>
       </footer>
     </div>

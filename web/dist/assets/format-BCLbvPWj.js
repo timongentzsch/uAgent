@@ -1,0 +1,3 @@
+function e(t,n=!1,r=0){JSON.parse(t);let i=t.match(/"(?:\\.|[^"\\])*"|[^\s{}\[\],:]+|[{}\[\],:]/g)||[],a=[],o=0,s=()=>a.push(`
+`,`  `.repeat(o));return i.forEach((t,c)=>{if(t===`{`||t===`[`)a.push(t),o++,i[c+1]!==(t===`{`?`}`:`]`)&&s();else if(t===`}`||t===`]`)o--,i[c-1]!==(t===`}`?`{`:`[`)&&s(),a.push(t);else if(t===`,`)a.push(t),s();else if(n&&t.startsWith(`"`)&&i[c+1]!==`:`){let n=JSON.parse(t);if(r<4&&/^[\s]*[\[{]/.test(n))try{n=e(n,!0,r+1)}catch{}n=n.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,e=>JSON.stringify(e).slice(1,-1)),a.push(`"`,n.replace(/\r\n|\r|\n/g,`
+`+`  `.repeat(o)),`"`)}else a.push(t===`:`?`: `:t)}),a.join(``)}function t(t=``,n=!1){try{return e(t,n)}catch{return t}}export{t};

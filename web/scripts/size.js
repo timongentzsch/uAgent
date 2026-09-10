@@ -1,10 +1,12 @@
 import { readFile, readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 
 const root = new URL("../dist/", import.meta.url);
 const html = await readFile(new URL("index.html", root), "utf8");
 const entry = new Set(
-  [...html.matchAll(/(?:src|href)="(\/assets\/[^\"]+)"/g)].map((match) =>
+  [...html.matchAll(/(?:src|href)="(\/[^\"]+\.(?:js|css))"/g)].map((match) =>
     match[1].slice(1),
   ),
 );
@@ -19,7 +21,7 @@ for (const path of await readdir(root, {
   withFileTypes: true,
 })) {
   if (!path.isFile()) continue;
-  const url = new URL(`${path.parentPath}/${path.name}`, "file:");
+  const url = pathToFileURL(join(path.parentPath, path.name));
   const name = url.href.slice(root.href.length);
   const bytes = await readFile(url);
   const size = { raw: bytes.length, gzip: gzipSync(bytes).length };

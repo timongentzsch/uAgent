@@ -164,6 +164,16 @@ Only width changes switch sidebar layouts. Scrollable content stays inside its
 surface; pinch zoom does not trigger a second layout shrink. Bottom padding
 accounts for [Safari retaining the safe-area inset above the keyboard](https://bugs.webkit.org/show_bug.cgi?id=217754).
 
+The body, fixed app shell and header paint the active background explicitly.
+Header padding and drawer placement respect the top safe-area inset; modal
+backdrops leave that strip opaque. A small blocking `theme.js` applies the saved
+or system theme before the main bundle loads, without inline-script CSP exceptions.
+It is served with revalidation and included in the service worker's precache and
+initial JavaScript budget. This follows [WebKit's safe-area guidance](https://webkit.org/blog/7929/designing-websites-for-iphone-x/)
+and [viewport-edge colour sampling explanation](https://bugs.webkit.org/show_bug.cgi?id=301756#c2).
+These layout measures still need physical-iPhone validation: browser emulation
+does not reproduce native status-bar tinting or launch blur.
+
 Touch text fields retain a 16 px minimum even at reduced display/text settings.
 The compact composer fits one toolbar row at ordinary phone sizes and wraps only
 when its controls need more room. Primary touch controls remain 44 px; message

@@ -1,6 +1,82 @@
 import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
+test("mobile chrome keeps an opaque safe area and applies the theme before app startup", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.addInitScript(() => localStorage.setItem("uagent-theme", "light"));
+  let release;
+  const startup = new Promise((resolve) => (release = resolve));
+  await page.route("**/assets/index-*.js", async (route) => {
+    await startup;
+    await route.continue();
+  });
+  try {
+    await page.goto("/", { waitUntil: "commit" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("body")).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+    await expect(page.locator("#app")).toBeEmpty();
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      "content",
+      "#ffffff",
+    );
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByRole("heading", { name: "Your workspace" }),
+  ).toBeVisible();
+  // Desktop WebKit does not expose an iPhone's system inset or status-bar paint.
+  // Exercise our safe-area layout independently of that native rendering.
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty("--safe-top", "47px"),
+  );
+  for (const selector of ["body", "#app", ".conversation-head"])
+    await expect(page.locator(selector)).toHaveCSS(
+      "background-color",
+      "rgb(255, 255, 255)",
+    );
+  await expect(page.locator(".conversation-head")).toHaveCSS(
+    "padding-top",
+    "47px",
+  );
+  for (let i = 0; i < 2; i++) {
+    await page
+      .getByRole("button", { name: "Open sessions", exact: true })
+      .click();
+    const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
+    await expect(drawer).toBeVisible();
+    expect((await drawer.boundingBox()).y).toBe(47);
+    expect(
+      await drawer.evaluate((element) => {
+        const style = getComputedStyle(element, "::backdrop");
+        return [style.borderTopWidth, style.borderTopColor];
+      }),
+    ).toEqual(["47px", "rgb(255, 255, 255)"]);
+    await drawer
+      .getByRole("button", { name: "Close sessions", exact: true })
+      .click();
+    await expect(drawer).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
+  await expect(page.locator("#app")).toHaveCSS(
+    "background-color",
+    "rgb(0, 0, 0)",
+  );
+  expect(
+    await settings.evaluate(
+      (element) => getComputedStyle(element, "::backdrop").borderTopColor,
+    ),
+  ).toBe("rgb(0, 0, 0)");
+});
+
 test("system prompt editing shares revisions, replacement and request previews", async ({
   page,
   host: fixture,

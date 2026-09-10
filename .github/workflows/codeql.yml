@@ -7,6 +7,10 @@ on:
   schedule:
     - cron: "17 3 * * 1"
 
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions: {}
 
 jobs:
@@ -26,22 +30,32 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - id: changes
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 .github/changes.py
       - name: Initialize CodeQL
+        if: steps.changes.outputs.native == 'true'
         uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: c-cpp
           build-mode: manual
       - name: Install dependencies
+        if: steps.changes.outputs.native == 'true'
         run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure
+        if: steps.changes.outputs.native == 'true'
         run: >-
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=Release
           -DBUILD_TESTING=OFF
           -DUAGENT_WARNINGS_AS_ERRORS=ON
       - name: Build
+        if: steps.changes.outputs.native == 'true'
         run: cmake --build build --parallel 2
       - name: Analyze
+        if: steps.changes.outputs.native == 'true'
         uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: "/language:c-cpp"

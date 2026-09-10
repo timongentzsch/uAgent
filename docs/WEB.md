@@ -539,8 +539,9 @@ CLI growth is 255,008 bytes over the earlier reference, exceeding the original
 inspection capabilities account for additional CLI code.
 
 The 2,000-message browser fixture must open its 64-message window within three
-seconds and retain no more than 256 rendered history blocks. Ten browser tests
+seconds and retain no more than 256 rendered history blocks. Browser tests
 cover Chromium and WebKit, including phone layouts and 200% display / 300% text.
+Each test owns its host, project and pairing state; see [TESTING.md](TESTING.md).
 Performance on a physical phone remains unmeasured.
 
 ```sh

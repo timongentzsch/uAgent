@@ -1,40 +1,20 @@
-import { test, expect } from "@playwright/test";
-import { mkdir, readFile } from "node:fs/promises";
+import { test, expect } from "./fixtures.js";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 test("library drafts, shared controls and scheduled results", async ({
   page,
-  context,
+  host: fixture,
 }, testInfo) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
-  try {
-    await context.addCookies(
-      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-        .cookies,
-    );
-  } catch {
-    /* First test pairs below. */
-  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page
-      .getByLabel("Single-use pairing code")
-      .or(page.getByText("Connected", { exact: true })),
-  ).toBeVisible();
-  if (await page.getByLabel("Single-use pairing code").isVisible()) {
-    await page.getByLabel("Single-use pairing code").fill(fixture.code);
-    await page
-      .getByRole("button", { name: "Connect device", exact: true })
-      .click();
-  }
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   const nav = page.getByRole("complementary");
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.getByLabel("Project", { exact: true }).fill(fixture.project);

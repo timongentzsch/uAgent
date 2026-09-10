@@ -1,17 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
+
+test.use({ paired: false });
 
 test("native host: mobile decisions, safe rendering, offline shell and private caching", async ({
   page,
   context,
-}) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
+  host: fixture,
+  request,
+}, testInfo) => {
   const errors = [];
   const external = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
-    if (!request.url().startsWith("http://127.0.0.1:8765"))
-      external.push(request.url());
+    if (!request.url().startsWith(fixture.origin)) external.push(request.url());
   });
   await page.goto("/");
   await page.getByLabel("Single-use pairing code").fill(fixture.code);
@@ -19,7 +21,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .getByRole("button", { name: "Connect device", exact: true })
     .click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   await page
     .getByRole("complementary", { name: "Projects and sessions" })
     .getByRole("button", { name: "New conversation", exact: true })
@@ -168,7 +170,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(page.locator(".markdown")).toContainText(["Prices $5 and $10."]);
   expect(await page.locator('a[href^="javascript:"]').count()).toBe(0);
   expect(await page.locator('img[src^="https:"]').count()).toBe(0);
-  await page.screenshot({ path: "test-results/desktop.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("desktop.png"),
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole("button", { name: "Open sessions", exact: true })
@@ -219,7 +224,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Close tool input/output", exact: true })
     .click();
-  await page.screenshot({ path: "test-results/mobile.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("mobile.png"),
+    fullPage: true,
+  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -379,7 +387,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     ),
   ).toBe(true);
   await page.screenshot({
-    path: "test-results/light-landscape.png",
+    path: testInfo.outputPath("light-landscape.png"),
     fullPage: true,
   });
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -417,7 +425,21 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     "UI refactor proof",
   );
   await context.setOffline(true);
-  await page.waitForTimeout(1200); // Mock provider completes while SSE is disconnected.
+  await expect
+    .poll(async () => {
+      const response = await request.get(
+        `/api/sessions/${secondHash.split("=")[1]}`,
+        {
+          headers: {
+            Cookie: (await context.cookies())
+              .map(({ name, value }) => `${name}=${value}`)
+              .join("; "),
+          },
+        },
+      );
+      return (await response.json()).metadata.status;
+    })
+    .toBe("idle");
   await context.setOffline(false);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Unread messages", { exact: true })).toHaveCount(
@@ -562,7 +584,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   const openMs = Date.now() - started;
   expect(openMs).toBeLessThan(3000);
   await writeFile(
-    "test-results/history-metrics.json",
+    testInfo.outputPath("history-metrics.json"),
     JSON.stringify({ messages: 2000, visible: 64, open_ms: openMs }),
   );
   // Resolve two reads of the same older page in reverse order. It is merged once.

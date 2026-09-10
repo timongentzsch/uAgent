@@ -1,33 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
 test("system prompt editing shares revisions, replacement and request previews", async ({
   page,
-  context,
+  host: fixture,
 }, testInfo) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
-  try {
-    await context.addCookies(
-      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-        .cookies,
-    );
-  } catch {
-    /* first device */
-  }
   await page.goto("/");
-  await expect(
-    page
-      .getByText("Connected", { exact: true })
-      .or(page.getByLabel("Single-use pairing code")),
-  ).toBeVisible();
-  if (await page.getByLabel("Single-use pairing code").isVisible()) {
-    await page.getByLabel("Single-use pairing code").fill(fixture.code);
-    await page
-      .getByRole("button", { name: "Connect device", exact: true })
-      .click();
-  }
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   await page
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
@@ -77,7 +57,7 @@ test("system prompt editing shares revisions, replacement and request previews",
   await dialog.getByRole("button", { name: "Discard edit" }).click();
   await page.setViewportSize({ width: 390, height: 600 });
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-prompt-phone.png`,
+    path: testInfo.outputPath(`prompt-phone.png`),
   });
   expect(
     await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
@@ -108,38 +88,18 @@ test("system prompt editing shares revisions, replacement and request previews",
 
 test("compact surfaces stay anchored, accessible and usable while loading", async ({
   page,
-  context,
+  host: fixture,
 }, testInfo) => {
-  const fixture = JSON.parse(await readFile("test-results/host.json", "utf8"));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // A valid empty worker keeps cold lazy-module tests independent of precaching.
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
   );
-  try {
-    await context.addCookies(
-      JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-        .cookies,
-    );
-  } catch {
-    /* First test may pair directly. */
-  }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
-  await expect(
-    page
-      .getByText("Connected", { exact: true })
-      .or(page.getByLabel("Single-use pairing code")),
-  ).toBeVisible();
-  if (await page.getByLabel("Single-use pairing code").isVisible()) {
-    await page.getByLabel("Single-use pairing code").fill(fixture.code);
-    await page
-      .getByRole("button", { name: "Connect device", exact: true })
-      .click();
-  }
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-  await context.storageState({ path: "test-results/device-state.json" });
+
   await page
     .getByRole("complementary")
     .getByRole("button", { name: "New conversation", exact: true })
@@ -203,7 +163,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       ).toHaveCount(0);
     }
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-${name}.png`,
+      path: testInfo.outputPath(`${name}.png`),
     });
   };
   await measure("desktop-compact");
@@ -224,7 +184,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(Math.abs(anchor.x - panel.x)).toBeLessThan(2);
   expect(Math.abs(anchor.y - panel.y - panel.height - 8)).toBeLessThan(2);
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-model.png`,
+    path: testInfo.outputPath(`model.png`),
   });
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
@@ -257,14 +217,14 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     settings.getByRole("button", { name: "Close settings" }),
   ).toBeFocused();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings-loading.png`,
+    path: testInfo.outputPath(`settings-loading.png`),
   });
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
   await expect(settings.getByLabel("Default permissions")).toBeVisible();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings.png`,
+    path: testInfo.outputPath(`settings.png`),
   });
   expect(
     Math.abs((await settings.boundingBox()).height - settingsLoadingBox.height),
@@ -338,7 +298,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     await reply.evaluate((element) => getComputedStyle(element).color),
   );
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-thinking-grey.png`,
+    path: testInfo.outputPath(`thinking-grey.png`),
   });
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
@@ -354,7 +314,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     await reply.evaluate((element) => getComputedStyle(element).color),
   );
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-thinking-grey-dark.png`,
+    path: testInfo.outputPath(`thinking-grey-dark.png`),
   });
   await page.emulateMedia({ colorScheme: "light" });
 
@@ -391,7 +351,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBeDisabled();
   const rawLoadingBox = await raw.boundingBox();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-raw-loading.png`,
+    path: testInfo.outputPath(`raw-loading.png`),
   });
   releaseRaw();
   await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
@@ -419,7 +379,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     sourceRequest,
   );
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-readable-request.png`,
+    path: testInfo.outputPath(`readable-request.png`),
   });
 
   await raw.getByRole("tab", { name: "Response", exact: true }).click();
@@ -432,7 +392,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(raw.locator(".raw-body > pre")).toContainText("data: [DONE]");
   await raw.getByRole("button", { name: "Events", exact: true }).click();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-raw.png`,
+    path: testInfo.outputPath(`raw.png`),
   });
   await raw.getByRole("tabpanel").evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -469,7 +429,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await settings.getByLabel("Display size", { exact: true }).fill("200");
   await settings.getByLabel("Text size", { exact: true }).fill("300");
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-settings-scaled.png`,
+    path: testInfo.outputPath(`settings-scaled.png`),
   });
   expect(
     await page.evaluate(
@@ -506,7 +466,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(shortPanel.y).toBeGreaterThanOrEqual(0);
   expect(shortPanel.y + shortPanel.height).toBeLessThanOrEqual(390);
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-landscape-picker.png`,
+    path: testInfo.outputPath(`landscape-picker.png`),
   });
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 450 });
@@ -536,7 +496,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toHaveCount(0);
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-history-loading.png`,
+    path: testInfo.outputPath(`history-loading.png`),
   });
   releaseHistory();
   await expect(page.locator(".transcript").getByRole("alert")).toHaveText(
@@ -549,7 +509,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     .click();
   await expect(page.locator(".message")).toHaveCount(2);
   await writeFile(
-    `test-results/${testInfo.project.name}-layout.json`,
+    testInfo.outputPath(`layout.json`),
     JSON.stringify(metrics, null, 2),
   );
   expect(errors).toEqual([]);
@@ -557,24 +517,18 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
 
 test("touch controls remain reachable at phone width", async ({
   browser,
+  host: fixture,
+  storageState,
+  session,
 }, testInfo) => {
-  const state = JSON.parse(
-    await readFile("test-results/device-state.json", "utf8"),
-  );
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
-    storageState: state,
+    storageState,
   });
   const page = await context.newPage();
   try {
-    const catalogue = await (
-      await context.request.get("http://127.0.0.1:8765/api/sessions")
-    ).json();
-    const session = catalogue.sessions.find(
-      (item) => item.generation && !item.turn_active,
-    );
-    await page.goto(`http://127.0.0.1:8765/#session=${session.id}`);
+    await page.goto(`${fixture.origin}/#session=${session.id}`);
     await expect(page.getByLabel("Message or guidance")).toBeVisible();
     expect(
       await page.evaluate(() => matchMedia("(pointer: coarse)").matches),
@@ -599,7 +553,7 @@ test("touch controls remain reachable at phone width", async ({
     const box = await picker.boundingBox();
     expect(box.x + box.width).toBeLessThanOrEqual(390);
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-touch-picker.png`,
+      path: testInfo.outputPath(`touch-picker.png`),
     });
     await picker.getByRole("button", { name: "Cancel", exact: true }).tap();
     await page.getByRole("button", { name: "Settings", exact: true }).tap();
@@ -609,7 +563,7 @@ test("touch controls remain reachable at phone width", async ({
       .tap();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-touch-dark.png`,
+      path: testInfo.outputPath(`touch-dark.png`),
     });
   } finally {
     await context.close();
@@ -619,17 +573,11 @@ test("touch controls remain reachable at phone width", async ({
 test("polished skeletons, whole-row hover and folded tool output", async ({
   page,
   context,
+  session,
+  host: fixture,
 }, testInfo) => {
-  await context.addCookies(
-    JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-      .cookies,
-  );
   await page.route("**/sw.js", (route) =>
     route.fulfill({ contentType: "text/javascript", body: "" }),
-  );
-  const catalogue = await (await context.request.get("/api/sessions")).json();
-  const session = catalogue.sessions.find(
-    (item) => item.presence === "web" && !item.turn_active,
   );
   const snapshot = await (
     await context.request.get(`/api/sessions/${session.id}`)
@@ -720,7 +668,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   );
   expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-sidebar-hover.png`,
+    path: testInfo.outputPath(`sidebar-hover.png`),
   });
   await tool.locator(".tool-toggle").click();
   await expect(tool.getByRole("status")).toContainText(
@@ -728,7 +676,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   );
   await expect(tool.locator(".loading-label")).toBeVisible();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-tool-loading.png`,
+    path: testInfo.outputPath(`tool-loading.png`),
   });
   releaseOutput();
   await expect(tool.getByRole("alert")).toHaveText(
@@ -743,7 +691,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-tool-expanded.png`,
+    path: testInfo.outputPath(`tool-expanded.png`),
   });
   await page
     .getByRole("button", { name: "Model and effort", exact: true })
@@ -759,7 +707,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   ).toBeDisabled();
   const loadingBox = await picker.boundingBox();
   await page.screenshot({
-    path: `test-results/${testInfo.project.name}-model-loading.png`,
+    path: testInfo.outputPath(`model-loading.png`),
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const theme of ["light", "dark"]) {
@@ -775,7 +723,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     ).toBe("none");
     await expect(picker).toContainText("loading…");
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-model-loading-${theme}-phone.png`,
+      path: testInfo.outputPath(`model-loading-${theme}-phone.png`),
     });
   }
   await page.evaluate(() => {
@@ -951,12 +899,15 @@ test("late snapshots and retired streams cannot replace current session state", 
 
 test("keyboard viewport preserves focus and contains chat, dialogs and editors", async ({
   browser,
+  host: fixture,
+  storageState,
+  session,
 }, testInfo) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
-    storageState: "test-results/device-state.json",
+    storageState,
   });
   const page = await context.newPage(),
     errors = [];
@@ -1014,13 +965,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await contained(locator, 390, 70);
   };
   try {
-    const catalogue = await (
-      await context.request.get("http://127.0.0.1:8765/api/sessions")
-    ).json();
-    const session = catalogue.sessions.find(
-      (s) => s.generation && !s.turn_active && !s.pending,
-    );
-    await page.goto(`http://127.0.0.1:8765/#session=${session.id}`);
+    await page.goto(`${fixture.origin}/#session=${session.id}`);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
@@ -1081,7 +1026,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await input(settings.getByLabel("Find a setting"), "web");
     await contained(settings, 390, 70);
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-settings.png`,
+      path: testInfo.outputPath(`keyboard-settings.png`),
     });
     await settings.getByRole("button", { name: "← Back", exact: true }).tap();
     await settings
@@ -1106,7 +1051,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       "Editable above the keyboard.",
     );
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-memory.png`,
+      path: testInfo.outputPath(`keyboard-memory.png`),
     });
     await viewport(844);
     await page
@@ -1119,7 +1064,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       "Do not schedule this draft.",
     );
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-keyboard-schedule.png`,
+      path: testInfo.outputPath(`keyboard-schedule.png`),
     });
     await viewport(844);
     await input(page.getByLabel("Timezone", { exact: true }), "UTC");
@@ -1135,28 +1080,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
   }
 });
 
-async function closeIdleWorkers(page) {
-  // This hermetic host is shared across browser projects. Release idle slots
-  // around the multi-session test without changing the production limit.
-  const catalogue = await (await page.request.get("/api/sessions")).json();
-  for (const session of catalogue.sessions) {
-    if (!session.generation || session.turn_active || session.pending) continue;
-    const response = await page.request.post("/api/command", {
-      headers: { Origin: "http://127.0.0.1:8765" },
-      data: {
-        v: 1,
-        kind: "close",
-        request_id: crypto.randomUUID().replaceAll("-", ""),
-        session_id: session.id,
-        generation: session.generation,
-      },
-    });
-    expect(response.ok(), await response.text()).toBe(true);
-  }
-}
-
 test.describe("mobile navigation and commands", () => {
-  test.afterEach(async ({ page }) => closeIdleWorkers(page));
   test.use({
     isMobile: true,
     hasTouch: true,
@@ -1165,34 +1089,15 @@ test.describe("mobile navigation and commands", () => {
   test("conversation navigation preserves the document and drafts; slash commands complete without sending", async ({
     page,
     context,
+    host: fixture,
   }, testInfo) => {
-    const fixture = JSON.parse(
-      await readFile("test-results/host.json", "utf8"),
-    );
-    try {
-      await context.addCookies(
-        JSON.parse(await readFile("test-results/device-state.json", "utf8"))
-          .cookies,
-      );
-    } catch {}
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
-    await expect(
-      page
-        .getByText("Connected", { exact: true })
-        .or(page.getByLabel("Single-use pairing code")),
-    ).toBeVisible();
-    if (await page.getByLabel("Single-use pairing code").isVisible()) {
-      await page.getByLabel("Single-use pairing code").fill(fixture.code);
-      await page
-        .getByRole("button", { name: "Connect device", exact: true })
-        .click();
-    }
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
-    await context.storageState({ path: "test-results/device-state.json" });
+
     const call = async (kind, session, extra = {}) => {
       const response = await page.request.post("/api/command", {
-        headers: { Origin: "http://127.0.0.1:8765" },
+        headers: { Origin: fixture.origin },
         data: {
           v: 1,
           request_id: crypto.randomUUID().replaceAll("-", ""),
@@ -1207,7 +1112,6 @@ test.describe("mobile navigation and commands", () => {
       expect(response.ok(), JSON.stringify(result)).toBe(true);
       return result;
     };
-    await closeIdleWorkers(page);
     const make = async (title) => {
       const { session } = await call("create", null, { cwd: fixture.project });
       await call("rename", session, { title });
@@ -1264,7 +1168,7 @@ test.describe("mobile navigation and commands", () => {
       code.getByRole("button", { name: "Copied!", exact: true }),
     ).toBeVisible();
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-code-copy-phone.png`,
+      path: testInfo.outputPath(`code-copy-phone.png`),
     });
     await expect
       .poll(() =>
@@ -1284,8 +1188,15 @@ test.describe("mobile navigation and commands", () => {
     await choose(secondTitle);
     await expect(prompt).toBeVisible();
     await prompt.fill("Draft B");
+    const retiredTranscript = await page.locator(".transcript").elementHandle();
     await choose(firstTitle);
     await expect(prompt).toHaveValue("Draft A");
+    // A queued scroll from the previous surface cannot rewrite this session.
+    await retiredTranscript.evaluate((element) => {
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+    });
+    await retiredTranscript.dispose();
     await expect
       .poll(() =>
         page
@@ -1385,7 +1296,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
     await page.screenshot({
-      path: `test-results/${testInfo.project.name}-slash-phone.png`,
+      path: testInfo.outputPath(`slash-phone.png`),
     });
   });
 });

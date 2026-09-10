@@ -175,12 +175,32 @@ python3 benchmarks/audit.py build/debug/uagent --profile --host --history ~/.uag
 The check uses a fresh HOME, validated request telemetry and explicit source
 contracts. Missing telemetry or a baseline is an error. Personal profile,
 history and build observations are opt-in reports and cannot affect the gate.
-Ruff runs once in CI over tests, benchmarks and shipped skill scripts. Regex
+Ruff runs once in CI over workflow helpers, tests, benchmarks and shipped skill scripts. Regex
 reachability, prose/style and clone-count gates have been removed; compiler
 warnings, clang-tidy, package/discovery and generated-reference checks remain.
 Python/source-only tests carry the `source` CTest label and run in one CI job;
 `ctest --preset debug` still runs the complete local suite. Native and sandbox
 controller tests retain the platform matrix. Both runners report case times.
+
+Browser tests use a test-scoped [Playwright fixture](https://playwright.dev/docs/test-fixtures):
+each owns its native host, temporary HOME and project, mock provider, pairing cookie
+and output directory. No test depends on a preceding test's conversation or login.
+They wait for visible state or an API condition, not a fixed delay. This follows
+[Playwright's isolation and assertion guidance](https://playwright.dev/docs/best-practices).
+Failure traces and native host logs are retained; retries are disabled. CI uses
+two browser workers and two concurrent native test groups to bound contention.
+Delays that deliberately simulate a stalled provider or timeout remain part of
+those tests. Mock GET and POST callback failures both fail the owning test.
+
+PR job selection lives in `.github/changes.py`: frontend-only changes run web and
+source checks; documentation-only changes run source checks. Native, shared,
+workflow and unknown paths run every suite. Main, tags and scheduled CodeQL runs
+always use full coverage. The CLI-only build remains in the native Release matrix.
+The always-run `CI result` job fails on any failed or cancelled dependency; it is
+the stable check to require in branch protection. Job conditions avoid the
+[pending checks caused by skipping whole workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onpushpull_requestpull_request_targetpathspaths-ignore).
+Superseded CI and CodeQL runs are cancelled. This reduces unrelated work; it does
+not suppress a failing test or replace platform and sanitizer coverage.
 
 Self-improvement is measured separately and does not use overlays:
 `tests/self_improve_controller_test.py` (CTest `self_improve_controller`) drives

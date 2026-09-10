@@ -15,6 +15,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/session_store.h"
+#include "include/agent/session_view.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
@@ -145,10 +147,15 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes) {
         JsonValue(state, "cwd", "") != CanonicalCwd()) {
       continue;
     }
+    if (!processes.Owner().empty() &&
+        JsonValue(state, "owner", "") != processes.Owner()) {
+      continue;
+    }
     std::string id = JsonValue(state, "id", "");
     std::optional<int64_t> activity = ActiveCollaborator(processes, id);
     json row = {{"id", id},
                 {"model", JsonValue(state, "model", "")},
+                {"label", JsonValue(state, "label", "Subagent")},
                 {"mode", JsonValue(state, "mode", "lean")},
                 {"status", activity ? "running" : "idle"}};
     // The handle the activity tool wants, so a caller that sees "running" does
@@ -157,6 +164,31 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes) {
     records.push_back(std::move(row));
   }
   return records;
+}
+
+json InspectCollaborator(const ProcessSupervisor& processes,
+                         const std::string& id, uint64_t before) {
+  json state;
+  std::string error;
+  if (!LoadCollaborator(id, state, error)) return {{"error", error}};
+  if (JsonValue(state, "owner", "") != processes.Owner()) {
+    return {{"error", "collaborator belongs to another conversation"}};
+  }
+  auto loaded = SessionStore::Inspect(CollaboratorSessionPath(id));
+  if (!loaded.record) return {{"agent_id", id}, {"conversation", nullptr}};
+  const auto& record = *loaded.record;
+  Conversation conversation;
+  if (!conversation.Restore(record.state.messages, record.state.message_kinds,
+                            record.state.archive,
+                            record.state.archive_dropped_segments,
+                            record.state.tool_displays, record.state.display)) {
+    return {{"error", "invalid child conversation"}};
+  }
+  return {{"agent_id", id},
+          {"conversation", ConversationView(conversation, before)},
+          {"turns", record.metadata.turns},
+          {"statistics", conversation.Statistics()},
+          {"usage", UsageJson(record.state.usage)}};
 }
 
 namespace {
@@ -361,6 +393,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
               {"format", kCollaboratorFormat},
               {"id", collaborator_id},
               {"cwd", CanonicalCwd()},
+              {"owner", processes.Owner()},
               {"session_file", CollaboratorSessionPath(collaborator_id)},
               {"created_at", UtcStamp()},
               {"directive", JsonValue(arguments, "directive", "")}};
@@ -369,6 +402,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           if (!LoadCollaborator(collaborator_id, collaborator, load_error)) {
             return ToolFailure(ToolErrorCode::kNotFound,
                                "error: " + load_error);
+          }
+          if (!processes.Owner().empty() &&
+              JsonValue(collaborator, "owner", "") != processes.Owner()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "collaborator belongs to another conversation");
           }
         }
 
@@ -519,21 +557,26 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         if (max_seconds > 0) child_context = context.WithTimeout(max_seconds);
         std::string command = ChildAgentCommand(debug, prompt);
-        ShellCommandResult child =
-            RunShellCommand(processes, child_context,
-                            {.command = std::move(command),
-                             .background = background,
-                             .immediate = background,
-                             // Runs uagent itself, which writes ~/.uagent
-                             // state a confined child could not. Its own
-                             // commands inherit UAGENT_SANDBOX and are
-                             // confined one level down.
-                             .sandbox = false,
-                             .job_kind = "subagent",
-                             .activity_label = route_label,
-                             .source_id = collaborator_id,
-                             .completion_notes = clamped,
-                             .environment = std::move(environment)});
+        ShellCommandResult child = RunShellCommand(
+            processes, child_context,
+            {.command = std::move(command),
+             .background = background,
+             .immediate = background,
+             // Runs uagent itself, which writes ~/.uagent
+             // state a confined child could not. Its own
+             // commands inherit UAGENT_SANDBOX and are
+             // confined one level down.
+             .sandbox = false,
+             .job_kind = "subagent",
+             .activity_label = route_label,
+             .source_id = collaborator_id,
+             .completion_notes = clamped,
+             .activity_metadata = {{"label", Utf8Trunc(FirstLine(JsonValue(
+                                                           arguments, "prompt",
+                                                           "Subagent")),
+                                                       160)},
+                                   {"model", route_label}},
+             .environment = std::move(environment)});
         const bool launched = child.launched;
         ToolResult result = std::move(child.result);
         if (child.wait_status && result.artifact) {
@@ -566,6 +609,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["mode"] = JsonValue(
               arguments, "mode", JsonValue(collaborator, "mode", "lean"));
           collaborator["model"] = requested;
+          collaborator["label"] = Utf8Trunc(
+              FirstLine(JsonValue(arguments, "prompt", "Subagent")), 160);
           collaborator["memory"] = child_memory;
           collaborator["updated_at"] = UtcStamp();
           ToolResult saved = SaveCollaborator(collaborator);

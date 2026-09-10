@@ -18,8 +18,14 @@ constexpr std::string_view kPasteEnd = "\x1b[201~";
 }  // namespace
 
 bool ShouldRememberInput(std::string_view input) {
+  size_t first = input.find_first_not_of(" \t\r\n");
+  // Direct configuration edits may contain credentials.
   return input.size() <= kInputHistoryEntryBytes &&
-         input.find_first_not_of(" \t\r\n") != std::string_view::npos;
+         first != std::string_view::npos &&
+         !(input.substr(first).starts_with("/config") &&
+           input.size() > first + 7 &&
+           std::string_view(" \t\r\n").find(input[first + 7]) !=
+               std::string_view::npos);
 }
 
 void TerminalInputDecoder::StartPaste() {

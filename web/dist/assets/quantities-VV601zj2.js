@@ -1,0 +1,1 @@
+function e(e,t,n=``){let r=0;for(;Math.abs(e)>=999.95&&r<t.length-1;)e/=1e3,r++;return`${Number(e.toFixed(1))}${n}${t[r]}`}var t=t=>t!==void 0&&Number.isFinite(t)&&t>=0?e(t,[``,`k`,`M`,`B`,`T`,`P`,`E`]):`Not recorded`,n=t=>Number.isFinite(t)&&t>=0?e(t,[`B`,`kB`,`MB`,`GB`,`TB`,`PB`,`EB`],` `):`Not recorded`;export{t as n,n as t};

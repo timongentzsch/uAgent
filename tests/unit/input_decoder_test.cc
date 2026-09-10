@@ -139,6 +139,8 @@ void TestTerminalInputDecoder() {
   CHECK(kInputHistoryEntryBytes == size_t{16} * 1024);
   CHECK(kInputBufferBytes == size_t{64} * 1024);
   CHECK(ShouldRememberInput(" useful "));
+  CHECK(!ShouldRememberInput(" /config user UAGENT_API_KEY=private-value"));
+  CHECK(!ShouldRememberInput("/config\tuser UAGENT_API_KEY=private-value"));
   CHECK(!ShouldRememberInput(" \t\n"));
   CHECK(!ShouldRememberInput(std::string(kInputHistoryEntryBytes + 1, 'x')));
 }

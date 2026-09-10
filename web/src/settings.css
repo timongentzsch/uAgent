@@ -1,0 +1,39 @@
+.settings-fields {
+  display: grid;
+  gap: 12px;
+}
+.settings-fields > button {
+  justify-self: start;
+}
+.settings-fields .dialog-actions {
+  margin-top: -8px;
+}
+.settings-section {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+.settings-section > summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.settings-section button + button {
+  margin-left: 8px;
+}
+.subview-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  position: sticky;
+  top: calc(-1 * var(--pad));
+  background: var(--bg);
+  padding: 8px 0;
+  z-index: 1;
+}
+.device {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--control);
+}

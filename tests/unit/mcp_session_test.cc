@@ -281,6 +281,15 @@ void TestWorkspaceScopedSession() {
           "Persist this task strategy.");
     CHECK(payload.value("adaptive_system_revision", uint64_t{0}) == 4);
     payload["context_tokens"] = 1'900'000;
+    payload["tool_displays"] = json::array();
+    CHECK(ToolWritePrivateFile(session.string(),
+                               header.dump() + "\n" + payload.dump())
+              .Ok());
+    CHECK(SessionStore::Inspect(session.string()).status.error ==
+          SessionStoreError::kCorrupt);
+    // Earlier format-3 sessions omit both kinds of display metadata.
+    payload.erase("tool_displays");
+    payload.erase("display");
     CHECK(ToolWritePrivateFile(session.string(),
                                header.dump() + "\n" + payload.dump())
               .output.starts_with("wrote "));
@@ -297,6 +306,35 @@ void TestWorkspaceScopedSession() {
   CHECK(agent.ContextUsed() < 1'900'000);
   CHECK(!agent.Load(session.string(), root.string(), error));
   CHECK(error.find("session belongs to") != std::string::npos);
+
+  // A rejected resume keeps the current writer lease, and claims a new
+  // snapshot before attempting to deserialize it.
+  const auto blocked = (root / "blocked.json").string();
+  CHECK(ToolWritePrivateFile(blocked, "invalid snapshot").Ok());
+  FileLease contender;
+  CHECK(contender.Acquire(blocked + ".lock", error));
+  CHECK(!agent.Load(blocked, CanonicalCwd(), error));
+  CHECK(error.find("already owned") != std::string::npos);
+  contender.Reset();
+  CHECK(!agent.Load(blocked, CanonicalCwd(), error));
+  CHECK(!contender.Acquire(session.string() + ".lock", error));
+  CHECK(agent.SessionId() == session_id);
+
+  // Resume and fork normalize absent presentation metadata to empty objects.
+  auto older = SessionStore::Inspect(session.string());
+  CHECK(older.record.has_value());
+  CHECK(older.record->state.tool_displays == json::object());
+  CHECK(older.record->state.display == json::object());
+  auto forked = SessionStore::Fork(session.string(), "Legacy fork", true);
+  CHECK(!forked.contains("error"));
+  const auto fork_path = forked.value("path", "");
+  CHECK(agent.Load(fork_path, CanonicalCwd(), error));
+  CHECK(agent.SessionId() != session_id);
+  CHECK(!FileLease::HasLiveOwner(session.string() + ".lock"));
+  CHECK(FileLease::HasLiveOwner(fork_path + ".lock"));
+  CHECK(agent.Load(session.string(), CanonicalCwd(), error));
+  CHECK(agent.SessionId() == session_id);
+  CHECK(!FileLease::HasLiveOwner(fork_path + ".lock"));
 
   SessionLoadResult missing =
       SessionStore::Load((root / "missing.json").string(), CanonicalCwd());

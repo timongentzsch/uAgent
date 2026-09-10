@@ -301,7 +301,17 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
         users = [
             str(message.get("content", "")) for message in messages if message.get("role") == "user"
         ]
-        results = tool_results(messages)
+        coordinator = next(
+            (
+                index
+                for index in range(len(messages) - 1, -1, -1)
+                if messages[index].get("role") == "user"
+                and str(messages[index].get("content", "")).endswith("coordinator")
+            ),
+            None,
+        )
+        parent_prompt = messages[coordinator]["content"] if coordinator is not None else ""
+        results = tool_results(messages[coordinator + 1 :]) if coordinator is not None else []
 
         if users and users[-1] == "seed child":
             return event({"content": "seeded"})
@@ -312,14 +322,14 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
             valid = queued == 1 and "queued once" not in users[-1]
             return event({"content": "mailbox-cleared" if valid else "mailbox-repeated"})
 
-        if has_message(messages, "user", "spawn coordinator"):
+        if parent_prompt == "spawn coordinator":
             if results:
                 match = re.search(r"\[collaborator (agent-[^;\]]+)", results[-1])
                 assert_true(match is not None, results[-1])
                 collaborator_id["value"] = match.group(1)
                 return event({"content": "spawned"})
             return tool_call("subagent", {"prompt": "seed child", "background": False})
-        if has_message(messages, "user", "queue coordinator"):
+        if parent_prompt == "queue coordinator":
             if results:
                 return event({"content": "queued"})
             return tool_call(
@@ -330,7 +340,7 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
                     "prompt": "queued once",
                 },
             )
-        if has_message(messages, "user", "fail coordinator"):
+        if parent_prompt == "fail coordinator":
             if results:
                 return event({"content": "failure-observed"})
             return tool_call(
@@ -342,7 +352,7 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
                     "background": False,
                 },
             )
-        if has_message(messages, "user", "retry coordinator"):
+        if parent_prompt == "retry coordinator":
             if results:
                 valid = "mailbox-cleared" in results[-1]
                 return event({"content": "mailbox-ok" if valid else "mailbox-bad"})
@@ -359,15 +369,19 @@ def test_failed_followup_consumes_queued_guidance_after_launch(root, home, *, bi
 
     with Server([route]) as server:
         env = base_env(home, server.url)
-        for prompt, expected in (
-            ("spawn coordinator", "spawned"),
-            ("queue coordinator", "queued"),
-            ("fail coordinator", "failure-observed"),
-            ("retry coordinator", "mailbox-ok"),
-        ):
-            result = run(root, env, "--yolo", "-p", prompt, binary=binary)
-            assert_true(result.returncode == 0, result.stderr)
-            assert_true(result.stdout.strip() == expected, result.stdout)
+        # All operations belong to one coordinator conversation. An unrelated
+        # session in the same folder must not control its retained children.
+        result = run_dialog(
+            root,
+            env,
+            "spawn coordinator\nqueue coordinator\nfail coordinator\nretry coordinator\n/q\n",
+            "--yolo",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(
+            "mailbox-ok" in result.stdout and "mailbox-bad" not in result.stdout, result.stdout
+        )
         # Guidance lives in files beside the record until it is delivered, so a
         # message that reached the child has to leave nothing behind.
         left = list((home / ".uagent" / "collaborators").glob("*.mail-*"))

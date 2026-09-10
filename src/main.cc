@@ -20,6 +20,7 @@ extern char** environ;
 #include <vector>
 
 #include "include/app/bootstrap.h"
+#include "include/app/control.h"
 #include "include/app/options.h"
 #include "include/app/reference.h"
 #include "include/cli.h"
@@ -30,6 +31,9 @@ extern char** environ;
 #include "include/core/term.h"
 #include "include/core/usage.h"
 #include "include/tools/jobs.h"
+#ifdef UAGENT_WEB
+#include "include/web/protocol.h"
+#endif
 
 namespace uagent {
 namespace {
@@ -117,6 +121,12 @@ int Main(int argc, char** argv) {
                : 2;
   }
   InitializeProcess();
+  SetExecutablePath(argv[0]);
+#ifdef UAGENT_WEB
+  if (argc > 1 && std::string_view(argv[1]) == "--web-worker") {
+    return web::WorkerMain(argc, argv);
+  }
+#endif
   Observability observability;
   SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);
@@ -142,7 +152,52 @@ int Main(int argc, char** argv) {
     return 0;
   }
 
+  if (!parsed.options.control.empty()) {
+    return ControlMain(parsed.options.control);
+  }
+
   const bool json_stream = parsed.options.json_stream;
+  if (parsed.options.web) {
+#ifdef UAGENT_WEB
+    if (!parsed.options.prompt.empty() || parsed.options.json || json_stream ||
+        parsed.options.resume_latest || parsed.options.resume_pick ||
+        parsed.options.yolo || parsed.options.trust_project ||
+        !parsed.options.attach_paths.empty()) {
+      fprintf(stderr, "--web cannot inherit session execution options\n");
+      return 2;
+    }
+    // User configuration only. No project configuration, MCP, trust prompt,
+    // agent or process supervisor in the master.
+    for (const auto& [key, value] : parsed.options.overrides) {
+      if (key != "UAGENT_WEB_PORT" && key != "UAGENT_WEB_ORIGIN") {
+        fprintf(stderr,
+                "configure each web session through its own workspace or "
+                "controls\n");
+        return 2;
+      }
+    }
+    auto settings =
+        ConfigManager::Capture(false, parsed.options.overrides).Read();
+    auto setting = [&](const char* key, const char* fallback = "") {
+      auto found = settings.values.find(key);
+      return found == settings.values.end() ? std::string(fallback)
+                                            : found->second;
+    };
+    int64_t port = 0;
+    if (!ParseInt64(setting("UAGENT_WEB_PORT", "8080").c_str(), port) ||
+        port < 1024 || port > 65535) {
+      fprintf(stderr, "web port must be between 1024 and 65535\n");
+      return 2;
+    }
+    return web::MasterMain(
+        {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
+         setting("UAGENT_WEB_PUSH_CONTACT")},
+        argv[0]);
+#else
+    fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
+    return 2;
+#endif
+  }
   const bool json_envelope = parsed.options.json;
   observability.EnableJournal(parsed.options.prompt.empty());
   if (json_stream && !observability.StartJsonStream()) {

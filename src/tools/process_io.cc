@@ -10,6 +10,7 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -100,7 +101,7 @@ BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
              bool is_detached, const std::string& job_kind, int64_t activity_id,
              std::shared_ptr<ActivitySession> activity, std::string label,
              std::string receipt, std::string source,
-             std::vector<std::string> notes)
+             std::vector<std::string> notes, json facts)
     : pid(process_pid),
       log(std::move(log_path)),
       cmd(std::move(command)),
@@ -111,7 +112,8 @@ BgJob::BgJob(pid_t process_pid, std::string log_path, std::string command,
       display_label(std::move(label)),
       receipt_path(std::move(receipt)),
       source_id(std::move(source)),
-      completion_notes(std::move(notes)) {}
+      completion_notes(std::move(notes)),
+      metadata(std::move(facts)) {}
 
 ActivityReservation::~ActivityReservation() { Reset(); }
 
@@ -352,6 +354,7 @@ bool ProcessSupervisor::TryAdd(BgJob job, int64_t max_pending) {
   }
   AssignId(job);
   jobs_.push_back(std::move(job));
+  StartIoLocked();
   NotifyLocked();
   return true;
 }
@@ -397,45 +400,104 @@ size_t ProcessSupervisor::Count(ActivityKind kind) const {
 }
 
 std::vector<SubagentView> ProcessSupervisor::SubagentViews() const {
-  std::vector<BgJob> children;
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    for (const BgJob& job : jobs_) {
-      // Foreground delegations are deliberately absent: one is already the
-      // spinner's own label, so naming it again would spend the columns the
-      // children nobody is watching need.
-      if (!job.detached && job.session && job.kind == ActivityKind::kSubagent) {
-        children.push_back(job);
-      }
-    }
-  }
-  const auto now = std::chrono::steady_clock::now();
   std::vector<SubagentView> views;
-  views.reserve(children.size());
-  for (const BgJob& job : children) {
-    SubagentView view;
-    view.id = ActivityId(job);
-    view.source_id = job.source_id;
-    view.label = job.display_label;
-    view.elapsed = now - job.started;
-    {
-      // The session lock only. `interaction` is held across a whole tool
-      // interaction, so a repaint that wanted it would stall the whole UI
-      // behind a child's read, and `pending_output` belongs to the tool that
-      // will drain it -- reading the transcript consumes nothing.
-      std::lock_guard<std::mutex> lock(job.session->mutex);
-      std::string line = job.session->transcript.TailLine();
-      // Progress lines only. Once the child answers, the newest line on its
-      // stream is the JSON envelope the parent will deliver whole -- a
-      // fragment of that is not what the child is doing, and a row showing it
-      // would be reporting the result before the result is in.
-      if (line.starts_with(kHeadlessProgressPrefix)) {
-        view.tail = std::move(line);
-      }
+  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  for (const json& row : ActivityViews()) {
+    const std::string status = JsonValue(row, "status", "");
+    if (JsonValue(row, "kind", "") != "agent" ||
+        (status != "running" && status != "starting" &&
+         status != "finishing")) {
+      continue;
     }
-    views.push_back(std::move(view));
+    views.push_back(
+        {JsonValue(row, "id", int64_t{0}), JsonValue(row, "agent_id", ""),
+         JsonValue(row, "model", JsonValue(row, "label", "")),
+         JsonValue(row, "progress", ""),
+         std::chrono::milliseconds(
+             std::max(int64_t{0}, now - JsonValue(row, "started_ms", now)))});
   }
   return views;
+}
+
+void ProcessSupervisor::SetOwner(std::string owner) {
+  std::lock_guard lock(mutex_);
+  owner_ = std::move(owner);
+}
+
+std::string ProcessSupervisor::Owner() const {
+  std::lock_guard lock(mutex_);
+  return owner_;
+}
+
+json ProcessSupervisor::ActivityViews() const {
+  std::vector<BgJob> jobs;
+  {
+    std::lock_guard lock(mutex_);
+    jobs = jobs_;
+    jobs.insert(jobs.end(), retained_.begin(), retained_.end());
+  }
+  json rows = json::array();
+  for (const BgJob& job : jobs) {
+    if (job.kind == ActivityKind::kMemory) continue;
+    json row = job.metadata;
+    row["id"] = ActivityId(job);
+    row["agent_id"] = job.source_id;
+    row["detached"] = job.detached;
+    row["kind"] = job.kind == ActivityKind::kSubagent ? "agent" : "command";
+    row["label"] =
+        JsonValue(row, "label",
+                  job.display_label.empty() ? Utf8Trunc(FirstLine(job.cmd), 160)
+                                            : job.display_label);
+    row["started_ms"] = job.started_ms;
+    row["status"] = "running";
+    if (job.session) {
+      std::lock_guard lock(job.session->mutex);
+      std::string progress = job.session->transcript.TailLine();
+      if (job.kind != ActivityKind::kSubagent ||
+          progress.starts_with(kHeadlessProgressPrefix)) {
+        row["progress"] = Utf8Trunc(progress, 240);
+      }
+      if (job.session->stop_requested) row["status"] = "stopping";
+      if (job.session->state == ActivityState::kStopped) {
+        row["status"] = "stopped";
+      }
+      if (job.session->wait_status && !ActivityTerminal(job.session->state)) {
+        row["status"] = "finishing";
+      }
+      if (ActivityTerminal(job.session->state) && job.session->wait_status) {
+        int status = *job.session->wait_status;
+        row["status"] = job.session->stop_requested ? "stopped"
+                        : WIFEXITED(status) && WEXITSTATUS(status) == 0
+                            ? "completed"
+                            : "failed";
+        row["exit_code"] = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+      }
+      if (job.session->wait_status) {
+        row["duration_ms"] =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                job.session->exited_at - job.started)
+                .count();
+      }
+    }
+    rows.push_back(std::move(row));
+  }
+  return rows;
+}
+
+json ProcessSupervisor::InspectActivity(int64_t id) const {
+  auto job = Find(id);
+  if (!job) return {{"error", "activity unavailable in this session"}};
+  json result = {{"id", id}, {"agent_id", job->source_id}};
+  // Inspection never takes the consuming tool's interaction lock or output.
+  if (job->session) {
+    std::lock_guard lock(job->session->mutex);
+    result["output"] = job->session->transcript.Snapshot();
+  } else {
+    result["output"] = ReadLogTail(job->log, static_cast<int64_t>(64 * 1024));
+  }
+  return result;
 }
 
 size_t ProcessSupervisor::JoinableCount() const {
@@ -461,12 +523,26 @@ std::optional<BgJob> ProcessSupervisor::Find(int64_t id) const {
                                    : std::optional<BgJob>(retained_[index]);
 }
 
-std::optional<BgJob> ProcessSupervisor::Take(int64_t id) {
+std::optional<BgJob> ProcessSupervisor::Take(int64_t id, bool retain) {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t index = IndexOfLocked(id);
   if (index == jobs_.size()) return std::nullopt;
+  const auto& session = jobs_[index].session;
+  retain = retain && session && !jobs_[index].detached;
+  if (retain) {
+    std::lock_guard state_lock(session->mutex);
+    if (session->state != ActivityState::kStopped &&
+        !TransitionActivityLocked(*session, ActivityState::kDelivered)) {
+      return std::nullopt;
+    }
+    session->last_used = std::chrono::steady_clock::now();
+  }
   BgJob job = std::move(jobs_[index]);
   jobs_.erase(jobs_.begin() + static_cast<std::ptrdiff_t>(index));
+  if (retain) {
+    retained_.push_back(job);
+    PruneRetainedLocked();
+  }
   NotifyLocked();
   return job;
 }
@@ -509,31 +585,16 @@ void ProcessSupervisor::PruneRetainedLocked() {
   }
 }
 
-void ProcessSupervisor::Retain(BgJob job) {
-  if (!job.session || job.detached) return;
-  {
-    std::lock_guard<std::mutex> lock(job.session->mutex);
-    // A stopped activity is terminal but intentionally never deliverable.
-    if (!TransitionActivityLocked(*job.session, ActivityState::kDelivered)) {
-      return;
-    }
-    job.session->last_used = std::chrono::steady_clock::now();
-  }
-  std::lock_guard<std::mutex> lock(mutex_);
-  retained_.push_back(std::move(job));
-  PruneRetainedLocked();
-  NotifyLocked();
-}
-
 uint64_t ProcessSupervisor::Generation() const {
   std::lock_guard<std::mutex> lock(mutex_);
   return generation_;
 }
 
-void ProcessSupervisor::NotifyLocked() {
+void ProcessSupervisor::NotifyLocked(bool wake_io) {
   ++generation_;
   event_.notify_all();
   WakeDescriptor(notify_fd_);
+  if (wake_io) WakeDescriptor(wake_write_.Get());
 }
 
 void ProcessSupervisor::SetNotifyFd(int fd) {
@@ -566,6 +627,7 @@ bool ProcessSupervisor::WaitForChange(
 }
 
 void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
+  json previous = json::array();
   while (!stop.stop_requested()) {
     std::vector<std::shared_ptr<ActivitySession>> sessions;
     {
@@ -600,7 +662,7 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
     if (!poll_fds.empty() && (poll_fds[0].revents & POLLIN)) {
       DrainDescriptor(wake_read_.Get());
       std::lock_guard<std::mutex> lock(mutex_);
-      NotifyLocked();
+      NotifyLocked(false);
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -688,6 +750,12 @@ void ProcessSupervisor::IoLoop(const std::stop_token& stop) {
       std::erase_if(io_sessions_, terminal);
     }
     for (const auto& session : removed) CloseSessionIo(session);
+    json current = ActivityViews();
+    if (current != previous) {
+      previous = current;
+      Emit(Event{EventId::kActivitiesChanged,
+                 {{"activities", std::move(current)}}});
+    }
   }
 
   std::vector<std::shared_ptr<ActivitySession>> remaining;

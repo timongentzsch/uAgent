@@ -429,9 +429,48 @@ def test_dynamic_provider_catalog_and_model(root, home, *, binary):
         assert_true(restarted.returncode == 0, restarted.stderr)
         assert_true(restarted.stdout.strip() == "dynamic-route-ok", restarted.stdout)
         assert_true(len(first.requests) == 1, first.requests)
+
+        # Direct /model must discover the same window as the catalog picker.
+        # Changing only the effort keeps it without another catalog request.
+        providers["second"].pop("context")
+        direct_env = provider_env(home, first.url, providers, "active-live")
+        probes = len(second.get_requests)
+        direct = run_dialog(
+            root,
+            direct_env,
+            "/model second/gpt-live\n/model second/gpt-live:high\n/q\n",
+            binary=binary,
+        )
+        assert_true(direct.returncode == 0, direct.stderr)
+        assert_true(len(second.get_requests) == probes + 1, second.get_requests)
     finally:
         first.close()
         second.close()
+
+
+def test_configured_alias_keeps_catalog_efforts(root, home, *, binary):
+    efforts = ["low", "medium", "high", "xhigh", "max"]
+    catalog = {"data": [{"id": "gpt-live", "supported_reasoning_efforts": efforts}]}
+    with Server([event({"content": "catalog-efforts-ok"})], get_response=catalog) as server:
+        providers = {
+            "local": {
+                "base_url": server.url,
+                "context": 16384,
+                "models": {"main": {"id": "gpt-live"}},
+            }
+        }
+        env = provider_env(home, server.url, providers, "local/main")
+        result = run_dialog(
+            root,
+            env,
+            "/effort none\n/effort minimal\n/model local/main:high\nprobe\n/q\n",
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true("catalog-efforts-ok" in result.stdout, result.stdout)
+        assert_true(len(server.get_requests) == 1, server.get_requests)
+        assert_true(server.requests[0][1]["reasoning_effort"] == "high", server.requests)
+        assert_true(result.stdout.count("not supported") >= 2, result.stdout)
 
 
 def test_model_preference_survives_restart(root, home, *, binary):
@@ -591,6 +630,8 @@ def test_provider_responses_native_search_and_function_replay(root, home, *, bin
         assert_true(envelope["answer"].startswith("responses-native-ok"), envelope)
         assert_true(envelope["usage"]["web_searches"] == 1, envelope)
         assert_true(len(server.requests) == 2, server.requests)
+        sessions = {headers.get("X-Session-Id") for headers, _ in server.requests}
+        assert_true(len(sessions) == 1 and None not in sessions, sessions)
 
 
 def test_hosted_search_reports_one_lifecycle_on_either_route(root, home, *, binary):
@@ -751,6 +792,8 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
             hosted,
         )
         assert_true("system" in body and body["messages"][0]["role"] == "user", body)
+        assert_true(body["system"][0]["cache_control"] == {"type": "ephemeral"}, body)
+        assert_true(body["cache_control"] == {"type": "ephemeral"}, body)
         write_sse_sequence(
             handler,
             [
@@ -860,6 +903,8 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         assert_true(envelope["answer"].startswith("anthropic-native-ok"), envelope)
         assert_true(envelope["usage"]["web_searches"] == 1, envelope)
         assert_true(len(server.requests) == 2, server.requests)
+        sessions = {headers.get("X-Session-Id") for headers, _ in server.requests}
+        assert_true(len(sessions) == 1 and None not in sessions, sessions)
 
 
 def test_self_info_reports_live_configuration(root, home, *, binary):

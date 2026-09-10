@@ -10,9 +10,11 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -41,6 +43,7 @@
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
 #include "include/tools/process.h"
+#include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
 #include "include/ui/sessions.h"
@@ -55,9 +58,23 @@ class Application {
         runtime_(context.runtime),
         api_(runtime_.api),
         agent_(*context.agent),
-        session_file_(CollaboratorSessionFile()),
+        session_file_(context.channel ? context.channel->SessionPath()
+                                      : CollaboratorSessionFile()),
         saved_revision_(agent_.Revision()),
-        channel_(context.channel) {}
+        channel_(context.channel) {
+    agent_.RetainExchanges(channel_ || context_.options.prompt.empty() ||
+                           !session_file_.empty());
+    message_subscription_ =
+        context_.observability.Subscribe([this](const AppEvent& event) {
+          if (event.type != "message.changed" ||
+              (!persist_ && session_file_.empty())) {
+            return;
+          }
+          std::string kind = JsonValue(event.data["block"], "kind", "");
+          if (kind == "user" || kind == "attachment") SaveSession(true);
+        });
+  }
+  ~Application() { context_.observability.Unsubscribe(message_subscription_); }
 
   AppSession Session() {
     return AppSession{context_, attachments_, session_file_, saved_revision_};
@@ -68,7 +85,7 @@ class Application {
     if (attachment_status != 0) return attachment_status;
     if (!context_.options.prompt.empty() &&
         (context_.options.resume_latest || !session_file_.empty())) {
-      ResumeAtStartup();
+      if (!ResumeAtStartup()) return 2;
     }
     if (!context_.options.prompt.empty()) return RunHeadless();
     return channel_ ? RunChannel() : RunInteractive();
@@ -113,9 +130,14 @@ class Application {
     }
   }
 
-  void RunTurns(const std::string& input, json content = nullptr) {
+  void RunTurns(const std::string& input, json content = nullptr,
+                json images = json::array()) {
+    EnsureSessionPath();
     ReloadConfigAtTurnBoundary();
-    agent_.Turn(input, std::move(content));
+    bool was_automatic = ApprovalIsAutomatic();
+    PermissionControl(context_, json::object());
+    if (was_automatic != ApprovalIsAutomatic()) agent_.ApprovalChanged();
+    agent_.Turn(input, std::move(content), std::move(images), request_id_);
     SteeringState().Take();
   }
 
@@ -187,6 +209,7 @@ class Application {
       if (!agent_.DrainBackground()) {
         runtime_.processes.WaitForChange(generation);
       }
+      SaveSession();
     }
     context_.output.Restore();
 
@@ -213,51 +236,65 @@ class Application {
     return FinishHeadless(std::move(answer), "", 0);
   }
 
-  void ResumeAtStartup() {
+  bool ResumeAtStartup() {
     std::string previous_path = session_file_;
     if (!session_file_.empty()) {
       if (PathExists(session_file_)) {
-        ResumeInto(agent_, session_file_, session_file_);
+        if (!ResumeInto(agent_, session_file_, session_file_, !channel_)) {
+          return false;
+        }
       }
     } else if (context_.options.resume_pick) {
-      ResumeInto(agent_, PickSession(), session_file_);
+      std::string path = PickSession();
+      if (!path.empty() && !ResumeInto(agent_, path, session_file_)) {
+        return false;
+      }
     } else if (context_.options.resume_latest) {
       std::vector<SessionInfo> sessions = ListSessions();
       if (sessions.empty()) {
         printf("%s· no saved sessions%s\n", DIM(), RST());
         fflush(stdout);
       } else {
-        ResumeInto(agent_, sessions.front().path, session_file_);
+        if (!ResumeInto(agent_, sessions.front().path, session_file_)) {
+          return false;
+        }
       }
     }
     AppSession session = Session();
     LoadSessionJournal(session, previous_path);
     saved_revision_ = agent_.Revision();
+    return true;
   }
 
-  void SaveSession() {
-    if (!persist_ || agent_.MessageCount() <= 1 ||
+  void SaveSession(bool force = false) {
+    auto session = Session();
+    SaveSessionSettings(session);
+    if ((!persist_ && session_file_.empty()) ||
+        (!force && agent_.MessageCount() <= 1) ||
         agent_.Revision() == saved_revision_) {
       return;
     }
-    if (session_file_.empty()) {
-      session_file_ =
-          UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) + "/" +
-          UtcStamp("%Y%m%dT%H%M%SZ") + "-" + std::to_string(getpid()) + ".json";
-    }
-    CreatePrivateDirectories(
-        std::filesystem::path(session_file_).parent_path());
+    EnsureSessionPath();
     std::string error;
-    if (!agent_.Save(session_file_, error)) {
-      fprintf(stderr, "cannot save session: %s\n", error.c_str());
-      return;
-    }
-    if (!context_.observability.Journal().Flush(session_file_ + ".events.jsonl",
+    if (!agent_.Save(session_file_, error) ||
+        !context_.observability.Journal().Flush(session_file_ + ".events.jsonl",
                                                 error)) {
-      fprintf(stderr, "cannot save session journal: %s\n", error.c_str());
+      input_error_ = "cannot save session: " + error;
+      fprintf(stderr, "%s\n", input_error_.c_str());
+      Emit(Event{EventId::kError, {{"error", input_error_}}});
       return;
     }
     saved_revision_ = agent_.Revision();
+  }
+
+  void EnsureSessionPath() {
+    if (persist_ && session_file_.empty()) {
+      session_file_ =
+          UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) + "/" +
+          UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId() + ".json";
+    }
+    runtime_.processes.SetOwner(session_file_.empty() ? agent_.SessionId()
+                                                      : HashHex(session_file_));
   }
 
   // An improvement round ends by reinstalling, and this session is still the
@@ -271,20 +308,36 @@ class Application {
 
   void RunPrompt(const std::string& input) {
     ReportReplacedExecutable();
+    input_error_.clear();
     json content;
+    json images = json::array();
     if (!attachments_.empty()) {
       std::string error;
       content = AttachmentContent(
           input, attachments_, error, api_.capabilities.image_input,
           !api_.config.image_model.empty(), api_.capabilities.file_input);
       if (!error.empty()) {
-        printf("%s%s%s\n", RED(), error.c_str(), RST());
-        fflush(stdout);
+        input_error_ = error;
+        if (!channel_) {
+          printf("%s%s%s\n", RED(), TerminalSafe(error).c_str(), RST());
+          fflush(stdout);
+        }
+        Emit(Event{EventId::kError, {{"error", error}}});
         return;
+      }
+      for (const auto& attachment : attachments_) {
+        if (!attachment.asset_id.empty()) {
+          images.push_back({{"id", attachment.asset_id},
+                            {"name", attachment.name},
+                            {"mime", attachment.mime},
+                            {"bytes", attachment.bytes},
+                            {"image", attachment.image},
+                            {"path", attachment.path}});
+        }
       }
       attachments_.clear();
     }
-    RunTurns(input, std::move(content));
+    RunTurns(input, std::move(content), std::move(images));
   }
 
   json InterfaceState() const {
@@ -297,14 +350,17 @@ class Application {
             {"background", runtime_.processes.Count()},
             {"tools", context_.tools.size()},
             {"verbose", agent_.Verbose()},
-            {"yolo", context_.options.yolo}};
+            {"yolo", ApprovalIsAutomatic()}};
   }
 
   bool ProcessInput(std::string input) {
     input = Trim(input);
-    if (input.empty()) return false;
-    if (input[0] == '/') DebugLog("command", {{"command", input}});
+    if (input.empty()) {
+      if (!attachments_.empty()) RunPrompt(input);
+      return false;
+    }
     ParsedSlashCommand command = ParseSlashCommand(input);
+    if (command.spec) DebugLog("command", {{"command", command.spec->name}});
     if (std::string prompt = SlashCommandPrompt(command); !prompt.empty()) {
       RunPrompt(prompt);
       return false;
@@ -497,7 +553,7 @@ class Application {
     bool exit_when_idle = false;
     bool quit_hint = false;
     bool answering = false;
-    std::optional<std::string> next_input;
+    std::deque<std::string> next_inputs;
     std::string saved_draft;
     std::string output_tail;
     std::chrono::steady_clock::time_point started =
@@ -555,6 +611,43 @@ class Application {
       } else {
         std::string input = Trim(event.text);
         if (!input.empty()) {
+          ParsedSlashCommand command = ParseSlashCommand(input);
+          if (working && command.spec &&
+              (command.spec->id == SlashCommandId::kProcesses ||
+               command.spec->id == SlashCommandId::kAgents)) {
+            std::istringstream activity_input(command.argument);
+            std::string target, operation;
+            activity_input >> target >> operation;
+            if (operation == "followup") {
+              output.Write("Follow-up requires an idle foreground turn.\n");
+            } else {
+              AppSession session = app.Session();
+              output.Write(TerminalSafe(
+                  ActivityText(ActivityCommand(session, command))));
+            }
+            Mount();
+            RefreshStatus();
+            return;
+          }
+          if (working && command.spec &&
+              command.spec->id == SlashCommandId::kPermissions) {
+            output.Write(TerminalSafe(JsonDump(PermissionControl(
+                             app.context_, {{"mode", command.argument}}))) +
+                         "\n");
+            Mount();
+            return;
+          }
+          if (working && command.spec &&
+              command.spec->id != SlashCommandId::kQuit) {
+            if (next_inputs.size() < 8) {
+              next_inputs.push_back(std::move(input));
+              output.Write("Command queued until the current work finishes.\n");
+            } else {
+              output.Write("Command queue is full; retry when idle.\n");
+            }
+            Mount();
+            return;
+          }
           if ((input == "/q" || input == "/quit") && working) {
             exit_when_idle = true;
           } else if (working) {
@@ -563,7 +656,7 @@ class Application {
             SteeringState().Queue(std::move(input));
             app.runtime_.processes.Wake();
           } else if (worker.joinable()) {
-            next_input = std::move(input);
+            next_inputs.push_back(std::move(input));
           } else {
             StartWork(std::move(input));
           }
@@ -715,14 +808,15 @@ class Application {
           if (!exit_when_idle) {
             std::string promoted = TakeStrandedSteering();
             if (!promoted.empty()) {
-              // Anything typed after the queue closed was typed later still.
-              if (next_input) promoted += "\n" + *next_input;
-              next_input = std::move(promoted);
+              // Preserve command boundaries: a deferred slash command must
+              // never be concatenated into a model prompt.
+              next_inputs.push_front(std::move(promoted));
             }
           }
-          if (!exit_when_idle && next_input) {
-            StartWork(std::move(*next_input));
-            next_input.reset();
+          if (!exit_when_idle && !next_inputs.empty()) {
+            std::string next = std::move(next_inputs.front());
+            next_inputs.pop_front();
+            StartWork(std::move(next));
           }
           if (activity_ready) Mount();
           RefreshStatus();
@@ -774,8 +868,9 @@ class Application {
   }
 
   int RunInteractive() {
-    ResumeAtStartup();
+    if (!ResumeAtStartup()) return FinishInteractive(2);
     persist_ = isatty(STDIN_FILENO);
+    EnsureSessionPath();
     if (persist_ && AgentDepth() == 0 && api_.config.memory_enabled &&
         api_.config.memory_generate) {
       std::string extractor_error = StartMemoryExtractor(
@@ -807,14 +902,74 @@ class Application {
   }
 
   int RunChannel() {
-    ResumeAtStartup();
+    if (!ResumeAtStartup()) return FinishInteractive(2);
     persist_ = true;
-    while (std::optional<std::string> input = channel_->NextInput()) {
-      SaveSession();
-      agent_.DrainBackground();
-      if (ProcessInput(std::move(*input))) break;
+    EnsureSessionPath();
+    if (!PathExists(session_file_) && !channel_->InitialTitle().empty()) {
+      agent_.Rename(channel_->InitialTitle());
+      SaveSession(true);
     }
+    runtime_.processes.SetNotifyFd(channel_->WakeFd());
+    channel_->SetActivityControl([this](const json& request) {
+      if (JsonValue(request, "kind", "") == "permissions") {
+        return PermissionControl(context_, request);
+      }
+      return ActivityControl(runtime_.processes, request);
+    });
+    PublishChannelState();
+    while (std::optional<ApplicationInput> input = channel_->NextInput()) {
+      agent_.DrainBackground();
+      bool quit = false;
+      request_id_ = input->request_id;
+      if (input->title) {
+        agent_.Rename(std::move(*input->title));
+      } else if (!input->control.is_null()) {
+        AppSession session = Session();
+        json result = SessionControl(session, input->control);
+        SaveSession(true);
+        channel_->CompleteControl(input->request_id, result);
+      } else if (!input->wake) {
+        for (auto& attachment : input->attachments) {
+          attachments_.push_back(std::move(attachment));
+        }
+        quit = ProcessInput(std::move(input->text));
+      }
+      SaveSession(input->title.has_value());
+      PublishChannelState();
+      if (quit) break;
+    }
+    runtime_.processes.SetNotifyFd(-1);
+    channel_->SetActivityControl({});
     return FinishInteractive(0);
+  }
+
+  void PublishChannelState() {
+    json state = InterfaceState();
+    state["view"] = agent_.DisplaySnapshot();
+    state["usage"] = UsageJson(agent_.SessionUsage());
+    state["statistics"] = agent_.Statistics();
+    state["http"] = agent_.HttpExchanges();
+    state["permissions"] = PermissionControl(context_, json::object());
+    state["efforts"] = json::array({"default"});
+    for (const char* effort : kReasoningEfforts) {
+      if (SupportsReasoningEffort(api_, effort)) {
+        state["efforts"].push_back(effort);
+      }
+    }
+    state["variants"] = json::array();
+    if (api_.capabilities.model_variants) {
+      state["variants"].push_back("default");
+      for (std::string_view variant : kOpenRouterVariants) {
+        state["variants"].push_back(variant);
+      }
+    }
+    state["turns"] = agent_.UserTurns();
+    state["activities"] = runtime_.processes.ActivityViews();
+    state["collaborators"] = CollaboratorSummaries(runtime_.processes);
+    state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
+    state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
+    state["stop"] = agent_.LastStop();
+    channel_->PublishState(state);
   }
 
   AppContext& context_;
@@ -825,7 +980,10 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
+  std::string request_id_;
+  uint64_t message_subscription_ = 0;
   std::string exit_reason_ = "eof";
+  std::string input_error_;
   ApplicationChannel* channel_ = nullptr;
 };
 

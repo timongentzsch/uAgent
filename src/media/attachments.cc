@@ -67,12 +67,42 @@ std::string ImageExtension(const std::string& mime) {
   return "";
 }
 
+std::string RasterMime(std::string_view bytes) {
+  if (bytes.size() >= 24 &&
+      bytes.starts_with(std::string_view("\x89PNG\r\n\x1a\n", 8)) &&
+      bytes.substr(12, 4) == "IHDR") {
+    return "image/png";
+  }
+  if (bytes.size() >= 4 &&
+      bytes.starts_with(std::string_view("\xff\xd8\xff", 3))) {
+    return "image/jpeg";
+  }
+  if (bytes.size() >= 13 &&
+      (bytes.starts_with("GIF87a") || bytes.starts_with("GIF89a"))) {
+    return "image/gif";
+  }
+  if (bytes.size() >= 16 && bytes.starts_with("RIFF") &&
+      bytes.substr(8, 4) == "WEBP") {
+    return "image/webp";
+  }
+  return {};
+}
+
 std::string ImageDetail() {
   std::string detail = EnvStr("UAGENT_IMAGE_DETAIL");
   return detail == "low" || detail == "high" || detail == "original" ||
                  detail == "auto"
              ? detail
              : "";
+}
+
+std::string AttachmentMime(const std::string& name) {
+  std::string ext =
+      AsciiLower(std::filesystem::path(name).extension().string());
+  for (const auto& [suffix, mime] : kTypes) {
+    if (ext == suffix) return mime;
+  }
+  return "application/octet-stream";
 }
 
 bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
@@ -84,20 +114,14 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     error = "cannot read " + path;
     return false;
   }
-  std::string ext = AsciiLower(file.extension().string());
-  for (const auto& [suffix, mime] : kTypes) {
-    if (ext == suffix) {
-      out = {file.string(),
-             file.filename().string(),
-             mime,
-             bytes,
-             std::string_view(mime).starts_with("image/"),
-             {}};
-      return true;
-    }
+  if (!std::filesystem::is_regular_file(file, ec)) {
+    error = "attachment is not a regular file";
+    return false;
   }
-  error = "unsupported attachment type `" + ext + "`";
-  return false;
+  std::string mime = AttachmentMime(path);
+  out = {file.string(), file.filename().string(),   mime,
+         bytes,         mime.starts_with("image/"), {}};
+  return true;
 }
 
 std::string ImageInputError(const Attachment& attachment,
@@ -280,7 +304,10 @@ json AttachmentContent(const std::string& prompt,
   for (const Attachment& attachment : attachments) {
     // Encoding a document this route will refuse would cost a read and a
     // base64 of the whole file to produce a part that gets stripped again.
-    if (!attachment.image && !file_input_available) continue;
+    if (!attachment.image && (!file_input_available ||
+                              attachment.mime == "application/octet-stream")) {
+      continue;
+    }
     std::string data = Base64File(attachment, limit, error,
                                   "data:" + attachment.mime + ";base64,");
     if (!error.empty()) return nullptr;

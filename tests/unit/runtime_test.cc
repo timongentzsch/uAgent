@@ -69,12 +69,23 @@ void TestRuntimeOwnershipHelpers() {
                        {"prompt_tokens_details", {{"cache_write_tokens", 2}}}});
   accumulator.Add(Usage{3, 4, 1, 0, 0.25});
   Usage total = accumulator.Take();
-  CHECK(total.input == 8);
+  CHECK(total.input == 6);
   CHECK(total.output == 6);
   CHECK(total.cache_read == 1);
   CHECK(total.cache_write == 2);
   CHECK(total.cost == 0.25);
   CHECK(accumulator.Take().input == 0);
+
+  Usage responses, anthropic;
+  responses.Add({{"input_tokens", 100},
+                 {"input_tokens_details",
+                  {{"cached_tokens", 60}, {"cache_write_tokens", 30}}}});
+  anthropic.Add({{"input_tokens", 10},
+                 {"cache_read_input_tokens", 60},
+                 {"cache_creation_input_tokens", 30}});
+  CHECK(UsageJson(responses) == UsageJson(anthropic));
+  CHECK(responses.input == 10);
+  CHECK(responses.CacheHitPercent() == 60);
 
   std::filesystem::path ledger = std::filesystem::temp_directory_path() /
                                  ("uagent-ledger-" + std::to_string(getpid()));
@@ -635,6 +646,19 @@ void TestNamedProviders() {
         "codex-local/gpt-5.6-sol:high");
   CHECK(startup.model == "gpt-5.6-sol");
   CHECK(startup.reasoning_effort == "high");
+
+  // Effort-only selection retains a discovered window, but an explicit
+  // configured window wins over the previous value.
+  auto unknown_window = catalog.providers;
+  for (auto& provider : unknown_window) provider.context = 0;
+  startup.ctx_window = 1300000;
+  CHECK(!SelectModel(startup, {}, unknown_window, "codex-local/gpt-5.6-sol:low")
+             .empty());
+  CHECK(startup.ctx_window == 1300000);
+  CHECK(!SelectModel(startup, {}, catalog.providers,
+                     "codex-local/gpt-5.6-sol:high")
+             .empty());
+  CHECK(startup.ctx_window == 16384);
 
   // [provider/]model[:variant][:effort] — suffixes peel from the right
   // against two closed sets and stop at the first unrecognized one.

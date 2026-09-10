@@ -242,9 +242,53 @@ jobs:
           cmake --preset debug
           ctest --preset debug -L source
 
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run format:check --prefix web
+      - run: npm run test --prefix web
+      - name: Verify embedded bundle and notices
+        run: |
+          npm run build --prefix web
+          npm run notices --prefix web
+          npm run size --prefix web
+          git diff --exit-code -- web/dist web/THIRD_PARTY_NOTICES.md
+      - name: Build native push variant
+        run: |
+          sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libssl-dev
+          cmake --preset release -DUAGENT_WEB_PUSH=ON
+          cmake --build --preset release --parallel 4
+          ctest --preset release -R '^(core|integration_web|web_push)$'
+          python3 benchmarks/web.py build/release/uagent --push-contact mailto:benchmark@example.invalid --output build/web-footprint.json
+      - name: Browser integration against native host
+        run: |
+          npm exec --prefix web -- playwright install --with-deps chromium webkit
+          npm run test:browser --prefix web
+      - name: Retain browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
+        with:
+          name: browser-failure
+          path: web/test-results
+          if-no-files-found: ignore
+          retention-days: 3
+      - name: CLI-only build
+        run: |
+          cmake -S . -B build/cli-only -DCMAKE_BUILD_TYPE=Release -DUAGENT_WEB=OFF -DUAGENT_WARNINGS_AS_ERRORS=ON
+          cmake --build build/cli-only --parallel 4
+          ctest --test-dir build/cli-only --output-on-failure -j 4 -R '^(core|integration_runtime|integration_providers)$'
+
   cpp-style:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -277,7 +321,7 @@ jobs:
     if: >-
       github.event_name == 'push' && github.ref_type == 'tag' &&
       startsWith(github.ref_name, 'v')
-    needs: [build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style]
+    needs: [build-and-test, sanitizers, thread-sanitizer, fuzzers, coverage, python, cpp-style, web]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

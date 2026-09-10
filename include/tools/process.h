@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/core/fd.h"
+#include "include/core/json.h"
 #include "include/core/thread_annotations.h"
 #include "include/tools/output_buffer.h"
 
@@ -80,7 +81,8 @@ struct BgJob {
         int64_t activity_id = 0,
         std::shared_ptr<ActivitySession> activity = nullptr,
         std::string label = {}, std::string receipt = {},
-        std::string source = {}, std::vector<std::string> notes = {});
+        std::string source = {}, std::vector<std::string> notes = {},
+        json metadata = json::object());
 
   pid_t pid;
   std::string log, cmd;
@@ -92,6 +94,10 @@ struct BgJob {
   std::string receipt_path;
   std::string source_id;
   std::vector<std::string> completion_notes;
+  json metadata;
+  int64_t started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
   // Set where the job is constructed rather than where it is registered: the
   // two differ by a spawn, and the status row is reporting how long the child
   // has been alive, not how long the supervisor has known about it.
@@ -170,12 +176,17 @@ class ProcessSupervisor {
   // Background delegated children, newest last. Takes no lock a tool holds, so
   // a status repaint never waits on one.
   std::vector<SubagentView> SubagentViews() const;
+  json ActivityViews() const;
+  json InspectActivity(int64_t id) const;
+  void SetOwner(std::string owner);
+  std::string Owner() const;
   bool IsLive(int64_t id) const;
   std::optional<BgJob> Find(int64_t id) const;
-  std::optional<BgJob> Take(int64_t id);
+  // Retaining a terminal activity keeps inspection continuous while its result
+  // is consumed exactly once. Removal and retention share the same lock.
+  std::optional<BgJob> Take(int64_t id, bool retain = false);
   std::vector<BgJob> Snapshot() const;
   std::vector<BgJob> TakeAllForShutdown();
-  void Retain(BgJob job);
 
   uint64_t Generation() const;
   void Wake();
@@ -196,7 +207,7 @@ class ProcessSupervisor {
   size_t RetainedIndexOfLocked(int64_t id) const UAGENT_REQUIRES(mutex_);
   void StartIoLocked() UAGENT_REQUIRES(mutex_);
   void IoLoop(const std::stop_token& stop);
-  void NotifyLocked() UAGENT_REQUIRES(mutex_);
+  void NotifyLocked(bool wake_io = true) UAGENT_REQUIRES(mutex_);
   void PruneRetainedLocked() UAGENT_REQUIRES(mutex_);
 
   mutable std::mutex mutex_;
@@ -218,6 +229,7 @@ class ProcessSupervisor {
   int64_t reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
   int64_t subagent_reservations_ UAGENT_GUARDED_BY(mutex_) = 0;
   uint64_t generation_ UAGENT_GUARDED_BY(mutex_) = 0;
+  std::string owner_ UAGENT_GUARDED_BY(mutex_);
   int64_t next_id_ UAGENT_GUARDED_BY(mutex_) = int64_t{1} << 30;
 };
 

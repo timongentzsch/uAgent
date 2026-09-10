@@ -1,0 +1,37 @@
+.configuration {
+  margin-top: 12px;
+}
+.configuration > label {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.configuration details {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+.configuration summary {
+  cursor: pointer;
+}
+.config-row {
+  padding: var(--pad) 0;
+  border-bottom: 1px solid var(--line);
+}
+.config-row label,
+.config-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.config-row small {
+  margin: 6px 0;
+}
+.config-value {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.config-value input,
+.config-value .select {
+  flex: 1;
+  min-width: 100px;
+}

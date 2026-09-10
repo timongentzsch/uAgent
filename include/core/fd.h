@@ -5,6 +5,7 @@
 // An owned file descriptor: ownership is a type rather than a close(2) on
 // every early return, so an error path cannot forget one.
 
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <utility>
@@ -47,7 +48,9 @@ class Fd {
 
   // An independent descriptor for a caller with its own lifetime, such as a
   // writer racing the owning thread's close.
-  [[nodiscard]] Fd Duplicate() const { return Fd(fd_ >= 0 ? dup(fd_) : -1); }
+  [[nodiscard]] Fd Duplicate() const {
+    return Fd(fd_ >= 0 ? fcntl(fd_, F_DUPFD_CLOEXEC, 0) : -1);
+  }
 
  private:
   int fd_ = -1;

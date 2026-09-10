@@ -848,7 +848,8 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
         assert_true(b"allow uagent_configure? " in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
-        assert_true(b'\r\n\x1b[32m+   "codex-local": {' in output, output)
+        # Status redraws may insert cursor controls before the colored line.
+        assert_true(b'\x1b[32m+   "codex-local": {' in output, output)
         written = config.read_text()
         assert_true(proposed in written, written)
         assert_true("# keep me" in written, written)

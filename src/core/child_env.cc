@@ -69,13 +69,15 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
   }
   // Approval mode can be toggled mid-session and no longer lives in environ,
   // so children are told the live value rather than an inherited stale one.
-  values_.erase(std::remove_if(values_.begin(), values_.end(),
-                               [](const std::string& entry) {
-                                 return KeyOf(entry) == "UAGENT_APPROVAL";
-                               }),
-                values_.end());
-  values_.push_back(std::string("UAGENT_APPROVAL=") +
-                    (ApprovalIsAutomatic() ? "yolo" : "prompt"));
+  if (policy != ChildEnvironmentPolicy::kIndependentAgent) {
+    values_.erase(std::remove_if(values_.begin(), values_.end(),
+                                 [](const std::string& entry) {
+                                   return KeyOf(entry) == "UAGENT_APPROVAL";
+                                 }),
+                  values_.end());
+    values_.push_back(std::string("UAGENT_APPROVAL=") +
+                      (ApprovalIsAutomatic() ? "yolo" : "prompt"));
+  }
   for (const auto& [key, value] : overrides) {
     values_.erase(std::remove_if(values_.begin(), values_.end(),
                                  [&](const std::string& entry) {

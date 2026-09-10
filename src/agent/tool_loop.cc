@@ -15,6 +15,7 @@
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -47,9 +48,35 @@ std::string NormalizedOperation(const json& arguments) {
 }  // namespace
 
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
-                             const ToolResult& original) {
+                             const ToolResult& original, double duration_ms) {
   conversation_.RecordToolDisplay(call.id,
                                   original.Ok() ? original.display : "");
+  conversation_.AddStatistics({{"tool_results", 1}, {"tool_ms", duration_ms}});
+  json facts = {{"name", call.name},
+                {"status", CompletionStatusName(original.status)},
+                {"duration_ms", duration_ms},
+                {"output", Utf8Trunc(original.output, 4096)},
+                {"truncated", original.output.size() > 4096},
+                {"change", Utf8Trunc(original.display, size_t{16} * 1024)}};
+  if (retain_exchanges_) {
+    json exchange = {
+        {"request", {{"name", call.name}, {"arguments", call.args}}},
+        {"response", original.output},
+        {"status", CompletionStatusName(original.status)},
+        {"complete", true}};
+    std::string body = JsonDump(exchange);
+    CreatePrivateDirectories(UagentDir(kArtifactsDir));
+    std::string path;
+    Fd file(
+        CreateTempFile(UagentDir(kArtifactsDir) + "/exchange-XXXXXX", path));
+    if (file && WriteFully(file.Get(), body)) {
+      facts["exchange_path"] = path;
+    } else if (file) {
+      unlink(path.c_str());
+    }
+  }
+  if (original.artifact) facts["artifact"] = original.artifact->path;
+  conversation_.RecordDisplay("t-" + call.id, std::move(facts));
   const Tool* tool = FindTool(tools_, call.name);
   if (tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
@@ -58,6 +85,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     conversation_.Push(
         {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}},
         MessageKind::kToolResult);
+    PublishMessage();
     DebugLog("tool_result_deduplicated",
              {{"turn", turn_id_},
               {"name", call.name},
@@ -72,6 +100,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     message[kReadRangeField] = {range.path, range.first, range.last};
   }
   conversation_.Push(std::move(message), MessageKind::kToolResult);
+  PublishMessage();
 }
 
 bool Agent::RunCalls(
@@ -299,7 +328,7 @@ bool Agent::RunCalls(
     CallTask& task = tasks[index];
     original_chars = SaturatingAdd(original_chars, task.result.output.size());
     model_chars = SaturatingAdd(model_chars, model_results[index].size());
-    AppendToolResult(call, model_results[index], task.result);
+    AppendToolResult(call, model_results[index], task.result, task.duration_ms);
   }
   bool any_succeeded =
       std::any_of(tasks.begin(), tasks.end(),

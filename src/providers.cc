@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <future>
@@ -14,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -558,9 +560,44 @@ bool CanUseRawModel(const Api& api, std::string_view name) {
          name.find('/') != std::string_view::npos;
 }
 
+bool ProbeModel(Api& api, bool discover_efforts) {
+  if (!api.model.empty() && api.ctx_window > 0 &&
+      (!discover_efforts || !api.supported_reasoning_efforts.empty())) {
+    return true;
+  }
+  // Discover effort support on demand, without delaying a configured startup
+  // for optional metadata. Unavailable metadata leaves the route usable.
+  bool metadata_only = !api.model.empty();
+  auto started = std::chrono::steady_clock::now();
+  auto models = ParseModels(
+      api.Get("/models", /*abortable=*/false, metadata_only ? 8 : 15));
+  if (models && !models->empty()) {
+    if (api.model.empty()) api.model = models->front().id;
+    std::string base = api.CatalogModel();
+    for (const ModelInfo& info : *models) {
+      if (info.id != api.model && info.id != base) continue;
+      if (api.ctx_window == 0) api.ctx_window = info.context;
+      api.supported_reasoning_efforts = info.efforts;
+      if (!SupportsReasoningEffort(api, api.reasoning_effort)) {
+        api.reasoning_effort.clear();
+      }
+      break;
+    }
+  }
+  DebugLog("models_probe", {{"duration_ms", ElapsedMs(started)},
+                            {"models_offered", models ? models->size() : 0},
+                            {"model", api.model},
+                            {"context_window", api.ctx_window}});
+  return !api.model.empty();
+}
+
 std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
                         const std::vector<NamedProvider>& providers,
                         const std::string& name) {
+  const std::string previous_url = api.base_url;
+  const std::string previous_model = api.CatalogModel();
+  const int64_t previous_context = api.ctx_window;
+  const auto previous_efforts = api.supported_reasoning_efforts;
   ModelSelection selection = ParseModelSelection(name);
   std::string selected = selection.base;
   if (std::optional<ModelRoute> route =
@@ -575,6 +612,12 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     api.config.openrouter_variant.clear();
   } else {
     return "";
+  }
+  if (api.base_url == previous_url && api.CatalogModel() == previous_model) {
+    if (api.ctx_window == 0) api.ctx_window = previous_context;
+    api.supported_reasoning_efforts = previous_efforts;
+  } else {
+    ProbeModel(api, /*discover_efforts=*/true);
   }
   ApplySelectionPolicy(api, selection);
   std::string variant = api.config.openrouter_variant == selection.variant
@@ -615,22 +658,25 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
-    if (model.contains("reasoning") && model["reasoning"].is_object()) {
-      const json& reasoning = model["reasoning"];
-      info.default_effort = JsonValue(reasoning, "default_effort", "");
-      if (reasoning.contains("supported_efforts") &&
-          reasoning["supported_efforts"].is_array()) {
-        for (const json& effort : reasoning["supported_efforts"]) {
-          if (effort.is_string()) {
-            info.efforts.push_back(effort.get<std::string>());
-          }
+    const json* efforts = JsonArray(model, "supported_reasoning_efforts");
+    if (const json* defaults = JsonObject(model, "default_parameters")) {
+      info.default_effort = JsonValue(*defaults, "reasoning_effort", "");
+    }
+    if (const json* reasoning = JsonObject(model, "reasoning")) {
+      if (!efforts) efforts = JsonArray(*reasoning, "supported_efforts");
+      if (info.default_effort.empty()) {
+        info.default_effort = JsonValue(*reasoning, "default_effort", "");
+      }
+    }
+    if (efforts) {
+      for (const json& effort : *efforts) {
+        if (effort.is_string() && ValidEffort(effort.get<std::string>())) {
+          info.efforts.push_back(effort.get<std::string>());
         }
       }
     }
     models.push_back(std::move(info));
   }
-  std::sort(models.begin(), models.end(),
-            [](const ModelInfo& a, const ModelInfo& b) { return a.id < b.id; });
   return models;
 }
 
@@ -716,6 +762,20 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
       std::string identity =
           RouteIdentity(source.base_url, info.id, source.protocol,
                         source.wire_api, source.hosted_web_search);
+      // Aliases keep their configured routing/defaults, but must not hide the
+      // live model's capabilities behind the generic effort fallback.
+      for (ModelCandidate& candidate : result.matches) {
+        ModelRoute& route = candidate.route;
+        if (RouteIdentity(route.base_url, route.model, route.protocol,
+                          route.wire_api,
+                          route.hosted_web_search) != identity) {
+          continue;
+        }
+        route.supported_efforts = info.efforts;
+        if (route.context == 0) route.context = info.context;
+        candidate.info = info;
+        candidate.info.context = route.context;
+      }
       if (!ContainsCaseInsensitive(selection, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {
@@ -743,6 +803,33 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
               return a.selection < b.selection;
             });
   return result;
+}
+
+json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
+                    const std::vector<NamedProvider>& providers,
+                    const std::string& query) {
+  ModelSearch search = SearchModels(api, routes, providers, query);
+  json models = json::array();
+  for (const ModelCandidate& candidate : search.matches) {
+    bool active = candidate.route.base_url == api.base_url &&
+                  candidate.route.model == api.model;
+    if (active) api.supported_reasoning_efforts = candidate.info.efforts;
+    models.push_back(
+        {{"value", candidate.selection},
+         {"label",
+          RouteSelection(SideRoute{.model = candidate.route.model,
+                                   .base_url = candidate.route.base_url},
+                         providers)},
+         {"efforts", candidate.info.efforts},
+         {"variants", candidate.route.protocol == ProviderProtocol::kOpenRouter
+                          ? json(kOpenRouterVariants)
+                          : json::array()},
+         {"default_effort", candidate.info.default_effort},
+         {"active", active}});
+  }
+  return {{"models", models},
+          {"unavailable", search.unavailable},
+          {"more", search.matches.size() > models.size()}};
 }
 
 }  // namespace uagent

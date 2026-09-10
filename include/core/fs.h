@@ -99,7 +99,7 @@ inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
 
 // Write every byte or report why not; errno is left set for the caller.
-inline bool WriteFully(int fd, const std::string& data) {
+inline bool WriteFully(int fd, std::string_view data) {
   return WriteAll(fd, data.data(), data.size());
 }
 
@@ -123,6 +123,45 @@ inline bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
   out.resize(std::min(read, cap));
   out = Utf8Prefix(std::move(out), cap);
   return read > cap;
+}
+
+// Private state and web assets must never follow a final symlink or read a
+// device/FIFO. A prefix read is useful for cheap catalogue headers.
+inline bool ReadRegularFile(const std::string& path, size_t cap,
+                            std::string& out, std::string& error,
+                            bool prefix = false) {
+  out.clear();
+  Fd fd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+  struct stat info{};
+  if (!fd || fstat(fd.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
+      info.st_size < 0) {
+    error = "cannot read regular file";
+    return false;
+  }
+  if (!prefix && static_cast<uintmax_t>(info.st_size) > cap) {
+    error = "file exceeds read limit";
+    return false;
+  }
+  char buffer[8192];
+  while (out.size() < cap) {
+    ssize_t count =
+        read(fd.Get(), buffer, std::min(sizeof buffer, cap - out.size()));
+    if (count < 0 && errno == EINTR) continue;
+    if (count < 0) {
+      error = strerror(errno);
+      return false;
+    }
+    if (count == 0) return true;
+    out.append(buffer, static_cast<size_t>(count));
+  }
+  if (prefix) return true;
+  ssize_t extra;
+  do {
+    extra = read(fd.Get(), buffer, 1);
+  } while (extra < 0 && errno == EINTR);
+  if (extra == 0) return true;
+  error = "file changed or exceeds read limit";
+  return false;
 }
 
 inline std::string UagentConfigPath() {

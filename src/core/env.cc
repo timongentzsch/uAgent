@@ -319,6 +319,7 @@ constexpr FieldBinding<double> kDoubleOptions[] = {
     {&Cfg("UAGENT_SESSION_BUDGET"), &RuntimeConfig::session_budget},
 };
 constexpr FieldBinding<std::string> kStringOptions[] = {
+    {&Cfg("UAGENT_APPROVAL"), &RuntimeConfig::approval},
     {&Cfg("UAGENT_OPENROUTER_PROVIDER"), &RuntimeConfig::openrouter_provider},
     {&Cfg("UAGENT_OPENROUTER_VARIANT"), &RuntimeConfig::openrouter_variant},
     {&Cfg("UAGENT_WEB_SEARCH_BACKEND"), &RuntimeConfig::web_search_backend},

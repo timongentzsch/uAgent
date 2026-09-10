@@ -394,7 +394,7 @@ void TestActivityBar() {
   // Elapsed renders at one decimal; context always shows.
   CHECK(ActivityBar(Working(std::chrono::milliseconds(1500))).find("1.5s") !=
         std::string::npos);
-  CHECK(first.find("ctx 12.0K/1.3M") != std::string::npos);
+  CHECK(first.find("ctx 12k/1.3M") != std::string::npos);
 
   // Headroom reads as a percentage on the idle row; an unknown window has no
   // percentage to state and says nothing rather than guessing.
@@ -406,8 +406,8 @@ void TestActivityBar() {
   ActivityView unknown = Working(std::chrono::milliseconds(0));
   unknown.context_window = 0;
   std::string unknown_bar = ActivityBar(unknown);
-  CHECK(unknown_bar.find("ctx 12.0K") != std::string::npos);
-  CHECK(unknown_bar.find("ctx 12.0K/") == std::string::npos);
+  CHECK(unknown_bar.find("ctx 12k") != std::string::npos);
+  CHECK(unknown_bar.find("ctx 12k/") == std::string::npos);
 
   // The working row names the route exactly as the idle row does, and an
   // unset route adds no segment.
@@ -516,8 +516,8 @@ void TestStatusBarDropsByPriority() {
     wide = StatusBar(api, usage, view);
   }
   CHECK(wide ==
-        "anthropic/claude-sonnet-4-5 · ctx 12.0K/1.3M · 99% left · "
-        "12.0K in · 3.4K out · cache 33% · $0.4200 · bg:1 · 2 attached · "
+        "anthropic/claude-sonnet-4-5 · ctx 12k/1.3M · 99% left · "
+        "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · 2 attached · "
         "verbose · /help for shortcuts");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
@@ -539,7 +539,7 @@ void TestStatusBarDropsByPriority() {
   }
   CHECK(DisplayWidth(narrow) <= 40);
   CHECK(narrow.find("cache 33%") == std::string::npos);
-  CHECK(narrow.find("12.0K in") == std::string::npos);
+  CHECK(narrow.find("12k in") == std::string::npos);
 
   // Priority 0 is never dropped, even when it alone overflows: the row would
   // otherwise stop saying where the request goes.

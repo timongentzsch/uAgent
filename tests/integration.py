@@ -7,12 +7,14 @@ import tempfile
 import time
 
 import integration_delegation
+import integration_management
 import integration_mcp
 import integration_providers
 import integration_runtime
 import integration_sandbox
 import integration_tools
 import integration_ui
+import integration_web
 
 TEST_MODULES = (
     ("runtime", integration_runtime),
@@ -22,6 +24,8 @@ TEST_MODULES = (
     ("mcp", integration_mcp),
     ("delegation", integration_delegation),
     ("sandbox", integration_sandbox),
+    ("web", integration_web),
+    ("management", integration_management),
 )
 ALL_TESTS = {
     name: test

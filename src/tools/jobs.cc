@@ -567,6 +567,14 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
     was_alive = !terminal && ProcessGroupAlive(pid);
   }
   bool reap_leader = !supervised || !supervised->session;
+  if (supervised && supervised->session) {
+    std::lock_guard lock(supervised->session->mutex);
+    if (ActivityTerminal(supervised->session->state)) {
+      return ToolSuccess("activity already complete");
+    }
+    supervised->session->stop_requested = true;
+  }
+  supervisor.Wake();
   if (was_alive) {
     if (!TerminateGroup(supervisor, pid, std::chrono::seconds(1),
                         reap_leader)) {
@@ -579,9 +587,12 @@ ToolResult ToolActivityStop(ProcessSupervisor& supervisor, int64_t requested) {
   }
   if (supervised && supervised->session) {
     std::lock_guard<std::mutex> lock(supervised->session->mutex);
-    supervised->session->stop_requested = true;
+    (void)TransitionActivityLocked(*supervised->session,
+                                   ActivityState::kStopped);
   }
-  if (supervised) (void)supervisor.Take(requested);
+  if (supervised) {
+    (void)supervisor.Take(requested, /*retain=*/true);
+  }
   if (!detached) BgTrackSignal(pid, false);
   if (detached) unlink(DetachedRecordPath(pid).c_str());
   RemoveLog(log);

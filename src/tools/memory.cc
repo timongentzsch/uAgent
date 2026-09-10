@@ -22,11 +22,14 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/library.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
+#include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/lease.h"
 #include "include/core/limits.h"
 #include "include/core/project.h"
 #include "include/core/strings.h"
@@ -299,16 +302,17 @@ std::string MemoryPreview(const std::string& content) {
   return Utf8Trunc(OneLine(RedactMemorySecrets(content)), 160);
 }
 
-ToolResult ListMemoryKeys() {
+ToolResult ListMemoryKeys(const std::filesystem::path& cwd) {
   std::string output;
-  for (const MemoryEntry& memory : ListMemories()) {
+  for (const MemoryEntry& memory : ListMemories(cwd)) {
     if (!output.empty()) output += '\n';
     output += memory.key;
   }
   return ToolSuccess(output.empty() ? "(no memories)" : std::move(output));
 }
 
-ToolResult SearchMemoryText(const std::string& query) {
+ToolResult SearchMemoryText(const std::string& query,
+                            const std::filesystem::path& cwd) {
   std::string needle = AsciiLower(Trim(query));
   if (needle.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -323,7 +327,7 @@ ToolResult SearchMemoryText(const std::string& query) {
     output += "[more matches; narrow the query]";
     return true;
   };
-  for (const MemoryEntry& memory : ListMemories()) {
+  for (const MemoryEntry& memory : ListMemories(cwd)) {
     std::ifstream input(memory.path);
     if (!input) continue;
     std::string line;
@@ -374,8 +378,8 @@ ToolResult ReadMemoryFile(const MemoryEntry& memory) {
 }
 
 ToolResult AccessMemory(const std::string& name, const std::string& scope,
-                        const std::optional<std::string>& content,
-                        bool forget) {
+                        const std::optional<std::string>& content, bool forget,
+                        const std::filesystem::path& cwd) {
   namespace fs = std::filesystem;
   if (Trim(name).empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -389,21 +393,36 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
                            " bytes; keep it to the durable lesson");
   }
 
-  std::string workspace_error;
-  std::optional<fs::path> cwd = CurrentWorkspace(workspace_error);
-  if (!cwd) {
-    return ToolFailure(
-        ToolErrorCode::kInternal,
-        "error: cannot resolve the workspace: " + workspace_error);
-  }
   std::string filename = SafeFileComponent(name) + ".md";
-  fs::path path = MemoryDirectory(scope, Repository(*cwd)) / filename;
+  fs::path path = MemoryDirectory(scope, Repository(cwd)) / filename;
 
+  if (!LibraryPath(GlobalBase(), path)) {
+    return ToolFailure(ToolErrorCode::kPermissionDenied,
+                       "error: unsafe memory path");
+  }
   if (forget) {
-    std::error_code error;
-    if (fs::remove(path, error)) return ToolSuccess("forgot " + path.string());
-    return ToolFailure(error ? FileToolError(error) : ToolErrorCode::kNotFound,
-                       "error: no such memory");
+    std::string previous, error;
+    if (!ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
+                         previous, error)) {
+      return ToolFailure(ToolErrorCode::kNotFound, "error: " + error);
+    }
+    std::error_code code;
+    if (!fs::remove(path, code)) {
+      return ToolFailure(ToolErrorCode::kInternal,
+                         "error: cannot delete memory");
+    }
+    MemoryEvent event{
+        "deleted",
+        scope + "/" + SafeFileComponent(name),
+        "",
+        MemoryPreview(previous),
+        "",
+        scope == "project" ? path.parent_path().filename().string() : "",
+        UtcStamp(),
+        false};
+    WriteMemoryEvent(event, "", error);
+    LibraryChanged();
+    return ToolSuccess("forgot " + path.string());
   }
 
   if (!content) {
@@ -418,7 +437,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
   bool existed = fs::exists(path);
   if (!existed) {
     int64_t count = 0;
-    for (const MemoryEntry& memory : ListMemories(*cwd)) {
+    for (const MemoryEntry& memory : ListMemories(cwd)) {
       count += memory.key.starts_with(scope + "/");
     }
     if (count >= MaxMemories()) {
@@ -437,11 +456,10 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     std::string project = path.parent_path().filename().string();
     MakePrivateDir(projects, project.c_str());
   }
-  std::string previous;
-  if (existed) {
-    std::ifstream input(path, std::ios::binary);
-    previous.assign(std::istreambuf_iterator<char>(input),
-                    std::istreambuf_iterator<char>());
+  std::string previous, read_error;
+  if (existed && !ReadRegularFile(path.string(), static_cast<size_t>(max_bytes),
+                                  previous, read_error)) {
+    return ToolFailure(ToolErrorCode::kInternal, "error: " + read_error);
   }
   std::string action = !existed               ? "created"
                        : previous == *content ? "unchanged"
@@ -469,6 +487,7 @@ ToolResult AccessMemory(const std::string& name, const std::string& scope,
     DebugLog("memory_event_write_error",
              {{"error", event_error}, {"key", event.key}});
   }
+  if (action != "unchanged") LibraryChanged();
   return saved;
 }
 
@@ -520,8 +539,10 @@ std::vector<MemoryEvent> LoadMemoryEvents(size_t limit) {
   return events;
 }
 
-ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
-                            const std::optional<std::string>& content) {
+static ToolResult MemoryAction(const std::string& action,
+                               const std::string& key,
+                               const std::optional<std::string>& content,
+                               const std::filesystem::path& cwd) {
   if (action != "get" && action != "set" && action != "forget" &&
       action != "list" && action != "search") {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -533,14 +554,14 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: list does not accept key or content");
     }
-    return ListMemoryKeys();
+    return ListMemoryKeys(cwd);
   }
   if (action == "search") {
     if (content) {
       return ToolFailure(ToolErrorCode::kInvalidArguments,
                          "error: search does not accept content");
     }
-    return SearchMemoryText(key);
+    return SearchMemoryText(key, cwd);
   }
   size_t slash = key.find('/');
   if (slash == std::string::npos || slash == 0 || slash + 1 == key.size() ||
@@ -556,7 +577,7 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
       return ToolFailure(ToolErrorCode::kPermissionDenied,
                          "error: " + scope + " memories are read-only");
     }
-    std::vector<MemoryEntry> memories = ListMemories();
+    std::vector<MemoryEntry> memories = ListMemories(cwd);
     auto found = std::find_if(
         memories.begin(), memories.end(),
         [&](const MemoryEntry& memory) { return memory.key == key; });
@@ -572,18 +593,165 @@ ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
   const bool has_content =
       content.has_value() && (action == "set" || !Trim(*content).empty());
   if (action == "get" && !has_content) {
-    return AccessMemory(name, scope, std::nullopt, false);
+    return AccessMemory(name, scope, std::nullopt, false, cwd);
   }
   if (action == "set" && has_content) {
-    return AccessMemory(name, scope, RedactMemorySecrets(*content), false);
+    return AccessMemory(name, scope, RedactMemorySecrets(*content), false, cwd);
   }
   if (action == "forget" && !has_content) {
-    return AccessMemory(name, scope, std::nullopt, true);
+    return AccessMemory(name, scope, std::nullopt, true, cwd);
   }
   return ToolFailure(
       ToolErrorCode::kInvalidArguments,
       "error: " + action +
           (action == "set" ? " requires content" : " does not accept content"));
+}
+
+ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
+                            const std::optional<std::string>& content) {
+  std::string error;
+  auto cwd = CurrentWorkspace(error);
+  if (!cwd) return ToolFailure(ToolErrorCode::kInternal, error);
+  FileLease lease;
+  if ((action == "set" || action == "forget") &&
+      !lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+    return ToolFailure(ToolErrorCode::kInternal, error);
+  }
+  return MemoryAction(action, key, content, *cwd);
+}
+
+json MemoryControl(const json& request, const std::filesystem::path& cwd) {
+  const std::string action = JsonValue(request, "action", "list");
+  const std::string key = JsonValue(request, "key", "");
+  const auto entries = ListMemories(cwd, 4096);
+  const auto events = LoadMemoryEvents();
+  auto describe = [&](const MemoryEntry& entry, bool body) {
+    const auto slash = entry.key.find('/');
+    const std::string scope = entry.key.substr(0, slash);
+    const bool writable = scope == "global" || scope == "project";
+    std::string content, error;
+    json value = {{"key", entry.key},
+                  {"name", entry.key.substr(slash + 1)},
+                  {"path", entry.path},
+                  {"scope", scope == "claude"  ? "project"
+                            : scope == "codex" ? "global"
+                                               : scope},
+                  {"source", writable ? "uAgent" : scope},
+                  {"writable", writable}};
+    if (!ReadRegularFile(entry.path, size_t{512} * 1024, content, error)) {
+      value["error"] = error;
+      return value;
+    }
+    value["revision"] = DocumentRevision(entry.path, content);
+    value["bytes"] = content.size();
+    value["modified"] = SnapshotFile(entry.path).modified_seconds * 1000;
+    const auto recent = body ? LoadMemoryEvents() : events;
+    for (auto event = recent.rbegin(); event != recent.rend(); ++event) {
+      if (event->key != entry.key ||
+          (scope == "project" &&
+           event->workspace != std::filesystem::path(entry.path)
+                                   .parent_path()
+                                   .filename()
+                                   .string())) {
+        continue;
+      }
+      value["provenance"] = {{"automatic", event->automatic},
+                             {"source_session", event->source_session},
+                             {"timestamp", event->timestamp}};
+      break;
+    }
+    if (body) value["content"] = RedactMemorySecrets(content);
+    return value;
+  };
+  if (action == "list") {
+    json items = json::array();
+    for (const auto& entry : entries) items.push_back(describe(entry, false));
+    return {{"items", items},
+            {"enabled", RuntimeConfig::FromEnvironment().memory_enabled},
+            {"limit", MemoryBytes()},
+            {"applies", "new_sessions"}};
+  }
+  auto found =
+      std::find_if(entries.begin(), entries.end(),
+                   [&](const auto& entry) { return entry.key == key; });
+  if (action == "get") {
+    return found == entries.end() ? json{{"error", "memory not found"}}
+                                  : json{{"item", describe(*found, true)}};
+  }
+  const auto slash = key.find('/');
+  const std::string scope = key.substr(0, slash);
+  const bool external_copy = action == "copy" && found != entries.end() &&
+                             (scope == "codex" || scope == "claude");
+  if (!external_copy && (slash == std::string::npos ||
+                         (scope != "global" && scope != "project") ||
+                         !LibraryName(key.substr(slash + 1)))) {
+    return {{"error",
+             "choose project/<name> or global/<name>; external memories are "
+             "read-only"}};
+  }
+  if (action != "set" && action != "forget" && action != "rename" &&
+      action != "copy") {
+    return {{"error", "unknown memory action"}};
+  }
+  std::string error;
+  FileLease lease;
+  if (!lease.Acquire(UagentDir("library") + "/write.lock", error)) {
+    return {{"error", error}};
+  }
+  const auto path = external_copy ? std::filesystem::path(found->path)
+                                  : MemoryDirectory(scope, Repository(cwd)) /
+                                        (key.substr(slash + 1) + ".md");
+  if (!external_copy && !LibraryPath(GlobalBase(), path)) {
+    return {{"error", "unsafe memory path"}};
+  }
+  std::string previous;
+  const bool exists = PathExists(path.string());
+  if (exists &&
+      !ReadRegularFile(path.string(), size_t{512} * 1024, previous, error)) {
+    return {{"error", error}};
+  }
+  if (!request.contains("revision") ||
+      JsonValue(request, "revision", "") !=
+          (exists ? DocumentRevision(path.string(), previous) : "")) {
+    return {{"error", "This memory changed. Reload it before saving."},
+            {"conflict", true}};
+  }
+  if (action != "set" && !exists) return {{"error", "memory not found"}};
+  if (action == "rename" || action == "copy") {
+    const std::string target = JsonValue(request, "target", "");
+    const auto split = target.find('/');
+    const std::string target_scope = target.substr(0, split);
+    if (split == std::string::npos ||
+        (target_scope != "project" && target_scope != "global") ||
+        !LibraryName(target.substr(split + 1))) {
+      return {{"error", "invalid destination"}};
+    }
+    const auto destination = MemoryDirectory(target_scope, Repository(cwd)) /
+                             (target.substr(split + 1) + ".md");
+    if (PathExists(destination.string())) {
+      return {{"error", "destination already exists"}};
+    }
+    auto saved = MemoryAction("set", target, previous, cwd);
+    if (!saved.Ok()) return {{"error", saved.output}};
+    if (action == "rename") {
+      auto removed = MemoryAction("forget", key, std::nullopt, cwd);
+      if (!removed.Ok()) {
+        return {{"error", "Copied, but could not remove the original: " +
+                              removed.output}};
+      }
+    }
+    return {{"item", describe({target, destination.string()}, true)}};
+  }
+  auto result = MemoryAction(
+      action, key,
+      action == "set"
+          ? std::optional<std::string>(JsonValue(request, "content", ""))
+          : std::nullopt,
+      cwd);
+  if (!result.Ok()) return {{"error", result.output}};
+  return action == "forget"
+             ? json{{"deleted", key}}
+             : json{{"item", describe({key, path.string()}, true)}};
 }
 
 // Escapes every ECMAScript metacharacter so a configured keyword is matched as
@@ -647,20 +815,20 @@ std::vector<MemoryEntry> ListMemories() {
   return ListMemories(*cwd);
 }
 
-std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd) {
+std::vector<MemoryEntry> ListMemories(const std::filesystem::path& cwd,
+                                      size_t limit) {
+  if (limit == 0) limit = static_cast<size_t>(MaxMemories());
   namespace fs = std::filesystem;
   std::vector<MemoryEntry> entries;
   RepositoryPaths repo = Repository(cwd);
   for (const char* scope : {"global", "project"}) {
-    AddMarkdownMemories(entries, MemoryDirectory(scope, repo), scope,
-                        static_cast<size_t>(MaxMemories()));
+    AddMarkdownMemories(entries, MemoryDirectory(scope, repo), scope, limit);
   }
   std::string home = UserHome();
   if (!home.empty()) {
     AddMarkdownMemories(entries, fs::path(home) / ".codex" / "memories",
-                        "codex", static_cast<size_t>(MaxMemories()));
-    AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude",
-                        static_cast<size_t>(MaxMemories()));
+                        "codex", limit);
+    AddMarkdownMemories(entries, ClaudeMemoryDirectory(repo), "claude", limit);
   }
   std::sort(entries.begin(), entries.end(),
             [](const MemoryEntry& left, const MemoryEntry& right) {

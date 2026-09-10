@@ -17,6 +17,9 @@ model output, tool results, paths, and usage.
 | MCP logs and captured images | `~/.uagent/mcp/*` |
 | Playwright snapshots and logs | `<workspace>/.playwright-cli/*` |
 | captured large outputs | `~/.uagent/artifacts/*` |
+| web master discovery, devices and optional push keys | `~/.uagent/web/*` |
+| original browser uploads | `<session>.json.assets/*` (private session-owned IDs) |
+| session writer ownership | `<session>.json.lock` |
 | memories | `~/.uagent/memory/{global,projects/<repository>}/*.md` |
 | processed memory-extraction claims | `~/.uagent/memory/.processed/*` |
 | one-off Python scratch scripts | `<workspace>/.uagent/scratch/*.py` |
@@ -31,6 +34,22 @@ configuration, presentation, and artifact metadata—never prompts, reasoning or
 answer deltas, or full tool results. Corrupt or absent journal data does not
 prevent the format-3 conversation from loading; the journal is neither replay
 authority nor model context.
+
+Optional `display` metadata carries stable message IDs, actual readable reasoning,
+tool status/timing, bounded receipts, timestamps, actual response routes and usage,
+conversation counters, and browser asset references. It is separate
+from provider messages and supports read-only browsing of retained history after
+model-context pruning. It adds no second conversation log. Web uploads preserve
+original files; the existing provider representation can also remain inline in
+the snapshot. See [the web guide](WEB.md) for storage bounds and unavailable
+legacy preview behavior.
+
+CLI/web sessions hold per-conversation writer leases. Independent conversations
+can share a workspace; obsolete workspace lock files are ignored.
+Companion lock files stay in place when released; ownership is the open locked
+descriptor, not file existence or a PID. Failed validation or resume leaves the
+previous live conversation and its ownership intact. An optional `custom_title`
+header field preserves explicit names independently of automatic title selection.
 
 The session snapshot retains tool calls and results used to rebuild the visible
 timeline. Successful `show_image` entries are retransmitted from their recorded
@@ -62,7 +81,10 @@ are not reconstructed after a coordinator exits.
 session snapshot is replay authority, the bounded journal is operational
 metadata, and `--debug` is the opt-in sensitive reconstructable trace. Keeping
 those contracts separate avoids claiming crash recovery from a truncated event
-tail or retaining prompts by default.
+tail. Interactive CLI and web model calls also retain private HTTP payload
+artifacts for explicit inspection. These can contain full prompts, tools and
+returned context; credential headers are redacted. They follow background-artifact
+retention and are not replay authority. See [HTTP capture](WEB.md#execution-and-persistence).
 
 Native project/global files are writable through an explicitly requested
 `memory` action or the single bounded background extractor. Top-level Codex

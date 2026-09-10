@@ -29,6 +29,7 @@
 #include "include/core/term.h"
 #include "include/core/time.h"
 #include "include/md.h"
+#include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
 #include "src/agent/turn_internal.h"
@@ -119,8 +120,8 @@ void Agent::RecordModelResponse(
     ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
   Usage response_usage = AccountModelUsage(response.usage);
-  if (state.metrics.ttt_ms < 0 && response.first_event_ms >= 0) {
-    state.metrics.ttt_ms = response.first_event_ms;
+  if (state.metrics.ttt_ms < 0 && response.first_token_ms >= 0) {
+    state.metrics.ttt_ms = response.first_token_ms;
   }
   if ((state.limits.max_turn_tokens > 0 ||
        state.limits.session_token_budget > 0) &&
@@ -254,15 +255,17 @@ Agent::StepFlow Agent::InterruptTurn(TurnExecution& state) {
 // Steering joins the conversation as ordinary user messages, and every
 // per-step recovery counter starts over: the question has changed.
 bool Agent::ApplyQueuedSteering(StepState& loop) {
-  std::vector<std::string> queued = SteeringState().TakeQueued();
+  std::vector<Steering::Message> queued = SteeringState().TakeMessages();
   if (queued.empty()) return false;
   SteeringState().Take();
-  for (std::string& input : queued) {
+  for (auto& message : queued) {
+    std::string& input = message.text;
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
     }
     conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
                        MessageKind::kUser);
+    PublishMessage(message.request_id);
   }
   loop.last_call.clear();
   loop.repeated_calls = 0;
@@ -659,6 +662,27 @@ void Agent::PushAssistantMessage(ChatResult& response,
     api_.PreserveAssistantReasoning(message, response);
   }
   conversation_.Push(std::move(message), MessageKind::kAssistant);
+  // Readable thinking is display data even when the provider needs no replay
+  // field on a completed prose message. It never enters model requests.
+  Usage usage;
+  usage.Add(response.usage);
+  json facts = {
+      {"time", response.started_at.empty() ? UtcStamp() : response.started_at},
+      {"route", RouteSelection(api_, LoadProviderCatalog().providers)},
+      {"duration_ms", response.duration_ms},
+      {"ttft_ms", response.first_token_ms},
+      {"usage_reported", response.usage.is_object() && !response.usage.empty()},
+      {"usage", UsageJson(usage)}};
+  if (response.duration_ms > 0 && usage.GeneratedTokens() > 0) {
+    facts["tokens_per_second"] = static_cast<double>(usage.GeneratedTokens()) *
+                                 1000 / response.duration_ms;
+  }
+  conversation_.RecordDisplay(conversation_.LastDisplayId(), std::move(facts));
+  conversation_.RecordDisplay(
+      conversation_.LastDisplayId(),
+      {{"reasoning", Utf8Trunc(response.reasoning, size_t{48} * 1024)},
+       {"reasoning_available", !response.reasoning.empty()}});
+  PublishMessage();
 }
 
 // Plain prose and no call: the turn is done unless steering reopened it.
@@ -728,17 +752,21 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   return StepFlow::kNextStep;
 }
 
-void Agent::Turn(const std::string& user_input, json user_content) {
+void Agent::Turn(const std::string& user_input, json user_content, json images,
+                 const std::string& request_id) {
   if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
   ++turn_id_;
+  turn_root_.clear();
+  reply_to_.clear();
+  reply_excerpt_.clear();
   ++revision_;
   ++total_user_turns_;
   std::string title = FirstLine(user_input);
   if (session_title_.empty() ||
-      (GenericSessionTitle(session_title_) && title.size() >= 12 &&
-       !GenericSessionTitle(title))) {
+      (!custom_title_ && GenericSessionTitle(session_title_) &&
+       title.size() >= 12 && !GenericSessionTitle(title))) {
     session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();
@@ -776,6 +804,15 @@ void Agent::Turn(const std::string& user_input, json user_content) {
     Compact(true);
   }
   if (SteeringState().Requested() && SteeringState().QueuedCount() == 0) {
+    conversation_.Push(
+        {{"role", "user"},
+         {"content", attachment ? std::move(user_content) : json(user_input)}},
+        attachment ? MessageKind::kAttachment : MessageKind::kUser);
+    if (!images.empty()) {
+      conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                  {{"files", images}});
+    }
+    PublishMessage(request_id);
     Emit(Event{EventId::kTurnStopped,
                {{"turn", turn_id_},
                 {"outcome", "steered_during_compaction"},
@@ -792,6 +829,11 @@ void Agent::Turn(const std::string& user_input, json user_content) {
       {{"role", "user"},
        {"content", attachment ? std::move(user_content) : json(user_input)}},
       attachment ? MessageKind::kAttachment : MessageKind::kUser);
+  if (!images.empty()) {
+    conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                {{"files", images}});
+  }
+  PublishMessage(request_id);
   turn_search_trace_.Reset();
   // Slices the budget block out of the config: a turn-boundary reload may
   // replace api_.config mid-session, and the limits this turn is judged
@@ -1005,6 +1047,9 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // One write, as above: fputs of the assembled string, never a stream of
   // pieces the composer could repaint between.
   fputs(footer.str().c_str(), stdout);
+  conversation_.AddStatistics({{"recorded_turns", 1},
+                               {"tool_calls", state.metrics.tool_count},
+                               {"duration_ms", secs * 1000}});
   Emit(Event{EventId::kTurnCompleted,
              {{"turn", turn_id_},
               {"outcome", TurnOutcomeName(state.stop.outcome)},

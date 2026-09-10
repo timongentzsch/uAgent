@@ -14,6 +14,14 @@ namespace uagent {
 namespace {
 
 constexpr FlagSpec kFlags[] = {
+    {"--control", FlagKind::kControl, nullptr, nullptr, "JSON|-",
+     "run a native memory, skills or schedule operation without a model"},
+    {"--web", FlagKind::kToggle, &Options::web, nullptr, nullptr,
+     "start or reuse this user's global web application"},
+    {"--web-port", FlagKind::kConfig, nullptr, "UAGENT_WEB_PORT", "PORT",
+     "loopback web listener port (default 8080)"},
+    {"--web-origin", FlagKind::kConfig, nullptr, "UAGENT_WEB_ORIGIN", "ORIGIN",
+     "exact browser origin behind a local HTTPS or tailnet proxy"},
     {"-p", FlagKind::kPrompt, nullptr, nullptr, "PROMPT",
      "run one turn, print only the final answer, exit"},
     {"--yolo", FlagKind::kToggle, &Options::yolo, nullptr, nullptr,
@@ -148,6 +156,13 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
       case FlagKind::kPrompt:
         parsed.options.prompt = std::move(value);
         break;
+      case FlagKind::kControl:
+        if (value.empty()) {
+          parsed.error = "--control requires JSON or -";
+          return parsed;
+        }
+        parsed.options.control = std::move(value);
+        break;
       case FlagKind::kAttach:
         parsed.options.attach_paths.push_back(std::move(value));
         break;
@@ -163,7 +178,15 @@ ParsedOptions ParseOptions(int argc, char* const argv[]) {
         return parsed;
     }
   }
-  if (parsed.options.json && parsed.options.json_stream) {
+  if (!parsed.options.control.empty() &&
+      (parsed.options.web || parsed.options.yolo ||
+       parsed.options.trust_project || parsed.options.debug ||
+       parsed.options.json || parsed.options.json_stream ||
+       parsed.options.resume_latest || parsed.options.resume_pick ||
+       !parsed.options.prompt.empty() || !parsed.options.attach_paths.empty() ||
+       !parsed.options.overrides.empty())) {
+    parsed.error = "--control is a standalone management command";
+  } else if (parsed.options.json && parsed.options.json_stream) {
     parsed.error = "--json and --json-stream are mutually exclusive";
   } else if ((parsed.options.json || parsed.options.json_stream) &&
              parsed.options.prompt.empty()) {

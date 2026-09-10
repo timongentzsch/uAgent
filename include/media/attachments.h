@@ -20,9 +20,13 @@ struct Attachment {
   uintmax_t bytes = 0;
   bool image = false;
   std::string source_call_id;
+  std::string asset_id = "";
 };
 
 std::string ImageExtension(const std::string& mime);
+std::string AttachmentMime(const std::string& name);
+// Web uploads require a recognized raster signature, not a filename claim.
+std::string RasterMime(std::string_view bytes);
 
 std::string ImageDetail();
 

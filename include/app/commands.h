@@ -40,7 +40,14 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
 // Adopts the journal of a session that was just resumed into.
 void LoadSessionJournal(AppSession& session, const std::string& previous_path);
 
+void SaveSessionSettings(AppSession& session);
+
 StatusView SessionStatusView(const AppSession& session);
+json SessionControl(AppSession& session, const json& request);
+json PermissionControl(AppContext& context, const json& request);
+json ActivityControl(ProcessSupervisor& processes, const json& request);
+std::string ActivityText(const json& result);
+json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);
 
 }  // namespace uagent
 

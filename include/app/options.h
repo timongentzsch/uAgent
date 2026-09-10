@@ -20,6 +20,7 @@ enum class OptionsAction {
 };
 
 struct Options {
+  bool web = false;
   bool yolo = false;
   bool trust_project = false;
   bool debug = false;
@@ -30,6 +31,7 @@ struct Options {
   std::string debug_path;
   std::string reference_dir;
   std::string prompt;
+  std::string control;
   std::vector<std::string> attach_paths;
   // UAGENT_* values named on the command line; they outrank the environment
   // and both config files. --budget and --no-memory land here too.
@@ -46,6 +48,7 @@ enum class FlagKind {
   kBudget,       // takes a validated dollar amount
   kTokenBudget,  // takes a validated generated-token count
   kPrompt,       // takes the headless prompt
+  kControl,      // a native management JSON request; - reads stdin
   kAttach,       // takes a path, repeatable
   kPrintVersion,
   kEmitReference,

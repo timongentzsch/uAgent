@@ -1,11 +1,14 @@
 // Copyright 2026 Timon Gentzsch
 
+#include <sys/wait.h>
+
 #include <string>
 #include <vector>
 
 #include "include/app/options.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"
+#include "include/core/lease.h"
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
@@ -27,6 +30,46 @@ void TestFileTools() {
       fs::temp_directory_path() /
       ("uagent-test-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root);
+  {
+    FileLease first, second;
+    std::string error;
+    std::string lock = (root / "ownership.lock").string();
+    CHECK(!FileLease::HasLiveOwner(lock));
+    CHECK(first.Acquire(lock, error, true));
+    CHECK(FileLease::HasLiveOwner(lock));
+    CHECK(first.Acquire(lock, error));
+    CHECK(!second.Acquire(lock, error));
+    first.Reset();
+    CHECK(!FileLease::HasLiveOwner(lock));
+    CHECK(second.Acquire(lock, error));
+    second.Reset();
+    pid_t child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+      FileLease crashed;
+      _exit(crashed.Acquire(lock, error, true) ? 0 : 1);
+    }
+    int status = 0;
+    CHECK(waitpid(child, &status, 0) == child);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    CHECK(!FileLease::HasLiveOwner(lock));
+    CHECK(
+        ToolWritePrivateFile((root / "stale.lock").string(),
+                             std::to_string(getpid()) + " stale-start-identity")
+            .Ok());
+    CHECK(!FileLease::HasLiveOwner((root / "stale.lock").string()));
+    fs::create_symlink(lock, root / "redirected.lock");
+    CHECK(!first.Acquire((root / "redirected.lock").string(), error));
+    std::string bytes;
+    CHECK(
+        ToolWritePrivateFile((root / "bounded-read").string(), "123456").Ok());
+    CHECK(!ReadRegularFile((root / "bounded-read").string(), 3, bytes, error));
+    CHECK(ReadRegularFile((root / "bounded-read").string(), 3, bytes, error,
+                          true));
+    CHECK(bytes == "123");
+    CHECK(!ReadRegularFile((root / "redirected.lock").string(), 32, bytes,
+                           error));
+  }
   ToolResult missing_read =
       ToolReadFile((root / "missing.txt").string(), int64_t{1}, int64_t{1});
   CHECK(!missing_read.Ok());

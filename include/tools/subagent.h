@@ -21,6 +21,8 @@ std::string DefaultSubagentModel(const Api& api);
 // status, and the activity id when the child is still running. Shared with the
 // TUI so `/agents` and the tool's `list` operation cannot drift apart.
 std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes);
+json InspectCollaborator(const ProcessSupervisor& processes,
+                         const std::string& id, uint64_t before = 0);
 std::string DelegationRuntimeContext(const Api& api);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,

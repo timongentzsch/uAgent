@@ -108,7 +108,7 @@ std::string FmtCost(double cost);
 // "840ms", "2.4s", "41m 1s", "1h 12m", "2d 3h".
 std::string FmtDuration(double seconds);
 
-// Byte count with a binary unit: "512 B", "1.4 KB", "2.3 MB".
+// Decimal byte count: "512 B", "1.4 kB", "2.4 MB".
 std::string FmtBytes(int64_t bytes);
 
 // coarse "how long ago", for the session picker

@@ -4,14 +4,16 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 µAgent is a local coding-agent harness shipped as one native binary, without a
-language runtime, application framework, or plugin system. Explicit route
+server-side language runtime or plugin system. Explicit route
 adapters stream Chat Completions, OpenAI Responses, and Anthropic Messages. A
 single process supervisor owns commands and resumable collaborators; typed
 events provide inspectable evidence without driving control flow.
 
-A release build is about a 2 MB executable linking `libcurl`, `libc++`, and
-`libSystem`. Its only vendored source dependency is `json.hpp`. Linux and macOS
-are supported.
+Linux and macOS are supported. The native runtime links libcurl and the platform
+C++ libraries. The default build also embeds a browser interface and vendors
+cpp-httplib alongside json.hpp; `-DUAGENT_WEB=OFF` retains a CLI-only build.
+Optional native Web Push adds OpenSSL 3 libcrypto. See [the web guide](docs/WEB.md)
+for architecture, security, dependencies and limits.
 
 ## Why µAgent
 
@@ -60,6 +62,12 @@ internal turn, process, persistence, and protocol machinery are substantial and
 kept as explicit domains rather than hidden behind a framework.
 
 ## Quick start
+
+Run `uagent --web` for one local control center across all your directories.
+Open the printed URL and pair the browser using the single-use code. Sessions
+run independently and can be resumed from desktop or mobile; trusted HTTPS is
+required for phone installation and background notifications. The embedded UI
+needs no npm or Node runtime. [Setup and development](docs/WEB.md).
 
 Requires CMake, a C++20 compiler, and libcurl. [uv](https://docs.astral.sh/uv/)
 enables Python scratch scripts. Browser automation additionally requires
@@ -185,6 +193,9 @@ Image bytes are not embedded in the session.
 - [Operations and limits](docs/OPERATIONS.md)
 - [Tools](docs/TOOLS.md)
 - [Persistence](docs/PERSISTENCE.md)
+- [Web interface](docs/WEB.md)
+- [Memory, skills and scheduled tasks](docs/MANAGEMENT.md)
+- [Prompt caching](docs/CACHING.md)
 - [Testing](docs/TESTING.md)
 - [Bounded self-improvement](docs/SELF_IMPROVEMENT.md)
 - [Security](SECURITY.md)

@@ -22,6 +22,7 @@ using CURLM = void;
 namespace uagent {
 
 struct StreamCtx;
+class HttpExchange;
 
 // Single-owner client. Calls are intentionally serialized so one easy handle
 // can retain libcurl's connection cache between requests; Api is not reentrant
@@ -46,6 +47,9 @@ class Api {
   Api& operator=(const Api&) = delete;
 
   RuntimeConfig config;
+  bool capture_http = false;
+  json exchange_context = json::object();
+  json http_exchanges = json::array();
 
   void PreserveAssistantReasoning(json& message,
                                   const ChatResult& result) const;
@@ -78,7 +82,8 @@ class Api {
  private:
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
-                         bool render_output, bool full_reasoning);
+                         bool render_output, bool full_reasoning,
+                         HttpExchange* exchange);
   bool WaitForRetry(std::chrono::milliseconds delay, bool render_output) const;
   JsonResponse Fetch(const std::string& path, const std::string* payload,
                      int64_t timeout_s, bool abortable);

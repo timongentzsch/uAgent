@@ -15,6 +15,7 @@ using EnvironmentOverrides = std::vector<std::pair<std::string, std::string>>;
 enum class ChildEnvironmentPolicy {
   kSanitized,
   kApprovedShell,
+  kIndependentAgent,  // Resolve its own permissions from configuration.
 };
 
 class ChildEnvironment {

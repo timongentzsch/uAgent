@@ -118,6 +118,8 @@ struct ChatResult {
   json replay = json::object();
   json usage;
   int64_t http_status = 0;
+  std::string started_at;
+  double first_token_ms = -1;
   double first_event_ms = -1;
   double duration_ms = -1;
   double request_preparation_ms = -1;

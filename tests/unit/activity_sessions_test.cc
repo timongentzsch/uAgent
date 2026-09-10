@@ -197,6 +197,19 @@ void TestActivityBufferAndAdmission() {
     delegated->transcript.Push("{\"format\":3,\"answer\":\"done\"}\n");
   }
   CHECK(delegating.SubagentViews()[0].tail.empty());
+  CHECK(!delegating.ActivityViews()[0].contains("progress"));
+  const int64_t delegated_id = views[0].id;
+  const json first_inspection = delegating.InspectActivity(delegated_id);
+  CHECK(first_inspection == delegating.InspectActivity(delegated_id));
+  CHECK(JsonValue(first_inspection, "output", "").find("done") !=
+        std::string::npos);
+  {
+    std::lock_guard lock(delegated->mutex);
+    delegated->state = ActivityState::kExited;
+    delegated->wait_status = 0;
+    delegated->exited_at = std::chrono::steady_clock::now();
+  }
+  CHECK(delegating.ActivityViews()[0]["status"] == "finishing");
 
   ProcessSupervisor admission;
   std::optional<ActivityReservation> first_slot = admission.ReserveActivity(1);
@@ -239,14 +252,17 @@ void TestActivityBufferAndAdmission() {
         32));
     int64_t id = ActivityId(retained.Snapshot().back());
     retained_ids.push_back(id);
-    std::optional<BgJob> completed = retained.Take(id);
-    REQUIRE(completed.has_value());
     {
       std::lock_guard<std::mutex> lock(session->mutex);
       CHECK(TransitionActivityLocked(*session, ActivityState::kExited));
       CHECK(TransitionActivityLocked(*session, ActivityState::kDrained));
     }
-    retained.Retain(std::move(*completed));
+    std::optional<BgJob> completed = retained.Take(id, /*retain=*/true);
+    REQUIRE(completed.has_value());
+    CHECK(retained.Find(id).has_value());
+    CHECK(!retained.InspectActivity(id).contains("error"));
+    CHECK(!retained.IsLive(id));
+    CHECK(!retained.Take(id, /*retain=*/true).has_value());
   }
   CHECK(!retained.Find(retained_ids.front()).has_value());
   CHECK(retained.Find(retained_ids.back()).has_value());
@@ -275,10 +291,11 @@ void TestActivityStateGraph() {
   ProcessSupervisor supervisor;
   CHECK(supervisor.TryAdd({899990, "", "stopped", false, "", 0, stopped}, 1));
   int64_t id = ActivityId(supervisor.Snapshot().front());
-  std::optional<BgJob> job = supervisor.Take(id);
+  std::optional<BgJob> job = supervisor.Take(id, /*retain=*/true);
   REQUIRE(job.has_value());
-  supervisor.Retain(std::move(*job));
-  CHECK(!supervisor.Find(id).has_value());
+  CHECK(supervisor.Find(id).has_value());
+  CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
+  CHECK(BgTakeCompleted(supervisor).empty());
 }
 
 void TestActivitySessions() {
@@ -302,8 +319,9 @@ void TestActivitySessions() {
   ProcessSupervisor pty_processes;
   ShellCommandResult started = RunShellCommand(
       pty_processes, context,
-      {.command = "if [ -t 0 ]; then echo tty=yes; else echo tty=no; fi; "
-                  "read value; echo got:$value",
+      {.command = "read value; "
+                  "if [ -t 0 ]; then echo tty=yes; else echo tty=no; fi; "
+                  "echo got:$value",
        .background = false,
        .tty = true,
        .yield_ms = 250});
@@ -313,10 +331,10 @@ void TestActivitySessions() {
   if (!pty_jobs.empty()) {
     int64_t id = ActivityId(pty_jobs[0]);
     CHECK(id != pty_jobs[0].pid);
-    CHECK(started.result.output.find("tty=yes") != std::string::npos);
     std::vector<Tool> pty_tools = BuiltinTools(pty_processes);
     const Tool* activity = FindTool(pty_tools, "activity");
     CHECK(activity != nullptr);
+    // The child cannot emit output until write releases its initial read.
     ToolResult initial =
         activity ? activity->run({{"operation", "poll"}, {"id", id}}, context)
                  : ToolFailure(ToolErrorCode::kInternal, "missing activity");
@@ -343,6 +361,8 @@ void TestActivitySessions() {
     CHECK(completed.Ok());
     // write may return as soon as the PTY echoes input; the command's response
     // can arrive in the following wait result.
+    CHECK((input.output + completed.output).find("tty=yes") !=
+          std::string::npos);
     CHECK((input.output + completed.output).find("got:hello") !=
           std::string::npos);
     CHECK(completed.output.find("exit code 0") != std::string::npos);

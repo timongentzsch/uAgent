@@ -367,6 +367,14 @@ std::string ArrayContents(const json& array) {
   return text.substr(1, text.size() - 2);
 }
 
+json AnthropicSystem(std::string system) {
+  // Keep the stable tools + system prefix reachable when a long tool round
+  // exceeds automatic caching's 20-block lookback window.
+  return json::array({{{"type", "text"},
+                       {"text", std::move(system)},
+                       {"cache_control", {{"type", "ephemeral"}}}}});
+}
+
 }  // namespace
 
 bool WireSupportsHostedTool(WireApi wire_api, HostedTool tool) {
@@ -388,7 +396,7 @@ json EncodeWireRequest(WireApi wire_api, const WireRequest& request) {
       break;
     case WireApi::kAnthropicMessages:
       body["messages"] = AnthropicMessages(request.messages, system);
-      if (!system.empty()) body["system"] = std::move(system);
+      if (!system.empty()) body["system"] = AnthropicSystem(std::move(system));
       break;
   }
   return body;
@@ -458,7 +466,7 @@ json WireRequestCache::Encode(WireApi wire_api, const WireRequest& request) {
       wire_api, request,
       encoded_tools_ == "[]" ? json::array() : json(kEncodedSlot));
   body[wire_api == WireApi::kResponses ? "input" : "messages"] = kEncodedSlot;
-  if (!system.empty()) body["system"] = std::move(system);
+  if (!system.empty()) body["system"] = AnthropicSystem(std::move(system));
   return body;
 }
 

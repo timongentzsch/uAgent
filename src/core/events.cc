@@ -88,6 +88,12 @@ constexpr EventPolicy kPolicies[] = {
      nullptr, nullptr, EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kNotice, "notice", "notice", "notice", "notice",
      EventDurability::kDurable, EventRedaction::kPublicProjection},
+    {EventId::kMessageChanged, "message.changed", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kActivitiesChanged, "activities.changed", nullptr, nullptr,
+     nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kHttpExchange, "http.exchange", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kPresentation, "ui.presentation", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
 };
@@ -295,6 +301,7 @@ json JournalProjection(const Event& event) {
       copy("reason");
       break;
     case EventId::kConfigChanged:
+      copy("permissions");
       copy("changed");
       copy("deferred");
       copy("source");

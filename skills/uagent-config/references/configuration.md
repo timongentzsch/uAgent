@@ -7,6 +7,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 ## Contents
 
+- web
 - route
 - request
 - budget
@@ -19,6 +20,14 @@ Every setting below is read from the running binary's registry. `takes effect` i
 - media
 - retention
 - behaviour
+
+## web
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
+| `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
+| `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
 
 ## route
 
@@ -115,7 +124,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_WEB_SEARCH_ENGINE` | string | `auto` | restart-required | auto, native, exa, firecrawl, parallel, perplexity |
 | `UAGENT_WEB_SEARCH_CONTEXT_SIZE` | string | empty | restart-required | low, medium, or high native search context |
 | `UAGENT_WEB_SEARCH_TIMEOUT` | integer | `60` | next-user-turn | seconds allowed for one search request |
-| `UAGENT_WEB_SEARCH_MAX_TOKENS` | integer | `1200` | next-user-turn | tokens returned by one search |
+| `UAGENT_WEB_SEARCH_MAX_TOKENS` | integer | `5000` | next-user-turn | tokens returned by one search |
 | `UAGENT_WEB_SEARCH_CALLS` | integer | `4` | next-user-turn | search calls allowed per turn |
 | `UAGENT_WEB_SEARCH_MAX_RESULTS` | integer | `5` | next-user-turn | results requested per search |
 | `UAGENT_WEB_SEARCH_MAX_USES` | integer | `3` | next-user-turn | hosted search invocations per request |
@@ -196,7 +205,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
-| `UAGENT_APPROVAL` | string | empty | restart-required | yolo approves ordinary mutations without asking |
+| `UAGENT_APPROVAL` | string | empty | next-user-turn | yolo approves ordinary mutations without asking |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |

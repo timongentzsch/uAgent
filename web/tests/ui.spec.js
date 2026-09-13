@@ -1538,10 +1538,10 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   const cell = table.locator("td").first();
   await expect(cell).toBeVisible();
   const cellSize = await cell.boundingBox();
-  const lineHeight = await cell.evaluate((element) =>
-    parseFloat(getComputedStyle(element).lineHeight),
+  const cellFontSize = await cell.evaluate((element) =>
+    parseFloat(getComputedStyle(element).fontSize),
   );
-  expect(cellSize.height).toBeLessThan(lineHeight * 3);
+  expect(cellSize.height).toBeLessThan(cellFontSize * 4);
   const title = page.locator(".tool-toggle strong").first();
   await title.evaluate((element) => {
     element.textContent = "long-command-".repeat(200);

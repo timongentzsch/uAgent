@@ -375,14 +375,18 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
 
 def test_multiline_run_keeps_action_color(root, home, *, binary):
     # Large enough to cross the old 2 KiB call-label cap and stdio write
-    # boundaries. Every line carries its own cyan SGR so a concurrent composer
+    # boundaries. Every line carries its own bold SGR so a concurrent composer
     # repaint cannot turn the tail into the terminal default foreground.
     lines = [f"# color-segment-{index:03d}-" + "x" * 24 for index in range(90)]
     lines.append("printf 'done\\n'")
     command = "\n".join(lines)
     with Server([tool_call("run", {"command": command}), event({"content": "color-ok"})]) as server:
         code, output = run_pty(
-            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",), binary=binary
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"color-ok"), b"/q\n"],
+            args=("--yolo",),
+            binary=binary,
         )
         # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
         assert_true(b"\x01" not in output, output)
@@ -401,7 +405,11 @@ def test_multiline_rejected_call_shows_arguments(root, home, *, binary):
     }
     with Server([tool_call("edit_file", bad), event({"content": "rejected-ok"})]) as server:
         code, output = run_pty(
-            root, base_env(home, server.url), [b"go\n", b"/q\n"], args=("--yolo",), binary=binary
+            root,
+            base_env(home, server.url),
+            [(b"go\n", b"rejected-ok"), b"/q\n"],
+            args=("--yolo",),
+            binary=binary,
         )
         assert_true(code == 0 and b"rejected-ok" in output, output)
         assert_true(b"\xe2\x86\x92 edit_file(" in output, output)
@@ -628,7 +636,7 @@ def test_input_redraw_backspaces_across_a_wide_glyph_wrap(root, home, *, binary)
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [original.encode(), b"\x7f" * 2 + b"ok\n", b"/q\n"],
+            [original.encode(), (b"\x7f" * 2 + b"ok\n", b"wide-ok"), b"/q\n"],
             columns=80,
             binary=binary,
         )

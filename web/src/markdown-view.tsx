@@ -4,7 +4,7 @@ import { Check, Copy } from "lucide-preact";
 import { copyText } from "./ui.tsx";
 import { failure } from "./types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-function CodeCopy({ text }: { text: string }) {
+export function CodeCopy({ text }: { text: string }) {
   const [status, setStatus] = useState("");
   useEffect(() => {
     if (!status) return;
@@ -52,8 +52,34 @@ export default function Markdown({
         target.parentElement?.querySelector("pre > code")?.textContent || "";
       render(<CodeCopy text={text} />, target);
     });
-    return () => targets?.forEach((target) => render(null, target));
-  }, [html]);
+    let active = true;
+    const diagrams = !streaming
+      ? root.current?.querySelectorAll<HTMLElement>(
+          "pre > code.language-mermaid",
+        )
+      : undefined;
+    const mounted: HTMLElement[] = [];
+    if (diagrams?.length)
+      import("./diagram.tsx").then(({ default: Diagram }) => {
+        if (!active) return;
+        diagrams.forEach((code) => {
+          const target = code.closest<HTMLElement>(".code-block");
+          if (!target) return;
+          const source = code.textContent || "";
+          target
+            .querySelectorAll<HTMLElement>(".code-copy")
+            .forEach((copy) => render(null, copy));
+          target.replaceChildren();
+          mounted.push(target);
+          render(<Diagram source={source} />, target);
+        });
+      });
+    return () => {
+      active = false;
+      mounted.forEach((target) => render(null, target));
+      targets?.forEach((target) => render(null, target));
+    };
+  }, [html, streaming]);
   const pending = useRef<{
     timer: ReturnType<typeof setTimeout> | undefined;
     active: boolean;

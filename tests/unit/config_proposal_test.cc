@@ -277,14 +277,30 @@ void TestConfigProposalAndCommit() {
   CHECK(!store.Take("key", arguments).ok);
   CHECK(!store.Take("never-prepared", arguments).ok);
 
-  Tool configure = ConfigureTool(
-      [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-        ConfigProposal rejected;
-        rejected.error = "specific rejection";
-        return rejected;
-      },
-      std::make_shared<ConfigProposalStore>());
-  auto issue = configure.validate({{"scope", "user"},
+  Tool configure =
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   ConfigProposal rejected;
+                   rejected.error = "specific rejection";
+                   return rejected;
+                 },
+                 std::make_shared<ConfigProposalStore>());
+  const json inspect = {{"action", "inspect"}, {"topic", "config"}};
+  CHECK(RequiredApproval(configure, inspect) == ApprovalClass::kNone);
+  CHECK(configure.run(inspect, {}).Ok());
+  CHECK(!configure.validate(inspect));
+  CHECK(configure.validate({{"action", "inspect"}, {"changes", json::array()}})
+            .has_value());
+  CHECK(RequiredApproval(configure, {{"action", "configure"}}) ==
+        ApprovalClass::kMandatoryHuman);
+  Tool restricted =
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); });
+  CHECK(restricted.parameters["properties"]["action"]["enum"] ==
+        json::array({"inspect"}));
+  CHECK(restricted.capabilities == 0);
+  CHECK(restricted.validate({{"action", "configure"}}).has_value());
+  auto issue = configure.validate({{"action", "configure"},
+                                   {"scope", "user"},
                                    {"changes",
                                     {{{"key", "UAGENT_MAX_STEPS"},
                                       {"operation", "set"},

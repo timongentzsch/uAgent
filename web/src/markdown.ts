@@ -24,6 +24,10 @@ for (const rule of ["fence", "code_block"]) {
   markdown.renderer.rules[rule] = (...args) =>
     `<div class="code-block">${render(...args)}<span class="code-copy"></span></div>`;
 }
+// Wide tables scroll in their own wrapper instead of squeezing their columns
+// to the container width (display:block on <table> would do exactly that).
+markdown.renderer.rules.table_open = () => '<div class="table-scroll"><table>';
+markdown.renderer.rules.table_close = () => "</table></div>";
 let math: Promise<void> | undefined;
 let highlighting: Promise<void> | undefined;
 export async function renderMarkdown(text: string) {

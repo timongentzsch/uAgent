@@ -54,6 +54,13 @@ class FileLease {
       error = (errno == EWOULDBLOCK || errno == EAGAIN)
                   ? "already owned by another session: " + path
                   : "cannot acquire ownership: " + std::string(strerror(errno));
+      // Name the live holder when it published itself; the descriptor lock
+      // stays the sole authority, this only turns opaque conflicts into
+      // actionable ones on every surface.
+      if (errno == EWOULDBLOCK || errno == EAGAIN) {
+        std::string holder = LiveOwner(path);
+        if (!holder.empty()) error += " (live owner: " + holder + ")";
+      }
       return false;
     }
     Reset();
@@ -77,31 +84,37 @@ class FileLease {
     return true;
   }
 
+  // Published "pid identity" of the live holder, or empty when no live
+  // owner can be confirmed. Advisory only; never used as authority.
   // Never acquire a probe lock: even a brief shared lock can reject a real
-  // writer racing to resume. The holder publishes its PID plus start identity
-  // under the lease and clears it before releasing. A crash needs no cleanup.
-  static bool HasLiveOwner(const std::string& path) {
+  // writer racing to resume. A crash needs no cleanup.
+  static std::string LiveOwner(const std::string& path) {
     Fd file(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
     struct stat info{};
     if (!file || fstat(file.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
         info.st_uid != geteuid() || info.st_nlink != 1 ||
         (info.st_mode & 0077)) {
-      return false;
+      return {};
     }
     char buffer[128];
     ssize_t count = pread(file.Get(), buffer, sizeof(buffer), 0);
-    if (count <= 0 || count == sizeof(buffer)) return false;
+    if (count <= 0 || count == sizeof(buffer)) return {};
     std::string owner(buffer, static_cast<size_t>(count));
     size_t space = owner.find(' ');
-    if (space == std::string::npos) return false;
+    if (space == std::string::npos) return {};
     int64_t pid = 0;
     for (size_t i = 0; i < space; ++i) {
-      if (owner[i] < '0' || owner[i] > '9' || pid > 214748364) return false;
+      if (owner[i] < '0' || owner[i] > '9' || pid > 214748364) return {};
       pid = pid * 10 + owner[i] - '0';
     }
-    if (pid <= 0 || pid > INT32_MAX) return false;
+    if (pid <= 0 || pid > INT32_MAX) return {};
     std::string identity = ProcessIdentity(static_cast<pid_t>(pid));
-    return !identity.empty() && identity == owner.substr(space + 1);
+    if (identity.empty() || identity != owner.substr(space + 1)) return {};
+    return owner;
+  }
+
+  static bool HasLiveOwner(const std::string& path) {
+    return !LiveOwner(path).empty();
   }
 
   void Reset() {

@@ -53,5 +53,10 @@ export default defineConfig({
       },
     }),
   ],
-  build: { target: "es2022", cssCodeSplit: true, assetsInlineLimit: 0 },
+  build: {
+    manifest: true,
+    target: "es2022",
+    cssCodeSplit: true,
+    assetsInlineLimit: 0,
+  },
 });

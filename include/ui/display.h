@@ -89,7 +89,7 @@ inline std::string StatusBar(const Api& api, const Usage& usage,
   }
   if (view.verbose) add(6, "verbose");
   add(7, "/help for shortcuts");
-  add(2, view.yolo ? "YOLO" : std::string());
+  add(2, view.yolo ? "YOLO" : "Ask");
 
   auto join = [&segments] {
     std::string line;
@@ -150,7 +150,9 @@ inline std::string ActivityBar(const ActivityView& view) {
   auto ticks =
       std::chrono::duration_cast<std::chrono::milliseconds>(view.elapsed) /
       kSpinnerInterval;
-  std::string prefix = kFrames[static_cast<size_t>(ticks) % 10];
+  std::string prefix =
+      g_unicode ? kFrames[static_cast<size_t>(ticks) % 10]
+                : std::string(1, "|/-\\"[static_cast<size_t>(ticks) % 4]);
   prefix += " ";
   // What the turn is doing, in descending order of how directly the human
   // asked for it. A model round is the one label that names no work, so a

@@ -27,6 +27,45 @@ def answer(handler, body):
         message.get("content", "") for message in body["messages"] if message.get("role") == "user"
     ]
     prompt = str(texts[-1]) if texts else ""
+    if "Summarize the bounded transcript" in str(body["messages"]):
+        return event({"content": "COMPACT-PREVIEW-SUMMARY"})
+    if prompt == "Delegate preview task" and not any(
+        message.get("tool_call_id") == "preview-child" for message in body["messages"]
+    ):
+        return tool_call(
+            "subagent",
+            {
+                "prompt": "Review the full task.\n\n"
+                + "Detailed instructions. " * 800
+                + "TASK-END-MARKER",
+                "background": False,
+            },
+            call_id="preview-child",
+        )
+    if "Exploration probe" in prompt and not any(
+        message.get("tool_call_id") == "explore-a" for message in body["messages"]
+    ):
+        return event(
+            {
+                "tool_calls": [
+                    {
+                        "index": i,
+                        "id": f"explore-{name}",
+                        "function": {"name": "read_path", "arguments": json.dumps({"path": "."})},
+                    }
+                    for i, name in enumerate(("a", "b"))
+                ]
+            },
+            finish="tool_calls",
+        )
+    if "Memory receipt probe" in prompt and not any(
+        message.get("tool_call_id") == "memory-receipt" for message in body["messages"]
+    ):
+        return tool_call(
+            "memory",
+            {"action": "set", "key": "project/browser-proof", "content": "Browser receipt test."},
+            call_id="memory-receipt",
+        )
     if "Background activity probe" in prompt and not any(
         message.get("tool_call_id") == "browser-activity" for message in body["messages"]
     ):
@@ -44,6 +83,8 @@ def answer(handler, body):
             call_id="browser-write",
         )
     content = "# Verified response\n\nA **streamed** answer with a table.\n\n| Check | Result |\n| --- | --- |\n| Native worker | Ready |\n\nInline $x^2 + y^2 = z^2$ and \\(a+b\\).\n\n$$\\int_0^1 x \\, dx = \\frac{1}{2}$$\n\n```python\nprint('hello')\n```\n\nPrices $5 and $10. `<script>bad()</script>`\n\n![blocked](https://example.com/tracker.png)\n\n[unsafe](javascript:alert(1))\n"
+    if "Diagram probe" in prompt:
+        content += "\n```mermaid\nflowchart LR\n  A[Request] --> B[Response]\n```\n"
     write_sse_sequence(
         handler,
         [

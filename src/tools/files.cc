@@ -25,6 +25,7 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/media/attachments.h"
 #include "include/tools/path_policy.h"
 
 namespace uagent {
@@ -217,17 +218,17 @@ ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
                      path);
 }
 
-ToolResult ToolReadFile(const std::string& path, int64_t offset,
-                        int64_t limit) {
+ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
+                        const std::string& call_id) {
   if (auto invalid = ValidatePathTarget(path, PathTarget::kReadableFile)) {
     return std::move(*invalid);
   }
-  // A PNG decoded as lines is pages of replacement characters that answer
-  // nothing. `attach` carries those bytes, so the refusal names it.
   if (!LikelyTextFile(path)) {
-    return ToolFailure(ToolErrorCode::kInvalidArguments,
-                       "error: not a text file: " + path +
-                           "; use attach to put its bytes in model context");
+    if (offset != 1 || limit != 0) {
+      return ToolFailure(ToolErrorCode::kInvalidArguments,
+                         "error: omit offset and limit for images/documents");
+    }
+    return Attachments().Add(path, call_id);
   }
   if (limit == 0) limit = ReadFileLines();  // 0 = unset
   int64_t max_lines = ReadFileMaxLines();
@@ -649,6 +650,12 @@ bool LikelyTextSample(std::string_view sample) {
 }
 
 bool LikelyTextFile(const std::filesystem::path& path) {
+  const std::string mime = AttachmentMime(path.string());
+  if (mime.starts_with("image/") ||
+      (mime.starts_with("application/") && mime != "application/octet-stream" &&
+       mime != "application/json" && mime != "application/xml")) {
+    return false;
+  }
   std::ifstream input(path, std::ios::binary);
   if (!input) return false;
   char sample[4096];

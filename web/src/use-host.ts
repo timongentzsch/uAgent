@@ -19,11 +19,12 @@ import {
   readStored,
   writeStored,
 } from "./store.ts";
+import { offline } from "./offline.ts";
 import { selectedFromURL, writeSelection } from "./navigation.ts";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
-  onResult: (value: JSONValue) => void,
+  onResult: (value: JSONValue, inspect: boolean) => void,
   readingConversation = true,
 ) {
   const [managementVersion, setManagementVersion] = useState(0);
@@ -31,6 +32,8 @@ export function useHost(
   const [online, setOnline] = useState(false);
   const [connecting, setConnecting] = useState(true);
   const [loadErrors, setLoadErrors] = useState<Record<string, unknown>>({});
+  const revoked = useRef(false);
+  const catalogueRef = useRef<Catalogue>();
   const loads = useRef(new Map<string, Promise<Snapshot>>());
   const lifetime = useRef(new AbortController());
   const [catalogue, setCatalogue] = useState<Catalogue>({
@@ -83,6 +86,19 @@ export function useHost(
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
     const signal = lifetime.current.signal;
+    const cached = offline.snapshot(id).catch(() => undefined);
+    cached.then((value) => {
+      if (
+        value &&
+        !revoked.current &&
+        !signal.aborted &&
+        !live.current[id] &&
+        loads.current.get(id) === request
+      ) {
+        live.current[id] = value;
+        setSnapshots({ ...live.current });
+      }
+    });
     const request = api<Snapshot>(`/api/sessions/${id}`, undefined, {
       signal,
     })
@@ -112,7 +128,11 @@ export function useHost(
         setSnapshots({ ...live.current });
         return value;
       })
-      .catch((error) => {
+      .catch(async (error) => {
+        if (failure(error).network && !revoked.current && !signal.aborted) {
+          const value = live.current[id] || (await cached);
+          if (value) return value;
+        }
         if (!signal.aborted && loads.current.get(id) === request)
           setLoadErrors((prior) => ({ ...prior, [id]: error }));
         throw error;
@@ -124,6 +144,7 @@ export function useHost(
     return request;
   }, []);
   const forget = useCallback((id: string) => {
+    offline.remove(id).catch(report);
     loads.current.delete(id);
     delete live.current[id];
     setLoadErrors((prior) => {
@@ -170,6 +191,10 @@ export function useHost(
         signal,
       });
       if (signal.aborted) return;
+      revoked.current = false;
+      if (list.device) offline.select(list.device);
+      catalogueRef.current = list;
+      offline.catalogue(list).catch(report);
       setCatalogue(list);
       // Activation can precede the first snapshot of a newly created session.
       const knownSessions = new Map(
@@ -269,13 +294,17 @@ export function useHost(
         }
         const data = event.data || {};
         if (event.kind === "outcome") {
-          receiveOutcome({ ...event, pending: false });
+          receiveOutcome(event);
           setOutgoing((items) =>
             items.map((item) =>
               item.request_id === event.request_id
                 ? {
                     ...item,
-                    status: event.accepted ? "Sent" : "Not sent",
+                    status: event.pending
+                      ? "Awaiting confirmation"
+                      : event.accepted
+                        ? "Sent"
+                        : "Not sent",
                     error: event.error,
                   }
                 : item,
@@ -349,7 +378,7 @@ export function useHost(
             ...(current?.metadata || knownSessions.get(id)),
             id,
             generation: event.generation,
-            presence: "web" as const,
+            presence: event.presence || "active",
             updated: event.updated ?? current?.metadata.updated,
             status: event.pending
               ? "waiting"
@@ -357,9 +386,12 @@ export function useHost(
                 ? "starting"
                 : event.busy
                   ? "running"
-                  : "idle",
+                  : event.command_busy
+                    ? "processing"
+                    : "idle",
             turn_active: !!event.busy,
             pending: !!event.pending,
+            guidance: event.guidance || 0,
             activity: event.state?.activity,
             activities: event.state?.activities,
             incoming:
@@ -391,7 +423,8 @@ export function useHost(
           }));
         } else if (
           event.kind === "activity" ||
-          event.type === "activities.changed"
+          event.type === "activities.changed" ||
+          event.type === "collaborator.changed"
         ) {
           if (current) live.current[id] = applySessionEvent(current, event);
           setCatalogue((prior) => ({
@@ -411,9 +444,14 @@ export function useHost(
           if (
             id === selection.current &&
             event.type === "command.completed" &&
-            Object.keys(data.result || {}).length
+            (data.output?.trim() || Object.keys(data.result || {}).length)
           ) {
-            onResult(data.result!);
+            onResult(
+              Object.keys(data.result || {}).length
+                ? data.result!
+                : data.output!,
+              data.inspect !== false,
+            );
           }
           if (event.type === "notice" && data.presentation?.status === "failed")
             report(new Error(data.presentation?.title));
@@ -470,10 +508,18 @@ export function useHost(
       if (signal.aborted) return;
       setConnecting(false);
       if (failure(error).status === 401) {
+        revoked.current = true;
+        catalogueRef.current = undefined;
+        setCatalogue({ sessions: [], devices: [], capabilities: {} });
+        offline.clear().catch(report);
+        setDrafts({});
         setAuthenticated(false);
         live.current = {};
         setSnapshots({});
-      } else report(error);
+      } else {
+        report(error);
+        if (!catalogueRef.current) setAuthenticated((prior) => prior ?? false);
+      }
     } finally {
       reconnecting.current = false;
       if (refreshAgain.current) {
@@ -485,11 +531,42 @@ export function useHost(
   useEffect(() => {
     const restoration = history.scrollRestoration;
     history.scrollRestoration = "manual";
+    offline
+      .bootstrap()
+      .then(async (cached) => {
+        if (
+          !cached ||
+          revoked.current ||
+          lifetime.current.signal.aborted ||
+          (catalogueRef.current &&
+            catalogueRef.current.device !== cached.catalogue.device)
+        )
+          return;
+        if (!catalogueRef.current) {
+          setCatalogue(cached.catalogue);
+          setAuthenticated(true);
+        }
+        setDrafts((current) => ({ ...cached.drafts, ...current }));
+        const id = selection.current;
+        const value = id && (await offline.snapshot(id));
+        if (
+          value &&
+          !revoked.current &&
+          !lifetime.current.signal.aborted &&
+          (!catalogueRef.current ||
+            catalogueRef.current.device === cached.catalogue.device) &&
+          !live.current[id]
+        ) {
+          live.current[id] = value;
+          setSnapshots({ ...live.current });
+        }
+      })
+      .catch(() => {});
     refresh();
     const recover = () => {
       if (document.visibilityState === "visible") refresh();
     };
-    const offline = () => {
+    const disconnected = () => {
       setConnecting(false);
       stream.current?.close();
       stream.current = undefined;
@@ -503,7 +580,7 @@ export function useHost(
       navigation = setTimeout(() => setSelected(selectedFromURL()), 0);
     };
     addEventListener("online", refresh);
-    addEventListener("offline", offline);
+    addEventListener("offline", disconnected);
     addEventListener("pageshow", recover);
     addEventListener("hashchange", hash);
     addEventListener("popstate", hash);
@@ -523,7 +600,7 @@ export function useHost(
       clearTimeout(timer);
       clearTimeout(navigation);
       removeEventListener("online", refresh);
-      removeEventListener("offline", offline);
+      removeEventListener("offline", disconnected);
       removeEventListener("pageshow", recover);
       removeEventListener("hashchange", hash);
       removeEventListener("popstate", hash);
@@ -564,6 +641,30 @@ export function useHost(
     },
     [],
   );
+  const persisted = useRef({ snapshots, drafts, catalogue });
+  persisted.current = { snapshots, drafts, catalogue };
+  useEffect(() => {
+    let previous = persisted.current;
+    const save = () => {
+      const next = persisted.current;
+      if (next === previous || revoked.current) return;
+      for (const [id, snapshot] of Object.entries(next.snapshots)) {
+        if (previous.snapshots[id] !== snapshot)
+          offline.save(snapshot).catch(report);
+      }
+      if (previous.drafts !== next.drafts)
+        offline.drafts(next.drafts).catch(report);
+      if (previous.catalogue !== next.catalogue && catalogueRef.current)
+        offline.catalogue(next.catalogue).catch(report);
+      previous = next;
+    };
+    const timer = setInterval(save, 500);
+    document.addEventListener("visibilitychange", save);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", save);
+    };
+  }, [report]);
   function reset() {
     lifetime.current.abort();
     lifetime.current = new AbortController();
@@ -574,6 +675,9 @@ export function useHost(
     setSnapshots({});
     setDrafts({});
     setOutgoing([]);
+    revoked.current = true;
+    catalogueRef.current = undefined;
+    offline.clear().catch(report);
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     setOnline(false);
     setAuthenticated(false);

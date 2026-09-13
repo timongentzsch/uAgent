@@ -447,17 +447,4 @@ json UpdateScheduledRun(const std::string& id, const std::string& status,
     return json::object();
   });
 }
-json RecoverScheduledRuns() {
-  return Mutate([](json& store) -> json {
-    for (auto& run : store["runs"]) {
-      auto state = JsonValue(run, "status", "");
-      if (ScheduledRunActive(state) && state != "queued") {
-        run["status"] = "interrupted";
-        run["error"] = "Host restarted. Inspect this run before retrying.";
-        run["updated"] = Now();
-      }
-    }
-    return json::object();
-  });
-}
 }  // namespace uagent

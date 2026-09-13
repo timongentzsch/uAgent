@@ -39,7 +39,6 @@ function Setting({
         : "0"
       : stringify(setting.value);
   const [value, setValue] = useState(configured);
-  useEffect(() => setValue(configured), [configured]);
   const secret = setting.sensitivity !== "public";
   const editable = setting.scopes.includes(scope);
   const id = setting.name;
@@ -231,7 +230,7 @@ export default function Configuration({
           </summary>
           {settings.map((setting) => (
             <Setting
-              key={setting.name}
+              key={[scope, setting.name, stringify(setting.value)].join(":")}
               setting={setting}
               scope={scope}
               busy={

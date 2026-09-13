@@ -1,5 +1,6 @@
 import type {
   Block,
+  Collaborator,
   HostEvent,
   Snapshot,
   Outcome,
@@ -76,14 +77,26 @@ export async function api<T = unknown>(
     );
   return data as T;
 }
-export async function readPages(path: string, signal?: AbortSignal) {
+export async function readPages(
+  path: string | ((offset: number) => Promise<BodyPage>),
+  signal?: AbortSignal,
+  limit = Infinity,
+) {
   const parts: string[] = [];
+  let size = 0;
   let offset = 0,
     page: BodyPage;
   do {
-    page = await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
-      signal,
-    });
+    signal?.throwIfAborted();
+    page =
+      typeof path === "function"
+        ? await path(offset)
+        : await api<BodyPage>(`${path}&offset=${offset}`, undefined, {
+            signal,
+          });
+    signal?.throwIfAborted();
+    size += new Blob([page.text || ""]).size;
+    if (size > limit) throw new Error("Content exceeds the download budget.");
     parts.push(page.text || "");
     if (page.more && page.next <= offset) throw new Error("Incomplete body.");
     offset = page.next;
@@ -92,7 +105,7 @@ export async function readPages(path: string, signal?: AbortSignal) {
 }
 const receipts = new Map<string, (outcome: Outcome) => void>();
 export function receiveOutcome(outcome: Outcome) {
-  receipts.get(outcome.request_id)?.(outcome);
+  if (!outcome.pending) receipts.get(outcome.request_id)?.(outcome);
 }
 export async function command<K extends CommandKind>(
   kind: K,
@@ -131,6 +144,7 @@ export async function command<K extends CommandKind>(
   }
 }
 
+// Only model-invoked calls produce tool rows; async receipts arrive as message.changed.
 // One incremental projection, also used to hydrate the server's replay.
 export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
   const blocks = prior.map((block) => ({ ...block }));
@@ -178,6 +192,7 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
         };
         blocks.push(block);
       }
+      block.activity = data.activity;
       if (event.type === "tool.call") block.arguments = data.arguments;
       else
         Object.assign(block, {
@@ -220,8 +235,27 @@ export function applySessionEvent(
   const state = { ...(current.state || {}) };
   const data = event.data || {};
   let streamed = current.streamed || liveBlocks(current.live || []);
+  if (event.type === "usage.updated") {
+    if (data.usage) state.usage = data.usage;
+    if (data.statistics) state.statistics = data.statistics;
+    if (data.context_tokens !== undefined)
+      state.context_tokens = data.context_tokens;
+  }
   if (event.kind === "activity") state.activity = event.activity;
   if (event.type === "activities.changed") state.activities = data.activities;
+  if (event.type === "collaborator.changed" && data.collaborator) {
+    const collaborators = [...(state.collaborators || [])];
+    const changed = data.collaborator as unknown as Collaborator;
+    const index = collaborators.findIndex((item) => item.id === changed.id);
+    if (data.removed) {
+      if (index >= 0) collaborators.splice(index, 1);
+    } else if (index < 0) {
+      collaborators.push(changed);
+    } else {
+      collaborators[index] = changed;
+    }
+    state.collaborators = collaborators;
+  }
   if (event.type === "http.exchange" && data.id && data.state)
     state.http = [
       {
@@ -238,8 +272,8 @@ export function applySessionEvent(
     const changed = data.block;
     const blocks = [...(prior?.blocks || [])];
     const index = blocks.findIndex((block) => block.id === changed.id);
-    if (index < 0) blocks.push(data.block);
-    else blocks[index] = data.block;
+    if (index < 0) blocks.push(changed);
+    else blocks[index] = changed;
     state.view = { ...prior, blocks: blocks.slice(-256) };
   }
   if (event.kind === "event") streamed = liveBlocks([event], streamed);

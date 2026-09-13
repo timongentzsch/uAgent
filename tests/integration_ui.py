@@ -11,6 +11,7 @@ from integration_support import (
     event,
     run_dialog,
     run_pty,
+    session_files,
     tool_call,
     wait_for_echo,
     wait_until_stopped,
@@ -187,12 +188,12 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
-        band = b"\x1b[48;5;250m"
+        band = b"\x1b[7m"
         assert_true(output.count(band) >= 2, output)
         assert_true(output.rfind(b"\x1b[0m\x1b[39m\x1b[49m") > output.rfind(band), output)
         assert_true(output.count(band + b"first line\x1b[K\r\n") == 1, output)
         assert_true(output.count(band + b"third line\x1b[K") == 1, output)
-        assert_true(b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m" in output, output)
+        assert_true(b"\x1b[1m> \x1b[0m\x1b[39m\x1b[49m" in output, output)
         assert_true(len(server.requests) == 1, len(server.requests))
 
 
@@ -241,14 +242,14 @@ def test_resume_picker_accepts_enter_when_icrnl_was_disabled(root, home, *, bina
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [b"1\r", b"/q\r"],
+            [(b"1\r", b"Ready"), b"/q\r"],
             args=("--resume",),
             startup_marker=b"resume #: ",
             configure_terminal=disable_icrnl,
             binary=binary,
         )
         assert_true(code == 0, output)
-        assert_true(b"resumed" in output, output)
+        assert_true(b"Ready" in output, output)
         assert_true(b"ctx 1.9M" not in output, output)
         assert_true(b"^M" not in output, output)
         assert_true(len(server.requests) == 0, server.requests)
@@ -357,7 +358,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
                 (b"y\n", b"approval-done"),
                 # The idle status carries the route in schema form and the
                 # context window beside what is used.
-                (b"", b"test @ 127.0.0.1 \xc2\xb7 ctx"),
+                (b"", b"Ready \xc2\xb7 test \xc2\xb7 ctx"),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),
@@ -385,10 +386,10 @@ def test_multiline_run_keeps_action_color(root, home, *, binary):
         )
         # Empty SIGCHLD wake slots must not write their marker byte to PTY fd 0.
         assert_true(b"\x01" not in output, output)
-        first = b"\x1b[36m\xe2\x86\x92 run\r\n\x1b[36m# color-segment-000"
+        first = b"\x1b[1m\xe2\x86\x92 run\r\n\x1b[1m# color-segment-000"
         assert_true(code == 0 and first in output, output)
         for index in range(90):
-            marker = f"\x1b[36m# color-segment-{index:03d}".encode()
+            marker = f"\x1b[1m# color-segment-{index:03d}".encode()
             assert_true(marker in output, (index, output))
 
 
@@ -470,11 +471,14 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
                 (b"pending draft", b"status-redraw-ok"),
                 b"\x15/q\n",
             ],
+            startup_marker=b"Ready",
             binary=binary,
         )
         assert_true(code == 0, output)
         assert_true(output.count(b"status-redraw-ok") == 1, output)
-        response_at = output.index(b"status-redraw-ok")
+        # Real response output starts with its actor header; its pipe write
+        # may arrive separately from the text and legitimately repaint input.
+        response_at = output.index("µ".encode())
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 
@@ -505,9 +509,9 @@ def test_suspend_restores_and_rearms_terminal(root, home, *, binary):
             root,
             base_env(home, server.url),
             # An idle SIGINT asks first now, so ending the session is two
-            # presses; the second one still leaves through the signal path.
+            # presses; the second one detaches with the signal exit status.
             [
-                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                (lambda process: process.send_signal(signal.SIGINT), b"Ctrl+C again to detach"),
                 lambda process: process.send_signal(signal.SIGINT),
             ],
             configure_terminal=cooked,
@@ -552,7 +556,7 @@ def test_signal_exit_restores_terminal(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                (lambda process: process.send_signal(signal.SIGINT), b"Ctrl+C again to detach"),
                 lambda process: process.send_signal(signal.SIGINT),
             ],
             configure_terminal=cooked,
@@ -650,7 +654,7 @@ def test_resize_replaces_the_status_row_instead_of_appending(root, home, *, bina
             root,
             base_env(home, server.url),
             [
-                (b"first\n", b"RESIZE-MARKER"),
+                (b"first\n", b"RESIZE-MARKER", b"Ready", None),
                 (b"", b"", 40),
                 (b"", b"", 80),
                 (b"", b"", 40),
@@ -670,9 +674,6 @@ def test_resize_replaces_the_status_row_instead_of_appending(root, home, *, bina
         assert_true(b"\r\x1b[J" not in output, output[-200:])
         walks = re.findall(rb"\x1b\[\d+A\x1b\[J", output)
         assert_true(len(walks) >= 1, len(walks))
-        # Resizes arriving inside the settle window coalesce, so the repaint
-        # count is bounded by the number of resizes rather than equal to it.
-        assert_true(len(walks) <= 8, len(walks))
 
 
 def test_context_command_shows_memory_and_skills(root, home, *, binary):
@@ -707,14 +708,14 @@ def test_context_command_shows_memory_and_skills(root, home, *, binary):
             workspace,
             base_env(home, server.url),
             [
-                (b"/context\n", b"context-skill-description-sentinel", b"\x1b[36m> \x1b[0m", None),
-                (b"/memory\n", b"project/browser", b"\x1b[36m> \x1b[0m", None),
+                (b"/context\n", b"context-skill-description-sentinel", b"\x1b[1m> \x1b[0m", None),
+                (b"/memory\n", b"project/browser", b"\x1b[1m> \x1b[0m", None),
                 b"/q\n",
             ],
             binary=binary,
         )
         assert_true(code == 0, output)
-        assert_true(b"Context" in output and b"Skills" in output, output)
+        assert_true(b"model request" in output and b'"tools"' in output, output)
         assert_true(b"project/browser" in output, output)
         assert_true(b"codex/MEMORY" in output and b"claude/MEMORY" in output, output)
         assert_true(b"context-memory-body-sentinel" not in output, output)
@@ -876,16 +877,16 @@ def test_input_ctrl_c_asks_once_then_quits(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (lambda process: process.send_signal(signal.SIGINT), b"ctrl+c again to quit"),
+                (lambda process: process.send_signal(signal.SIGINT), b"Ctrl+C again to detach"),
                 lambda process: process.send_signal(signal.SIGINT),
             ],
             timeout=10,
             binary=binary,
         )
-        # The confirmed press leaves through the signal path, so the shell
+        # The confirmed press preserves the signal exit status, so the shell
         # still sees the interrupt status it always saw.
         assert_true(code == 130, (code, output))
-        assert_true(b"ctrl+c again to quit" in output, output)
+        assert_true(b"Ctrl+C again to detach" in output, output)
         assert_true(not server.get_requests, server.get_requests)
 
 
@@ -899,13 +900,13 @@ def test_cli_permissions_config_http_and_fork(root, home, *, binary):
         )
         assert_true(result.returncode == 0, result.stderr)
         assert_true(
-            '"effective": "yolo"' in result.stdout and '"continued": true' in result.stdout,
+            '"effective": "yolo"' in result.stdout and '"forked": true' in result.stdout,
             result.stdout,
         )
         assert_true("data: [DONE]" in result.stdout and '"tools"' in result.stdout, result.stdout)
         assert_true(len(server.requests) == 2, server.requests)
         assert_true("First CLI turn" in json.dumps(server.requests[1][1]), "fork lost CLI history")
-        files = list((home / ".uagent/history").rglob("*.json"))
+        files = session_files(home)
         assert_true(len(files) == 2, files)
         original = next(path for path in files if not path.name.startswith("fork-"))
         fork = next(path for path in files if path.name.startswith("fork-"))

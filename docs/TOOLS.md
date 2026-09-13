@@ -10,21 +10,18 @@ normal turn-boundary work can still change the next wire request.
 
 | Tool | Purpose | Availability |
 | --- | --- | --- |
-| `read_path` | Read a known text file or bounded line range, or list a directory | standard and lean toolsets |
+| `read_path` | Read text/ranges, list directories, or load media into model context | standard and lean toolsets |
 | `grep` | Search paths or file contents with a regex and optional glob | standard and lean toolsets |
 | `write_file` | Create a file; whole-file replacement requires `overwrite=true` | standard toolset; mutating |
 | `edit_file` | Apply ordered exact replacements atomically to an existing file | standard toolset; mutating |
 | `delete_file` | Delete a regular file with a change receipt | standard toolset; mutating |
-| `attach` | Add a local image or document to the next model request | when attachments are enabled |
-| `show_image` | Render a local image with the terminal's native inline protocol | interactive terminals with inline-image support |
 | `run` | Execute a supervised shell command, optionally yielding, using a PTY, or detaching | execute capability |
 | `scratch` | Create or rerun one bounded uv-backed scratch script, with optional argv | standard toolset with execute capability |
 | `memory` | List, search, read, or explicitly mutate native memory; automatic changes produce private audit receipts | standard toolset when memory and policy allow it |
-| `uagent_info` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | standard toolset; inspect-only |
+| `uagent` | Describe this build: version, flags, slash commands, configuration schema with effective values and provenance, the live tool surface, or the model routes and providers it can reach | standard toolset; configure requires interactive human approval |
 | `web_fetch` | Read one http(s) URL as text, converting markup to what a reader would see | standard toolset; approval required |
 
-`read_path` decodes text only: a file whose first bytes are not text is refused
-with a pointer to `attach` rather than decoded into replacement characters.
+`read_path` decodes text or queues media for capability-aware model input.
 
 `grep` defaults to regex content matches. `literal=true` searches exact text;
 `mode=files` matches filenames, while `mode=matching_files` returns only paths
@@ -45,6 +42,27 @@ own configuration, the project trust store or `.mcp.json` is a stricter class:
 it always asks, yolo does not apply, and a run with no interactive terminal
 denies rather than assuming consent. Child processes receive the sanitized
 environment described in [SECURITY.md](../SECURITY.md).
+
+## Activity presentation
+
+The native host records `explore`, `change`, or `execute` for each call. Native
+operations use their tool contract; `run` and `scratch` accept optional `intent`
+with these values, defaulting to `execute`. Intent describes purpose, never
+permissions or verified absence of side effects. No command parser or separate
+model call is involved. Confirmed change receipts come from tool results.
+
+Adjacent successful exploration in one assistant batch folds into a disclosure
+in the web UI and a compact terminal summary. Changes, failures, and human
+approval boundaries remain visible. Call order determines grouping; result IDs
+preserve attribution when parallel work finishes out of order. The saved facts
+serve live, replay, and offline views; `/trace` and `/verbose` expose terminal
+detail.
+
+`read_path` loads binary files, images, and documents through the same bounded,
+capability-aware pipeline as user attachments. Media reads omit line ranges.
+`uagent action=inspect` reads live state; `action=configure` accepts `scope` and
+`changes`, and always requires a human-approved diff. Headless sessions expose
+only inspection.
 
 ## Activity tools
 
@@ -84,27 +102,25 @@ file notifications where available.
 | `subagent` | delegation is enabled and the current depth is below its limit |
 | `skill` | at least one installed skill remains usable after tool-requirement filtering |
 | `adapt_system` | `UAGENT_ADAPT_SYSTEM=1` |
-| `uagent_configure` | the process is not a delegated child; persists a typed change to a registered setting after an exact diff is approved by a person |
 | `<server>_<tool>` | discovered from a configured MCP server; names are sanitized and collision-safe |
 
 `subagent` defaults to `operation=spawn`, returning both an activity ID and a
-durable collaborator ID. `operation=followup` resumes that collaborator's
-private conversation and prepends its persisted coordinator-owned `directive`;
-an explicit empty directive clears it. `message` delivers one-shot guidance to
-a running child between its steps and holds it for the next follow-up when the
-child is idle, and `list` reports this workspace's collaborators with
-their model, toolset, and status — plus the activity ID of each one still
-running, so a caller that sees `running` can wait on or stop it without
-guessing. Use the ordinary `activity` tool for live output, waiting, and
-stopping; collaboration does not add a second process supervisor. `/agents`
-shows a person the same records with each running child's newest progress
-line.
+durable collaborator ID. With `persistent=true`, one blocking collaborator
+keeps the same session worker and its supervised activities between sequential
+handoffs; its model, mode and limits remain fixed. `operation=followup` resumes
+the private conversation and prepends its persisted coordinator-owned
+`directive`; an explicit empty directive clears it. `message` delivers one-shot
+guidance to a running child and holds it for the next follow-up when an ordinary
+child is idle. `list` reports this workspace's collaborators with their model,
+toolset, status and live activity or runtime state. Use `activity` for ordinary
+child output, waiting and stopping; stop a persistent collaborator through
+`subagent`. `/agents` projects the same records and progress events.
 
 `web_fetch` is independent of hosted-route support. It decodes markup, JSON,
 XML, and plain text, and refuses other content. Use the browser skill for pages
 behind a login or assembled by scripts. Oversized bodies are truncated at
 `UAGENT_WEB_FETCH_BYTES` and marked partial. For PDFs and images, download with
-`run` and inspect with `attach`.
+`run` and inspect with `read_path`.
 
 Only public Internet destinations are accepted. Before each initial or redirect
 connection, µAgent checks every resolved IPv4 and IPv6 address. It rejects

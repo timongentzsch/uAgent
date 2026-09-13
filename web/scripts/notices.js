@@ -38,7 +38,7 @@ async function visit(
       files.map((file) => readFile(resolve(folder, file), "utf8")),
     )
   ).join("\n\n");
-  notices.set(key, `## ${key}\n\n${text.trim()}\n`);
+  notices.set(key, `## ${key}\n\n${text.replace(/[ \t]+$/gm, "").trim()}\n`);
   for (const dependency of Object.keys(manifest.dependencies || {}))
     await visit(dependency, resolve(folder, "package.json"));
 }

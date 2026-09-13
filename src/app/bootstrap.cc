@@ -36,13 +36,12 @@
 #include "include/core/term.h"
 #include "include/mcp/discover.h"
 #include "include/mcp/register.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
-#include "include/tools/self_info.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/web_fetch.h"
@@ -80,7 +79,7 @@ class ScopedChannelInput {
 
 void PrintWarning(const std::string& warning) {
   if (!warning.empty()) {
-    fprintf(stderr, "%s%s%s\n", YEL(), TerminalSafe(warning).c_str(), RST());
+    Emit(NoticeEvent(PresentationStatus::kWarned, warning));
   }
 }
 
@@ -145,112 +144,6 @@ bool ResolveProjectTrust(const Options& options, bool& trusted,
   return true;
 }
 
-void PrintStartupRow(std::string_view label, std::string summary,
-                     std::vector<std::string> details) {
-  constexpr size_t kLabelWidth = 7;
-  std::string padded_label(label);
-  padded_label.append(kLabelWidth - padded_label.size(), ' ');
-  std::string first_prefix = "  " + padded_label + " │ ";
-  std::string next_prefix = "  " + std::string(kLabelWidth, ' ') + " │ ";
-  size_t prefix_width = DisplayWidth(first_prefix);
-  size_t columns = static_cast<size_t>(std::max(int64_t{1}, TerminalColumns()));
-  size_t value_width = columns > prefix_width ? columns - prefix_width : 1;
-  details.insert(details.begin(), std::move(summary));
-  bool first = true;
-  for (const std::string& detail : details) {
-    for (const std::string& line :
-         WrapLines(TerminalSafe(detail), value_width)) {
-      printf("%s%s%s%s\n", DIM(),
-             first ? first_prefix.c_str() : next_prefix.c_str(), line.c_str(),
-             RST());
-      first = false;
-    }
-  }
-}
-
-void PrintProjectContext(const ProjectInstructions& instructions,
-                         size_t byte_limit) {
-  if (!instructions.sources.empty() || !instructions.memory_sources.empty()) {
-    std::string cwd = CanonicalCwd() + "/";
-    std::vector<std::string> sources = instructions.sources;
-    sources.insert(sources.end(), instructions.memory_sources.begin(),
-                   instructions.memory_sources.end());
-    // The count is the answer; the paths are a spot check.
-    constexpr size_t kShownSources = 3;
-    std::vector<std::string> display;
-    display.reserve(std::min(sources.size(), kShownSources + 1));
-    for (const std::string& source : sources) {
-      if (display.size() == kShownSources) {
-        display.push_back("+" + std::to_string(sources.size() - kShownSources) +
-                          " more");
-        break;
-      }
-      display.push_back(source.starts_with(cwd) ? source.substr(cwd.size())
-                                                : Tilde(source));
-    }
-    PrintStartupRow("Context", std::to_string(sources.size()) + " sources",
-                    std::move(display));
-  }
-  if (instructions.truncated) {
-    PrintWarning("project instructions truncated at " +
-                 std::to_string(byte_limit) + " bytes");
-  }
-  if (instructions.memory_truncated) {
-    PrintWarning("memory context truncated at " +
-                 std::to_string(instructions.memory_limit) +
-                 " bytes; consolidate or shorten global memories");
-  }
-}
-
-// The few commands worth knowing before the first turn.
-void PrintStartupHints() {
-  static constexpr const char* kHints[] = {"/help", "/model", "/status",
-                                           "/init", "/review"};
-  printf("%s  To get started, describe a task or try one of these:%s\n", DIM(),
-         RST());
-  for (const char* name : kHints) {
-    const SlashCommandSpec* command = ParseSlashCommand(name).spec;
-    printf("  %s%s%s %s%s%s\n", BOLD(), command->name, RST(), DIM(),
-           command->description, RST());
-  }
-}
-
-// Tools and skills print the same row: a count and the names, joined. Routes
-// below are deliberately not this, since they carry a value per name.
-void PrintNameRow(std::string_view label,
-                  const std::vector<std::string>& names) {
-  if (names.empty()) return;
-  std::string list;
-  for (const std::string& name : names) {
-    if (!list.empty()) list += ", ";
-    list += name;
-  }
-  PrintStartupRow(label, std::to_string(names.size()) + " available",
-                  {std::move(list)});
-}
-
-// Only the side models that are actually configured: the row exists to answer
-// "what will delegation and side analysis use", not to list defaults.
-void PrintRoutes(const RuntimeConfig& config) {
-  std::vector<std::pair<const char*, std::string>> routes = {
-      {"subagent", SubagentModel()},
-      {"image", config.image_model},
-      {"memory", EnvStr("UAGENT_MEMORY_MODEL")},
-      {"search", config.web_search_model},
-  };
-  std::string list;
-  size_t count = 0;
-  for (const auto& [name, selection] : routes) {
-    if (Trim(selection).empty()) continue;
-    if (!list.empty()) list += ", ";
-    list += std::string(name) + " → " + TerminalSafe(Trim(selection));
-    ++count;
-  }
-  if (!count) return;
-  PrintStartupRow("Routes", std::to_string(count) + " configured",
-                  {std::move(list)});
-}
-
 // Project docs and memory context share one byte budget: what the project
 // instructions do not spend is what the memory index may.
 ProjectInstructions LoadInstructions(const std::filesystem::path& workspace,
@@ -300,11 +193,8 @@ std::vector<Tool> BuildTools(AppContext& context,
   // One read of the toolset selector: the three shapes it can take are one
   // decision, not three unrelated conditions.
   const std::string toolset = EnvStr("UAGENT_TOOLSET");
-  bool inline_images =
-      context.options.prompt.empty() && g_tty &&
-      DetectTerminalImageProtocol() != TerminalImageProtocol::kNone;
   std::vector<Tool> tools = BuiltinTools(
-      runtime.processes, workspace, inline_images,
+      runtime.processes, workspace,
       AdaptiveSystemEnabled() ? &runtime.adaptive_system : nullptr);
   if (!runtime.config.memory_enabled) {
     std::erase_if(tools, [](const Tool& tool) { return tool.memory_store; });
@@ -315,32 +205,25 @@ std::vector<Tool> BuildTools(AppContext& context,
   }
   // A tool-less child remains useful for constrained internal tasks.
   if (toolset == "none") return {};
-  // Read-only self-description, answered from the live registries when the
-  // model asks rather than injected into every prompt.
-  tools.push_back(
-      SelfInfoTool([app = &context](SelfTopic topic, const std::string& name) {
+  ConfigProposalFactory prepare;
+  if (InteractiveApprovalAvailable() &&
+      (context.tool_policy.allowed & Capability(ToolCapability::kMutate))) {
+    prepare = [app = &context](ConfigProposalScope scope,
+                               const std::vector<ConfigChange>& changes) {
+      return PrepareConfigProposal(scope, changes, app->config_manager,
+                                   app->runtime.config,
+                                   app->config_manager.ProjectTrusted());
+    };
+  }
+  tools.push_back(UagentTool(
+      [app = &context](SelfTopic topic, const std::string& name) {
         return DescribeSelf(
             topic, name,
             SelfDescriptionInputs{app->config_manager, app->runtime.config,
                                   app->runtime.api, app->tools,
                                   ApprovalIsAutomatic(), app->agent.get()});
-      }));
-  // Persisting configuration is a mandatory-human action, so it is offered
-  // only where a person can actually answer. The approver denies the same
-  // cases outright, and advertising a kilobyte of schema for a call that can
-  // only be refused costs every non-interactive request without buying
-  // anything.
-  if (InteractiveApprovalAvailable()) {
-    auto proposals = std::make_shared<ConfigProposalStore>();
-    tools.push_back(ConfigureTool(
-        [app = &context](ConfigProposalScope scope,
-                         const std::vector<ConfigChange>& changes) {
-          return PrepareConfigProposal(scope, changes, app->config_manager,
-                                       app->runtime.config,
-                                       app->config_manager.ProjectTrusted());
-        },
-        proposals));
-  }
+      },
+      prepare, std::make_shared<ConfigProposalStore>()));
   WebSearchRoute search_route =
       SelectWebSearchRoute(api, context.provider.providers);
   if (search_route.Valid()) {
@@ -358,9 +241,10 @@ std::vector<Tool> BuildTools(AppContext& context,
     if (!error.empty()) return {};
   }
   if (CanDelegate()) {
-    tools.push_back(
-        SubagentTool(api, runtime.processes, context.provider.routes,
-                     context.provider.providers, context.options.debug));
+    tools.push_back(SubagentTool(api, runtime.processes,
+                                 context.provider.routes,
+                                 context.provider.providers,
+                                 context.options.debug, &runtime.collaborator));
   }
   if (toolset == "lean") {
     KeepLeanTools(tools);
@@ -372,17 +256,9 @@ std::vector<Tool> BuildTools(AppContext& context,
     std::vector<Tool> skill_tool{SkillTool(skills, tool_names)};
     ApplyToolPolicy(skill_tool, context.tool_policy);
     if (!skill_tool.empty()) {
-      std::vector<std::string> skill_names;
-      skill_names.reserve(skills.size());
-      for (const Skill& skill : skills) skill_names.push_back(skill.name);
-      if (!context.channel) PrintNameRow("Skills", skill_names);
       tool_names.push_back(skill_tool.front().name);
       tools.push_back(std::move(skill_tool.front()));
     }
-  }
-  if (!context.channel) {
-    PrintNameRow("Tools", tool_names);
-    PrintRoutes(runtime.config);
   }
   return tools;
 }
@@ -601,7 +477,6 @@ void LogReady(const AppContext& context) {
        {"provenance", std::move(provenance)},
        {"reasoning_effort", api.reasoning_effort},
        {"openrouter_variant", config.openrouter_variant},
-       {"openrouter_compatible", api.capabilities.OpenRouter()},
        {"capabilities", api.capabilities.DiagnosticJson()},
        {"configured_models", context.provider.routes.size()},
        {"context_window", api.ctx_window},
@@ -747,10 +622,13 @@ BootstrapResult Bootstrap(Options options, const char* executable,
       static_cast<size_t>(context->runtime.config.project_doc_bytes);
   ProjectInstructions instructions = LoadInstructions(
       workspace, context->runtime.config, memory_child, project_limit);
-  if (!channel) {
-    printf("%s%sµAgent%s %sv%s · %s%s\n", RST(), BOLD(), RST(), DIM(), kVersion,
-           TerminalSafe(Tilde(CanonicalCwd())).c_str(), RST());
-    PrintProjectContext(instructions, project_limit);
+  if (instructions.truncated) {
+    PrintWarning("project instructions truncated at " +
+                 std::to_string(project_limit) + " bytes");
+  }
+  if (instructions.memory_truncated) {
+    PrintWarning("memory context truncated at " +
+                 std::to_string(instructions.memory_limit) + " bytes");
   }
   std::vector<Skill> skills =
       memory_child ? std::vector<Skill>{} : LoadSkills(CanonicalCwd());
@@ -785,7 +663,6 @@ BootstrapResult Bootstrap(Options options, const char* executable,
                              });
     }
   }
-  if (context->options.prompt.empty() && !channel) PrintStartupHints();
   context->permission_override.store(context->options.yolo ? 1 : -1);
   AppContext* app = context.get();
   context->agent = std::make_unique<Agent>(

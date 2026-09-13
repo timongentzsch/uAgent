@@ -24,6 +24,7 @@
 #include "include/agent.h"
 #include "include/app/bootstrap.h"
 #include "include/app/commands.h"
+#include "include/app/runtime.h"
 #include "include/cli.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
@@ -37,7 +38,7 @@
 #include "include/core/term.h"
 #include "include/core/time.h"
 #include "include/mcp/rpc.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
@@ -66,12 +67,12 @@ class Application {
                            !session_file_.empty());
     message_subscription_ =
         context_.observability.Subscribe([this](const AppEvent& event) {
-          if (event.type != "message.changed" ||
-              (!persist_ && session_file_.empty())) {
-            return;
-          }
+          if (event.type != "message.changed") return;
           std::string kind = JsonValue(event.data["block"], "kind", "");
-          if (kind == "user" || kind == "attachment") SaveSession(true);
+          if ((kind == "user" || kind == "attachment") &&
+              (persist_ || !session_file_.empty())) {
+            SaveSession(true);
+          }
         });
   }
   ~Application() { context_.observability.Unsubscribe(message_subscription_); }
@@ -88,7 +89,7 @@ class Application {
       if (!ResumeAtStartup()) return 2;
     }
     if (!context_.options.prompt.empty()) return RunHeadless();
-    return channel_ ? RunChannel() : RunInteractive();
+    return channel_ ? RunChannel() : 2;
   }
 
  private:
@@ -117,16 +118,16 @@ class Application {
                 {"source", "config_file"}}});
     if (context_.options.prompt.empty() &&
         (!reload->applied.empty() || !reload->deferred.empty())) {
-      printf("%s· configuration reloaded for the next turn", DIM());
+      std::string notice = "· configuration reloaded for the next turn";
       if (!reload->deferred.empty()) {
         if (reload->deferred.size() == 1) {
-          printf(" · 1 setting requires restart");
+          notice += " · 1 setting requires restart";
         } else {
-          printf(" · %zu settings require restart", reload->deferred.size());
+          notice += " · " + std::to_string(reload->deferred.size()) +
+                    " settings require restart";
         }
       }
-      printf("%s\n", RST());
-      fflush(stdout);
+      Emit(NoticeEvent(PresentationStatus::kNeutral, notice));
     }
   }
 
@@ -134,11 +135,41 @@ class Application {
                 json images = json::array()) {
     EnsureSessionPath();
     ReloadConfigAtTurnBoundary();
+    // Delegated handoffs inherit the parent's current remainder. Restored
+    // usage belongs to the worker's cumulative limit, not to a new allowance.
+    const double cost = JsonValue(handoff_budget_, "cost", 0.0);
+    const int64_t tokens = JsonValue(handoff_budget_, "tokens", int64_t{0});
+    if (cost > 0) {
+      const double ceiling = api_.session_cost + cost;
+      api_.config.session_budget =
+          api_.config.session_budget > 0
+              ? std::min(api_.config.session_budget, ceiling)
+              : ceiling;
+    }
+    if (tokens > 0) {
+      const int64_t ceiling =
+          SaturatingNonnegativeAdd(api_.session_generated_tokens, tokens);
+      api_.config.session_token_budget =
+          api_.config.session_token_budget > 0
+              ? std::min(api_.config.session_token_budget, ceiling)
+              : ceiling;
+    }
     bool was_automatic = ApprovalIsAutomatic();
     PermissionControl(context_, json::object());
     if (was_automatic != ApprovalIsAutomatic()) agent_.ApprovalChanged();
-    agent_.Turn(input, std::move(content), std::move(images), request_id_);
-    SteeringState().Take();
+    struct TurnGuard {
+      bool& flag_;
+      explicit TurnGuard(bool& flag) : flag_(flag) { flag_ = true; }
+      ~TurnGuard() { flag_ = false; }
+    };
+    // Publish lifecycle boundaries even when no model response is produced.
+    {
+      TurnGuard guard(turn_active_);
+      if (channel_ || !session_file_.empty()) PublishChannelState(false);
+      agent_.Turn(input, std::move(content), std::move(images), request_id_);
+      SteeringState().Take();
+    }
+    if (channel_ || !session_file_.empty()) PublishChannelState(false);
   }
 
   void LogSessionEnd(const char* reason) const {
@@ -191,10 +222,7 @@ class Application {
     json content;
     if (!attachments_.empty()) {
       std::string error;
-      content = AttachmentContent(context_.options.prompt, attachments_, error,
-                                  api_.capabilities.image_input,
-                                  !api_.config.image_model.empty(),
-                                  api_.capabilities.file_input);
+      content = AttachmentContent(context_.options.prompt, attachments_, error);
       if (!error.empty()) {
         context_.output.Restore();
         return FinishHeadless("", std::move(error), 2);
@@ -202,6 +230,7 @@ class Application {
     }
     RunTurns(context_.options.prompt, std::move(content));
     SaveSession();
+    PublishChannelState();
     // Background work is observational and never starts a model turn. Keep the
     // process alive long enough to publish completion and drain retained state.
     while (runtime_.processes.JoinableCount() > 0 && !AbortRequested()) {
@@ -271,7 +300,7 @@ class Application {
     SaveSessionSettings(session);
     if ((!persist_ && session_file_.empty()) ||
         (!force && agent_.MessageCount() <= 1) ||
-        agent_.Revision() == saved_revision_) {
+        (!force && agent_.Revision() == saved_revision_)) {
       return;
     }
     EnsureSessionPath();
@@ -313,9 +342,7 @@ class Application {
     json images = json::array();
     if (!attachments_.empty()) {
       std::string error;
-      content = AttachmentContent(
-          input, attachments_, error, api_.capabilities.image_input,
-          !api_.config.image_model.empty(), api_.capabilities.file_input);
+      content = AttachmentContent(input, attachments_, error);
       if (!error.empty()) {
         input_error_ = error;
         if (!channel_) {
@@ -368,10 +395,32 @@ class Application {
     if (command.spec) {
       AppSession session = Session();
       json result;
+      // Existing slash commands produce text and structured results. Capture
+      // their text once at the application boundary so every client receives
+      // the same command.completed event.
+      FILE* captured = channel_ ? tmpfile() : nullptr;
+      fflush(stdout);
+      Fd saved(captured ? dup(STDOUT_FILENO) : -1);
+      if (saved) dup2(fileno(captured), STDOUT_FILENO);
       bool quit = RunSlashCommand(session, command, result);
+      std::string output;
+      if (captured) {
+        fflush(stdout);
+        if (saved) dup2(saved.Get(), STDOUT_FILENO);
+        if (fseek(captured, 0, SEEK_SET) == 0) {
+          output.resize(size_t{64} * 1024);
+          output.resize(fread(output.data(), 1, output.size(), captured));
+        } else {
+          output = "cannot read command output";
+        }
+        fclose(captured);
+      }
+      output = Trim(output);
       Emit(Event{EventId::kCommandCompleted,
                  {{"command", command.spec->name},
                   {"argument", command.argument},
+                  {"inspect", command.spec->inspect_result},
+                  {"output", std::move(output)},
                   {"quit", quit},
                   {"result", std::move(result)},
                   {"state", InterfaceState()}}});
@@ -388,525 +437,11 @@ class Application {
     return false;
   }
 
-  // The pinned-region state machine of the persistent composer.
-  struct InteractiveLoop {
-    explicit InteractiveLoop(Application& owner)
-        : app(owner), composer(output) {}
-
-    std::string Status() {
-      if (quit_hint) return "ctrl+c again to quit";
-      if (!working) {
-        return StatusBar(app.api_, app.agent_.SessionUsage(),
-                         SessionStatusView(app.Session()));
-      }
-      ActivityView view;
-      view.elapsed = std::chrono::steady_clock::now() - started;
-      view.context_used = app.agent_.ContextSnapshot();
-      view.context_window = app.api_.ctx_window;
-      AppSession session = app.Session();
-      view.model = RouteSelection(session.ApiClient(),
-                                  session.context.provider.providers);
-      view.subagent = SubagentProgress(&view.subagents);
-      size_t running = app.runtime_.processes.Count();
-      // The children have their own chip, so `bg:` is what is left: two
-      // snapshots a moment apart can disagree, and a saturating subtraction is
-      // the difference between a stale number and an absurd one.
-      view.background = running > view.subagents ? running - view.subagents : 0;
-      view.foreground = app.runtime_.processes.ForegroundCount();
-      view.queued = SteeringState().QueuedCount();
-      view.interrupting = interrupting;
-      return ActivityBar(view);
-    }
-
-    // The newest child that has said something, as "<id>: <progress>", and the
-    // number of children beside it. One snapshot feeds both, so the count and
-    // the line can never describe different sets. A child that has not printed
-    // yet is skipped rather than shown blank -- the row falls back to the
-    // label it would otherwise have had.
-    std::string SubagentProgress(size_t* count) {
-      std::vector<SubagentView> agents = app.runtime_.processes.SubagentViews();
-      *count = agents.size();
-      for (auto it = agents.rbegin(); it != agents.rend(); ++it) {
-        if (it->tail.empty()) continue;
-        std::string id = it->source_id.empty() ? "#" + std::to_string(it->id)
-                                               : it->source_id;
-        return id + ": " + it->tail;
-      }
-      return std::string();
-    }
-
-    std::string RenderedStatus() {
-      return StatusBarLine(Status(), &status_columns);
-    }
-
-    // Everything the working row shows that is not the clock. The children's
-    // progress is part of it: without that, a repaint would wait for the next
-    // hundred-millisecond tick and the line would lag what the child said.
-    std::string StatusState() {
-      size_t agents = 0;
-      std::string progress = SubagentProgress(&agents);
-      return std::string(interrupting ? "interrupting|" : "working|") +
-             CurrentTerminalActivity() + "|" +
-             std::to_string(SteeringState().QueuedCount()) + "|" +
-             std::to_string(app.runtime_.processes.Count()) + "|" +
-             std::to_string(app.runtime_.processes.ForegroundCount()) + "|" +
-             std::to_string(agents) + "|" + progress;
-    }
-
-    size_t TailRows() const {
-      return DisplayRows(output_tail, TerminalWidth());
-    }
-
-    // Erase from the top of the pinned region, which after a narrowing resize
-    // starts above the status row: a terminal that rewraps has turned the row
-    // written at the old width into several, and erasing from the last one
-    // would leave the rest on screen for every later repaint to add to.
-    void Unmount() {
-      if (!composer.Drawn()) return;
-      size_t rows_up = composer.CaretRow() + 1 + TailRows() +
-                       StatusOverflowRows(status_columns, TerminalWidth());
-      output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
-      composer.Detach();
-    }
-
-    // The one place the pinned region is painted: erase what is there, emit any
-    // transcript text above it, then the status row and the composer. Every
-    // caller differs only in the text it contributes and whether the composer
-    // keeps its buffer, so geometry can only be wrong here.
-    void Paint(std::string text, const std::string* prompt,
-               const std::string& initial, bool keep_history,
-               std::optional<std::string> tail = std::nullopt) {
-      Unmount();
-      if (tail) output_tail = std::move(*tail);
-      if (!text.empty()) {
-        if (text.back() != '\n') text += '\n';
-        output.Write(text);
-      }
-      if (!output_tail.empty()) output.Write(output_tail + "\n");
-      output.Write(RenderedStatus() + "\n");
-      if (prompt) {
-        composer.Mount(*prompt, initial, keep_history);
-      } else {
-        composer.Remount();
-      }
-    }
-
-    void Mount(const std::string& prompt = InputPrompt(),
-               const std::string& initial = std::string(),
-               bool keep_history = true) {
-      Paint({}, &prompt, initial, keep_history);
-    }
-
-    void RefreshStatus() {
-      if (!composer.Drawn()) return;
-      // Stay silent while a drag is still in flight. The width is read per
-      // write, so a status row formatted for one width can land in a terminal
-      // that has already become narrower — it wraps, the cursor is no longer
-      // where the caller believes, and the next write starts mid-line. The
-      // settle repaint restores the row once the size stops moving.
-      if (resize_settled) return;
-      // The status is always the one row immediately above the mounted
-      // composer; update it without repainting the editor's footprint.
-      size_t rows_up = composer.CaretRow() + 1;
-      output.Write("\r\033[" + std::to_string(rows_up) + "A");
-      output.Write(RenderedStatus());
-      output.Write("\033[" + std::to_string(rows_up) + "B\r");
-      if (composer.CaretColumn() > 0) {
-        output.Write("\033[" + std::to_string(composer.CaretColumn()) + "C");
-      }
-    }
-
-    void FlushOutput(bool all) {
-      InteractiveOutputUpdate update = output.Read(all);
-      if (!update.changed) return;
-      if (update.adopted_prefix_bytes > 0) {
-        output_tail.clear();
-        update.committed.erase(
-            0, std::min(update.adopted_prefix_bytes, update.committed.size()));
-        if (update.committed.empty() && update.tail.empty()) return;
-      }
-      Paint(std::move(update.committed), nullptr, {}, true,
-            std::move(update.tail));
-    }
-
-    void StartWork(std::string input) {
-      app.agent_.ContextUsed();
-      working = true;
-      worker_quit = false;
-      interrupting = false;
-      started = std::chrono::steady_clock::now();
-      worker = std::thread([this, input = std::move(input)]() mutable {
-        worker_quit = app.ProcessInput(std::move(input));
-        working = false;
-        broker.Notify();
-      });
-    }
-
-    Application& app;
-    InteractiveOutput output;
-    RawComposer composer;
-    InputBroker broker;
-    std::thread worker;
-    std::atomic<bool> working{false};
-    std::atomic<bool> worker_quit{false};
-    bool interrupting = false;
-    bool exit_when_idle = false;
-    bool quit_hint = false;
-    bool answering = false;
-    std::deque<std::string> next_inputs;
-    std::string saved_draft;
-    std::string output_tail;
-    std::chrono::steady_clock::time_point started =
-        std::chrono::steady_clock::now();
-    std::optional<std::chrono::steady_clock::time_point> resize_settled;
-    // The width the pinned status row occupies on screen. iTerm2 and every
-    // other terminal that rewraps on resize turns a row written at a wider
-    // terminal into several physical rows, and the erase in Unmount() has to
-    // walk over all of them.
-    size_t status_columns = 0;
-
-    void HandleInputEvent(InteractiveInputEvent event) {
-      quit_hint = false;  // any other key ends the quit gesture
-      if (event.kind == InteractiveInputKind::kLine && !answering) {
-        // Submission has already printed the prompt below the status row.
-        // Replace both regions so the transient working row does not enter
-        // scrollback above steering or ordinary user input.
-        size_t rows_up = composer.LastSubmittedRows() + 1;
-        output.Write("\r\033[" + std::to_string(rows_up) + "A\033[J");
-        output.Write(UserEchoRow(composer.Prompt(), TerminalSafe(event.text)) +
-                     "\n");
-        // The submitted row now follows the visible tail, so that tail has
-        // entered scrollback and later deltas must start below the user row.
-        if (!output_tail.empty()) {
-          output.AdoptTail();
-          output_tail.clear();
-        }
-      }
-      if (event.kind == InteractiveInputKind::kBackground) {
-        if (!working || !app.runtime_.processes.RequestForegroundBackground()) {
-          output.Write("\a");
-        }
-        RefreshStatus();
-      } else if (answering) {
-        bool eof = event.kind == InteractiveInputKind::kEscape ||
-                   event.kind == InteractiveInputKind::kEof;
-        broker.Answer(std::move(event.text), eof);
-        answering = false;
-        Mount(InputPrompt(), saved_draft);
-      } else if (event.kind == InteractiveInputKind::kEscape) {
-        // A bare Escape clears the current input line (and any stashed draft).
-        // Still honour a steering/interrupt request if the agent is working, so
-        // Esc doubles as the interrupt key.
-        saved_draft.clear();
-        composer.Clear();
-        if (working && SteeringEnabled() && !interrupting) {
-          interrupting = true;
-          SteeringState().Request();
-          app.runtime_.processes.Wake();
-          RefreshStatus();
-        }
-      } else if (event.kind == InteractiveInputKind::kEof) {
-        exit_when_idle = true;
-        Mount();
-      } else {
-        std::string input = Trim(event.text);
-        if (!input.empty()) {
-          ParsedSlashCommand command = ParseSlashCommand(input);
-          if (working && command.spec &&
-              (command.spec->id == SlashCommandId::kProcesses ||
-               command.spec->id == SlashCommandId::kAgents)) {
-            std::istringstream activity_input(command.argument);
-            std::string target, operation;
-            activity_input >> target >> operation;
-            if (operation == "followup") {
-              output.Write("Follow-up requires an idle foreground turn.\n");
-            } else {
-              AppSession session = app.Session();
-              output.Write(TerminalSafe(
-                  ActivityText(ActivityCommand(session, command))));
-            }
-            Mount();
-            RefreshStatus();
-            return;
-          }
-          if (working && command.spec &&
-              command.spec->id == SlashCommandId::kPermissions) {
-            output.Write(TerminalSafe(JsonDump(PermissionControl(
-                             app.context_, {{"mode", command.argument}}))) +
-                         "\n");
-            Mount();
-            return;
-          }
-          if (working && command.spec &&
-              command.spec->id != SlashCommandId::kQuit) {
-            if (next_inputs.size() < 8) {
-              next_inputs.push_back(std::move(input));
-              output.Write("Command queued until the current work finishes.\n");
-            } else {
-              output.Write("Command queue is full; retry when idle.\n");
-            }
-            Mount();
-            return;
-          }
-          if ((input == "/q" || input == "/quit") && working) {
-            exit_when_idle = true;
-          } else if (working) {
-            // Publish guidance before waking passive tool waits. Their
-            // generation predicate makes this pairing lost-wakeup-safe.
-            SteeringState().Queue(std::move(input));
-            app.runtime_.processes.Wake();
-          } else if (worker.joinable()) {
-            next_inputs.push_back(std::move(input));
-          } else {
-            StartWork(std::move(input));
-          }
-        }
-        Mount();
-      }
-    }
-
-    int Run() {
-      if (!output.Start()) return -1;
-      if (!composer.Start()) return -1;
-      SetTerminalWakeFd(broker.NotifyFd());
-      app.runtime_.processes.SetNotifyFd(broker.NotifyFd());
-      SetInteractiveReadHandler(
-          [this](const InteractionRequest& request, bool* eof) {
-            return broker.Read(request.prompt, eof, request.keep_history,
-                               request.initial, request.kind == "editor");
-          });
-      SetPersistentComposer(true);
-
-      constexpr auto kResizeSettle = std::chrono::milliseconds(80);
-
-      Mount();
-      auto last_redraw = std::chrono::steady_clock::now();
-      std::string last_state = StatusState();
-      std::vector<pollfd> events;
-      events.reserve(3 + app.runtime_.mcp.Servers().size());
-      while (!exit_when_idle || working) {
-        events = {{STDIN_FILENO, POLLIN, 0},
-                  {output.ReadFd(), POLLIN, 0},
-                  {broker.ReadFd(), POLLIN, 0}};
-        if (!working) {
-          for (const auto& server : app.runtime_.mcp.Servers()) {
-            if (server->alive && server->out &&
-                server->startup == McpStartupState::kReady) {
-              events.push_back(
-                  {server->out.Get(),
-                   static_cast<int16_t>(POLLIN | POLLHUP | POLLERR), 0});
-            }
-          }
-        }
-
-        std::optional<std::chrono::steady_clock::time_point> wake_deadline =
-            composer.WakeDeadline();
-        if (working && !answering) {
-          auto status_deadline = last_redraw + std::chrono::milliseconds(100);
-          wake_deadline = wake_deadline
-                              ? std::min(*wake_deadline, status_deadline)
-                              : status_deadline;
-        }
-        if (resize_settled) {
-          wake_deadline = wake_deadline
-                              ? std::min(*wake_deadline, *resize_settled)
-                              : *resize_settled;
-        }
-        int timeout_ms = -1;
-        if (wake_deadline) {
-          auto now = std::chrono::steady_clock::now();
-          if (*wake_deadline <= now) {
-            timeout_ms = 0;
-          } else {
-            timeout_ms = PollTimeoutMs(*wake_deadline);
-          }
-        }
-
-        // Idle is the only state where SIGINT asks rather than kills.
-        SetQuitGesture(!working && !answering);
-        int ready =
-            poll(events.data(), static_cast<nfds_t>(events.size()), timeout_ms);
-        if (ready < 0 && errno != EINTR) break;
-        SetQuitGesture(false);
-        if (TakeIdleInterrupt() && !working) {
-          // The row is the contract: while it offers the exit, the next press
-          // takes it. Any other key retracts the offer. Leaving through
-          // raise() is how an unhandled SIGINT always left, so the terminal is
-          // restored the same way and the shell still sees 130.
-          if (quit_hint) raise(SIGINT);
-          quit_hint = true;
-          RefreshStatus();
-        }
-        if (g_terminal_resized) {
-          g_terminal_resized = 0;
-          // Dragging an edge emits a burst of SIGWINCH. The flag already
-          // coalesces everything that arrives before this wake; the settle
-          // window collapses the rest into one repaint instead of flickering
-          // through every intermediate width.
-          resize_settled = std::chrono::steady_clock::now() + kResizeSettle;
-        }
-        if (resize_settled &&
-            std::chrono::steady_clock::now() >= *resize_settled) {
-          resize_settled.reset();
-          // A resize must *replace* the pinned region, not add to it: erasing
-          // only downward leaves the status row above the cursor, so every
-          // repaint would append another one. Walk up to it first.
-          //
-          // StatusOverflowRows() accounts for the status row's own rewrap and
-          // CaretRow() for the rest, exactly when the composer did not reflow.
-          // Narrowing with a soft-wrapped draft can still leave one stale
-          // fragment above; the next mount clears it. Fixing that needs a
-          // cursor position report.
-          if (composer.Drawn()) Paint({}, nullptr, {}, true);
-          last_redraw = std::chrono::steady_clock::now();
-          last_state = StatusState();
-        }
-
-        // Idle MCP stdout participates in the same poll set; any event also
-        // drains messages buffered just before a worker released ownership.
-        if (!working) McpDrainInbound(app.runtime_.mcp);
-
-        if (events[1].revents & POLLIN) FlushOutput(false);
-        if (events[2].revents & POLLIN) {
-          broker.DrainWake();
-          std::string prompt;
-          std::string initial;
-          bool keep_history = false;
-          bool editor = false;
-          if (broker.Take(prompt, initial, keep_history, &editor)) {
-            if (editor) {
-              const auto draft = composer.Buffer();
-              const bool edited = composer.EditTextExternally(initial);
-              broker.Answer(std::move(initial), !edited);
-              Mount(InputPrompt(), draft);
-              continue;
-            }
-            saved_draft = composer.Buffer();
-            answering = true;
-            Mount(prompt, initial, keep_history);
-          }
-        }
-
-        if ((events[0].revents & POLLIN) || composer.HasPending()) {
-          InteractiveInputEvent event = composer.Read();
-          if (event.kind != InteractiveInputKind::kNone) {
-            HandleInputEvent(std::move(event));
-          }
-        }
-
-        if (interrupting && !AbortRequested()) {
-          interrupting = false;
-          RefreshStatus();
-        }
-
-        if (!working && worker.joinable()) {
-          worker.join();
-          FlushOutput(true);
-          bool activity_ready = app.agent_.DrainBackground();
-          app.SaveSession();
-          if (worker_quit) exit_when_idle = true;
-          interrupting = false;
-          // Guidance the finished work never read is still something the user
-          // typed. `working` stays true until the worker returns, so a line
-          // submitted the moment a slash command prints its result is queued
-          // as steering for work that never looks at the queue, and a turn
-          // already past its last steering check is on the same footing.
-          // Promoting it here is the difference between running late and
-          // being dropped with the status bar still counting it.
-          if (!exit_when_idle) {
-            std::string promoted = TakeStrandedSteering();
-            if (!promoted.empty()) {
-              // Preserve command boundaries: a deferred slash command must
-              // never be concatenated into a model prompt.
-              next_inputs.push_front(std::move(promoted));
-            }
-          }
-          if (!exit_when_idle && !next_inputs.empty()) {
-            std::string next = std::move(next_inputs.front());
-            next_inputs.pop_front();
-            StartWork(std::move(next));
-          }
-          if (activity_ready) Mount();
-          RefreshStatus();
-        }
-
-        // ProcessSupervisor mirrors activity changes into the broker pipe, so
-        // idle completion is handled without a periodic UI tick.
-        if (!working && !worker.joinable() && !answering && !exit_when_idle) {
-          if (app.agent_.DrainBackground()) {
-            app.SaveSession();
-            Mount();
-            RefreshStatus();
-          }
-        }
-
-        if (working && !answering) {
-          auto now = std::chrono::steady_clock::now();
-          std::string current_state = StatusState();
-          bool state_changed = current_state != last_state;
-          if (state_changed ||
-              now - last_redraw >= std::chrono::milliseconds(100)) {
-            RefreshStatus();
-            last_redraw = now;
-            last_state = std::move(current_state);
-          }
-        }
-      }
-
-      if (worker.joinable()) worker.join();
-      FlushOutput(true);
-      composer.Stop();
-      SetInteractiveReadHandler({});
-      app.runtime_.processes.SetNotifyFd(-1);
-      SetTerminalWakeFd(-1);
-      broker.Shutdown();
-      SetPersistentComposer(false);
-      output.Stop();
-      return 0;
-    }
-  };
-
-  int RunPersistentInteractive() { return InteractiveLoop(*this).Run(); }
-
   int FinishInteractive(int status) {
     SaveSession();
     Teardown(exit_reason_.c_str());
     TerminalRestore();
     return status;
-  }
-
-  int RunInteractive() {
-    if (!ResumeAtStartup()) return FinishInteractive(2);
-    persist_ = isatty(STDIN_FILENO);
-    EnsureSessionPath();
-    if (persist_ && AgentDepth() == 0 && api_.config.memory_enabled &&
-        api_.config.memory_generate) {
-      std::string extractor_error = StartMemoryExtractor(
-          runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
-          session_file_);
-      if (!extractor_error.empty()) {
-        DebugLog("memory_extract_start_error", {{"error", extractor_error}});
-      }
-    }
-    if (persist_) {
-      int persistent_status = RunPersistentInteractive();
-      if (persistent_status >= 0) return FinishInteractive(persistent_status);
-    }
-    for (;;) {
-      SaveSession();
-      agent_.DrainBackground();
-      PrintStatusBar(
-          StatusBar(api_, agent_.SessionUsage(), SessionStatusView(Session())));
-      bool eof = false;
-      std::string line = ReadInputLine(InputPrompt(), &eof);
-      if (eof) {
-        if (g_tty) printf("\r\033[2K\r");
-        printf("\n");
-        break;
-      }
-      if (ProcessInput(std::move(line))) break;
-    }
-    return FinishInteractive(0);
   }
 
   int RunChannel() {
@@ -915,14 +450,24 @@ class Application {
     EnsureSessionPath();
     if (!PathExists(session_file_) && !channel_->InitialTitle().empty()) {
       agent_.Rename(channel_->InitialTitle());
-      SaveSession(true);
+    }
+    SaveSession(true);
+    if (AgentDepth() == 0 && api_.config.memory_enabled &&
+        api_.config.memory_generate) {
+      std::string error = StartMemoryExtractor(
+          runtime_.processes, api_, CanonicalAccessPath(CanonicalCwd()),
+          session_file_);
+      if (!error.empty()) {
+        DebugLog("memory_extract_start_error", {{"error", error}});
+      }
     }
     runtime_.processes.SetNotifyFd(channel_->WakeFd());
     channel_->SetActivityControl([this](const json& request) {
       if (JsonValue(request, "kind", "") == "permissions") {
         return PermissionControl(context_, request);
       }
-      return ActivityControl(runtime_.processes, request);
+      return ActivityControl(runtime_.processes, request,
+                             &runtime_.collaborator);
     });
     PublishChannelState();
     while (std::optional<ApplicationInput> input = channel_->NextInput()) {
@@ -937,6 +482,7 @@ class Application {
         SaveSession(true);
         channel_->CompleteControl(input->request_id, result);
       } else if (!input->wake) {
+        handoff_budget_ = std::move(input->budget);
         for (auto& attachment : input->attachments) {
           attachments_.push_back(std::move(attachment));
         }
@@ -951,10 +497,12 @@ class Application {
     return FinishInteractive(0);
   }
 
-  void PublishChannelState() {
+  void PublishChannelState(bool checkpoint = true) {
     json state = InterfaceState();
     state["view"] = agent_.DisplaySnapshot();
     state["usage"] = UsageJson(agent_.SessionUsage());
+    state["route_usage"] = agent_.RouteUsageJson();
+    state["system_prompt"] = agent_.LastSentPrompt();
     state["statistics"] = agent_.Statistics();
     state["http"] = agent_.HttpExchanges();
     state["permissions"] = PermissionControl(context_, json::object());
@@ -972,12 +520,14 @@ class Application {
       }
     }
     state["turns"] = agent_.UserTurns();
+    state["turn_active"] = turn_active_;
     state["activities"] = runtime_.processes.ActivityViews();
-    state["collaborators"] = CollaboratorSummaries(runtime_.processes);
+    state["collaborators"] =
+        CollaboratorSummaries(runtime_.processes, &runtime_.collaborator);
     state["error"] = input_error_.empty() ? agent_.LastError() : input_error_;
     state["title"] = Utf8Prefix(agent_.FirstUserText(), 256);
     state["stop"] = agent_.LastStop();
-    channel_->PublishState(state);
+    if (channel_) channel_->PublishState(state, checkpoint);
   }
 
   AppContext& context_;
@@ -988,10 +538,12 @@ class Application {
   std::string session_file_;
   uint64_t saved_revision_;
   bool persist_ = false;
+  bool turn_active_ = false;
   std::string request_id_;
   uint64_t message_subscription_ = 0;
   std::string exit_reason_ = "eof";
   std::string input_error_;
+  json handoff_budget_;
   ApplicationChannel* channel_ = nullptr;
 };
 

@@ -8,6 +8,7 @@ import socket
 import subprocess
 
 from integration_support import base_env, budget, wait_until
+from session_support import stop_sessions
 
 
 def available_port():
@@ -118,6 +119,7 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             client = WebClient(port)
             yield client, code, process, env
         finally:
+            stop_sessions(home)
             if process.poll() is None:
                 process.send_signal(signal.SIGTERM)
             try:

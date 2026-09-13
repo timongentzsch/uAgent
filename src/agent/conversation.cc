@@ -306,13 +306,15 @@ std::string Conversation::LastDisplayId() const {
   return display_ids_.empty() ? "" : "m-" + std::to_string(display_ids_.back());
 }
 
-json Conversation::RecordActivity(json facts) {
+json Conversation::RecordEntry(json facts) {
   facts["sequence"] = next_display_id_++;
   facts["id"] = "m-" + std::to_string(next_display_id_ - 1);
-  facts["kind"] = "activity";
+  if (!facts.contains("kind")) facts["kind"] = "activity";
   facts["time"] = UtcStamp();
-  AddStatistics({{"incoming", 1}});
-  facts["incoming"] = statistics_["incoming"];
+  if (facts["kind"] != "turn_summary" && facts["kind"] != "compaction") {
+    AddStatistics({{"incoming", 1}});
+    facts["incoming"] = statistics_["incoming"];
+  }
   RecordDisplay(facts["id"].get<std::string>(), facts);
   return facts;
 }
@@ -361,10 +363,16 @@ void Conversation::RefreshBaseline(json system) {
 }
 
 void Conversation::Push(json message, MessageKind kind) {
+  PushWithDisplayId(std::move(message), kind, next_display_id_++);
+}
+
+void Conversation::PushWithDisplayId(json message, MessageKind kind,
+                                     uint64_t id) {
   NormalizeRole(message, kind);
   messages_.push_back(std::move(message));
   kinds_.push_back(kind);
-  display_ids_.push_back(next_display_id_++);
+  display_ids_.push_back(id);
+  if (id >= next_display_id_) next_display_id_ = id + 1;
   if (kind == MessageKind::kUser || kind == MessageKind::kAssistant ||
       kind == MessageKind::kToolResult || kind == MessageKind::kAttachment) {
     RecordDisplay(LastDisplayId(), {{"time", UtcStamp()}});
@@ -584,17 +592,37 @@ ToolTracePruneResult Conversation::PruneOldToolResults(
   return result;
 }
 
-size_t Conversation::PruneAttachments(size_t begin) {
+size_t Conversation::PruneAttachments(size_t begin, const std::string& route) {
   size_t attachments = 0;
-  for (size_t index = begin; index < messages_.size(); ++index) {
+  for (size_t index = 0; index < messages_.size(); ++index) {
     json& message = messages_[index];
     if (!message.contains("content")) continue;
     json& content = message["content"];
     if (!content.is_array()) continue;
+    bool references = false;
+    for (json& part : content) {
+      if (JsonValue(part, "type", "") == "attachment") {
+        references = true;
+        if (JsonValue(part, "processed_route", "") != route) {
+          part["processed_route"] = route;
+          ++attachments;
+        }
+      }
+    }
+    if (references) {
+      if (kinds_[index] == MessageKind::kAttachment) {
+        kinds_[index] =
+            index == begin ? MessageKind::kUser : MessageKind::kInternal;
+      }
+      continue;
+    }
+    if (index < begin) continue;
     attachments += content.empty() ? 0 : content.size() - 1;
     std::string text;
-    if (!content.empty() && content[0].is_object()) {
-      text = JsonValue(content[0], "text", "");
+    for (const json& part : content) {
+      if (JsonValue(part, "type", "") == "text") {
+        text += JsonValue(part, "text", "");
+      }
     }
     content = text + "\n[attachments omitted after processing]";
     // Reclassified in place: the message stays where it is and only stops

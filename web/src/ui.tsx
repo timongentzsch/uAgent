@@ -70,6 +70,24 @@ export function Field({
     </label>
   );
 }
+export function Toggle({
+  label,
+  help,
+  ...props
+}: JSX.InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  help?: string;
+}) {
+  return (
+    <label class="toggle-row">
+      <input type="checkbox" {...props} />
+      <span>
+        <strong>{label}</strong>
+        {help && <small class="muted">{help}</small>}
+      </span>
+    </label>
+  );
+}
 export function Skeleton({
   rows = 3,
   className = "",
@@ -115,6 +133,59 @@ export function LoadError({
     </div>
   );
 }
+export function EventRow({
+  title,
+  time,
+  status,
+  icon,
+  children,
+  onToggle,
+}: {
+  title: string;
+  time?: string;
+  status?: string;
+  icon: ComponentChildren;
+  children: ComponentChildren;
+  onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
+}) {
+  return (
+    <details class="event-row" data-status={status} onToggle={onToggle}>
+      <summary>
+        {icon}
+        <span>{title}</span>
+        {status && <small>{status}</small>}
+        {time && (
+          <time dateTime={time}>
+            {new Date(time).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </time>
+        )}
+      </summary>
+      <div class="event-body">{children}</div>
+    </details>
+  );
+}
+
+export function IconButton({
+  label,
+  children,
+  ...props
+}: JSX.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+  return (
+    <button
+      type="button"
+      class="quiet icon-button"
+      aria-label={label}
+      title={label}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Modal({
   title,
   children,
@@ -149,15 +220,9 @@ export function Modal({
     >
       <header>
         <h2>{title}</h2>
-        <button
-          type="button"
-          class="quiet icon-button"
-          onClick={close}
-          aria-label={`Close ${title.toLowerCase()}`}
-          title="Close"
-        >
+        <IconButton label={`Close ${title.toLowerCase()}`} onClick={close}>
           <X />
-        </button>
+        </IconButton>
       </header>
       <div class="dialog-body">{children}</div>
     </dialog>

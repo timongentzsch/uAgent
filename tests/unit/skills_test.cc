@@ -23,10 +23,20 @@ void TestSkillDiscovery() {
                       std::string(UAGENT_TEST_SOURCE_DIR) + "/skills");
     const auto skills = LoadSkills(UAGENT_TEST_SOURCE_DIR);
     CHECK(!skills.empty());
+    bool found_fusion = false;
     for (const Skill& skill : skills) {
       CHECK(!skill.description.empty());
       CHECK(ReadSkillBody(skill).ok);
+      if (skill.name == "fusion") {
+        found_fusion = true;
+        CHECK(skill.description.find("only when the user invokes $fusion") !=
+              std::string::npos);
+        CHECK(
+            skill.required_tools ==
+            std::vector<std::string>({"subagent", "read_path", "grep", "run"}));
+      }
     }
+    CHECK(found_fusion);
   }
   TestWorkspace test("skill");
   const fs::path& workspace = test.workspace;

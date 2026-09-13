@@ -23,6 +23,7 @@ extern char** environ;
 #include "include/app/control.h"
 #include "include/app/options.h"
 #include "include/app/reference.h"
+#include "include/app/session.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
@@ -122,11 +123,9 @@ int Main(int argc, char** argv) {
   }
   InitializeProcess();
   SetExecutablePath(argv[0]);
-#ifdef UAGENT_WEB
-  if (argc > 1 && std::string_view(argv[1]) == "--web-worker") {
-    return web::WorkerMain(argc, argv);
+  if (argc > 1 && std::string_view(argv[1]) == "--session-worker") {
+    return session::WorkerMain(argc, argv);
   }
-#endif
   Observability observability;
   SetObservability(&observability);
   ParsedOptions parsed = ParseOptions(argc, argv);
@@ -223,6 +222,9 @@ int Main(int argc, char** argv) {
     fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
     return 2;
 #endif
+  }
+  if (parsed.options.prompt.empty() && !parsed.options.json && !json_stream) {
+    return session::TerminalMain(std::move(parsed.options));
   }
   const bool json_envelope = parsed.options.json;
   observability.EnableJournal(parsed.options.prompt.empty());

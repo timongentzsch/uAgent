@@ -49,7 +49,7 @@ class Conversation {
   const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
   const json& DisplayFacts() const { return display_facts_; }
   void RecordDisplay(std::string key, json facts);
-  json RecordActivity(json facts);
+  json RecordEntry(json facts);
   std::string LastDisplayId() const;
 
   bool Empty() const { return messages_.empty(); }
@@ -75,6 +75,10 @@ class Conversation {
   const std::string* ToolDisplay(const std::string& call_id) const;
 
   void Push(json message, MessageKind kind);
+  // Same as Push, but the message keeps a pre-existing display id (the
+  // post-compaction re-push). The id counter advances past it so fresh
+  // mints stay unique.
+  void PushWithDisplayId(json message, MessageKind kind, uint64_t id);
   void Upsert(json message, MessageKind kind);
   void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
@@ -93,7 +97,7 @@ class Conversation {
       const std::vector<std::string>& retained_tools,
       ToolPruneMode mode = ToolPruneMode::kOldResults, int64_t archive_cap = 0);
 
-  size_t PruneAttachments(size_t begin);
+  size_t PruneAttachments(size_t begin, const std::string& route = "");
   void ArchiveTurn(size_t turn_start, int64_t turn, int64_t archive_cap,
                    json metadata);
 

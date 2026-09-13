@@ -1,6 +1,6 @@
 # System prompts
 
-One native resolver serves model requests, `/prompt`, `uagent_info topic=prompt`,
+One native resolver serves model requests, `/prompt`, `uagent action=inspect topic=prompt`,
 the `adapt_system` tool and the web editor. Open **Settings → System prompt**
 or use the **System prompt** button in raw context inspection.
 

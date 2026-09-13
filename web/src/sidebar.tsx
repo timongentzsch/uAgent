@@ -1,3 +1,5 @@
+import { offline } from "./offline.ts";
+import { useDownloads } from "./offline-settings.tsx";
 import type { ComponentChildren } from "preact";
 import type { Session, Report, AppModal, Snapshot } from "./types.ts";
 import { useState } from "preact/hooks";
@@ -12,7 +14,7 @@ import { command } from "./store.ts";
 import { Mark } from "./ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
-import { ActivityStatus, active } from "./activity-status.tsx";
+import { ActivityStatus, StatusLed, active } from "./activity-status.tsx";
 const shortDate = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "short",
@@ -40,12 +42,25 @@ export function ConversationMenu({
   report: Report;
   open: (modal: AppModal) => void;
 }) {
+  const downloads = useDownloads();
+  const pinned = downloads.some(
+    (download) => download.id === item.id && download.pinned,
+  );
   return (
     <Menu label="Conversation menu">
       <MenuItem
+        disabled={!online || !offline.enabled}
+        onClick={() =>
+          (pinned ? offline.remove(item.id) : offline.keep(item.id)).catch(
+            report,
+          )
+        }
+      >
+        {pinned ? "Remove offline copy" : "Keep offline"}
+      </MenuItem>
+      <MenuItem
         disabled={
           !online ||
-          item.presence === "terminal" ||
           item.turn_active ||
           ["starting", "draft"].includes(item.status || "")
         }
@@ -73,10 +88,7 @@ export function ConversationMenu({
       >
         Rename
       </MenuItem>
-      <MenuItem
-        disabled={!online}
-        onClick={() => open({ type: "statistics", session: item })}
-      >
+      <MenuItem onClick={() => open({ type: "statistics", session: item })}>
         Statistics
       </MenuItem>
       {item.generation && (
@@ -216,14 +228,20 @@ export default function Sidebar({
                     )}
                   </span>
                   <small>
-                    {online && item.presence && (
-                      <span
-                        class="presence-dot"
-                        role="img"
-                        aria-label={`${item.presence === "terminal" ? "Terminal" : "Web"} session active`}
-                        title={`${item.presence === "terminal" ? "Terminal" : "Web"} session active`}
-                      />
-                    )}
+                    <ActivityStatus
+                      phase={
+                        online &&
+                        (item.pending ||
+                          item.turn_active ||
+                          item.activities?.some(active))
+                          ? item.activity || item.status
+                          : ""
+                      }
+                      running={online && item.turn_active}
+                      present={online && !!item.presence}
+                      items={online ? item.activities || [] : []}
+                      pending={online && item.pending}
+                    />
                     {item.updated ? (
                       <time
                         dateTime={new Date(item.updated).toISOString()}
@@ -233,16 +251,6 @@ export default function Sidebar({
                       </time>
                     ) : (
                       "New conversation"
-                    )}
-                    {(item.pending ||
-                      item.turn_active ||
-                      item.activities?.some(active)) && (
-                      <ActivityStatus
-                        phase={item.activity || item.status}
-                        running={item.turn_active}
-                        items={item.activities || []}
-                        pending={item.pending}
-                      />
                     )}
                     {item.error && (
                       <span title={item.error}> · Needs attention</span>
@@ -266,6 +274,7 @@ export default function Sidebar({
                 : "Offline · unsent drafts stay here"
           }
         >
+          <StatusLed state={online ? "active" : "idle"} />{" "}
           {online ? "Connected" : connecting ? "Connecting…" : "Offline"}
         </span>
         <button

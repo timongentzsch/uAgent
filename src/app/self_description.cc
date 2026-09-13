@@ -23,7 +23,6 @@
 #include "include/tools/configure.h"
 #include "include/tools/process.h"
 #include "include/tools/registry.h"
-#include "include/tools/self_info.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/tool.h"
@@ -330,26 +329,16 @@ json ToolSurfaceJson() {
   Api api;
   UsageAccumulator usage;
   const std::string workspace = CanonicalAccessPath(".");
-  std::vector<Tool> tools = BuiltinTools(
-      supervisor, workspace, /*inline_images=*/false, &adaptive_system);
-  // The image tool exists only where the terminal can draw, so it is collected
-  // from a second registry rather than left out of the gate entirely.
-  for (Tool& tool : BuiltinTools(supervisor, workspace, /*inline_images=*/true,
-                                 &adaptive_system)) {
-    if (!FindTool(tools, tool.name)) tools.push_back(std::move(tool));
-  }
+  std::vector<Tool> tools =
+      BuiltinTools(supervisor, workspace, &adaptive_system);
   std::vector<std::pair<Tool, const char*>> conditional;
-  conditional.emplace_back(SelfInfoTool([](SelfTopic, const std::string&) {
-                             return json::object();
-                           }),
-                           "always");
   conditional.emplace_back(
-      ConfigureTool(
-          [](ConfigProposalScope, const std::vector<ConfigChange>&) {
-            return ConfigProposal{};
-          },
-          std::make_shared<ConfigProposalStore>()),
-      "interactive terminal");
+      UagentTool([](SelfTopic, const std::string&) { return json::object(); },
+                 [](ConfigProposalScope, const std::vector<ConfigChange>&) {
+                   return ConfigProposal{};
+                 },
+                 std::make_shared<ConfigProposalStore>()),
+      "inspect always; configure requires interactive approval");
   conditional.emplace_back(WebSearchTool(api, usage, {}), "search route");
   conditional.emplace_back(WebFetchTool(api), "always");
   conditional.emplace_back(
@@ -376,8 +365,6 @@ json ToolSurfaceJson() {
       when = "memory enabled";
     } else if (tool.name == "adapt_system") {
       when = "adapt_system enabled";
-    } else if (tool.replay_image) {
-      when = "terminal images";
     }
     emit(tool, when);
   }

@@ -137,8 +137,6 @@ struct ToolContext {
 
   std::chrono::steady_clock::time_point deadline =
       std::chrono::steady_clock::time_point::max();
-  bool image_input_available = true;
-  bool image_fallback_available = false;
   int64_t timeout_s = 0;
   std::string call_id;
 
@@ -210,9 +208,10 @@ struct Tool {
 
   std::string name;
   std::string description;
-  json parameters;        // JSON-schema for the args
-  bool mutating = false;  // gated behind user approval
-  Approval mutates;       // argument-dependent mutation (e.g. memory save)
+  json parameters;               // JSON-schema for the args
+  bool mutating = false;         // gated behind user approval
+  bool declared_intent = false;  // presentation only, never authority
+  Approval mutates;  // argument-dependent mutation (e.g. memory save)
   Run run;
   Canonicalize canonicalize;  // materialized provider args -> operation args
   Validate validate;          // semantic issue before approval/execution
@@ -241,8 +240,6 @@ struct Tool {
   bool available_in_lean = true;  // omit implementation-only schemas in tasks
   bool retain_output = false;     // keep durable procedure/state in context
   bool dedupe_output = false;     // collapse verified recent duplicate output
-  bool serial_media = false;      // suppress activity animation while rendering
-  bool replay_image = false;      // replay a successful historical local image
   bool command_policy = false;    // receives the approved-command allowlist
   bool delegates = false;         // contributes delegation runtime context
   bool memory_store = false;      // retained only when memory is enabled
@@ -286,6 +283,20 @@ inline Tool& AddTool(std::vector<Tool>& tools, Tool tool) {
 
 inline bool ToolMutates(const Tool& tool, const json& arguments) {
   return tool.mutating || (tool.mutates && tool.mutates(arguments));
+}
+
+// Contract-defined for native operations; arbitrary execution may declare its
+// purpose. Neither this label nor a successful exit proves absence of effects.
+inline std::string ToolActivityCategory(const Tool& tool, const json& args) {
+  if (tool.declared_intent) {
+    std::string intent = JsonValue(args, "intent", "execute");
+    return intent == "explore" || intent == "change" ? intent : "execute";
+  }
+  if (tool.capabilities & (Capability(ToolCapability::kExecute) |
+                           Capability(ToolCapability::kDelegate))) {
+    return "execute";
+  }
+  return ToolMutates(tool, args) ? "change" : "explore";
 }
 
 // The authority a call needs. A tool may escalate specific arguments; nothing

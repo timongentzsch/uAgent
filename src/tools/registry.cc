@@ -12,7 +12,7 @@
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/files.h"
 #include "include/tools/jobs.h"
@@ -38,7 +38,6 @@ std::vector<FileEdit> RequestedEdits(const json& arguments) {
 
 std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                                const std::filesystem::path& workspace,
-                               bool inline_images,
                                AdaptiveSystemState* adaptive_system) {
   auto schema = [](const char* s) { return json::parse(s); };
   std::vector<Tool> tools;
@@ -66,14 +65,15 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // at this path — and took the same three arguments as separate tools.
   Tool& read = path_tool(MakeTool(
       "read_path",
-      "Read a text file/range or directory entries. Use grep for unknown "
+      "Read text/ranges, list directories, or add images/documents to model "
+      "context. Omit ranges for media. Use grep for unknown "
       "paths or symbols. Reread only after changes when current text matters.",
       schema(R"json({"type":"object","properties":{
                     "path":{"type":"string"},
                     "offset":{"type":"integer","description":"first line or entry (default 1)"},
                     "limit":{"type":"integer","description":"lines or entries (default 1000)"}},
                     "required":["path"]})json"),
-      [workspace](const json& a, const ToolContext&) {
+      [workspace](const json& a, const ToolContext& context) {
         std::string path = JsonValue(a, "path", ".");
         int64_t offset = JsonValue(a, "offset", int64_t{1});
         int64_t limit = JsonValue(a, "limit", int64_t{0});
@@ -82,7 +82,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
           return ToolListDir(path, offset, limit,
                              !PathApprovalRequired(path, workspace));
         }
-        return ToolReadFile(path, offset > 0 ? offset : 1, limit);
+        return ToolReadFile(path, offset > 0 ? offset : 1, limit,
+                            context.call_id);
       }));
   reads_only(read);
   read.parallel_safe = true;
@@ -220,40 +221,6 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
            JsonValue(a, "pattern", "") + "/ in " + JsonValue(a, "path", ".");
   };
 
-  if (inline_images) {
-    Tool& show_image = path_tool(
-        MakeTool("show_image",
-                 "Display a local image using the native terminal protocol.",
-                 schema(R"json({"type":"object","properties":{
-                              "path":{"type":"string"}},"required":["path"]})json"),
-                 [](const json& a, const ToolContext&) {
-                   return ToolShowImage(JsonValue(a, "path", ""));
-                 }));
-    reads_only(show_image);
-    show_image.capabilities = Capability(ToolCapability::kInspect);
-    show_image.serial_media = true;
-    show_image.replay_image = true;
-  }
-
-  // read_path only handles text. This puts the bytes themselves in front of
-  // the model, so it can read what it cannot parse.
-  Tool& attach = path_tool(MakeTool(
-      "attach",
-      "Add an image/document to model context when read_path cannot parse it.",
-      schema(R"json({"type":"object","properties":{
-                    "path":{"type":"string"}},"required":["path"]})json"),
-      [](const json& a, const ToolContext& context) {
-        return Attachments().Add(
-            JsonValue(a, "path", ""), context.image_input_available,
-            context.image_fallback_available, context.call_id);
-      }));
-  reads_only(attach);
-  attach.parallel_safe = true;
-  attach.capabilities = Capability(ToolCapability::kInspect);
-  // No per-turn cap of its own: the queue ceiling and the byte budget already
-  // bound what one request can carry, and they reject with the reason rather
-  // than hiding the tool once a count is reached.
-
   // The schema below is a raw JSON literal, so its "maximum" cannot be spelled
   // as kMaxYieldMs directly; this assert fails the build if the constant moves.
   static_assert(kMaxYieldMs == 30000, "update \"maximum\" in the run schema");
@@ -326,11 +293,18 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
   // (network fetches especially) overlap instead of queueing.
   run.parallel_safe = true;
   run.command_policy = true;
+  run.declared_intent = true;
+  const json intent_schema = {
+      {"type", "string"},
+      {"enum", json::array({"explore", "change", "execute"})},
+      {"description",
+       "Activity intent only; does not change permissions. Default execute."}};
+  run.parameters["properties"]["intent"] = intent_schema;
 
   // ToolRunScratch runs a .py under uv when it is there and falls back to
   // python3 otherwise, so a host with neither can only ever answer this tool
   // with an error. An 800-byte schema that cannot succeed is worse than an
-  // absent one, and the same reasoning already gates show_image. A .sh needs
+  // absent one, so the tool is omitted on that host. A .sh needs
   // only sh, but gating the whole tool on the interpreter its Python half
   // needs keeps one condition instead of two.
   if (ExecutableOnPath("uv") || ExecutableOnPath("python3")) {
@@ -362,6 +336,8 @@ std::vector<Tool> BuiltinTools(ProcessSupervisor& supervisor,
                   JsonValue(a, "packages", json(nullptr)),
                   JsonValue(a, "args", json(nullptr)), context);
             }));
+    python.declared_intent = true;
+    python.parameters["properties"]["intent"] = intent_schema;
     python.mutating = true;
     python.capabilities = Capability(ToolCapability::kExecute) |
                           Capability(ToolCapability::kMutate);

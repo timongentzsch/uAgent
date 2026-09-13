@@ -3,33 +3,23 @@
   flex-direction: column;
   flex: 1;
   overflow: hidden;
-  padding: 12px;
 }
 .raw-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  gap: 8px;
+  gap: var(--gap);
 }
 .raw-controls {
   flex-shrink: 0;
   overflow-wrap: anywhere;
 }
 .raw-controls p {
-  margin: 0 0 8px;
+  margin: 0 0 var(--gap);
 }
 .raw-controls .field {
-  margin-bottom: 8px;
-}
-.raw-tabs {
-  display: flex;
-  gap: 4px;
-}
-.raw-tabs [aria-selected="true"],
-.raw-tabs [aria-pressed="true"] {
-  background: var(--accent);
-  color: var(--on-accent);
+  margin-bottom: var(--gap);
 }
 .raw-body {
   flex: 1;
@@ -47,7 +37,7 @@
   overflow: visible;
 }
 .raw-body details {
-  padding: 8px 12px;
+  padding: var(--gap) var(--pad);
   border-bottom: 1px solid var(--line);
   font-size: 0.8rem;
 }

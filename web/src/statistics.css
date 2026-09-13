@@ -7,7 +7,7 @@
 .stats > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
-  gap: 12px;
+  gap: var(--pad);
   padding: 6px 0;
   border-bottom: 1px solid var(--line);
   font-size: 0.85rem;
@@ -19,4 +19,19 @@
   margin: 0;
   text-align: right;
   overflow-wrap: anywhere;
+}
+
+.turn-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.3em;
+  padding: 6px 0 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: left;
+}
+@media (max-width: 600px) {
+  .turn-tokens {
+    display: none;
+  }
 }

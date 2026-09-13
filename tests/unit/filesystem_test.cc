@@ -35,12 +35,19 @@ void TestFileTools() {
     std::string error;
     std::string lock = (root / "ownership.lock").string();
     CHECK(!FileLease::HasLiveOwner(lock));
+    CHECK(FileLease::LiveOwner(lock).empty());
     CHECK(first.Acquire(lock, error, true));
     CHECK(FileLease::HasLiveOwner(lock));
+    // The published holder names this process; conflicts quote it.
+    CHECK(FileLease::LiveOwner(lock) ==
+          std::to_string(getpid()) + " " + ProcessIdentity(getpid()));
     CHECK(first.Acquire(lock, error));
     CHECK(!second.Acquire(lock, error));
+    CHECK(error.find("live owner: " + std::to_string(getpid())) !=
+          std::string::npos);
     first.Reset();
     CHECK(!FileLease::HasLiveOwner(lock));
+    CHECK(FileLease::LiveOwner(lock).empty());
     CHECK(second.Acquire(lock, error));
     second.Reset();
     pid_t child = fork();
@@ -116,15 +123,13 @@ void TestFileTools() {
   CHECK(read.find("lines 1-1") != std::string::npos);
   CHECK(read.find("\none\n") != std::string::npos);
   CHECK(ToolReadFile(file.string(), 1, 1).read_range->last == 1);
-  // Bytes that are not text are not read as text: the refusal names the tool
-  // that can carry them instead of filling context with mojibake.
+  // A media read rejects line ranges instead of silently ignoring them.
   fs::path binary_file = root / "payload.bin";
   CHECK(ToolWriteFile(binary_file.string(), std::string("PNG\x89\0\x1f", 6))
             .output.starts_with("wrote "));
   ToolResult binary_read = ToolReadFile(binary_file.string(), 1, 1);
   CHECK(!binary_read.Ok());
-  CHECK(binary_read.output.find("not a text file") != std::string::npos);
-  CHECK(binary_read.output.find("attach") != std::string::npos);
+  CHECK(binary_read.output.find("omit offset and limit") != std::string::npos);
   fs::path long_line = root / "long-line.txt";
   CHECK(ToolWriteFile(long_line.string(), std::string(size_t{40} * 1024, 'x'))
             .output.starts_with("wrote "));

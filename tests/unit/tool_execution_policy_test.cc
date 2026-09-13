@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
 #include "include/tools/jobs.h"
 #include "include/tools/registry.h"
@@ -20,6 +21,30 @@
 namespace uagent {
 
 void TestToolExecutionPolicy() {
+  Tool shell;
+  shell.mutating = true;
+  shell.declared_intent = true;
+  CHECK(ToolActivityCategory(shell, json::object()) == "execute");
+  CHECK(ToolActivityCategory(shell, {{"intent", "explore"}}) == "explore");
+  CHECK(RequiredApproval(shell, {{"intent", "explore"}}) ==
+        ApprovalClass::kYoloEligibleMutation);
+  CHECK(ToolActivityCategory(shell, {{"intent", "invalid"}}) == "execute");
+  std::vector<json> activities;
+  for (const char* id : {"a", "b", "c", "d", "e", "f"}) {
+    activities.push_back({{"id", id},
+                          {"category", "explore"},
+                          {"groupable", true},
+                          {"status", "success"}});
+  }
+  activities[2]["status"] = "failed";
+  activities[4]["groupable"] = false;
+  GroupToolActivities(activities);
+  CHECK(activities[0]["group"] == activities[1]["group"]);
+  CHECK(activities[0]["group"]["id"] == "a");
+  for (size_t i = 2; i < activities.size(); ++i) {
+    CHECK(!activities[i].contains("group"));
+  }
+
   AdaptiveSystemState adaptive;
   Tool adapt = AdaptSystemTool(adaptive);
   CHECK(adapt.capabilities == Capability(ToolCapability::kMutate));
@@ -29,42 +54,61 @@ void TestToolExecutionPolicy() {
   CHECK(adapt.parameters["properties"]["reason"]["description"]
             .get<std::string>()
             .find("material strategy delta") != std::string::npos);
-  CHECK(!ToolMutates(adapt, {{"instructions", "x"}, {"reason", "phase"}}));
+  CHECK(!ToolMutates(adapt, {{"action", "set"},
+                             {"revision", "0"},
+                             {"text", "x"},
+                             {"reason", "phase"}}));
   CHECK(adapt.max_calls_per_turn < 0);
-  CHECK(
-      InvalidToolArgument(
-          adapt, {{"instructions", std::string(kAdaptiveSystemBytes + 1, 'x')},
-                  {"reason", "too long"}})
-          .find("maximum length") != std::string::npos);
+  CHECK(InvalidToolArgument(
+            adapt, {{"action", "set"},
+                    {"revision", "0"},
+                    {"text", std::string(kAdaptiveSystemBytes + 1, 'x')},
+                    {"reason", "too long"}})
+            .find("maximum length") != std::string::npos);
   ToolContext adaptive_context{std::chrono::steady_clock::now() +
                                std::chrono::seconds(30)};
-  ToolResult adapted =
-      adapt.run({{"instructions", "  Inspect the full lifecycle.  "},
-                 {"reason", "The issue is cross-cutting."}},
-                adaptive_context);
+  ToolResult adapted = adapt.run({{"action", "set"},
+                                  {"revision", "0"},
+                                  {"text", "Inspect the full lifecycle."},
+                                  {"reason", "The issue is cross-cutting."}},
+                                 adaptive_context);
   CHECK(adapted.Ok());
   CHECK(adaptive.instructions == "Inspect the full lifecycle.");
   CHECK(adaptive.revision == 1);
   CHECK(!adapt
-             .run({{"instructions", "Inspect the full lifecycle."},
+             .run({{"action", "set"},
+                   {"revision", "0"},
+                   {"text", "Inspect the full lifecycle."},
                    {"reason", "same"}},
                   adaptive_context)
              .Ok());
   CHECK(adapt
-            .run({{"instructions", "Validate the narrowed invariant."},
+            .run({{"action", "set"},
+                  {"revision", "1"},
+                  {"text", "Validate the narrowed invariant."},
                   {"reason", "Evidence localized the failure."}},
                  adaptive_context)
             .Ok());
   CHECK(adaptive.revision == 2);
   CHECK(adapt
-            .run({{"instructions", ""}, {"reason", "Specialization done."}},
+            .run({{"action", "reset"},
+                  {"revision", "2"},
+                  {"reason", "Specialization done."}},
                  adaptive_context)
             .Ok());
   CHECK(adaptive.instructions.empty());
   CHECK(adaptive.revision == 3);
+  CHECK(!adapt
+             .run({{"action", "set"},
+                   {"revision", "0"},
+                   {"text", "new"},
+                   {"reason", "   "}},
+                  adaptive_context)
+             .Ok());
+
   CHECK(
-      !adapt.run({{"instructions", "new"}, {"reason", "   "}}, adaptive_context)
-           .Ok());
+      InvalidToolArgument(adapt, {{"action", "set"}, {"instructions", "x"}}) ==
+      "unknown argument `instructions`");
 
   Tool tool;
   tool.name = "probe";

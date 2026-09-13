@@ -37,6 +37,39 @@ test("parallel tools retain call identity and semantic completion status", () =>
   assert.equal(blocks[2].status, "interrupted");
 });
 
+test("async receipts retain durable identities and never fabricate tool calls", () => {
+  const notification = {
+    type: "activity.completed",
+    data: { id: 7, status: 0 },
+  };
+  assert.deepEqual(liveBlocks([notification]), []);
+  let snapshot = { state: { view: { blocks: [] } } };
+  for (const id of ["m-12", "m-13", "m-12"]) {
+    snapshot = applySessionEvent(snapshot, {
+      kind: "event",
+      type: "message.changed",
+      data: {
+        block: {
+          id,
+          kind: "activity",
+          activity_id: 7,
+          text: "Completed",
+          status: "completed",
+        },
+      },
+    });
+  }
+  assert.deepEqual(
+    snapshot.state.view.blocks.map((b) => b.id),
+    ["m-12", "m-13"],
+  );
+  assert.ok(
+    snapshot.state.view.blocks.every(
+      (b) => b.kind === "activity" && !b.call_id,
+    ),
+  );
+});
+
 test("live answer storage is bounded", () => {
   const blocks = liveBlocks(
     Array.from({ length: 100 }, () => ({
@@ -84,6 +117,11 @@ test("only Markdown code blocks receive copy controls", async () => {
 test("a pending receipt remains pending and SSE may acknowledge before HTTP", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => {
+    receiveOutcome({
+      request_id: "a".repeat(32),
+      accepted: true,
+      pending: true,
+    });
     receiveOutcome({
       request_id: "a".repeat(32),
       accepted: true,
@@ -148,5 +186,59 @@ test("saved-history browsing retains the selected view and four recent views", a
     "99",
     "active",
     "crashed",
+  ]);
+});
+
+test("live context replaces the estimate without accumulating billing tokens", () => {
+  const current = { state: { context_tokens: 1000, usage: { cost: 0.01 } } };
+  const growing = applySessionEvent(current, {
+    kind: "event",
+    type: "usage.updated",
+    data: { context_tokens: 2400, usage: { cost: 0.01 } },
+  });
+  assert.equal(growing.state.context_tokens, 2400);
+  assert.equal(growing.state.usage.cost, 0.01);
+  const compacted = applySessionEvent(growing, {
+    kind: "event",
+    type: "usage.updated",
+    data: { context_tokens: 0 },
+  });
+  assert.equal(compacted.state.context_tokens, 0);
+  assert.equal(current.state.context_tokens, 1000);
+});
+
+test("collaborator lifecycle events upsert and remove one retained runtime", () => {
+  const current = {
+    state: { collaborators: [{ id: "ordinary", status: "idle" }] },
+  };
+  const running = applySessionEvent(current, {
+    kind: "event",
+    type: "collaborator.changed",
+    data: {
+      collaborator: {
+        id: "sidekick",
+        label: "Review implementation",
+        status: "running",
+        persistent: true,
+      },
+    },
+  });
+  assert.deepEqual(
+    running.state.collaborators.map((item) => item.id),
+    ["ordinary", "sidekick"],
+  );
+  const idle = applySessionEvent(running, {
+    kind: "event",
+    type: "collaborator.changed",
+    data: { collaborator: { id: "sidekick", status: "idle" } },
+  });
+  assert.equal(idle.state.collaborators[1].status, "idle");
+  const removed = applySessionEvent(idle, {
+    kind: "event",
+    type: "collaborator.changed",
+    data: { collaborator: { id: "sidekick" }, removed: true },
+  });
+  assert.deepEqual(removed.state.collaborators, [
+    { id: "ordinary", status: "idle" },
   ]);
 });

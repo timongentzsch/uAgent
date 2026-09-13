@@ -404,7 +404,7 @@ void TestRegistries() {
 
   AdaptiveSystemState adaptive_state;
   Tool adaptive = AdaptSystemTool(adaptive_state);
-  CHECK(!adaptive.parameters.contains("required"));
+  CHECK(adaptive.parameters["required"] == json::array({"action"}));
 
   Api delegation_api(RuntimeConfig{});
   ProcessSupervisor delegation_processes;
@@ -420,11 +420,11 @@ void TestRegistries() {
   CHECK(subagent_properties["background"]["type"] == "boolean");
   CHECK(
       subagent_properties["background"]["description"].get<std::string>().find(
-          "final result directly") != std::string::npos);
+          "handoff result directly") != std::string::npos);
   CHECK(!subagent_properties.contains("provider"));
   // The grammar for naming a provider-scoped route, not the roster: the roster
-  // is what uagent_info topic=routes reports, and enumerating it here was
-  // charged to every request.
+  // is what uagent action=inspect topic=routes reports, and enumerating it here
+  // was charged to every request.
   CHECK(subagent_properties["model"]["description"].get<std::string>().find(
             "<provider>/MODEL") != std::string::npos);
   CHECK(subagent_properties["model"]["description"].get<std::string>().find(
@@ -570,6 +570,8 @@ void TestModelCatalogParsing() {
       {{"data",
         json::array({{{"id", "vendor/beta"}},
                      {{"id", "vendor/alpha"},
+                      {"architecture",
+                       {{"input_modalities", json::array({"text", "image"})}}},
                       {"context_length", 131072},
                       {"reasoning",
                        {{"supported_efforts", json::array({"low", "high"})},
@@ -579,6 +581,7 @@ void TestModelCatalogParsing() {
     CHECK((*models)[0].id == "vendor/beta");
     CHECK((*models)[1].id == "vendor/alpha");
     CHECK((*models)[1].context == 131072);
+    CHECK((*models)[1].input_modalities == json::array({"text", "image"}));
     CHECK((*models)[1].efforts.size() == 2);
     CHECK((*models)[1].default_effort == "low");
   }
@@ -717,7 +720,7 @@ void TestMarkdownMath() {
   CHECK(inline_math.find("z = 3") != std::string::npos);
   CHECK(inline_math.find("(1)⁄(2) ≤ √(x₁)") != std::string::npos);
   CHECK(inline_math.find("$x^2$") == std::string::npos);
-  CHECK(inline_math.find("\033[38;5;141m") != std::string::npos);
+  CHECK(inline_math.find(MATH()) != std::string::npos);
 
   std::string edge_math = RenderMarkdown(
       "$e^\\infty$ and $\\frac{1}{2$\n"
@@ -838,6 +841,8 @@ void TestCapsAndEscaping() {
   std::string banded = UserEchoRow(InputPrompt(), "hello");
   CHECK(banded.starts_with("\r"));
   CHECK(banded.find(InputBg()) != std::string::npos);
+  // Terminals stamp scrollback themselves; the echo carries no clock.
+  CHECK(banded.find("UTC") == std::string::npos);
   CHECK(banded.find("hello\033[K") != std::string::npos);
   CHECK(banded.find('\n') == std::string::npos);
   g_tty = false;

@@ -2,7 +2,9 @@
 
 import datetime
 import json
+import signal
 import subprocess
+import threading
 
 from integration_support import Server, assert_true, base_env, event, wait_until
 from web_support import web_host
@@ -194,6 +196,59 @@ def test_scheduled_run_native_session_and_restart(root, home, *, binary):
                 timeout=10,
             )
             assert_true(len(provider.requests) == 1, "restart submitted the same run again")
+
+
+def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
+    entered, release = threading.Event(), threading.Event()
+
+    def response(_index, _body):
+        entered.set()
+        assert release.wait(20), "restart never released the model response"
+        return event({"content": "Finished across web restart"})
+
+    with Server([response]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, host, env):
+            client.pair(code)
+            task = client.command(
+                "schedule",
+                action="save",
+                revision="",
+                task=dict(
+                    name="Restart",
+                    prompt="Review",
+                    cwd=str(root),
+                    environment="local",
+                    permissions="yolo",
+                    schedule=dict(type="interval", seconds=3600),
+                ),
+            )["result"]["item"]
+            run = control(binary, root, env, "schedule", action="run", key=task["id"])["run"]
+            try:
+                assert entered.wait(10), "scheduled model request never started"
+                before = client.snapshot(dict(id=run["session_id"]))
+                host.send_signal(signal.SIGTERM)
+                host.wait(timeout=10)
+                with web_host(binary, root, home, provider.url) as (resumed, code, _, _):
+                    resumed.pair(code)
+                    current = resumed.until(
+                        dict(id=run["session_id"]),
+                        lambda value: value["metadata"]["status"] == "running",
+                    )
+                    assert current["metadata"]["generation"] == before["metadata"]["generation"]
+                    release.set()
+                    wait_until(
+                        lambda: (
+                            resumed.command("schedule", action="list")["result"]["runs"][0][
+                                "status"
+                            ]
+                            == "completed"
+                        ),
+                        "reconnected scheduled run never completed",
+                        timeout=15,
+                    )
+                    assert len(provider.requests) == 1, "restart repeated scheduled work"
+            finally:
+                release.set()
 
 
 def test_schedule_worktree_and_failed_turn(root, home, *, binary):

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/app/config_proposal.h"
+#include "include/app/self_description.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -21,8 +22,11 @@ using ConfigProposalFactory = std::function<ConfigProposal(
 // Requests a persistent configuration change. The tool prepares and previews;
 // the mandatory-human approval lane decides, and only an approved proposal can
 // be committed. There is deliberately no commit argument the model can set.
-Tool ConfigureTool(const ConfigProposalFactory& prepare,
-                   const std::shared_ptr<ConfigProposalStore>& store);
+using SelfDescriptionProvider =
+    std::function<json(SelfTopic, const std::string&)>;
+Tool UagentTool(SelfDescriptionProvider describe,
+                const ConfigProposalFactory& prepare = {},
+                const std::shared_ptr<ConfigProposalStore>& store = {});
 
 }  // namespace uagent
 

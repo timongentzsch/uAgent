@@ -28,7 +28,7 @@ a multi-tenant service.
 | memory always-on slice | 2 KiB |
 | memory extraction | one session, 32 KiB, after 6 idle hours |
 | memory event audit | 256 KiB, compacted under a cross-process file lock |
-| attachment / terminal image | 10 / 10 MiB |
+| CLI attachment / web upload | 10 / 8 MiB |
 | input history / composer and bracketed paste | 200 x 16 KiB / 64 KiB |
 | automatic compaction | 85% projected model context |
 | removed-trace archive | 16 MiB |
@@ -84,16 +84,14 @@ CLI settings remain dominant; secrets never appear in inspection output, and
 URL userinfo is removed. Reload creates no watcher thread and never mutates an
 in-flight turn.
 
-Set `UAGENT_ADAPT_SYSTEM=1` to expose the experimental `adapt_system` tool. It
-lets the model replace or clear a bounded free-form mutable section of message
-zero at any model/tool boundary. Revisions persist until changed, including
-across session save/resume, while permissions, tool availability, approval,
-and resource limits remain host-enforced. Each revision and the next complete
-request snapshot are recorded by `--debug`; leave it disabled for a static
-prompt control run. A revision is intended for a concrete task observation
-that changes subsequent strategy, not as an automatic first-step plan or a
-restatement of the existing workflow; the tool's `reason` records both the
-observation and the resulting strategic delta.
+Set `UAGENT_ADAPT_SYSTEM=1` to expose `adapt_system`. It shares the scoped
+[system prompt controller](SYSTEM_PROMPTS.md) with the CLI and web editor.
+Read with `action=show`, then include its revision in `set`, `edit` or `reset`.
+Project/global writes and complete replacements require human approval, even in
+YOLO. Prompt changes take effect on the next request and cannot change host
+permissions or limits. Self-adaptation should follow a concrete observation
+that changes strategy; each write records that observation in `reason`.
+Use `--debug` to record revisions and complete request snapshots.
 
 The always-on slice inlines behavioral (global-scope) memory into the startup
 context, newest first and whole entries only, so a memory is never cut
@@ -199,17 +197,21 @@ conversation. A persisted coordinator-owned `directive` is prepended to each
 follow-up until explicitly cleared; `operation=message` sends separate one-shot
 guidance, which a running child picks up between its steps and an idle one
 receives with its next follow-up. `operation=list` inspects workspace
-collaborators. Use `background=false` when the next step requires the child
-result; background children notify the agent automatically on exit. A failed
-child
+collaborators. `persistent=true` reserves the parent's single retained runtime,
+requires blocking handoffs and keeps the child's session worker, PTYs and
+supervised activities alive until explicit stop or parent teardown. Its route,
+mode and limits cannot change after spawn. Cumulative child usage is charged to
+the parent by delta, so follow-ups do not reset accounting. Use
+`background=false` when the next step requires an ordinary child result;
+background children notify the agent automatically on exit. A failed child
 reports its configured route, failure stage, bounded partial diagnostics, and a
 remedy; its one-line completion row shows only a bounded category-safe
 stage/reason, while the full report and captured artifact remain retained. The
 harness never silently changes provider, model, pricing, or privacy policy. `activity(operation=wait, wait_ms=..., mode=...)` is an intentional
 join when no useful parent work remains.
 `activity(operation=stop, id=...)` sends TERM, then KILL if needed, to the
-complete process group and removes its records and logs. Persistent TUI and headless runs
-publish completion without polling or starting a model turn.
+complete process group and removes its records and logs. Persistent TUI and
+headless runs publish completion without polling or starting a model turn.
 
 Configured MCP stdio servers start once and expose their discovered tools
 directly. µAgent requires the stateless `2026-07-28` lifecycle and rejects a
@@ -302,8 +304,8 @@ untrusted fork code; pin both the Action ref and release version.
 - A Playwright attach requires a live user-approved Chrome debugging endpoint;
   `playwright-cli list` shows the active session and `detach` preserves Chrome.
 - Corrupt sessions are reported and left untouched.
-- Managed processes are reaped on catchable exits; `SIGKILL` cannot guarantee
-  cleanup.
+- Runtime shutdown reaps managed processes. Closing a client only detaches;
+  `SIGKILL` cannot guarantee cleanup.
 - A command that fails on a refused write reports the kernel's errno plus a
   `[sandbox: ...]` line. `/context` lists every writable root; widen with
   `UAGENT_SANDBOX_WRITE`, or run that one command with `run(sandbox=false)`,

@@ -43,7 +43,7 @@ export function Popover({
     if (!element || !button) return;
     element.showPopover({ source: button });
     const place = () => {
-      const { left: x, top: y, width, height } = viewportBounds();
+      const { left: x, top: y, width, height } = viewportBounds(true);
       const target = button.getBoundingClientRect();
       const above = Math.max(0, target.top - y - 16);
       const below = Math.max(0, y + height - target.bottom - 16);

@@ -1,4 +1,5 @@
 import { Field, Mark, Skeleton } from "./ui.tsx";
+import { SizeControls } from "./size-controls.tsx";
 import "./raw.css";
 import "./statistics.css";
 import "./settings.css";
@@ -49,14 +50,7 @@ export function SettingsSkeleton() {
         <Field label="Appearance · loading…">
           <Control />
         </Field>
-        {["Display size", "Text size"].map((label) => (
-          <Field key={label} label={label}>
-            <input type="range" disabled aria-hidden="true" />
-          </Field>
-        ))}
-        <div class="dialog-actions">
-          <button disabled>Reset sizes</button>
-        </div>
+        <SizeControls />
         <Field
           label="Default permissions"
           help="Used by new conversations and conversations that inherit the default."
@@ -66,11 +60,13 @@ export function SettingsSkeleton() {
         <button disabled>System prompt</button>
         <button disabled>Advanced configuration</button>
       </div>
-      {["Install", "Notifications", "Paired devices"].map((label) => (
-        <details key={label} class="settings-section" inert>
-          <summary>{label}</summary>
-        </details>
-      ))}
+      {["Offline storage", "Install", "Notifications", "Paired devices"].map(
+        (label) => (
+          <details key={label} class="settings-section" inert>
+            <summary>{label}</summary>
+          </details>
+        ),
+      )}
     </div>
   );
 }

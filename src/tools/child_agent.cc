@@ -207,8 +207,6 @@ EnvironmentOverrides ChildAgentEnvironment(SideRoute route) {
       {"UAGENT_MODEL", std::move(route.model)},
       {"UAGENT_CONTEXT", std::to_string(route.context)},
       {"UAGENT_REASONING_EFFORT", std::move(route.effort)},
-      {"UAGENT_OPENROUTER_COMPATIBLE",
-       route.protocol == ProviderProtocol::kOpenRouter ? "1" : "0"},
       {"UAGENT_PROVIDER_PROTOCOL", ProviderProtocolName(route.protocol)},
       {"UAGENT_WIRE_API", WireApiName(route.wire_api)},
       {"UAGENT_HOSTED_TOOLS", route.hosted_web_search ? "web_search" : ""},

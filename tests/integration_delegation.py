@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -19,6 +20,7 @@ from integration_support import (
     has_message,
     run,
     run_dialog,
+    saved_json_files,
     tool_call,
     tool_results,
     wait_for_processes_stopped,
@@ -209,19 +211,43 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         child_prompts = [
             message.get("content") for message in messages if message.get("role") == "user"
         ]
-        if "remember alpha" in child_prompts:
+        if child_prompts and child_prompts[-1] == "directive cleared?":
+            return event({"content": "directive-cleared"})
+        if any(str(prompt).endswith("remember alpha") for prompt in child_prompts):
+            initial_directive = any(
+                prompt == "[collaborator directive]\nalways mention beta\n\nremember alpha"
+                for prompt in child_prompts
+            )
             directed_followup = any(
                 prompt
                 == "[collaborator directive]\nalways mention beta\n\nwhat did I ask you to remember?"
                 for prompt in child_prompts
             )
             if directed_followup:
-                return event({"content": "alpha-from-history-with-directive"})
-            return event({"content": "stored alpha"})
-
+                return event(
+                    {
+                        "content": "alpha-from-history-with-directive"
+                        if initial_directive
+                        else "initial-directive-missing"
+                    }
+                )
+            return event({"content": "stored alpha" if initial_directive else "bad seed"})
         results = "\n".join(tool_results(messages))
-        if "alpha-from-history-with-directive" in results:
+        if "directive-cleared" in results:
             return event({"content": "persistent-collaborator-ok"})
+        if "alpha-from-history-with-directive" in results:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
+            assert_true(match is not None, results)
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": match.group(1),
+                    "prompt": "directive cleared?",
+                    "directive": "",
+                    "background": False,
+                },
+            )
         if "stored alpha" in results:
             match = re.search(r"\[collaborator (agent-[^;\]]+)", results)
             assert_true(match is not None, results)
@@ -247,15 +273,188 @@ def test_subagent_followup_resumes_durable_conversation(root, home, *, binary):
         result = run(root, base_env(home, server.url), "--yolo", "-p", "collaborate", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "persistent-collaborator-ok", result.stdout)
-        records = list((home / ".uagent" / "collaborators").glob("agent-*.json"))
+        records = saved_json_files(home / ".uagent" / "collaborators", "agent-*.json")
         records = [path for path in records if not path.name.endswith(".session.json")]
         assert_true(len(records) == 1, records)
         state = json.loads(records[0].read_text(encoding="utf-8"))
-        assert_true(state["directive"] == "always mention beta", state)
+        assert_true(state["directive"] == "", state)
+        assert_true(state["task"] == "directive cleared?", state)
         # A collaborator has to know it is one: guidance can arrive mid-run as
         # an ordinary user message, which it cannot infer from its own prompt.
         session = records[0].with_name(records[0].stem + ".session.json")
         assert_true("[collaborator:" in session.read_text(encoding="utf-8"), session)
+
+
+def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, binary):
+    marker = home / "retained-child.pid"
+    retained_cwd = home / "retained-cwd"
+    retained_cwd.mkdir()
+    premature_guidance = []
+
+    def route(_, body):
+        messages = body["messages"]
+        users = [
+            str(message.get("content", "")) for message in messages if message.get("role") == "user"
+        ]
+        results = tool_results(messages)
+        if any("resume after loss" in user for user in users):
+            return event({"content": "resumed-fresh"})
+        if any("crash retained runtime" in user for user in users):
+            return tool_call("run", {"command": "kill -9 $PPID"})
+        if any(user.endswith("seed retained runtime") for user in users) and not any(
+            "verify retained runtime" in user for user in users
+        ):
+            if any("idle queued once" in user for user in users):
+                premature_guidance.append(True)
+                return event({"content": "guidance-started-a-turn"})
+            combined = "\n".join(results)
+            match = re.search(r"\[running\] activity (\d+)", combined)
+            if match is None:
+                command = (
+                    f"printf '%s' $$ > {shlex.quote(str(marker))}; exec bash --noprofile --norc"
+                )
+                return tool_call("run", {"command": command, "tty": True, "yield_ms": 250})
+            if "PTY_READY" not in combined:
+                return tool_call(
+                    "activity",
+                    {
+                        "operation": "write",
+                        "id": int(match.group(1)),
+                        "chars": (
+                            f"cd {shlex.quote(str(retained_cwd))}\n"
+                            "export UAGENT_RETAINED=alive\n"
+                            "printf 'PTY_READY\\n'\n"
+                        ),
+                    },
+                )
+            return event(
+                {"content": "retained-one"},
+                usage={"prompt_tokens": 1, "completion_tokens": 2},
+            )
+        if any("verify retained runtime" in user for user in users):
+            assert_true(sum("idle queued once" in user for user in users) == 1, users)
+            combined = "\n".join(results)
+            match = re.search(r"\[running\] activity (\d+)", combined)
+            assert_true(match is not None, combined)
+            expected = f"PTY_STATE:{retained_cwd}:alive"
+            if expected not in combined:
+                return tool_call(
+                    "activity",
+                    {
+                        "operation": "write",
+                        "id": int(match.group(1)),
+                        "chars": 'printf \'PTY_STATE:%s:%s\\n\' "$PWD" "$UAGENT_RETAINED"\n',
+                    },
+                )
+            return event(
+                {"content": "retained-two" if expected in combined else "state-lost"},
+                usage={"prompt_tokens": 1, "completion_tokens": 3},
+            )
+
+        combined = "\n".join(results)
+        if "resumed-fresh" in combined:
+            return event({"content": "persistent-runtime-ok"})
+        if "runtime was stopped" in combined:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
+            assert_true(match is not None, combined)
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": match.group(1),
+                    "prompt": "resume after loss",
+                },
+            )
+        if "retained-two" in combined:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
+            assert_true(match is not None, combined)
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": match.group(1),
+                    "prompt": "crash retained runtime",
+                },
+            )
+        if "retained-one" in combined:
+            match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
+            assert_true(match is not None, combined)
+            if "already owns this conversation's runtime" not in combined:
+                return tool_call(
+                    "subagent",
+                    {"prompt": "must not run", "persistent": True, "mode": "full"},
+                )
+            if "queued message for collaborator" not in combined:
+                return tool_call(
+                    "subagent",
+                    {
+                        "operation": "message",
+                        "agent_id": match.group(1),
+                        "prompt": "idle queued once",
+                    },
+                )
+            return tool_call(
+                "subagent",
+                {
+                    "operation": "followup",
+                    "agent_id": match.group(1),
+                    "prompt": "verify retained runtime",
+                },
+            )
+        return tool_call(
+            "subagent",
+            {
+                "prompt": "seed retained runtime",
+                "directive": "report evidence once",
+                "persistent": True,
+                "mode": "full",
+                "limits": {"steps": 9, "tool_calls": 10, "seconds": 25, "memory": False},
+            },
+        )
+
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "--json",
+            "-p",
+            "fusion coordinator",
+            timeout=40,
+            binary=binary,
+        )
+    assert_true(result.returncode == 0, result.stderr)
+    envelope = json.loads(result.stdout)
+    assert_true(envelope["answer"] == "persistent-runtime-ok", envelope)
+    assert_true(not premature_guidance, "idle guidance started an implicit child turn")
+    assert_true(envelope["usage"]["output"] == 5, envelope)
+    records = [
+        path
+        for path in saved_json_files(home / ".uagent" / "collaborators", "agent-*.json")
+        if not path.name.endswith(".session.json")
+    ]
+    assert_true(len(records) == 1, records)
+    state = json.loads(records[0].read_text(encoding="utf-8"))
+    assert_true(state["persistent"] is True, state)
+    assert_true(state["handoff_generation"] == 4, state)
+    assert_true(
+        state["limits"]
+        == {"steps": 9, "tool_calls": 10, "seconds": 25, "cost": 0.0, "memory": False},
+        state,
+    )
+    transcript = records[0].with_name(records[0].stem + ".session.json").read_text(encoding="utf-8")
+    payload = json.loads(transcript.split("\n", 1)[1])
+    directed = [
+        message["content"]
+        for message in payload["messages"]
+        if message.get("role") == "user"
+        and str(message.get("content", "")).startswith("[collaborator directive]")
+    ]
+    assert_true(len(directed) == 4, directed)
+    assert_true(all(text.count("report evidence once") == 1 for text in directed), directed)
+    assert_true(sum("crash retained runtime" in text for text in directed) == 1, directed)
+    pid = int(marker.read_text(encoding="utf-8"))
+    assert_true(not wait_for_processes_stopped([pid], timeout=5), f"leaked child process {pid}")
 
 
 def test_completed_child_answer_survives_collaborator_save_failure(root, home, *, binary):
@@ -432,7 +631,7 @@ def test_message_reaches_running_child(root, home, *, binary):
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "live-message-ok", result.stdout)
         collaborators = home / ".uagent" / "collaborators"
-        sessions = list(collaborators.glob("agent-*.session.json"))
+        sessions = saved_json_files(collaborators, "agent-*.session.json")
         assert_true(len(sessions) == 1, sessions)
         # The guidance became an ordinary user message in the child's own
         # conversation, which is what makes it steering rather than a note.
@@ -938,3 +1137,126 @@ def test_subagent_clamps_are_reported_not_silent(root, home, *, binary):
         result = run(root, env, "--yolo", "-p", "delegate", timeout=30, binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "clamp-reported-ok", result.stdout)
+
+
+def test_persistent_handoffs_obey_remaining_budget_and_cancellation(root, home, *, binary):
+    from session_support import SessionClient, runtime_directory
+
+    for mode in ("tokens", "cost", "cancelled"):
+        cancelled = mode == "cancelled"
+        case_home = home / mode
+        case_home.mkdir()
+        marker = case_home / "must-not-run"
+
+        def route(_, body, *, cancelled=cancelled, case_home=case_home, marker=marker):
+            messages = body["messages"]
+            if has_message(messages, "user", "second handoff"):
+                if cancelled:
+                    sockets = list(runtime_directory(case_home).glob("*.sock"))
+                    assert_true(len(sockets) == 1, sockets)
+                    client = SessionClient(sockets[0])
+                    try:
+                        command = client.send("interrupt")
+                        client.until(lambda frame: frame.get("request_id") == command["request_id"])
+                    finally:
+                        client.close()
+                    time.sleep(0.2)
+                    return event({"content": "late response"})
+                response = tool_call("run", {"command": f"touch {shlex.quote(str(marker))}"})
+                response["usage"] = {"completion_tokens": 3, "cost": 0.3}
+                return response
+            if has_message(messages, "user", "first handoff"):
+                return event(
+                    {"content": "first answer"}, usage={"completion_tokens": 2, "cost": 0.2}
+                )
+            results = tool_results(messages)
+            if len(results) >= 2:
+                assert_true("interrupted" in results[-1], results)
+                assert_true("first answer" not in results[-1], results)
+                return event({"content": "cancellation reported"})
+            if results:
+                match = re.search(r"\[collaborator (agent-[^;\]]+)", results[-1])
+                assert_true(match is not None, results)
+                response = tool_call(
+                    "subagent",
+                    {
+                        "operation": "followup",
+                        "agent_id": match.group(1),
+                        "prompt": "second handoff",
+                    },
+                )
+                response["usage"] = {"completion_tokens": 4, "cost": 0.4}
+                return response
+            response = tool_call("subagent", {"persistent": True, "prompt": "first handoff"})
+            response["usage"] = {"completion_tokens": 2, "cost": 0.2}
+            return response
+
+        with Server([route]) as server:
+            options = {
+                "cancelled": [],
+                "tokens": ["--token-budget", "10"],
+                "cost": ["--budget", "1"],
+            }[mode]
+            result = run(
+                root,
+                base_env(case_home, server.url),
+                "--yolo",
+                "--json",
+                *options,
+                "-p",
+                "coordinate handoffs",
+                timeout=20,
+                binary=binary,
+            )
+        envelope = json.loads(result.stdout)
+        assert_true(not marker.exists(), envelope)
+        if cancelled:
+            assert_true(envelope["answer"] == "cancellation reported", envelope)
+        else:
+            assert_true(len(server.requests) == 4, server.requests)
+            assert_true(envelope["usage"]["output"] == 11, envelope)
+            assert_true(abs(envelope["usage"]["cost"] - 1.1) < 1e-9, envelope)
+
+
+def test_persistent_worker_stops_when_parent_is_killed(root, home, *, binary):
+    child_ready, release = threading.Event(), threading.Event()
+
+    def route(_, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "keep a shell"):
+            if tool_results(messages):
+                return event({"content": "shell retained"})
+            return tool_call("run", {"command": "sleep 60", "yield_ms": 250})
+        if tool_results(messages):
+            child_ready.set()
+            assert release.wait(budget(10))
+            return event({"content": "late parent response"})
+        return tool_call("subagent", {"persistent": True, "mode": "full", "prompt": "keep a shell"})
+
+    with Server([route]) as server:
+        parent = subprocess.Popen(
+            [str(binary), "--yolo", "--json", "-p", "delegate"],
+            cwd=root,
+            env=base_env(home, server.url),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        children = []
+        try:
+            assert child_ready.wait(budget(8))
+            children = descendant_pids(parent.pid)
+            assert_true(len(children) >= 2, children)
+            parent.kill()
+            parent.wait(timeout=budget(5))
+            alive = wait_for_processes_stopped(children, timeout=5)
+            assert_true(not alive, f"parent crash leaked retained processes: {alive}")
+        finally:
+            release.set()
+            if parent.poll() is None:
+                parent.kill()
+            parent.communicate(timeout=budget(5))
+            for pid in wait_for_processes_stopped(children, timeout=1):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass

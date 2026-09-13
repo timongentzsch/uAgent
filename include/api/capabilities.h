@@ -47,6 +47,7 @@ struct ProviderCapabilities {
   bool native_tools = true;
   bool parallel_tools = true;
   bool stream_usage_option = true;
+  json input_modalities = nullptr;
   bool image_input = true;
   // Document parts, which not every route accepts even when it takes images.
   bool file_input = true;
@@ -78,6 +79,7 @@ struct ProviderCapabilities {
   bool Supports(HostedTool tool) const {
     return tool == HostedTool::kWebSearch && hosted_web_search;
   }
+  void SetInputModalities(const json& modalities);
   void ResetNegotiated();
   void Observe(const ChatResult& result);
   json DiagnosticJson() const;

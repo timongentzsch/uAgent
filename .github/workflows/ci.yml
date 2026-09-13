@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, dev]
     tags: ["v*"]
   pull_request:
 
@@ -41,23 +41,11 @@ jobs:
           - runner: ubuntu-24.04
             target: linux-x86_64
             arch: x86_64
-            build_type: Debug
-          - runner: ubuntu-24.04
-            target: linux-x86_64
-            arch: x86_64
             build_type: Release
           - runner: ubuntu-24.04-arm
             target: linux-arm64
             arch: aarch64
-            build_type: Debug
-          - runner: ubuntu-24.04-arm
-            target: linux-arm64
-            arch: aarch64
             build_type: Release
-          - runner: macos-15
-            target: macos-arm64
-            arch: arm64
-            build_type: Debug
           - runner: macos-15
             target: macos-arm64
             arch: arm64
@@ -179,7 +167,7 @@ jobs:
       - name: Build tests and agent
         run: cmake --build --preset tsan --target uagent_tests uagent --parallel 4
       - name: Test concurrent paths
-        run: ctest --preset tsan -j 2 -R '^(core|integration_(runtime|tools))$'
+        run: ctest --preset tsan -j 2 -R '^(core|integration_(runtime|tools|web))$'
 
   fuzzers:
     needs: changes

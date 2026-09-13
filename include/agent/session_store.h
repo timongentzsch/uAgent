@@ -70,6 +70,7 @@ struct SessionState {
   int64_t context_tokens = 0;
   Usage usage;
   RouteUsage route_usage;
+  std::string last_sent_prompt;
   std::string adaptive_system;
   std::string adaptive_system_mode = "overlay";
   uint64_t adaptive_system_revision = 0;

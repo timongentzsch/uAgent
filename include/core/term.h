@@ -44,15 +44,13 @@ inline constexpr char kTerminalModeReset[] = "\033[?2004l";
 inline const char* Sgr(const char* sequence) { return g_color ? sequence : ""; }
 inline const char* DIM() { return Sgr("\033[2m"); }
 inline const char* RST() { return Sgr(kTerminalRestore); }
-inline const char* CYAN() { return Sgr("\033[36m"); }
-inline const char* BLUE() { return Sgr("\033[38;5;68m"); }
 inline const char* MUTED() { return Sgr("\033[90m"); }
 inline const char* YEL() { return Sgr("\033[33m"); }
 inline const char* RED() { return Sgr("\033[31m"); }
 inline const char* GREEN() { return Sgr("\033[32m"); }
 inline const char* BOLD() { return Sgr("\033[1m"); }
 // The band behind an echoed user turn, so a prompt is findable in scrollback.
-inline const char* InputBg() { return Sgr("\033[48;5;250m"); }
+inline const char* InputBg() { return Sgr("\033[7m"); }
 // Cursor control, not colour, so it follows g_tty. With background-colour-erase
 // it extends the current background to the right edge, which bands the echo.
 inline const char* EraseToEol() { return g_tty ? "\033[K" : ""; }
@@ -214,11 +212,9 @@ class TerminalSpinner {
 };
 
 // code colors (256-color, readable on dark and light themes; glamour-inspired)
-inline const char* CODE() { return Sgr("\033[38;5;203m"); }  // inline `code`
-inline const char* CodeBlk() {
-  return Sgr("\033[38;5;110m");
-}  // fenced block body
-inline const char* MATH() { return Sgr("\033[38;5;141m"); }  // LaTeX
+inline const char* CODE() { return Sgr("\033[39m"); }     // inline `code`
+inline const char* CodeBlk() { return Sgr("\033[39m"); }  // fenced block body
+inline const char* MATH() { return Sgr("\033[39m"); }     // LaTeX
 
 }  // namespace uagent
 

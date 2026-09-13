@@ -90,8 +90,7 @@ void TestPromptScopes() {
   CHECK(ToolWritePrivateFile(PromptDocumentPath("project"), "not json").Ok());
   auto invalid = control({{"scope", "project"}});
   CHECK(invalid.contains("error"));
-  CHECK(
-      PromptCommand("edit --scope project", control, false).contains("error"));
+  CHECK(PromptCommand("edit --scope project", control).contains("error"));
   CHECK(control({{"scope", "project"},
                  {"action", "reset"},
                  {"revision", invalid["item"]["revision"]}})

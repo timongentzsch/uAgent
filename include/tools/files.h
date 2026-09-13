@@ -20,7 +20,8 @@ ToolErrorCode FileToolError(const std::error_code& error);
 ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
                            mode_t create_mode, bool preserve_mode,
                            bool overwrite = true);
-ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit);
+ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
+                        const std::string& call_id = "");
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
 ToolResult ToolWriteFileWithDisplay(const std::string& path,
                                     const std::string& content,

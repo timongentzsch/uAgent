@@ -124,7 +124,7 @@ def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
             env = base_env(home, model_server.url)
             env.update(
                 {
-                    "UAGENT_OPENROUTER_COMPATIBLE": "1",
+                    "UAGENT_PROVIDER_PROTOCOL": "openrouter",
                     "UAGENT_WEB_SEARCH_BACKEND": "openrouter",
                     "UAGENT_WEB_SEARCH_URL": search_server.url,
                     "UAGENT_WEB_SEARCH_API_KEY": "search-key",
@@ -190,7 +190,7 @@ def test_openrouter_reasoning_details_survive_tool_step(root, home, *, binary):
     )
     with Server([first, verify_tool_step]) as server:
         env = base_env(home, server.url)
-        env["UAGENT_OPENROUTER_COMPATIBLE"] = "1"
+        env["UAGENT_PROVIDER_PROTOCOL"] = "openrouter"
         result = run(root, env, "-p", "inspect", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "openrouter-replay-ok", result.stdout)
@@ -907,15 +907,17 @@ def test_provider_anthropic_native_search_pause_turn_replay(root, home, *, binar
         assert_true(len(sessions) == 1 and None not in sessions, sessions)
 
 
-def test_self_info_reports_live_configuration(root, home, *, binary):
-    """uagent_info answers from the running binary and never leaks secrets."""
+def test_uagent_tool_reports_live_configuration(root, home, *, binary):
+    """uagent inspection answers from the running binary and never leaks secrets."""
     config = home / ".uagent"
     config.mkdir(parents=True, exist_ok=True)
     (config / ".config").write_text("UAGENT_MAX_TOOL_CALLS=120\n")
 
     def ask_config(_, body):
-        assert_true("uagent_info" in function_names(body), function_names(body))
-        return tool_call("uagent_info", {"topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"})
+        assert_true("uagent" in function_names(body), function_names(body))
+        return tool_call(
+            "uagent", {"action": "inspect", "topic": "config", "name": "UAGENT_MAX_TOOL_CALLS"}
+        )
 
     def ask_status(_, body):
         described = json.loads(tool_results(body["messages"])[-1])
@@ -925,13 +927,13 @@ def test_self_info_reports_live_configuration(root, home, *, binary):
         assert_true(setting["source"] == "global-config", setting)
         assert_true(setting["default"] == 0, setting)
         assert_true(setting["takes_effect"] == "next-user-turn", setting)
-        return tool_call("uagent_info", {"topic": "status"}, call_id="call-2")
+        return tool_call("uagent", {"action": "inspect", "topic": "status"}, call_id="call-2")
 
     def ask_prompt(_, body):
         status = json.loads(tool_results(body["messages"])[-1])
         assert_true(status["version"], status)
         assert_true(status["approval"] == "yolo", status)
-        return tool_call("uagent_info", {"topic": "routes"}, call_id="call-3")
+        return tool_call("uagent", {"action": "inspect", "topic": "routes"}, call_id="call-3")
 
     def ask_routes(_, body):
         # A model that cannot read the route table guesses a selection, and a
@@ -949,7 +951,7 @@ def test_self_info_reports_live_configuration(root, home, *, binary):
         assert_true("high" in described["efforts"], described)
         # The table names routes; it never carries what authenticates them.
         assert_true("canary-route-key" not in json.dumps(described), described)
-        return tool_call("uagent_info", {"topic": "prompt"}, call_id="call-4")
+        return tool_call("uagent", {"action": "inspect", "topic": "prompt"}, call_id="call-4")
 
     def finish(_, body):
         described = json.loads(tool_results(body["messages"])[-1])

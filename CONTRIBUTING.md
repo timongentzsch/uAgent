@@ -13,8 +13,8 @@ over local exceptions, and preserve behavior before redesigning a boundary.
   file types before opening them.
 - Give asynchronous work one owner, a deadline, bounded output, cancellation,
   and a tested shutdown path. Do not call external code while holding a mutex.
-  Cancellation travels on a `std::jthread` stop token; a `std::stop_callback`
-  wakes whatever the thread is blocked on.
+  Use stop tokens for supervised work and the shared wake descriptor for
+  socket loops; destruction wakes and joins the owning thread.
 - Own a file descriptor with `Fd` (`include/core/fd.h`), never a bare `int`
   plus a `close` on each early return. Name the mutex that covers shared state
   with `UAGENT_GUARDED_BY`, and lock-holding helpers with `UAGENT_REQUIRES`
@@ -22,8 +22,8 @@ over local exceptions, and preserve behavior before redesigning a boundary.
 - Put session-static configuration in `RuntimeConfig`. Environment accessors
   are reserved for deliberately dynamic route/delegation state. Avoid
   unbounded inputs, queues, and arithmetic.
-- Never pass credentials to child processes implicitly or log secrets. Keep
-  approved-shell exceptions in the centralized `ChildEnvironment` policy.
+- Tool children use the centralized `ChildEnvironment` credential policy.
+  Session workers inherit the trusted application environment. Never log secrets.
 - Keep persistence versioned and validate complete temporary state before
   replacing live state.
 
@@ -31,6 +31,21 @@ Add focused unit coverage for local behavior or one hermetic integration path
 for externally visible behavior. Avoid covering the same contract at multiple
 layers. Parser changes should preserve chunk-boundary equivalence. See
 [the test guide](docs/TESTING.md).
+
+## Client boundaries
+
+CLI and web submit commands and project runtime events. Keep authority, accounting
+and conversation mutation in the C++ runtime. In the browser, `useHost` owns the
+subscription, `store.ts` applies events, and components own only presentation and
+local interaction state. Derive status from the shared snapshot; do not maintain
+another conversation or execution state machine in a component.
+
+These boundaries follow the [C++ Core Guidelines on ownership and concurrency](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines.html#S-concurrency)
+and [React's guidance on avoiding redundant state](https://react.dev/learn/choosing-the-state-structure).
+Use semantic controls, visible focus and accessible status text; see
+[W3C status message guidance](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html).
+Tests verify specific contracts; these references are design guidance, not a
+claim of complete conformance.
 
 ## Verify
 

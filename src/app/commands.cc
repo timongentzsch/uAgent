@@ -28,7 +28,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
@@ -147,7 +147,7 @@ std::optional<ModelCandidate> PickModel(
         setenv("UAGENT_CONTEXT", std::to_string(api.ctx_window).c_str(), 1);
       }
     }
-    printf("%s[%zu]%s %s%c %s", CYAN(), i + 1, RST(), active ? BOLD() : DIM(),
+    printf("%s[%zu]%s %s%c %s", BOLD(), i + 1, RST(), active ? BOLD() : DIM(),
            active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
     std::string effort = active ? api.reasoning_effort : candidate.route.effort;
     if (effort.empty()) effort = candidate.info.default_effort;
@@ -388,11 +388,7 @@ void HandleAttach(AppSession& session, const std::string& argument) {
   }
   Attachment attachment;
   std::string error;
-  if (!InspectAttachment(argument, attachment, error) ||
-      !(error = ImageInputError(
-            attachment, session.ApiClient().capabilities.image_input,
-            !session.ApiClient().config.image_model.empty()))
-           .empty()) {
+  if (!InspectAttachment(argument, attachment, error)) {
     printf("%s%s%s\n", RED(), error.c_str(), RST());
     return;
   }
@@ -466,9 +462,7 @@ void HandleContext(AppSession& session) {
   printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
          TerminalSafe(JsonDump(effective, 2)).c_str());
   printf("%smodel request%s\n", BOLD(), RST());
-  if (session.context.channel == nullptr) {
-    session.ActiveAgent().PrintContext();
-  }
+  session.ActiveAgent().PrintContext();
 }
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
@@ -570,7 +564,8 @@ json AgentsJson(const AppSession& session) {
   const ProcessSupervisor& processes = session.Runtime().processes;
   std::vector<SubagentView> live = processes.SubagentViews();
   json rows = json::array();
-  for (json& record : CollaboratorSummaries(processes)) {
+  for (json& record :
+       CollaboratorSummaries(processes, &session.Runtime().collaborator)) {
     const std::string id = JsonValue(record, "id", std::string());
     for (const SubagentView& view : live) {
       if (view.source_id != id) continue;
@@ -700,26 +695,24 @@ json SessionControl(AppSession& session, const json& request) {
         session.context.config_manager.ProjectTrusted());
   }
   if (kind == "context") {
-    auto exchanges = session.ActiveAgent().HttpExchanges();
-    return {{"exchanges",
-             exchanges.empty()
-                 ? json::array({session.ActiveAgent().PreviewContext()})
-                 : exchanges}};
+    json preview = session.ActiveAgent().PreviewContext();
+    if (preview.contains("error")) return preview;
+    return {{"exchanges", json::array({std::move(preview)})}};
   }
 
   if (JsonValue(request, "kind", "") == "activity") {
     if (JsonValue(request, "operation", "") != "followup") {
-      return ActivityControl(session.Runtime().processes, request);
+      return ActivityControl(session.Runtime().processes, request,
+                             &session.Runtime().collaborator);
     }
-    Tool tool =
-        SubagentTool(session.ApiClient(), session.Runtime().processes,
-                     session.context.provider.routes,
-                     session.context.provider.providers, Debug().Enabled());
+    Tool tool = SubagentTool(
+        session.ApiClient(), session.Runtime().processes,
+        session.context.provider.routes, session.context.provider.providers,
+        Debug().Enabled(), &session.Runtime().collaborator);
     ToolResult result =
         tool.run({{"operation", "followup"},
                   {"agent_id", JsonValue(request, "agent_id", "")},
-                  {"prompt", JsonValue(request, "text", "")},
-                  {"background", true}},
+                  {"prompt", JsonValue(request, "text", "")}},
                  ToolContext{});
     return result.Ok() ? json{{"output", result.output}}
                        : json{{"error", result.output}};
@@ -754,8 +747,14 @@ json SessionControl(AppSession& session, const json& request) {
                                    session.context.provider.providers)}};
 }
 
-json ActivityControl(ProcessSupervisor& processes, const json& request) {
+json ActivityControl(ProcessSupervisor& processes, const json& request,
+                     CollaboratorRuntime* runtime) {
   std::string operation = JsonValue(request, "operation", "list");
+  if (operation == "background") {
+    return processes.RequestForegroundBackground()
+               ? json{{"operation", operation}}
+               : json{{"error", "no foreground process to background"}};
+  }
   if (operation == "list") return {{"activities", processes.ActivityViews()}};
   int64_t id = JsonValue(request, "activity_id", int64_t{0});
   auto job = processes.Find(id);
@@ -763,12 +762,26 @@ json ActivityControl(ProcessSupervisor& processes, const json& request) {
   if (operation == "inspect") {
     json result = job ? processes.InspectActivity(id) : json::object();
     if (!agent.empty()) {
-      result.update(InspectCollaborator(
-          processes, agent, JsonValue(request, "before", uint64_t{0})));
+      result.update(InspectCollaborator(processes, agent, request, runtime));
     }
     return result.empty()
                ? json{{"error", "activity unavailable in this conversation"}}
                : result;
+  }
+  if (!job && runtime && !agent.empty()) {
+    ToolResult control;
+    if (operation == "stop") {
+      control = runtime->Stop(agent);
+    } else if (operation == "message" &&
+               !JsonValue(request, "text", "").empty()) {
+      control = MessageCollaborator(processes, runtime, agent,
+                                    JsonValue(request, "text", ""));
+    } else {
+      return {{"error", "unsupported activity operation"}};
+    }
+    return control.Ok()
+               ? json{{"output", control.output}, {"operation", operation}}
+               : json{{"error", control.output}};
   }
   if (!job) return {{"error", "activity unavailable in this conversation"}};
   ToolResult result;
@@ -776,8 +789,8 @@ json ActivityControl(ProcessSupervisor& processes, const json& request) {
     result = ToolActivityStop(processes, id);
   } else if (operation == "message" && !job->source_id.empty() &&
              !JsonValue(request, "text", "").empty()) {
-    result =
-        WriteCollaboratorMail(job->source_id, JsonValue(request, "text", ""));
+    result = MessageCollaborator(processes, runtime, job->source_id,
+                                 JsonValue(request, "text", ""));
   } else {
     return {{"error", "unsupported activity operation"}};
   }
@@ -847,32 +860,13 @@ json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
 
 bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
                      json& result) {
-  bool quit = false;
   switch (command.spec->id) {
     case SlashCommandId::kQuit:
-      quit = true;
-      break;
     case SlashCommandId::kReset:
-      session.context.session_approvals.clear();
-      session.ActiveAgent().Reset();
-      session.context.observability.Journal().Clear();
-      session.attachments.clear();
-      session.session_file.clear();
-      session.saved_revision = session.ActiveAgent().Revision();
-      printf("%s· fresh session%s\n", DIM(), RST());
-      break;
-    case SlashCommandId::kSessions: {
-      bool render = session.context.channel == nullptr;
-      std::string chosen = PickSession(render);
-      if (!chosen.empty()) {
-        std::string previous_path = session.session_file;
-        ResumeInto(session.ActiveAgent(), chosen, session.session_file, render);
-        LoadSessionJournal(session, previous_path);
-        session.attachments.clear();
-        session.saved_revision = session.ActiveAgent().Revision();
-      }
-      break;
-    }
+    case SlashCommandId::kSessions:
+    case SlashCommandId::kFork:
+      result = {{"error", "conversation navigation belongs to the client"}};
+      return false;
     case SlashCommandId::kTrace:
       if (!command.argument.empty()) {
         size_t offset = 0;
@@ -887,9 +881,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
         fflush(stdout);
         return false;
       }
-      if (session.context.channel == nullptr) {
-        session.ActiveAgent().PrintTrace();
-      }
+      session.ActiveAgent().PrintTrace();
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);
@@ -903,7 +895,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
              RST());
       break;
     case SlashCommandId::kHelp:
-      if (session.context.channel == nullptr) PrintCommandHelp();
+      PrintCommandHelp();
       break;
     case SlashCommandId::kModels:
       HandleModels(session, command.argument);
@@ -914,30 +906,6 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kEffort:
       HandleEffort(session, command.argument);
       break;
-    case SlashCommandId::kFork: {
-      result = SessionControl(session,
-                              {{"kind", "fork"}, {"title", command.argument}});
-      if (!result.contains("error") &&
-          session.Runtime().processes.Count() == 0) {
-        std::string previous = session.session_file;
-        if (ResumeInto(session.ActiveAgent(), JsonValue(result, "path", ""),
-                       session.session_file, false)) {
-          LoadSessionJournal(session, previous);
-          session.Runtime().processes.SetOwner(HashHex(session.session_file));
-          session.attachments.clear();
-          result["continued"] = true;
-        }
-      } else if (!result.contains("error")) {
-        result["note"] =
-            "Fork saved. This terminal remains with its background activity; "
-            "open the fork using /sessions.";
-      }
-      if (session.context.channel == nullptr) {
-        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
-        fflush(stdout);
-      }
-      return false;
-    }
     case SlashCommandId::kPermissions:
       result = PermissionControl(session.context, {{"mode", command.argument}});
       session.ActiveAgent().ApprovalChanged();
@@ -988,7 +956,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
           result = {{"error", "Use /http INDEX request|response"}};
         } else {
           result = exchanges[index - 1];
-          if (session.context.channel == nullptr) {
+          {
             printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
             size_t offset = 0;
             for (;;) {
@@ -1005,7 +973,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
           return false;
         }
       }
-      if (session.context.channel == nullptr) {
+      {
         printf("%s\n", JsonDump(result).c_str());
       }
       return false;
@@ -1029,12 +997,9 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       HandleCost(session);
       break;
     case SlashCommandId::kPrompt:
-      result = PromptCommand(
-          command.argument,
-          [&session](const json& request) {
-            return session.ActiveAgent().PromptConfiguration(request);
-          },
-          session.context.channel != nullptr);
+      result = PromptCommand(command.argument, [&session](const json& request) {
+        return session.ActiveAgent().PromptConfiguration(request);
+      });
       if (!session.context.channel) {
         printf("%s\n", TerminalSafe(result.contains("error")
                                         ? JsonValue(result, "error", "")
@@ -1069,10 +1034,8 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kProcesses:
     case SlashCommandId::kAgents:
       result = ActivityCommand(session, command);
-      if (session.context.channel == nullptr) {
-        printf("%s", TerminalSafe(ActivityText(result)).c_str());
-        fflush(stdout);
-      }
+      printf("%s", TerminalSafe(ActivityText(result)).c_str());
+      fflush(stdout);
       return false;
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
@@ -1085,7 +1048,7 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
   // stdout and only sees what has left the buffer.
   fflush(stdout);
   result = CommandResult(session, command);
-  return quit;
+  return false;
 }
 
 }  // namespace uagent

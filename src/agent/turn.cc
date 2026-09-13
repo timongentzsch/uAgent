@@ -120,8 +120,16 @@ void Agent::RecordModelResponse(
     ChatResult& response, TurnExecution& state,
     std::unordered_map<std::string, int64_t>& tool_counts) {
   Usage response_usage = AccountModelUsage(response.usage);
+  state.metrics.usage_reported =
+      state.metrics.usage_reported ||
+      (response.usage.is_object() && !response.usage.empty());
   if (state.metrics.ttt_ms < 0 && response.first_token_ms >= 0) {
-    state.metrics.ttt_ms = response.first_token_ms;
+    state.metrics.ttt_ms =
+        std::max(0.0, std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - state.started)
+                              .count() -
+                          response.duration_ms) +
+        response.first_token_ms;
   }
   if ((state.limits.max_turn_tokens > 0 ||
        state.limits.session_token_budget > 0) &&
@@ -155,13 +163,19 @@ void Agent::RecordModelResponse(
   turn_search_trace_.Add(response_usage.web_searches, response.annotations);
   state.line_open = !response.suppressed && !response.content.empty() &&
                     response.content.back() != '\n';
-  if (PrintSearchReceipt(response_usage.web_searches, response.annotations,
-                         verbose_, state.line_open)) {
+  std::string citations = CitationMarkdown(response.annotations);
+  if (response_usage.web_searches > 0 || !citations.empty()) {
+    Event sources{EventId::kResponseSources,
+                  {{"searches", response_usage.web_searches},
+                   {"annotations", response.annotations},
+                   {"line_open", state.line_open},
+                   {"citations", !response.content.empty()}}};
+    sources.render = api_.render_stream;
+    sources.verbose = verbose_;
+    Emit(std::move(sources));
     state.line_open = false;
   }
-  std::string citations = CitationMarkdown(response.annotations);
   if (!citations.empty() && !response.content.empty()) {
-    PrintCitationSources(response.annotations);
     response.content += citations;
     state.line_open = false;
   }
@@ -341,15 +355,16 @@ Agent::StepFlow Agent::HandleFailedResponse(ChatResult& response,
                                             bool attachment) {
   if (response.interrupted) {
     state.line_open = false;
-    // Recorded before the steering check: if steering resumes the turn, the
-    // outcome is overwritten by whatever ends it.
-    InterruptTurn(state);
     printf("\n");
     conversation_.Push(
         HarnessMessage("(response interrupted; partial output was "
                        "discarded)"),
         MessageKind::kInternal);
-    return ApplyQueuedSteering(loop) ? StepFlow::kNextStep : StepFlow::kEndTurn;
+    // Steering resumes the turn: apply it before recording anything, so a
+    // resumed turn never carries the interrupt's outcome or error.
+    if (ApplyQueuedSteering(loop)) return StepFlow::kNextStep;
+    InterruptTurn(state);
+    return StepFlow::kEndTurn;
   }
   if (response.error.empty()) return StepFlow::kProceed;
   state.line_open = false;
@@ -754,9 +769,11 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
 
 void Agent::Turn(const std::string& user_input, json user_content, json images,
                  const std::string& request_id) {
-  if (!user_content.is_null()) ApplyImageFallbackToUserContent(user_content);
   api_.turn_started = std::chrono::steady_clock::now();
   last_error_.clear();
+  // A new turn owns its outcome: clients must never re-report the
+  // previous turn's stop from a boundary publish before this one ends.
+  last_stop_ = nullptr;
   ++turn_id_;
   turn_root_.clear();
   reply_to_.clear();
@@ -811,9 +828,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
     PublishMessage(request_id);
     Emit(NoticeEvent(PresentationStatus::kWarned, "· interrupted"));
     Emit(Event{EventId::kTurnStopped,
-               {{"turn", turn_id_},
-                {"outcome", "steered_during_compaction"},
-                {"steps", 0}}});
+               {{"turn", turn_id_}, {"outcome", "interrupted"}, {"steps", 0}}});
     api_.turn_started = {};
     return;
   }
@@ -928,45 +943,6 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
   FinishTurn(state, loop.step);
 }
 
-// The one-line accounting footer printed after every turn.
-std::string Agent::TurnStatsLine(const TurnExecution& state, double seconds,
-                                 double tokens_per_second) {
-  std::ostringstream stats;
-  stats << FmtCount(state.metrics.usage.input) << " in";
-  if (state.metrics.usage.cache_read) {
-    stats << " (+" << FmtCount(state.metrics.usage.cache_read) << " cached)";
-  }
-  if (state.metrics.usage.cache_write) {
-    stats << " (+" << FmtCount(state.metrics.usage.cache_write)
-          << " cache write)";
-  }
-  stats << " · " << FmtCount(state.metrics.usage.output) << " out";
-  if (state.metrics.usage.reasoning) {
-    stats << ' ' << ITAL() << "(+" << FmtCount(state.metrics.usage.reasoning)
-          << " reasoning)" << ItalOff();
-  }
-  if (state.metrics.usage.cost > 0) {
-    stats << " · " << FmtCost(state.metrics.usage.cost);
-  }
-  if (state.metrics.usage.web_searches) {
-    stats << " · " << state.metrics.usage.web_searches << " search"
-          << (state.metrics.usage.web_searches == 1 ? "" : "es");
-  }
-  if (state.metrics.tool_count) {
-    stats << " · " << state.metrics.tool_count << " tool"
-          << (state.metrics.tool_count == 1 ? "" : "s");
-  }
-  if (tokens_per_second > 0) {
-    stats << " · " << std::fixed << std::setprecision(1) << tokens_per_second
-          << " tok/s";
-  }
-  if (state.metrics.ttt_ms >= 0) {
-    stats << " · first " << FmtDuration(state.metrics.ttt_ms / 1000.0);
-  }
-  stats << " · " << FmtDuration(seconds);
-  return stats.str();
-}
-
 void Agent::FinishTurn(TurnExecution& state, int64_t step) {
   // Side routes may finish after the last model round. Account them before
   // deciding the terminal reason and constructing caller-visible metadata.
@@ -1035,33 +1011,34 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
           ? static_cast<double>(state.metrics.model_generated_tokens) * 1000.0 /
                 static_cast<double>(state.metrics.model_generation_ms)
           : 0;
-  // One write: the interactive composer repaints on every chunk it observes,
-  // so a footer split across writes would redraw the input line mid-line.
-  std::ostringstream footer;
-  // Chrome, not an agent action: dim like the status row, leaving cyan as the
-  // single accent for things the agent did.
-  footer << (state.line_open ? "\n" : "") << RST() << DIM()
-         << TurnStatsLine(state, secs, tokens_per_second) << RST() << '\n';
-  // One write, as above: fputs of the assembled string, never a stream of
-  // pieces the composer could repaint between.
-  fputs(footer.str().c_str(), stdout);
   conversation_.AddStatistics({{"recorded_turns", 1},
                                {"tool_calls", state.metrics.tool_count},
                                {"duration_ms", secs * 1000}});
-  Emit(Event{EventId::kTurnCompleted,
-             {{"turn", turn_id_},
-              {"outcome", TurnOutcomeName(state.stop.outcome)},
-              {"steps", steps_used},
-              {"tool_calls", state.metrics.tool_count},
-              {"duration_ms", secs * 1000},
-              {"ttt_ms", state.metrics.ttt_ms},
-              {"tokens_per_second", tokens_per_second},
-              {"generation_ms", state.metrics.model_generation_ms},
-              {"generated_tokens", state.metrics.model_generated_tokens},
-              {"usage", UsageJson(state.metrics.usage)},
-              {"session_usage", UsageJson(session_usage_)},
-              {"messages", conversation_.Size()},
-              {"context_tokens", ContextUsed()}}});
+  json summary = {
+      {"turn", turn_id_},
+      {"turn_root", turn_root_},
+      {"route", RouteSelection(api_, LoadProviderCatalog().providers)},
+      {"outcome", TurnOutcomeName(state.stop.outcome)},
+      {"steps", steps_used},
+      {"tool_calls", state.metrics.tool_count},
+      {"duration_ms", secs * 1000},
+      {"ttt_ms", state.metrics.ttt_ms},
+      {"tokens_per_second", tokens_per_second},
+      {"generation_ms", state.metrics.model_generation_ms},
+      {"generated_tokens", state.metrics.model_generated_tokens},
+      {"usage_reported", state.metrics.usage_reported},
+      {"usage", UsageJson(state.metrics.usage)}};
+  json block = conversation_.RecordEntry({{"kind", "turn_summary"},
+                                          {"turn_root", turn_root_},
+                                          {"summary", summary}});
+  Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+  summary.update({{"session_usage", UsageJson(session_usage_)},
+                  {"messages", conversation_.Size()},
+                  {"context_tokens", ContextUsed()},
+                  {"line_open", state.line_open}});
+  Event completed{EventId::kTurnCompleted, std::move(summary)};
+  completed.render = true;
+  Emit(std::move(completed));
   active_deadline_ = std::chrono::steady_clock::time_point::max();
   api_.turn_started = {};
 }

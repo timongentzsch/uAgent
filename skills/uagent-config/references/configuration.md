@@ -42,7 +42,6 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_WIRE_API` | string | `chat_completions` | restart-required | chat_completions, responses, or anthropic_messages |
 | `UAGENT_HOSTED_TOOLS` | string | empty | restart-required | comma-separated hosted capabilities; currently web_search |
 | `UAGENT_PROVIDER_PROTOCOL` | string | empty | restart-required | openai, openrouter, or anthropic |
-| `UAGENT_OPENROUTER_COMPATIBLE` | string | empty | restart-required | treat a custom base URL as OpenRouter-compatible |
 | `UAGENT_OPENROUTER_PROVIDER` | string | empty | next-user-turn | pin OpenRouter to one upstream provider |
 | `UAGENT_OPENROUTER_VARIANT` | string | empty | next-user-turn | nitro, floor, or exacto routing preference |
 | `UAGENT_OPENROUTER_FALLBACKS` | boolean | `1` | next-user-turn | allow OpenRouter to fall back to another provider |
@@ -174,13 +173,9 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | --- | --- | --- | --- | --- |
 | `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images |
 | `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
-| `UAGENT_IMAGE_PROTOCOL` | string | empty | restart-required | terminal image protocol: auto, iterm, kitty, or none |
 | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
 | `UAGENT_PENDING_ATTACHMENTS` | integer | `8` | restart-required | attachments queued for the next turn |
 | `UAGENT_ATTACHMENT_MB` | integer | `10` | restart-required | largest attachment in mebibytes |
-| `UAGENT_TERMINAL_IMAGE_MB` | integer | `10` | restart-required | largest terminal-rendered image in mebibytes |
-| `UAGENT_IMAGE_MAX_COLUMNS` | integer | `200` | restart-required | widest terminal image in columns |
-| `UAGENT_IMAGE_COLUMNS` | integer | derived | restart-required | terminal image width; defaults to the available width |
 
 ## retention
 

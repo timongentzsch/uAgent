@@ -16,30 +16,21 @@
 namespace uagent {
 
 void TestConversation() {
-  json image_call = {{"id", "image-1"},
-                     {"function",
-                      {{"name", "show_image"},
-                       {"arguments", R"({"path":"plots/result.png"})"}}}};
-  CHECK(ReplayableImagePath(image_call,
-                            "displayed plots/result.png inline via kitty") ==
-        "plots/result.png");
-  image_call["function"]["arguments"] = {{"path", "plots/other.png"}};
-  CHECK(ReplayableImagePath(image_call,
-                            "displayed plots/other.png inline via kitty") ==
-        "plots/other.png");
-  CHECK(ReplayableImagePath(image_call, "error: image is missing").empty());
-  CHECK(ReplayableImagePath(image_call,
-                            "[old tool output compacted: image omitted]")
-            .empty());
-  image_call["function"]["arguments"] = "not json";
-  CHECK(ReplayableImagePath(image_call, "displayed image inline via kitty")
-            .empty());
-  image_call["function"]["name"] = "read_file";
-  image_call["function"]["arguments"] = {{"path", "plots/result.png"}};
-  CHECK(ReplayableImagePath(image_call,
-                            "displayed plots/result.png inline via kitty")
-            .empty());
-
+  Conversation attachments;
+  attachments.Push(
+      {{"role", "user"},
+       {"content",
+        json::array({{{"type", "text"}, {"text", "inspect"}},
+                     {{"type", "attachment"}, {"path", "/original.png"}}})}},
+      MessageKind::kAttachment);
+  CHECK(attachments.PruneAttachments(0, "vision") == 1);
+  CHECK(!attachments.HasKind(MessageKind::kAttachment));
+  CHECK(attachments.KindAt(0) == MessageKind::kUser);
+  CHECK(attachments.At(0)["content"][1]["processed_route"] == "vision");
+  attachments.PruneAttachments(attachments.Size(), "other-model");
+  CHECK(attachments.At(0)["content"][1]["processed_route"] == "other-model");
+  CHECK(attachments.At(0)["content"][1]["path"] == "/original.png");
+  CHECK(attachments.PruneAttachments(attachments.Size(), "other-model") == 0);
   Conversation conversation;
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
@@ -389,11 +380,22 @@ void TestConversation() {
   CHECK(ConversationView(persisted) == projection);
   CHECK(LastMessageView(browser) == projection["blocks"].back());
   const size_t model_messages = browser.Size();
-  const json completed = browser.RecordActivity(
-      {{"text", "Command completed"}, {"activity_id", 42}});
+  const json completed =
+      browser.RecordEntry({{"text", "Command completed"}, {"activity_id", 42}});
   CHECK(browser.Size() == model_messages);
   CHECK(completed["incoming"] == 1);
   CHECK(ConversationView(browser)["blocks"].back()["kind"] == "activity");
+  CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
+                          browser.Archive(), 0, browser.ToolDisplays(),
+                          browser.DisplayMetadata()));
+  CHECK(ConversationView(persisted) == ConversationView(browser));
+  const json summary = {{"turn", 1},
+                        {"tool_calls", 2},
+                        {"duration_ms", 1200},
+                        {"usage", {{"input", 42}}}};
+  browser.RecordEntry({{"kind", "turn_summary"}, {"summary", summary}});
+  CHECK(browser.Size() == model_messages);
+  CHECK(ConversationView(browser)["blocks"].back()["summary"] == summary);
   CHECK(persisted.Restore(browser.Messages(), browser.Kinds(),
                           browser.Archive(), 0, browser.ToolDisplays(),
                           browser.DisplayMetadata()));
@@ -414,6 +416,42 @@ void TestConversation() {
   CHECK(projection["blocks"].size() == 64);
   CHECK(projection["more"] == true);
   CHECK(JsonDump(projection).size() < size_t{384} * 1024);
+}
+
+void TestCompactionKeepsDisplayIdentity() {
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  conversation.Push({{"role", "user"}, {"content", "keep me"}},
+                    MessageKind::kUser);
+  conversation.Push({{"role", "assistant"}, {"content", "ack"}},
+                    MessageKind::kAssistant);
+  const uint64_t retained = conversation.DisplayIds()[1];
+  conversation.ArchiveAll("compact", 1, 1, int64_t{1024} * 1024);
+  conversation.ResetHistory(
+      json::array({{{"role", "system"}, {"content", "sys"}}}),
+      {MessageKind::kSystem});
+  conversation.PushWithDisplayId({{"role", "user"}, {"content", "keep me"}},
+                                 MessageKind::kUser, retained);
+  // Fresh mints stay unique past the reused id.
+  conversation.Push({{"role", "user"}, {"content", "new"}}, MessageKind::kUser);
+  CHECK(conversation.DisplayIds().back() != retained);
+  // The archived original and the re-push collapse to one transcript block.
+  json view = ConversationView(conversation);
+  size_t kept = 0;
+  for (const json& block : view["blocks"]) {
+    if (JsonValue(block, "text", "") == "keep me") ++kept;
+  }
+  CHECK(kept == 1);
+  // Live projection obeys the same bounded page contract as saved history.
+  for (int i = 0; i < 64; ++i) {
+    MergeDisplayBlock(view, {{"id", "large-" + std::to_string(i)},
+                             {"sequence", i + 100},
+                             {"text", std::string(16384, 'x')}});
+  }
+  CHECK(JsonEstimatedBytes(view) < size_t{512} * 1024);
+  CHECK(view["more"] == true);
+  CHECK(view["blocks"].back()["id"] == "large-63");
 }
 
 }  // namespace uagent

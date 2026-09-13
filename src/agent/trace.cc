@@ -17,45 +17,9 @@
 #include "include/core/term.h"
 #include "include/tools/tool.h"
 #include "include/ui/presentation.h"
+#include "include/ui/tool_output.h"
 
 namespace uagent {
-
-bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
-                        bool line_open) {
-  std::vector<CitationEntry> sources = CitationEntries(annotations);
-  if (searches <= 0 && sources.empty()) return false;
-  if (line_open) printf("\n");
-  std::string source_summary =
-      sources.empty() ? "source details unavailable"
-                      : std::to_string(sources.size()) + " source" +
-                            (sources.size() == 1 ? "" : "s");
-  if (searches > 0) {
-    printf("%s  ← web_search ×%s · %s%s\n", DIM(),
-           std::to_string(searches).c_str(), source_summary.c_str(), RST());
-  } else {
-    printf("%s  ← %s%s\n", DIM(), source_summary.c_str(), RST());
-  }
-  if (!details) return true;
-  for (const CitationEntry& source : sources) {
-    const std::string& label = source.title.empty() ? source.url : source.title;
-    printf("%s    %s · %s%s\n", DIM(), TerminalSafe(label).c_str(),
-           TerminalSafe(source.url).c_str(), RST());
-    if (!source.content.empty()) {
-      printf("%s      %s%s\n", DIM(), TerminalSafe(source.content).c_str(),
-             RST());
-    }
-  }
-  return true;
-}
-
-void PrintCitationSources(const json& annotations) {
-  std::vector<CitationEntry> sources = CitationEntries(annotations);
-  if (sources.empty()) return;
-  printf("\n%sSources:%s\n", DIM(), RST());
-  for (const CitationEntry& source : sources) {
-    printf("%s- <%s>%s\n", DIM(), TerminalSafe(source.url).c_str(), RST());
-  }
-}
 
 json ToolTraceMessages(const json& messages, const json& kinds) {
   json trace = json::array();
@@ -102,13 +66,23 @@ json ToolTraceMessages(const json& messages, const json& kinds) {
   return trace;
 }
 
+std::string PrintToolCallSummary(const json& call,
+                                 const std::vector<Tool>& tools) {
+  const json* found = JsonObject(call, "function");
+  if (!found) return "";
+  const json& function = *found;
+  std::string name = JsonValue(function, "name", "");
+  json args = ParsedToolCallArguments(function);
+  PrintPresentation(ToolCallPresentation(name, args, tools));
+  return name;
+}
+
 void PrintTraceToolCall(const json& call, const std::vector<Tool>& tools,
                         const std::string& ordinal) {
   std::string name = JsonValue(call, "name", "tool");
   json arguments =
       call.contains("arguments") ? call["arguments"] : json::object();
-  PrintPresentation(
-      StoredToolCallPresentation(name, arguments, tools, ordinal));
+  PrintPresentation(ToolCallPresentation(name, arguments, tools, ordinal));
 }
 
 void PrintTraceToolResult(const json& call, const std::string& ordinal) {

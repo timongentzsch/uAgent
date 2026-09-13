@@ -681,6 +681,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     return res;
   }
   StreamCtx ctx;
+  ctx.observe_progress = observe_progress;
   ctx.handle = h;
   ctx.res = &res;
   ctx.wire_api = capabilities.wire_api;

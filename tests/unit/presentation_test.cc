@@ -168,34 +168,30 @@ void TestPollCollapse() {
   CHECK(!failure.poll);
   CHECK(failure.status == PresentationStatus::kFailed);
 
-  // A resumed transcript stores the text the model saw, not the status the
-  // live row was coloured from, so replay reads the `error: ` prefix rather
-  // than repainting every past failure as a success.
-  CHECK(StoredToolResultPresentation("run", "error: no such file").status ==
-        PresentationStatus::kFailed);
-  CHECK(StoredToolResultPresentation("run", "built 3 targets").status ==
-        PresentationStatus::kSucceeded);
-  // A body that merely mentions an error later is still a success.
-  CHECK(StoredToolResultPresentation("run", "cc a.c\nerror: bad").status ==
-        PresentationStatus::kSucceeded);
-  // A kept receipt replays as it was drawn rather than as a summary line, so
-  // a resumed diff keeps the colour it had when it happened.
+  // Output is arbitrary command text. Only recorded status establishes failure.
+  CHECK(StoredToolResultPresentation("run", "error: text printed by command")
+            .status == PresentationStatus::kNeutral);
+  CHECK(StoredToolResultPresentation("run", "error: text printed by command",
+                                     "", PresentationStatus::kSucceeded)
+            .status == PresentationStatus::kSucceeded);
+  CHECK(StoredToolResultPresentation("run", "stopped", "",
+                                     PresentationStatus::kCancelled)
+            .status == PresentationStatus::kCancelled);
   PresentationRecord redrawn =
-      StoredToolResultPresentation("edit_file", "edited a.txt", "-old\n+new");
+      StoredToolResultPresentation("edit_file", "edited a.txt", "-old\n+new",
+                                   PresentationStatus::kSucceeded);
   CHECK(redrawn.change == "-old\n+new");
-  // A file write is fully told by its diff: there is no output row under it.
   CHECK(redrawn.detail.empty());
   CHECK(!redrawn.multiline);
-  // A script draws no receipt of its own, so it replays as the summary row
-  // every non-mutating tool gets.
   PresentationRecord ran = StoredToolResultPresentation(
-      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n");
+      "scratch", "[script: .uagent/scratch/x.py · wrote · executed]\n42\n", "",
+      PresentationStatus::kSucceeded);
   CHECK(ran.change.empty());
   CHECK(!ran.multiline);
   CHECK(ran.summary.find("[script:") != std::string::npos);
-  // A failure is still a failure, receipt or not.
-  CHECK(StoredToolResultPresentation("edit_file", "error: no such file", "x")
-            .status == PresentationStatus::kFailed);
+  CHECK(StoredToolResultPresentation("edit_file", "could not apply", "x",
+                                     PresentationStatus::kFailed)
+            .change.empty());
 
   // A script that was written and then run summarises like every other
   // reading tool: its header line, then the size of what it printed.
@@ -231,12 +227,12 @@ void TestPollCollapse() {
   CHECK(receipt.detail.empty() && receipt.summary.empty());
   CHECK(CaptureStdout([&] { PrintPresentation(receipt); }).find("←") ==
         std::string::npos);
-  // Without a terminal a receipt collapses into an ordinary summary row.
+  // The shared record is independent of which client owns stdout.
   g_tty = false;
   PresentationRecord headless =
       ToolResultPresentation(wrote, call, wrote.result.output, false);
-  CHECK(headless.change.empty());
-  CHECK(headless.summary.find("wrote 9 bytes") != std::string::npos);
+  CHECK(headless.change == receipt.change);
+  CHECK(headless.summary == receipt.summary);
   g_tty = tty;
 
   // A terminal whose locale cannot decode UTF-8 gets the same rows in ASCII
@@ -518,7 +514,7 @@ void TestStatusBarDropsByPriority() {
   CHECK(wide ==
         "anthropic/claude-sonnet-4-5 · ctx 12k/1.3M · 99% left · "
         "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · 2 attached · "
-        "verbose · /help for shortcuts");
+        "verbose · /help for shortcuts · Ask");
 
   // Each narrower width is a prefix of the priorities that survive: 7 (the
   // hint) goes first, then 6 (verbose), then 5 (cache), and so on.

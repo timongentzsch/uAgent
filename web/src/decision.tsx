@@ -18,7 +18,7 @@ export default function Decision({
       (item) => (typeof item === "string" ? item : item.value) === "n",
     )
       ? "n"
-      : "",
+      : pending.initial || "",
   );
   const [guidance, setGuidance] = useState("");
   const [sending, setSending] = useState(false);
@@ -60,7 +60,16 @@ export default function Decision({
           }
         }}
       >
-        {!!pending.options?.length ? (
+        {pending.kind === "editor" ? (
+          <label>
+            System prompt
+            <textarea
+              rows={12}
+              value={reply}
+              onInput={(event) => setReply(event.currentTarget.value)}
+            />
+          </label>
+        ) : !!pending.options?.length ? (
           <label>
             Response
             <Select
@@ -106,7 +115,13 @@ export default function Decision({
         <button disabled={!online || sending || !reply}>Send response</button>
         <button
           type="button"
-          onClick={() => act("interrupt").catch(report)}
+          onClick={() =>
+            act("reply", {
+              interaction_id: pending.id,
+              text: "",
+              cancelled: true,
+            }).catch(report)
+          }
           disabled={!online}
         >
           Cancel

@@ -1,3 +1,76 @@
+.markdown {
+  line-height: 1.55;
+  min-width: 0;
+}
+.markdown p:first-child {
+  margin-top: 0;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown h1 {
+  font-size: 1.4em;
+}
+.markdown h2 {
+  font-size: 1.2em;
+}
+.markdown h3 {
+  font-size: 1.1em;
+}
+.markdown ul,
+.markdown ol {
+  padding-left: 24px;
+}
+.table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown th,
+.markdown td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+  /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.markdown blockquote {
+  border-left: 2px solid var(--accent);
+  padding-left: 12px;
+  margin-left: 0;
+  color: var(--muted);
+}
+.markdown img {
+  max-width: 100%;
+}
+.katex-display,
+.katex-block {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: var(--accent);
+  font-weight: 600;
+}
+.hljs-string,
+.hljs-addition {
+  color: var(--accent);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted);
+}
+.hljs-deletion {
+  text-decoration: line-through;
+}
+
 .code-block {
   position: relative;
   margin: 8px 0;
@@ -28,4 +101,29 @@
   .code-block {
     --control: max(44px, 2.4rem);
   }
+}
+
+.diagram {
+  margin: 0.5rem 0;
+}
+.diagram-open {
+  display: block;
+  width: 100%;
+}
+.diagram img {
+  display: block;
+  max-width: 100%;
+  margin: auto;
+}
+.diagram summary {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.diagram-expanded {
+  width: min(1200px, calc(var(--content-width) - 16px));
+}
+.diagram-expanded img {
+  display: block;
+  max-width: none;
+  margin: auto;
 }

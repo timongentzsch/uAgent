@@ -408,6 +408,19 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "Invalid tool schema: parameters must be an object";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
+  rejected.remote_error_code = "unsupported_value";
+  rejected.error = "This model does not support image input";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kImageInput);
+  rejected.error = "Invalid image input: size exceeds limit";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kNone);
+  rejected.error = "This model does not support image input";
+  rejected.http_status = 503;
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kNone);
+  rejected.http_status = 400;
+  rejected.remote_error_code.clear();
   // Native tool calls are not a negotiable capability: a route that rejects
   // them has no fallback to degrade to, so this stays an ordinary error and
   // the turn reports the provider's own message.
@@ -511,7 +524,6 @@ void TestChildEnvironmentPolicy() {
   CHECK(child_value("UAGENT_MODEL") == "child-model");
   CHECK(child_value("UAGENT_CONTEXT") == "32768");
   CHECK(child_value("UAGENT_REASONING_EFFORT") == "high");
-  CHECK(child_value("UAGENT_OPENROUTER_COMPATIBLE") == "1");
   CHECK(child_value("UAGENT_PROVIDER_PROTOCOL") == "openrouter");
   CHECK(child_value("UAGENT_WIRE_API") == "responses");
   CHECK(child_value("UAGENT_HOSTED_TOOLS") == "web_search");

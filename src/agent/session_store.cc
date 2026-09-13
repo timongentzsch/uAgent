@@ -58,6 +58,7 @@ constexpr Field kStateFields[] = {
     {"archive_dropped_segments", json::value_t::number_integer, true},
     {"context_tokens", json::value_t::number_integer, true},
     {"usage", json::value_t::object, true},
+    {"last_sent_prompt", json::value_t::string, false},
     {"adaptive_system", json::value_t::string, false},
     {"adaptive_system_revision", json::value_t::number_unsigned, false},
     {"adaptive_system_mode", json::value_t::string, false},
@@ -106,6 +107,7 @@ json StateJson(const SessionState& state) {
           {"context_tokens", state.context_tokens},
           {"usage", UsageJson(state.usage)},
           {"route_usage", RouteUsageJson(state.route_usage)},
+          {"last_sent_prompt", state.last_sent_prompt},
           {"adaptive_system", state.adaptive_system},
           {"adaptive_system_mode", state.adaptive_system_mode},
           {"adaptive_system_revision", state.adaptive_system_revision},
@@ -222,6 +224,7 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.state.usage = UsageFromJson(state["usage"]);
   record.state.route_usage =
       RouteUsageFromJson(JsonValue(state, "route_usage", json::object()));
+  record.state.last_sent_prompt = JsonValue(state, "last_sent_prompt", "");
   record.state.adaptive_system = JsonValue(state, "adaptive_system", "");
   record.state.adaptive_system_mode =
       JsonValue(state, "adaptive_system_mode", "overlay");

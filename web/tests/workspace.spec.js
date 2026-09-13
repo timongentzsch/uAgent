@@ -4,10 +4,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 test("appearance and configuration remain usable at large scales", async ({
   page,
   session,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/#session=${session.id}`);
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Appearance")).toHaveValue("system");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -18,20 +18,41 @@ test("appearance and configuration remain usable at large scales", async ({
     "content",
     "#ffffff",
   );
-  await page.getByLabel("Display size", { exact: true }).fill("110");
-  await page.getByLabel("Text size", { exact: true }).fill("125");
+  const composer = page.getByLabel("Message or guidance");
+  const originalText = await composer.evaluate(
+    (element) => getComputedStyle(element).fontSize,
+  );
+  await expect(
+    page.getByText("Scales menus, buttons and interface labels."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Scales messages, tool output and the text you type."),
+  ).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
+  await page.getByLabel("Interface size", { exact: true }).fill("110");
+  await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
+  await expect(composer).toHaveCSS("font-size", originalText);
+  const interfaceText = await page
+    .locator(".conversation-head h1")
+    .evaluate((element) => getComputedStyle(element).fontSize);
+  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
+  await expect(composer).toHaveCSS("font-size", "20px");
+  await expect(page.locator(".conversation-head h1")).toHaveCSS(
+    "font-size",
+    interfaceText,
+  );
   await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
   await expect(page.locator("html")).toHaveCSS("--text-scale", "1.25");
-  await page.getByLabel("Text size", { exact: true }).fill("300");
+  await page.getByLabel("Conversation text size", { exact: true }).fill("300");
   await expect(page.locator("html")).toHaveCSS("--text-scale", "3");
-  await page.getByLabel("Display size", { exact: true }).fill("200");
+  await page.getByLabel("Interface size", { exact: true }).fill("200");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("Display size", { exact: true }).fill("110");
-  await page.getByLabel("Text size", { exact: true }).fill("125");
+  await page.getByLabel("Interface size", { exact: true }).fill("110");
+  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
   await page
     .getByRole("button", { name: "Advanced configuration", exact: true })
     .click();
@@ -92,7 +113,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await model.click();
   await page
     .getByLabel("Model", { exact: true })
@@ -174,7 +195,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .getByRole("button", { name: /Show \d+ completed \/ idle/ })
     .click();
   await expect(activity).toContainText("stopped");
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await conversationMenu.click();
   await page
     .locator(".conversation-head")
@@ -183,7 +204,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await expect(page.locator(".conversation-head h1")).toHaveText(
     "Fork of Unread completion probe",
   );
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(model).toHaveText(/mock\/model-b/);
   await expect(page.locator(".message.user").first()).toContainText(
     "Unread completion probe",
@@ -216,7 +237,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Close session", exact: true })
     .click();
-  await expect(page.locator(".status")).toHaveText("saved");
+  await expect(page.locator(".composer .status-line")).toContainText("Saved");
   await conversationMenu.click();
   await page
     .locator(".conversation-head")

@@ -24,7 +24,7 @@
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
 #include "include/tools/output_buffer.h"
@@ -201,11 +201,18 @@ json Agent::PreviewContext() {
   return preview;
 }
 
-json Agent::ModelRequest() const {
-  return api_.BuildRequestBody(conversation_.Messages(), schemas_, session_id_);
+json Agent::ModelRequest() {
+  json messages = conversation_.Messages();
+  std::string error;
+  const bool fallback =
+      !api_.capabilities.image_input && !api_.config.image_model.empty();
+  PrepareAttachments(messages, api_.capabilities, fallback, ActiveRoute(),
+                     error);
+  if (fallback) ApplyImageAnalysisFallback(messages, false);
+  return api_.BuildRequestBody(messages, schemas_, session_id_);
 }
 
-void Agent::PrintContext() const { PrintModelContext(ModelRequest()); }
+void Agent::PrintContext() { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
@@ -231,6 +238,7 @@ bool Agent::Save(const std::string& path, std::string& error) const {
       .context_tokens = ContextUsed(),
       .usage = session_usage_,
       .route_usage = route_usage_,
+      .last_sent_prompt = last_sent_prompt_,
       .adaptive_system = adaptive_system_ ? adaptive_system_->instructions : "",
       .adaptive_system_mode =
           adaptive_system_ ? adaptive_system_->mode : "overlay",
@@ -272,7 +280,7 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   }
   if (next.Owns(lock_path)) writer_.Swap(next);
   conversation_ = std::move(restored);
-  last_sent_prompt_.clear();
+  last_sent_prompt_ = std::move(record.state.last_sent_prompt);
   if (adaptive_system_) {
     adaptive_system_->instructions = std::move(record.state.adaptive_system);
     adaptive_system_->revision = record.state.adaptive_system_revision;
@@ -421,7 +429,7 @@ json Agent::CompactionMessages() const {
   return messages;
 }
 
-json Agent::CompactionUserMessages() const {
+json Agent::CompactionUserMessages(std::vector<uint64_t>* retained_ids) const {
   // A summary is lossy by definition. Keep recent real user instructions as
   // an independent source of truth, while bounding them to a small fraction
   // of the next context. Codex uses the same summary-plus-user-message shape.
@@ -432,14 +440,21 @@ json Agent::CompactionUserMessages() const {
   }
 
   std::vector<std::string> newest_first;
+  std::vector<uint64_t> ids_newest_first;
+  const std::vector<uint64_t>& display_ids = conversation_.DisplayIds();
   size_t remaining = cap;
   for (size_t index = conversation_.Size(); index > BaselineSize(); --index) {
     if (conversation_.KindAt(index - 1) != MessageKind::kUser) continue;
     const json& message = conversation_.At(index - 1);
     const std::string* content = JsonStringRef(message, "content");
     if (!content) continue;
+    // Identity outlives the archive: the display layer dedups on it, so a
+    // retained message never renders twice (archived original + re-push).
+    const uint64_t display_id =
+        index - 1 < display_ids.size() ? display_ids[index - 1] : 0;
     if (content->size() <= remaining) {
       newest_first.push_back(*content);
+      ids_newest_first.push_back(display_id);
       remaining -= content->size();
       continue;
     }
@@ -447,11 +462,15 @@ json Agent::CompactionUserMessages() const {
       HeadTailBuffer bounded(remaining);
       bounded.Push(*content);
       newest_first.push_back(bounded.Snapshot());
+      ids_newest_first.push_back(display_id);
     }
     break;
   }
 
   json retained = json::array();
+  if (retained_ids) {
+    retained_ids->assign(ids_newest_first.rbegin(), ids_newest_first.rend());
+  }
   for (auto message = newest_first.rbegin(); message != newest_first.rend();
        ++message) {
     retained.push_back({{"role", "user"}, {"content", *message}});
@@ -472,16 +491,29 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
       PresentationStatus::kNeutral,
       std::string("· ") + (automatic ? "auto-" : "") + "compacting…"));
   size_t source_bytes = JsonEstimatedBytes(conversation_.Messages());
-  size_t baseline_bytes = JsonEstimatedBytes(BaselineMessages());
+  size_t messages_before = conversation_.Size();
+  const auto compact_started = std::chrono::steady_clock::now();
   json compact_messages = CompactionMessages();
-  json retained_users = CompactionUserMessages();
+  std::vector<uint64_t> retained_ids;
+  json retained_users = CompactionUserMessages(&retained_ids);
   size_t projected_bytes = JsonEstimatedBytes(compact_messages);
   ChatResult r = Chat("compact", -1, json::array(), false, &compact_messages);
   Usage compact_usage = AccountModelUsage(r.usage);
   if (turn_usage) turn_usage->Merge(compact_usage);
-  bool invalid_summary = !ProseOnlyResponse(r) ||
-                         source_bytes <= baseline_bytes ||
-                         r.content.size() >= source_bytes - baseline_bytes;
+  json runtime_context = HarnessMessage(RuntimeContextText());
+  json summary = {
+      {"role", "user"},
+      {"content",
+       "[model-generated context summary; non-authoritative]\nPrior "
+       "context:\n" +
+           r.content}};
+  json replacement = BaselineMessages();
+  replacement.push_back(runtime_context);
+  for (const auto& user : retained_users) replacement.push_back(user);
+  replacement.push_back(summary);
+  const size_t replacement_bytes = JsonEstimatedBytes(replacement);
+  bool invalid_summary =
+      !ProseOnlyResponse(r) || replacement_bytes >= source_bytes;
   if (r.interrupted || !r.error.empty() || invalid_summary) {
     std::string outcome =
         r.interrupted
@@ -504,18 +536,32 @@ bool Agent::Compact(bool automatic, Usage* turn_usage) {
   PruneAttachments(BaselineSize());
   ArchiveAll(automatic ? "auto_compact" : "manual_compact");
   conversation_.ResetHistory(BaselineMessages(), BaselineKinds());
-  conversation_.Push(HarnessMessage(RuntimeContextText()),
-                     MessageKind::kRuntimeContext);
-  for (json& message : retained_users) {
-    conversation_.Push(std::move(message), MessageKind::kUser);
+  conversation_.Push(std::move(runtime_context), MessageKind::kRuntimeContext);
+  size_t retained_count = retained_users.size();
+  for (size_t i = 0; i < retained_users.size(); ++i) {
+    // Keep the source display id so the archived original and this re-push
+    // collapse to one block instead of flooding the transcript twice.
+    uint64_t id = i < retained_ids.size() ? retained_ids[i] : 0;
+    if (id) {
+      conversation_.PushWithDisplayId(std::move(retained_users[i]),
+                                      MessageKind::kUser, id);
+    } else {
+      conversation_.Push(std::move(retained_users[i]), MessageKind::kUser);
+    }
   }
-  conversation_.Push(
-      {{"role", "user"},
-       {"content",
-        "[model-generated context summary; non-authoritative]\nPrior "
-        "context:\n" +
-            r.content}},
-      MessageKind::kInternal);
+  conversation_.Push(std::move(summary), MessageKind::kInternal);
+  json compact_block = conversation_.RecordEntry(
+      {{"kind", "compaction"},
+       {"turn_root", turn_root_},
+       {"compaction",
+        {{"automatic", automatic},
+         {"messages_before", messages_before},
+         {"messages_after", conversation_.Size()},
+         {"retained_user_messages", retained_count},
+         {"duration_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - compact_started)
+                             .count()}}}});
+  Emit(Event{EventId::kMessageChanged, {{"block", std::move(compact_block)}}});
   ++revision_;
   DebugLog("compact_end", {{"automatic", automatic},
                            {"outcome", "ok"},
@@ -571,6 +617,9 @@ void Agent::MergeSessionUsage(const Usage& usage) {
   session_usage_.Merge(usage);
   api_.session_cost = session_usage_.cost;
   api_.session_generated_tokens = session_usage_.GeneratedTokens();
+  Emit(Event{
+      EventId::kUsageUpdated,
+      {{"usage", UsageJson(session_usage_)}, {"statistics", Statistics()}}});
 }
 
 // One finished extraction: its receipt decides what the memory event records,
@@ -652,6 +701,22 @@ void Agent::ReportMemoryCompletion(BackgroundCompletion& completion) {
     }
     std::string line = std::string(mark) + " memory " + label;
     if (!event.key.empty()) line += " · " + event.key;
+    const bool changed = event.action == "created" ||
+                         event.action == "updated" || event.action == "deleted";
+    std::string web_label = "memory " + label;
+    if (!event.key.empty()) web_label += " · " + event.key;
+    json block = conversation_.RecordEntry(
+        {{"text", line + (event.preview.empty() ? "" : "\n" + event.preview)},
+         {"memory",
+          {{"action", event.action},
+           {"key", event.key},
+           {"automatic", event.automatic}}},
+         {"activity",
+          {{"category", changed ? "change" : "explore"},
+           {"label", std::move(web_label)}}},
+         {"status", warning ? "failed" : "completed"},
+         {"turn_root", turn_root_}});
+    Emit(Event{EventId::kMessageChanged, {{"block", block}}});
     Emit(NoticeEvent(
         warning ? PresentationStatus::kFailed : PresentationStatus::kNeutral,
         std::move(line)));
@@ -681,26 +746,31 @@ void Agent::DeliverActivityCompletions(
   bool first = true;
   for (const BackgroundCompletion& completion : completions) {
     if (completion.kind == ActivityKind::kMemory) continue;
-    size_t running = processes_.Count();
     std::string header = BgResultHeader(completion);
-    Emit(NoticeEvent(PresentationStatus::kNeutral,
-                     "· bg job finished " + header + " · " +
-                         std::to_string(running) + " still running"));
 
     const bool succeeded =
         WIFEXITED(completion.status) && WEXITSTATUS(completion.status) == 0;
     PresentationRecord record;
-    record.kind = PresentationKind::kToolResult;
+    record.kind = PresentationKind::kNotice;
     record.status = succeeded ? PresentationStatus::kSucceeded
                               : PresentationStatus::kFailed;
-    record.title = (completion.kind == ActivityKind::kSubagent
-                        ? std::string("subagent ")
-                        : std::string("activity ")) +
-                   std::to_string(completion.activity_id);
+    record.title = completion.kind == ActivityKind::kSubagent
+                       ? "Subagent"
+                       : "Background task";
+    std::string label = completion.display_label.empty()
+                            ? FirstLine(completion.command)
+                            : completion.display_label;
+    if (!label.empty()) record.title += " · " + Utf8Trunc(label, 160);
     record.summary = Utf8Trunc(FirstLine(completion.output), size_t{512});
-    json block = conversation_.RecordActivity(
-        {{"text", record.title + (succeeded ? " completed" : " failed")},
+    const json completion_activity = {{"category", "execute"},
+                                      {"label", record.title}};
+    record.activity = completion_activity;
+    std::string text = record.title + (succeeded ? " completed" : " failed");
+    if (!completion.output.empty()) text += "\n" + completion.output;
+    json block = conversation_.RecordEntry(
+        {{"text", std::move(text)},
          {"activity_id", completion.activity_id},
+         {"activity", completion_activity},
          {"agent_id", completion.source_id},
          {"status", succeeded ? "completed" : "failed"}});
     Emit(Event{EventId::kMessageChanged, {{"block", block}}});
@@ -711,6 +781,7 @@ void Agent::DeliverActivityCompletions(
          {"status",
           WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
          {"output_chars", completion.output.size()}}};
+    record.title += succeeded ? " completed" : " failed";
     display.presentation = std::move(record);
     display.render = api_.render_stream;
     Emit(std::move(display));
@@ -771,21 +842,55 @@ bool Agent::DrainBackground() {
 bool Agent::DrainAttachments() {
   std::vector<Attachment> pending = Attachments().Take();
   if (pending.empty()) return false;
+  // Origin decides attribution. Real user uploads render as the user's own
+  // turn; files a tool read ride the model context as harness-owned context
+  // and display on the tool's own row, never as a fake user message.
+  std::vector<Attachment> user, sourced;
+  for (Attachment& attachment : pending) {
+    (attachment.source_call_id.empty() ? user : sourced)
+        .push_back(std::move(attachment));
+  }
+  bool changed = false;
+  if (!user.empty()) changed |= DrainUserAttachments(user);
+  if (!sourced.empty()) {
+    // The message kind stays kAttachment on purpose: the request pipeline
+    // keys its encoded-parts guard and its turn-boundary strip on it, so
+    // re-kinding would feed base64 to the summarizer. Only the attribution
+    // differs, carried as a display fact the view projects as agent-side.
+    std::string error;
+    json content = AttachmentContent("[attached on request]", sourced, error);
+    if (error.empty()) {
+      conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
+                         MessageKind::kAttachment);
+      json call_ids = json::array();
+      for (const Attachment& attachment : sourced) {
+        call_ids.push_back(attachment.source_call_id);
+      }
+      conversation_.RecordDisplay(
+          conversation_.LastDisplayId(),
+          {{"origin", "tool"}, {"source_call_ids", std::move(call_ids)}});
+    } else {
+      conversation_.Push(HarnessMessage("[attachment failed] " + error),
+                         MessageKind::kInternal);
+    }
+    changed = true;
+  }
+  DebugLog(
+      "attachments_added",
+      {{"turn", turn_id_}, {"user", user.size()}, {"sourced", sourced.size()}});
+  return changed;
+}
+
+bool Agent::DrainUserAttachments(std::vector<Attachment>& attachments) {
   std::string error;
-  json content = AttachmentContent(
-      "[attached on request]", pending, error, api_.capabilities.image_input,
-      !api_.config.image_model.empty(), api_.capabilities.file_input);
+  json content = AttachmentContent("[attached on request]", attachments, error);
   if (error.empty()) {
-    ImageFallbackResult fallback = ApplyImageFallbackToUserContent(content);
-    if (!fallback.error.empty()) error = fallback.error;
     conversation_.Push({{"role", "user"}, {"content", std::move(content)}},
                        MessageKind::kAttachment);
   } else {
     conversation_.Push(HarnessMessage("[attachment failed] " + error),
                        MessageKind::kInternal);
   }
-  DebugLog("attachments_added",
-           {{"turn", turn_id_}, {"count", pending.size()}, {"error", error}});
   return true;
 }
 

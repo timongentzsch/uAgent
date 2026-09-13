@@ -29,7 +29,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   const model = page.getByRole("button", {
     name: "Model and effort",
     exact: true,
@@ -86,11 +86,11 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     .click();
   await page.getByLabel("Message or guidance").fill("Show a researched answer");
   await page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const reply = page.locator(".message").filter({
     has: page.getByRole("heading", { name: "Verified response" }),
@@ -191,6 +191,8 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByRole("heading", { name: "Needs your decision" }),
   ).toBeVisible();
+  // Waiting for a person keeps the runtime active without a running pulse.
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(page.locator(".decision")).toContainText("browser-proof.txt");
   await expect(page.getByLabel("Response", { exact: true })).toHaveValue("n");
   await page.getByLabel("Response", { exact: true }).selectOption("y");
@@ -210,9 +212,10 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
       ),
     )
     .toBe("approved from browser");
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   const toolResult = page.locator(".message.tool").last();
-  await toolResult.getByRole("button", { name: /^write_file/ }).click();
+  await expect(toolResult).toContainText("Created browser-proof.txt");
+  await toolResult.locator(".tool-toggle").click();
   await toolResult
     .getByRole("button", { name: "Tool input/output", exact: true })
     .click();
@@ -233,7 +236,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   // The native host accepts the send while its HTTP acknowledgement is held.
   // Editing the next draft in that interval must not erase the new text.
   let release, acknowledged;
@@ -268,7 +271,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
   await expect(
     page.getByText("Delayed acknowledgement", { exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.getByLabel("Message or guidance").fill("");
   const answers = page.getByRole("heading", {
     name: "Verified response",
@@ -289,7 +292,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByAltText("one-pixel.png"),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   answerCount = await answers.count();
   await page.locator('input[type="file"]').setInputFiles({
     name: "opaque.bin",
@@ -304,7 +307,7 @@ test("native host: mobile decisions, safe rendering, offline shell and private c
     page.locator(".message").getByRole("link", { name: /opaque.bin/ }),
   ).toBeVisible();
   await expect(answers).toHaveCount(answerCount + 1);
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await page.getByLabel("Message or guidance").fill("/help");
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("/model");

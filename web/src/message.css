@@ -2,8 +2,11 @@
   --control: max(28px, 2rem);
   width: 100%;
   min-width: 0;
+  container-type: inline-size;
   text-align: left;
-  overflow-wrap: anywhere;
+  /* break-word (not anywhere): long tokens still wrap, but flex and table
+     children keep a sane intrinsic width instead of collapsing to a glyph. */
+  overflow-wrap: break-word;
   padding: 6px 8px;
   margin: 6px 0;
 }
@@ -31,10 +34,15 @@
 .message.turn-start {
   margin-top: 12px;
 }
+.message.grouped {
+  /* Body of a grouped step: no header chrome, so no header spacing. */
+  margin-top: 2px;
+  padding-top: 0;
+}
 .message > header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap);
   min-height: var(--control);
   margin-bottom: 4px;
   font-size: 0.75rem;
@@ -45,6 +53,7 @@
 .message time {
   color: var(--muted);
   margin-left: auto;
+  flex: none;
   white-space: nowrap;
   font-size: 0.7rem;
 }
@@ -70,17 +79,48 @@
 .message .action-menu {
   flex-shrink: 0;
 }
+.message.tool > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
 .tool-toggle {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap);
+  flex: 1;
   min-width: 0;
   text-align: left;
   padding-inline: 0;
+  /* Tool rows scan as body text, not header metadata. */
+  font-size: calc(14px * var(--text-scale, 1));
+}
+.exploration > summary {
+  font-size: 0.8rem;
 }
 .tool-toggle strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.tool-toggle > .muted {
+  /* One-line metadata never shrinks: the label above is the only flexible
+     column, so it takes the ellipsis instead of crushing this one. */
+  flex: none;
+  white-space: nowrap;
+}
+.tool-toggle .mark,
+.exploration > summary .mark {
+  /* Actor mark inside dense rows: match the text line, not the brand. */
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.exploration > summary .mark {
+  vertical-align: -3px;
+  margin-right: 4px;
 }
 .tool-toggle .expanded {
   transform: rotate(90deg);
@@ -89,72 +129,6 @@
   border-left: 1px solid var(--line);
   padding-left: 12px;
 }
-.markdown {
-  line-height: 1.55;
-  min-width: 0;
-}
-.markdown p:first-child {
-  margin-top: 0;
-}
-.markdown p:last-child {
-  margin-bottom: 0;
-}
-.markdown h1 {
-  font-size: 1.4em;
-}
-.markdown h2 {
-  font-size: 1.2em;
-}
-.markdown h3 {
-  font-size: 1.1em;
-}
-.markdown ul,
-.markdown ol {
-  padding-left: 24px;
-}
-.markdown table {
-  display: block;
-  overflow-x: auto;
-  border-collapse: collapse;
-}
-.markdown th,
-.markdown td {
-  border: 1px solid var(--line);
-  padding: 4px 8px;
-}
-.markdown blockquote {
-  border-left: 2px solid var(--accent);
-  padding-left: 12px;
-  margin-left: 0;
-  color: var(--muted);
-}
-.markdown img {
-  max-width: 100%;
-}
-.katex-display,
-.katex-block {
-  overflow-x: auto;
-  overflow-y: hidden;
-  max-width: 100%;
-}
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-literal {
-  color: var(--accent);
-  font-weight: 600;
-}
-.hljs-string,
-.hljs-addition {
-  color: var(--accent);
-}
-.hljs-comment,
-.hljs-quote {
-  color: var(--muted);
-}
-.hljs-deletion {
-  text-decoration: line-through;
-}
-
 @media (pointer: coarse) {
   .message {
     --control: 32px;
@@ -171,7 +145,61 @@
   .tool-toggle {
     gap: 4px;
   }
+}
+
+.tool-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+@container (max-width: 500px) {
   .tool-toggle {
-    flex-wrap: wrap;
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 2px;
   }
+  .tool-toggle > .muted {
+    grid-column: 2;
+    font-size: 0.7rem;
+  }
+}
+
+.event-row {
+  margin: var(--gap) 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.event-row > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--control);
+  cursor: pointer;
+}
+.event-row > summary > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.event-row > summary svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+.event-row > summary small,
+.event-row time {
+  flex-shrink: 0;
+}
+.event-row[data-status="failed"] > summary {
+  color: var(--text);
+  font-weight: 600;
+}
+.event-body {
+  padding: var(--gap) var(--pad);
+  border-left: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.event-body .markdown {
+  color: var(--text);
 }

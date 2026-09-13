@@ -25,6 +25,7 @@
 #include "include/core/project.h"
 #include "include/core/skills.h"
 #include "include/core/usage.h"
+#include "include/media/attachments.h"
 #include "include/tools/process.h"
 #include "include/tools/tool.h"
 
@@ -50,6 +51,7 @@ class Agent {
 
   void Reset();
   json PromptConfiguration(const json& request);
+  const std::string& LastSentPrompt() const { return last_sent_prompt_; }
 
   const Usage& SessionUsage() const { return session_usage_; }
   json RouteUsageJson() const { return uagent::RouteUsageJson(route_usage_); }
@@ -59,7 +61,6 @@ class Agent {
   const json& LastStop() const { return last_stop_; }
   const std::string& SessionId() const { return session_id_; }
   uint64_t Revision() const { return revision_; }
-
   // Show the most recent completed turn's archived tool traffic. Server search
   // can expose sources and snippets, but not necessarily the provider-internal
   // query.
@@ -110,8 +111,8 @@ class Agent {
     ++revision_;
   }
 
-  json ModelRequest() const;
-  void PrintContext() const;
+  json ModelRequest();
+  void PrintContext();
 
   bool Save(const std::string& path, std::string& error) const;
 
@@ -147,6 +148,10 @@ class Agent {
   // Files the model attached ride in on a user message. Canonical tool results
   // are text-only, so image/file parts cannot travel with them.
   bool DrainAttachments();
+  // User-uploaded half of DrainAttachments; sourced files keep their
+  // kAttachment kind for the request pipeline and carry an origin fact
+  // so the view attributes them to the agent instead.
+  bool DrainUserAttachments(std::vector<Attachment>& attachments);
 
   // one user turn: stream, run tools, repeat until prose; prints as it goes
   void Turn(const std::string& user_input, json user_content = nullptr,
@@ -179,21 +184,9 @@ class Agent {
     kEndTurn,
   };
 
-  enum class ImageFallbackCause { kKnownUnsupported, kRejected };
-  struct ImageFallbackResult {
-    bool applied = false;
-    bool warning = false;
-    size_t rewritten = 0;
-    std::string error;
-    std::string status;
-  };
-
   std::string AnalyzeImageContent(const json& content, std::string& error);
-  ImageFallbackResult ApplyImageAnalysisFallback(json& messages,
-                                                 ImageFallbackCause cause);
-  static void ReportImageFallback(const ImageFallbackResult& result);
-  // Run the fallback over one user message's content parts and report it.
-  ImageFallbackResult ApplyImageFallbackToUserContent(json& content);
+  std::string ApplyImageAnalysisFallback(json& messages, bool analyze = true,
+                                         json* deliveries = nullptr);
 
   void AddRouteUsage(const Usage& usage);
   Usage AccountModelUsage(const json& reported);
@@ -212,8 +205,6 @@ class Agent {
                              TurnExecution& state, int64_t max_tool_calls,
                              std::string& last_call, int64_t& repeated_calls);
   void FinishTurn(TurnExecution& state, int64_t step);
-  static std::string TurnStatsLine(const TurnExecution& state, double seconds,
-                                   double tokens_per_second);
 
   // One step of the turn, in the order the loop runs them. Each phase reports
   // what the loop should do next.
@@ -249,7 +240,12 @@ class Agent {
                   bool render_output = true,
                   const json* request_messages = nullptr);
   json CompactionMessages() const;
-  json CompactionUserMessages() const;
+  // Retained recent user instructions for the post-compaction context.
+  // Optionally fills retained_ids with the source display id per message
+  // (same order), so the re-push can keep its identity instead of minting
+  // a duplicate block beside the archived original.
+  json CompactionUserMessages(
+      std::vector<uint64_t>* retained_ids = nullptr) const;
 
   size_t RequestContextBytes(size_t schema_bytes,
                              const json* messages = nullptr) const;
@@ -350,6 +346,7 @@ class Agent {
   std::string session_id_;
   bool retain_exchanges_ = false;
   std::string turn_root_, reply_to_, reply_excerpt_;
+  json image_analyses_ = json::object();
   mutable FileLease writer_;
   std::string session_title_;
   bool custom_title_ = false;

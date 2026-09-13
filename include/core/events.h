@@ -52,7 +52,10 @@ enum class EventId : uint16_t {
   kNotice,
   kMessageChanged,
   kActivitiesChanged,
+  kCollaboratorChanged,
   kHttpExchange,
+  kUsageUpdated,
+  kResponseSources,
   kPresentation,
 };
 
@@ -85,6 +88,7 @@ struct PresentationRecord {
   PresentationKind kind = PresentationKind::kNone;
   PresentationStatus status = PresentationStatus::kNeutral;
   std::string id;
+  json activity = json::object();
   std::string title;
   std::string summary;
   std::string detail;

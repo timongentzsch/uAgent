@@ -3,18 +3,23 @@
 #include "include/media/attachments.h"
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <array>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
+#include <map>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "include/core/capture.h"
 #include "include/core/checked.h"
 #include "include/core/env.h"
+#include "include/core/fs.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -118,21 +123,31 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     error = "attachment is not a regular file";
     return false;
   }
-  std::string mime = AttachmentMime(path);
-  out = {file.string(), file.filename().string(),   mime,
-         bytes,         mime.starts_with("image/"), {}};
-  return true;
-}
-
-std::string ImageInputError(const Attachment& attachment,
-                            bool image_input_available,
-                            bool image_fallback_available) {
-  if (!attachment.image || image_input_available || image_fallback_available) {
-    return "";
+  std::string prefix, error_read;
+  if (!ReadRegularFile(path, 32, prefix, error_read, true)) {
+    error = error_read;
+    return false;
   }
-  return "this model rejected image input for " + attachment.path +
-         "; configure UAGENT_IMAGE_MODEL to analyze attached images with a "
-         "vision-capable model";
+  std::string mime = RasterMime(prefix);
+  if (mime.empty()) {
+    mime = AttachmentMime(path);
+    if (mime.starts_with("image/")) {
+      error = "invalid image signature: " + path;
+      return false;
+    }
+  }
+  auto absolute = std::filesystem::absolute(file, ec);
+  if (ec) {
+    error = "cannot resolve attachment path";
+    return false;
+  }
+  out = {absolute.string(),
+         file.filename().string(),
+         mime,
+         bytes,
+         mime.starts_with("image/"),
+         {}};
+  return true;
 }
 
 // Whether images arrive natively or through a configured vision route is a
@@ -263,14 +278,9 @@ bool Base64Decode(std::string_view input, std::string& output,
 
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
-                       std::string& error, bool image_input_available,
-                       bool image_fallback_available,
-                       bool file_input_available) {
+                       std::string& error) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
-    error = ImageInputError(attachment, image_input_available,
-                            image_fallback_available);
-    if (!error.empty()) return nullptr;
     std::error_code ec;
     uintmax_t current = std::filesystem::file_size(attachment.path, ec);
     if (ec || !std::filesystem::is_regular_file(attachment.path, ec)) {
@@ -296,78 +306,260 @@ json AttachmentContent(const std::string& prompt,
   for (const Attachment& attachment : attachments) {
     text += "\n- path " + JsonDump(attachment.path);
     if (!attachment.source_call_id.empty()) {
-      text += " (from attach tool call " + JsonDump(attachment.source_call_id) +
-              ")";
+      text += " (from tool call " + JsonDump(attachment.source_call_id) + ")";
     }
   }
   json content = json::array({{{"type", "text"}, {"text", text}}});
   for (const Attachment& attachment : attachments) {
-    // Encoding a document this route will refuse would cost a read and a
-    // base64 of the whole file to produce a part that gets stripped again.
-    if (!attachment.image && (!file_input_available ||
-                              attachment.mime == "application/octet-stream")) {
-      continue;
-    }
-    std::string data = Base64File(attachment, limit, error,
-                                  "data:" + attachment.mime + ";base64,");
-    if (!error.empty()) return nullptr;
-    if (attachment.image) {
-      json image = {{"url", std::move(data)}};
-      std::string detail = ImageDetail();
-      if (!detail.empty()) image["detail"] = detail;
-      content.push_back(
-          {{"type", "image_url"}, {"image_url", std::move(image)}});
-    } else {
-      content.push_back(
-          {{"type", "file"},
-           {"file",
-            {{"filename", attachment.name}, {"file_data", std::move(data)}}}});
-    }
+    content.push_back({{"type", "attachment"},
+                       {"path", attachment.path},
+                       {"name", attachment.name},
+                       {"mime", attachment.mime},
+                       {"bytes", attachment.bytes},
+                       {"id", attachment.asset_id}});
   }
   return content;
 }
 
-size_t StripContentParts(json& messages, std::string_view type) {
-  size_t rewritten = 0;
-  for (json& message : messages) {
+namespace {
+bool TextMime(const std::string& mime) {
+  return mime.starts_with("text/") || mime == "application/json" ||
+         mime == "application/xml";
+}
+std::string PreparedImage(const Attachment& attachment, std::string& mime,
+                          std::string& error) {
+  constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
+  static std::mutex mutex;
+  static std::map<std::string, std::pair<std::string, std::string>> cache;
+  std::error_code ec;
+  auto stamp = std::filesystem::last_write_time(attachment.path, ec);
+  if (ec) {
+    error = "image is no longer available";
+    return "";
+  }
+  std::string key =
+      attachment.path + ":" +
+      std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                         stamp.time_since_epoch())
+                         .count()) +
+      ":" + std::to_string(attachment.bytes);
+  {
+    std::lock_guard lock(mutex);
+    if (auto found = cache.find(key); found != cache.end()) {
+      mime = found->second.first;
+      return found->second.second;
+    }
+  }
+  // Platform helpers keep image decoders out of the harness binary. No shell,
+  // bounded lifetime, original retained. Linux uses ImageMagick when installed.
+#ifdef __APPLE__
+  auto inspected = CaptureProcess({"/usr/bin/sips", "-g", "pixelWidth", "-g",
+                                   "pixelHeight", attachment.path});
+  int width = 0, height = 0;
+  std::istringstream lines(inspected.output);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::istringstream fields(line);
+    std::string label;
+    int value = 0;
+    if (fields >> label >> value) {
+      if (label == "pixelWidth:") width = value;
+      if (label == "pixelHeight:") height = value;
+    }
+  }
+#else
+  auto inspected = CaptureProcess({"magick", "identify", "-ping", "-format",
+                                   "%w %h", attachment.path + "[0]"});
+  int width = 0, height = 0;
+  std::istringstream(inspected.output) >> width >> height;
+#endif
+  if ((inspected.error.empty() && !inspected.Ok()) ||
+      (inspected.Ok() && (width <= 0 || height <= 0))) {
+    error = "image could not be decoded";
+    return "";
+  }
+  std::string path = attachment.path, temporary;
+  mime = attachment.mime;
+  if (width > 2048 || height > 2048 || attachment.bytes > kImageBytes) {
+    const std::string format = mime == "image/jpeg" ? "jpeg" : "png";
+    Fd output(CreateTempFile(
+        (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
+            .string(),
+        temporary));
+    if (!output) {
+      error = "cannot prepare image";
+      return "";
+    }
+#ifdef __APPLE__
+    auto resized =
+        CaptureProcess({"/usr/bin/sips", "-Z", "2048", "-s", "format", format,
+                        "-s", "formatOptions", "85", path, "--out", temporary});
+#else
+    auto resized = CaptureProcess({"magick", "-limit", "memory", "128MiB",
+                                   "-limit", "map", "256MiB", path + "[0]",
+                                   "-auto-orient", "-resize", "2048x2048>",
+                                   "-quality", "85", format + ":" + temporary});
+#endif
+    if (!resized.Ok()) {
+      unlink(temporary.c_str());
+      error =
+          "image resizing failed; install ImageMagick on Linux or attach a "
+          "smaller image";
+      return "";
+    }
+    path = temporary;
+    mime = "image/" + format;
+  }
+  Attachment prepared = attachment;
+  prepared.path = path;
+  std::string encoded =
+      Base64File(prepared, kImageBytes, error, "data:" + mime + ";base64,");
+  if (!temporary.empty()) unlink(temporary.c_str());
+  if (!error.empty()) return "";
+  std::lock_guard lock(mutex);
+  cache[key] = {mime, encoded};
+  size_t total = 0;
+  for (const auto& item : cache) total += item.second.second.size();
+  while (total > size_t{16} * 1024 * 1024 && !cache.empty()) {
+    total -= cache.begin()->second.second.size();
+    cache.erase(cache.begin());
+  }
+  return encoded;
+}
+}  // namespace
+
+bool PrepareAttachments(json& messages,
+                        const ProviderCapabilities& capabilities,
+                        bool vision_fallback, const std::string& route,
+                        std::string& error, json* deliveries) {
+  bool changed = false;
+  uintmax_t remaining =
+      static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024;
+  if (deliveries) *deliveries = json::array();
+  for (size_t index = 0; index < messages.size(); ++index) {
+    json& message = messages[index];
     if (!message.contains("content") || !message["content"].is_array()) {
       continue;
     }
-    json kept = json::array();
-    size_t dropped = 0;
-    for (json& part : message["content"]) {
-      if (JsonValue(part, "type", "") == type) {
-        ++dropped;
-      } else {
-        kept.push_back(std::move(part));
+    json prepared = json::array();
+    for (const json& part : message["content"]) {
+      const std::string type = JsonValue(part, "type", "");
+      if (type != "attachment") {
+        if ((type == "file" && !capabilities.file_input) ||
+            (type == "image_url" && !capabilities.image_input &&
+             !vision_fallback)) {
+          prepared.push_back({{"type", "text"},
+                              {"text",
+                               "[attachment not visible to this model; use the "
+                               "original file path]"}});
+          changed = true;
+        } else {
+          prepared.push_back(part);
+        }
+        continue;
+      }
+      changed = true;
+      const std::string path = JsonValue(part, "path", ""),
+                        name = JsonValue(part, "name", "attachment"),
+                        stored_mime = JsonValue(part, "mime", "");
+      std::string delivery = "File reference", detail;
+      Attachment attachment;
+      const bool processed =
+          JsonValue(part, "processed_route", "") == route && !route.empty();
+      if (!processed && InspectAttachment(path, attachment, detail)) {
+        if (attachment.bytes > remaining) {
+          detail = "request attachment budget exceeded";
+        } else {
+          remaining -= attachment.bytes;
+        }
+      }
+      if (!processed && detail.empty()) {
+        if (attachment.mime == "application/octet-stream") {
+          attachment.mime = stored_mime;
+        }
+        if (TextMime(attachment.mime)) {
+          std::string text;
+          if (ReadRegularFile(path, size_t{64} * 1024, text, detail, true) &&
+              text.find('\0') == std::string::npos) {
+            prepared.push_back(
+                {{"type", "text"},
+                 {"text",
+                  "[Attached text: " + name + "]\n" +
+                      Utf8Prefix(std::move(text), size_t{64} * 1024) +
+                      (attachment.bytes > size_t{64} * 1024
+                           ? "\n[truncated; read the original file for more]"
+                           : "")}});
+            delivery = "Text";
+          }
+        } else if (attachment.image &&
+                   (capabilities.image_input || vision_fallback)) {
+          std::string mime;
+          std::string data = PreparedImage(attachment, mime, detail);
+          if (!data.empty()) {
+            json image = {{"url", std::move(data)}};
+            if (!ImageDetail().empty()) image["detail"] = ImageDetail();
+            prepared.push_back(
+                {{"type", "image_url"}, {"image_url", std::move(image)}});
+            delivery = capabilities.image_input ? "Image" : "Via vision model";
+          }
+        } else if (attachment.mime == "application/pdf" &&
+                   capabilities.file_input) {
+          std::string header;
+          if (ReadRegularFile(path, 5, header, detail, true) &&
+              header == "%PDF-") {
+            std::string data = Base64File(
+                attachment,
+                static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
+                detail, "data:application/pdf;base64,");
+            if (detail.empty()) {
+              prepared.push_back(
+                  {{"type", "file"},
+                   {"file",
+                    {{"filename", name}, {"file_data", std::move(data)}}}});
+              delivery = "Document";
+            }
+          } else {
+            detail = "invalid PDF signature";
+          }
+        }
+      }
+      if (!detail.empty()) {
+        if (!error.empty()) error += "\n";
+        error += name + ": " + detail;
+      }
+      if (delivery == "File reference") {
+        prepared.push_back(
+            {{"type", "text"},
+             {"text", "[File reference: " + path +
+                          (processed ? "; earlier attachment"
+                                     : "; contents not included") +
+                          "]"}});
+      }
+      if (deliveries && !processed) {
+        deliveries->push_back({{"message_index", index},
+                               {"id", JsonValue(part, "id", "")},
+                               {"name", name},
+                               {"delivery", delivery},
+                               {"path", path}});
       }
     }
-    if (!dropped) continue;
-    message["content"] = std::move(kept);
-    ++rewritten;
+    message["content"] = std::move(prepared);
   }
-  return rewritten;
+  return changed;
 }
 
 ToolResult AttachmentQueue::Add(const std::string& path,
-                                bool image_input_available,
-                                bool image_fallback_available,
                                 std::string source_call_id) {
   Attachment attachment;
   std::string error;
   if (!InspectAttachment(path, attachment, error)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments, "error: " + error);
   }
-  if (!(error = ImageInputError(attachment, image_input_available,
-                                image_fallback_available))
-           .empty()) {
-    return ToolFailure(ToolErrorCode::kUnavailable, "error: " + error);
-  }
-  std::string result = "attached " + attachment.name + " (" + attachment.mime +
-                       "); readable in your next step";
+  std::string result =
+      "attached " + attachment.name + "; queued for the next request";
   std::lock_guard<std::mutex> lock(mutex_);
   // MCP servers queue images without a model call to budget against, so the
-  // ceiling lives here rather than only on the attach tool.
+  // ceiling lives here rather than only on read_path.
   if (static_cast<int64_t>(pending_.size()) >= MaxPendingAttachments()) {
     return ToolFailure(ToolErrorCode::kLimitExceeded,
                        "error: too many attachments pending for one step (" +

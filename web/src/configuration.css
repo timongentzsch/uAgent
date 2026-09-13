@@ -1,14 +1,12 @@
 .configuration {
-  margin-top: 12px;
+  margin-top: var(--pad);
 }
 .configuration > label {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0;
+  margin: var(--pad) 0;
 }
 .configuration details {
   border-top: 1px solid var(--line);
-  padding: 12px 0;
+  padding: var(--pad) 0;
 }
 .configuration summary {
   cursor: pointer;
@@ -28,7 +26,7 @@
 .config-value {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gap);
 }
 .config-value input,
 .config-value .select {

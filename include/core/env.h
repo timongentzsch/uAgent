@@ -98,12 +98,6 @@ int64_t McpConfigBytes();
 int64_t McpDescriptionChars();
 int64_t MaxPendingAttachments();
 int64_t AttachmentLimitMb();
-// One default, shared by the attachment path and MCP image results.
-int64_t TerminalImageLimitMb();
-int64_t ImageMaxColumns();
-std::string ImageProtocol();
-// The fallback is the width actually available, so it is passed in.
-int64_t ImageColumns(int64_t available);
 int64_t ContextWindow();
 // Retention for the pruned artifact trees: days kept, then newest-N kept.
 int64_t HistoryDays();

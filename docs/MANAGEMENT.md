@@ -61,9 +61,8 @@ state is process-global.
 Each run freezes its task definition and is durably claimed before launch. It
 creates an ordinary session with the task's model selection and Ask/YOLO
 permissions. A blank model uses the project's current default. Ask can pause for
-approval; open the run's conversation in the web UI, or resume its saved session
-in the terminal after closing its web worker. The history record includes the
-session path for CLI access.
+approval; open the run in the web UI or terminal. Both clients can answer the
+same pending decision while the runtime continues.
 
 Git worktrees are the default and start from committed `HEAD`. Choose Local to
 use the working directory directly. Worktrees and conversations are retained
@@ -73,12 +72,13 @@ commands to clean up a reviewed worktree.
 - Run now tests the saved definition. Save edits first.
 - Pause disables future occurrences and cancels queued runs. Active runs keep
   their frozen definition; Stop requests native interruption.
-- The same task cannot overlap itself. Runs share the host's existing worker
-  limit with interactive sessions.
+- The same task cannot overlap itself. Up to four scheduled runs execute
+  concurrently; interactive sessions do not consume those slots.
 - Occurrences more than 60 seconds late are recorded as missed. Other due times
   advance without catch-up bursts; overlap records a skipped occurrence.
-- After a host restart, a claimed or running job becomes interrupted for review.
-  It is never automatically submitted again. Unclaimed queued jobs may start.
+- A web host restart reconnects to surviving session runtimes. A claimed run
+  whose runtime is unavailable becomes interrupted for review; it is never
+  submitted again automatically. Unclaimed queued jobs may start.
 - History retains up to 128 run receipts and 64 tasks in a bounded, atomically
   replaced store. Old terminal receipts are pruned; conversations/worktrees remain.
 

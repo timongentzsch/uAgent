@@ -137,7 +137,7 @@ int RunBenchmarks() {
   wire_benchmark(WireApi::kResponses, "encode Responses");
   wire_benchmark(WireApi::kAnthropicMessages, "encode Anthropic Messages");
   ProcessSupervisor processes;
-  auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."), false);
+  auto lean_tools = BuiltinTools(processes, CanonicalAccessPath("."));
   const json cached_tools = ToolSchemas(lean_tools);
   for (WireApi wire : {WireApi::kChatCompletions, WireApi::kResponses,
                        WireApi::kAnthropicMessages}) {
@@ -165,7 +165,6 @@ int RunBenchmarks() {
            }));
   }
 
-  auto image_tools = BuiltinTools(processes, CanonicalAccessPath("."), true);
   auto without = [](std::vector<Tool> tools, const std::string& name) {
     std::erase_if(tools, [&](const Tool& tool) { return tool.name == name; });
     return tools;
@@ -177,13 +176,11 @@ int RunBenchmarks() {
   size_t grep_schema = ToolSchemas(no_scratch_tools).dump().size();
   size_t no_edit_schema = ToolSchemas(no_edit_tools).dump().size();
   size_t lean_schema = ToolSchemas(lean_tools).dump().size();
-  size_t image_schema = ToolSchemas(image_tools).dump().size();
   std::cout << "built-in schema              " << lean_schema << " bytes (~"
             << lean_schema / 4 << " tokens); grep adds "
             << grep_schema - base_schema << " bytes; scratch adds "
             << lean_schema - grep_schema << " bytes; edit adds "
-            << lean_schema - no_edit_schema << " bytes; inline image adds "
-            << image_schema - lean_schema << " bytes\n";
+            << lean_schema - no_edit_schema << " bytes\n";
   for (const Tool& tool : lean_tools) {
     std::cout << "  " << std::left << std::setw(24) << tool.name << std::right
               << JsonDump(ToolSchema(tool)).size() << " bytes\n";

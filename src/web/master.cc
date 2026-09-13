@@ -179,57 +179,32 @@ struct Session {
   size_t live_bytes = 0;
   int64_t updated = 0;
   bool live_truncated = false;
+  json published = nullptr;
   bool turn_active = false;
-  bool terminal_active = false;
+  uint64_t guidance = 0;
   uint64_t incoming = 0;
   pid_t pid = -1;
-  Pipe input, output, stop;
+  Fd socket;
+  Pipe stop;
   std::thread reader;
   std::mutex send_mutex;
   std::map<std::string, std::pair<std::string, std::string>> awaiting;
   std::atomic<bool> exited{false};
+  bool connecting = false, closing = false;
   ~Session() {
-    if (pid > 0) {
-      {
-        std::lock_guard lock(send_mutex);
-        input.write.Reset();
-      }
-      int result = 0;
-      if (!ReapPidFor(pid, &result, std::chrono::seconds(3))) {
-        kill(pid, SIGTERM);
-        if (!ReapPidFor(pid, &result, std::chrono::seconds(1))) {
-          kill(pid, SIGKILL);
-          ReapPidFor(pid, &result, std::chrono::seconds(1));
-        }
-      }
-    }
     stop.Wake();
     if (reader.joinable()) {
       reader.join();
     }
   }
   bool Send(json frame) {
+    std::lock_guard lock(send_mutex);
     frame["v"] = kProtocol;
     frame["session_id"] = id;
     frame["generation"] = generation;
-    std::lock_guard lock(send_mutex);
-    return input.write && WriteFrame(input.write.Get(), frame);
+    return socket && WriteFrame(socket.Get(), frame);
   }
 };
-
-std::shared_ptr<Session> SavedSession(const Session& session) {
-  auto saved = std::make_shared<Session>();
-  saved->id = session.id;
-  saved->path = session.path;
-  saved->cwd = session.cwd;
-  saved->title = session.title;
-  saved->draft_title = session.draft_title;
-  saved->task_id = session.task_id;
-  saved->run_id = session.run_id;
-  saved->incoming = session.incoming;
-  saved->updated = session.updated;
-  return saved;
-}
 
 struct Device {
   std::string id, token, name;
@@ -308,18 +283,19 @@ class Master {
     server_.set_pre_routing_handler(
         [this](const Request& request, Response& response) {
           const std::string host = request.get_header_value("Host");
-          bool discovery = request.path == "/api/instance";
+          // The local instance check uses its own secret, not a device cookie.
+          bool local = request.path == "/api/instance";
           bool valid_host =
-              host == authority_ || (discovery && host == local_.substr(7));
+              host == authority_ || (local && host == local_.substr(7));
           std::string origin = request.get_header_value("Origin");
           bool mutation = request.method != "GET" && request.method != "HEAD";
           if (!valid_host || (!origin.empty() && origin != origin_) ||
-              (mutation && !discovery && origin != origin_)) {
+              (mutation && !local && origin != origin_)) {
             Error(response, "invalid Host or Origin", 403);
             return httplib::Server::HandlerResponse::Handled;
           }
           if (request.path.starts_with("/api/") &&
-              request.path != "/api/auth" && !discovery) {
+              request.path != "/api/auth" && !local) {
             std::lock_guard lock(mutex_);
             if (DeviceId(request).empty()) {
               Error(response, "authentication required", 401);
@@ -361,7 +337,6 @@ class Master {
                        {"cursor", sequence_},
                        {"sessions", list},
                        {"commands", CommandSchemaJson()},
-                       {"worker_limit", kWorkerLimit},
                        {"capabilities", push_->Capabilities(DeviceId(request))},
                        {"devices", PublicDevices()},
                        {"scheduled", scheduled_view_},
@@ -503,7 +478,7 @@ class Master {
       bool recovered = false;
       for (;;) {
         if (stopping_) break;
-        if (!recovered) recovered = !RecoverScheduledRuns().contains("error");
+        if (!recovered) recovered = RecoverSchedules();
         if (recovered) TickSchedules();
         pollfd ready{stop.read.Get(), POLLIN, 0};
         if (poll(&ready, 1, 1000) > 0) break;
@@ -514,23 +489,14 @@ class Master {
     stopping.join();
     scheduled.join();
     shutdown_fd = -1;
-    std::vector<std::shared_ptr<Session>> workers;
+    // Browser service shutdown detaches; sessions belong to their runtimes.
+    std::map<std::string, std::shared_ptr<Session>> detached;
     {
       std::lock_guard lock(mutex_);
-      for (auto& [id, session] : sessions_) {
-        if (session->pid > 0) {
-          workers.push_back(session);
-        }
-      }
+      detached.swap(sessions_);
+      for (const auto& [id, session] : detached) session->stop.Wake();
     }
-    for (const auto& worker : workers) {
-      worker->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
-    }
-    {
-      std::lock_guard lock(mutex_);
-      sessions_.clear();
-    }
-    workers.clear();
+    detached.clear();
     return served ? 0 : 1;
   }
 
@@ -657,10 +623,9 @@ class Master {
         {"title", session.title},
         {"generation", session.generation},
         {"status", session.status},
-        {"presence", session.pid > 0 && !session.exited ? "web"
-                     : session.terminal_active          ? "terminal"
-                                                        : ""},
+        {"presence", session.pid > 0 && !session.exited ? "active" : ""},
         {"turn_active", session.turn_active},
+        {"guidance", session.guidance},
         {"incoming", session.incoming},
         {"activity", JsonValue(session.state, "activity", "Ready")},
         {"activities", JsonValue(session.state, "activities", json::array())},
@@ -730,10 +695,10 @@ class Master {
         it->second->path = item.path;
       }
       auto& session = *it->second;
-      if (session.status == "updating" || session.status == "deleting") {
+      if (session.closing || session.status == "updating" ||
+          session.status == "deleting") {
         continue;
       }
-      const json before = Metadata(session);
       session.cwd = item.cwd;
       session.incoming = std::max(session.incoming, item.incoming);
       session.title = item.title;
@@ -743,51 +708,41 @@ class Master {
       if (session.status == "draft") {
         session.status = "saved";
       }
-      if (session.pid <= 0) {
+      if (session.pid <= 0 || session.exited) {
         session.error = item.error;
-        session.terminal_active =
-            FileLease::HasLiveOwner(session.path + ".lock");
       }
-      if (inserted || before != Metadata(session)) {
-        Publish(session.id, session.generation,
-                {{"kind", "metadata"}, {"metadata", Metadata(session)}});
+      if (inserted) {
+        session.published = nullptr;
       }
+      PublishMetadata(session.id, session);
     }
+  }
+  // Metadata publishes exactly once per observable change: build once,
+  // compare against the last published copy, store on publish.
+  void PublishMetadata(const std::string& id, Session& session) {
+    json after = Metadata(session);
+    if (session.published == after) return;
+    session.published = after;
+    Publish(id, session.generation,
+            {{"kind", "metadata"}, {"metadata", std::move(after)}});
   }
   void RefreshPresence() {
-    // Saved checkpoints are atomic renames. Directory stamps discover new CLI
-    // sessions and checkpoints without rereading every history header each
-    // tick.
-    std::lock_guard monitoring(presence_mutex_);
-    std::map<std::string, FileStamp> directories;
-    const std::string base = UagentDir(kHistoryDir);
-    directories.emplace(base, SnapshotFile(base));
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(base, ec)) {
-      if (directories.size() >= 4096) break;
-      if (std::filesystem::is_directory(entry.symlink_status(ec)) &&
-          !entry.path().string().ends_with(".assets")) {
-        directories.emplace(entry.path().string(),
-                            SnapshotFile(entry.path().string()));
-      }
-    }
-    if (directories != history_directories_) {
-      history_directories_ = std::move(directories);
-      RefreshCatalogue(true);
-    }
-    std::lock_guard lock(mutex_);
+    RefreshCatalogue();
+    std::unique_lock lock(mutex_);
+    std::vector<std::shared_ptr<Session>> candidates;
     for (const auto& [id, session] : sessions_) {
-      if (session->pid > 0 || session->status == "updating" ||
-          session->status == "deleting") {
-        continue;
+      if ((session->pid <= 0 || session->exited) && !session->closing &&
+          session->status != "updating" && session->status != "deleting") {
+        candidates.push_back(session);
       }
-      const bool active = FileLease::HasLiveOwner(session->path + ".lock");
-      if (active == session->terminal_active) continue;
-      session->terminal_active = active;
-      Publish(id, session->generation,
-              {{"kind", "metadata"}, {"metadata", Metadata(*session)}});
+    }
+    for (const auto& session : candidates) {
+      if (!PathExists(session::SocketPath(session->path))) continue;
+      std::string error;
+      Activate(session, error, lock, false);
     }
   }
+
   size_t GlobalAssetUsage() {
     // Uploads serialize this cached accounting. Scan only the known two-level
     // history layout; never recurse through project paths or symlinks.
@@ -867,6 +822,19 @@ class Master {
     session.awaiting.clear();
     changed_.notify_all();
   }
+  void Deactivate(Session& session) {
+    session.closing = false;
+    session.pid = -1;
+    {
+      std::lock_guard send_lock(session.send_mutex);
+      session.generation.clear();
+    }
+    session.status = "saved";
+    session.error.clear();
+    session.state["activity"] = "Ready";
+    Publish(session.id, "",
+            {{"kind", "deactivated"}, {"metadata", Metadata(session)}});
+  }
   void Received(Session* session, json frame) {
     std::unique_lock lock(mutex_);
     auto owner = sessions_.find(session->id);
@@ -891,9 +859,10 @@ class Master {
       requests_.at(key).outcome = {
           {"request_id", request_id},
           {"accepted", JsonValue(frame, "accepted", false)},
+          {"pending", JsonValue(frame, "pending", false)},
           {"error", JsonValue(frame, "error", "")},
           {"result", JsonValue(frame, "result", json::object())}};
-      session->awaiting.erase(waiting);
+      if (!JsonValue(frame, "pending", false)) session->awaiting.erase(waiting);
       if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
                     false)) {
         lock.unlock();
@@ -904,11 +873,29 @@ class Master {
       session->state = JsonValue(frame, "state", json::object());
       session->pending = JsonValue(frame, "pending", json(nullptr));
       session->turn_active = JsonValue(frame, "busy", false);
-      session->status = !session->pending.is_null()         ? "waiting"
-                        : !session->state.contains("route") ? "starting"
-                        : JsonValue(frame, "busy", false)   ? "running"
-                                                            : "idle";
+      session->guidance = JsonValue(frame, "guidance", uint64_t{0});
+      session->status = session->closing                          ? "closing"
+                        : !session->pending.is_null()             ? "waiting"
+                        : !session->state.contains("route")       ? "starting"
+                        : JsonValue(frame, "busy", false)         ? "running"
+                        : JsonValue(frame, "command_busy", false) ? "processing"
+                                                                  : "idle";
       if (JsonValue(frame, "checkpoint", false)) {
+        if (!session->run_id.empty() && !session->turn_active) {
+          // Completion may have happened while the web adapter was detached.
+          // Recover from the runtime checkpoint, never resubmit the prompt.
+          if (const auto* blocks =
+                  JsonArray(session->state["view"], "blocks")) {
+            for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
+              if (JsonValue(*it, "kind", "") != "turn_summary") continue;
+              auto outcome = JsonValue((*it)["summary"], "outcome", "error");
+              session->run_result = outcome == "complete"      ? "completed"
+                                    : outcome == "interrupted" ? "interrupted"
+                                                               : "failed";
+              break;
+            }
+          }
+        }
         if (!session->run_result.empty()) session->run_checkpoint = true;
         session->live.clear();
         session->live_bytes = 0;
@@ -946,20 +933,12 @@ class Master {
               JsonValue(frame["data"], "error", "scheduled run failed");
         }
       }
-      if (type == "http.exchange") {
-        session->state["http"] = json::array({frame["data"]});
-      } else if (type == "config.changed" &&
-                 frame["data"].contains("permissions")) {
-        session->state["permissions"] = frame["data"]["permissions"];
-        session->state["yolo"] =
-            frame["data"]["permissions"]["effective"] == "yolo";
-      } else if (type == "activities.changed") {
-        session->state["activities"] = frame["data"]["activities"];
-      } else if (type == "message.changed") {
+      const bool projected =
+          ApplySessionEvent(session->state, type, frame["data"]);
+      if (type == "message.changed") {
         json block = frame["data"]["block"];
         session->incoming = std::max(session->incoming,
                                      JsonValue(block, "incoming", uint64_t{0}));
-        MergeDisplayBlock(session->state["view"], block);
         const std::string role = JsonValue(block, "kind", "");
         std::erase_if(session->live, [&](const json& item) {
           const std::string event_type = JsonValue(item, "type", "");
@@ -968,7 +947,7 @@ class Master {
                   JsonValue(JsonValue(item, "data", json::object()), "id",
                             "") == JsonValue(block, "call_id", ""));
         });
-      } else {
+      } else if (!projected) {
         // Coalesce deltas within a response before bounded replay can evict its
         // beginning. The browser receives the original deltas through SSE.
         bool merged = false;
@@ -1007,113 +986,72 @@ class Master {
       session->Send({{"kind", "refresh"}, {"request_id", RandomToken(16)}});
     }
   }
-  bool Activate(const std::shared_ptr<Session>& session, std::string& error) {
-    // Caller serializes activation with all session mutations.
-    if (session->pid > 0 && !session->exited) {
-      return true;
-    }
-    size_t workers = 0;
-    for (const auto& [id, item] : sessions_) {
-      if (item->pid > 0) {
-        ++workers;
-      }
-    }
-    if (workers >= kWorkerLimit) {
-      error = "worker limit reached; close an idle or interrupted session";
+  bool Activate(const std::shared_ptr<Session>& session, std::string& error,
+                std::unique_lock<std::mutex>& lock, bool create = true) {
+    if (session->closing) {
+      error = "session is closing";
       return false;
     }
-    if (session->pid > 0) {
-      error = "close the interrupted worker before resuming";
+    if (session->pid > 0 && !session->exited) return true;
+    if (session->connecting) {
+      error = "session is starting";
       return false;
     }
-    std::error_code ec;
-    auto cwd = std::filesystem::canonical(session->cwd, ec);
-    if (ec || !std::filesystem::is_directory(cwd, ec)) {
-      error = "recorded host directory is unavailable";
-      return false;
+    session->connecting = true;
+    if (session->reader.joinable()) {
+      session->reader.join();
     }
-    session->cwd = cwd.string();
-    if (!session->input.Open() || !session->output.Open() ||
-        !session->stop.Open()) {
-      error = "cannot open worker IPC";
-      return false;
-    }
-    posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, session->input.read.Get(),
-                                     STDIN_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, session->output.write.Get(),
-                                     STDOUT_FILENO);
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null",
-                                     O_WRONLY, 0);
-    session->generation = RandomToken(16);
-    if (session->generation.empty()) {
-      error = "OS randomness unavailable";
-      posix_spawn_file_actions_destroy(&actions);
-      return false;
-    }
-    std::vector<std::string> arguments{
-        executable_, "--web-worker",      session->cwd,        session->path,
-        session->id, session->generation, session->draft_title};
-    std::vector<char*> argv;
-    argv.reserve(arguments.size() + 1);
-    for (auto& argument : arguments) {
-      argv.push_back(argument.data());
-    }
-    argv.push_back(nullptr);
-    EnvironmentOverrides overrides{{"UAGENT_DEPTH", "0"},
-                                   {"UAGENT_INTERNAL_MEMORY_SOURCE", ""}};
-    for (const char* key :
-         {"UAGENT_API_KEY", "UAGENT_PROVIDERS", "OPENROUTER_API_KEY"}) {
-      std::string value = EnvStr(key);
-      if (!value.empty()) {
-        overrides.emplace_back(key, value);
-      }
-    }
+    Options options;
     if (!session->launch.empty()) {
       auto model = JsonValue(session->launch, "model", "");
-      if (!model.empty()) overrides.emplace_back("UAGENT_MODEL", model);
-      overrides.emplace_back(
-          "UAGENT_APPROVAL",
-          JsonValue(session->launch, "permissions", "prompt"));
+      if (!model.empty()) options.overrides["UAGENT_MODEL"] = model;
+      options.overrides["UAGENT_APPROVAL"] =
+          JsonValue(session->launch, "permissions", "prompt");
     }
-    ChildEnvironment environment(overrides,
-                                 ChildEnvironmentPolicy::kIndependentAgent);
-    posix_spawnattr_t attributes;
-    posix_spawnattr_init(&attributes);
-#ifdef POSIX_SPAWN_CLOEXEC_DEFAULT
-    posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT);
-#endif
-    int result = posix_spawn(&session->pid, executable_.c_str(), &actions,
-                             &attributes, argv.data(), environment.Data());
-    posix_spawnattr_destroy(&attributes);
-    posix_spawn_file_actions_destroy(&actions);
-    session->input.read.Reset();
-    session->output.write.Reset();
-    if (result != 0) {
-      session->pid = -1;
-      error = "cannot launch worker: " + std::string(strerror(result));
+    lock.unlock();
+    auto connected =
+        create ? session::Open(executable_, session->cwd, session->path,
+                               session->draft_title, options, error)
+               : session::Connect(session->path);
+    lock.lock();
+    session->connecting = false;
+    auto owner = sessions_.find(session->id);
+    if (stopping_ || owner == sessions_.end() || owner->second != session) {
+      error = "session was closed while connecting";
       return false;
     }
+    if (!connected.socket || !session->stop.Open()) return false;
+    {
+      std::lock_guard send_lock(session->send_mutex);
+      session->socket = std::move(connected.socket);
+      session->generation = connected.generation;
+    }
+    session->pid = connected.pid;
+    session->exited = false;
     session->status = "starting";
     session->error.clear();
     session->reader = std::thread([this, session = session.get()] {
-      ReadFrames(session->output.read.Get(), session->stop.read.Get(),
-                 kFrameBytes, [&](json frame) {
+      ReadFrames(session->socket.Get(), session->stop.read.Get(), kFrameBytes,
+                 [&](json frame) {
                    Received(session, std::move(frame));
                    return !stopping_;
                  });
-      session->exited = true;
-      std::lock_guard lock(mutex_);
-      auto owner = sessions_.find(session->id);
-      if (owner != sessions_.end() && owner->second.get() == session) {
+      std::lock_guard state_lock(mutex_);
+      auto current = sessions_.find(session->id);
+      if (current != sessions_.end() && current->second.get() == session) {
         FailPending(*session);
-        session->status = "interrupted";
         session->turn_active = false;
-        session->state["activity"] = "Interrupted";
         session->pending = nullptr;
-        Publish(session->id, session->generation, {{"kind", "closed"}});
+        if (session->closing) {
+          Deactivate(*session);
+        } else {
+          session->status = "interrupted";
+          session->state["activity"] = "Interrupted";
+          Publish(session->id, session->generation, {{"kind", "closed"}});
+        }
       }
+      session->exited = true;
+      changed_.notify_all();
     });
     Publish(session->id, session->generation,
             {{"kind", "activated"}, {"metadata", Metadata(*session)}});
@@ -1130,6 +1068,7 @@ class Master {
       run_updates_.push_back(update);
     }
   }
+  bool RecoverSchedules();
   void TickSchedules();
   void StartScheduledRun(const json& run);
   std::shared_ptr<Session> NewSession(const std::string& cwd,
@@ -1151,7 +1090,7 @@ class Master {
   size_t asset_bytes_ = 0;
   int auth_attempts_ = 0;
   httplib::Server server_;
-  std::mutex mutex_, scan_mutex_, history_mutex_, asset_mutex_, presence_mutex_;
+  std::mutex mutex_, scan_mutex_, history_mutex_, asset_mutex_;
   std::map<std::string, FileStamp> history_directories_;
   std::condition_variable changed_;
   std::map<std::string, std::shared_ptr<Session>> sessions_;
@@ -1226,7 +1165,7 @@ void Master::StartScheduledRun(const json& run) {
   }
   std::string error;
   {
-    std::lock_guard lock(mutex_);
+    std::unique_lock lock(mutex_);
     auto session = NewSession(cwd, JsonValue(run, "session_path", ""),
                               JsonValue(run, "title", "Scheduled run"), error);
     if (session) {
@@ -1234,12 +1173,39 @@ void Master::StartScheduledRun(const json& run) {
       session->task_id = JsonValue(run, "task_id", "");
       session->launch = definition;
       session->launch_prompt = JsonValue(definition, "prompt", "");
-      Activate(session, error);
+      Activate(session, error, lock);
       Publish(session->id, session->generation,
               {{"kind", "metadata"}, {"metadata", Metadata(*session)}});
     }
   }
   if (!error.empty()) RecordRun({id, "failed", error});
+}
+bool Master::RecoverSchedules() {
+  const auto stored = ReadSchedules();
+  const auto* runs = JsonArray(stored, "runs");
+  if (!runs) return false;
+  for (const auto& run : *runs) {
+    const auto status = JsonValue(run, "status", "");
+    if (!ScheduledRunActive(status) || status == "queued") continue;
+    const auto id = JsonValue(run, "id", "");
+    std::unique_lock lock(mutex_);
+    auto found = sessions_.find(JsonValue(run, "session_id", ""));
+    bool connected = false;
+    if (found != sessions_.end()) {
+      auto session = found->second;
+      session->run_id = id;
+      session->task_id = JsonValue(run, "task_id", "");
+      std::string error;
+      connected = Activate(session, error, lock, false);
+    }
+    lock.unlock();
+    if (!connected) {
+      RecordRun(
+          {id, "interrupted",
+           "Session runtime unavailable. Inspect this run before retrying."});
+    }
+  }
+  return true;
 }
 void Master::TickSchedules() {
   auto pending_updates = std::exchange(run_updates_, {});
@@ -1278,13 +1244,14 @@ void Master::TickSchedules() {
   if (!JsonArray(schedule_state_, "runs")) return;
   size_t slots = 0;
   std::vector<std::shared_ptr<Session>> closing;
+  std::vector<std::pair<std::shared_ptr<Session>, json>> commands;
   std::vector<RunUpdate> updates;
   {
     std::lock_guard lock(mutex_);
     size_t workers = 0;
     for (auto& [session_id, session] : sessions_) {
-      if (session->pid > 0 && !session->exited) ++workers;
       if (session->run_id.empty()) continue;
+      if (session->pid > 0 && !session->exited) ++workers;
       auto run =
           std::find_if(schedule_state_["runs"].begin(),
                        schedule_state_["runs"].end(), [&](const json& item) {
@@ -1296,20 +1263,19 @@ void Master::TickSchedules() {
       if (prior == "stopping" && !session->stop_sent) {
         session->stop_sent = true;
         session->launch_prompt.clear();
-        session->Send({{"kind", "interrupt"}, {"request_id", RandomToken(16)}});
+        commands.emplace_back(session, json{{"kind", "interrupt"},
+                                            {"request_id", RandomToken(16)}});
         session->run_result = "interrupted";
       }
       if (!session->launch_prompt.empty() && session->state.contains("route") &&
           !session->turn_active && session->pending.is_null()) {
         // The durable claim already exists. A crash never resubmits this run.
         auto prompt = std::exchange(session->launch_prompt, "");
-        if (!session->Send({{"kind", "submit"},
-                            {"request_id", session->run_id},
-                            {"client_request_id", session->run_id},
-                            {"text", prompt}})) {
-          session->error = "cannot submit scheduled run";
-          session->run_result = "failed";
-        }
+        commands.emplace_back(session,
+                              json{{"kind", "submit"},
+                                   {"request_id", session->run_id},
+                                   {"client_request_id", session->run_id},
+                                   {"text", prompt}});
         updates.push_back({session->run_id, "running", ""});
       }
       if (!session->pending.is_null()) {
@@ -1340,13 +1306,20 @@ void Master::TickSchedules() {
                 .contains("error")) {
           continue;
         }
-        auto saved = SavedSession(*session);
-        closing.push_back(std::exchange(session, saved));
-        Publish(saved->id, "",
-                {{"kind", "deactivated"}, {"metadata", Metadata(*saved)}});
+        session->closing = true;
+        session->status = "closing";
+        closing.push_back(session);
       }
     }
-    slots = workers < kWorkerLimit ? kWorkerLimit - workers : 0;
+    slots =
+        workers < kScheduledConcurrency ? kScheduledConcurrency - workers : 0;
+  }
+  for (auto& [session, command] : commands) {
+    if (!session->Send(std::move(command))) {
+      std::lock_guard lock(mutex_);
+      session->error = "cannot deliver scheduled command";
+      session->run_result = "failed";
+    }
   }
   for (auto& session : closing) {
     session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
@@ -1575,6 +1548,13 @@ void Master::Command(const Request& request, Response& response) {
     request_order_.erase(completed);
   }
   std::string kind = JsonValue(command, "kind", "");
+  // Recall targets a queued steer by its own id, never the envelope id:
+  // request ids are single-use receipts and reuse is rejected above.
+  std::string target = JsonValue(command, "target_id", "");
+  if (kind == "recall" && !OpaqueId(target)) {
+    Error(response, "recall needs a queued guidance id", 409);
+    return;
+  }
   json outcome = {{"request_id", request_id}, {"accepted", true}};
   // Reserve before releasing the mutex for any pipe write or process join.
   // A concurrent retry observes this same request instead of enqueueing again.
@@ -1648,7 +1628,8 @@ void Master::Command(const Request& request, Response& response) {
       error = "unknown session";
     } else {
       auto session = found->second;
-      if (session->status == "updating" || session->status == "deleting") {
+      if (session->closing || session->connecting ||
+          session->status == "updating" || session->status == "deleting") {
         error = "conversation update in progress";
       } else if (kind == "fork" && session->pid <= 0) {
         if (JsonValue(command, "generation", "") != session->generation) {
@@ -1712,7 +1693,7 @@ void Master::Command(const Request& request, Response& response) {
       } else if (kind == "delete") {
         error = "stop and close this conversation before deleting it";
       } else if (kind == "activate") {
-        if (Activate(session, error)) {
+        if (Activate(session, error, lock)) {
           outcome["session"] = Metadata(*session);
         }
       } else if (JsonValue(command, "generation", "") != session->generation ||
@@ -1726,23 +1707,27 @@ void Master::Command(const Request& request, Response& response) {
         if (recorded.contains("error")) {
           error = JsonValue(recorded, "error", "cannot record interruption");
         } else {
-          // Keep the catalog entry while releasing process ownership outside
-          // the lock.
-          auto saved = SavedSession(*session);
-          found->second = saved;
-          FailPending(*session);
-          lock.unlock();
-          session->Send({{"kind", "close"}, {"request_id", request_id}});
-          session.reset();
-          lock.lock();
-          Publish(saved->id, "",
-                  {{"kind", "deactivated"}, {"metadata", Metadata(*saved)}});
+          if (session->exited) {
+            Deactivate(*session);
+          } else {
+            session->closing = true;
+            session->status = "closing";
+            PublishMetadata(session->id, *session);
+            lock.unlock();
+            session->Send({{"kind", "close"}, {"request_id", request_id}});
+            lock.lock();
+            // A following activation must not join a runtime still shutting
+            // down. Slow teardown remains visibly closing; other sessions stay
+            // usable.
+            changed_.wait_for(lock, std::chrono::seconds(5),
+                              [&] { return session->exited.load(); });
+          }
         }
       } else if (session->pid <= 0 || session->exited) {
         error = "session needs activation";
       } else if (kind == "submit" || kind == "steer" || kind == "interrupt" ||
-                 kind == "reply" || kind == "refresh" || kind == "rename" ||
-                 kind == "model" || kind == "activity" ||
+                 kind == "recall" || kind == "reply" || kind == "refresh" ||
+                 kind == "rename" || kind == "model" || kind == "activity" ||
                  kind == "permissions" || kind == "config" ||
                  kind == "context" || kind == "fork" || kind == "prompt") {
         command["attachments"] = json::array();
@@ -1816,8 +1801,8 @@ void Master::Command(const Request& request, Response& response) {
         if (error.empty()) {
           // IPC is bounded and per-session; never hold the shared event lock on
           // a pipe write.
-          std::string worker_request = RandomToken(16);
-          command["client_request_id"] = request_id;
+          std::string worker_request = HashHex(device) + HashHex(request_id);
+          command["client_request_id"] = kind == "recall" ? target : request_id;
           command["request_id"] = worker_request;
           session->awaiting[worker_request] = {key, request_id};
           lock.unlock();

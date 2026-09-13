@@ -11,7 +11,6 @@
 
 namespace uagent {
 
-std::string ReplayableImagePath(const json& call, const std::string& result);
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools);
 void PrintModelContext(const json& request);

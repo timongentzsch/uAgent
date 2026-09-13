@@ -23,7 +23,8 @@ export default function Raw({
   const [attempt, setAttempt] = useState(
     Math.max(0, (exchanges?.length || 1) - 1),
   );
-  const [body, setBody] = useState<JSONValue | undefined>(value);
+  const [loaded, setBody] = useState<JSONValue>();
+  const body = value === undefined ? loaded : value;
   const [tab, setTab] = useState<"request" | "response">(part);
   const [source, setSource] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -186,6 +187,8 @@ export default function Raw({
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
         ) : body === undefined ? (
           <Skeleton rows={12} label="Loading full body…" />
+        ) : !text.trim() ? (
+          <p class="muted">No content recorded.</p>
         ) : (
           <pre>{text}</pre>
         )}

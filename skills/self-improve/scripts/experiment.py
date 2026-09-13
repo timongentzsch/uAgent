@@ -1087,7 +1087,7 @@ def command_init(arguments: argparse.Namespace) -> dict[str, Any]:
             "scratch",
             "activity",
             "skill",
-            "uagent_info",
+            "uagent",
         ],
         "instruction": {
             "path": str(instruction),

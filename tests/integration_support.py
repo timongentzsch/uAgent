@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import errno
 import fcntl
 import json
@@ -17,8 +18,10 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# Enough of a PNG for the attachment inspector to accept it.
-SMALL_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+# A decodable image exercises the same preparation path as real attachments.
+SMALL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5WQAAAAASUVORK5CYII="
+)
 
 
 # A sanitized or coverage-instrumented binary starts and renders several times
@@ -327,7 +330,7 @@ def run_pty(
 
     def read_prompt(start=0):
         read_until(
-            b"\x1b[36m> \x1b[0m\x1b[39m\x1b[49m",
+            b"\x1b[1m> \x1b[0m\x1b[39m\x1b[49m",
             min(start, last_match_end),
         )
         time.sleep(0.05)  # the composer finishes raw-mode setup after drawing
@@ -635,6 +638,16 @@ def midturn_compaction_env(home, url):
         }
     )
     return env
+
+
+def saved_json_files(folder, pattern="*.json", *, recursive=False):
+    base = pathlib.Path(folder)
+    return list(base.rglob(pattern) if recursive else base.glob(pattern))
+
+
+def session_files(home):
+    """Saved session files, excluding live mirror sidecars and inbox queues."""
+    return saved_json_files(pathlib.Path(home) / ".uagent" / "history", recursive=True)
 
 
 def wait_until_stopped(pid, timeout=10):

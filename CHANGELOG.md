@@ -4,6 +4,16 @@
 
 ### Added
 
+- `$fusion` coordinates one opt-in retained sidekick through blocking handoffs.
+  The same event-driven session worker preserves its supervised activities,
+  charges cumulative usage deltas to the lead, and appears consistently in CLI
+  and web collaborator views; the lead still owns decisions and final review.
+  Handoffs tighten budgets to the parent remainder, require correlated guidance
+  receipts, preserve cancellation status, and stop after an abrupt parent exit.
+- Shared session runtimes: terminal and web clients submit commands to one private
+  socket and consume the same ordered events. Client exit or web restart detaches
+  without stopping the session. Correlated receipts reject conflicting retries
+  and stale replies; reconnect never automatically repeats uncertain work.
 - Self-improvement baseline preflight and a human review packet with the exact
   patch, measured evidence, agent-assessed impact/generality and recommendation.
   Bind promotion approval to the current review ID; document research support
@@ -12,6 +22,51 @@
   returning only the names of files with matching content.
 
 ### Changed
+
+- Web steering queues guidance without aborting the turn, so steering no
+  longer reports an interruption or kills running tools; passive waits
+  yield on the queued message. The browser's session cost and counters
+  update mid-turn through live (non-checkpoint) state publishes. One
+  status LED (hollow idle, filled attached, breathing while running)
+  replaces the presence dot, activity glyph and connection glyphs in the
+  sidebar, under the composer and on the connection chip. Markdown
+  tables scroll instead of squeezing their columns, long tool labels
+  truncate while their status metadata stays intact, and sidebar rows no
+  longer advertise offline cache state (pin state lives in the
+  conversation menu).
+- Tool activity uses native operation metadata and optional shell/script intent;
+  successful adjacent exploration groups consistently across terminal and web
+  history. Intent never grants permission or proves absence of side effects.
+- `read_path` loads media through the existing model-capability pipeline, replacing
+  the model-facing `attach` tool. `uagent` combines inspection and human-approved
+  configuration; the former tool names are removed.
+- Memory changes have visible receipts in web history; background extraction
+  notices are retained. Terminal replay uses recorded completion status.
+- Replace sidecars, filesystem inboxes and terminal mirroring with runtime
+  checkpoints and bounded event replay. Share native state projection across
+  the runtime and web adapter; retain distinct compaction and turn records.
+- Reconnect scheduled runs after web restart without resubmitting their prompts.
+- Remove duplicate build-matrix legs and obsolete ownership tests; retain focused
+  cross-client, cancellation, security and platform coverage.
+- One agent step renders one web card: the µ header, timestamp and menu
+  appear once per step, follow-up bodies share the step, and thinking and
+  tool rows use body type.
+- Mobile rotation preserves layout scale and respects landscape safe areas;
+  long tool labels remain compact. Scratch receipts retain execution output.
+
+- Remove `show_image`, terminal image rendering/replay and its settings. MCP
+  images use the shared attachment size limit and remain model-readable.
+
+- Persist native turn summaries for shared terminal/web statistics and use
+  compact monochrome terminal styling.
+- Prepare capability-aware attachment payloads from retained originals, with
+  bounded image normalization and explicit delivery labels.
+- Cache web conversations and drafts in IndexedDB for offline reading, with
+  pinned downloads, bounded storage and logout cleanup.
+- Render Mermaid fences locally through lazy loading and isolated SVG images.
+- Remove the old `adapt_system.instructions` API, duplicate OpenRouter flag,
+  image-only web display path and archive ID guessing. Prompt writes use the
+  scoped revision contract; custom routes use `UAGENT_PROVIDER_PROTOCOL`.
 
 - Target self-improvement at shared architectural mechanisms with evidence
   across distinct workflows; treat isolated fixes as incidental findings and
@@ -34,6 +89,11 @@
   preserving tool arguments, response correlation and cancellation.
 
 ### Fixed
+
+- Restore effective-prompt scrolling, centralize dialog spacing and size controls,
+  and distinguish interface scale from conversation text size with live previews.
+- Keep configuration edits stable during initial rendering; remove the delayed
+  effect that could overwrite a newly typed value.
 
 - Verify self-improvement proposals in clean source copies and HOME; allow
   predeclared host verification for tests that exercise native sandboxing.

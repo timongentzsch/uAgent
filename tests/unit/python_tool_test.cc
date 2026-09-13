@@ -46,7 +46,7 @@ void TestPythonTool() {
   const char* prior_path_value = getenv("PATH");
   std::string prior_path = prior_path_value ? prior_path_value : "";
   ProcessSupervisor supervisor;
-  std::vector<Tool> python_tools = BuiltinTools(supervisor, root, false);
+  std::vector<Tool> python_tools = BuiltinTools(supervisor, root);
   const Tool* run = FindTool(python_tools, "run");
   CHECK(run && ToolDescription(*run).find("omit cd") != std::string::npos);
   setenv("PATH", (bin.string() + ":" + prior_path).c_str(), 1);
@@ -191,7 +191,7 @@ void TestPythonTool() {
   } else {
     unsetenv("PATH");
   }
-  auto tools = BuiltinTools(supervisor, root, false);
+  auto tools = BuiltinTools(supervisor, root);
   CHECK(FindTool(tools, "scratch") != nullptr);
 
   std::error_code ec;

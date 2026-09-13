@@ -2,7 +2,9 @@
 
 #include "include/api/capabilities.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
 
 #include "include/core/strings.h"
 
@@ -65,12 +67,26 @@ json HostedToolsJson(bool web_search) {
   return tools;
 }
 
+void ProviderCapabilities::SetInputModalities(const json& modalities) {
+  if (!modalities.is_array() || modalities == input_modalities) return;
+  input_modalities = modalities;
+  image_input = std::find(modalities.begin(), modalities.end(), "image") !=
+                modalities.end();
+  file_input = std::find(modalities.begin(), modalities.end(), "pdf") !=
+                   modalities.end() ||
+               std::find(modalities.begin(), modalities.end(), "file") !=
+                   modalities.end();
+}
+
 void ProviderCapabilities::ResetNegotiated() {
   native_tools = true;
   parallel_tools = true;
   stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
   file_input = true;
+  json modalities = std::move(input_modalities);
+  input_modalities = nullptr;
+  SetInputModalities(modalities);
   reasoning_text = false;
   reasoning_details = false;
   reasoning_content = false;
@@ -95,6 +111,8 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"parallel_tools", parallel_tools},
           {"stream_usage_option", stream_usage_option},
           {"image_input", image_input},
+          {"file_input", file_input},
+          {"input_modalities", input_modalities},
           {"web_search_sources", web_search_sources},
           {"model_catalog_required", model_catalog_required},
           {"raw_slash_models", raw_slash_models},
@@ -149,11 +167,26 @@ RejectedCapability RejectedRouteCapability(
       AsciiLower(result.remote_error_type + " " + result.remote_error_code);
   std::string message = AsciiLower(result.error);
   std::string evidence = structured + " " + message;
+  if (result.http_status != 400 && result.http_status != 422) {
+    return RejectedCapability::kNone;
+  }
   auto unsupported_modality = [&](std::string_view noun) {
-    return evidence.find(noun) != std::string::npos &&
-           (evidence.find("input") != std::string::npos ||
-            evidence.find("support") != std::string::npos ||
-            evidence.find("modalit") != std::string::npos);
+    const bool explicit_rejection =
+        structured.find("unsupported") != std::string::npos ||
+        evidence.find("does not support") != std::string::npos ||
+        evidence.find("not supported") != std::string::npos ||
+        evidence.find("unsupported input") != std::string::npos;
+    const bool invalid_file =
+        evidence.find("size") != std::string::npos ||
+        evidence.find("too large") != std::string::npos ||
+        evidence.find("corrupt") != std::string::npos ||
+        message.find("invalid image") != std::string::npos ||
+        message.find("invalid file") != std::string::npos ||
+        message.find("invalid pdf") != std::string::npos ||
+        evidence.find("format") != std::string::npos ||
+        evidence.find("dimension") != std::string::npos;
+    return explicit_rejection && !invalid_file &&
+           evidence.find(noun) != std::string::npos;
   };
   if (capabilities.image_input && unsupported_modality("image")) {
     return RejectedCapability::kImageInput;

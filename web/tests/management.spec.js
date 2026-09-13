@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 test("library drafts, shared controls and scheduled results", async ({
   page,
   host: fixture,
-}) => {
+}, testInfo) => {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/sw.js", (route) =>
@@ -19,10 +19,19 @@ test("library drafts, shared controls and scheduled results", async ({
   await nav.getByRole("button", { name: "Library", exact: true }).click();
   await page.getByLabel("Project", { exact: true }).fill(fixture.project);
   await page.getByLabel("Project", { exact: true }).press("Tab");
+  const tabs = await page
+    .locator(".management-toolbar .segmented")
+    .boundingBox();
+  const project = await page
+    .getByLabel("Project", { exact: true })
+    .boundingBox();
+  expect(project.x - tabs.x - tabs.width).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Add memory", exact: true }).click();
   await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
   const editor = page.getByLabel("Document content");
-  await editor.fill("# Durable lesson\n\nKeep native controls shared.");
+  await editor.fill(
+    "# Durable lesson\n\nKeep native controls shared.\n\n| Scope | Rule |\n| --- | --- |\n| All clients | Shared events |\n\n```js\nconst shared = true;\n```",
+  );
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
     page.locator(".library-row").filter({ hasText: "browser-lesson" }),
@@ -31,6 +40,13 @@ test("library drafts, shared controls and scheduled results", async ({
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
   await expect(editor).toHaveCount(0);
+  // Markdown styling must work before a conversation has ever loaded.
+  await expect(page.locator(".document-preview table")).toHaveCSS(
+    "border-collapse",
+    "collapse",
+  );
+  await expect(page.locator(".document-preview .code-copy")).toHaveCount(1);
+  await page.screenshot({ path: testInfo.outputPath("library-desktop.png") });
   await expect(
     page.getByRole("button", { name: /^(Source|Preview)$/ }),
   ).toHaveCount(0);
@@ -139,6 +155,16 @@ test("library drafts, shared controls and scheduled results", async ({
   );
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await editor.fill("Temporary mobile edit.");
+  const cancel = await page
+    .getByRole("button", { name: "Cancel", exact: true })
+    .boundingBox();
+  const save = await page
+    .getByRole("button", { name: "Save", exact: true })
+    .boundingBox();
+  expect(save.x - cancel.x - cancel.width).toBeGreaterThan(0);
+  expect(save.y).toBe(cancel.y);
+  expect(save.height).toBe(cancel.height);
+  await page.screenshot({ path: testInfo.outputPath("library-mobile.png") });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(editor).toHaveCount(0);
   await expect(page.locator(".document-preview")).toHaveText(
@@ -215,5 +241,6 @@ test("library drafts, shared controls and scheduled results", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("schedule-mobile.png") });
   expect(errors).toEqual([]);
 });

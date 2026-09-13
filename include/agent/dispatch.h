@@ -6,7 +6,6 @@
 // result is traced, and the guarded execution itself.
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -28,6 +27,7 @@ namespace uagent {
 
 struct CallTask {
   const Tool* tool = nullptr;
+  json activity = json::object();
   json raw_args;
   json args;
   std::vector<std::string> clamped;  // pacing hints pulled to their bound
@@ -36,7 +36,6 @@ struct CallTask {
   std::string trace_status;
   std::string label, ordinal;
   double duration_ms = 0;
-  int64_t completion_order = -1;
   bool execute = false;
   bool started = false;
 };
@@ -130,6 +129,7 @@ inline json ToolResultData(const CallTask& task, const ToolCall& call,
       {"step", step},
       {"id", call.id},
       {"name", call.name},
+      {"activity", task.activity},
       {"status", task.trace_status},
       {"completion_status", CompletionStatusName(task.result.status)},
       {"error_code", ToolErrorCodeName(task.result.error)},
@@ -200,14 +200,11 @@ inline void CancelCall(CallTask& task) {
 
 inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
                         int64_t step, const ToolContext& context,
-                        int64_t global_timeout_s,
-                        std::atomic<int64_t>& completion_sequence) {
+                        int64_t global_timeout_s) {
   auto started = std::chrono::steady_clock::now();
   task.started = true;
   if (SteeringState().Requested() || AbortRequested()) {
     CancelCall(task);
-    task.completion_order =
-        completion_sequence.fetch_add(1, std::memory_order_relaxed);
     EmitToolResultObservation(task, call, turn, step);
     return;
   }
@@ -239,8 +236,6 @@ inline void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
     task.trace_status = task.result.Ok() ? "ok" : "error";
   }
   task.duration_ms = ElapsedMs(started);
-  task.completion_order =
-      completion_sequence.fetch_add(1, std::memory_order_relaxed);
   EmitToolResultObservation(task, call, turn, step);
 }
 

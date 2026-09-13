@@ -14,7 +14,10 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
+#include "include/api/citations.h"
+#include "include/core/debug.h"
 #include "include/core/strings.h"
 #include "include/core/style.h"
 #include "include/core/term.h"
@@ -22,6 +25,43 @@
 #include "include/ui/interactive.h"
 
 namespace uagent {
+
+bool PrintSearchReceipt(int64_t searches, const json& annotations, bool details,
+                        bool line_open) {
+  std::vector<CitationEntry> sources = CitationEntries(annotations);
+  if (searches <= 0 && sources.empty()) return false;
+  if (line_open) printf("\n");
+  std::string source_summary =
+      sources.empty() ? "source details unavailable"
+                      : std::to_string(sources.size()) + " source" +
+                            (sources.size() == 1 ? "" : "s");
+  if (searches > 0) {
+    printf("%s  ← web_search ×%s · %s%s\n", DIM(),
+           std::to_string(searches).c_str(), source_summary.c_str(), RST());
+  } else {
+    printf("%s  ← %s%s\n", DIM(), source_summary.c_str(), RST());
+  }
+  if (!details) return true;
+  for (const CitationEntry& source : sources) {
+    const std::string& label = source.title.empty() ? source.url : source.title;
+    printf("%s    %s · %s%s\n", DIM(), TerminalSafe(label).c_str(),
+           TerminalSafe(source.url).c_str(), RST());
+    if (!source.content.empty()) {
+      printf("%s      %s%s\n", DIM(), TerminalSafe(source.content).c_str(),
+             RST());
+    }
+  }
+  return true;
+}
+
+void PrintCitationSources(const json& annotations) {
+  std::vector<CitationEntry> sources = CitationEntries(annotations);
+  if (sources.empty()) return;
+  printf("\n%sSources:%s\n", DIM(), RST());
+  for (const CitationEntry& source : sources) {
+    printf("%s- <%s>%s\n", DIM(), TerminalSafe(source.url).c_str(), RST());
+  }
+}
 
 namespace {
 
@@ -144,6 +184,11 @@ void AppendRolling(std::string& buffer, std::string_view value) {
 // in the scrollback for something the user did not ask to see individually.
 constexpr const char* kSearchingActivity = "searching the web";
 
+void PrintMessageHeader() {
+  if (!g_tty) return;
+  printf("%s%s%s\n", BOLD(), g_unicode ? "µ" : "u", RST());
+}
+
 struct TerminalPresenter::State {
   explicit State(const Event& event)
       : render(event.render),
@@ -159,6 +204,10 @@ struct TerminalPresenter::State {
   void Text(std::string_view value) {
     if (!render) return;
     BeginOutput();
+    if (!header_printed) {
+      PrintMessageHeader();
+      header_printed = true;
+    }
     if (in_reasoning) {
       markdown.Control(RST());
       if (line_open) markdown.FeedPlain("\n");
@@ -217,6 +266,10 @@ struct TerminalPresenter::State {
     }
 
     BeginOutput();
+    if (!header_printed) {
+      PrintMessageHeader();
+      header_printed = true;
+    }
     std::string style = std::string(RST()) + MUTED() + ITAL();
     if (!in_reasoning) {
       if (content_started && line_open) markdown.FeedPlain("\n");
@@ -265,6 +318,7 @@ struct TerminalPresenter::State {
     markdown.Flush();
   }
 
+  bool header_printed = false;
   bool render = false;
   bool full_reasoning = false;
   bool in_reasoning = false;
@@ -281,8 +335,59 @@ struct TerminalPresenter::State {
 TerminalPresenter::TerminalPresenter() = default;
 TerminalPresenter::~TerminalPresenter() { Finish(); }
 
+std::string TurnStatsLine(const json& summary) {
+  const json usage = JsonValue(summary, "usage", json::object());
+  auto n = [&](const char* key) { return JsonValue(usage, key, int64_t{0}); };
+  std::string line = FmtCount(n("input")) + " in";
+  for (auto [key, label] : {std::pair{"cache_read", " cached"},
+                            std::pair{"cache_write", " cache write"}}) {
+    if (n(key)) line += " (+" + FmtCount(n(key)) + label + ")";
+  }
+  line += " · " + FmtCount(n("output")) + " out";
+  if (n("reasoning")) line += " (+" + FmtCount(n("reasoning")) + " reasoning)";
+  if (!JsonValue(summary, "usage_reported", true)) line = "usage not reported";
+  if (n("web_searches")) {
+    line += " · " + FmtCount(n("web_searches")) + " searches";
+  }
+  if (JsonValue(usage, "cost_reported", false)) {
+    line += " · " + FmtCost(JsonValue(usage, "cost", 0.0));
+  }
+  int64_t tools = JsonValue(summary, "tool_calls", int64_t{0});
+  if (tools) line += " · " + FmtCount(tools) + " tools";
+  double rate = JsonValue(summary, "tokens_per_second", 0.0);
+  if (rate > 0) line += " · " + FmtCount(static_cast<int64_t>(rate)) + " tok/s";
+  double first = JsonValue(summary, "ttt_ms", -1.0);
+  if (first >= 0) line += " · first " + FmtDuration(first / 1000);
+  return AsciiGlyphs(
+      line + " · " +
+      FmtDuration(JsonValue(summary, "duration_ms", 0.0) / 1000));
+}
+
 void TerminalPresenter::Consume(const Event& event) noexcept {
   switch (event.id) {
+    case EventId::kToolResult:
+      break;  // The grouped result presentation follows result bookkeeping.
+    case EventId::kResponseSources:
+      Finish();
+      if (event.render) {
+        PrintSearchReceipt(JsonValue(event.data, "searches", int64_t{0}),
+                           event.data["annotations"], event.verbose,
+                           JsonValue(event.data, "line_open", false));
+        if (JsonValue(event.data, "citations", false)) {
+          PrintCitationSources(event.data["annotations"]);
+        }
+      }
+      break;
+    case EventId::kTurnCompleted:
+      Finish();
+      if (event.render) {
+        std::string footer =
+            (JsonValue(event.data, "line_open", false) ? "\n" : "") +
+            std::string(RST()) + DIM() + TurnStatsLine(event.data) + RST() +
+            "\n";
+        fputs(footer.c_str(), stdout);
+      }
+      break;
     case EventId::kResponseStarted:
       Finish();
       state_ = std::make_unique<State>(event);
@@ -308,6 +413,75 @@ void TerminalPresenter::Consume(const Event& event) noexcept {
   }
 }
 
+void TerminalPresenter::Consume(const AppEvent& received) noexcept {
+  for (int index = 0; index <= static_cast<int>(EventId::kPresentation);
+       ++index) {
+    auto id = static_cast<EventId>(index);
+    if (received.type != PolicyFor(id).app_type) continue;
+    Event event{id, received.data};
+    std::string text = JsonValue(received.data, "text", "");
+    event.text = text;
+    event.render = true;
+    event.verbose = JsonValue(received.data, "verbose", false);
+    if (const json* value = JsonObject(received.data, "presentation")) {
+      PresentationRecord record;
+      auto kind = JsonValue(*value, "kind", "");
+      record.kind = kind == "tool_call"     ? PresentationKind::kToolCall
+                    : kind == "tool_result" ? PresentationKind::kToolResult
+                                            : PresentationKind::kNotice;
+      auto status = JsonValue(*value, "status", "");
+      record.status = status == "succeeded"   ? PresentationStatus::kSucceeded
+                      : status == "failed"    ? PresentationStatus::kFailed
+                      : status == "cancelled" ? PresentationStatus::kCancelled
+                      : status == "warned"    ? PresentationStatus::kWarned
+                                              : PresentationStatus::kNeutral;
+      record.title = JsonValue(*value, "title", "");
+      record.summary = JsonValue(*value, "summary", "");
+      record.detail = JsonValue(*value, "detail", "");
+      record.change = JsonValue(*value, "change", "");
+      record.multiline = JsonValue(*value, "multiline", false);
+      record.id = JsonValue(*value, "id", "");
+      record.skill = JsonValue(*value, "skill", false);
+      record.poll = JsonValue(*value, "poll", false);
+      record.activity = JsonValue(*value, "activity", json::object());
+      if (const json* artifacts = JsonArray(*value, "artifacts")) {
+        for (const auto& artifact : *artifacts) {
+          record.artifacts.push_back({JsonValue(artifact, "kind", ""),
+                                      JsonValue(artifact, "path", ""),
+                                      JsonValue(artifact, "bytes", size_t{0})});
+        }
+      }
+      event.presentation = std::move(record);
+    }
+    Consume(event);
+    break;
+  }
+}
+
+void TerminalPresenter::Block(const json& block) {
+  const std::string kind = JsonValue(block, "kind", "");
+  const std::string text = TerminalSafe(JsonValue(block, "text", ""));
+  if (kind == "user" || kind == "attachment") {
+    WriteTerminalRecord(UserEchoRow(InputPrompt(), text) + "\n");
+  } else if (kind == "assistant") {
+    PrintMessageHeader();
+    MdPrint(text);
+  } else if (kind == "turn_summary") {
+    WriteTerminalRecord(
+        TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
+  } else if (kind == "compaction") {
+    WriteTerminalRecord("Context compacted\n");
+  } else if (kind == "activity") {
+    WriteTerminalRecord("· " + text + "\n");
+  } else if (kind == "tool_result") {
+    json activity = JsonValue(block, "activity", json::object());
+    WriteTerminalRecord(
+        TerminalSafe(JsonValue(activity, "label",
+                               JsonValue(block, "name", "Activity"))) +
+        " · " + JsonValue(block, "status", "") + "\n");
+  }
+}
+
 void TerminalPresenter::Finish() noexcept {
   if (!state_) return;
   state_->Finish();
@@ -326,22 +500,33 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
     // A skill is a procedure the rest of the turn follows, so it is worth
     // finding in the scrollback later; ◆ already marks that class of event.
     if (record.skill && !record.summary.empty()) {
-      WriteTerminalRecord(std::string(BOLD()) + BLUE() +
-                          AsciiGlyphs("◆ skill ") +
+      WriteTerminalRecord(std::string(BOLD()) + AsciiGlyphs("◆ skill ") +
                           TerminalSafe(record.summary) + RST() + "\n");
       return;
     }
     if (record.poll) return;
-    std::string body = AsciiGlyphs("→ ") + TerminalSafe(record.title);
+    std::string category = JsonValue(record.activity, "category", "");
+    std::string prefix = category == "explore"  ? "Exploring · "
+                         : category == "change" ? "Editing · "
+                                                : "";
+    std::string body = AsciiGlyphs("→ ") + prefix + TerminalSafe(record.title);
     if (record.multiline && !record.detail.empty()) {
       body += '\n' + TerminalSafe(record.detail);
     } else if (!record.summary.empty()) {
       body += '(' + TerminalSafe(record.summary) + ')';
     }
-    WriteTerminalRecord(StyledBlock(body, CYAN()));
+    WriteTerminalRecord(StyledBlock(body, BOLD()));
     return;
   }
   if (record.kind != PresentationKind::kToolResult) return;
+
+  if (const auto group = record.activity.find("group");
+      group != record.activity.end()) {
+    if (JsonValue(*group, "id", "") == record.id) {
+      WriteTerminalRecord(StyledBlock(JsonValue(*group, "label", ""), DIM()));
+    }
+    return;
+  }
 
   if (record.poll) {
     const char* style = ResultStyle(record.status);
@@ -365,7 +550,7 @@ void PrintPresentation(const PresentationRecord& record) noexcept {
       }
       WriteTerminalRecord(output);
     }
-    return;  // a change is told entirely by its diff
+    if (record.summary.empty() && record.detail.empty()) return;
   }
 
   const char* style = ResultStyle(record.status);

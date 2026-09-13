@@ -14,6 +14,7 @@ export interface ActivityProps {
   collaborators?: Collaborator[];
   target?: Block | null;
   clearTarget: () => void;
+  cwd: string;
   running?: boolean;
   session: SessionRef;
   online: boolean;
@@ -21,15 +22,19 @@ export interface ActivityProps {
 }
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Bot, Terminal, Square } from "lucide-preact";
-import { command } from "./store.ts";
-import { cleanText, Modal, Skeleton, LoadError } from "./ui.tsx";
+import { command, readPages } from "./store.ts";
+import { cleanText, Modal, Skeleton, LoadError, IconButton } from "./ui.tsx";
 
 import { active } from "./activity-status.tsx";
+import { manage } from "./management.tsx";
+import Markdown from "./markdown-view.tsx";
+import { MessageRows } from "./message.tsx";
 export default function Activities({
   items = [],
   collaborators = [],
   target,
   clearTarget,
+  cwd,
   running,
   session,
   online,
@@ -59,16 +64,16 @@ export default function Activities({
         id: undefined,
         agent_id: child.id,
         kind: "agent",
-        status: "idle",
+        status: child.status || "idle",
       })),
   ];
-  const live = items.some(active);
+  const live = rows.some(active);
   useEffect(() => {
     if (!live) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [live]); // Display clock only; runtime updates arrive through SSE.
-  async function inspect(item: Activity, before?: number) {
+  async function inspect(item: ActivityDetail, before?: number) {
     const version = ++inspection.current;
     if (!before)
       setDetail((prior) =>
@@ -79,6 +84,20 @@ export default function Activities({
     setLoading(true);
     setError(null);
     try {
+      if (item.memory) {
+        const result = await manage("memory", {
+          action: "get",
+          cwd,
+          key: item.memory.key,
+        });
+        if (version !== inspection.current) return;
+        if (!result.item || result.item.error)
+          throw new Error(
+            result.item?.error || "Memory is no longer available.",
+          );
+        setDetail({ ...item, output: result.item.content || "" });
+        return;
+      }
       const response = await command("activity", session, {
         operation: "inspect",
         activity_id: item.id || item.activity_id || 0,
@@ -111,17 +130,37 @@ export default function Activities({
   }
   useEffect(() => {
     if (!target) return;
-    inspect({ activity_id: target.activity_id, agent_id: target.agent_id });
+    const item = items.find((item) => item.id === target.activity_id);
+    const receipt = {
+      ...item,
+      activity_id: target.activity_id,
+      agent_id: target.agent_id,
+      label: target.activity?.label || "Recorded event",
+      status: target.status,
+      memory: target.memory,
+      output: target.text,
+    };
+    if (item || target.agent_id || target.memory) inspect(receipt);
+    else {
+      ++inspection.current;
+      setDetail(receipt);
+      setError(null);
+      setLoading(false);
+    }
     clearTarget();
   }, [target]);
   useEffect(() => {
     if (!detail) return;
-    const item = items.find((item) => item.id === detail.id);
+    const item = rows.find((item) =>
+      detail.agent_id
+        ? item.agent_id === detail.agent_id
+        : item.id === detail.id,
+    );
     if (!item) return;
     // Coalesce output events while the detail is open; no status polling.
     const timer = setTimeout(() => inspect(item).catch(report), 150);
     return () => clearTimeout(timer);
-  }, [items, detail?.id]);
+  }, [items, collaborators, detail?.id, detail?.agent_id]);
   async function act(item: Activity, operation: string) {
     setBusy(true);
     try {
@@ -156,11 +195,10 @@ export default function Activities({
     (item) => !active(item) && item.status !== "failed",
   );
   const currentDetail =
-    items.find(
-      (item) =>
-        detail?.agent_id && item.agent_id === detail.agent_id && active(item),
+    rows.find(
+      (item) => detail?.agent_id && item.agent_id === detail.agent_id,
     ) ||
-    items.find((item) => item.id && item.id === detail?.id) ||
+    rows.find((item) => item.id && item.id === detail?.id) ||
     detail;
   return (
     <div class="activity-panel">
@@ -195,15 +233,13 @@ export default function Activities({
                 )}
               </button>
               {active(item) && (
-                <button
-                  type="button"
-                  class="quiet"
+                <IconButton
+                  label={`Stop ${item.label}`}
                   disabled={!online || busy || item.status === "stopping"}
-                  aria-label={`Stop ${item.label}`}
                   onClick={() => act(item, "stop")}
                 >
                   <Square />
-                </button>
+                </IconButton>
               )}
             </div>
           ))}
@@ -219,7 +255,9 @@ export default function Activities({
       </div>
       {detail && (
         <Modal
-          title={detail.label || "Activity"}
+          title={
+            detail.memory ? "Memory" : detail.agent_id ? "Subagent" : "Activity"
+          }
           className="activity-view"
           close={() => {
             ++inspection.current;
@@ -228,9 +266,29 @@ export default function Activities({
         >
           {error && <LoadError error={error} retry={() => inspect(detail)} />}
           {loading && <Skeleton label="Loading activity…" />}
-          <p>
-            {currentDetail?.status} · {detail.model || detail.kind}
+          <p class="detail-label">{detail.label}</p>
+          <p class="muted">
+            {currentDetail?.status}
+            {detail.model && ` · ${detail.model}`}
           </p>
+          {detail.directive && (
+            <details>
+              <summary>Persistent directive</summary>
+              <Markdown text={detail.directive} />
+            </details>
+          )}
+          {detail.system_prompt && (
+            <details class="prompt-disclosure">
+              <summary>System prompt</summary>
+              <pre>{detail.system_prompt}</pre>
+            </details>
+          )}
+          {detail.memory && (
+            <p class="muted">
+              Current memory · {detail.memory.key}. It may have changed since
+              this event.
+            </p>
+          )}
           {detail.statistics && (
             <p class="muted">
               {count(detail.turns)} turns ·{" "}
@@ -241,7 +299,6 @@ export default function Activities({
           )}
           {detail.conversation ? (
             <>
-              <h3>Child conversation</h3>
               {detail.conversation.more && (
                 <button
                   onClick={() =>
@@ -251,30 +308,39 @@ export default function Activities({
                   Load older child messages
                 </button>
               )}
-              {detail.conversation.blocks.map((block) => (
-                <details
-                  key={block.id}
-                  open={
-                    ["user", "assistant"].includes(block.kind) &&
-                    !block.tools?.length
+              <div class="child-thread" aria-label="Subagent task">
+                <MessageRows
+                  blocks={detail.conversation.blocks}
+                  read={(id, raw, signal) =>
+                    readPages(async (offset) => {
+                      const response = await command("activity", session, {
+                        operation: "inspect",
+                        agent_id: detail.agent_id,
+                        detail: id,
+                        raw,
+                        offset,
+                      });
+                      const body = response.pending
+                        ? undefined
+                        : response.result?.body;
+                      if (!body) throw new Error("Message is unavailable.");
+                      return body;
+                    }, signal)
                   }
-                >
-                  <summary>
-                    {block.kind}{" "}
-                    {block.time &&
-                      `· ${new Date(block.time).toLocaleTimeString()}`}
-                    {block.route && ` · ${block.route}`}
-                  </summary>
-                  <pre>
-                    {cleanText(
-                      block.text || JSON.stringify(block.tools, null, 2),
-                    )}
-                  </pre>
-                </details>
-              ))}
+                  online={online}
+                  session={session}
+                  report={report}
+                />
+              </div>
             </>
+          ) : detail.memory ? (
+            <Markdown text={detail.output || ""} />
           ) : (
-            <pre>{cleanText(detail.output || "No output yet.")}</pre>
+            <pre>
+              {cleanText(
+                detail.output || (loading ? "" : "No output recorded."),
+              )}
+            </pre>
           )}
           {detail.conversation && detail.output && (
             <details>

@@ -2,7 +2,7 @@
 
 #ifndef UAGENT_INCLUDE_APP_COMMANDS_H_
 #define UAGENT_INCLUDE_APP_COMMANDS_H_
-// Slash commands and the session session they read or change.
+// Slash commands and the session state they read or change.
 
 #include <cstdint>
 #include <string>
@@ -45,7 +45,8 @@ void SaveSessionSettings(AppSession& session);
 StatusView SessionStatusView(const AppSession& session);
 json SessionControl(AppSession& session, const json& request);
 json PermissionControl(AppContext& context, const json& request);
-json ActivityControl(ProcessSupervisor& processes, const json& request);
+json ActivityControl(ProcessSupervisor& processes, const json& request,
+                     CollaboratorRuntime* runtime = nullptr);
 std::string ActivityText(const json& result);
 json ActivityCommand(AppSession& session, const ParsedSlashCommand& command);
 

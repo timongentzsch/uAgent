@@ -28,16 +28,10 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
             (JsonValue(args, "action", "set") == "edit" &&
              state.instructions.empty()));
   };
-  auto normalize = [&state](const json& args) {
+  auto normalize = [](const json& args) {
     auto request = args;
     request["action"] = JsonValue(args, "action", "set");
     request["scope"] = JsonValue(args, "scope", "conversation");
-    if (args.contains("instructions")) {
-      request["text"] = Trim(JsonValue(args, "instructions", ""));
-      request["mode"] = "overlay";
-      request["revision"] = std::to_string(state.revision);
-      if (request["text"] == "") request["action"] = "reset";
-    }
     return request;
   };
   struct Prepared {
@@ -54,8 +48,6 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
       "replaces one exact old/new match, reset inherits. "
       "Global/project writes and complete replacements require human approval, "
       "including in YOLO. "
-      "Legacy instructions replaces only the conversation overlay (empty "
-      "clears it). "
       "Self-adaptation is an exception, not a planning ritual: name the "
       "triggering observation and material strategy delta. "
       "Prompt text cannot change host permissions, tools or limits.",
@@ -67,11 +59,10 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
         "text":{"type":"string","maxLength":65536},
         "old":{"type":"string","description":"unique exact text to replace"},
         "new":{"type":"string"},
-        "instructions":{"type":"string","maxLength":65536,"description":"legacy conversation overlay; empty clears"},
         "reason":{"type":"string","minLength":1,"maxLength":512,"description":"triggering observation and material strategy delta; required for writes"}
-      }})"),
-      [&state, control, normalize, mandatory, proposals](const json& args,
-                                                         const ToolContext&) {
+      },"required":["action"]})"),
+      [control, normalize, mandatory, proposals](const json& args,
+                                                 const ToolContext&) {
         auto request = normalize(args);
         if (mandatory(args)) {
           auto entry = proposals->extract(HashHex(JsonDump(args)));
@@ -95,11 +86,6 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
             Trim(JsonValue(args, "reason", "")).empty()) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
                              "reason must not be blank");
-        }
-        if (args.contains("instructions") &&
-            request["text"] == state.instructions && state.mode == "overlay") {
-          return ToolFailure(ToolErrorCode::kInvalidArguments,
-                             "mutable system directive is unchanged");
         }
         if (JsonValue(request, "text", "").size() > kAdaptiveSystemBytes) {
           return ToolFailure(ToolErrorCode::kInvalidArguments,
@@ -146,14 +132,6 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
   };
   tool.validate =
       [normalize](const json& args) -> std::optional<ToolArgumentIssue> {
-    if (args.contains("instructions") &&
-        (args.contains("action") || args.contains("scope") ||
-         args.contains("mode") || args.contains("text"))) {
-      return ArgumentIssue(
-          "prompt.legacy",
-          "instructions cannot be combined with the scoped API",
-          "instructions");
-    }
     auto request = normalize(args);
     if (request["action"] != "show" &&
         Trim(JsonValue(args, "reason", "")).empty()) {

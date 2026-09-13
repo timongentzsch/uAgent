@@ -104,7 +104,14 @@ def main():
             case_root.mkdir(parents=True)
             home.mkdir(parents=True)
             started = time.monotonic()
-            ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
+            try:
+                ALL_TESTS[name](case_root, home, binary=arguments.binary.resolve())
+            finally:
+                from session_support import stop_sessions
+
+                stop_sessions(home)
+                for state in case_root.rglob(".uagent"):
+                    stop_sessions(state.parent)
             print(f"passed {name} ({time.monotonic() - started:.3f}s)", flush=True)
         print(f"all {len(names)} {label} integration tests passed")
 

@@ -41,19 +41,18 @@ conversation counters, and browser asset references. It is separate
 from provider messages and supports read-only browsing of retained history after
 model-context pruning. It adds no second conversation log. Web uploads preserve
 original files; the existing provider representation can also remain inline in
-the snapshot. See [the web guide](WEB.md) for storage bounds and unavailable
-legacy preview behavior.
+the snapshot. See [the web guide](WEB.md) for storage and live transport bounds.
 
-CLI/web sessions hold per-conversation writer leases. Independent conversations
-can share a workspace; obsolete workspace lock files are ignored.
+Each runtime holds a per-conversation writer lease. CLI and web clients connect
+to it without taking a competing lease. Independent conversations can share a
+workspace.
 Companion lock files stay in place when released; ownership is the open locked
 descriptor, not file existence or a PID. Failed validation or resume leaves the
 previous live conversation and its ownership intact. An optional `custom_title`
 header field preserves explicit names independently of automatic title selection.
 
 The session snapshot retains tool calls and results used to rebuild the visible
-timeline. Successful `show_image` entries are retransmitted from their recorded
-paths; image bytes are not stored. Missing or invalid paths are skipped safely.
+timeline.
 Successful file reads delivered without truncation carry optional
 `_uagent_read_range` metadata (`[path, first_line, last_line]`) in their saved
 tool message. This supports superseded-read pruning after resume; wire adapters
@@ -68,14 +67,16 @@ must ship an explicit, tested conversion or start a new session. Interrupted
 writes leave the prior valid record intact; malformed files remain available
 for diagnosis.
 
-Collaborators have durable logical identities even though each follow-up is a
-new supervised child process. Their private metadata records the originating
-workspace and route options; the adjacent atomic session snapshot is the
-conversation authority. Queued messages persist in metadata until a follow-up
-launch succeeds. Metadata and session files are pruned together at startup by
-the debug-retention bounds (`UAGENT_DEBUG_DAYS` and `UAGENT_DEBUG_FILES`). Live
-activity ownership, PTY state, and incremental buffers remain process-local and
-are not reconstructed after a coordinator exits.
+Collaborators have durable logical identities. Ordinary follow-ups start a new
+supervised child from the adjacent atomic session snapshot. A collaborator
+spawned with `persistent=true` keeps one session worker and its supervised
+processes alive between blocking handoffs until it is stopped or its parent
+exits. Its private metadata records the originating workspace and fixed route
+options; the snapshot remains conversation authority. Queued messages persist
+until a follow-up launch succeeds. Metadata and session files are pruned
+together at startup by `UAGENT_DEBUG_DAYS` and `UAGENT_DEBUG_FILES`. A saved
+conversation can resume after coordinator restart, but live activities, PTY
+state and incremental buffers cannot.
 
 µAgent deliberately does not add a second canonical "rollout" log. The atomic
 session snapshot is replay authority, the bounded journal is operational

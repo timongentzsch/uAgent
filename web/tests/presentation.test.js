@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/format.ts";
 import { formatEventStream } from "../src/event-stream.ts";
 import { count, bytes } from "../src/quantities.ts";
-import { presentMessages } from "../src/message-view.ts";
+import { presentMessages, showsHeader } from "../src/message-view.ts";
 
 test("JSON display preserves large numbers, escapes, duplicate keys and arrays", () => {
   const raw =
@@ -128,6 +128,75 @@ test("tool presentation joins parallel results by ID and keeps model metadata", 
   assert.deepEqual(blocks, before);
 });
 
+test("async receipts retain their kind and do not claim an agent turn", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    {
+      id: "m-8",
+      kind: "activity",
+      activity_id: 1073741824,
+      activity: { category: "execute", label: "activity 1073741824" },
+      text: "activity 1073741824 completed",
+      status: "completed",
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].id, "m-8");
+  assert.equal(showsHeader(rows[1]), false);
+  assert.equal(rows[1].kind, "activity");
+  assert.equal(rows[1].activity?.category, "execute");
+});
+
+test("actor mark lands on the first agent row of each turn", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "hi" },
+    { id: "m1", kind: "assistant", text: "a" },
+    { id: "t1", kind: "tool_result", call_id: "c1", text: "r" },
+    { id: "m2", kind: "assistant", text: "b" },
+    { id: "u2", kind: "user", text: "again" },
+    { id: "t2", kind: "tool_result", call_id: "c2", text: "r2" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => !!row.firstOfTurn),
+    [false, true, false, false, false, true],
+  );
+});
+
+test("one header per step: user rows open, only the first agent row flags", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "hi" },
+    { id: "m1", kind: "assistant", text: "a", turn_root: "m1" },
+    {
+      id: "t1",
+      kind: "tool_result",
+      call_id: "c1",
+      text: "r",
+      turn_root: "m1",
+    },
+    { id: "m2", kind: "assistant", text: "b", turn_root: "m1" },
+    { id: "u2", kind: "user", text: "again" },
+    { id: "m3", kind: "assistant", text: "c", turn_root: "m3" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => showsHeader(row)),
+    [true, true, false, false, true, true],
+  );
+});
+
+test("tool-sourced attachments join the agent side, uploads reset it", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "hi" },
+    { id: "a1", kind: "attachment", origin: "tool", text: "shot" },
+    { id: "m1", kind: "assistant", text: "a" },
+    { id: "a2", kind: "attachment", text: "mine" },
+    { id: "m2", kind: "assistant", text: "b" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => !!row.firstOfTurn),
+    [false, true, false, false, true],
+  );
+});
+
 test("reused IDs, incomplete calls and orphaned results remain in their own turns", () => {
   const result = presentMessages([
     { id: "user-1", kind: "user" },
@@ -215,4 +284,47 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
       "First line\n      Second line",
     ),
   );
+});
+
+test("native exploration membership survives reversed results and keeps boundaries", () => {
+  const group = { id: "a", label: "Explored · 2 calls" };
+  const blocks = [
+    { id: "request", kind: "user", text: "Inspect" },
+    {
+      id: "calls",
+      kind: "assistant",
+      tools: [
+        { id: "a", name: "read_path" },
+        { id: "b", name: "run" },
+      ],
+    },
+    {
+      id: "result-b",
+      kind: "tool_result",
+      call_id: "b",
+      text: "B",
+      activity: { category: "explore", group },
+    },
+    {
+      id: "result-a",
+      kind: "tool_result",
+      call_id: "a",
+      text: "A",
+      activity: { category: "explore", group },
+    },
+    { id: "answer", kind: "assistant", text: "Done" },
+    { id: "failed", kind: "tool_result", status: "failed", text: "error" },
+  ];
+  const rows = presentMessages(blocks);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["request", "result-a", "answer", "failed"],
+  );
+  assert.deepEqual(
+    rows[1].children.map((row) => row.text),
+    ["A", "B"],
+  );
+  assert.equal(rows[1].children[1].name, "run");
+  assert.deepEqual(presentMessages(structuredClone(blocks)), rows);
+  assert.ok(!blocks[1].children);
 });

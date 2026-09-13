@@ -17,6 +17,7 @@ export default function PromptEditor({
   version,
   scope: initialScope,
   edit = false,
+  lastSent,
 }: {
   session?: Session;
   projects: string[];
@@ -24,6 +25,7 @@ export default function PromptEditor({
   version: number;
   scope?: string;
   edit?: boolean;
+  lastSent?: string;
 }) {
   const active =
     session?.generation &&
@@ -31,12 +33,7 @@ export default function PromptEditor({
       ? session
       : undefined;
   const [scope, setScope] = useState(
-    initialScope ||
-      (active && !active.turn_active
-        ? "conversation"
-        : session
-          ? "project"
-          : "global"),
+    initialScope || (active ? "conversation" : session ? "project" : "global"),
   );
   const [cwd, setCwd] = useState(session?.cwd || projects[0] || "");
   const [loaded, setLoaded] = useState<{ key: string; value: PromptResult }>();
@@ -50,7 +47,8 @@ export default function PromptEditor({
   const openEditor = useRef(edit);
   const target =
     active?.cwd === cwd && !active?.turn_active ? active : undefined;
-  const key = `uagent-prompt-${scope}-${scope === "global" ? "" : scope === "conversation" ? target?.id : cwd}`;
+  const inFlight = scope === "conversation" && !!active?.turn_active;
+  const key = `uagent-prompt-${scope}-${scope === "global" ? "" : scope === "conversation" ? active?.id : cwd}`;
   const data = loaded?.key === key ? loaded.value : undefined;
   const storage = sessionStorage;
   const request = async (fields: CommandFields) => {
@@ -72,6 +70,7 @@ export default function PromptEditor({
   useEffect(() => {
     const current = ++sequence.current;
     setError(null);
+    if (inFlight) return;
     if (online)
       request({ action: "show" })
         .then((value) => {
@@ -88,7 +87,7 @@ export default function PromptEditor({
     return () => {
       ++sequence.current;
     };
-  }, [key, target?.generation, online, version, attempt]);
+  }, [key, target?.generation, online, version, attempt, inFlight]);
   function editable(value: PromptResult): PromptDocument {
     return value.item.mode === "inherit"
       ? { ...value.item, mode: "replace", text: value.inherited[scope] || "" }
@@ -141,21 +140,25 @@ export default function PromptEditor({
           >
             <option value="global">Global</option>
             <option value="project">Project</option>
-            {active && (
-              <option value="conversation" disabled={active.turn_active}>
-                This conversation
-              </option>
-            )}
+            {active && <option value="conversation">This conversation</option>}
           </Select>
         </Field>
         {scope === "project" && (
           <ProjectField value={cwd} projects={projects} change={setCwd} />
         )}
       </div>
-      {error && (
+      {inFlight ? (
+        <section class="prompt-current">
+          <p class="muted">
+            Current request · changes apply after it finishes.
+          </p>
+          <pre aria-label="Effective system prompt">
+            {lastSent || "The system prompt has not been sent yet."}
+          </pre>
+        </section>
+      ) : error ? (
         <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
-      )}
-      {!data ? (
+      ) : !data ? (
         !error && <Skeleton rows={12} label="Loading system prompt…" />
       ) : (
         <>
@@ -240,48 +243,6 @@ export default function PromptEditor({
                   </pre>
                 </>
               )}
-              <div class="dialog-actions">
-                {draft ? (
-                  <>
-                    <button
-                      disabled={!online || busy}
-                      onClick={() => perform("preview")}
-                    >
-                      Preview changes
-                    </button>
-                    <button
-                      disabled={!online || busy}
-                      onClick={() => perform("set")}
-                    >
-                      Save
-                    </button>
-                    <button disabled={busy} onClick={() => update(null)}>
-                      Discard edit
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    disabled={!online || busy}
-                    onClick={() => update(editable(data))}
-                  >
-                    {data.item.mode === "inherit"
-                      ? "Edit inherited prompt"
-                      : "Edit"}
-                  </button>
-                )}
-                {data.item.mode !== "inherit" && (
-                  <button
-                    disabled={!online || busy}
-                    onClick={() => perform("reset")}
-                  >
-                    Reset to inherited
-                  </button>
-                )}
-              </div>
-              <small class="muted">
-                Saves apply to the next model request. Unsent edits stay in this
-                browser tab.
-              </small>
             </section>
             <section>
               <h3>
@@ -320,6 +281,52 @@ export default function PromptEditor({
               )}
             </section>
           </div>
+          <div class="dialog-actions">
+            {data.item.mode !== "inherit" && (
+              <button
+                disabled={!online || busy}
+                onClick={() => perform("reset")}
+              >
+                Reset to inherited
+              </button>
+            )}
+            {draft ? (
+              <>
+                <button disabled={busy} onClick={() => update(null)}>
+                  Discard edit
+                </button>
+                <button
+                  disabled={!online || busy}
+                  onClick={() => perform("preview")}
+                >
+                  Preview changes
+                </button>
+                <button
+                  disabled={!online || busy}
+                  class="primary"
+                  onClick={() => perform("set")}
+                >
+                  Save
+                </button>
+              </>
+            ) : (
+              <button
+                disabled={!online || busy}
+                onClick={() => {
+                  update(editable(data));
+                  setPane("instructions");
+                }}
+              >
+                {data.item.mode === "inherit"
+                  ? "Edit inherited prompt"
+                  : "Edit"}
+              </button>
+            )}
+          </div>
+          <small class="muted">
+            Saves apply to the next model request. Unsent edits stay in this
+            browser tab.
+          </small>
         </>
       )}
     </div>

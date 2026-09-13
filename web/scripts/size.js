@@ -10,7 +10,24 @@ const entry = new Set(
     match[1].slice(1),
   ),
 );
+const manifest = JSON.parse(
+  await readFile(new URL(".vite/manifest.json", root), "utf8"),
+);
+const app = new Set();
+function visit(key) {
+  const chunk = manifest[key];
+  if (!chunk || app.has(chunk.file) || key === "src/diagram.tsx") return;
+  app.add(chunk.file);
+  for (const dependency of [
+    ...(chunk.imports || []),
+    ...(chunk.dynamicImports || []),
+  ])
+    visit(dependency);
+}
+visit("index.html");
 const sizes = {
+  diagrams: { raw: 0, gzip: 0 },
+  app: { raw: 0, gzip: 0 },
   initial_js: { raw: 0, gzip: 0 },
   initial_css: { raw: 0, gzip: 0 },
   lazy_and_shell: { raw: 0, gzip: 0 },
@@ -23,6 +40,9 @@ for (const path of await readdir(root, {
   if (!path.isFile()) continue;
   const url = pathToFileURL(join(path.parentPath, path.name));
   const name = url.href.slice(root.href.length);
+  if (name.startsWith(".vite/")) continue;
+  const diagram =
+    name.startsWith("assets/") && name.endsWith(".js") && !app.has(name);
   const bytes = await readFile(url);
   const size = { raw: bytes.length, gzip: gzipSync(bytes).length };
   const group = entry.has(name)
@@ -33,13 +53,15 @@ for (const path of await readdir(root, {
   for (const key of ["raw", "gzip"]) {
     sizes[group][key] += size[key];
     sizes.total[key] += size[key];
+    sizes[diagram ? "diagrams" : "app"][key] += size[key];
   }
 }
 // Measured baseline is documented in docs/WEB.md; headroom is intentional.
 const budgets = {
-  initial_js: { raw: 56 * 1024, gzip: 21 * 1024 },
-  initial_css: { raw: 16 * 1024, gzip: 4.5 * 1024 },
-  total: { raw: 860 * 1024, gzip: 500 * 1024 },
+  initial_js: { raw: 66 * 1024, gzip: 25 * 1024 },
+  initial_css: { raw: 17 * 1024, gzip: 4.6 * 1024 },
+  app: { raw: 950 * 1024, gzip: 520 * 1024 },
+  diagrams: { raw: 5.2 * 1024 * 1024, gzip: 1.6 * 1024 * 1024 },
 };
 console.log(JSON.stringify({ bytes: sizes, budgets }, null, 2));
 for (const [group, limits] of Object.entries(budgets)) {

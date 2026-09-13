@@ -1,4 +1,6 @@
 import "./settings.css";
+import { SizeControls } from "./size-controls.tsx";
+import OfflineSettings from "./offline-settings.tsx";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
   Sizes,
@@ -70,6 +72,7 @@ export default function Settings({
   const [permission, setPermission] = useState<string | null>(null);
   const [savingPermission, setSavingPermission] = useState(false);
   useEffect(() => {
+    if (!online) return;
     let active = true;
     setError(null);
     command("config", null, { name: "UAGENT_APPROVAL" })
@@ -87,7 +90,7 @@ export default function Settings({
     return () => {
       active = false;
     };
-  }, [attempt]);
+  }, [attempt, online]);
   return (
     <div ref={body} class="settings-content">
       {advanced ? (
@@ -119,37 +122,7 @@ export default function Settings({
                 <option value="light">Light</option>
               </Select>
             </Field>
-            {(
-              [
-                ["Display size", "display"],
-                ["Text size", "text"],
-              ] as const
-            ).map(([label, key]) => (
-              <Field key={key} label={label} value={`${sizes[key]}%`}>
-                <input
-                  type="range"
-                  aria-label={label}
-                  min="50"
-                  max={key === "text" ? 300 : 200}
-                  step="1"
-                  value={sizes[key]}
-                  onInput={(event) =>
-                    setSizes({
-                      ...sizes,
-                      [key]: Number(event.currentTarget.value),
-                    })
-                  }
-                />
-              </Field>
-            ))}
-            <div class="dialog-actions">
-              <button
-                type="button"
-                onClick={() => setSizes({ display: 100, text: 100 })}
-              >
-                Reset sizes
-              </button>
-            </div>
+            <SizeControls sizes={sizes} change={setSizes} />
             {permission === null ? (
               error ? (
                 <LoadError
@@ -214,6 +187,10 @@ export default function Settings({
               Advanced configuration
             </button>
           </div>
+          <details class="settings-section">
+            <summary>Offline storage</summary>
+            <OfflineSettings />
+          </details>
           <details class="settings-section">
             <summary>Install</summary>
             {installed ? (

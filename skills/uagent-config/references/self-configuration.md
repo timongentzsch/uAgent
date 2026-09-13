@@ -1,6 +1,6 @@
 # Changing µAgent configuration
 
-`uagent_configure` persists a setting. It accepts only registered `UAGENT_*`
+`uagent` with `action=configure` persists a setting. It accepts only registered `UAGENT_*`
 names, shows the user an exact diff, and commits nothing until they approve it.
 `--yolo` does not apply, and a headless or delegated run cannot commit at all,
 so in those sessions the tool is not offered and the answer is a proposal for
@@ -12,13 +12,13 @@ path discards unrelated settings and skips the approval diff.
 
 ## Procedure
 
-1. Read the current effective value and its source with `uagent_info`, topic
+1. Read the current effective value and its source with `uagent` action `inspect`, topic
    `config`, `name` set to the exact setting. Report which layer currently
    wins: a command-line flag or process variable keeps shadowing a config file
    after it is edited.
 2. Check the `takes_effect` field. Saying a change is live when it needs a
    restart is the failure this step exists to prevent.
-3. Call `uagent_configure` with `scope` `user` for `~/.uagent/.config`, or
+3. Call `uagent` with `action=configure` and `scope` `user` for `~/.uagent/.config`, or
    `project` for `./.uagent/.config`, which requires a workspace the user has
    already trusted. Pass one entry per setting, each `set` with a value or
    `unset`.
@@ -37,7 +37,7 @@ command line          --model, --budget, --no-memory, ...
 process environment   exported UAGENT_* variables
 project config        ./.uagent/.config, only when trusted
 user config           ~/.uagent/.config
-built-in default      the registry default reported by uagent_info
+built-in default      the registry default reported by uagent
 ```
 
 `UAGENT_CONFIG_FILE` replaces both config-file layers.

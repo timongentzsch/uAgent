@@ -2,7 +2,7 @@ import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
 import { ModelSkeleton } from "./loading.tsx";
-import { bytes } from "./quantities.ts";
+import { bytes, count } from "./quantities.ts";
 import { contextSummary } from "./context.ts";
 import { observeResize } from "./layout.ts";
 import type {
@@ -51,6 +51,7 @@ export default function Composer({
   activityTarget,
   clearActivity,
   showContext,
+  showStatistics,
   sizes,
 }: {
   session: Session;
@@ -70,6 +71,7 @@ export default function Composer({
   activityTarget: Block | null;
   clearActivity: () => void;
   showContext: () => void;
+  showStatistics: () => void;
   sizes: Sizes;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
@@ -89,9 +91,17 @@ export default function Composer({
       setDraft({ ...draft, text: "" });
     } else submit(event);
   };
-  const pending = snapshot?.pending;
-  const running = !!session.turn_active;
+  const pending = online ? snapshot?.pending : null;
+  const running = online && !!session.turn_active;
   const state = snapshot?.state;
+  // A session without a live worker names its lifecycle state here instead
+  // of a phase, so closing a session still reports that it was saved.
+  const detached = ["saved", "closed", "draft", "starting"].includes(
+    session?.status || "",
+  )
+    ? (session?.status || "").charAt(0).toUpperCase() +
+      (session?.status || "").slice(1)
+    : "";
   useLayoutEffect(() => {
     const element = input.current;
     if (!element) return;
@@ -132,15 +142,13 @@ export default function Composer({
             <Skeleton className="form-skeleton" label="Loading decision…" />
           }
         />
-      ) : !session.generation ? (
+      ) : online && !session.generation ? (
         <button
           class="primary"
-          disabled={!online || session.presence === "terminal"}
+          disabled={!online}
           onClick={() => command("activate", session).catch(report)}
         >
-          {session.presence === "terminal"
-            ? "Active in terminal"
-            : "Resume in this host directory"}
+          Resume in this host directory
         </button>
       ) : (
         <form onSubmit={send}>
@@ -352,13 +360,19 @@ export default function Composer({
         collaborators={state?.collaborators || []}
         target={activityTarget}
         clearTarget={clearActivity}
+        cwd={session.cwd || ""}
         session={session}
         online={online}
         report={report}
-        items={state?.activities || []}
-        phase={state?.activity || (state ? "Ready" : "Loading…")}
-        running={running}
-        pending={pending}
+        items={online ? state?.activities || [] : []}
+        present={online && !!session?.presence}
+        phase={
+          !online
+            ? "Offline"
+            : detached || state?.activity || (state ? "Ready" : "Loading…")
+        }
+        running={online && running}
+        pending={online ? pending : null}
       >
         <div class="metrics">
           <button
@@ -370,8 +384,17 @@ export default function Composer({
           >
             {contextSummary(state?.context_tokens, state?.context_window)}
           </button>
-          {state?.usage?.cost_reported && (
-            <span> · ${state.usage.cost.toFixed(4)}</span>
+          <button class="quiet" onClick={showStatistics}>
+            Session · {count(state?.statistics?.recorded_turns ?? state?.turns)}{" "}
+            turns
+            {state?.usage?.cost_reported
+              ? ` · $${state.usage.cost.toFixed(4)}`
+              : ""}
+          </button>
+          {!!session.guidance && (
+            <span class="muted" role="status">
+              {session.guidance} guidance queued
+            </span>
           )}
         </div>
       </Activities>

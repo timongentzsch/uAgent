@@ -1,6 +1,6 @@
 import { count } from "./quantities.ts";
 import type { ComponentChildren } from "preact";
-import type { Activity, Pending } from "./types.ts";
+import type { Activity, Collaborator, Pending } from "./types.ts";
 import type { ActivityProps } from "./activity.tsx";
 import { useEffect, useState } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
@@ -19,29 +19,45 @@ export function activityLabel(items: Activity[] = []) {
     .filter(Boolean)
     .join(" · ");
 }
+export type LedState = "idle" | "active" | "running";
+export function StatusLed({ state }: { state: LedState }) {
+  return <span class={`status-led ${state}`} aria-hidden="true" />;
+}
 export function ActivityStatus({
   phase = "Ready",
   running,
   items = [],
+  collaborators = [],
   pending,
   announce = false,
+  present = false,
 }: {
   phase?: string;
   running?: boolean;
   items?: Activity[];
+  collaborators?: Collaborator[];
   pending?: Pending | boolean | null;
   announce?: boolean;
+  present?: boolean;
 }) {
-  const counts = activityLabel(items);
+  const counts = activityLabel([
+    ...items,
+    ...collaborators.map((item) => ({
+      ...item,
+      id: undefined,
+      agent_id: item.id,
+      kind: "agent",
+    })),
+  ]);
   return (
     <span
       class="activity-status"
       role={announce ? "status" : undefined}
       aria-atomic={announce ? "true" : undefined}
     >
-      <span class={running || counts ? "working-mark" : ""} aria-hidden="true">
-        {running || counts ? "◌" : "·"}
-      </span>
+      <StatusLed
+        state={running && !pending ? "running" : present ? "active" : "idle"}
+      />
       {pending ? "Needs your input" : phase}
       {counts && ` · ${counts}`}
     </span>
@@ -51,6 +67,7 @@ export default function Activities(
   props: ActivityProps & {
     phase?: string;
     pending?: Pending | null;
+    present?: boolean;
     children?: ComponentChildren;
   },
 ) {

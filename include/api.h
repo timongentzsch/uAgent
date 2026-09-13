@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -48,6 +49,7 @@ class Api {
 
   RuntimeConfig config;
   bool capture_http = false;
+  std::function<void(const json&, size_t)> observe_progress;
   json exchange_context = json::object();
   json http_exchanges = json::array();
 

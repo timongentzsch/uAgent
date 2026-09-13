@@ -12,7 +12,7 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: 8px;
+  gap: var(--gap);
   align-items: center;
   text-align: left;
 }
@@ -31,4 +31,15 @@
 .activity-row time {
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+.activity-view .detail-label {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.activity-view .markdown {
+  overflow-wrap: anywhere;
+}
+.activity-view section {
+  min-width: 0;
 }

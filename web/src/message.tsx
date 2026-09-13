@@ -1,11 +1,12 @@
 import "./attachments.css";
+import { TurnFooter } from "./statistics.tsx";
 import Markdown from "./markdown-view.tsx";
 import { duration } from "./duration.ts";
 import "./message.css";
 import { bytes, count } from "./quantities.ts";
 import { observeResize } from "./layout.ts";
 import type { ComponentProps } from "preact";
-import { presentMessages } from "./message-view.ts";
+import { presentMessages, showsHeader } from "./message-view.ts";
 import type {
   PresentedBlock,
   Block,
@@ -20,30 +21,43 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { ChevronRight } from "lucide-preact";
+import {
+  ChevronRight,
+  Activity as ActivityIcon,
+  Brain,
+  Minimize2,
+} from "lucide-preact";
 import { readPages } from "./store.ts";
-import { Mark, cleanText, Skeleton, LoadError } from "./ui.tsx";
+import { Mark, cleanText, Skeleton, LoadError, EventRow } from "./ui.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
 import { formatBody } from "./format.ts";
 
-function Message({
+export function Message({
   block,
+  online,
   session,
   inspect,
-  image,
   report,
   statistics,
   activity,
+  recall,
   http,
+  read,
 }: {
   block: PresentedBlock;
+  online: boolean;
   session: SessionRef;
-  inspect: (id: string) => void;
-  image: (url: string) => void;
+  read?: (
+    id: string,
+    raw: boolean,
+    signal?: AbortSignal,
+  ) => Promise<{ text: string }>;
+  inspect?: (id: string) => void;
   report: Report;
-  statistics: (block: Block) => void;
-  activity: (block: Block) => void;
-  http: (exchanges: Exchange[]) => void;
+  statistics?: (block: Block) => void;
+  activity?: (block: Block) => void;
+  recall?: (block: PresentedBlock) => void;
+  http?: (exchanges: Exchange[]) => void;
 }) {
   const [full, setFull] = useState<string | null>(null);
   const [expanding, setExpanding] = useState(false);
@@ -52,17 +66,33 @@ function Message({
   const [retry, setRetry] = useState(0);
   const text = full ?? block.text;
   const tool = block.kind === "tool_result";
+  const load = (id: string, raw: boolean, signal?: AbortSignal) =>
+    read
+      ? read(id, raw, signal)
+      : readPages(
+          `/api/sessions/${session.id}?detail=${encodeURIComponent(id)}${raw ? "&raw=1" : ""}`,
+          signal,
+        );
   useEffect(() => {
-    if (!tool || !expanded || !block.truncated || full !== null) return;
+    if (
+      !online ||
+      (!tool && block.kind !== "activity") ||
+      !expanded ||
+      !block.truncated ||
+      full !== null
+    )
+      return;
     const abort = new AbortController();
     setExpanding(true);
     setLoadError(null);
-    readPages(
-      `/api/sessions/${session.id}?detail=${encodeURIComponent(block.detail_id || `t-${block.call_id}`)}&raw=1`,
+    load(
+      block.detail_id || (tool ? `t-${block.call_id}` : block.id),
+      tool,
       abort.signal,
     )
       .then((page) => {
-        if (!abort.signal.aborted) setFull(JSON.parse(page.text).response);
+        if (!abort.signal.aborted)
+          setFull(tool ? JSON.parse(page.text).response : page.text);
       })
       .catch((error) => {
         if (!abort.signal.aborted) setLoadError(error);
@@ -72,6 +102,7 @@ function Message({
       });
     return () => abort.abort();
   }, [
+    online,
     tool,
     expanded,
     block.truncated,
@@ -92,75 +123,173 @@ function Message({
     () => (expanded ? formatBody(cleanText(text)) : ""),
     [expanded, text],
   );
+  if (block.kind === "compaction" && block.compaction)
+    return (
+      <EventRow
+        title="Context compacted"
+        time={block.time}
+        icon={<Minimize2 />}
+      >
+        <p>
+          {block.compaction.messages_before} → {block.compaction.messages_after}{" "}
+          messages in model context. Conversation history is retained.
+        </p>
+        <p class="muted">
+          {block.compaction.automatic ? "Automatic" : "Manual"} ·{" "}
+          {duration(block.compaction.duration_ms)}
+        </p>
+      </EventRow>
+    );
+  if (block.kind === "activity")
+    return (
+      <EventRow
+        title={
+          block.activity?.label ||
+          cleanText(text).split("\n")[0] ||
+          "Background activity"
+        }
+        time={block.time}
+        status={block.status}
+        icon={block.memory ? <Brain /> : <ActivityIcon />}
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+      >
+        {expanding && <Skeleton label="Loading event details…" />}
+        {loadError && (
+          <LoadError error={loadError} retry={() => setRetry(retry + 1)} />
+        )}
+        <Markdown text={cleanText(text)} />
+        {activity &&
+          (block.memory?.key || block.agent_id || block.activity_id) && (
+            <button
+              class="quiet"
+              disabled={!online}
+              onClick={() => activity(block)}
+            >
+              {block.memory
+                ? "View current memory"
+                : block.agent_id
+                  ? "View subagent"
+                  : "View activity"}
+            </button>
+          )}
+      </EventRow>
+    );
+  if (block.summary)
+    return (
+      <TurnFooter summary={block.summary} open={() => statistics?.(block)} />
+    );
   const exchanges = block.http || block.source?.http;
+  // Attribution, not authorship: user uploads read as "you"; every new
+  // assistant response carries the mark, and a turn that opens with tool
+  // calls (no thinking or text) gets its single mark on the first tool row.
+  const userOwned =
+    block.kind === "user" ||
+    (block.kind === "attachment" && block.origin !== "tool");
+  const agentRow =
+    block.kind === "assistant" ||
+    (block.kind === "attachment" && block.origin === "tool");
+  const actor = userOwned ? (
+    "you"
+  ) : block.kind === "assistant" ? (
+    <Mark />
+  ) : agentRow ? (
+    block.firstOfTurn && <Mark />
+  ) : (
+    block.kind
+  );
+  // One header per step: user turns always open, agent rows only flag the
+  // turn's first row. Bodies that follow share the step, not the chrome.
+  const showHeader = showsHeader(block);
   return (
     <article
       data-message-id={block.id}
       data-turn-root={block.turn_root}
-      className={`message ${tool ? "tool" : ["user", "attachment"].includes(block.kind) ? "user" : "response"} ${block.turn_root === block.id ? "turn-start" : ""}`}
+      className={`message ${tool ? "tool" : userOwned ? "user" : "response"} ${block.turn_root === block.id ? "turn-start" : ""}${!tool && !showHeader ? " grouped" : ""}`}
     >
-      <header>
-        {tool ? (
-          <button
-            class="quiet tool-toggle"
-            aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
-          >
-            <ChevronRight class={expanded ? "expanded" : ""} />
-            <strong>{block.name || "tool"}</strong>
+      {(tool || showHeader) && (
+        <header>
+          {tool ? (
+            <button
+              class="quiet tool-toggle"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              <span class="tool-icons">
+                {showHeader && block.firstOfTurn && <Mark />}
+                <ChevronRight class={expanded ? "expanded" : ""} />
+              </span>
+              <strong title={block.activity?.label || block.name}>
+                {block.activity?.label || block.name || "tool"}
+              </strong>
+              <span class="muted">
+                {block.activity?.category && `${block.activity.category} · `}
+                {block.status || "pending"}
+                {block.duration_ms != null &&
+                  ` · ${duration(block.duration_ms)}`}
+              </span>
+            </button>
+          ) : showHeader && actor ? (
+            <span>{actor}</span>
+          ) : null}
+          {!tool && showHeader && block.status && (
             <span class="muted">
-              {block.status || "pending"}
+              {block.status}
               {block.duration_ms != null && ` · ${duration(block.duration_ms)}`}
             </span>
-          </button>
-        ) : (
-          <span>
-            {block.kind === "attachment" ? (
-              "you"
-            ) : block.kind === "user" ? (
-              "you"
-            ) : block.kind === "assistant" ? (
-              <Mark />
-            ) : (
-              block.kind
+          )}
+          {showHeader && (
+            <time
+              dateTime={block.time}
+              title={
+                block.time
+                  ? new Date(block.time).toLocaleString()
+                  : "Time not recorded"
+              }
+            >
+              {block.time
+                ? new Date(block.time).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "—"}
+            </time>
+          )}
+          {recall &&
+            online &&
+            block.status === "Guidance queued" &&
+            block.request_id && (
+              <button
+                class="quiet"
+                aria-label="Recall guidance to composer"
+                title="Recall to composer"
+                onClick={() => recall(block)}
+              >
+                ×
+              </button>
             )}
-          </span>
-        )}
-        {!tool && block.status && (
-          <span class="muted">
-            {block.status}
-            {block.duration_ms != null && ` · ${duration(block.duration_ms)}`}
-          </span>
-        )}
-        <time
-          dateTime={block.time}
-          title={
-            block.time
-              ? new Date(block.time).toLocaleString()
-              : "Time not recorded"
-          }
-        >
-          {block.time
-            ? new Date(block.time).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })
-            : "—"}
-        </time>
-        <Menu label="Message menu">
-          <MenuItem onClick={() => statistics(block)}>Statistics</MenuItem>
-          {block.source && (
-            <MenuItem onClick={() => statistics(block.source!)}>
-              Model call statistics
-            </MenuItem>
+          {showHeader && (statistics || http) && (
+            <Menu label="Message menu">
+              {statistics && (
+                <MenuItem onClick={() => statistics(block)}>
+                  Statistics
+                </MenuItem>
+              )}
+              {block.source && statistics && (
+                <MenuItem onClick={() => statistics(block.source!)}>
+                  Model call statistics
+                </MenuItem>
+              )}
+              {http &&
+                (block.kind === "assistant" ||
+                  (exchanges?.length || 0) > 0) && (
+                  <MenuItem onClick={() => http(exchanges || [])}>
+                    HTTP request/response
+                  </MenuItem>
+                )}
+            </Menu>
           )}
-          {(block.kind === "assistant" || (exchanges?.length || 0) > 0) && (
-            <MenuItem onClick={() => http(exchanges || [])}>
-              HTTP request/response
-            </MenuItem>
-          )}
-        </Menu>
-      </header>
+        </header>
+      )}
       {block.reasoning && (
         <details class="thinking">
           <summary>Thinking{block.streaming ? " · streaming" : ""}</summary>
@@ -178,7 +307,13 @@ function Message({
                     ` · completed ${new Date(block.time).toLocaleString()}`}
                 </p>
               )}
+              <p class="small muted">{block.name}</p>
               {argumentsText && <pre>{input}</pre>}
+              {!online && block.truncated && full === null && (
+                <p class="small muted">
+                  Recent output only. Connect to load the full result.
+                </p>
+              )}
               {expanding && <Skeleton label="Loading full tool output…" />}
               {loadError && (
                 <LoadError
@@ -198,33 +333,25 @@ function Message({
               {block.change && (
                 <pre class="diff">{cleanText(block.change)}</pre>
               )}
-              <button
-                onClick={() => inspect(block.detail_id || `t-${block.call_id}`)}
-              >
-                Tool input/output
-              </button>
+              {inspect && (
+                <button
+                  onClick={() =>
+                    inspect(block.detail_id || `t-${block.call_id}`)
+                  }
+                >
+                  Tool input/output
+                </button>
+              )}
             </div>
           )
         : text && <Markdown text={text} streaming={block.streaming} />}
-      {!block.files?.length && (block.images?.length || 0) > 0 && (
-        <div class="images">
-          {block.images?.map((id) => (
-            <button
-              class="image"
-              key={id}
-              onClick={() => image(`/api/sessions/${session.id}/assets/${id}`)}
-            >
-              <img
-                loading="lazy"
-                alt="Attached image"
-                src={`/api/sessions/${session.id}/assets/${id}`}
-                onError={(event) => {
-                  event.currentTarget.alt = "Image unavailable";
-                }}
-              />
-            </button>
-          ))}
-        </div>
+      {block.deliveries?.map((item) => (
+        <p class="small muted">
+          {item.name} · {item.delivery}
+        </p>
+      ))}
+      {!online && !!block.files?.length && (
+        <p class="small muted">Attachments are available when connected.</p>
       )}
       {!!block.files?.length && (
         <div class="attachments">
@@ -234,10 +361,14 @@ function Message({
               <a
                 class="file-chip"
                 key={file.id}
+                aria-disabled={!online}
+                onClick={(event) => {
+                  if (!online) event.preventDefault();
+                }}
                 href={`/api/sessions/${session.id}/assets/${file.id}`}
                 download={file.name}
               >
-                {file.image && (
+                {online && file.image && (
                   <img
                     loading="lazy"
                     src={`/api/sessions/${session.id}/assets/${file.id}`}
@@ -263,9 +394,7 @@ function Message({
             }
             setExpanding(true);
             try {
-              const page = await readPages(
-                `/api/sessions/${session.id}?detail=${encodeURIComponent(block.id)}`,
-              );
+              const page = await load(block.id, false);
               setFull(page.text);
             } catch (error) {
               report(error);
@@ -281,11 +410,6 @@ function Message({
               : "Show full message"}
         </button>
       )}
-      {block.kind === "activity" && (
-        <button class="quiet" onClick={() => activity(block)}>
-          View activity
-        </button>
-      )}
       {block.error && <p role="status">{block.error}</p>}
       {(block.unavailable_images || 0) > 0 && (
         <p class="muted">
@@ -297,15 +421,44 @@ function Message({
   );
 }
 
+type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {
+  blocks: Block[];
+};
+
+export function MessageRows({ blocks, ...props }: MessageRowsProps) {
+  const rows = useMemo(() => presentMessages(blocks), [blocks]);
+  return (
+    <>
+      {rows.map((block) =>
+        block.children ? (
+          <details
+            class="message exploration"
+            key={block.key}
+            data-message-id={block.id}
+            data-turn-root={block.turn_root}
+          >
+            <summary>
+              {block.firstOfTurn && <Mark />}
+              {block.activity?.group?.label}
+            </summary>
+            {block.children.map((child) => (
+              <Message key={child.key || child.id} block={child} {...props} />
+            ))}
+          </details>
+        ) : (
+          <Message key={block.key || block.id} block={block} {...props} />
+        ),
+      )}
+    </>
+  );
+}
+
 export default function Messages({
-  blocks,
   restoreScroll,
   ...props
-}: Omit<ComponentProps<typeof Message>, "block"> & {
-  blocks: Block[];
+}: MessageRowsProps & {
   restoreScroll: () => void;
 }) {
-  const rows = useMemo(() => presentMessages(blocks), [blocks]);
   const content = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const element = content.current;
@@ -316,9 +469,7 @@ export default function Messages({
   }, [restoreScroll]);
   return (
     <div ref={content}>
-      {rows.map((block) => (
-        <Message key={block.key || block.id} block={block} {...props} />
-      ))}
+      <MessageRows {...props} />
     </div>
   );
 }

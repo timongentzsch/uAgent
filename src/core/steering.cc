@@ -22,6 +22,9 @@ void InitializeSteeringWake() { (void)OpenNonblockingPipe(g_steering_wake); }
 void NotifySteeringWake() {
   std::call_once(g_steering_wake_once, InitializeSteeringWake);
   WakeDescriptor(g_steering_wake[1]);
+  // Condition-variable process waits only wake on the child-dispatch pipe,
+  // so queued guidance must ring it too; aborts are not implied.
+  WakeProcessWaits();
 }
 
 void DrainSteeringWake() { DrainDescriptor(g_steering_wake[0]); }
@@ -35,32 +38,16 @@ bool Steering::Take() {
   return value;
 }
 
-std::string TakeStrandedSteering() {
-  std::string prompt;
-  for (std::string& stranded : SteeringState().TakeQueued()) {
-    if (!prompt.empty()) prompt += "\n";
-    prompt += stranded;
-  }
-  return prompt;
-}
-
-void Steering::Queue(std::string input, std::string request_id) {
+void Steering::Queue(std::string input, std::string request_id,
+                     bool auto_start) {
   size_t queued = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    queued_.push_back({std::move(input), std::move(request_id)});
+    queued_.push_back({std::move(input), std::move(request_id), auto_start});
     queued = queued_.size();
   }
   NotifySteeringWake();
   DebugLog("steering_queued", {{"queued", queued}});
-}
-
-std::vector<std::string> Steering::TakeQueued() {
-  std::vector<std::string> result;
-  for (Message& message : TakeMessages()) {
-    result.push_back(std::move(message.text));
-  }
-  return result;
 }
 
 std::vector<Steering::Message> Steering::TakeMessages() {
@@ -80,9 +67,42 @@ std::vector<Steering::Message> Steering::TakeMessages() {
   return result;
 }
 
+std::vector<Steering::Message> Steering::TakeAutoStartMessages() {
+  std::vector<Message> result;
+  {
+    std::lock_guard<std::mutex> lock(queue_mutex_);
+    for (auto it = queued_.begin(); it != queued_.end();) {
+      if (it->auto_start) {
+        result.push_back(std::move(*it));
+        it = queued_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    DrainSteeringWake();
+  }
+  if (!result.empty()) {
+    DebugLog("steering_delivered", {{"messages", result.size()}});
+  }
+  return result;
+}
+
 size_t Steering::QueuedCount() const {
   std::lock_guard<std::mutex> lock(queue_mutex_);
   return queued_.size();
+}
+
+bool Steering::Recall(const std::string& request_id) {
+  if (request_id.empty()) return false;
+  std::lock_guard<std::mutex> lock(queue_mutex_);
+  for (auto it = queued_.begin(); it != queued_.end(); ++it) {
+    if (it->request_id == request_id) {
+      queued_.erase(it);
+      DebugLog("steering_recalled", {{"queued", queued_.size()}});
+      return true;
+    }
+  }
+  return false;
 }
 
 void Steering::Request() {

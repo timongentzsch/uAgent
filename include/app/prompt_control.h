@@ -13,7 +13,7 @@ namespace uagent {
 json PromptControl(const json& request, AdaptiveSystemState* state,
                    const std::string& base, const json& context);
 using PromptController = std::function<json(const json&)>;
-json PromptCommand(const std::string& argument, const PromptController& control,
-                   bool browser = false);
+json PromptCommand(const std::string& argument,
+                   const PromptController& control);
 }  // namespace uagent
 #endif

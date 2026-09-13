@@ -2,14 +2,15 @@
 
 #ifndef UAGENT_INCLUDE_MEDIA_ATTACHMENTS_H_
 #define UAGENT_INCLUDE_MEDIA_ATTACHMENTS_H_
-// Local canonical multimodal attachments: images use image_url data URLs;
-// PDFs/documents use file_data. Wire adapters translate them without uploads.
+// Retained local attachment references and capability-aware request
+// preparation.
 
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "include/api/capabilities.h"
 #include "include/core/json.h"
 #include "include/tools/tool.h"
 
@@ -34,18 +35,12 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error);
 
 // Route capability is passed explicitly; attachment helpers do not maintain a
 // second process-global copy of negotiated provider state.
-std::string ImageInputError(const Attachment& attachment,
-                            bool image_input_available,
-                            bool image_fallback_available);
-
 const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available);
 
 class AttachmentQueue {
  public:
-  ToolResult Add(const std::string& path, bool image_input_available = true,
-                 bool image_fallback_available = false,
-                 std::string source_call_id = {});
+  ToolResult Add(const std::string& path, std::string source_call_id = {});
   std::vector<Attachment> Take();
 
  private:
@@ -65,16 +60,14 @@ bool Base64Decode(std::string_view input, std::string& output,
 // of attachment still learns where it is and can reach it with other tools.
 json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
-                       std::string& error, bool image_input_available = true,
-                       bool image_fallback_available = false,
-                       bool file_input_available = true);
+                       std::string& error);
 
-// Drops every content part of `type`, returning how many messages changed.
-// Used after an endpoint rejects a kind of input; the text part already
-// retains every path.
-// The caller says what replaces them, since an image and a document degrade
-// into different explanations.
-size_t StripContentParts(json& messages, std::string_view type);
+// Resolve retained references into a request projection; originals stay in
+// history.
+bool PrepareAttachments(json& messages,
+                        const ProviderCapabilities& capabilities,
+                        bool vision_fallback, const std::string& route,
+                        std::string& error, json* deliveries = nullptr);
 
 }  // namespace uagent
 

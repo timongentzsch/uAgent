@@ -145,6 +145,7 @@ add_library(
   src/tools/activity_completion.cc
   src/tools/activity_log.cc
   src/tools/child_agent.cc
+  src/tools/collaborator_runtime.cc
   src/tools/files.cc
   src/tools/jobs.cc
   src/tools/memory.cc
@@ -153,12 +154,15 @@ add_library(
   src/tools/process_io.cc
   src/tools/configure.cc
   src/tools/registry.cc
-  src/tools/self_info.cc
   src/tools/shell.cc
   src/tools/subagent.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc
   src/transport/sse.cc
+  src/app/session_transport.cc
+  src/app/session_server.cc
+  src/app/session_worker.cc
+  src/app/session_terminal.cc
   src/ui/conversation.cc
   src/ui/input_decoder.cc
   src/ui/interactive.cc
@@ -172,7 +176,7 @@ option(UAGENT_WEB "Embed the native web master and PWA" ON)
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/protocol.cc src/web/worker.cc src/web/master.cc src/web/push.cc
+  add_library(uagent_web src/web/master.cc src/web/push.cc
                           "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)

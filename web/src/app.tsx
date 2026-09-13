@@ -58,6 +58,7 @@ const pairing = () => import("./pairing.tsx");
 const composer = () => import("./composer.tsx");
 const messages = () => import("./message.tsx");
 const rawDialog = () => import("./raw.tsx");
+const conversationActions = () => import("./conversation-actions.tsx");
 const statisticsDialog = () => import("./statistics.tsx");
 const promptDialog = () => import("./prompt.tsx");
 const settingsDialog = () => import("./settings.tsx");
@@ -70,19 +71,10 @@ function App() {
     () => matchMedia("(max-width: 900px)").matches,
   );
   const [modal, setModal] = useState<AppModal | null>(null);
-  const onResult = useCallback((value: JSONValue) => {
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      value.editor === true
-    ) {
-      setModal({
-        type: "prompt",
-        scope: String(value.scope || "conversation"),
-        edit: true,
-      });
-    } else setModal({ type: "raw", value });
+  const [notice, setNotice] = useState("");
+  const onResult = useCallback((value: JSONValue, inspect: boolean) => {
+    if (inspect) setModal({ type: "raw", value });
+    else setNotice(typeof value === "string" ? value : JSON.stringify(value));
   }, []);
   const {
     managementVersion,
@@ -142,7 +134,7 @@ function App() {
     catalogue.sessions.find((item) => item.id === selected);
   const draft = drafts[selected] || emptyDraft();
   const pending = snapshot?.pending;
-  const running = !!session?.turn_active;
+  const running = online && !!session?.turn_active;
   const view = snapshot?.state?.view;
   const streamed = useMemo(
     () => snapshot?.streamed || liveBlocks(snapshot?.live || []),
@@ -278,6 +270,7 @@ function App() {
     };
   }, []);
   async function choose(id: string) {
+    setNotice("");
     setPage("chat");
     setSelected(id);
     setDrawer(false);
@@ -360,6 +353,7 @@ function App() {
   }
   async function submit(event: Event) {
     event.preventDefault();
+    setNotice("");
     if (
       !online ||
       pending ||
@@ -467,6 +461,35 @@ function App() {
         );
     } finally {
       setBusy(false);
+    }
+  }
+  // Recall returns queued guidance to the composer while it is still
+  // queued. Delivered guidance belongs to the turn; dropping the row is
+  // then the only correct move.
+  async function recallGuidance(block: Block) {
+    const target = block.request_id;
+    if (!target || block.status !== "Guidance queued" || !online) return;
+    const text = block.text || "";
+    const id = selected;
+    try {
+      await act("recall", { target_id: target });
+    } catch (error) {
+      const issue = failure(error);
+      if (!/already delivered/i.test(issue.message)) {
+        report(error);
+        return;
+      }
+    }
+    setOutgoing((items) => items.filter((item) => item.request_id !== target));
+    if (text) {
+      setDrafts((current) => {
+        const prior = current[id]?.text || "";
+        const next = prior ? `${prior}\n${text}` : text;
+        return {
+          ...current,
+          [id]: { ...(current[id] || emptyDraft()), text: next },
+        };
+      });
     }
   }
   async function upload(files: File[]) {
@@ -589,18 +612,17 @@ function App() {
     }
   }
   function showContext() {
-    const exchanges = snapshot?.state?.http || [];
+    const prepare =
+      session?.generation && !running && online ? session : undefined;
     setModal({
       type: "raw",
       context: true,
       session: selected,
-      exchanges,
-      prepare:
-        !exchanges.length && session?.generation && !running
-          ? session
-          : undefined,
+      exchanges: prepare ? [] : snapshot?.state?.http || [],
+      prepare,
     });
   }
+
   const open = (value: AppModal) => {
     setDrawer(false);
     setModal(value);
@@ -668,10 +690,17 @@ function App() {
 
   return (
     <>
-      {error && (
-        <div role="alert" class="error-banner">
-          <span>{error}</span>
-          <button onClick={() => setError("")}>Dismiss</button>
+      {(error || notice) && (
+        <div role={error ? "alert" : "status"} class="error-banner">
+          <span>{error || notice}</span>
+          <button
+            onClick={() => {
+              setError("");
+              setNotice("");
+            }}
+          >
+            Dismiss
+          </button>
         </div>
       )}
       {authenticated === false ? (
@@ -736,7 +765,6 @@ function App() {
                       : session?.title || "Your workspace"}
                 </h1>
               </div>
-              {session && <span class="status sr-only">{session.status}</span>}
               {compact && (
                 <button
                   class="quiet icon-button"
@@ -808,6 +836,7 @@ function App() {
                   {view?.more && (
                     <button
                       class="history-button"
+                      disabled={!online}
                       onClick={() => older().catch(report)}
                     >
                       Load older retained messages
@@ -838,6 +867,12 @@ function App() {
                         label="Loading conversation…"
                       />
                     ))}
+                  {snapshot && loadErrors[selected] && (
+                    <LoadError
+                      error={loadErrors[selected]}
+                      retry={() => load(selected).catch(() => {})}
+                    />
+                  )}
                   {snapshot && blocks.length === 0 && (
                     <div class="empty">
                       <Mark className="cursor-mark" />
@@ -852,17 +887,23 @@ function App() {
                     <Deferred
                       load={messages}
                       blocks={blocks}
+                      online={online}
                       restoreScroll={restoreScroll}
                       session={session}
                       report={report}
+                      recall={recallGuidance}
                       inspect={inspect}
                       http={(exchanges) =>
                         setModal({ type: "raw", session: selected, exchanges })
                       }
-                      image={(url) => setModal({ type: "image", url })}
                       activity={setActivityTarget}
                       statistics={(block) =>
-                        setModal({ type: "statistics", block })
+                        setModal({
+                          type: "statistics",
+                          block,
+                          session,
+                          snapshot,
+                        })
                       }
                       fallback={
                         <Skeleton
@@ -902,6 +943,9 @@ function App() {
                   }
                   activityTarget={activityTarget}
                   clearActivity={() => setActivityTarget(null)}
+                  showStatistics={() =>
+                    setModal({ type: "statistics", session, snapshot })
+                  }
                   showContext={showContext}
                   sizes={sizes}
                 />
@@ -941,25 +985,27 @@ function App() {
           className={modal.type === "statistics" ? "statistics-view" : ""}
           close={() => setModal(null)}
         >
-          <Deferred
-            load={statisticsDialog}
-            fallback={
-              modal.type === "statistics" ? (
-                <StatsSkeleton />
-              ) : (
-                <Skeleton className="form-skeleton" rows={1} />
-              )
-            }
-            key={`${modal.type}-${modal.session?.id || modal.block?.id || "session"}`}
-            modal={modal}
-            loadSnapshot={load}
-            close={() => setModal(null)}
-            online={online}
-            changed={async (kind: string, id: string) => {
-              if (kind === "delete") forget(id);
-              await refresh();
-            }}
-          />
+          {modal.type === "statistics" ? (
+            <Deferred
+              load={statisticsDialog}
+              fallback={<StatsSkeleton />}
+              modal={modal}
+              loadSnapshot={load}
+            />
+          ) : (
+            <Deferred
+              load={conversationActions}
+              fallback={<Skeleton className="form-skeleton" rows={1} />}
+              key={`${modal.type}-${modal.session.id}`}
+              modal={modal}
+              close={() => setModal(null)}
+              online={online}
+              changed={async (kind: string, id: string) => {
+                if (kind === "delete") forget(id);
+                await refresh();
+              }}
+            />
+          )}
         </Modal>
       )}
       {modal?.type === "new" && (
@@ -983,15 +1029,6 @@ function App() {
               Start conversation
             </button>
           </form>
-        </Modal>
-      )}
-      {modal?.type === "image" && (
-        <Modal title="Image" className="raw-view" close={() => setModal(null)}>
-          <img
-            class="full-image"
-            src={modal.url}
-            alt="Full-size attached image"
-          />
         </Modal>
       )}
       {modal?.type === "raw" && (
@@ -1032,7 +1069,7 @@ function App() {
       {modal?.type === "prompt" && (
         <Modal
           title="System prompt"
-          className="raw-view"
+          className="prompt-view"
           close={() => setModal(null)}
         >
           <Deferred
@@ -1044,6 +1081,7 @@ function App() {
             version={managementVersion}
             scope={modal.scope}
             edit={modal.edit}
+            lastSent={snapshot?.state?.system_prompt}
           />
         </Modal>
       )}

@@ -71,6 +71,7 @@ namespace uagent {
   X(TestProjectInstructionDiscovery)           \
   X(TestMcpContractHelpers)                    \
   X(TestConversation)                          \
+  X(TestCompactionKeepsDisplayIdentity)        \
   X(TestObservabilityEvents)                   \
   X(TestWorkspaceScopedSession)                \
   X(TestProjectTrustTracksSemanticConfig)      \

@@ -82,8 +82,6 @@ constexpr GetterCheck kIntGetters[] = {
     {"UAGENT_MCP_DESC_CHARS", McpDescriptionChars},
     {"UAGENT_PENDING_ATTACHMENTS", MaxPendingAttachments},
     {"UAGENT_ATTACHMENT_MB", AttachmentLimitMb},
-    {"UAGENT_TERMINAL_IMAGE_MB", TerminalImageLimitMb},
-    {"UAGENT_IMAGE_MAX_COLUMNS", ImageMaxColumns},
     {"UAGENT_CONTEXT", ContextWindow},
     {"UAGENT_HISTORY_DAYS", HistoryDays},
     {"UAGENT_HISTORY_FILES", HistoryFiles},
@@ -197,7 +195,7 @@ void TestConfigRegistryContract() {
   CHECK(GrepResults() == FindConfigDescriptor("UAGENT_GREP_RESULTS")->minimum);
 
   // Secrets are declared, and every declared secret is redacted by the
-  // diagnostic that feeds /context, /debug-config and uagent_info.
+  // diagnostic that feeds /context, /debug-config and uagent.
   ScopedEnv search_key("UAGENT_WEB_SEARCH_API_KEY", "canary-secret-value");
   json diagnostic = RuntimeConfig::FromEnvironment().DiagnosticJson();
   CHECK(JsonDump(diagnostic).find("canary-secret-value") == std::string::npos);

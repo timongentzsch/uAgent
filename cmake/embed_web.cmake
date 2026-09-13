@@ -1,5 +1,6 @@
 # Embed the checked-in public bundle. No frontend tooling in native builds.
 file(GLOB_RECURSE _web_assets CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/*")
+list(FILTER _web_assets EXCLUDE REGEX "/\\.vite/")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_web_assets})
 set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")
 file(WRITE "${_web_generated}" "#include \"include/web/assets.h\"\nnamespace uagent::web {\n")

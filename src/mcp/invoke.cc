@@ -58,7 +58,7 @@ ToolResult McpInvokeRemote(McpServer& server, const std::string& remote_name,
       })) {
     return ToolCancelled("error: call cancelled by user");
   }
-  return McpResultText(server, response);
+  return McpResultText(server, response, context.call_id);
 }
 
 }  // namespace uagent

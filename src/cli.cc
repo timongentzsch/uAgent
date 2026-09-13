@@ -18,6 +18,7 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/editor.h"
+#include "include/ui/presentation.h"
 
 namespace uagent {
 
@@ -59,16 +60,16 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "[ID [output|stop|message TEXT|followup TEXT]]",
      "inspect, guide or resume delegated collaborators"},
     {SlashCommandId::kAttach, "/attach", "PATH|clear",
-     "attach a file to the next turn"},
+     "attach a file to the next turn", false},
     {SlashCommandId::kCompact, "/compact", "",
-     "summarize conversation to prevent hitting the context limit"},
+     "summarize conversation to prevent hitting the context limit", false},
     {SlashCommandId::kContext, "/context", "", "show current model request"},
     {SlashCommandId::kConfig, "/config", "[user|project KEY=VALUE|unset KEY]",
      "inspect or change configuration"},
     {SlashCommandId::kFork, "/fork", "[NAME]",
-     "fork the completed conversation"},
+     "fork the completed conversation", false},
     {SlashCommandId::kPermissions, "/permissions", "[default|ask|yolo]",
-     "show or change permission mode"},
+     "show or change permission mode", false},
     {SlashCommandId::kPrompt, "/prompt",
      "[show|edit|set|reset] [--scope global|project|conversation] [--mode "
      "overlay|replace] [--file PATH]",
@@ -81,7 +82,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kDebugConfig, "/debug-config", "[SETTING]",
      "show configuration layers, sources and restart-required fields"},
     {SlashCommandId::kEffort, "/effort", "LEVEL",
-     "choose how much reasoning effort to use"},
+     "choose how much reasoning effort to use", false},
     {SlashCommandId::kHelp, "/help", "", "show this help"},
     {SlashCommandId::kInit, "/init", "",
      "create an AGENTS.md file with instructions for \u00b5Agent"},
@@ -94,13 +95,14 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "inspect and manage installed skills"},
     {SlashCommandId::kSchedule, "/schedule", "[list|JSON]",
      "manage scheduled tasks and runs"},
-    {SlashCommandId::kModel, "/model", "NAME", "choose what model to use"},
+    {SlashCommandId::kModel, "/model", "NAME", "choose what model to use",
+     false},
     {SlashCommandId::kModels, "/models", "[QUERY]",
      "search and select across providers"},
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
      "inspect or stop background work"},
-    {SlashCommandId::kQuit, "/quit", "", "exit µAgent"},
-    {SlashCommandId::kReset, "/reset", "", "start a new chat"},
+    {SlashCommandId::kQuit, "/quit", "", "exit µAgent", false},
+    {SlashCommandId::kReset, "/reset", "", "start a new chat", false},
     {SlashCommandId::kReview, "/review", "[TARGET]",
      "review my current changes and find issues"},
     {SlashCommandId::kSessions, "/sessions", "", "resume a saved chat"},
@@ -110,10 +112,10 @@ constexpr SlashCommandSpec kSlashCommands[] = {
     {SlashCommandId::kTrace, "/trace", "[CALL_ID]",
      "show latest trace or full tool request/response"},
     {SlashCommandId::kVariant, "/variant", "MODE",
-     "set OpenRouter provider routing"},
+     "set OpenRouter provider routing", false},
     {SlashCommandId::kVerbose, "/verbose", "",
-     "toggle full reasoning and expanded tool output"},
-    {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval"},
+     "toggle full reasoning and expanded tool output", false},
+    {SlashCommandId::kYolo, "/yolo", "", "toggle automatic approval", false},
     {SlashCommandId::kHelp, "/commands", "", ""},
     {SlashCommandId::kQuit, "/exit", "", ""},
     {SlashCommandId::kQuit, "/q", "", ""},
@@ -187,7 +189,7 @@ void SetInteractiveReadHandler(InteractiveReadHandler handler) {
 bool InteractiveReadAvailable() { return static_cast<bool>(ReadHandler()); }
 
 std::string InputPrompt(const char* label) {
-  return std::string(CYAN()) +
+  return std::string(BOLD()) +
          (label && *label ? std::string(label) + "> " : "> ") + RST();
 }
 
@@ -207,6 +209,8 @@ std::string UserEchoRow(const std::string& prompt, const std::string& text) {
       row += text[at];
     }
   }
+  // Terminals already stamp scrollback lines; the stored per-message time
+  // stays in the display facts for the browser.
   return row + EraseToEol() + RST();
 }
 

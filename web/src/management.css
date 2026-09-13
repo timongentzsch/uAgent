@@ -19,18 +19,6 @@
   flex: 1;
   margin: 0;
 }
-.segmented,
-.document-toolbar,
-.weekdays {
-  display: flex;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-}
-.segmented button[aria-pressed="true"],
-.weekdays button[aria-pressed="true"] {
-  background: var(--text);
-  color: var(--bg);
-}
 .management-body {
   display: flex;
   min-height: 0;
@@ -76,7 +64,7 @@
 }
 .library-group h2 > .folder-label,
 .library-group h2 > button {
-  padding: 0.5rem;
+  padding: var(--gap);
 }
 .library-group h2 > button {
   display: flex;
@@ -86,7 +74,7 @@
   background: none;
   color: inherit;
   text-align: left;
-  gap: 0.4rem;
+  gap: var(--gap);
 }
 .library-group .folder-label {
   min-width: 0;
@@ -111,16 +99,13 @@
 .editor-head {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--gap);
 }
 .editor-head > strong {
   flex: 1;
 }
 .editor-head > button {
   display: none;
-}
-.document-toolbar {
-  align-items: center;
 }
 .document-toolbar small {
   margin-left: auto;
@@ -150,13 +135,6 @@
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.editor-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 .editor-actions > small {
   margin-right: auto;
@@ -192,6 +170,9 @@
   border: 0;
 }
 @media (max-width: 900px) {
+  .editor-actions > small {
+    flex-basis: 100%;
+  }
   .management-toolbar {
     flex-wrap: wrap;
   }

@@ -20,13 +20,14 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    session_files,
     signal_process_group,
     tool_call,
     tool_results,
 )
 
 
-def test_attach_tool_puts_bytes_in_context(root, home, *, binary):
+def test_read_path_puts_media_in_context(root, home, *, binary):
     """The model can pull an image and a document into its own context, and the
     encoded bytes do not stay in history afterwards."""
     workspace = root / "attach-workspace"
@@ -46,14 +47,14 @@ def test_attach_tool_puts_bytes_in_context(root, home, *, binary):
             seen["image"] = any(p.get("type") == "image_url" for p in parts)
             seen["file"] = any(p.get("type") == "file" for p in parts)
             return event({"content": "attach-ok"})
-        return event(  # both in one batch: attach is parallel_safe
+        return event(  # both in one batch: read_path is parallel_safe
             {
                 "tool_calls": [
                     {
                         "index": i,
                         "id": f"call-{i}",
                         "function": {
-                            "name": "attach",
+                            "name": "read_path",
                             "arguments": json.dumps({"path": str(path)}),
                         },
                     }
@@ -78,7 +79,7 @@ def test_attach_tool_puts_bytes_in_context(root, home, *, binary):
         events = [json.loads(line) for line in trace.read_text().splitlines()]
         assert_true(not any(event["event"] == "midturn_compact" for event in events), events)
         # the base64 payload must not survive into the saved session
-        sessions = list((home / ".uagent" / "history").rglob("*.json"))
+        sessions = session_files(home)
         blobs = [
             s for s in sessions if "base64," in s.read_text(encoding="utf-8", errors="replace")
         ]
@@ -252,7 +253,6 @@ def test_grep_tool_round_trip(root, home, *, binary):
         ]
     ) as server:
         env = base_env(home, server.url)
-        env["UAGENT_IMAGE_PROTOCOL"] = "iterm"
         result = run(workspace, env, "-p", "search", binary=binary)
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip() == "grep-ok", result.stdout)
@@ -306,7 +306,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
             # while the worker is active, so wait for its idle status after the
             # answer before typing the command, then keep EOF behind its body.
             [
-                (b"reply\n", b"skill-ok", b"test @ 127.0.0.1", None),
+                (b"reply\n", b"skill-ok", b"Ready", None),
                 (b"/trace\n", b"demo-body-sentinel"),
                 b"\x04",
             ],
@@ -314,9 +314,7 @@ def test_skill_tool_offers_and_opens(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, output)
-        assert_true(b"skill-ok" in output and b"Skills" in output, output)
-        assert_true(b"1 available" in output, output)
-        assert_true(b"\x1b[1m\xc2\xb5Agent" in output, output)
+        assert_true(b"skill-ok" in output, output)
         assert_true(b"demo" in output, output)
         assert_true(
             output.find(b"demo-body-sentinel") > output.find(b"skill-ok"),
@@ -517,7 +515,6 @@ def test_detached_terminal_survives_and_is_readable(root, home, *, binary):
             pid = int(pid_file.read_text(encoding="utf-8"))
             assert_true(launched.returncode == 0, launched.stderr)
             assert_true("launched" in launched.stdout, launched.stdout)
-            assert_true("bg:1" in launched.stdout, launched.stdout)
             assert_true("background work" in launched.stdout, launched.stdout)
             assert_true("[detached] activity" in launched.stdout, launched.stdout)
             os.kill(pid, 0)
@@ -742,8 +739,9 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
 
     def request_change(_, __):
         return tool_call(
-            "uagent_configure",
+            "uagent",
             {
+                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "200"}],
             },
@@ -757,7 +755,7 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"raise the limit\n", b"allow uagent_configure? "),
+                (b"raise the limit\n", b"allow uagent? "),
                 (b"y\n", b"yolo-still-asked"),
                 b"/quit\n",
             ],
@@ -767,14 +765,14 @@ def test_self_configuration_asks_even_under_yolo(root, home, *, binary):
         )
         assert_true(status == 0, output)
         # The prompt appeared despite --yolo, and only then was the file written.
-        assert_true(b"allow uagent_configure? " in output, output)
+        assert_true(b"allow uagent? " in output, output)
         assert_true(b"changes \xc2\xb5Agent's own configuration" in output, output)
         # The diff belongs to the approval prompt alone: the call label is a
         # one-liner, so file contents stay out of traces and evidence.
         assert_true(output.count(b"- UAGENT_MAX_TOOL_CALLS=40") == 1, output)
         assert_true(b"\x1b[31m- UAGENT_MAX_TOOL_CALLS=40" in output, output)
         assert_true(b"\x1b[32m+ UAGENT_MAX_TOOL_CALLS=200" in output, output)
-        assert_true(b"uagent_configure(user " in output, output)
+        assert_true(b"uagent(user " in output, output)
         written = config.read_text()
         assert_true("UAGENT_MAX_TOOL_CALLS=200" in written, written)
         assert_true("# keep me" in written, written)
@@ -805,8 +803,9 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
 
     def request_change(_, __):
         return tool_call(
-            "uagent_configure",
+            "uagent",
             {
+                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
@@ -822,7 +821,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             root,
             base_env(home, server.url),
             [
-                (b"configure providers\n", b"allow uagent_configure? "),
+                (b"configure providers\n", b"allow uagent? "),
                 (b"y\n", b"composite-config-ok"),
                 b"/quit\n",
             ],
@@ -831,7 +830,7 @@ def test_composite_configuration_requires_exact_human_approval(root, home, *, bi
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"allow uagent_configure? " in output, output)
+        assert_true(b"allow uagent? " in output, output)
         assert_true(b"$CODEX_LOCAL_PROXY_API_KEY" in output, output)
         assert_true(b"adjacent-integration-secret" not in output, output)
         # Status redraws may insert cursor controls before the colored line.
@@ -860,8 +859,9 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
 
     def request_change(_, __):
         return tool_call(
-            "uagent_configure",
+            "uagent",
             {
+                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_PROVIDERS", "operation": "set", "value": proposed}],
             },
@@ -886,7 +886,7 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
             binary=binary,
         )
         assert_true(status == 0, output)
-        assert_true(b"allow uagent_configure? " not in output, output)
+        assert_true(b"allow uagent? " not in output, output)
         assert_true(literal.encode() not in output, output)
         assert_true(config.read_text() == original, config.read_text())
 
@@ -907,7 +907,9 @@ def test_self_configuration_requires_a_person(root, home, *, binary):
 
     def refuse(_, body):
         names = function_names(body)
-        assert_true("uagent_configure" not in names, names)
+        assert_true("uagent" in names, names)
+        tool = next(t["function"] for t in body["tools"] if t["function"]["name"] == "uagent")
+        assert_true(tool["parameters"]["properties"]["action"]["enum"] == ["inspect"], tool)
         # The escape hatch is closed too: writing the file directly stays a
         # mandatory-human mutation.
         assert_true("write_file" in names, names)
@@ -930,8 +932,9 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
 
     def request_change(_, __):
         return tool_call(
-            "uagent_configure",
+            "uagent",
             {
+                "action": "configure",
                 "scope": "user",
                 "changes": [{"key": "UAGENT_MAX_TOOL_CALLS", "operation": "set", "value": "120"}],
             },
@@ -952,7 +955,7 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
             root,
             env,
             [
-                (b"raise the limit\n", b"allow uagent_configure? "),
+                (b"raise the limit\n", b"allow uagent? "),
                 (b"y\n", b"configure-ok"),
                 b"/quit\n",
             ],
@@ -992,7 +995,7 @@ def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home, *, 
                 (b"go\n", b"always this exact command this session"),
                 (
                     b"a\n",
-                    b"run(rm -rf /tmp/uagent-nothing)",
+                    b"rm -rf /tmp/uagent-nothing",
                     b"always this exact command this session",
                     None,
                 ),

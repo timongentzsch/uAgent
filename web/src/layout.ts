@@ -13,14 +13,29 @@ export function observeResize(update: () => void, ...elements: Element[]) {
   };
 }
 
-export function viewportBounds() {
+export function viewportBounds(safeArea = false) {
   const viewport = globalThis.visualViewport;
-  return {
+  const bounds = {
     left: viewport?.offsetLeft || 0,
     top: viewport?.offsetTop || 0,
     width: viewport?.width || innerWidth,
     height: viewport?.height || innerHeight,
   };
+  if (safeArea) {
+    // The shell resolves env()/calc() insets into actual padding lengths.
+    const style = getComputedStyle(
+      document.getElementById("app") || document.body,
+    );
+    const left = parseFloat(style.paddingLeft) || 0;
+    const right = parseFloat(style.paddingRight) || 0;
+    const top = parseFloat(style.paddingTop) || 0;
+    const bottom = parseFloat(style.paddingBottom) || 0;
+    bounds.left += left;
+    bounds.top += top;
+    bounds.width = Math.max(0, bounds.width - left - right);
+    bounds.height = Math.max(0, bounds.height - top - bottom);
+  }
+  return bounds;
 }
 
 // Safari can pan as well as shrink the visible area when the keyboard opens.
@@ -48,9 +63,17 @@ export function trackViewport() {
   let width = 0,
     height = 0;
   return observeViewport(() => {
-    // Pinch zoom should magnify and pan the existing layout, not reflow it.
-    if (Math.abs((globalThis.visualViewport?.scale || 1) - 1) > 0.01) return;
-    const bounds = viewportBounds();
+    // During pinch zoom retain layout coordinates. Refresh them from the
+    // layout viewport on rotation instead of leaving stale portrait bounds.
+    const zoomed = Math.abs((globalThis.visualViewport?.scale || 1) - 1) > 0.01;
+    const bounds = zoomed
+      ? {
+          left: 0,
+          top: 0,
+          width: document.documentElement.clientWidth,
+          height: document.documentElement.clientHeight,
+        }
+      : viewportBounds();
     const resized = width !== bounds.width || height !== bounds.height;
     ({ width, height } = bounds);
     for (const [key, value] of Object.entries(bounds))
@@ -62,6 +85,7 @@ export function trackViewport() {
     // its scrolling surface after reflow, without stealing focus or selection.
     const focused = document.activeElement;
     if (
+      !zoomed &&
       resized &&
       focused instanceof HTMLElement &&
       focused.matches("input, textarea, [contenteditable=true]")

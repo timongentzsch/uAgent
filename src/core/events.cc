@@ -95,7 +95,13 @@ constexpr EventPolicy kPolicies[] = {
      EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kActivitiesChanged, "activities.changed", nullptr, nullptr,
      nullptr, EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kCollaboratorChanged, "collaborator.changed", nullptr, nullptr,
+     nullptr, EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kHttpExchange, "http.exchange", nullptr, nullptr, nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kUsageUpdated, "usage.updated", nullptr, "usage.updated", nullptr,
+     EventDurability::kTransient, EventRedaction::kNone},
+    {EventId::kResponseSources, "response.sources", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
     {EventId::kPresentation, "ui.presentation", nullptr, nullptr, nullptr,
      EventDurability::kTransient, EventRedaction::kNone},
@@ -179,15 +185,23 @@ void AddArtifacts(json& value,
 }
 
 json PresentationJson(const PresentationRecord& record) {
-  json value = {{"id", record.id},
-                {"title", record.title},
-                {"summary", record.summary},
-                {"status", PresentationStatusName(record.status)}};
+  json value = {
+      {"id", record.id},
+      {"kind", record.kind == PresentationKind::kToolCall     ? "tool_call"
+               : record.kind == PresentationKind::kToolResult ? "tool_result"
+                                                              : "notice"},
+      {"multiline", record.multiline},
+      {"skill", record.skill},
+      {"poll", record.poll},
+      {"activity", record.activity},
+      {"title", record.title},
+      {"summary", record.summary},
+      {"status", PresentationStatusName(record.status)}};
   if (!record.detail.empty()) {
-    value["detail"] = Utf8Trunc(record.detail, size_t{4096});
+    value["detail"] = record.detail;
   }
   if (!record.change.empty()) {
-    value["change"] = Utf8Trunc(record.change, size_t{4096});
+    value["change"] = record.change;
   }
   AddArtifacts(value, record.artifacts);
   return value;
@@ -199,6 +213,7 @@ json AppProjection(const Event& event) {
     data["value"] = event.data;
   }
   if (!event.text.empty()) data["text"] = std::string(event.text);
+  if (event.verbose) data["verbose"] = true;
   if (event.presentation) {
     data["presentation"] = PresentationJson(*event.presentation);
   }

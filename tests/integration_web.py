@@ -14,15 +14,362 @@ from integration_support import (
     budget,
     event,
     run,
+    session_files,
     tool_call,
+    tool_results,
     wait_until,
     write_json_response,
+    write_sse_sequence,
 )
 from web_support import WebClient, web_host
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5WQAAAAASUVORK5CYII="
 )
+
+
+def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
+    from integration_support import SMALL_PNG
+
+    project = root / "attachment-origin"
+    project.mkdir()
+    (project / "shot.png").write_bytes(SMALL_PNG)
+
+    def answer(_, body):
+        if any(message.get("role") == "tool" for message in body["messages"]):
+            # Hold the turn open so the drained attachment block is observable
+            # mid-turn; the turn-boundary strip reclassifies it afterwards.
+            time.sleep(1.0)
+            return event({"content": "seen"})
+        return tool_call("read_path", {"path": "shot.png"}, call_id="shot-read")
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="look at the screenshot")
+            snapshot = client.until(
+                session,
+                lambda value: any(
+                    block.get("kind") == "attachment" for block in value["state"]["view"]["blocks"]
+                ),
+            )
+            blocks = snapshot["state"]["view"]["blocks"]
+            sourced = [block for block in blocks if block.get("kind") == "attachment"]
+            assert_true(len(sourced) == 1, blocks)
+            assert_true(sourced[0].get("origin") == "tool", sourced)
+            assert_true(sourced[0].get("source_call_ids") == ["shot-read"], sourced)
+            # The drained image still reaches the model once.
+            client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(
+                        "seen" in str(block.get("text", ""))
+                        for block in value["state"]["view"]["blocks"]
+                    )
+                ),
+            )
+
+
+def test_terminal_and_web_share_runtime_across_client_restarts(root, home, *, binary):
+    from integration_support import run_dialog
+
+    project = root / "shared-clients"
+    project.mkdir()
+    with Server([lambda _, _body: event({"content": "shared response"})]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, host, env):
+            web.pair(code)
+            with (root / "terminal.log").open("w+") as output:
+                terminal = subprocess.Popen(
+                    [str(binary), "--yolo"],
+                    cwd=project,
+                    env=env,
+                    stdin=subprocess.PIPE,
+                    stdout=output,
+                    stderr=output,
+                    text=True,
+                )
+                try:
+                    terminal.stdin.write("from terminal\n")
+                    terminal.stdin.flush()
+                    found = {}
+
+                    def discovered():
+                        for item in web.json("/api/sessions")[1]["sessions"]:
+                            if os.path.realpath(item["cwd"]) == os.path.realpath(project):
+                                found.update(item)
+                                return True
+                        return False
+
+                    wait_until(discovered, "terminal session not discovered", timeout=10)
+                    first = web.until(
+                        found,
+                        lambda value: (
+                            value["metadata"]["status"] == "idle"
+                            and "shared response" in json.dumps(value)
+                        ),
+                    )
+                    generation = first["metadata"]["generation"]
+                    web.command("submit", first["metadata"], text="from browser")
+                    web.until(
+                        found,
+                        lambda value: (
+                            value["state"].get("turns") == 2
+                            and value["metadata"]["status"] == "idle"
+                        ),
+                    )
+                    terminal.kill()
+                    terminal.wait(timeout=5)
+                    resumed = run_dialog(
+                        project, env, "from second terminal\n/q\n", "-c", binary=binary
+                    )
+                    assert resumed.returncode == 0, resumed.stderr
+                    assert "from browser" in resumed.stdout, resumed.stdout
+                    assert "from second terminal" in resumed.stdout, resumed.stdout
+                    final = web.until(
+                        found,
+                        lambda value: (
+                            value["state"].get("turns") == 3
+                            and value["metadata"]["status"] == "idle"
+                        ),
+                    )
+                    assert final["metadata"]["generation"] == generation
+                    assert final["metadata"]["presence"] == "active"
+                    host.send_signal(signal.SIGTERM)
+                    host.wait(timeout=10)
+                    with web_host(binary, root, home, provider.url) as (reconnected, code, _, _):
+                        reconnected.pair(code)
+                        reconnected.json("/api/sessions")
+                        replay = reconnected.until(
+                            found,
+                            lambda value: (
+                                value["metadata"]["presence"] == "active"
+                                and "view" in value["state"]
+                            ),
+                        )
+                        assert replay["metadata"]["generation"] == generation
+                        assert replay["state"]["view"] == final["state"]["view"]
+                    assert len(provider.requests) == 3, provider.requests
+                finally:
+                    if terminal.poll() is None:
+                        terminal.kill()
+                        terminal.wait(timeout=5)
+                    terminal.stdin.close()
+
+
+def test_clients_share_one_runtime_and_reconnect(root, home, *, binary):
+    from session_support import SessionClient, runtime_directory
+
+    project = root / "shared-session"
+    project.mkdir()
+    model_entered = threading.Event()
+    model_continue = threading.Event()
+
+    def answer(_, body):
+        if not any("second client guidance" in str(m.get("content", "")) for m in body["messages"]):
+            model_entered.set()
+            assert model_continue.wait(budget(10))
+        return event({"content": "shared-answer"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, env):
+            web.pair(code)
+            session = web.create(project)
+            web.command("submit", session, text="/yolo")
+            web.until(session, lambda value: value["state"].get("yolo"))
+            path = next(runtime_directory(home).glob("*.sock"))
+            first, second = SessionClient(path), SessionClient(path)
+            try:
+
+                def ready(frame):
+                    return frame.get("kind") == "state" and not frame.get("busy")
+
+                first.until(ready)
+                second.until(ready)
+                command = first.send("submit", text="first client")
+                receipt = first.until(
+                    lambda frame: (
+                        frame.get("kind") == "outcome"
+                        and frame.get("request_id") == command["request_id"]
+                    )
+                )
+                assert receipt.get("accepted"), receipt
+                assert model_entered.wait(budget(10)), web.snapshot(session)
+                # Same command ID is delivery retry, not another user turn.
+                first.socket.sendall((json.dumps(command) + "\n").encode())
+                second.send("submit", text="second client guidance")
+                second.until(lambda frame: frame.get("kind") == "outcome" and frame.get("accepted"))
+                model_continue.set()
+                completed = web.until(
+                    session,
+                    lambda value: (
+                        value["metadata"]["status"] == "idle"
+                        and any(
+                            block.get("text") == "second client guidance"
+                            for block in value["state"]["view"]["blocks"]
+                        )
+                    ),
+                )
+                users = [
+                    block["text"]
+                    for block in completed["state"]["view"]["blocks"]
+                    if block["kind"] == "user"
+                ]
+                assert users == ["first client", "second client guidance"], users
+                assert completed["state"]["stop"]["reason"] == "completed", completed
+                second.close()
+                second = SessionClient(path)
+                replay = second.until(ready)
+                assert replay["state"]["view"] == completed["state"]["view"]
+                assert replay["generation"] == first.hello["generation"]
+            finally:
+                model_continue.set()
+                first.close()
+                second.close()
+
+
+def test_partial_usage_reconciles_without_double_counting(root, home, *, binary):
+    release = threading.Event()
+    finish = threading.Event()
+
+    def stream(handler, _):
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.end_headers()
+        first = event(
+            {"content": "Partial answer"},
+            finish=None,
+            usage={"prompt_tokens": 100, "completion_tokens": 10, "cost": 0.01},
+        )
+        handler.wfile.write(("data: " + json.dumps(first) + "\n\n").encode())
+        handler.wfile.flush()
+        assert release.wait(budget(10))
+        # Context must keep growing even without a new billing sample.
+        chunk = event({"content": "x" * 4096}, finish=None)
+        handler.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
+        handler.wfile.flush()
+        assert finish.wait(budget(10))
+        final = event(
+            {"content": " complete"},
+            usage={"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.03},
+        )
+        handler.wfile.write(("data: " + json.dumps(final) + "\n\ndata: [DONE]\n\n").encode())
+        handler.wfile.flush()
+
+    with Server([stream]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            initial = client.snapshot(session)["state"].get("context_tokens", 0)
+            try:
+                client.command("submit", session, text="Report usage " + "x" * 4096)
+                live = client.until(
+                    session, lambda value: value["state"].get("usage", {}).get("cost") == 0.01
+                )
+                assert live["metadata"]["turn_active"], live
+                assert live["state"]["context_tokens"] > initial, live
+                release.set()
+                growing = client.until(
+                    session,
+                    lambda value: (
+                        value["state"].get("context_tokens", 0)
+                        > live["state"]["context_tokens"] + 500
+                    ),
+                )
+                assert growing["metadata"]["turn_active"], growing
+                assert growing["state"]["usage"]["cost"] == 0.01, growing
+                finish.set()
+                done = client.until(session, lambda value: not value["metadata"]["turn_active"])
+                assert done["state"]["usage"]["cost"] == 0.03, done
+                assert done["state"]["usage"]["output"] == 20, done
+                assert done["state"]["statistics"]["model_calls"] == 1, done
+            finally:
+                release.set()
+                finish.set()
+
+
+def test_web_compact_renders_single_footer_without_duplicates(root, home, *, binary):
+    project = root / "compact-footer"
+    project.mkdir()
+
+    def answer(_, body):
+        text = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        if "Summarize the bounded transcript" in text:
+            return event({"content": "COMPACT-SUMMARY"})
+        return event({"content": "turn-ok " + "detail " * 200})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(project)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="first COMPACT-MARKER")
+            client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(
+                        "turn-ok" in str(block.get("text", ""))
+                        for block in value["state"]["view"]["blocks"]
+                    )
+                ),
+            )
+            client.command("submit", session, text="second COMPACT-MARKER")
+            client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and sum(
+                        "COMPACT-MARKER" in str(block.get("text", ""))
+                        for block in value["state"]["view"]["blocks"]
+                    )
+                    == 2
+                ),
+            )
+            client.command("submit", session, text="/compact")
+            snapshot = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and any(
+                        block.get("kind") == "compaction"
+                        for block in value["state"]["view"]["blocks"]
+                    )
+                ),
+            )
+            blocks = snapshot["state"]["view"]["blocks"]
+            footers = [block for block in blocks if block.get("kind") == "compaction"]
+            assert_true(len(footers) == 1, blocks)
+            assert_true(
+                footers[0]["compaction"]["messages_after"]
+                < footers[0]["compaction"]["messages_before"],
+                footers,
+            )
+            markers = [block for block in blocks if "COMPACT-MARKER" in str(block.get("text", ""))]
+            assert_true(len(markers) == 2, blocks)
+            assert_true(len({block["id"] for block in blocks}) == len(blocks), blocks)
+
+            preview = client.command("context", session)["result"]["exchanges"][0]
+            assert_true(preview["preview"], preview)
+            # Re-compacting this already minimal context must preserve it.
+            before = snapshot["state"]["context_tokens"]
+            client.command("submit", session, text="/compact")
+            unchanged = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["status"] == "idle"
+                    and value["state"].get("statistics", {}).get("model_calls", 0) >= 4
+                ),
+            )
+            assert unchanged["state"]["context_tokens"] == before
+            assert (
+                len([b for b in unchanged["state"]["view"]["blocks"] if b["kind"] == "compaction"])
+                == 1
+            )
 
 
 def test_web_external_origin_pairing(root, home, *, binary):
@@ -117,7 +464,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 ),
             )
             assert_true(len(provider.requests) == 2, provider.requests)
-            files = list((home / ".uagent/history").rglob("*.json"))
+            files = session_files(home)
             assert_true(len(files) == 1, files)
             data = json.loads(files[0].read_text().splitlines()[1])
             assert_true("display" in data, data.keys())
@@ -148,13 +495,21 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                     "text": "/context",
                 },
             )
-            assert_true(status == 409 and "Raw context" in denied["error"], denied)
+            assert_true(status == 200 and denied["accepted"], denied)
+            client.until(session, lambda value: value["metadata"]["status"] == "idle")
             status, denied, _ = client.json(
                 "/api/command", {**payload, "request_id": "e" * 32, "text": "/fork"}
             )
             assert_true(status == 409 and "conversation controls" in denied["error"], denied)
+            for index, bare in enumerate(("/model", "/models")):
+                status, denied, _ = client.json(
+                    "/api/command",
+                    {**payload, "request_id": f"b{index:031x}", "text": bare},
+                )
+                assert_true(status == 200 and denied["accepted"], denied)
+                client.until(session, lambda value: value["metadata"]["status"] == "idle")
             assert_true(
-                len(list((home / ".uagent/history").rglob("*.json"))) == 1,
+                len(session_files(home)) == 1,
                 "slash fork changed worker identity",
             )
             client.command("close", session)
@@ -315,8 +670,172 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
                     and not value["metadata"]["turn_active"]
                 ),
             )
-            snapshots = list((home / ".uagent/history").rglob("web-*.json"))
+            snapshots = [path for path in session_files(home) if path.name.startswith("web-")]
             assert_true(len(snapshots) == 2, snapshots)
+
+
+def test_web_steer_yields_activity_wait(root, home, *, binary):
+    workspace = root / "steer-wait"
+    workspace.mkdir()
+
+    def responder(_, body):
+        results = tool_results(body["messages"])
+        if any("wait yielded for queued steering" in result for result in results):
+            return event({"content": "steer-yield-ok"})
+        if any("[running] activity" in result for result in results):
+            return tool_call(
+                "activity", {"operation": "wait", "wait_ms": 30000}, call_id="steer-wait"
+            )
+        return tool_call("run", {"command": "sleep 30", "yield_ms": 250}, call_id="steer-sleep")
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Steering wait probe")
+            # The wait tool call is the model's second request; steering only
+            # after it keeps the yield deterministic.
+            wait_until(lambda: len(provider.requests) >= 2, "activity wait never started")
+            time.sleep(budget(1))
+            client.command("steer", session, text="change course")
+            done = client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true("steer-yield-ok" in json.dumps(done), done)
+            assert_true(not done["state"].get("error"), done["state"])
+
+
+def test_web_steer_queues_guidance_and_live_accounting(root, home, *, binary):
+    workspace = root / "steer-live"
+    workspace.mkdir()
+    release = threading.Event()
+
+    def responder(handler, body):
+        content = json.dumps(body["messages"])
+        if "steer-me" in content:
+            release.wait(timeout=budget(10))
+            return event({"content": "steered answer"})
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "slow chunk one "}, finish=None),
+                event({"content": "slow chunk two "}, finish=None),
+                event(
+                    {"content": "slow chunk three"},
+                    usage={"prompt_tokens": 50, "completion_tokens": 20},
+                ),
+            ],
+            delay=0.3,
+        )
+        return None
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="/yolo")
+            client.until(session, lambda value: value["state"].get("yolo", False))
+            client.command("submit", session, text="Slow stream probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            time.sleep(budget(0.5))
+            client.command("steer", session, text="steer-me guidance")
+            # The first model call lands while the steered turn still runs:
+            # usage and statistics arrive through a live state publish.
+            live = client.until(
+                session,
+                lambda value: (
+                    value["metadata"]["turn_active"]
+                    and (value["state"].get("statistics") or {}).get("model_calls", 0) >= 1
+                ),
+            )
+            assert_true(not live["state"].get("error"), live["state"])
+            release.set()
+            done = client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true("steered answer" in json.dumps(done), done)
+            assert_true(not done["state"].get("error"), done["state"])
+            assert_true("interrupted" not in json.dumps(done["state"]), done["state"])
+            # The resumed turn records no interrupt detail either.
+            assert_true(
+                done["state"].get("stop", {}).get("detail", "") == "", done["state"].get("stop")
+            )
+            summaries = [
+                block.get("summary", {})
+                for block in done["state"]["view"]["blocks"]
+                if block.get("summary")
+            ]
+            assert_true(
+                summaries and all(summary.get("outcome") == "complete" for summary in summaries),
+                done["state"]["view"]["blocks"],
+            )
+
+
+def test_web_recall_queued_guidance(root, home, *, binary):
+    workspace = root / "recall-steer"
+    workspace.mkdir()
+    release = threading.Event()
+
+    def responder(handler, body):
+        content = json.dumps(body["messages"])
+        if "recall-me" in content or "deliver-me" in content:
+            if "deliver-me" in content:
+                return event({"content": "delivered-ok"})
+            release.wait(timeout=budget(10))
+            return event({"content": "recalled-oops"})
+        write_sse_sequence(
+            handler,
+            [
+                event({"content": "slow chunk one "}, finish=None),
+                event({"content": "slow chunk two "}, finish=None),
+                event(
+                    {"content": "slow chunk three"},
+                    usage={"prompt_tokens": 50, "completion_tokens": 20},
+                ),
+            ],
+            delay=1.0,
+        )
+        return None
+
+    with Server([responder]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(workspace)
+            client.command("submit", session, text="Slow recall probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            time.sleep(budget(0.5))
+            # Still inside the first slow model request: the queue is
+            # untouched, so the recall lands deterministically.
+            client.command("steer", session, text="recall-me guidance")
+            recalled = f"{client.sequence:032x}"
+            outcome = client.command("recall", session, target_id=recalled)
+            assert_true(outcome.get("accepted"), outcome)
+            release.set()
+            done = client.until(session, lambda value: not value["metadata"]["turn_active"])
+            assert_true("recalled-oops" not in json.dumps(done), done)
+            # Undelivered steering stays deliverable through the same path.
+            client.command("submit", session, text="Second probe")
+            client.until(session, lambda value: value["metadata"]["turn_active"])
+            client.command("steer", session, text="deliver-me guidance")
+            delivered = f"{client.sequence:032x}"
+            done = client.until(
+                session,
+                lambda value: (
+                    not value["metadata"]["turn_active"] and "delivered-ok" in json.dumps(value)
+                ),
+            )
+            assert_true("delivered-ok" in json.dumps(done), done)
+            # Consumed steering is never resurrected.
+            status, result, _ = client.json(
+                "/api/command",
+                {
+                    "v": 1,
+                    "kind": "recall",
+                    "request_id": f"{client.sequence + 100:032x}",
+                    "session_id": session["id"],
+                    "generation": session.get("generation", ""),
+                    "target_id": delivered,
+                },
+            )
+            assert_true(status == 409 and "already delivered" in result.get("error", ""), result)
 
 
 def test_web_restart_durable_images_and_read_only_catalogue(root, home, *, binary):
@@ -460,7 +979,7 @@ def test_web_project_trust_and_config_precedence(root, home, *, binary):
         global_config.unlink(missing_ok=True)
 
 
-def test_web_worker_cap_and_crash_isolation(root, home, *, binary):
+def test_session_runtime_crash_isolation(root, home, *, binary):
     with Server([lambda _, _body: event({"content": "Unaffected worker"})]) as provider:
         with web_host(binary, root, home, provider.url) as (client, code, process, _):
             client.pair(code)
@@ -468,17 +987,7 @@ def test_web_worker_cap_and_crash_isolation(root, home, *, binary):
             for index in range(5):
                 project = root / f"workspace-{index}"
                 project.mkdir()
-                sessions.append(client.create(project, activate=index < 4))
-            status, result, _ = client.json(
-                "/api/command",
-                {
-                    "v": 1,
-                    "request_id": "e" * 32,
-                    "kind": "activate",
-                    "session_id": sessions[-1]["id"],
-                },
-            )
-            assert_true(status == 409 and "limit" in result["error"], result)
+                sessions.append(client.create(project))
             rows = subprocess.check_output(["ps", "-ax", "-o", "pid=,ppid=,args="], text=True)
             victim = next(
                 int(row.split()[0])
@@ -550,6 +1059,7 @@ def test_web_save_failure_remains_visible(root, home, *, binary):
             client.pair(code)
             session = client.create(project)
             record = json.loads((home / f".uagent/web/drafts/{session['id']}.json").read_text())
+            Path(record["path"]).unlink()
             Path(record["path"]).mkdir()
             client.command("submit", session, text="Exercise a failed checkpoint")
             value = client.until(
@@ -585,7 +1095,9 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
             client.command("close", session)
             saved = client.snapshot(session)["metadata"]
             assert_true(saved["title"] == "test", saved)
+            previous_generation = session["generation"]
             session = client.command("activate", saved)["session"]
+            assert_true(session["generation"] != previous_generation, "rejoined a closing runtime")
             client.until(session, lambda value: value["metadata"]["status"] == "idle")
             endpoint = f"/api/sessions/{session['id']}/attachments"
             status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})
@@ -784,7 +1296,7 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
                 rows = snapshot["state"]["view"]["blocks"]
                 assert_true(len(rows) == 1 and rows[0]["kind"] == "user", rows)
                 assert_true(rows[0]["request_id"] == request_id, rows)
-                saved = list((home / ".uagent/history").rglob("*.json"))
+                saved = session_files(home)
                 assert_true(len(saved) == 1 and "Visible before" in saved[0].read_text(), saved)
                 receipt = client.json(f"/api/receipts/{request_id}")[1]
                 assert_true(receipt["accepted"] and not receipt.get("pending"), receipt)
@@ -968,21 +1480,23 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 count = len(provider.requests)
                 client.command("activity", session, operation="inspect", activity_id=child["id"])
                 assert_true(len(provider.requests) == count, "inspection called the model")
-                denied = client.json(
-                    "/api/command",
-                    {
-                        "v": 1,
-                        "request_id": "e" * 32,
-                        "kind": "activity",
-                        "operation": "inspect",
-                        "session_id": peer["id"],
-                        "generation": peer["generation"],
-                        "agent_id": child["agent_id"],
-                    },
-                )
-                assert_true(
-                    denied[0] == 409 and "another conversation" in denied[1]["error"], denied[1]
-                )
+                for operation in ("inspect", "message"):
+                    denied = client.json(
+                        "/api/command",
+                        {
+                            "v": 1,
+                            "request_id": ("e" if operation == "inspect" else "f") * 32,
+                            "kind": "activity",
+                            "operation": operation,
+                            "text": "must not reach another conversation",
+                            "session_id": peer["id"],
+                            "generation": peer["generation"],
+                            "agent_id": child["agent_id"],
+                        },
+                    )
+                    assert_true(
+                        denied[0] == 409 and "another conversation" in denied[1]["error"], denied[1]
+                    )
             finally:
                 release_child.set()
             snapshot = client.until(
@@ -1085,7 +1599,8 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             )
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
             rows = snapshot["state"]["view"]["blocks"]
-            request, reply = rows[0], rows[-1]
+            request = rows[0]
+            reply = next(row for row in reversed(rows) if row["kind"] == "assistant")
             assert_true(reply["reply_to"] == request["id"] == reply["turn_root"], rows)
             exchange = reply["http"][-1]
             captured, metadata = body_for(session, exchange, "request")
@@ -1154,7 +1669,12 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             session = client.create(root)
             client.command("submit", session, text="Retry this request")
             snapshot = client.until(session, lambda value: value["metadata"]["status"] == "idle")
-            exchanges = snapshot["state"]["view"]["blocks"][-1]["http"]
+            reply = next(
+                row
+                for row in reversed(snapshot["state"]["view"]["blocks"])
+                if row["kind"] == "assistant"
+            )
+            exchanges = reply["http"]
             assert_true([item["status"] for item in exchanges] == [503, 200], exchanges)
             first = client.json(
                 f"/api/sessions/{session['id']}?http={exchanges[0]['id']}&part=response"
@@ -1213,93 +1733,6 @@ def test_web_http_retry_and_failed_request_persistence(root, home, *, binary):
             assert_true(len(provider.requests) == 3, provider.requests)
 
 
-def test_web_presence_tracks_idle_terminal_exit_crash_and_new_history(root, home, *, binary):
-    import http.client
-    import queue
-
-    from integration_support import run_pty, write_session
-
-    with Server([lambda _, _body: event({"content": "unused"})]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, env):
-            client.pair(code)
-            worker = client.create(root)
-            assert_true(client.snapshot(worker)["metadata"]["presence"] == "web", worker)
-            path = write_session(
-                home, "presence", [{"role": "system", "content": "saved"}], cwd=root
-            )
-            listing = client.json("/api/sessions?refresh=1")[1]
-            saved = next(item for item in listing["sessions"] if item["title"] == "presence")
-            assert_true(saved["presence"] == "", saved)
-            frames = queue.Queue()
-            stream = http.client.HTTPConnection("127.0.0.1", client.port, timeout=20)
-
-            def read_events():
-                try:
-                    stream.request(
-                        "GET",
-                        f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
-                        headers={"Cookie": client.cookie},
-                    )
-                    response = stream.getresponse()
-                    while line := response.readline():
-                        if line.startswith(b"data: "):
-                            frames.put(json.loads(line[6:]))
-                except (OSError, ValueError):
-                    pass
-
-            reader = threading.Thread(target=read_events, daemon=True)
-            reader.start()
-
-            def metadata(predicate):
-                deadline = time.monotonic() + budget(10)
-                while time.monotonic() < deadline:
-                    frame = frames.get(timeout=max(0.01, deadline - time.monotonic()))
-                    value = frame.get("metadata")
-                    if value and predicate(value):
-                        return value
-                raise AssertionError("presence metadata was not published over SSE")
-
-            def active():
-                metadata(
-                    lambda value: value["id"] == saved["id"] and value["presence"] == "terminal"
-                )
-
-            try:
-                # An idle terminal owns only its conversation, despite a web worker
-                # already running in this same folder. No model call is needed.
-                code, output = run_pty(
-                    root, env, [b"/q\r"], args=("-c",), before_payload=active, binary=binary
-                )
-                assert_true(code == 0, output)
-                metadata(lambda value: value["id"] == saved["id"] and value["presence"] == "")
-                code, output = run_pty(
-                    root,
-                    env,
-                    [lambda process: process.kill()],
-                    args=("-c",),
-                    before_payload=active,
-                    binary=binary,
-                )
-                assert_true(code == -signal.SIGKILL, output)
-                metadata(lambda value: value["id"] == saved["id"] and value["presence"] == "")
-                assert_true(
-                    Path(str(path) + ".lock").exists(), "ownership file should survive a crash"
-                )
-                write_session(
-                    home, "new-terminal-history", [{"role": "system", "content": "new"}], cwd=root
-                )
-                discovered = metadata(lambda value: value["title"] == "new-terminal-history")
-                assert_true(discovered["updated"] > 0 and discovered["presence"] == "", discovered)
-                client.command("close", worker)
-                metadata(lambda value: value["id"] == worker["id"] and value["presence"] == "")
-                assert_true(len(provider.requests) == 0, provider.requests)
-            finally:
-                if stream.sock:
-                    stream.sock.shutdown(socket.SHUT_RDWR)
-                reader.join(timeout=2)
-                stream.close()
-
-
 def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
     attached = root / "slash-note.txt"
     attached.write_text("RETAINED_SLASH_ATTACHMENT")
@@ -1333,8 +1766,66 @@ def test_web_slash_registry_and_attachment_retention(root, home, *, binary):
             )
             assert_true(len(provider.requests) == 1, provider.requests)
             content = provider.requests[0][1]["messages"][-1]["content"]
-            file = next(block["file"] for block in content if block["type"] == "file")
-            assert_true(file["filename"] == attached.name, file)
-            assert_true(
-                base64.b64decode(file["file_data"].split(",", 1)[1]) == attached.read_bytes(), file
-            )
+            text = "\n".join(block.get("text", "") for block in content)
+            assert_true(attached.name in text and attached.read_text() in text, content)
+            assert_true(not any(block["type"] == "file" for block in content), content)
+
+
+def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary):
+    from session_support import SessionClient, runtime_directory
+
+    started, release = threading.Event(), threading.Event()
+
+    def answer(_, body):
+        if any(message.get("content") == "retained worker" for message in body["messages"]):
+            started.set()
+            assert release.wait(budget(10))
+            return event({"content": "worker finished"})
+        if tool_results(body["messages"]):
+            return event({"content": "parent finished"})
+        return tool_call("subagent", {"persistent": True, "prompt": "retained worker"})
+
+    with Server([answer]) as provider:
+        with web_host(binary, root, home, provider.url) as (web, code, _, _):
+            web.pair(code)
+            session = web.create(root)
+            web.command("submit", session, text="/yolo")
+            web.until(session, lambda value: value["state"].get("yolo", False))
+            web.command("submit", session, text="delegate")
+            try:
+                assert started.wait(budget(5))
+                snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
+                child = snapshot["state"]["collaborators"][0]
+                paths = [
+                    path
+                    for path in runtime_directory(home).glob("*.sock")
+                    if path.stem != session["id"]
+                ]
+                assert_true(len(paths) == 1, paths)
+                client = SessionClient(paths[0])
+                try:
+                    for index in range(8):
+                        command = client.send("guide", text=f"guidance {index}")
+                        receipt = client.until(
+                            lambda frame, request=command["request_id"]: (
+                                frame.get("request_id") == request
+                            )
+                        )
+                        assert_true(receipt.get("accepted"), receipt)
+                finally:
+                    client.close()
+                # The worker still streams its cached state before replying to
+                # every new connection. That state is not a command receipt.
+                result = web.command(
+                    "activity",
+                    session,
+                    operation="message",
+                    agent_id=child["id"],
+                    text="overflow guidance",
+                )
+                assert_true("queued message" in result["result"]["output"], result)
+                mail = list((home / ".uagent/collaborators").glob("*.mail-*.json"))
+                assert_true(len(mail) == 1 and "overflow guidance" in mail[0].read_text(), mail)
+            finally:
+                release.set()
+            web.until(session, lambda value: value["metadata"]["status"] == "idle")

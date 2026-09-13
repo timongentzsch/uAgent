@@ -30,6 +30,7 @@ struct ApplicationInput {
   std::string text{};
   std::string request_id{};
   json control{};
+  json budget{};
   std::vector<Attachment> attachments{};
   bool wake = false;
   std::optional<std::string> title{};
@@ -48,8 +49,10 @@ class ApplicationChannel {
   virtual int WakeFd() const { return -1; }
   virtual std::string SessionPath() const { return {}; }
   virtual std::string InitialTitle() const { return {}; }
-  // Called only at serialized application boundaries, after saving.
-  virtual void PublishState(const json&) {}
+  // Checkpoints run at serialized application boundaries, after saving. A
+  // live (non-checkpoint) publish carries the same state mid-turn so the
+  // client's accounting moves while the turn runs.
+  virtual void PublishState(const json&, bool /*checkpoint*/) {}
   virtual void CompleteControl(const std::string&, const json&) {}
   // Only thread-safe, non-model activity operations may use this entry point.
   virtual void SetActivityControl(const std::function<json(const json&)>&) {}

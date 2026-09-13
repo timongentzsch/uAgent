@@ -20,6 +20,7 @@ class Steering {
  public:
   struct Message {
     std::string text, request_id;
+    bool auto_start = true;
   };
   bool Requested() const { return requested_; }
 
@@ -27,9 +28,13 @@ class Steering {
 
   bool Take();
 
-  void Queue(std::string input, std::string request_id = "");
+  void Queue(std::string input, std::string request_id = "",
+             bool auto_start = true);
+  // Drop one queued entry by client request id. True when an entry was
+  // still queued; consumed steering is never resurrected.
+  bool Recall(const std::string& request_id);
   std::vector<Message> TakeMessages();
-  std::vector<std::string> TakeQueued();
+  std::vector<Message> TakeAutoStartMessages();
   size_t QueuedCount() const;
 
  private:
@@ -39,12 +44,6 @@ class Steering {
 };
 
 Steering& SteeringState();
-
-// Guidance that no turn consumed, drained and joined into one prompt. A slash
-// command never reads the queue and a turn past its last steering check can no
-// longer act on it, so without this the line stays queued and is never run.
-// Empty when nothing was stranded.
-std::string TakeStrandedSteering();
 
 // Passive waits use queued guidance as a soft-yield condition. The input owner
 // must publish the queue entry before waking the process supervisor.

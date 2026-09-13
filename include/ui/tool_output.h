@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/agent/dispatch.h"
 #include "include/core/events.h"
@@ -57,6 +58,7 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   PresentationRecord record;
   record.kind = PresentationKind::kToolCall;
   record.id = call.id;
+  record.activity = task.activity;
   record.title = task.ordinal + call.name;
   record.skill = task.tool && task.tool->name == "skill";
   record.poll =
@@ -65,12 +67,29 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   return record;
 }
 
+// Stored transcript path: same row as a live call, from replay data.
+inline PresentationRecord ToolCallPresentation(
+    const std::string& name, const json& arguments,
+    const std::vector<Tool>& tools, const std::string& ordinal = "") {
+  CallTask task;
+  task.tool = FindTool(tools, name);
+  task.ordinal = ordinal;
+  task.label = task.tool && arguments.is_object()
+                   ? ToolSummary(*task.tool, arguments)
+                   : (arguments.is_string() ? arguments.get<std::string>()
+                                            : JsonDump(arguments));
+  ToolCall call;
+  call.name = name;
+  return ToolCallPresentation(task, call);
+}
+
 inline PresentationRecord ToolResultPresentation(
     const CallTask& task, const ToolCall& call, const std::string& model_output,
     bool verbose) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   record.id = call.id;
+  record.activity = task.activity;
   record.title = task.ordinal + call.name;
   if (task.result.status == CompletionStatus::kCancelled) {
     record.status = PresentationStatus::kCancelled;
@@ -96,9 +115,9 @@ inline PresentationRecord ToolResultPresentation(
     ClearPollAnchor(activity_id);
   }
   // A change is told entirely by its diff, so the receipt is the whole row.
-  if (g_tty && task.result.Ok() && !task.result.display.empty()) {
+  if (task.result.Ok() && !task.result.display.empty()) {
     record.change = task.result.display;
-    return record;
+    if (!task.tool || !task.tool->declared_intent) return record;
   }
 
   std::string shown = verbose
@@ -114,31 +133,28 @@ inline PresentationRecord ToolResultPresentation(
     record.summary = shown;
   } else {
     std::string summary = ToolResultSummary(task.result, shown, truncated);
-    std::string prefix = "  ← " + record.title;
-    record.summary = verbose ? std::move(summary)
-                             : TerminalSummary(summary, prefix.size() + 2);
+    record.summary = std::move(summary);
   }
   return record;
 }
 
 inline PresentationRecord StoredToolResultPresentation(
     const std::string& name, const std::string& output,
-    const std::string& display = "") {
+    const std::string& display = "",
+    PresentationStatus status = PresentationStatus::kNeutral) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
-  // A stored result keeps the text the model saw, not the status the live row
-  // was coloured from. Tools write a failure with an `error: ` prefix, so
-  // replay reads the signal the model read instead of resuming every call as
-  // a success and rendering the whole scrollback in the success colour.
+  record.status = status;
   ToolResult replayed;
-  if (output.rfind("error: ", 0) == 0) {
+  if (status == PresentationStatus::kFailed) {
     replayed.status = CompletionStatus::kFailed;
   }
-  record.status = replayed.Ok() ? PresentationStatus::kSucceeded
-                                : PresentationStatus::kFailed;
+  if (status == PresentationStatus::kCancelled) {
+    replayed.status = CompletionStatus::kCancelled;
+  }
   record.title = name.empty() ? "tool" : name;
   // A kept receipt replays as it was drawn, the way the live row showed it.
-  if (replayed.Ok() && !display.empty()) {
+  if (status == PresentationStatus::kSucceeded && !display.empty()) {
     record.change = display;
     return record;
   }
@@ -146,12 +162,6 @@ inline PresentationRecord StoredToolResultPresentation(
                                                      /*truncated=*/false),
                                    record.title.size() + 6);
   return record;
-}
-
-inline void PrintStoredToolResult(const std::string& name,
-                                  const std::string& output,
-                                  const std::string& display = "") {
-  PrintPresentation(StoredToolResultPresentation(name, output, display));
 }
 
 }  // namespace uagent

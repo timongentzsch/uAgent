@@ -14,13 +14,13 @@
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/time.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
-ToolResult McpImageResult(const json& content) {
+ToolResult McpImageResult(const json& content, std::string source_call_id) {
   if (!content.contains("data") || !content["data"].is_string()) {
     return ToolFailure(ToolErrorCode::kRemoteError,
                        "error: MCP image is missing base64 data");
@@ -31,7 +31,7 @@ ToolResult McpImageResult(const json& content) {
     return ToolFailure(ToolErrorCode::kRemoteError,
                        "error: unsupported MCP image type " + mime);
   }
-  int64_t limit_mb = TerminalImageLimitMb();
+  int64_t limit_mb = AttachmentLimitMb();
   std::string bytes;
   if (!Base64Decode(content["data"].get_ref<const std::string&>(), bytes,
                     static_cast<size_t>(limit_mb) * 1024 * 1024)) {
@@ -49,7 +49,7 @@ ToolResult McpImageResult(const json& content) {
   // Queue it instead: it rides in on the next request and the model can
   // actually look at it. Printing it to the terminal was never what made it
   // readable — that only showed it to the human, on every single call.
-  ToolResult attached = Attachments().Add(path);
+  ToolResult attached = Attachments().Add(path, std::move(source_call_id));
   if (!attached.Ok()) {
     std::string reason = std::move(attached.output);
     constexpr std::string_view kErrorPrefix = "error: ";
@@ -57,10 +57,8 @@ ToolResult McpImageResult(const json& content) {
     return ToolSuccess("[mcp image saved: " + path +
                        "; not attached: " + reason + "]");
   }
-  return ToolSuccess(
-      "[mcp image saved: " + path +
-      "; attached — readable in your next step. Use show_image to put it on "
-      "the user's terminal]");
+  return ToolSuccess("[mcp image saved: " + path +
+                     "; attached — readable in your next step]");
 }
 
 }  // namespace uagent

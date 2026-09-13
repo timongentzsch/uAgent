@@ -80,6 +80,7 @@ inline const char* TurnStopReasonName(TurnStopReason reason) {
 using TurnLimits = TurnBudgets;
 
 struct TurnMetrics {
+  bool usage_reported = false;
   Usage usage;
   int64_t tool_count = 0;
   double ttt_ms = -1;

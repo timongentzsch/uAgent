@@ -12,18 +12,18 @@ this file. Do not load every reference; pick the one the question needs.
 
 | Question | Source |
 | --- | --- |
-| What is active right now, and why? | `uagent_info` topic `status` or `config` |
-| What does this setting default to, and when does a change apply? | `uagent_info` topic `config`, `name` set |
-| Which flags exist? | `uagent_info` topic `cli`, or `references/cli.md` |
-| Which slash commands exist? | `uagent_info` topic `commands`, or `references/slash-commands.md` |
+| What is active right now, and why? | `uagent` action `inspect`, topic `status` or `config` |
+| What does this setting default to, and when does a change apply? | `uagent` action `inspect`, topic `config`, `name` set |
+| Which flags exist? | `uagent` action `inspect`, topic `cli`, or `references/cli.md` |
+| Which slash commands exist? | `uagent` action `inspect`, topic `commands`, or `references/slash-commands.md` |
 | Full setting catalogue | `references/configuration.md` |
 | What is in the system prompt? | `references/system-prompt.md` |
-| Which prompt is this session actually running? | `uagent_info` topic `prompt` (base digest, active sections, overlay) |
-| Which built-in tools and arguments exist? | `uagent_info` topic `tools`, or `references/tools.md` |
+| Which prompt is this session actually running? | `uagent` action `inspect`, topic `prompt` (base digest, active sections, overlay) |
+| Which built-in tools and arguments exist? | `uagent` action `inspect`, topic `tools`, or `references/tools.md` |
 | How is µAgent built, and why? | `references/architecture.md` when installed, else `docs/ARCHITECTURE.md` in a source checkout |
 | Change a setting persistently | `references/self-configuration.md` |
 
-`uagent_info` reports the installed binary, so it beats both these references
+`uagent` reports the installed binary, so it beats both these references
 and any recollection when the two disagree. The references are generated from
 the same registries at build time and carry a `manifest.json` naming the
 version they match.
@@ -31,9 +31,9 @@ version they match.
 ## Workflow
 
 1. Establish scope: one command, the global user config, or a trusted project.
-2. Read the live value before proposing a change; `uagent_info` reports the
+2. Read the live value before proposing a change; `uagent` reports the
    source of each active setting and whether a restart is required.
-3. Persist a setting with `uagent_configure`, which merges into the existing
+3. Persist a setting with `uagent` action `configure`, which merges into the existing
    file and shows the user the exact diff. Never print secret values; report
    only whether they are set.
 4. Prefer scope `user` for persistent settings. Use `project` only when
@@ -42,7 +42,7 @@ version they match.
 5. Change only the settings needed for the requested outcome. Keep limits at
    defaults unless there is a measured reason to raise them.
 6. Validate without a billable model call: `uagent --help`, `uagent --version`,
-   and `uagent_info`. Inspect `.mcp.json` as JSON when it changed. Explain that
+   and `uagent`. Inspect `.mcp.json` as JSON when it changed. Explain that
    a real prompt is the end-to-end check and may incur provider usage.
 
 ## Rules
@@ -60,8 +60,8 @@ version they match.
 - Do not enable `--yolo`, `UAGENT_APPROVAL=yolo`, project trust, credential
   forwarding, or broader tool capabilities without making the authority change
   explicit.
-- Do not invent settings. `uagent_info` enumerates every registered setting; if
+- Do not invent settings. `uagent` enumerates every registered setting; if
   a requested behavior is absent from it, say so rather than guessing.
-- Never write a config file with the file tools. `uagent_configure` is offered
+- Never write a config file with the file tools. `uagent action=configure` is offered
   only on an interactive terminal, so when it is absent the answer is an edit
   for the user to apply, not one made on their behalf.

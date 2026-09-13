@@ -1,4 +1,6 @@
 :root {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: dark;
   --bg: #000;
@@ -9,11 +11,17 @@
   --muted: #a3a3a3;
   --line: #404040;
   --accent: #fff;
+  --live: #22a35a;
   --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;
   --viewport-top: 0px;
   --viewport-left: 0px;
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --content-width: calc(
+    var(--viewport-width) - var(--safe-left) - var(--safe-right)
+  );
   --safe-top: env(safe-area-inset-top, 0px);
   /* Safari can retain the home-indicator inset above an open keyboard. */
   --safe-bottom: max(
@@ -23,6 +31,10 @@
         max(0px, 100dvh - var(--viewport-height) - var(--viewport-top))
     )
   );
+  --content-height: calc(
+    var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
+  );
+  --surface-inset: 8px;
   --control: max(28px, 2.2rem);
   --gap: 8px;
   --pad: 12px;
@@ -67,6 +79,7 @@ body {
   left: var(--viewport-left);
   width: var(--viewport-width);
   height: var(--viewport-height);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
   container: app / size;
   display: flex;
   flex-direction: column;
@@ -93,6 +106,29 @@ select,
 textarea {
   border: 1px solid var(--line);
   background: var(--surface);
+}
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  cursor: pointer;
+}
+.toggle-row > span,
+.toggle-row small {
+  display: block;
+  min-width: 0;
+}
+.toggle-row strong {
+  font-weight: 500;
 }
 button,
 .file-button {
@@ -200,7 +236,7 @@ label,
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--pad);
 }
 .field-label output {
   color: var(--muted);
@@ -285,7 +321,7 @@ pre code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--pad);
   font-size: 0.85rem;
   max-height: 25vh;
   overflow: auto;
@@ -334,7 +370,7 @@ pre code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--gap);
   min-height: 40px;
 }
 .sidebar-head button {
@@ -361,7 +397,7 @@ pre code {
 .folder-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap);
 }
 .folder-label > span {
   overflow: hidden;
@@ -406,13 +442,30 @@ pre code {
   color: var(--muted);
   margin-top: 2px;
 }
-.presence-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #22a35a;
+.session small .activity-status {
   margin-right: 6px;
+}
+.status-led {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+}
+.status-led.active,
+.status-led.running {
+  background: var(--live);
+  border-color: var(--live);
+}
+.status-led.running {
+  animation: led-breathe 1.6s ease-in-out infinite;
+}
+@keyframes led-breathe {
+  50% {
+    opacity: 0.35;
+  }
 }
 .sidebar footer {
   display: flex;
@@ -426,13 +479,8 @@ pre code {
   color: var(--muted);
   font-size: 0.7rem;
 }
-.connection::before {
-  content: "○";
-  margin: 0 6px;
-}
-.connection.connected::before {
-  content: "●";
-  color: var(--accent);
+.connection .status-led {
+  margin-right: 6px;
 }
 .conversation {
   min-width: 0;
@@ -445,11 +493,10 @@ pre code {
   background: var(--bg);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--gap);
   flex-shrink: 0;
   min-height: 44px;
   padding: 4px var(--pad);
-  padding-top: max(4px, var(--safe-top));
   border-bottom: 1px solid var(--line);
 }
 .conversation-head > div:first-of-type {
@@ -507,7 +554,7 @@ pre code {
   flex-shrink: 0;
   min-width: 0;
   margin: 0 max(var(--pad), calc((100% - 1040px) / 2));
-  padding: 4px 0 max(4px, var(--safe-bottom));
+  padding: 4px 0;
   background: var(--bg);
   max-height: calc(var(--viewport-height) - 100px);
   overflow: visible;
@@ -595,7 +642,7 @@ pre code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--gap);
   min-width: 0;
   padding-top: 4px;
 }
@@ -626,15 +673,6 @@ pre code {
   padding: 0 2px;
   min-height: 24px;
 }
-.working-mark {
-  display: inline-block;
-  animation: working 2s linear infinite;
-}
-@keyframes working {
-  to {
-    transform: rotate(360deg);
-  }
-}
 .unread-dot {
   display: inline-block;
   width: 0.5em;
@@ -647,7 +685,7 @@ pre code {
 .decision {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--gap);
   border: 1px solid var(--accent);
   padding: 12px;
   max-height: min(
@@ -667,7 +705,7 @@ pre code {
   display: flex;
   align-items: end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--gap);
   border: 0;
   flex-shrink: 0;
   background: none;
@@ -717,28 +755,47 @@ pre code {
 .permission-panel {
   width: 260px;
 }
-.dialog-actions {
+.dialog-actions,
+.editor-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--gap);
   flex-wrap: wrap;
+}
+.segmented,
+.raw-tabs,
+.document-toolbar,
+.weekdays {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+.segmented button[aria-pressed="true"],
+.raw-tabs [aria-selected="true"],
+.raw-tabs [aria-pressed="true"],
+.weekdays button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 /* Modal header and close button stay outside the scrolling body. */
 dialog {
   position: fixed;
   inset: auto;
-  top: calc(var(--viewport-top) + var(--viewport-height) / 2);
-  left: calc(var(--viewport-left) + var(--viewport-width) / 2);
+  top: calc(var(--viewport-top) + var(--safe-top) + var(--content-height) / 2);
+  left: calc(
+    var(--viewport-left) + var(--safe-left) + var(--content-width) / 2
+  );
   transform: translate(-50%, -50%);
   margin: 0;
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--line);
   padding: 0;
-  width: min(560px, calc(var(--viewport-width) - 16px));
-  max-height: calc(var(--viewport-height) - 16px);
+  width: min(560px, calc(var(--content-width) - 16px));
+  max-height: max(0px, calc(var(--content-height) - 2 * var(--surface-inset)));
   overflow: hidden;
 }
 dialog[open] {
@@ -753,13 +810,13 @@ dialog > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--pad);
   border-bottom: 1px solid var(--line);
-  padding: 4px var(--pad);
+  padding: var(--surface-inset);
   flex-shrink: 0;
 }
 .dialog-body {
-  padding: var(--pad);
+  padding: var(--surface-inset);
   overflow: auto;
   overscroll-behavior: contain;
   scroll-padding-block: var(--pad);
@@ -771,21 +828,12 @@ dialog p {
 dialog section {
   margin: var(--pad) 0;
 }
-dialog footer {
-  gap: 8px;
-}
-.full-image {
-  display: block;
-  max-width: 100%;
-  max-height: calc(var(--viewport-height) - 120px);
-  object-fit: contain;
-  margin: auto;
-}
 .settings-view {
-  width: min(700px, calc(var(--viewport-width) - 16px));
+  width: min(700px, calc(var(--content-width) - 16px));
 }
-.raw-view {
-  width: min(1100px, calc(var(--viewport-width) - 16px));
+.raw-view,
+.prompt-view {
+  width: min(1100px, calc(var(--content-width) - 16px));
   height: min(900px, calc(var(--viewport-height) - 16px));
 }
 .pairing {
@@ -882,12 +930,12 @@ dialog footer {
   }
   dialog.sidebar.drawer[open] {
     top: calc(var(--viewport-top) + var(--safe-top));
-    left: var(--viewport-left);
+    left: calc(var(--viewport-left) + var(--safe-left));
     transform: none;
     margin: 0;
-    height: calc(var(--viewport-height) - var(--safe-top));
-    max-height: calc(var(--viewport-height) - var(--safe-top));
-    width: min(320px, calc(var(--viewport-width) - 24px));
+    height: var(--content-height);
+    max-height: var(--content-height);
+    width: min(320px, calc(var(--content-width) - 24px));
     gap: 0;
   }
   .drawer > .dialog-body {
@@ -946,19 +994,10 @@ dialog footer {
     font-size: 0.65rem;
     margin-left: auto;
   }
-  .dialog-body {
-    padding: var(--pad);
-  }
-  .field-row {
-    gap: 8px;
-  }
-  .raw-view {
-    width: calc(var(--viewport-width) - 12px);
-    height: calc(var(--viewport-height) - 12px);
-    max-height: calc(var(--viewport-height) - 12px);
-  }
-  .raw-view > .dialog-body {
-    padding: 8px;
+  .raw-view,
+  .prompt-view {
+    width: calc(var(--content-width) - 2 * var(--surface-inset));
+    height: calc(var(--content-height) - 2 * var(--surface-inset));
   }
 }
 @container app (max-height: 500px) {
@@ -996,8 +1035,8 @@ dialog footer {
 
 .sidebar-sections {
   display: flex;
-  gap: 0.3rem;
-  padding: 0 0.5rem 0.5rem;
+  gap: var(--gap);
+  padding: 0;
 }
 .sidebar-sections button {
   flex: 1;
@@ -1005,4 +1044,17 @@ dialog footer {
 }
 .sidebar-sections button[aria-current="page"] {
   background: var(--raised);
+}
+
+/* Every dialog shares the same optical and interactive close-button geometry. */
+dialog > header h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+dialog > header .icon-button {
+  width: var(--control);
+  height: var(--control);
 }

@@ -93,7 +93,7 @@ void TestGrepTool() {
     activity_ids.push_back(ActivityId(job));
   }
   CHECK(activity_ids.size() == 2);
-  auto activity_tools = BuiltinTools(supervisor, root, false);
+  auto activity_tools = BuiltinTools(supervisor, root);
   const Tool* wait_tool = FindTool(activity_tools, "activity");
   CHECK(wait_tool != nullptr);
   ToolResult waited = wait_tool->run({{"operation", "wait"},
@@ -139,16 +139,11 @@ void TestGrepTool() {
     unsetenv("PATH");
   }
 
-  auto lean_tools = BuiltinTools(supervisor, root, false);
-  auto image_tools = BuiltinTools(supervisor, root, true);
+  auto lean_tools = BuiltinTools(supervisor, root);
   CHECK(FindTool(lean_tools, "show_image") == nullptr);
-  const Tool* image = FindTool(image_tools, "show_image");
-  CHECK(image != nullptr);
-  CHECK(image && image->serial_media);
-  CHECK(image && image->replay_image);
   // Attachments are bounded by the queue ceiling and the byte budget, not by a
   // call count that would withdraw the tool mid-turn without saying why.
-  const Tool* attach = FindTool(lean_tools, "attach");
+  const Tool* attach = FindTool(lean_tools, "read_path");
   CHECK(attach != nullptr);
   CHECK(attach && attach->max_calls_per_turn < 0);
   CHECK(attach && ToolDescription(*attach).find("Limit:") == std::string::npos);
@@ -176,7 +171,7 @@ void TestGrepTool() {
   CHECK(grep != nullptr);
   CHECK(!file_search.contains("context"));
   CHECK(grep && !FindToolArgumentIssue(*grep, file_search));
-  auto evaluator_tools = BuiltinTools(supervisor, root, false);
+  auto evaluator_tools = BuiltinTools(supervisor, root);
   ApplyToolPolicy(evaluator_tools,
                   {.allowed = Capability(ToolCapability::kInspect),
                    .tool_allowlist = {"grep", "read_path", "run"},

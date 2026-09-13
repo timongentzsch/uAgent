@@ -39,6 +39,7 @@ export interface Usage {
   cost_reported?: boolean;
 }
 export interface Statistics {
+  recorded_turns?: number;
   incoming?: number;
   complete?: boolean;
   tool_calls?: number;
@@ -69,13 +70,43 @@ export interface Exchange {
   reply_to?: string;
   reply_excerpt?: string;
 }
+export interface ToolActivity {
+  category?: "explore" | "change" | "execute";
+  label?: string;
+  group?: { id: string; label: string };
+}
 export interface ToolCall {
+  activity?: ToolActivity;
   id: string;
   name: string;
   arguments?: JSONValue;
   status?: string;
 }
+export interface TurnSummary {
+  usage_reported?: boolean;
+  turn: number;
+  outcome: string;
+  route?: string;
+  tool_calls: number;
+  steps: number;
+  duration_ms: number;
+  ttt_ms: number;
+  tokens_per_second: number;
+  usage: Usage;
+}
 export interface Block {
+  memory?: { action: string; key: string; automatic: boolean };
+  activity?: ToolActivity;
+  sequence?: number;
+  summary?: TurnSummary;
+  compaction?: {
+    automatic: boolean;
+    messages_before: number;
+    messages_after: number;
+    retained_user_messages: number;
+    duration_ms: number;
+  };
+  deliveries?: { name: string; delivery: string }[];
   id: string;
   kind: string;
   text?: string;
@@ -86,7 +117,7 @@ export interface Block {
   session_id?: string;
   incoming?: number;
   files?: Asset[];
-  images?: string[];
+  origin?: string;
   unavailable_images?: number;
   tools?: ToolCall[];
   call_id?: string;
@@ -111,7 +142,11 @@ export interface Block {
   agent_id?: string;
 }
 export interface PresentedBlock extends Block {
+  children?: PresentedBlock[];
   key?: string;
+  // First agent row after a user turn (or at the start): the single home
+  // for the actor mark, so toolcalls are covered without stamping rows.
+  firstOfTurn?: boolean;
   source?: Block;
   result_loaded?: boolean;
 }
@@ -142,8 +177,15 @@ export interface Collaborator {
   id: string;
   label?: string;
   model?: string;
+  status?: string;
+  persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
+  body?: BodyPage;
+  memory?: Block["memory"];
+  task?: string;
+  directive?: string;
+  system_prompt?: string;
   conversation?: View;
   output?: string;
   statistics?: Statistics;
@@ -153,6 +195,8 @@ export interface ActivityDetail extends Activity {
 }
 export interface Pending {
   id: string;
+  kind?: string;
+  initial?: string;
   prompt?: string;
   options?: (string | { value: string; label?: string; title?: string })[];
   approval?: { tool: string; mandatory_human?: boolean; preview?: string };
@@ -170,13 +214,14 @@ export interface Session {
   title?: string;
   cwd?: string;
   status?: string;
-  presence?: "terminal" | "web" | "";
+  presence?: "active" | "";
   updated?: number;
   incoming?: number;
   turn_active?: boolean;
   pending?: boolean;
   activity?: string;
   activities?: Activity[];
+  guidance?: number;
   error?: string;
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
@@ -191,6 +236,8 @@ export interface State {
   view?: View;
   turns?: number;
   usage?: Usage;
+  route_usage?: Record<string, Usage>;
+  system_prompt?: string;
   statistics?: Statistics;
   activity?: string;
   activities?: Activity[];
@@ -241,6 +288,11 @@ export interface Outcome {
   error?: string;
 }
 export interface EventData extends Omit<Partial<Exchange>, "status"> {
+  inspect?: boolean;
+  context_tokens?: number;
+  output?: string;
+  usage?: Usage;
+  statistics?: Statistics;
   block?: Block;
   text?: string;
   id?: string;
@@ -251,18 +303,26 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   completion_status?: string;
   status?: string | number;
   duration_ms?: number;
-  presentation?: { change?: string; status?: string; title?: string };
+  activity?: ToolActivity;
+  presentation?: {
+    change?: string;
+    status?: string;
+    title?: string;
+    summary?: string;
+    activity?: ToolActivity;
+  };
   error?: string;
   activities?: Activity[];
+  collaborator?: Collaborator;
+  removed?: boolean;
   permissions?: Permissions;
 }
 // Host envelopes and native EventEmitter payloads share the same SSE channel.
-export interface HostEvent extends Omit<Outcome, "pending"> {
+interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   scheduled?: ScheduledState;
   v: number;
   epoch: string;
   sequence: number;
-  kind: string;
   session_id: string;
   generation?: string;
   time?: string;
@@ -270,12 +330,33 @@ export interface HostEvent extends Omit<Outcome, "pending"> {
   data?: EventData;
   metadata?: Session;
   state?: State;
-  pending?: Pending | null;
   busy?: boolean;
+  command_busy?: boolean;
+  guidance?: number;
+  presence?: "active" | "";
   checkpoint?: boolean;
   updated?: number;
   activity?: string;
 }
+export type HostEvent = HostEnvelope &
+  (
+    | ({ kind: "outcome" } & Outcome)
+    | { kind: "state"; pending?: Pending | null }
+    | {
+        kind:
+          | "event"
+          | "activity"
+          | "metadata"
+          | "activated"
+          | "deactivated"
+          | "closed"
+          | "deleted"
+          | "error"
+          | "gap"
+          | "management.changed"
+          | "scheduled.changed";
+      }
+  );
 export interface BodyPage {
   text: string;
   more: boolean;
@@ -337,6 +418,7 @@ export interface CommandResults {
   logout: never;
   submit: never;
   steer: never;
+  recall: never;
   reply: never;
   interrupt: never;
   permissions: Permissions;
@@ -345,6 +427,10 @@ export interface CommandResults {
 }
 export type CommandKind = keyof CommandResults;
 export interface CommandFields {
+  detail?: string;
+  raw?: boolean;
+  offset?: number;
+  cancelled?: boolean;
   action?: string;
   revision?: string;
   content?: string;
@@ -353,6 +439,7 @@ export interface CommandFields {
   schedule?: ScheduleRule;
   after?: number;
   request_id?: string;
+  target_id?: string;
   operation?: string;
   model?: string;
   effort?: string;
@@ -407,7 +494,6 @@ export type AppModal =
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "image"; url: string }
   | { type: "new" | "settings" };
 
 export interface PromptDocument {

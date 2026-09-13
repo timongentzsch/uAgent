@@ -52,6 +52,7 @@ struct SlashCommandSpec {
   const char* name;
   const char* argument;
   const char* description;
+  bool inspect_result = true;  // Queries may open a result viewer.
 };
 
 struct ParsedSlashCommand {

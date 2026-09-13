@@ -152,8 +152,8 @@ json PromptControl(const json& request, AdaptiveSystemState* state,
   return inspect(std::move(result));
 }
 
-json PromptCommand(const std::string& argument, const PromptController& control,
-                   bool browser) {
+json PromptCommand(const std::string& argument,
+                   const PromptController& control) {
   std::istringstream input(argument);
   std::string action = "show", flag, value, file;
   input >> action;
@@ -178,7 +178,6 @@ json PromptCommand(const std::string& argument, const PromptController& control,
   request["revision"] = current["item"]["revision"];
   if (action == "edit") {
     if (current.contains("error")) return current;
-    if (browser) return {{"editor", true}, {"scope", request["scope"]}};
     const auto mode = JsonValue(current["item"], "mode", "inherit");
     auto text = mode == "inherit"
                     ? current["inherited"][request["scope"].get<std::string>()]

@@ -13,6 +13,11 @@
 
 namespace uagent {
 
+bool PrintSearchReceipt(int64_t searches, const json& annotations,
+                        bool details = false, bool line_open = false);
+
+void PrintCitationSources(const json& annotations);
+
 // Generic plain-text activity normalization: collapse whitespace and drop
 // common lightweight formatting punctuation. It never branches on provider,
 // model, or inferred reasoning syntax.
@@ -30,12 +35,17 @@ class TerminalPresenter {
   TerminalPresenter& operator=(const TerminalPresenter&) = delete;
 
   void Consume(const Event& event) noexcept;
+  void Consume(const AppEvent& event) noexcept;
+  void Block(const json& block);
   void Finish() noexcept;
 
  private:
   struct State;
   std::unique_ptr<State> state_;
 };
+
+void PrintMessageHeader();
+std::string TurnStatsLine(const json& summary);
 
 void PrintPresentation(const PresentationRecord& record) noexcept;
 

@@ -28,6 +28,9 @@ namespace uagent {
 // Incremental SSE parser; emits provider-independent reasoning and answer
 // streams.
 struct StreamCtx {
+  std::function<void(const json&, size_t)> observe_progress;
+  json last_usage;
+  size_t last_response_bytes = 0;
   CURL* handle = nullptr;
   ChatResult* res = nullptr;
   std::string error_body;  // body when HTTP status >= 400
@@ -109,6 +112,18 @@ struct StreamCtx {
       OutputReasoning(delta.reasoning);
     }
     if (!delta.content.empty()) EmitContent(delta.content);
+    if (observe_progress) {
+      size_t bytes = SaturatingAdd(res->content.size(), res->reasoning.size());
+      for (const auto& [index, call] : calls) {
+        bytes = SaturatingAdd(
+            bytes, SaturatingAdd(call.name.size(), call.args.size()));
+      }
+      if (bytes != last_response_bytes || res->usage != last_usage) {
+        last_response_bytes = bytes;
+        last_usage = res->usage;
+        observe_progress(last_usage, bytes);
+      }
+    }
   }
 
   size_t Feed(const char* data, size_t len) {

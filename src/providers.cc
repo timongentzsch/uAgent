@@ -365,6 +365,7 @@ void ApplyRoute(Api& api, const ModelRoute& route) {
   api.ctx_window = route.context;
   api.capabilities = CapabilitiesForRoute(
       route.protocol, route.base_url, route.wire_api, route.hosted_web_search);
+  api.capabilities.SetInputModalities(route.input_modalities);
 }
 
 namespace {
@@ -455,7 +456,6 @@ ProviderSetup ConfigureProvider(Api& api) {
   api.reasoning_effort = configured_effort;
   api.ctx_window = ContextWindow();
   std::string protocol_setting = EnvStr("UAGENT_PROVIDER_PROTOCOL");
-  std::string compatible = EnvStr("UAGENT_OPENROUTER_COMPATIBLE");
   std::string wire_setting = EnvStr("UAGENT_WIRE_API", "chat_completions");
   std::optional<WireApi> configured_wire = ParseWireApi(wire_setting);
   WireApi wire_api = configured_wire.value_or(WireApi::kChatCompletions);
@@ -466,13 +466,6 @@ ProviderSetup ConfigureProvider(Api& api) {
   ProviderProtocol protocol;
   if (configured_protocol) {
     protocol = *configured_protocol;
-  } else if (!compatible.empty()) {
-    // Tri-state: unset falls through to the wire API, so this stays a string
-    // read. An unreadable spelling means "not OpenRouter", as it always did.
-    bool openrouter = false;
-    ParseBool(compatible, openrouter);
-    protocol =
-        openrouter ? ProviderProtocol::kOpenRouter : ProviderProtocol::kOpenAi;
   } else if (wire_api == WireApi::kAnthropicMessages) {
     protocol = ProviderProtocol::kAnthropic;
   } else {
@@ -578,6 +571,7 @@ bool ProbeModel(Api& api, bool discover_efforts) {
       if (info.id != api.model && info.id != base) continue;
       if (api.ctx_window == 0) api.ctx_window = info.context;
       api.supported_reasoning_efforts = info.efforts;
+      api.capabilities.SetInputModalities(info.input_modalities);
       if (!SupportsReasoningEffort(api, api.reasoning_effort)) {
         api.reasoning_effort.clear();
       }
@@ -598,6 +592,7 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
   const std::string previous_model = api.CatalogModel();
   const int64_t previous_context = api.ctx_window;
   const auto previous_efforts = api.supported_reasoning_efforts;
+  const auto previous_capabilities = api.capabilities;
   ModelSelection selection = ParseModelSelection(name);
   std::string selected = selection.base;
   if (std::optional<ModelRoute> route =
@@ -610,12 +605,19 @@ std::string SelectModel(Api& api, const std::vector<ModelRoute>& routes,
     api.reasoning_effort.clear();
     api.supported_reasoning_efforts.clear();
     api.config.openrouter_variant.clear();
+    api.capabilities = CapabilitiesForRoute(
+        api.capabilities.protocol, api.base_url, api.capabilities.wire_api,
+        api.capabilities.hosted_web_search);
   } else {
     return "";
   }
   if (api.base_url == previous_url && api.CatalogModel() == previous_model) {
     if (api.ctx_window == 0) api.ctx_window = previous_context;
     api.supported_reasoning_efforts = previous_efforts;
+    if (api.capabilities.protocol == previous_capabilities.protocol &&
+        api.capabilities.wire_api == previous_capabilities.wire_api) {
+      api.capabilities = previous_capabilities;
+    }
   } else {
     ProbeModel(api, /*discover_efforts=*/true);
   }
@@ -658,6 +660,13 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
+    const json* modalities = JsonArray(model, "input_modalities");
+    if (const json* architecture = JsonObject(model, "architecture")) {
+      if (!modalities) {
+        modalities = JsonArray(*architecture, "input_modalities");
+      }
+    }
+    if (modalities) info.input_modalities = *modalities;
     const json* efforts = JsonArray(model, "supported_reasoning_efforts");
     if (const json* defaults = JsonObject(model, "default_parameters")) {
       info.default_effort = JsonValue(*defaults, "reasoning_effort", "");
@@ -772,6 +781,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
           continue;
         }
         route.supported_efforts = info.efforts;
+        route.input_modalities = info.input_modalities;
         if (route.context == 0) route.context = info.context;
         candidate.info = info;
         candidate.info.context = route.context;
@@ -793,6 +803,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                        source.hosted_web_search,
                        info.efforts};
       route.effort = info.default_effort;
+      route.input_modalities = info.input_modalities;
       if (info.context == 0) info.context = context;
       result.matches.push_back(
           {std::move(selection), std::move(route), std::move(info)});
@@ -813,7 +824,10 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
   for (const ModelCandidate& candidate : search.matches) {
     bool active = candidate.route.base_url == api.base_url &&
                   candidate.route.model == api.model;
-    if (active) api.supported_reasoning_efforts = candidate.info.efforts;
+    if (active) {
+      api.supported_reasoning_efforts = candidate.info.efforts;
+      api.capabilities.SetInputModalities(candidate.info.input_modalities);
+    }
     models.push_back(
         {{"value", candidate.selection},
          {"label",
@@ -821,6 +835,7 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
                                    .base_url = candidate.route.base_url},
                          providers)},
          {"efforts", candidate.info.efforts},
+         {"input_modalities", candidate.info.input_modalities},
          {"variants", candidate.route.protocol == ProviderProtocol::kOpenRouter
                           ? json(kOpenRouterVariants)
                           : json::array()},

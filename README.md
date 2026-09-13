@@ -6,8 +6,9 @@
 µAgent is a local coding-agent harness shipped as one native binary, without a
 server-side language runtime or plugin system. Explicit route
 adapters stream Chat Completions, OpenAI Responses, and Anthropic Messages. A
-single process supervisor owns commands and resumable collaborators; typed
-events provide inspectable evidence without driving control flow.
+conversation runtime owns its commands and children; retained collaborators are
+same-binary child runtimes. Typed events provide shared state to terminal,
+browser and machine interfaces.
 
 Linux and macOS are supported. The native runtime links libcurl and the platform
 C++ libraries. The default build also embeds a browser interface and vendors
@@ -15,51 +16,18 @@ cpp-httplib alongside json.hpp; `-DUAGENT_WEB=OFF` retains a CLI-only build.
 Optional native Web Push adds OpenSSL 3 libcrypto. See [the web guide](docs/WEB.md)
 for architecture, security, dependencies and limits.
 
-## Why µAgent
+## Design
 
-**No runtime to maintain.** Most coding agents depend on Node or Python,
-adding a package manager, dependency tree, and runtime. µAgent is a C++20
-binary built with CMake and `-fno-exceptions`. Optional tools use `uv` or
-Playwright only when invoked.
-
-**Provider neutrality is an invariant, not a setting.** A canonical
-conversation and tool protocol feed explicit Chat Completions, Responses, and
-Anthropic adapters. Route capabilities declare transport and hosted tools;
-model names never grant capabilities. Configured route metadata and the exact
-official OpenAI endpoint select wire-dialect details; reasoning replay,
-citations, usage, retries, and rendering remain shared.
-
-**Every limit is explicit and inspectable.** Requests, idle streams, tool
-output, processes, memory, and context are bounded by default. Aggregate model
-rounds, tool calls, generated tokens, turn time, and provider-reported spend
-have opt-in caps.
-Settings resolve from files, environment, and flags with visible provenance,
-validate against declared bounds, and reload only between turns.
-`/status` summarizes version, route, effort, approval mode, and budgets;
-`/debug-config` explains active values; `/context` shows effective configuration,
-provenance, conversation state, and currently advertised tool schemas. Steering,
-activity completion, attachment draining, and compaction may still change the
-next wire request at its normal turn boundary.
-
-**Processes are first-class, not fire-and-forget.** Commands run under a real
-supervisor with opaque activity IDs: optional PTYs, writable stdin, resize,
-wait, stop, background handoff mid-run with Ctrl+B, and log-only detach that
-deliberately outlives the µAgent session. Session-scoped children are cleaned
-up on exit; detached services remain discoverable and stoppable later.
-
-**One observational spine, deliberately not a plugin system.** Semantic events
-are projected to fixed consumers — terminal presentation, versioned
-`uagent.event.v2` JSONL, a sensitive debug trace, and a bounded metadata-only
-session journal — according to each consumer's contract. Emitters cannot read
-sink state or receive a result. In-process subscribers cannot steer control
-flow, and there is no plugin-loaded sink or OpenTelemetry dependency; consume
-the JSONL externally instead.
-
-That set of choices makes µAgent useful for studying model behavior — tool use,
-provider quirks, degradation, and cost — because the evidence and authority
-boundaries are explicit. The executable and dependency surface are small; the
-internal turn, process, persistence, and protocol machinery are substantial and
-kept as explicit domains rather than hidden behind a framework.
+- One runtime per interactive conversation. CLI and web clients send commands
+  and consume the same ordered events; neither owns a separate conversation.
+- Explicit adapters for Chat Completions, OpenAI Responses and Anthropic
+  Messages, driven by declared route capabilities.
+- One process supervisor per runtime for command I/O, background work and
+  cleanup, with shared approval and sandbox policy.
+- Bounded operation defaults and optional aggregate budgets, reported through
+  inspectable configuration and per-turn/session statistics.
+- Atomic conversation snapshots, a bounded metadata journal and an optional
+  sensitive debug trace with distinct purposes.
 
 ## Quick start
 
@@ -116,12 +84,12 @@ uagent --yolo
   and resumable workspace sessions.
 - Supervised process activities with opaque IDs, incremental output, optional
   PTYs, writable input, resize, wait, stop, and persistent log-only detach.
-- Repository tools, attachments, terminal images, web search, skills, memory,
+- Repository tools, document/image input, web search, skills, memory,
   Playwright automation, and dynamically discovered MCP tools. MCP stdio
   requires the stateless `2026-07-28` protocol; there is no legacy downgrade.
 - One typed application event spine with terminal, stable JSONL, sensitive
   debug, bounded session-journal, and in-process subscriber consumers, plus a
-  transport-neutral input channel for future GUI/app-server adapters.
+  shared input channel used by terminal and web clients.
 - Centralized route capabilities, provider-independent tool presentation, and
   explicit Chat Completions, Responses, and Anthropic Messages adapters.
 - Native hosted web search when the active route declares it, otherwise an
@@ -146,7 +114,7 @@ The core registry includes:
 | mutate | `write_file`, `edit_file`, `delete_file` |
 | execute | `run`, `scratch` |
 | activities | `activity` |
-| evidence and state | `attach`, `show_image`, `memory`, `uagent_info`, `uagent_configure` |
+| evidence and state | `memory`, `uagent` |
 | web | `web_fetch` |
 | conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
 
@@ -166,7 +134,7 @@ reasoning and expanded bounded tool output.
 | Tab after `/` | Complete the command being typed from the rows below the draft |
 | Tab after `@` | Complete a path one segment at a time from the same rows |
 | Ctrl+X Ctrl+E | Open the draft in `$VISUAL`/`$EDITOR` and take back what it saves |
-| Ctrl+C while idle | Ask first; a second press within two seconds exits |
+| Ctrl+C while idle | A second press detaches; another key cancels the gesture |
 | `/models`, `/model` | Search or change model route |
 | `/effort`, `/variant` | Change reasoning effort or OpenRouter routing |
 | `/attach` | Queue or clear an attachment |
@@ -176,16 +144,12 @@ reasoning and expanded bounded tool output.
 | `/memory` | Show saved memory action, time, source, and redacted preview |
 | `/verbose` | Toggle full reasoning and expanded bounded tool output |
 | `/yolo` | Toggle automatic approval |
-| `/help`, `/quit` | Show help or exit |
+| `/help`, `/quit` | Show help or detach from the runtime |
 
 Approval prompts accept `y` once or `a` for the session. Shell approval reuse is
 scoped to the exact command payload; approving one `git`, shell, or interpreter
 invocation cannot authorize another. Any other answer denies the call and sends
 the denial to the model as steering.
-
-Successful historical `show_image` calls are retransmitted at their original
-position when a session resumes, provided the recorded local file still exists.
-Image bytes are not embedded in the session.
 
 ## Documentation
 

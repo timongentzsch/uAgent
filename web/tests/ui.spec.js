@@ -41,9 +41,9 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
       "background-color",
       "rgb(255, 255, 255)",
     );
-  await expect(page.locator(".conversation-head")).toHaveCSS(
-    "padding-top",
-    "47px",
+  await expect(page.locator("#app")).toHaveCSS("padding-top", "47px");
+  await page.evaluate(() =>
+    document.documentElement.style.setProperty("--safe-bottom", "34px"),
   );
   for (let i = 0; i < 2; i++) {
     await page
@@ -51,7 +51,9 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
       .click();
     const drawer = page.getByRole("dialog", { name: "Sessions", exact: true });
     await expect(drawer).toBeVisible();
-    expect((await drawer.boundingBox()).y).toBe(47);
+    const drawerBox = await drawer.boundingBox();
+    expect(drawerBox.y).toBe(47);
+    expect(drawerBox.y + drawerBox.height).toBeLessThanOrEqual(844 - 34);
     expect(
       await drawer.evaluate((element) => {
         const style = getComputedStyle(element, "::backdrop");
@@ -65,6 +67,23 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
   }
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const geometry = await settings.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const close = element
+      .querySelector("header button")
+      .getBoundingClientRect();
+    return {
+      top: box.top,
+      bottom: box.bottom,
+      insetTop: close.top - box.top,
+      insetRight: box.right - close.right,
+    };
+  });
+  expect(geometry.top).toBeGreaterThanOrEqual(47 + 8);
+  expect(geometry.bottom).toBeLessThanOrEqual(844 - 34 - 8);
+  expect(Math.abs(geometry.insetTop - geometry.insetRight)).toBeLessThanOrEqual(
+    1,
+  );
   await settings.getByLabel("Appearance", { exact: true }).selectOption("dark");
   await expect(page.locator("#app")).toHaveCSS(
     "background-color",
@@ -75,12 +94,26 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
       (element) => getComputedStyle(element, "::backdrop").borderTopColor,
     ),
   ).toBe("rgb(0, 0, 0)");
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--safe-top", "0px");
+    style.setProperty("--safe-bottom", "21px");
+    style.setProperty("--safe-left", "47px");
+    style.setProperty("--safe-right", "47px");
+  });
+  await expect(page.locator("html")).toHaveCSS("--viewport-height", "390px");
+  const landscape = await settings.boundingBox();
+  expect(landscape.y).toBeGreaterThanOrEqual(8);
+  expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 - 8);
+  expect(landscape.x).toBeGreaterThanOrEqual(47 + 8);
+  expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 - 8);
 });
 
 test("system prompt editing shares revisions, replacement and request previews", async ({
   page,
   host: fixture,
-}) => {
+}, testInfo) => {
   await page.goto("/");
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
 
@@ -103,7 +136,7 @@ test("system prompt editing shares revisions, replacement and request previews",
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   releaseSnapshot();
   const composer = page.getByLabel("Message or guidance");
   await composer.fill("/prompt");
@@ -116,6 +149,9 @@ test("system prompt editing shares revisions, replacement and request previews",
   await expect(dialog.getByLabel("Effective system prompt")).toContainText(
     "You are a coding agent",
   );
+  await dialog
+    .getByRole("button", { name: "Instructions", exact: true })
+    .click();
   await dialog.getByRole("button", { name: "Edit inherited prompt" }).click();
   const editor = dialog.getByLabel("System prompt text");
   await editor.fill(
@@ -166,6 +202,81 @@ test("system prompt editing shares revisions, replacement and request previews",
   await expect(dialog.getByLabel("Effective system prompt")).toContainText(
     "You are a coding agent",
   );
+  // Raw viewer CSS has loaded by this point. It must not clip the prompt
+  // depending on which dialog was opened first.
+  for (const viewport of [
+    { width: 390, height: 600 },
+    { width: 844, height: 390 },
+    { width: 1280, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const safeTop = viewport.width < 600 ? 47 : 0;
+    const safeBottom = viewport.width < 600 ? 34 : 21;
+    await page.evaluate(
+      ({ top, bottom }) => {
+        const style = document.documentElement.style;
+        style.setProperty("--safe-top", `${top}px`);
+        style.setProperty("--safe-bottom", `${bottom}px`);
+      },
+      { top: safeTop, bottom: safeBottom },
+    );
+    await expect(page.locator("html")).toHaveCSS(
+      "--viewport-width",
+      `${viewport.width}px`,
+    );
+    await expect(page.locator("html")).toHaveCSS(
+      "--viewport-height",
+      `${viewport.height}px`,
+    );
+    const body = dialog.locator(".dialog-body");
+    const bounds = await dialog.boundingBox();
+    expect(bounds.y).toBeGreaterThanOrEqual(safeTop + 8);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+      viewport.height - safeBottom - 8,
+    );
+    await body.evaluate((element) => element.scrollTo(0, 0));
+    const header = await dialog.locator("header").boundingBox();
+    const controls = await dialog.locator(".prompt-controls").boundingBox();
+    const close = await dialog
+      .getByRole("button", { name: "Close system prompt" })
+      .boundingBox();
+    expect(
+      Math.abs(controls.x + controls.width - close.x - close.width),
+    ).toBeLessThanOrEqual(1);
+    const heading = await dialog
+      .getByRole("heading", { name: "System prompt", exact: true })
+      .boundingBox();
+    expect(Math.abs(controls.x - heading.x)).toBeLessThanOrEqual(1);
+    await body.hover();
+    await page.mouse.wheel(0, 100000);
+    await expect
+      .poll(() =>
+        body.evaluate(
+          (element) =>
+            element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    expect(await body.evaluate((element) => element.scrollTop)).toBeGreaterThan(
+      0,
+    );
+    expect(await dialog.locator("header").boundingBox()).toEqual(header);
+    expect(
+      await dialog.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth + 1,
+      ),
+    ).toBe(true);
+    const prompt = await dialog
+      .getByLabel("Effective system prompt")
+      .boundingBox();
+    const scroll = await body.boundingBox();
+    expect(prompt.y + prompt.height).toBeLessThanOrEqual(
+      scroll.y + scroll.height,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`prompt-${viewport.width}.png`),
+    });
+  }
   await dialog.getByRole("button", { name: "Close system prompt" }).click();
   await composer.fill("/quit");
   await composer.press("Enter");
@@ -175,6 +286,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("uagent-offline-enabled", "false"),
+  );
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // A valid empty worker keeps cold lazy-module tests independent of precaching.
@@ -193,7 +307,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page
     .getByRole("button", { name: "Start conversation", exact: true })
     .click();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   const prompt = page.getByLabel("Message or guidance");
   const model = page.getByRole("button", {
     name: "Model and effort",
@@ -288,10 +402,9 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.keyboard.press("Enter");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(settings).toBeVisible();
-  await expect(settings.getByRole("status")).toHaveAttribute(
-    "aria-busy",
-    "true",
-  );
+  await expect(
+    settings.getByRole("status", { name: "Loading settings…" }),
+  ).toHaveAttribute("aria-busy", "true");
   await expect(
     settings.getByRole("button", { name: "Close settings" }),
   ).toBeFocused();
@@ -304,12 +417,13 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBeLessThan(6);
   const appearance = await settings.getByLabel("Appearance").boundingBox();
   const displayField = await settings
-    .getByLabel("Display size", { exact: true })
+    .getByLabel("Interface size", { exact: true })
     .locator("..")
     .boundingBox();
   expect(
     displayField.y - appearance.y - appearance.height,
   ).toBeGreaterThanOrEqual(12);
+  await page.screenshot({ path: testInfo.outputPath("settings-desktop.png") });
   await settings.getByRole("button", { name: "Close settings" }).click();
   await expect(settingsButton).toBeFocused();
 
@@ -339,7 +453,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
   ).toContainText("/1.3M · 99% left");
@@ -355,8 +469,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
   await settingsButton.click();
-  await settings.getByLabel("Display size", { exact: true }).fill("200");
-  await settings.getByLabel("Text size", { exact: true }).fill("300");
+  await settings.getByLabel("Interface size", { exact: true }).fill("200");
+  await settings
+    .getByLabel("Conversation text size", { exact: true })
+    .fill("300");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -423,10 +539,11 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     "History temporarily unavailable",
   );
   await page.unroute(`**/api/sessions/${sessionId}`);
+  // A reconnect can restore history before the manual retry is dispatched.
   await page
     .locator(".transcript")
     .getByRole("button", { name: "Retry", exact: true })
-    .click();
+    .evaluateAll((buttons) => buttons[0]?.click());
   await expect(page.locator(".message")).toHaveCount(2);
   await writeFile(
     testInfo.outputPath(`layout.json`),
@@ -459,7 +576,7 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
-  await expect(page.locator(".status")).toHaveText("idle");
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
   const reply = page.locator(".message.response").last();
   // Tailnet HTTP has no Clipboard API; a user click must still copy.
   await page.evaluate(() =>
@@ -665,6 +782,12 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       status: "success",
       truncated: true,
       time: new Date().toISOString(),
+      activity: {
+        label: `ssh remote "docker exec -i app python manage.py shell" <<'PY' 2>&1 | grep '^SMOKE' | ${"x".repeat(200)}`,
+        category: "execute",
+        status: "success",
+        duration_ms: 2300,
+      },
     },
   ];
   snapshot.live = [];
@@ -714,6 +837,16 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.goto(`/#session=${session.id}`);
   const tool = page.locator(".message.tool");
   await expect(tool).toBeVisible();
+  // However long the label grows, it takes the ellipsis and the status
+  // metadata stays on one line.
+  const toggle = tool.locator(".tool-toggle");
+  await expect(toggle.locator("strong")).toHaveCSS("text-overflow", "ellipsis");
+  await expect(toggle.locator(".muted")).toHaveCSS("white-space", "nowrap");
+  expect(
+    await toggle
+      .locator(".muted")
+      .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+  ).toBe(true);
   await expect(
     page.getByRole("button", { name: "Show full tool output", exact: true }),
   ).toHaveCount(0);
@@ -726,9 +859,24 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     .locator(".session-row")
     .filter({ has: page.locator(".session.selected") });
   await expect(row.locator("time")).toBeVisible();
-  await expect(
-    row.getByRole("img", { name: "Web session active" }),
-  ).toBeVisible();
+  await expect(row.locator(".status-led.active")).toBeVisible();
+  // The three LED states are hollow idle, filled attached and breathing run.
+  const ledStyles = await page.evaluate(() => {
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<span class="status-led idle"></span><span class="status-led active"></span><span class="status-led running"></span>';
+    document.body.append(host);
+    const style = (state) =>
+      getComputedStyle(host.querySelector(`.status-led.${state}`));
+    return {
+      idle: style("idle").backgroundColor,
+      active: style("active").backgroundColor,
+      running: style("running").animationName,
+    };
+  });
+  expect(ledStyles.idle).toBe("rgba(0, 0, 0, 0)");
+  expect(ledStyles.active).not.toBe("rgba(0, 0, 0, 0)");
+  expect(ledStyles.running).toBe("led-breathe");
   const menu = row.getByRole("button", {
     name: "Conversation menu",
     exact: true,
@@ -806,7 +954,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     cwd: "/mock/project",
     title: `Conversation ${id}`,
     status: "idle",
-    presence: "web",
+    presence: "active",
     incoming: 0,
   }));
   const snapshot = (metadata, context = 1000, cursor = 10) => ({
@@ -1074,8 +1222,10 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Settings",
       exact: true,
     });
-    await settings.getByLabel("Display size", { exact: true }).fill("50");
-    await settings.getByLabel("Text size", { exact: true }).fill("50");
+    await settings.getByLabel("Interface size", { exact: true }).fill("50");
+    await settings
+      .getByLabel("Conversation text size", { exact: true })
+      .fill("50");
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
@@ -1199,7 +1349,7 @@ test.describe("mobile navigation and commands", () => {
     await choose(firstTitle);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
-    await expect(page.locator(".status")).toHaveText("idle");
+    await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/model mock/model-b");
     await prompt.press("Enter");
     await expect(
@@ -1210,7 +1360,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(
       page.getByRole("heading", { name: "Verified response" }),
     ).toBeVisible();
-    await expect(page.locator(".status")).toHaveText("idle");
+    await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(
       page.getByText("[image: blocked]", { exact: true }),
     ).toBeVisible();
@@ -1329,7 +1479,7 @@ test.describe("mobile navigation and commands", () => {
     await expect(page.locator(".conversation-head h1")).toHaveText(
       "Slash fork",
     );
-    await expect(page.locator(".status")).toHaveText("idle");
+    await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await prompt.fill("/sessions");
     await prompt.press("Enter");
     await expect(page.getByLabel("Find a session")).toBeVisible();
@@ -1338,7 +1488,7 @@ test.describe("mobile navigation and commands", () => {
       .tap();
     await prompt.fill("/new");
     await prompt.press("Enter");
-    await expect(page.locator(".status")).toHaveText("idle");
+    await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(page.locator(".message.user")).toHaveCount(0);
     await prompt.fill("/q");
     await prompt.press("Enter");
@@ -1351,4 +1501,186 @@ test.describe("mobile navigation and commands", () => {
     await expect(prompt).toBeVisible();
     await prompt.fill("/att");
   });
+});
+
+test("native exploration and memory receipts survive reload and mobile rotation", async ({
+  page,
+  session,
+  command,
+}, testInfo) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  const prompt = page.getByLabel("Message or guidance");
+  await prompt.fill("Exploration probe");
+  await prompt.press("Enter");
+  const explored = page.locator(".exploration > summary");
+  await expect(explored).toHaveText("Explored · 2 calls");
+  await explored.click();
+  await expect(page.locator(".exploration .tool-toggle")).toHaveCount(2);
+  await expect(
+    page.getByRole("heading", { name: "Verified response" }),
+  ).toBeVisible();
+  // Tables keep their layout and scroll instead of squeezing a column.
+  const table = page.locator(".message .table-scroll > table");
+  await expect(table).toHaveCount(1);
+  await expect(table).toHaveCSS("display", "table");
+  const cell = table.locator("td").first();
+  await expect(cell).toBeVisible();
+  const cellSize = await cell.boundingBox();
+  const lineHeight = await cell.evaluate((element) =>
+    parseFloat(getComputedStyle(element).lineHeight),
+  );
+  expect(cellSize.height).toBeLessThan(lineHeight * 3);
+  const title = page.locator(".tool-toggle strong").first();
+  await title.evaluate((element) => {
+    element.textContent = "long-command-".repeat(200);
+  });
+  const row = await title.locator("..").boundingBox();
+  expect(row.height).toBeLessThan(60);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(391);
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await prompt.fill("Memory receipt probe: please save this test memory");
+  await prompt.press("Enter");
+  await expect(
+    page
+      .locator(".tool-toggle")
+      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+  ).toBeVisible();
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await page.reload();
+  await expect(explored).toHaveText("Explored · 2 calls");
+  await expect(
+    page
+      .locator(".tool-toggle")
+      .filter({ hasText: "◆ memory created · project/browser-proof" }),
+  ).toBeVisible();
+  await prompt.fill("Keep this draft across rotation");
+  const fontSize = await prompt.evaluate(
+    (element) => getComputedStyle(element).fontSize,
+  );
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-left", "47px");
+    document.documentElement.style.setProperty("--safe-right", "47px");
+  });
+  await expect(prompt).toHaveValue("Keep this draft across rotation");
+  await expect(prompt).toHaveCSS("font-size", fontSize);
+  const box = await prompt.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(47);
+  expect(box.x + box.width).toBeLessThanOrEqual(844 - 47);
+  await page.screenshot({
+    path: testInfo.outputPath("landscape-activity.png"),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    document.documentElement.style.removeProperty("--safe-left");
+    document.documentElement.style.removeProperty("--safe-right");
+  });
+  await expect(prompt).toHaveValue("Keep this draft across rotation");
+  await expect(prompt).toHaveCSS("font-size", fontSize);
+  await page.screenshot({ path: testInfo.outputPath("portrait-activity.png") });
+});
+
+test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
+  page,
+  session,
+  command,
+}, testInfo) => {
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "yolo",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/#session=${session.id}`);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty("--safe-top", "47px");
+    document.documentElement.style.setProperty("--safe-bottom", "34px");
+  });
+  const composer = page.getByLabel("Message or guidance");
+  await composer.fill("Delegate preview task");
+  await composer.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Verified response" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  const list = page.locator(".activity-panel");
+  await list.getByRole("button", { name: /Show .*completed/ }).click();
+  await list
+    .getByRole("button")
+    .filter({ hasText: "Review the full task." })
+    .click();
+  const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  await detail
+    .getByRole("button", { name: "Show full message", exact: true })
+    .click();
+  await expect(detail.locator('[aria-label="Subagent task"]')).toContainText(
+    "TASK-END-MARKER",
+  );
+  expect(
+    (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
+  ).toBeGreaterThan(16000);
+  await detail.getByText("System prompt", { exact: true }).click();
+  await expect(detail.locator(".prompt-disclosure pre")).toContainText(
+    "You are a coding agent",
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("subagent-task-phone.png"),
+  });
+  await detail
+    .getByRole("button", { name: "Close subagent", exact: true })
+    .click();
+  await composer.fill("/compact");
+  await composer.press("Enter");
+  await expect(
+    page
+      .locator(".event-row > summary")
+      .filter({ hasText: "Context compacted" }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: "Raw context", exact: true }).click();
+  const context = page.getByRole("dialog", {
+    name: "Raw context",
+    exact: true,
+  });
+  await expect(context).toContainText("COMPACT-PREVIEW-SUMMARY");
+  await context
+    .getByRole("button", { name: "Close raw context", exact: true })
+    .click();
+  await composer.fill("Background activity probe");
+  await composer.press("Enter");
+  const receipt = page
+    .locator(".event-row")
+    .filter({ hasText: "Background task" });
+  await expect(receipt).toBeVisible({ timeout: 15000 });
+  await receipt.locator("summary").click();
+  await expect(receipt).toContainText("BROWSER_ACTIVITY");
+  await expect(
+    receipt.getByRole("button", { name: "Full tool input/output" }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("async-receipt-phone.png"),
+  });
+  await page.reload();
+  await expect(receipt).toBeVisible();
+  await expect(receipt).toHaveCount(1);
 });

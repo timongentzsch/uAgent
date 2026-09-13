@@ -26,6 +26,16 @@ explicit text-block cache controls. uAgent sends `X-Session-Id` on all model
 requests so the proxy can keep account affinity across wire dialects. Account
 availability, cooldown and failover can still move requests to a cold cache.
 
+## Retained collaborator gaps
+
+Fusion reuses one conversation and keeps its static tools, system prompt and
+earlier messages stable so unchanged prefixes remain eligible for reuse. It does not send synthetic keepalive requests. Such requests consume a
+model call, can create content that changes the prefix, and cannot guarantee a
+hit across providers. Anthropic's default ephemeral cache lasts five minutes
+and offers an explicit one-hour tier at a higher write price; OpenAI retention
+controls depend on the route and model. Longer retention or measured keepalive
+experiments therefore remain configuration work, not hidden Fusion behavior.
+
 ## Prefix stability and tradeoffs
 
 The harness keeps its static system prefix stable, memoizes unchanged wire

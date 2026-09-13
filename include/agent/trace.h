@@ -68,39 +68,8 @@ inline json ParsedToolCallArguments(const json& function) {
   return arguments.is_discarded() ? json(std::move(raw)) : std::move(arguments);
 }
 
-inline PresentationRecord StoredToolCallPresentation(
-    const std::string& name, const json& arguments,
-    const std::vector<Tool>& tools, const std::string& ordinal = "") {
-  PresentationRecord record;
-  record.kind = PresentationKind::kToolCall;
-  record.title = ordinal + name;
-  const Tool* tool = FindTool(tools, name);
-  SetCallLabel(record,
-               tool && arguments.is_object()
-                   ? ToolSummary(*tool, arguments)
-                   : (arguments.is_string() ? arguments.get<std::string>()
-                                            : JsonDump(arguments)));
-  return record;
-}
-
-inline std::string PrintToolCallSummary(const json& call,
-                                        const std::vector<Tool>& tools) {
-  const json* found = JsonObject(call, "function");
-  if (!found) return "";
-  const json& function = *found;
-  std::string name = JsonValue(function, "name", "");
-  json args = ParsedToolCallArguments(function);
-  PrintPresentation(StoredToolCallPresentation(name, args, tools));
-  return name;
-}
-
-// Terminal rendering and message-to-trace projection live in
-// src/agent/trace.cc: three call sites need them, every includer of
-// agent.h was compiling them.
-bool PrintSearchReceipt(int64_t searches, const json& annotations,
-                        bool details = false, bool line_open = false);
-
-void PrintCitationSources(const json& annotations);
+std::string PrintToolCallSummary(const json& call,
+                                 const std::vector<Tool>& tools);
 
 // conversation messages + their kinds -> the call/result trace array
 json ToolTraceMessages(const json& messages, const json& kinds);
@@ -116,9 +85,7 @@ inline const json* LatestTraceSegment(const json& archive) {
   auto segment =
       std::find_if(archive.rbegin(), archive.rend(), [](const json& item) {
         std::string reason = JsonValue(item, "reason", "");
-        // "trace_pruned" is what earlier releases wrote; their format-3
-        // sessions still resume, so /trace must keep reading it.
-        return reason == "tool_trace" || reason == "trace_pruned";
+        return reason == "tool_trace";
       });
   return segment == archive.rend() ? nullptr : &*segment;
 }

@@ -212,22 +212,6 @@ int64_t MaxPendingAttachments() {
 
 int64_t AttachmentLimitMb() { return LongSetting(Cfg("UAGENT_ATTACHMENT_MB")); }
 
-int64_t TerminalImageLimitMb() {
-  return LongSetting(Cfg("UAGENT_TERMINAL_IMAGE_MB"));
-}
-
-int64_t ImageMaxColumns() {
-  return LongSetting(Cfg("UAGENT_IMAGE_MAX_COLUMNS"));
-}
-
-std::string ImageProtocol() {
-  return StringSetting(Cfg("UAGENT_IMAGE_PROTOCOL"));
-}
-
-int64_t ImageColumns(int64_t available) {
-  return LongSetting(Cfg("UAGENT_IMAGE_COLUMNS"), available);
-}
-
 int64_t ContextWindow() { return LongSetting(Cfg("UAGENT_CONTEXT")); }
 
 int64_t HistoryDays() { return LongSetting(Cfg("UAGENT_HISTORY_DAYS")); }

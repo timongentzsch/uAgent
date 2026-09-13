@@ -17,7 +17,6 @@ json ReadSchedules();
 json ClaimScheduledRuns(int64_t now, size_t slots);
 json UpdateScheduledRun(const std::string& id, const std::string& status,
                         const std::string& error = "");
-json RecoverScheduledRuns();
 bool ScheduledRunActive(const std::string& status);
 }  // namespace uagent
 #endif

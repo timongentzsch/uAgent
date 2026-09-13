@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,7 +20,7 @@
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/media.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/subagent.h"
@@ -35,8 +36,62 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     return result;
   }
   int64_t request = ++request_id_;
-  const json& messages =
+  const json& source =
       request_messages ? *request_messages : conversation_.Messages();
+  json projected;
+  if (std::any_of(source.begin(), source.end(), [](const json& message) {
+        return message.contains("content") && message["content"].is_array();
+      })) {
+    projected = source;
+    std::string preparation_error;
+    json deliveries;
+    PrepareAttachments(projected, api_.capabilities,
+                       !api_.config.image_model.empty(), ActiveRoute(),
+                       preparation_error, &deliveries);
+    if (!api_.capabilities.image_input && !api_.config.image_model.empty()) {
+      preparation_error +=
+          ApplyImageAnalysisFallback(projected, true, &deliveries);
+    }
+    if (!request_messages && !deliveries.empty()) {
+      std::map<std::string, json> grouped;
+      const auto& ids = conversation_.DisplayIds();
+      for (json delivery : deliveries) {
+        size_t index = JsonValue(delivery, "message_index", size_t{0});
+        delivery.erase("message_index");
+        if (index >= ids.size()) continue;
+        std::string id = "m-" + std::to_string(ids[index]);
+        if (!grouped[id].is_array()) grouped[id] = json::array();
+        grouped[id].push_back(std::move(delivery));
+      }
+      std::vector<std::string> updated;
+      for (const auto& [id, values] : grouped) {
+        json previous = JsonValue(
+            JsonValue(conversation_.DisplayFacts(), id.c_str(), json::object()),
+            "deliveries", json::array());
+        if (previous == values) continue;
+        conversation_.RecordDisplay(id, {{"deliveries", values}});
+        updated.push_back(id);
+        for (const json& delivery : values) {
+          Emit(NoticeEvent(PresentationStatus::kNeutral,
+                           JsonValue(delivery, "name", "") + " · " +
+                               JsonValue(delivery, "delivery", "")));
+        }
+      }
+      if (!updated.empty()) {
+        json snapshot = DisplaySnapshot();
+        for (const json& block : snapshot["blocks"]) {
+          if (std::find(updated.begin(), updated.end(),
+                        JsonValue(block, "id", "")) != updated.end()) {
+            Emit(Event{EventId::kMessageChanged, {{"block", block}}});
+          }
+        }
+      }
+    }
+    if (!preparation_error.empty()) {
+      Emit(NoticeEvent(PresentationStatus::kWarned, preparation_error));
+    }
+  }
+  const json& messages = projected.is_null() ? source : projected;
   if (!messages.empty()) {
     last_sent_prompt_ = JsonValue(messages[0], "content", "");
   }
@@ -72,7 +127,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     std::string overlay_digest;
     PromptOverlay(&overlay_digest);
     if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
-    if (request_messages) {
+    if (request_messages || !projected.is_null()) {
       record["messages"] = messages;
       record["message_chars"] = message_bytes;
       record["projected_context"] = true;
@@ -116,8 +171,24 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                            {"step", step},
                            {"purpose", purpose}};
   std::string started_at = UtcStamp();
+  api_.observe_progress = [this, estimated_bytes](const json& reported,
+                                                  size_t response_bytes) {
+    Usage provisional = session_usage_, current;
+    current.Add(reported);
+    provisional.Merge(current);
+    // Context is the current request plus streamed content, not cumulative
+    // billing tokens. Keep the same estimate when a provider reports no usage.
+    int64_t context =
+        EstimatedTokens(SaturatingAdd(estimated_bytes, response_bytes));
+    context_snapshot_.store(context, std::memory_order_relaxed);
+    Emit(Event{
+        EventId::kUsageUpdated,
+        {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
+  };
+  api_.observe_progress(json::object(), 0);
   ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
                                 render_output, estimated_bytes, verbose_);
+  api_.observe_progress = {};
   result.started_at = std::move(started_at);
   ++revision_;  // Preserve failed attempts and their accounting after the user
                 // checkpoint.
@@ -252,81 +323,59 @@ std::string Agent::AnalyzeImageContent(const json& content,
   return error.empty() ? Trim(result.content) : "";
 }
 
-Agent::ImageFallbackResult Agent::ApplyImageAnalysisFallback(
-    json& messages, ImageFallbackCause cause) {
-  ImageFallbackResult fallback;
-  bool rejected = cause == ImageFallbackCause::kRejected;
-  if (!messages.is_array() || (!rejected && api_.capabilities.image_input) ||
-      (!rejected && api_.config.image_model.empty())) {
-    return fallback;
-  }
-
-  json analysis_content = json::array();
-  size_t target = messages.size();
+std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
+                                              json* deliveries) {
+  std::string errors;
   for (size_t index = 0; index < messages.size(); ++index) {
     json& message = messages[index];
     if (!message.contains("content") || !message["content"].is_array()) {
       continue;
     }
-    bool has_image = false;
-    for (const json& part : message["content"]) {
-      has_image = has_image || JsonValue(part, "type", "") == "image_url";
+    json& content = message["content"];
+    if (std::none_of(content.begin(), content.end(), [](const json& part) {
+          return JsonValue(part, "type", "") == "image_url";
+        })) {
+      continue;
     }
-    if (!has_image) continue;
-    target = index;
-    for (const json& part : message["content"]) {
-      analysis_content.push_back(part);
+    json input = json::array();
+    for (const json& part : content) {
+      std::string type = JsonValue(part, "type", "");
+      if (type == "text" || type == "image_url") input.push_back(part);
     }
+    const std::string key =
+        api_.config.image_model + ":" + HashHex(JsonDump(input));
+    std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
+    if (analysis.empty() && analyze) {
+      analysis = AnalyzeImageContent(input, error);
+      if (!analysis.empty()) {
+        image_analyses_[key] = analysis;
+        while (image_analyses_.size() > 8) {
+          image_analyses_.erase(image_analyses_.begin());
+        }
+      }
+    }
+    if (analysis.empty() && deliveries) {
+      for (json& delivery : *deliveries) {
+        if (JsonValue(delivery, "message_index", size_t{0}) == index &&
+            JsonValue(delivery, "delivery", "") == "Via vision model") {
+          delivery["delivery"] = "File reference";
+        }
+      }
+    }
+    content.erase(std::remove_if(content.begin(), content.end(),
+                                 [](const json& part) {
+                                   return JsonValue(part, "type", "") ==
+                                          "image_url";
+                                 }),
+                  content.end());
+    AppendContentNote(
+        content, analysis.empty()
+                     ? "[Image analysis failed; pixels not visible. Use the "
+                       "original file.]"
+                     : "[image content; described, not seen]\n" + analysis);
+    if (!error.empty()) errors += "Image analysis failed: " + error + "\n";
   }
-  if (target == messages.size()) return fallback;
-
-  std::string analysis;
-  if (!api_.config.image_model.empty()) {
-    analysis = AnalyzeImageContent(analysis_content, fallback.error);
-  }
-  fallback.rewritten = StripContentParts(messages, "image_url");
-  fallback.applied = fallback.rewritten > 0;
-  if (!fallback.applied) return fallback;
-
-  std::string note;
-  if (!analysis.empty()) {
-    // Provenance, not capability: the model must not claim it saw the pixels.
-    note = "[image content; described, not seen]\n" + analysis;
-  } else if (!fallback.error.empty()) {
-    note = "[vision model analysis failed: " + fallback.error + "]";
-  }
-  if (!note.empty()) AppendContentNote(messages[target]["content"], note);
-
-  std::string model = TerminalSafe(api_.config.image_model);
-  if (rejected) fallback.status = "model rejected image input — ";
-  if (!analysis.empty()) {
-    fallback.status += "analyzed with " + model;
-  } else if (!fallback.error.empty()) {
-    fallback.warning = true;
-    fallback.status +=
-        "analysis with " + model + " failed: " + TerminalSafe(fallback.error);
-    if (rejected) fallback.status += "; attachments continue as file paths";
-  } else {
-    fallback.status += "attachments continue as file paths";
-  }
-  return fallback;
-}
-
-Agent::ImageFallbackResult Agent::ApplyImageFallbackToUserContent(
-    json& content) {
-  json messages = json::array({{{"role", "user"}, {"content", content}}});
-  ImageFallbackResult fallback = ApplyImageAnalysisFallback(
-      messages, ImageFallbackCause::kKnownUnsupported);
-  if (fallback.applied) content = std::move(messages[0]["content"]);
-  ReportImageFallback(fallback);
-  return fallback;
-}
-
-void Agent::ReportImageFallback(const ImageFallbackResult& result) {
-  if (!result.applied || result.status.empty()) return;
-  Emit(NoticeEvent(result.warning ? PresentationStatus::kWarned
-                                  : PresentationStatus::kNeutral,
-                   "· " + result.status));
+  return errors;
 }
 
 int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
@@ -389,7 +438,8 @@ Agent::MidturnCompact Agent::MaybeCompactDuringTurn(
 }
 
 void Agent::PruneAttachments(size_t turn_start) {
-  size_t attachments = conversation_.PruneAttachments(turn_start);
+  size_t attachments =
+      conversation_.PruneAttachments(turn_start, ActiveRoute());
   if (!attachments) return;
   DebugLog("attachments_pruned",
            {{"turn", turn_id_}, {"attachments", attachments}});
@@ -442,43 +492,18 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
                 {"reason", "provider_rejected"},
                 {"error", result.error}}});
   };
-  if (rejected == RejectedCapability::kImageInput) {
-    api_.capabilities.image_input = false;
-    ImageFallbackResult fallback = ApplyImageAnalysisFallback(
-        conversation_.Messages(), ImageFallbackCause::kRejected);
-    EnsureRuntimeContext();
-    changed(rejected);
-    ReportImageFallback(fallback);
-    return fallback.applied;
-  }
-  if (rejected == RejectedCapability::kFileInput) {
-    api_.capabilities.file_input = false;
-    // No converter here: the bytes stay on disk and the model is told where,
-    // which is enough for it to reach them another way.
-    json& messages = conversation_.Messages();
-    std::string names;
-    for (const json& message : messages) {
-      if (!message.contains("content") || !message["content"].is_array()) {
-        continue;
-      }
-      for (const json& part : message["content"]) {
-        if (JsonValue(part, "type", "") != "file" || !part.contains("file")) {
-          continue;
-        }
-        std::string name = JsonValue(part["file"], "filename", "");
-        if (!name.empty()) names += (names.empty() ? "" : ", ") + name;
-      }
+  if (rejected == RejectedCapability::kImageInput ||
+      rejected == RejectedCapability::kFileInput) {
+    if (rejected == RejectedCapability::kImageInput) {
+      api_.capabilities.image_input = false;
+    } else {
+      api_.capabilities.file_input = false;
     }
-    size_t stripped = StripContentParts(messages, "file");
-    changed(rejected);
-    if (!stripped) return false;
-    AppendContentNote(messages[messages.size() - 1]["content"],
-                      "[document content; not read by this model" +
-                          (names.empty() ? "" : ": " + names) + "]");
     EnsureRuntimeContext();
-    Emit(NoticeEvent(
-        PresentationStatus::kWarned,
-        "· model rejected file input — attachments continue as file paths"));
+    changed(rejected);
+    Emit(NoticeEvent(PresentationStatus::kWarned,
+                     "Model rejected attachment input; retrying with the "
+                     "available delivery mode. Originals retained."));
     return true;
   }
   if (rejected == RejectedCapability::kParallelTools) {
@@ -497,7 +522,7 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 std::string Agent::PromptBase() const {
   return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
                             nullptr) +
-         CapabilityPrompt(tools_) + TerminalImageInstruction();
+         CapabilityPrompt(tools_);
 }
 
 json Agent::PromptContext() const {

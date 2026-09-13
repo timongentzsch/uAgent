@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <future>
-#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -20,6 +19,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/tool_activity.h"
 #include "include/ui/tool_output.h"
 
 namespace uagent {
@@ -113,7 +113,6 @@ bool Agent::RunCalls(
   std::vector<CallTask> tasks(calls.size());
   rejections.clear();
   activity_polls.clear();
-  std::atomic<int64_t> completion_sequence{0};
   auto reject = [](CallTask& task, ToolErrorCode code, std::string message,
                    const char* status,
                    std::optional<ToolArgumentIssue> issue = std::nullopt) {
@@ -196,16 +195,32 @@ bool Agent::RunCalls(
                    : shown.is_discarded() ? call.args
                                           : JsonDump(shown);
     }
+    const ApprovalClass required =
+        valid ? RequiredApproval(*tool, arguments) : ApprovalClass::kNone;
+    task.activity = {
+        {"id", call.id},
+        {"category",
+         valid ? ToolActivityCategory(*tool, arguments) : "execute"},
+        {"label", task.label},
+        {"groupable", valid &&
+                          (required == ApprovalClass::kNone ||
+                           (required == ApprovalClass::kYoloEligibleMutation &&
+                            ApprovalIsAutomatic())) &&
+                          call.name != "skill"}};
+    conversation_.RecordDisplay("t-" + call.id, {{"activity", task.activity}});
     Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
+    call_event.data["activity"] = task.activity;
     if (task.issue) {
       call_event.data["issue_code"] = task.issue->code;
       call_event.data["issue_field"] = task.issue->field;
     }
     call_event.presentation = ToolCallPresentation(task, call);
-    call_event.render = api_.render_stream;
+    call_event.render =
+        api_.render_stream &&
+        (verbose_ || JsonValue(task.activity, "category", "") != "explore" ||
+         !JsonValue(task.activity, "groupable", false));
     Emit(std::move(call_event));
     if (valid) {
-      ApprovalClass required = RequiredApproval(*tool, arguments);
       if (required == ApprovalClass::kNone || approve_(*tool, arguments)) {
         task.execute = true;
         ++tool_count;
@@ -218,8 +233,6 @@ bool Agent::RunCalls(
       }
     }
     if (!task.execute) {
-      task.completion_order =
-          completion_sequence.fetch_add(1, std::memory_order_relaxed);
       EmitToolResultObservation(task, call, turn_id_, step);
     }
   }
@@ -244,18 +257,12 @@ bool Agent::RunCalls(
                                  {"concurrency_limit", limit}});
   }
 
-  bool quiet =
-      std::none_of(runnable.begin(), runnable.end(), [&](size_t index) {
-        return tasks[index].tool && tasks[index].tool->serial_media;
-      });
-  std::string activity = runnable.size() == 1
-                             ? calls[runnable.front()].name
-                             : std::to_string(runnable.size()) + " tools";
-  TerminalSpinner spinner(!runnable.empty() && quiet, SpinnerLabel(activity),
+  std::string activity_label = runnable.size() == 1
+                                   ? calls[runnable.front()].name
+                                   : std::to_string(runnable.size()) + " tools";
+  TerminalSpinner spinner(!runnable.empty(), SpinnerLabel(activity_label),
                           api_.turn_started);
   ToolContext context{deadline};
-  context.image_input_available = api_.capabilities.image_input;
-  context.image_fallback_available = !api_.config.image_model.empty();
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];
@@ -264,7 +271,7 @@ bool Agent::RunCalls(
     size_t end = limit <= 1 ? begin : ParallelRunEnd(runnable, tasks, begin);
     if (end <= begin + 1) {
       ExecuteCall(tasks[first], calls[first], turn_id_, step, context,
-                  api_.config.tool_timeout_s, completion_sequence);
+                  api_.config.tool_timeout_s);
       ++begin;
       continue;
     }
@@ -278,7 +285,7 @@ bool Agent::RunCalls(
                           (work = next.fetch_add(1)) < end;) {
           size_t call_index = runnable[work];
           ExecuteCall(tasks[call_index], calls[call_index], turn_id_, step,
-                      context, api_.config.tool_timeout_s, completion_sequence);
+                      context, api_.config.tool_timeout_s);
         }
       }));
     }
@@ -294,8 +301,6 @@ bool Agent::RunCalls(
     } else {
       CancelCall(task);
     }
-    task.completion_order =
-        completion_sequence.fetch_add(1, std::memory_order_relaxed);
     EmitToolResultObservation(task, calls[index], turn_id_, step);
   }
   spinner.Stop();
@@ -303,20 +308,28 @@ bool Agent::RunCalls(
   bool cancelled = AbortRequested() && !SteeringState().Requested();
   if (!SteeringState().Requested()) ClearAbort();
   std::vector<std::string> model_results = ModelFacingToolResults(tasks);
-  if (api_.render_stream) {
-    std::vector<size_t> result_order(tasks.size());
-    std::iota(result_order.begin(), result_order.end(), size_t{0});
-    std::stable_sort(result_order.begin(), result_order.end(),
-                     [&](size_t left, size_t right) {
-                       return tasks[left].completion_order <
-                              tasks[right].completion_order;
-                     });
-    for (size_t index : result_order) {
-      const ToolCall& call = calls[index];
-      CallTask& task = tasks[index];
+  std::vector<json> activities;
+  activities.reserve(tasks.size());
+  for (const CallTask& task : tasks) {
+    json activity = task.activity;
+    activity["status"] = CompletionStatusName(task.result.status);
+    // This receipt comes from the operation, never from shell intent.
+    if (task.result.Ok() && !task.result.display.empty()) {
+      activity["label"] = FirstLine(task.result.display);
+      activity["groupable"] = false;
+    }
+    activities.push_back(std::move(activity));
+  }
+  GroupToolActivities(activities);
+  for (size_t index = 0; index < tasks.size(); ++index) {
+    tasks[index].activity = std::move(activities[index]);
+    conversation_.RecordDisplay("t-" + calls[index].id,
+                                {{"activity", tasks[index].activity}});
+    {
       Event result_event{EventId::kPresentation};
-      result_event.presentation =
-          ToolResultPresentation(task, call, model_results[index], verbose_);
+      result_event.presentation = ToolResultPresentation(
+          tasks[index], calls[index], model_results[index], verbose_);
+      if (verbose_) result_event.presentation->activity.erase("group");
       result_event.render = api_.render_stream;
       Emit(std::move(result_event));
     }

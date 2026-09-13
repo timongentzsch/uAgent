@@ -23,6 +23,7 @@ struct ModelRoute {
   WireApi wire_api = WireApi::kChatCompletions;
   bool hosted_web_search = false;
   std::vector<std::string> supported_efforts;
+  json input_modalities = nullptr;
 };
 
 struct NamedProvider {
@@ -42,6 +43,7 @@ struct ModelInfo {
   std::string id, default_effort;
   std::vector<std::string> efforts;
   int64_t context = 0;
+  json input_modalities = nullptr;
 };
 
 struct ModelCandidate {

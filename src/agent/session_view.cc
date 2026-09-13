@@ -17,6 +17,8 @@
 
 namespace uagent {
 namespace {
+constexpr size_t kViewBytes = size_t{384} * 1024;
+constexpr size_t kViewBlocks = 64;
 struct Entry {
   const json* message;
   std::string kind;
@@ -24,30 +26,23 @@ struct Entry {
 bool Visible(const Entry& entry) {
   return entry.kind == "user" || entry.kind == "assistant" ||
          entry.kind == "tool_result" || entry.kind == "attachment" ||
-         entry.kind == "activity";
+         entry.kind == "activity" || entry.kind == "turn_summary" ||
+         entry.kind == "compaction";
 }
 std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
   std::map<uint64_t, Entry> entries;
-  uint64_t legacy = 1;
-
-  bool has_archive_ids = false;
   for (const json& segment : conversation.Archive()) {
     const json* messages = JsonArray(segment, "messages");
     const json* kinds = JsonArray(segment, "message_kinds");
     const json* ids = JsonArray(segment, "display_ids");
-    if (!messages || !kinds || kinds->size() != messages->size()) {
-      continue;
-    }
-    if (!ids && JsonValue(segment, "reason", "") == "tool_trace") {
+    if (!messages || !kinds || !ids || kinds->size() != messages->size() ||
+        ids->size() != messages->size()) {
       continue;
     }
     for (size_t i = 0; i < messages->size(); ++i) {
-      uint64_t id = legacy++;
-      if (ids && ids->size() == messages->size() &&
-          (*ids)[i].is_number_unsigned()) {
-        id = (*ids)[i].get<uint64_t>();
-        has_archive_ids = true;
-      }
+      if (!(*ids)[i].is_number_unsigned()) continue;
+      const auto id = (*ids)[i].get<uint64_t>();
+      if (!id) continue;
       entries.try_emplace(
           id, Entry{&(*messages)[i], (*kinds)[i].is_string()
                                          ? (*kinds)[i].get<std::string>()
@@ -56,19 +51,15 @@ std::map<uint64_t, Entry> Entries(const Conversation& conversation) {
   }
   const auto& ids = conversation.DisplayIds();
   for (size_t i = 0; i < conversation.Size(); ++i) {
-    uint64_t id = ids.size() == conversation.Size()
-                      ? ids[i]
-                      : static_cast<uint64_t>(i + 1);
-    if (legacy > 1 && !has_archive_ids) {
-      id += legacy;
-    }
+    const uint64_t id = ids[i];
     entries.try_emplace(id, Entry{&conversation.At(i),
                                   MessageKindName(conversation.KindAt(i))});
   }
   for (const auto& facts : conversation.DisplayFacts()) {
-    if (JsonValue(facts, "kind", "") == "activity") {
+    std::string kind = JsonValue(facts, "kind", "");
+    if (kind == "activity" || kind == "turn_summary" || kind == "compaction") {
       entries.try_emplace(JsonValue(facts, "sequence", uint64_t{0}),
-                          Entry{&facts, "activity"});
+                          Entry{&facts, kind});
     }
   }
   return entries;
@@ -103,13 +94,55 @@ void MergeDisplayBlock(json& view, const json& block) {
   } else {
     *found = block;
   }
-  while (blocks.size() > 64) {
+  size_t bytes = JsonEstimatedBytes(blocks);
+  while (!blocks.empty() &&
+         (blocks.size() > kViewBlocks || bytes > kViewBytes)) {
+    bytes -= std::min(bytes, JsonEstimatedBytes(blocks.front()));
     blocks.erase(blocks.begin());
     view["more"] = true;
   }
   if (!blocks.empty()) {
     view["before"] = JsonValue(blocks.front(), "sequence", uint64_t{0});
   }
+}
+
+bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
+  if (type == "usage.updated") {
+    state["usage"] = data["usage"];
+    if (data.contains("context_tokens")) {
+      state["context_tokens"] = data["context_tokens"];
+    }
+    if (data.contains("statistics")) state["statistics"] = data["statistics"];
+  } else if (type == "message.changed") {
+    MergeDisplayBlock(state["view"], data["block"]);
+  } else if (type == "activities.changed") {
+    state["activities"] = data["activities"];
+  } else if (type == "collaborator.changed") {
+    json& rows = state["collaborators"];
+    if (!rows.is_array()) rows = json::array();
+    const json& changed = data["collaborator"];
+    const std::string id = JsonValue(changed, "id", "");
+    auto found = std::find_if(rows.begin(), rows.end(), [&](const json& row) {
+      return JsonValue(row, "id", "") == id;
+    });
+    if (JsonValue(data, "removed", false)) {
+      if (found != rows.end()) rows.erase(found);
+    } else if (!id.empty()) {
+      if (found == rows.end()) {
+        rows.push_back(changed);
+      } else {
+        *found = changed;
+      }
+    }
+  } else if (type == "http.exchange") {
+    state["http"] = json::array({data});
+  } else if (type == "config.changed" && data.contains("permissions")) {
+    state["permissions"] = data["permissions"];
+    state["yolo"] = JsonValue(data["permissions"], "effective", "") == "yolo";
+  } else {
+    return false;
+  }
+  return true;
 }
 
 namespace {
@@ -126,10 +159,12 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                 {"truncated", text.size() > 4096}};
   json metadata = JsonValue(facts, id.c_str(), json::object());
   for (const char* key :
-       {"time", "incoming", "activity_id", "agent_id", "status", "request_id",
-        "route", "duration_ms", "ttft_ms", "usage", "usage_reported",
-        "tokens_per_second", "turn_root", "reply_to", "reply_excerpt", "http",
-        "files"}) {
+       {"time",      "incoming",        "activity_id",    "agent_id",
+        "status",    "request_id",      "route",          "duration_ms",
+        "ttft_ms",   "usage",           "usage_reported", "tokens_per_second",
+        "turn_root", "reply_to",        "reply_excerpt",  "http",
+        "files",     "summary",         "deliveries",     "activity",
+        "origin",    "source_call_ids", "compaction",     "memory"}) {
     if (metadata.contains(key)) block[key] = metadata[key];
   }
   if (entry.kind == "assistant") {
@@ -153,6 +188,9 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
             {"status", JsonValue(JsonValue(facts, ("t-" + call_id).c_str(),
                                            json::object()),
                                  "status", "not recorded")}};
+        tool["activity"] = JsonValue(
+            JsonValue(facts, ("t-" + call_id).c_str(), json::object()),
+            "activity", json::object());
         block["tools"].push_back(std::move(tool));
         if (block["tools"].size() >= 32) {
           break;
@@ -164,6 +202,7 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     std::string call_id = JsonValue(message, "tool_call_id", "");
     json detail = JsonValue(facts, ("t-" + call_id).c_str(), json::object());
     block["call_id"] = call_id;
+    block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
     block["status"] = JsonValue(detail, "status", "not recorded");
     if (detail.contains("duration_ms")) {
@@ -176,29 +215,11 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
       block["exchange_path"] = detail["exchange_path"];
     }
   }
-  block["images"] = json::array();
-  if (const json* images = JsonArray(metadata, "images")) {
-    for (const json& image : *images) {
-      if (!image.is_string()) {
-        continue;
-      }
-      const std::string& asset = image.get_ref<const std::string&>();
-      if (asset.size() >= 16 && asset.size() <= 64 &&
-          asset.find_first_not_of("0123456789abcdef") == std::string::npos) {
-        block["images"].push_back(asset);
-      }
-      if (block["images"].size() >= 8) {
-        break;
-      }
-    }
-  }
-  if (block["images"].empty()) {
-    if (const json* parts = JsonArray(message, "content")) {
-      block["unavailable_images"] =
-          std::count_if(parts->begin(), parts->end(), [](const json& part) {
-            return JsonValue(part, "type", "") == "image_url";
-          });
-    }
+  if (const json* parts = JsonArray(message, "content")) {
+    block["unavailable_images"] =
+        std::count_if(parts->begin(), parts->end(), [](const json& part) {
+          return JsonValue(part, "type", "") == "image_url";
+        });
   }
   return block;
 }
@@ -230,7 +251,7 @@ json ConversationView(const Conversation& conversation, uint64_t before) {
     }
     json block = DisplayBlock(conversation, it->first, entry);
     bytes += JsonDump(block).size();
-    if (bytes > size_t{384} * 1024 || blocks.size() >= 64) {
+    if (bytes > kViewBytes || blocks.size() >= kViewBlocks) {
       more = true;
       break;
     }
@@ -238,14 +259,14 @@ json ConversationView(const Conversation& conversation, uint64_t before) {
     blocks.push_back(std::move(block));
   }
   std::reverse(blocks.begin(), blocks.end());
-  return {{"fork", JsonValue(conversation.DisplayFacts(), "fork-origin",
-                             json(nullptr))},
-          {"blocks", blocks},
-          {"before", first},
-          {"more", more},
-          {"dropped_segments", conversation.DroppedSegments()},
-          {"retention",
-           "Full retained content; missing legacy facts are not inferred."}};
+  return {
+      {"fork",
+       JsonValue(conversation.DisplayFacts(), "fork-origin", json(nullptr))},
+      {"blocks", blocks},
+      {"before", first},
+      {"more", more},
+      {"dropped_segments", conversation.DroppedSegments()},
+      {"retention", "Full retained content; missing facts are not inferred."}};
 }
 
 json ConversationDetail(const Conversation& conversation, const std::string& id,

@@ -209,6 +209,13 @@ void RequestAbort() {
   WakeDescriptor(g_child_dispatch_write);
 }
 
+void WakeProcessWaits() {
+  InitializeSignalNotifications();
+  // Same wake RequestAbort gives condition-variable process waits; queued
+  // guidance is not an abort, so the abort flag stays untouched.
+  WakeDescriptor(g_child_dispatch_write);
+}
+
 void ClearAbort() {
   g_thread_abort.store(false, std::memory_order_relaxed);
   g_signal_abort.clear(std::memory_order_relaxed);
@@ -234,14 +241,27 @@ void TrackPid(volatile sig_atomic_t* slots, int count, pid_t pid, bool add) {
 static_assert(std::atomic<bool>::is_always_lock_free);
 std::atomic<bool> g_signal_idle_interrupt{false};
 volatile sig_atomic_t g_quit_gesture = 0;
+volatile sig_atomic_t g_graceful_shutdown = 0;
+volatile sig_atomic_t g_shutdown_requested = 0;
 
 void SetQuitGesture(bool enabled) { g_quit_gesture = enabled ? 1 : 0; }
+void SetGracefulShutdown(bool enabled) {
+  g_graceful_shutdown = enabled ? 1 : 0;
+}
+bool ShutdownRequested() { return g_shutdown_requested != 0; }
 
 bool TakeIdleInterrupt() {
   return g_signal_idle_interrupt.exchange(false, std::memory_order_relaxed);
 }
 
 void SigintHandler(int signal_number) {
+  if (signal_number != SIGINT && g_graceful_shutdown) {
+    g_shutdown_requested = 1;
+    g_signal_abort.test_and_set(std::memory_order_relaxed);
+    WakeDescriptor(g_abort_wake_write);
+    WakeDescriptor(g_child_dispatch_write);
+    return;
+  }
   if (signal_number == SIGINT && !g_streaming && g_quit_gesture) {
     // Nothing to kill: the composer asks before the next press exits.
     g_signal_idle_interrupt.store(true, std::memory_order_relaxed);

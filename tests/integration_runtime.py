@@ -22,6 +22,7 @@ from integration_support import (
     run,
     run_dialog,
     run_pty,
+    session_files,
     sse,
     tool_call,
     tool_calls,
@@ -29,6 +30,7 @@ from integration_support import (
     wait_until,
     write_json_response,
     write_session,
+    write_sse_sequence,
 )
 from memory_fixture import global_memory_dir, project_memory_dir
 
@@ -65,7 +67,9 @@ def test_prompt_documents_refresh_and_standalone_inspection(root, home, *, binar
     def initial(_, body):
         assert_true("global-old" in body["messages"][0]["content"], body)
         global_path.write_text(json.dumps({"mode": "overlay", "text": "global-new"}))
-        return tool_call("uagent_info", {"topic": "prompt"}, call_id="inspect-prompt")
+        return tool_call(
+            "uagent", {"action": "inspect", "topic": "prompt"}, call_id="inspect-prompt"
+        )
 
     def refreshed(_, body):
         prompt = body["messages"][0]["content"]
@@ -94,7 +98,9 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         return tool_call(
             "adapt_system",
             {
-                "instructions": "Inspect broadly and challenge the initial hypothesis.",
+                "action": "set",
+                "revision": "0",
+                "text": "Inspect broadly and challenge the initial hypothesis.",
                 "reason": "The task is still ambiguous.",
             },
             call_id="adapt-1",
@@ -111,7 +117,9 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         return tool_call(
             "adapt_system",
             {
-                "instructions": "Stop broad exploration and validate the localized invariant.",
+                "action": "set",
+                "revision": "1",
+                "text": "Stop broad exploration and validate the localized invariant.",
                 "reason": "New evidence localized the issue.",
             },
             call_id="adapt-2",
@@ -124,7 +132,7 @@ def test_adaptive_system_revises_replaces_and_clears(root, home, *, binary):
         assert_true("Inspect broadly and challenge" not in system, system)
         return tool_call(
             "adapt_system",
-            {"instructions": "", "reason": "Specialized execution is complete."},
+            {"action": "reset", "revision": "2", "reason": "Specialized execution is complete."},
             call_id="adapt-3",
         )
 
@@ -550,7 +558,7 @@ def test_session_journal_records_digests_not_argument_values(root, home, *, bina
         )
         assert_true(code == 0, output)
 
-    sessions = list((home / ".uagent" / "history").rglob("*.json"))
+    sessions = session_files(home)
     state = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[1])
     saved_results = [m for m in state["messages"] if m.get("role") == "tool"]
     assert_true(saved_results[0].get("_uagent_read_range") == [secret.name, 1, 1], saved_results)
@@ -594,7 +602,7 @@ def test_session_title_replaces_initial_greeting(root, home, *, binary):
         assert_true(code == 0, output)
         assert_true(b"task-ok" in output, output)
         assert_true(len(server.requests) == 2, server.requests)
-        sessions = list((home / ".uagent" / "history").rglob("*.json"))
+        sessions = session_files(home)
         assert_true(len(sessions) == 1, sessions)
         header = json.loads(sessions[0].read_text(encoding="utf-8").splitlines()[0])
         assert_true(header["title"] == "investigate browser efficiency", header)
@@ -604,7 +612,7 @@ def test_session_title_replaces_initial_greeting(root, home, *, binary):
         records = [json.loads(line) for line in journal.read_text().splitlines()]
         types = [record["type"] for record in records]
         assert_true(types[0] == "session.ready", types)
-        assert_true(types[-1] == "session.ended", types)
+        assert_true("session.ended" not in types, "detaching ended the shared runtime")
         assert_true(types.count("turn.started") == 2, types)
         assert_true(types.count("turn.completed") == 2, types)
         assert_true("investigate browser efficiency" not in journal.read_text(), records)
@@ -655,6 +663,37 @@ def test_input_steering_yields_activity_wait(root, home, *, binary):
         assert_true(elapsed < budget(8), elapsed)
 
 
+def test_steer_then_escape_resumes_without_interrupt_notice(root, home, *, binary):
+    def route(handler, body):
+        messages = body["messages"]
+        if has_message(messages, "user", "change course"):
+            return event({"content": "steering-resumed-ok"})
+        write_sse_sequence(
+            handler,
+            [event({"content": f"slow chunk {index} "}, finish=None) for index in range(12)]
+            + [event({"content": "slow tail"})],
+            delay=0.25,
+        )
+        return None
+
+    with Server([route]) as server:
+        code, output = run_pty(
+            root,
+            base_env(home, server.url),
+            [
+                (b"start\n", b"slow chunk 0"),
+                (b"change course\n\x1b", b"steering-resumed-ok"),
+                b"/q\n",
+            ],
+            args=("--yolo",),
+            timeout=20,
+            binary=binary,
+        )
+        assert_true(code == 0, output)
+        assert_true(b"steering-resumed-ok" in output, output)
+        assert_true("· interrupted" not in output.decode("utf-8", "replace"), output)
+
+
 def test_input_idle_background_completion_is_observational(root, home, *, binary):
     def route(_, body):
         messages = body["messages"]
@@ -677,7 +716,7 @@ def test_input_idle_background_completion_is_observational(root, home, *, binary
             base_env(home, server.url),
             [
                 (b"start\n", b"background-launched"),
-                (b"", b"bg job finished"),
+                (b"", b"notified completed"),
                 (b"next\n", b"background-ui-only"),
                 b"/q\n",
             ],

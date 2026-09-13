@@ -119,19 +119,25 @@ void TestSignalAndFileWatch() {
     SteeringState().Queue("watch steering");
     steering_watcher.join();
     CHECK(steering_changed == FileWaitResult::kSteering);
-    std::vector<std::string> watch_steering = SteeringState().TakeQueued();
-    CHECK(watch_steering.size() == 1 && watch_steering[0] == "watch steering");
+    std::vector<Steering::Message> watch_steering =
+        SteeringState().TakeMessages();
+    CHECK(watch_steering.size() == 1 &&
+          watch_steering[0].text == "watch steering");
 
-    // A line submitted while a slash command is still running is queued as
-    // steering, and that command never reads the queue. Draining it here is
-    // what turns it into the next prompt instead of a line the status bar
-    // counts forever and nothing ever runs.
-    CHECK(TakeStrandedSteering().empty());
     SteeringState().Queue("first");
     SteeringState().Queue("second");
-    CHECK(TakeStrandedSteering() == "first\nsecond");
+    std::vector<Steering::Message> queued = SteeringState().TakeMessages();
+    CHECK(queued.size() == 2 && queued[0].text == "first" &&
+          queued[1].text == "second");
     CHECK(SteeringState().QueuedCount() == 0);
-    CHECK(TakeStrandedSteering().empty());
+
+    SteeringState().Queue("deferred", "", false);
+    SteeringState().Queue("auto");
+    std::vector<Steering::Message> automatic =
+        SteeringState().TakeAutoStartMessages();
+    CHECK(automatic.size() == 1 && automatic[0].text == "auto");
+    CHECK(SteeringState().QueuedCount() == 1);
+    CHECK(SteeringState().TakeMessages()[0].text == "deferred");
     close(watched_fd);
     unlink(watched_path);
   }
@@ -608,8 +614,8 @@ void TestActivityWaitAndDelivery() {
           std::string::npos);
     CHECK(steering_yield.IsLive(id));
     CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
-    std::vector<std::string> queued = SteeringState().TakeQueued();
-    CHECK(queued.size() == 1 && queued[0] == "change course");
+    std::vector<Steering::Message> queued = SteeringState().TakeMessages();
+    CHECK(queued.size() == 1 && queued[0].text == "change course");
 
     ToolResult yielded_output;
     std::thread output_waiter([&] {
@@ -624,8 +630,8 @@ void TestActivityWaitAndDelivery() {
           std::string::npos);
     CHECK(steering_yield.IsLive(id));
     CHECK(ProcessGroupAlive(steering_yield_jobs[0].pid));
-    queued = SteeringState().TakeQueued();
-    CHECK(queued.size() == 1 && queued[0] == "inspect output");
+    queued = SteeringState().TakeMessages();
+    CHECK(queued.size() == 1 && queued[0].text == "inspect output");
     CHECK(ToolActivityStop(steering_yield, id).Ok());
   }
 

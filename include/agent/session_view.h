@@ -13,6 +13,8 @@ namespace uagent {
 json ConversationView(const Conversation& conversation, uint64_t before = 0);
 json LastMessageView(const Conversation& conversation);
 void MergeDisplayBlock(json& view, const json& block);
+// Apply an event represented in a session snapshot; false means live-only.
+bool ApplySessionEvent(json& state, const std::string& type, const json& data);
 json ConversationDetail(const Conversation& conversation, const std::string& id,
                         size_t offset);
 // Exact retained tool arguments/result, independent of presentation previews.

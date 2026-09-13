@@ -591,10 +591,8 @@ def test_session_title_replaces_initial_greeting(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"hello\n", b"hello-ok"),
-                b"",
-                (b"investigate browser efficiency\n", b"task-ok"),
-                b"",
+                (b"hello\n", b"hello-ok", b"Ready", None),
+                (b"investigate browser efficiency\n", b"task-ok", b"Ready", None),
                 b"/q\n",
             ],
             binary=binary,

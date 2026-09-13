@@ -283,6 +283,11 @@ def run_pty(
     *,
     binary,
 ):
+    """Bare payloads await a composer repaint, which can happen during a turn.
+
+    Use (payload, response_marker) before exiting or inspecting an answer,
+    and (payload, response_marker, b"Ready", None) before starting another turn.
+    """
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, columns, 0, 0))
     if configure_terminal is not None:

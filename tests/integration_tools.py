@@ -878,8 +878,8 @@ def test_composite_configuration_rejects_literal_credentials(root, home, *, bina
             root,
             base_env(home, server.url),
             [
-                b"configure providers\n",
-                (b"/quit\n", b"literal-config-rejected"),
+                (b"configure providers\n", b"literal-config-rejected"),
+                b"/quit\n",
             ],
             args=("--yolo",),
             timeout=20,

@@ -178,7 +178,7 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(paste, b"second"), b"\n", b"\x04"],
+            [(paste, b"second"), (b"\n", b"multiline-paste-ok"), b"\x04"],
             columns=24,
             binary=binary,
         )
@@ -210,7 +210,7 @@ def test_enter_arriving_with_paste_does_not_submit(root, home, *, binary):
             base_env(home, server.url),
             [
                 (b"\x1b[200~safe paste\x1b[201~\n", b"safe paste\xe2\x86\xb5"),
-                b"\n",
+                (b"\n", b"paste-enter-ok"),
                 b"\x04",
             ],
             binary=binary,
@@ -281,7 +281,7 @@ def test_input_redraw_focus_switch_preserves_multiline_draft(root, home, *, bina
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(input_fragments, b"third"), b"\n", b"\x04"],
+            [(input_fragments, b"third"), (b"\n", b"focus-draft-ok"), b"\x04"],
             columns=24,
             binary=binary,
         )
@@ -304,7 +304,7 @@ def test_input_redraw_bare_escape_still_clears_idle_draft(root, home, *, binary)
             [
                 (b"discard me", b"discard"),
                 ([b"\x1b"] + [b""] * 15, b"> "),
-                b"kept\n",
+                (b"kept\n", b"bare-escape-ok"),
                 b"\x04",
             ],
             binary=binary,
@@ -324,11 +324,10 @@ def test_input_redraw_history_restores_current_draft(root, home, *, binary):
             root,
             base_env(home, server.url),
             [
-                (b"first\n", b"first-ok"),
-                b"",  # wait for the next prompt, not merely streamed text
+                (b"first\n", b"first-ok", b"Ready", None),
                 (b"draft", b"draft"),
                 (b"\x1b[A", b"first"),
-                b"\x1b[B\n",
+                (b"\x1b[B\n", b"history-draft-ok"),
                 b"\x04",
             ],
             binary=binary,
@@ -598,7 +597,7 @@ def test_input_redraw_survives_terminal_resize_and_delete(root, home, *, binary)
             base_env(home, server.url),
             [
                 (original.encode(), b"", 20),
-                b"\x7f" * 10 + b"XYZ\n",
+                (b"\x7f" * 10 + b"XYZ\n", b"resize-ok"),
                 b"/q\n",
             ],
             columns=80,

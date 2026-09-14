@@ -1649,6 +1649,9 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await detail
     .getByRole("button", { name: "Close subagent", exact: true })
     .click();
+  await expect(page.locator(".composer").getByRole("status")).toHaveText(
+    "Ready",
+  );
   await composer.fill("/compact");
   await composer.press("Enter");
   await expect(

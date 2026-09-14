@@ -1789,11 +1789,11 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
         with web_host(binary, root, home, provider.url) as (web, code, _, _):
             web.pair(code)
             session = web.create(root)
-            web.command("submit", session, text="/yolo")
-            web.until(session, lambda value: value["state"].get("yolo", False))
+            web.command("permissions", session, mode="yolo")
             web.command("submit", session, text="delegate")
             try:
-                assert started.wait(budget(5))
+                if not started.wait(budget(5)):
+                    raise AssertionError(web.snapshot(session))
                 snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
                 child = snapshot["state"]["collaborators"][0]
                 paths = [

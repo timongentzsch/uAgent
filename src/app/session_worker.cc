@@ -28,11 +28,12 @@ namespace {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title)
+                std::string title, bool delegated)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
-        title_(std::move(title)) {}
+        title_(std::move(title)),
+        delegated_(delegated) {}
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -379,7 +380,7 @@ class WorkerChannel final : public ApplicationChannel {
         error = "session is busy";
       } else {
         ApplicationInput input;
-        if (AgentDepth() > 0) {
+        if (delegated_) {
           input.budget = JsonValue(command, "budget", json{});
         }
         input.request_id = JsonValue(command, "client_request_id", "");
@@ -439,6 +440,8 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   std::string path_, id_, generation_, title_;
+  // Socket callbacks can run while bootstrap initializes the environment.
+  const bool delegated_;
   Pipe wake_;
   std::mutex mutex_, control_mutex_;
   bool closed_ = false, busy_ = true;
@@ -479,7 +482,9 @@ int WorkerMain(int argc, char** argv) {
       }
     }
   }
-  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5]);
+  Fd owner(JsonValue(launch, "owner_fd", -1));
+  WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
+                        static_cast<bool>(owner));
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});
@@ -487,7 +492,6 @@ int WorkerMain(int argc, char** argv) {
   }
   // Delegated workers belong to the parent session, even after a parent crash.
   // The pipe is close-on-exec in the parent and never reaches tool children.
-  Fd owner(JsonValue(launch, "owner_fd", -1));
   Pipe watch_stop;
   std::thread owner_watch;
   if (owner) {

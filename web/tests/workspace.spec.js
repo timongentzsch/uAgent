@@ -180,8 +180,8 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".activity-row")
     .filter({ hasText: "BROWSER_ACTIVITY" });
   await activity.locator("button").first().click();
-  await expect(page.getByRole("dialog").locator("pre")).toContainText(
-    "BROWSER_ACTIVITY",
+  await expect(page.getByRole("dialog").locator(".detail-command")).toHaveText(
+    "printf BROWSER_ACTIVITY; sleep 10",
   );
   await page
     .getByRole("dialog")

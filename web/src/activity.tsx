@@ -1,29 +1,19 @@
 import "./activity.css";
 import { count } from "./quantities.ts";
 import { duration } from "./duration.ts";
-import type {
-  Activity,
-  ActivityDetail,
-  Collaborator,
-  SessionRef,
-  Report,
-  Block,
-} from "./types.ts";
-export interface ActivityProps {
-  items?: Activity[];
-  collaborators?: Collaborator[];
-  target?: Block | null;
-  clearTarget: () => void;
-  cwd: string;
-  running?: boolean;
-  session: SessionRef;
-  online: boolean;
-  report: Report;
-}
+import type { Activity, ActivityDetail } from "./types.ts";
+import type { ActivityProps } from "./activity-status.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Bot, Terminal, Square } from "lucide-preact";
-import { command, readPages } from "./store.ts";
-import { cleanText, Modal, Skeleton, LoadError, IconButton } from "./ui.tsx";
+import { command, readPages } from "./api.ts";
+import {
+  cleanText,
+  Field,
+  Modal,
+  Skeleton,
+  LoadError,
+  IconButton,
+} from "./ui.tsx";
 
 import { active } from "./activity-status.tsx";
 import { manage } from "./management.tsx";
@@ -266,11 +256,17 @@ export default function Activities({
         >
           {error && <LoadError error={error} retry={() => inspect(detail)} />}
           {loading && <Skeleton label="Loading activity…" />}
-          <p class="detail-label">{detail.label}</p>
+          {!detail.conversation && <p class="detail-label">{detail.label}</p>}
           <p class="muted">
             {currentDetail?.status}
             {detail.model && ` · ${detail.model}`}
           </p>
+          {detail.command && !detail.agent_id && (
+            <pre class="detail-command">{cleanText(detail.command)}</pre>
+          )}
+          {detail.task && !detail.conversation && (
+            <p class="detail-task">{detail.task}</p>
+          )}
           {detail.directive && (
             <details>
               <summary>Persistent directive</summary>
@@ -350,13 +346,16 @@ export default function Activities({
           )}
           {detail.agent_id && (
             <>
-              <label>
-                {active(currentDetail || detail) ? "Guidance" : "Follow-up"}
+              <Field
+                label={
+                  active(currentDetail || detail) ? "Guidance" : "Follow-up"
+                }
+              >
                 <textarea
                   value={text}
                   onInput={(event) => setText(event.currentTarget.value)}
                 />
-              </label>
+              </Field>
               <button
                 disabled={
                   !online ||

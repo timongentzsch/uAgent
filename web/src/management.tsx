@@ -1,6 +1,6 @@
 import type { CommandFields, CommandKind, CommandResults } from "./types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { Field, Select, Skeleton } from "./ui.tsx";
 import "./management.css";
 

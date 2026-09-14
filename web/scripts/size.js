@@ -13,6 +13,15 @@ const entry = new Set(
 const manifest = JSON.parse(
   await readFile(new URL(".vite/manifest.json", root), "utf8"),
 );
+const optional = new Set(
+  JSON.parse(await readFile(new URL("renderer-assets.json", root), "utf8")).map(
+    (path) => path.replace(/^\//, ""),
+  ),
+);
+const worker = await readFile(new URL("sw.js", root), "utf8");
+const precached = new Set(
+  [...worker.matchAll(/"url":"([^"]+)"/g)].map((match) => match[1]),
+);
 const app = new Set();
 function visit(key) {
   const chunk = manifest[key];
@@ -31,6 +40,8 @@ const sizes = {
   initial_js: { raw: 0, gzip: 0 },
   initial_css: { raw: 0, gzip: 0 },
   lazy_and_shell: { raw: 0, gzip: 0 },
+  optional_runtime: { raw: 0, gzip: 0 },
+  precache: { raw: 0, gzip: 0 },
   total: { raw: 0, gzip: 0 },
 };
 for (const path of await readdir(root, {
@@ -54,6 +65,9 @@ for (const path of await readdir(root, {
     sizes[group][key] += size[key];
     sizes.total[key] += size[key];
     sizes[diagram ? "diagrams" : "app"][key] += size[key];
+    if (optional.has(name)) sizes.optional_runtime[key] += size[key];
+    if (precached.has(name) || precached.has(`/${name}`))
+      sizes.precache[key] += size[key];
   }
 }
 // Measured baseline is documented in docs/WEB.md; headroom is intentional.

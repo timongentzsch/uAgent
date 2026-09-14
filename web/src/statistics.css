@@ -25,7 +25,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.3em;
-  padding: 6px 0 12px;
+  margin-inline: -8px;
+  padding: 6px 8px 12px;
   color: var(--muted);
   font-size: 0.75rem;
   text-align: left;

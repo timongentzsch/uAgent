@@ -108,10 +108,29 @@ test("turn summaries and diagrams survive a cold offline launch without sending 
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
-  await page.reload();
   await expect
-    .poll(() => page.evaluate(() => !!navigator.serviceWorker.controller))
-    .toBe(true);
+    .poll(() =>
+      page.evaluate(async () => {
+        const keys = (
+          await Promise.all(
+            (await caches.keys())
+              .filter((name) => name.startsWith("uagent-renderers-"))
+              .map(async (name) => (await caches.open(name)).keys()),
+          )
+        ).flat();
+        const paths = keys.map((request) => new URL(request.url).pathname);
+        return {
+          diagram: paths.some((path) => /\/diagram-[^/]+\.js$/.test(path)),
+          math: paths.some((path) => /\/math-[^/]+\.css$/.test(path)),
+        };
+      }),
+    )
+    .toEqual({ diagram: true, math: true });
+  // Clear only Chromium's HTTP cache. CacheStorage and IndexedDB remain, so
+  // the installed production worker must supply the next cold navigation and
+  // the renderer already used on the first, uncontrolled document.
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Network.clearBrowserCache");
   await context.setOffline(true);
   await page.reload();
   await expect(
@@ -130,7 +149,15 @@ test("turn summaries and diagrams survive a cold offline launch without sending 
     path: test.info().outputPath("offline-conversation.png"),
     fullPage: true,
   });
+  await page.evaluate(() => {
+    window.__onlineEvents = 0;
+    addEventListener("online", () => window.__onlineEvents++, { once: true });
+  });
   await context.setOffline(false);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
+  const onlineEvents = await page.evaluate(() => window.__onlineEvents);
+  if (!onlineEvents)
+    await page.evaluate(() => dispatchEvent(new Event("online")));
   await expect(
     page.getByRole("button", { name: "Send", exact: true }),
   ).toBeEnabled();

@@ -5,6 +5,7 @@ import type { Usage, StatisticsModal, Snapshot, TurnSummary } from "./types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError } from "./ui.tsx";
 import { StatsSkeleton } from "./loading.tsx";
+import { presentMessages } from "./message-view.ts";
 
 const rate = (value?: number) =>
   value && value > 0 ? `${count(value)} tok/s` : "Not recorded";
@@ -52,16 +53,14 @@ export function TurnFooter({
     >
       {summary.usage_reported !== false && (
         <span class="turn-tokens">
-          {count(summary.usage.input)} in · {count(summary.usage.output)} out
-          ·{" "}
+          {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}
+          tokens ·{" "}
         </span>
       )}
       <span>
-        {count(summary.tool_calls)} tools · {duration(summary.duration_ms)}
+        {count(summary.steps)} model calls · {count(summary.tool_calls)} tools ·{" "}
+        {duration(summary.duration_ms)}
       </span>
-      {summary.usage.cost_reported && (
-        <span> · ${summary.usage.cost.toFixed(4)}</span>
-      )}
       {summary.outcome !== "complete" && summary.outcome !== "completed" && (
         <span> · {summary.outcome}</span>
       )}
@@ -75,16 +74,31 @@ export default function Statistics({
   modal: Extract<StatisticsModal, { type: "statistics" }>;
   loadSnapshot: (id: string) => Promise<Snapshot>;
 }) {
-  const [snapshot, setSnapshot] = useState(modal.snapshot);
+  const [snapshot, setSnapshot] = useState<Snapshot>();
   const [error, setError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
-  const [scope, setScope] = useState(modal.block ? "turn" : "session");
-  const block = scope === "turn" ? modal.block : undefined;
+  const [scope, setScope] = useState(modal.block_id ? "turn" : "session");
+  const presented = snapshot?.state?.view
+    ? presentMessages(snapshot.state.view.blocks)
+    : [];
+  const flattened = presented.flatMap((row) =>
+    row.children ? [row, ...row.children] : [row],
+  );
+  const block =
+    scope === "turn"
+      ? flattened.find(
+          (row) =>
+            row.key === modal.block_id ||
+            row.id === modal.block_id ||
+            row.response_id === modal.block_id ||
+            row.occurrence_id === modal.block_id,
+        )
+      : undefined;
   useEffect(() => {
-    if (block || snapshot || !modal.session) return;
     let active = true;
+    setSnapshot(undefined);
     setError(null);
-    loadSnapshot(modal.session.id)
+    loadSnapshot(modal.session_id)
       .then((value) => {
         if (active) setSnapshot(value);
       })
@@ -94,7 +108,7 @@ export default function Statistics({
     return () => {
       active = false;
     };
-  }, [scope, attempt]);
+  }, [modal.session_id, attempt]);
   const state = snapshot?.state;
   const stats = state?.statistics;
   const summary = block?.summary;
@@ -162,7 +176,7 @@ export default function Statistics({
         ];
   return (
     <>
-      {modal.block?.summary && modal.session && (
+      {modal.block_id && (
         <div class="dialog-actions" role="group" aria-label="Statistics scope">
           {(["turn", "session"] as const).map((value) => (
             <button

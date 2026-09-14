@@ -1,11 +1,13 @@
 import { contextSummary } from "../src/context.ts";
 import { duration } from "../src/duration.ts";
+import { isRunningStatus, statusLine } from "../src/display.ts";
+import { getToolPreview } from "../src/tool-preview.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/format.ts";
 import { formatEventStream } from "../src/event-stream.ts";
 import { count, bytes } from "../src/quantities.ts";
-import { presentMessages, showsHeader } from "../src/message-view.ts";
+import { presentMessages } from "../src/message-view.ts";
 
 test("JSON display preserves large numbers, escapes, duplicate keys and arrays", () => {
   const raw =
@@ -128,7 +130,7 @@ test("tool presentation joins parallel results by ID and keeps model metadata", 
   assert.deepEqual(blocks, before);
 });
 
-test("async receipts retain their kind and do not claim an agent turn", () => {
+test("async receipts retain their kind with uniform chrome", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "go" },
     {
@@ -142,12 +144,13 @@ test("async receipts retain their kind and do not claim an agent turn", () => {
   ]);
   assert.equal(rows.length, 2);
   assert.equal(rows[1].id, "m-8");
-  assert.equal(showsHeader(rows[1]), false);
   assert.equal(rows[1].kind, "activity");
   assert.equal(rows[1].activity?.category, "execute");
+  // No header/matrix flags: every row renders identical chrome.
+  assert.ok(!("firstOfTurn" in rows[1]));
 });
 
-test("actor mark lands on the first agent row of each turn", () => {
+test("rows keep stable keys in order with no header flags", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "hi" },
     { id: "m1", kind: "assistant", text: "a" },
@@ -157,12 +160,13 @@ test("actor mark lands on the first agent row of each turn", () => {
     { id: "t2", kind: "tool_result", call_id: "c2", text: "r2" },
   ]);
   assert.deepEqual(
-    rows.map((row) => !!row.firstOfTurn),
-    [false, true, false, false, false, true],
+    rows.map((row) => row.key || row.id),
+    ["u1", "m1", "t1", "m2", "u2", "t2"],
   );
+  for (const row of rows) assert.ok(!("firstOfTurn" in row));
 });
 
-test("one header per step: user rows open, only the first agent row flags", () => {
+test("every row renders uniform chrome: keys, kinds and order kept", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "hi" },
     { id: "m1", kind: "assistant", text: "a", turn_root: "m1" },
@@ -178,12 +182,16 @@ test("one header per step: user rows open, only the first agent row flags", () =
     { id: "m3", kind: "assistant", text: "c", turn_root: "m3" },
   ]);
   assert.deepEqual(
-    rows.map((row) => showsHeader(row)),
-    [true, true, false, false, true, true],
+    rows.map((row) => row.id),
+    ["u1", "m1", "t1", "m2", "u2", "m3"],
+  );
+  assert.deepEqual(
+    rows.map((row) => row.kind),
+    ["user", "assistant", "tool_result", "assistant", "user", "assistant"],
   );
 });
 
-test("tool-sourced attachments join the agent side, uploads reset it", () => {
+test("tool-sourced attachments stay inline with uploads", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "hi" },
     { id: "a1", kind: "attachment", origin: "tool", text: "shot" },
@@ -192,8 +200,8 @@ test("tool-sourced attachments join the agent side, uploads reset it", () => {
     { id: "m2", kind: "assistant", text: "b" },
   ]);
   assert.deepEqual(
-    rows.map((row) => !!row.firstOfTurn),
-    [false, true, false, false, true],
+    rows.map((row) => row.id),
+    ["u1", "a1", "m1", "a2", "m2"],
   );
 });
 
@@ -226,6 +234,36 @@ test("reused IDs, incomplete calls and orphaned results remain in their own turn
   assert.equal(result[2].source.id, "source-1");
   assert.equal(result[5].source.id, "source-2");
   assert.equal(result[6].result_loaded, false);
+});
+
+test("running rows never read as not recorded", () => {
+  for (const status of [
+    undefined,
+    "",
+    "running",
+    "pending",
+    "not recorded",
+  ]) {
+    assert.ok(isRunningStatus(status), JSON.stringify(status));
+    assert.equal(statusLine({ status }), "Running\u2026");
+  }
+  assert.ok(!isRunningStatus("succeeded"));
+  assert.equal(
+    statusLine({ category: "execute", status: "running" }),
+    "execute \u00b7 Running\u2026",
+  );
+  assert.equal(
+    statusLine({ status: undefined, duration_ms: 1500 }),
+    "Done \u00b7 1.5s",
+  );
+  const preview = getToolPreview({
+    kind: "tool_result",
+    name: "run",
+    status: "not recorded",
+    arguments: { command: "sleep 60" },
+  });
+  assert.equal(preview.title, "$ sleep 60");
+  assert.equal(preview.subtitle, "Running\u2026");
 });
 
 test("durations scale consistently with the CLI", () => {
@@ -327,4 +365,90 @@ test("native exploration membership survives reversed results and keeps boundari
   assert.equal(rows[1].children[1].name, "run");
   assert.deepEqual(presentMessages(structuredClone(blocks)), rows);
   assert.ok(!blocks[1].children);
+});
+
+test("occurrence identities isolate repeated provider call IDs and stabilize groups", () => {
+  const group = { id: "explore", label: "Explored 2 files" };
+  const blocks = [
+    { id: "u-1", kind: "user", text: "first" },
+    {
+      id: "m-1",
+      response_id: "response-1",
+      kind: "assistant",
+      tools: [
+        {
+          call_id: "same",
+          occurrence_id: "response-1:1",
+          response_id: "response-1",
+          name: "read",
+          activity: { category: "explore", group },
+        },
+        {
+          call_id: "next",
+          occurrence_id: "response-1:2",
+          response_id: "response-1",
+          name: "read",
+          activity: { category: "explore", group },
+        },
+      ],
+    },
+    {
+      id: "r-2",
+      kind: "tool_result",
+      call_id: "next",
+      occurrence_id: "response-1:2",
+      response_id: "response-1",
+      text: "second",
+      activity: { category: "explore", group },
+    },
+    {
+      id: "r-1",
+      kind: "tool_result",
+      call_id: "same",
+      occurrence_id: "response-1:1",
+      response_id: "response-1",
+      text: "first",
+      activity: { category: "explore", group },
+    },
+    { id: "u-2", kind: "user", text: "again" },
+    {
+      id: "m-2",
+      response_id: "response-2",
+      kind: "assistant",
+      tools: [
+        {
+          call_id: "same",
+          occurrence_id: "response-2:1",
+          response_id: "response-2",
+          name: "read",
+        },
+      ],
+    },
+    {
+      id: "r-3",
+      kind: "tool_result",
+      call_id: "same",
+      occurrence_id: "response-2:1",
+      response_id: "response-2",
+      text: "later",
+    },
+  ];
+  const first = presentMessages(blocks);
+  const groupRow = first[1];
+  assert.equal(groupRow.key, "group-response-1-explore");
+  assert.deepEqual(
+    groupRow.children.map((row) => [row.key, row.text]),
+    [
+      ["response-1:1", "first"],
+      ["response-1:2", "second"],
+    ],
+  );
+  assert.equal(first.at(-1).key, "response-2:1");
+  assert.equal(first.at(-1).text, "later");
+  const checkpoint = presentMessages(structuredClone(blocks));
+  assert.equal(checkpoint[1].key, groupRow.key);
+  assert.deepEqual(
+    checkpoint[1].children.map((row) => row.key),
+    groupRow.children.map((row) => row.key),
+  );
 });

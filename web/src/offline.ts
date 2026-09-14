@@ -1,5 +1,6 @@
 import type { Catalogue, Draft, Snapshot, View } from "./types.ts";
-import { api, readPages } from "./store.ts";
+import { api, readPages } from "./api.ts";
+import { reconcileBlock } from "./store.ts";
 
 const LIMIT = 50 * 1024 * 1024;
 const POINTER = "uagent-offline-device";
@@ -65,15 +66,9 @@ export function mergeCached(
   if (!first) return latest;
   const older = a.blocks.filter((block) => (block.sequence || 0) < first);
   const old = new Map(a.blocks.map((block) => [block.id, block]));
-  const blocks = b.blocks.map((block) => {
-    const prior = old.get(block.id);
-    return prior &&
-      !prior.truncated &&
-      block.truncated &&
-      prior.text?.startsWith(block.text || "")
-      ? { ...block, text: prior.text, truncated: false }
-      : block;
-  });
+  const blocks = b.blocks.map((block) =>
+    reconcileBlock(old.get(block.id), block),
+  );
   return {
     ...latest,
     state: {
@@ -92,6 +87,7 @@ class OfflineStorage {
   private db?: Promise<IDBDatabase>;
   private generation = 0;
   private writes = Promise.resolve();
+  private saveVersions = new Map<string, number>();
   private downloadsInProgress = new AbortController();
   private invalidate() {
     this.generation++;
@@ -214,15 +210,19 @@ class OfflineStorage {
     });
   }
   save(snapshot: Snapshot, pin?: boolean) {
+    const id = snapshot.metadata.id;
+    const version = (this.saveVersions.get(id) || 0) + 1;
+    this.saveVersions.set(id, version);
     return this.write(async (db) => {
+      // Superseded session snapshots never start an IndexedDB transaction.
+      if (this.saveVersions.get(id) !== version) return;
       const tx = db.transaction(["meta", "snapshots"], "readwrite"),
         done = completed(tx),
         meta = tx.objectStore("meta"),
         store = tx.objectStore("snapshots");
       const downloads: Download[] =
         (await request(meta.get("downloads"))) || [];
-      const id = snapshot.metadata.id,
-        previous: Snapshot | undefined = await request(store.get(id));
+      const previous: Snapshot | undefined = await request(store.get(id));
       const value = mergeCached(previous, cachedSnapshot(snapshot));
       const bytes = new Blob([JSON.stringify(value)]).size;
       const item = {
@@ -264,6 +264,7 @@ class OfflineStorage {
     });
   }
   remove(id: string) {
+    this.saveVersions.delete(id);
     return this.write(async (db) => {
       const tx = db.transaction(["meta", "snapshots"], "readwrite"),
         done = completed(tx),

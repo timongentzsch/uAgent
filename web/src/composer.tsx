@@ -26,7 +26,7 @@ import {
   Square,
   X,
 } from "lucide-preact";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { Deferred, Field, Select, Skeleton } from "./ui.tsx";
 import { Popover } from "./popover.tsx";
 import Activities from "./activity-status.tsx";
@@ -376,7 +376,7 @@ export default function Composer({
       >
         <div class="metrics">
           <button
-            class="quiet context-button"
+            class="quiet"
             aria-label="Raw context"
             title={`${state?.context_tokens?.toLocaleString() || "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens · View raw context`}
             disabled={!online}

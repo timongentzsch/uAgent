@@ -1,4 +1,4 @@
-.composer form {
+.composer > form {
   position: relative;
 }
 .command-suggestions {

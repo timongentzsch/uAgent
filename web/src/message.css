@@ -3,12 +3,17 @@
   width: 100%;
   min-width: 0;
   container-type: inline-size;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 200px;
   text-align: left;
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
   overflow-wrap: break-word;
   padding: 6px 8px;
-  margin: 6px 0;
+  /* No vertical margins anywhere in here: the transcript column owns all
+     inter-message rhythm with one flex gap, so spacing cannot collapse or
+     double up between header variants. */
+  margin: 0;
 }
 .message.user {
   --text: #111;
@@ -32,12 +37,9 @@
   background: #000;
 }
 .message.turn-start {
-  margin-top: 12px;
-}
-.message.grouped {
-  /* Body of a grouped step: no header chrome, so no header spacing. */
-  margin-top: 2px;
-  padding-top: 0;
+  /* Additive over the column gap (never collapsing), so turn boundaries
+     read wider by exactly this much. */
+  margin-top: 4px;
 }
 .message > header {
   display: flex;
@@ -70,48 +72,76 @@
 .message details {
   margin: 6px 0;
 }
-.message summary {
+.message summary,
+.disclosure-row > summary {
   cursor: pointer;
   color: var(--muted);
   min-height: 28px;
   padding: 3px 0;
 }
+.disclosure-row > summary {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  text-align: left;
+}
+.disclosure-row > summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform 100ms ease;
+}
+.disclosure-row[open] > summary .disclosure-chevron {
+  transform: rotate(90deg);
+}
+.disclosure-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.disclosure-row > summary small,
+.disclosure-row > summary time {
+  white-space: nowrap;
+}
+.disclosure-body {
+  border-left: 1px solid var(--line);
+  margin-left: 7px;
+  padding-left: 12px;
+}
 .message .action-menu {
   flex-shrink: 0;
 }
-.message.tool > header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-}
-.tool-toggle {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) max-content;
-  align-items: center;
-  gap: var(--gap);
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  padding-inline: 0;
-  /* Tool rows scan as body text, not header metadata. */
+.tool-disclosure > summary {
   font-size: calc(14px * var(--text-scale, 1));
+}
+.tool-row-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px;
+}
+.tool-row-head > .tool-disclosure {
+  min-width: 0;
+}
+.tool-disclosure > summary small {
+  min-width: 0;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.exploration-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
 }
 .exploration > summary {
   font-size: 0.8rem;
 }
-.tool-toggle strong {
-  flex: 1 1 auto;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tool-toggle > .muted {
-  /* One-line metadata never shrinks: the label above is the only flexible
-     column, so it takes the ellipsis instead of crushing this one. */
-  flex: none;
-  white-space: nowrap;
-}
-.tool-toggle .mark,
 .exploration > summary .mark {
   /* Actor mark inside dense rows: match the text line, not the brand. */
   width: 16px;
@@ -122,19 +152,16 @@
   vertical-align: -3px;
   margin-right: 4px;
 }
-.tool-toggle .expanded {
-  transform: rotate(90deg);
-}
 .tool-body {
-  border-left: 1px solid var(--line);
-  padding-left: 12px;
+  padding: 4px 0;
 }
 @media (pointer: coarse) {
   .message {
     --control: 32px;
   }
-  .message summary {
-    min-height: 32px;
+  .message summary,
+  .disclosure-row > summary {
+    min-height: 44px;
   }
 }
 @media (max-width: 600px) {
@@ -142,40 +169,35 @@
     padding: 4px 6px;
   }
   .message > header,
-  .tool-toggle {
+  .tool-disclosure > summary {
     gap: 4px;
   }
 }
 
-.tool-icons {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
 @container (max-width: 500px) {
-  .tool-toggle {
-    grid-template-columns: auto minmax(0, 1fr);
+  .tool-disclosure > summary {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
     row-gap: 2px;
   }
-  .tool-toggle > .muted {
-    grid-column: 2;
+  .tool-disclosure > summary small {
+    grid-column: 3;
     font-size: 0.7rem;
   }
 }
 
 .event-row {
-  margin: var(--gap) 0;
+  /* Direct transcript child: the column gap owns spacing. */
+  margin: 0;
   color: var(--muted);
   font-size: 0.85rem;
 }
 .event-row > summary {
-  display: flex;
   align-items: center;
   gap: var(--gap);
   min-height: var(--control);
   cursor: pointer;
 }
-.event-row > summary > span {
+.event-row > summary > .disclosure-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;

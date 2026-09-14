@@ -18,12 +18,6 @@ markdown.renderer.rules.link_open = (
   tokens[index].attrSet("target", "_blank");
   return renderer.renderToken(tokens, index, options);
 };
-// Keep copy controls outside the scrollable code and never attach them to prose.
-for (const rule of ["fence", "code_block"]) {
-  const render = markdown.renderer.rules[rule]!;
-  markdown.renderer.rules[rule] = (...args) =>
-    `<div class="code-block">${render(...args)}<span class="code-copy"></span></div>`;
-}
 // Wide tables scroll in their own wrapper instead of squeezing their columns
 // to the container width (display:block on <table> would do exactly that).
 markdown.renderer.rules.table_open = () => '<div class="table-scroll"><table>';
@@ -31,7 +25,23 @@ markdown.renderer.rules.table_close = () => "</table></div>";
 let math: Promise<void> | undefined;
 let highlighting: Promise<void> | undefined;
 export async function renderMarkdown(text: string) {
-  // Only the block that needs a renderer pays for its module and fonts.
+  return (await renderMarkdownBlocks(text)).map((block) => block.html).join("");
+}
+
+export interface MarkdownBlock {
+  key: string;
+  html: string;
+  source: string;
+  code?: { language: string; text: string; mermaid: boolean };
+}
+
+// Parse the complete document so references and container boundaries retain
+// markdown-it semantics, then render top-level token ranges independently.
+// Stable source-map keys let Preact retain every unaffected DOM subtree while
+// the unfinished streaming tail changes.
+export async function renderMarkdownBlocks(
+  text: string,
+): Promise<MarkdownBlock[]> {
   if (/\$|\\[([]/.test(text)) {
     math ??= import("./math.ts").then(({ install }) => install(markdown));
     await math;
@@ -42,6 +52,43 @@ export async function renderMarkdown(text: string) {
     );
     await highlighting;
   }
-  return markdown.render(text);
+  const env: Record<string, unknown> = {};
+  const tokens = markdown.parse(text, env);
+  const lines = text.split(/\n/);
+  const blocks: MarkdownBlock[] = [];
+  for (let start = 0; start < tokens.length;) {
+    let end = start + 1;
+    if (tokens[start].nesting === 1) {
+      let depth = 1;
+      while (end < tokens.length && depth) {
+        depth += tokens[end].nesting;
+        end++;
+      }
+    }
+    const token = tokens[start];
+    const map = token.map || [0, lines.length];
+    const source = lines.slice(map[0], map[1]).join("\n");
+    const info =
+      token.type === "fence" ? token.info.trim().split(/\s+/, 1)[0] : "";
+    blocks.push({
+      key: `${map[0]}:${token.type}`,
+      source,
+      html: markdown.renderer.render(
+        tokens.slice(start, end),
+        markdown.options,
+        env,
+      ),
+      code:
+        token.type === "fence" || token.type === "code_block"
+          ? {
+              language: info,
+              text: token.content,
+              mermaid: info.toLowerCase() === "mermaid",
+            }
+          : undefined,
+    });
+    start = end;
+  }
+  return blocks;
 }
 export { safeURL };

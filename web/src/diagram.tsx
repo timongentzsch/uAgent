@@ -1,7 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import mermaid from "mermaid";
-import { Modal } from "./ui.tsx";
-import { CodeCopy } from "./markdown-view.tsx";
+import { CodeCopy, Modal } from "./ui.tsx";
 
 // Serialize Mermaid's global renderer and bound retained SVGs. SVG is displayed
 // as an image, so diagram content never creates active elements in the app DOM.

@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { StatisticsModal } from "./types.ts";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { LoadError } from "./ui.tsx";
 export default function ConversationActions({
   modal,

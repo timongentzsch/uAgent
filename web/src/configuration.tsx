@@ -8,7 +8,7 @@ import type {
 } from "./types.ts";
 import "./configuration.css";
 import { useEffect, useState } from "preact/hooks";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { Select, Skeleton, LoadError } from "./ui.tsx";
 
 const stringify = (value?: JSONValue) =>

@@ -77,7 +77,11 @@ export interface ToolActivity {
 }
 export interface ToolCall {
   activity?: ToolActivity;
-  id: string;
+  id?: string;
+  response_id?: string;
+  occurrence_id?: string;
+  call_id?: string;
+  detail_id?: string;
   name: string;
   arguments?: JSONValue;
   status?: string;
@@ -108,6 +112,16 @@ export interface Block {
   };
   deliveries?: { name: string; delivery: string }[];
   id: string;
+  response_id?: string;
+  occurrence_id?: string;
+  content_revision?: number;
+  content_complete?: boolean;
+  text_bytes?: number;
+  retained_text_bytes?: number;
+  reasoning_revision?: number;
+  reasoning_complete?: boolean;
+  reasoning_bytes?: number;
+  retained_reasoning_bytes?: number;
   kind: string;
   text?: string;
   time?: string;
@@ -144,9 +158,6 @@ export interface Block {
 export interface PresentedBlock extends Block {
   children?: PresentedBlock[];
   key?: string;
-  // First agent row after a user turn (or at the start): the single home
-  // for the actor mark, so toolcalls are covered without stamping rows.
-  firstOfTurn?: boolean;
   source?: Block;
   result_loaded?: boolean;
 }
@@ -182,6 +193,7 @@ export interface Collaborator {
 }
 export interface ActivityDetail extends Activity {
   body?: BodyPage;
+  command?: string;
   memory?: Block["memory"];
   task?: string;
   directive?: string;
@@ -226,6 +238,8 @@ export interface Session {
 }
 export type SessionRef = Pick<Session, "id" | "generation">;
 export interface State {
+  phase?: ExecutionPhase;
+  pending_decision?: Pending | null;
   attachments?: number;
   title?: string;
   route?: string;
@@ -248,13 +262,22 @@ export interface State {
   http?: Exchange[];
   error?: string;
 }
+export type ExecutionPhase =
+  | "idle"
+  | "working"
+  | "waiting"
+  | "thinking"
+  | "responding"
+  | "tool"
+  | "searching"
+  | "finishing"
+  | "decision";
 export interface Snapshot {
   epoch?: string;
   cursor: number;
   metadata: Session;
   state?: State;
   pending?: Pending | null;
-  live?: HostEvent[];
   streamed?: Block[];
   live_truncated?: boolean;
 }
@@ -288,6 +311,7 @@ export interface Outcome {
   error?: string;
 }
 export interface EventData extends Omit<Partial<Exchange>, "status"> {
+  request_id?: string;
   inspect?: boolean;
   context_tokens?: number;
   output?: string;
@@ -296,6 +320,13 @@ export interface EventData extends Omit<Partial<Exchange>, "status"> {
   block?: Block;
   text?: string;
   id?: string;
+  response_id?: string;
+  occurrence_id?: string;
+  call_id?: string;
+  detail_id?: string;
+  turn?: number;
+  request?: string;
+  attempt?: number;
   name?: string;
   arguments?: JSONValue;
   result?: JSONValue;
@@ -330,8 +361,8 @@ interface HostEnvelope extends Partial<Omit<Outcome, "pending">> {
   data?: EventData;
   metadata?: Session;
   state?: State;
-  busy?: boolean;
-  command_busy?: boolean;
+  phase?: ExecutionPhase;
+  pending_decision?: Pending | null;
   guidance?: number;
   presence?: "active" | "";
   checkpoint?: boolean;
@@ -366,6 +397,7 @@ export interface BodyPage {
 export interface Model {
   value: string;
   label: string;
+  name?: string;
   active?: boolean;
   efforts?: string[];
   variants?: string[];
@@ -477,9 +509,8 @@ export type StatisticsModal =
     }
   | {
       type: "statistics";
-      session?: Session;
-      block?: Block;
-      snapshot?: Snapshot;
+      session_id: string;
+      block_id?: string;
     };
 export interface RawOptions {
   part?: "request" | "response";

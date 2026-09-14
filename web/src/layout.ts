@@ -48,20 +48,23 @@ export function observeViewport(update: () => void) {
   };
   const viewport = globalThis.visualViewport;
   addEventListener("resize", changed);
+  document.addEventListener("focusin", changed);
+  document.addEventListener("focusout", changed);
   viewport?.addEventListener("resize", changed);
   viewport?.addEventListener("scroll", changed);
   update();
   return () => {
     cancelAnimationFrame(frame);
     removeEventListener("resize", changed);
+    document.removeEventListener("focusin", changed);
+    document.removeEventListener("focusout", changed);
     viewport?.removeEventListener("resize", changed);
     viewport?.removeEventListener("scroll", changed);
   };
 }
 
 export function trackViewport() {
-  let width = 0,
-    height = 0;
+  const restingHeights = new Map<number, number>();
   return observeViewport(() => {
     // During pinch zoom retain layout coordinates. Refresh them from the
     // layout viewport on rotation instead of leaving stale portrait bounds.
@@ -74,29 +77,50 @@ export function trackViewport() {
           height: document.documentElement.clientHeight,
         }
       : viewportBounds();
-    const resized = width !== bounds.width || height !== bounds.height;
-    ({ width, height } = bounds);
+    const viewportWidth = Math.round(bounds.width);
+    restingHeights.set(
+      viewportWidth,
+      Math.max(
+        restingHeights.get(viewportWidth) || 0,
+        bounds.height,
+        document.documentElement.clientHeight,
+      ),
+    );
+    // Focusout commonly arrives before the keyboard finishes closing. Keep the
+    // inset suppressed until the visual viewport itself returns to rest.
+    const keyboard =
+      !zoomed &&
+      bounds.height < (restingHeights.get(viewportWidth) || bounds.height) - 1;
+    document.documentElement.toggleAttribute("data-keyboard", keyboard);
     for (const [key, value] of Object.entries(bounds))
       document.documentElement.style.setProperty(
         `--viewport-${key}`,
         `${value}px`,
       );
-    // Focus can precede the keyboard animation. Reveal a lower form field in
-    // its scrolling surface after reflow, without stealing focus or selection.
-    const focused = document.activeElement;
-    if (
-      !zoomed &&
-      resized &&
-      focused instanceof HTMLElement &&
-      focused.matches("input, textarea, [contenteditable=true]")
-    ) {
-      const box = focused.getBoundingClientRect();
-      if (box.top < bounds.top || box.bottom > bounds.top + bounds.height)
-        focused.scrollIntoView({
-          block: "nearest",
-          inline: "nearest",
-          behavior: "instant",
-        });
-    }
+    // No scrollIntoView here: the transcript owns scroll via sentinel follow
+    // and native overflow-anchor. Stealing scroll on focus caused jumps.
   });
+}
+
+export function observeCompact(changed: (compact: boolean) => void) {
+  const media = matchMedia("(max-width: 900px)");
+  const update = () => changed(media.matches);
+  media.addEventListener("change", update);
+  return () => media.removeEventListener("change", update);
+}
+
+export function applyTheme(theme: string) {
+  const media = matchMedia("(prefers-color-scheme: dark)");
+  const apply = () => {
+    const resolved =
+      theme === "system" ? (media.matches ? "dark" : "light") : theme;
+    document.documentElement.dataset.theme = resolved;
+    document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]',
+    )!.content = resolved === "dark" ? "#000000" : "#ffffff";
+  };
+  apply();
+  localStorage.setItem("uagent-theme", theme);
+  media.addEventListener("change", apply);
+  return () => media.removeEventListener("change", apply);
 }

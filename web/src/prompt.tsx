@@ -5,7 +5,8 @@ import type {
   PromptResult,
   Session,
 } from "./types.ts";
-import { command, readStored, writeStored } from "./store.ts";
+import { readStored, writeStored } from "./store.ts";
+import { command } from "./api.ts";
 import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
 import { ProjectField } from "./management.tsx";
 import "./prompt.css";

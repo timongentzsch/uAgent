@@ -1,11 +1,28 @@
 import { count } from "./quantities.ts";
 import type { ComponentChildren } from "preact";
-import type { Activity, Collaborator, Pending } from "./types.ts";
-import type { ActivityProps } from "./activity.tsx";
+import type {
+  Activity,
+  Block,
+  Collaborator,
+  Pending,
+  Report,
+  SessionRef,
+} from "./types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { ChevronDown } from "lucide-preact";
 import { Deferred } from "./ui.tsx";
 const panel = () => import("./activity.tsx");
+export interface ActivityProps {
+  items?: Activity[];
+  collaborators?: Collaborator[];
+  target?: Block | null;
+  clearTarget: () => void;
+  cwd: string;
+  running?: boolean;
+  session: SessionRef;
+  online: boolean;
+  report: Report;
+}
 export const active = (item: Activity) =>
   ["running", "starting", "stopping", "finishing"].includes(item.status || "");
 export function activityLabel(items: Activity[] = []) {

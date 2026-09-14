@@ -10,16 +10,15 @@ import type {
 import { failure } from "./types.ts";
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
-  api,
   isAttention,
   retainedViews,
-  receiveOutcome,
   applySessionEvent,
   isIncoming,
   readStored,
   writeStored,
 } from "./store.ts";
-import { offline } from "./offline.ts";
+import { api, protocol, receiveOutcome } from "./api.ts";
+import { mergeCached, offline } from "./offline.ts";
 import { selectedFromURL, writeSelection } from "./navigation.ts";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
@@ -51,18 +50,13 @@ export function useHost(
   const [outgoing, setOutgoing] = useState(() =>
     readStored<Outgoing[]>(sessionStorage, "uagent-outgoing", []),
   );
-  const [followed, setFollowed] = useState<Record<string, boolean>>({});
-  const following = followed[selected] !== false;
-  const setFollowing = (value: boolean) =>
-    setFollowed((prior) =>
-      prior[selected] === value ? prior : { ...prior, [selected]: value },
-    );
+  const [following, setFollowing] = useState(true);
   const stream = useRef<EventSource>();
   const reconnecting = useRef(false);
   const refreshAgain = useRef(false);
   const live = useRef<Record<string, Snapshot>>({});
   const selection = useRef(selected);
-  const flush = useRef(() => {});
+  const flush = useRef((_id?: string) => {});
   const notifications = useRef(false);
   const subscribed = useRef(false);
   const reading = useRef(false);
@@ -70,6 +64,7 @@ export function useHost(
     readStored<Record<string, number>>(localStorage, "uagent-read", {}),
   );
   const outgoingRef = useRef(outgoing);
+  const localRequests = useRef(new Set<string>());
   subscribed.current = !!catalogue.capabilities.subscribed;
   selection.current = selected;
   outgoingRef.current = outgoing;
@@ -248,30 +243,58 @@ export function useHost(
         `/api/events?cursor=${list.epoch}:${list.cursor}`,
       );
       stream.current = events;
-      let interrupted = false;
       events.onopen = () => {
         if (stream.current !== events || signal.aborted) return;
-        if (interrupted) {
-          events.close();
-          refresh();
-        } else {
-          setOnline(true);
-          setConnecting(false);
-        }
+        // Transport-open is not authoritative catch-up. Mutations stay
+        // disabled until the server's ready watermark has been applied.
+        setConnecting(true);
       };
       events.onerror = () => {
         if (stream.current !== events || signal.aborted) return;
-        interrupted = true;
         setOnline(false);
-        setConnecting(false);
+        setConnecting(true);
       };
+      events.addEventListener("ready", (message) => {
+        if (stream.current !== events || signal.aborted) return;
+        let ready: { epoch?: string; cursor?: number };
+        try {
+          ready = JSON.parse(message.data);
+        } catch {
+          refresh();
+          return;
+        }
+        if (
+          ready.epoch !== list.epoch ||
+          typeof ready.cursor !== "number" ||
+          ready.cursor < (list.cursor || 0)
+        ) {
+          refresh();
+          return;
+        }
+        setOnline(true);
+        setConnecting(false);
+      });
       events.addEventListener("resync", () => {
         if (stream.current === events && !signal.aborted) refresh();
       });
       events.addEventListener("update", (message) => {
         if (stream.current !== events || signal.aborted) return;
-        const event = JSON.parse(message.data) as HostEvent;
-        if (event.v !== 1 || event.epoch !== list.epoch) {
+        let event: HostEvent;
+        try {
+          event = JSON.parse(message.data);
+          if (
+            !event ||
+            typeof event.kind !== "string" ||
+            typeof event.sequence !== "number" ||
+            typeof event.session_id !== "string"
+          )
+            throw new Error("Invalid event envelope");
+        } catch {
+          events.close();
+          refresh();
+          return;
+        }
+        if (event.v !== protocol || event.epoch !== list.epoch) {
           events.close();
           report(
             new Error(
@@ -374,23 +397,25 @@ export function useHost(
           forget(id);
         }
         if (event.kind === "state") {
+          const phase = event.phase || event.state?.phase || "idle";
+          const pendingDecision =
+            event.pending_decision ?? event.state?.pending_decision ?? null;
+          const turnActive = !["idle", "decision"].includes(phase);
           const metadata = {
             ...(current?.metadata || knownSessions.get(id)),
             id,
             generation: event.generation,
             presence: event.presence || "active",
             updated: event.updated ?? current?.metadata.updated,
-            status: event.pending
+            status: pendingDecision
               ? "waiting"
               : !event.state?.route
                 ? "starting"
-                : event.busy
+                : turnActive
                   ? "running"
-                  : event.command_busy
-                    ? "processing"
-                    : "idle",
-            turn_active: !!event.busy,
-            pending: !!event.pending,
+                  : "idle",
+            turn_active: turnActive,
+            pending: !!pendingDecision,
             guidance: event.guidance || 0,
             activity: event.state?.activity,
             activities: event.state?.activities,
@@ -403,18 +428,25 @@ export function useHost(
               current?.metadata.title ||
               "New conversation",
           };
-          live.current[id] = {
+          const projected: Snapshot = {
             ...current,
             epoch: event.epoch,
             cursor: event.sequence,
             metadata,
-            state: event.state,
-            pending: event.pending,
-            live: event.checkpoint ? [] : current?.live || [],
+            state: {
+              ...event.state,
+              phase,
+              pending_decision: pendingDecision,
+            },
+            pending: pendingDecision,
             streamed: event.checkpoint ? [] : current?.streamed,
           };
-          // Decisions and busy/idle state must not wait for text batching.
-          setSnapshots((prior) => ({ ...prior, [id]: live.current[id] }));
+          live.current[id] = current
+            ? mergeCached(current, projected)
+            : projected;
+          // Decisions and canonical phase changes flush without text batching.
+          if (id === selection.current)
+            setSnapshots((prior) => ({ ...prior, [id]: live.current[id] }));
           setCatalogue((prior) => ({
             ...prior,
             sessions: prior.sessions.map((item) =>
@@ -435,7 +467,12 @@ export function useHost(
                 : {
                     ...item,
                     ...(event.kind === "activity"
-                      ? { activity: event.activity, turn_active: !!event.busy }
+                      ? {
+                          activity: event.activity,
+                          turn_active: event.phase
+                            ? !["idle", "decision"].includes(event.phase)
+                            : item.turn_active,
+                        }
                       : { activities: data.activities }),
                   },
             ),
@@ -444,6 +481,8 @@ export function useHost(
           if (
             id === selection.current &&
             event.type === "command.completed" &&
+            !!data.request_id &&
+            localRequests.current.delete(data.request_id) &&
             (data.output?.trim() || Object.keys(data.result || {}).length)
           ) {
             onResult(
@@ -488,7 +527,7 @@ export function useHost(
             ),
           }));
         }
-        flush.current();
+        flush.current(id);
         if (isIncoming(event) && (id !== selection.current || !reading.current))
           setUnread((prior) => new Set([...prior, id]));
         if (isAttention(event)) {
@@ -563,8 +602,14 @@ export function useHost(
       })
       .catch(() => {});
     refresh();
-    const recover = () => {
-      if (document.visibilityState === "visible") refresh();
+    const recover = (event?: Event) => {
+      if (document.visibilityState !== "visible") return;
+      if (
+        (event instanceof PageTransitionEvent && event.persisted) ||
+        !stream.current
+      )
+        refresh();
+      else flush.current();
     };
     const disconnected = () => {
       setConnecting(false);
@@ -581,27 +626,37 @@ export function useHost(
     };
     addEventListener("online", refresh);
     addEventListener("offline", disconnected);
+    const suspend = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      stream.current?.close();
+      stream.current = undefined;
+      setOnline(false);
+    };
     addEventListener("pageshow", recover);
+    addEventListener("pagehide", suspend);
     addEventListener("hashchange", hash);
     addEventListener("popstate", hash);
     document.addEventListener("visibilitychange", recover);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    flush.current = () => {
-      timer ??= setTimeout(() => {
-        timer = undefined;
+    let frame = 0;
+    flush.current = (id?: string) => {
+      if (id && id !== selection.current) return;
+      if (document.visibilityState !== "visible" || frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
         live.current = retainedViews(live.current, selection.current);
         setSnapshots({ ...live.current });
-      }, 80);
+      });
     };
     return () => {
       history.scrollRestoration = restoration;
       lifetime.current.abort();
       stream.current?.close();
-      clearTimeout(timer);
+      cancelAnimationFrame(frame);
       clearTimeout(navigation);
       removeEventListener("online", refresh);
       removeEventListener("offline", disconnected);
       removeEventListener("pageshow", recover);
+      removeEventListener("pagehide", suspend);
       removeEventListener("hashchange", hash);
       removeEventListener("popstate", hash);
       document.removeEventListener("visibilitychange", recover);
@@ -624,8 +679,11 @@ export function useHost(
       !snapshot
     )
       return;
-    readCounts.current[selected] = snapshot.metadata?.incoming || 0;
-    writeStored(localStorage, "uagent-read", readCounts.current);
+    const incoming = snapshot.metadata?.incoming || 0;
+    if ((readCounts.current[selected] || 0) < incoming) {
+      readCounts.current[selected] = incoming;
+      writeStored(localStorage, "uagent-read", readCounts.current);
+    }
     setUnread((prior) => {
       if (!prior.has(selected)) return prior;
       const next = new Set(prior);
@@ -641,30 +699,52 @@ export function useHost(
     },
     [],
   );
+  const correlate = useCallback((requestId: string) => {
+    localRequests.current.add(requestId);
+    if (localRequests.current.size > 256)
+      localRequests.current.delete(
+        localRequests.current.values().next().value!,
+      );
+  }, []);
   const persisted = useRef({ snapshots, drafts, catalogue });
   persisted.current = { snapshots, drafts, catalogue };
-  useEffect(() => {
-    let previous = persisted.current;
-    const save = () => {
-      const next = persisted.current;
-      if (next === previous || revoked.current) return;
-      for (const [id, snapshot] of Object.entries(next.snapshots)) {
-        if (previous.snapshots[id] !== snapshot)
-          offline.save(snapshot).catch(report);
-      }
-      if (previous.drafts !== next.drafts)
-        offline.drafts(next.drafts).catch(report);
-      if (previous.catalogue !== next.catalogue && catalogueRef.current)
-        offline.catalogue(next.catalogue).catch(report);
-      previous = next;
-    };
-    const timer = setInterval(save, 500);
-    document.addEventListener("visibilitychange", save);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", save);
-    };
+  const saved = useRef(persisted.current);
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
+  const save = useCallback(() => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = undefined;
+    const previous = saved.current;
+    const next = persisted.current;
+    if (next === previous || revoked.current) return;
+    for (const [id, snapshot] of Object.entries(next.snapshots)) {
+      const old = previous.snapshots[id];
+      if (
+        old?.state?.view !== snapshot.state?.view ||
+        old?.metadata.title !== snapshot.metadata.title ||
+        old?.metadata.generation !== snapshot.metadata.generation
+      )
+        offline.save(snapshot).catch(report);
+    }
+    if (previous.drafts !== next.drafts)
+      offline.drafts(next.drafts).catch(report);
+    if (previous.catalogue !== next.catalogue && catalogueRef.current)
+      offline.catalogue(next.catalogue).catch(report);
+    saved.current = next;
   }, [report]);
+  useEffect(() => {
+    if (!saveTimer.current) saveTimer.current = setTimeout(save, 350);
+  }, [snapshots, drafts, catalogue, save]);
+  useEffect(() => {
+    const lifecycle = () => document.visibilityState === "hidden" && save();
+    document.addEventListener("visibilitychange", lifecycle);
+    addEventListener("pagehide", save);
+    return () => {
+      save();
+      clearTimeout(saveTimer.current);
+      document.removeEventListener("visibilitychange", lifecycle);
+      removeEventListener("pagehide", save);
+    };
+  }, [save]);
   function reset() {
     lifetime.current.abort();
     lifetime.current = new AbortController();
@@ -697,6 +777,13 @@ export function useHost(
     setSelected: (id: string) => {
       selection.current = id;
       writeSelection(id);
+      setFollowing(false);
+      if (live.current[id])
+        setSnapshots((prior) =>
+          prior[id] === live.current[id]
+            ? prior
+            : { ...prior, [id]: live.current[id] },
+        );
       setSelected(id);
     },
     drafts,
@@ -714,6 +801,7 @@ export function useHost(
     refresh,
     report,
     updateView,
+    correlate,
     reset,
   };
 }

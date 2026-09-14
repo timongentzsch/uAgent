@@ -3,7 +3,7 @@ import type { RawOptions, Exchange, JSONValue } from "./types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
 import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
-import { readPages, command } from "./store.ts";
+import { readPages, command } from "./api.ts";
 import { formatBody } from "./format.ts";
 import { formatEventStream } from "./event-stream.ts";
 

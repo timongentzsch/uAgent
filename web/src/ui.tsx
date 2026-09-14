@@ -1,11 +1,11 @@
 import type { ComponentChildren, ComponentType, JSX } from "preact";
 import { failure } from "./types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { ChevronDown, X } from "lucide-preact";
+import { ChevronDown, ChevronRight, X } from "lucide-preact";
 import { markPath } from "./mark.ts";
 
-export const cleanText = (text = "") =>
-  text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
+import { cleanText } from "./display.ts";
+export { cleanText };
 export async function copyText(text: string) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text);
   // Clipboard API requires HTTPS; tailnet HTTP still supports user-initiated copy.
@@ -23,6 +23,34 @@ export async function copyText(text: string) {
     field.remove();
     if (focused instanceof HTMLElement) focused.focus();
   }
+}
+export function CodeCopy({ text }: { text: string }) {
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    if (!status) return;
+    const timer = setTimeout(() => setStatus(""), 2000);
+    return () => clearTimeout(timer);
+  }, [status]);
+  return (
+    <>
+      <IconButton
+        label={status || "Copy code"}
+        onClick={async () => {
+          try {
+            await copyText(text);
+            setStatus("Copied!");
+          } catch (error) {
+            setStatus(failure(error).message);
+          }
+        }}
+      >
+        <span aria-hidden="true">{status === "Copied!" ? "✓" : "⧉"}</span>
+      </IconButton>
+      <span class="sr-only" role="status">
+        {status}
+      </span>
+    </>
+  );
 }
 export function Mark({ className = "" }: { className?: string }) {
   return (
@@ -149,10 +177,66 @@ export function EventRow({
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
 }) {
   return (
-    <details class="event-row" data-status={status} onToggle={onToggle}>
+    <DisclosureRow
+      className="event-row"
+      label={title}
+      status={status}
+      time={time}
+      icon={icon}
+      onToggle={onToggle}
+    >
+      <div class="event-body">{children}</div>
+    </DisclosureRow>
+  );
+}
+
+export function DisclosureRow({
+  label,
+  status,
+  time,
+  icon,
+  open,
+  onToggle,
+  className = "",
+  children,
+}: {
+  label: string;
+  status?: string;
+  time?: string;
+  icon?: ComponentChildren;
+  open?: boolean;
+  onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
+  className?: string;
+  children: ComponentChildren;
+}) {
+  const [isOpen, setIsOpen] = useState(!!open);
+  const [mounted, setMounted] = useState(!!open);
+  // Controlled prop wins when provided; otherwise internal state preserves
+  // user toggles across streaming re-renders (never reset to closed).
+  useEffect(() => {
+    if (open !== undefined) {
+      setIsOpen(open);
+      if (open) setMounted(true);
+    }
+  }, [open]);
+  return (
+    <details
+      class={`disclosure-row ${className}`}
+      data-status={status}
+      open={isOpen}
+      onToggle={(event) => {
+        const next = event.currentTarget.open;
+        setIsOpen(next);
+        if (next) setMounted(true);
+        onToggle?.(event);
+      }}
+    >
       <summary>
         {icon}
-        <span>{title}</span>
+        <ChevronRight class="disclosure-chevron" aria-hidden="true" />
+        <span class="disclosure-label" title={label}>
+          {label}
+        </span>
         {status && <small>{status}</small>}
         {time && (
           <time dateTime={time}>
@@ -163,7 +247,7 @@ export function EventRow({
           </time>
         )}
       </summary>
-      <div class="event-body">{children}</div>
+      {mounted && <div class="disclosure-body">{children}</div>}
     </details>
   );
 }

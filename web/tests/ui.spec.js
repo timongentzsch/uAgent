@@ -314,6 +314,20 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     exact: true,
   });
   await expect(model).toBeVisible();
+  const metricButtons = page.locator(".metrics > button");
+  await expect(metricButtons).toHaveCount(2);
+  const metricBoxes = await metricButtons.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const box = button.getBoundingClientRect();
+      const style = getComputedStyle(button);
+      return {
+        height: box.height,
+        paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
+      };
+    }),
+  );
+  expect(metricBoxes[0]).toEqual(metricBoxes[1]);
   const metrics = {};
   const measure = async (name) => {
     await expect
@@ -521,7 +535,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     await route.fulfill({
       status: 503,
       contentType: "application/json",
-      body: JSON.stringify({ v: 1, error: "History temporarily unavailable" }),
+      body: JSON.stringify({ v: 2, error: "History temporarily unavailable" }),
     });
   });
   // WebKit does not intercept requests from a service-worker-controlled page.
@@ -779,6 +793,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       detail_id: "t-fixture",
       arguments: { query: "a test query" },
       text: "short preview",
+      reasoning: "Closed rich reasoning: $$x^2 + y^2$$",
       status: "success",
       truncated: true,
       time: new Date().toISOString(),
@@ -790,7 +805,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       },
     },
   ];
-  snapshot.live = [];
   snapshot.state.context_tokens = 4600;
   snapshot.state.context_window = 1300000;
   await page.route(`**/api/sessions/${session.id}`, (route) =>
@@ -837,20 +851,61 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.goto(`/#session=${session.id}`);
   const tool = page.locator(".message.tool");
   await expect(tool).toBeVisible();
+  const assistantHeader = tool.locator(":scope > header");
+  await expect(assistantHeader.locator(".mark")).toHaveCount(1);
+  await expect(tool.locator(".tool-disclosure > summary .mark")).toHaveCount(0);
+  const headerBox = await assistantHeader.boundingBox();
+  const summaryBox = await tool
+    .locator(".tool-disclosure > summary")
+    .boundingBox();
+  expect(summaryBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
   // However long the label grows, it takes the ellipsis and the status
   // metadata stays on one line.
-  const toggle = tool.locator(".tool-toggle");
-  await expect(toggle.locator("strong")).toHaveCSS("text-overflow", "ellipsis");
-  await expect(toggle.locator(".muted")).toHaveCSS("white-space", "nowrap");
+  const toggle = tool.locator(".tool-disclosure > summary");
+  await expect(toggle.locator(".disclosure-label")).toHaveCSS(
+    "text-overflow",
+    "ellipsis",
+  );
+  await expect(toggle.locator("small")).toHaveCSS("white-space", "nowrap");
   expect(
     await toggle
-      .locator(".muted")
+      .locator("small")
       .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
   ).toBe(true);
+  expect(
+    await page.locator(".transcript").evaluate(async (element) => {
+      const children = [...element.children];
+      for (const child of children) child.style.display = "none";
+      const spacer = document.createElement("div");
+      spacer.style.height = "240px";
+      spacer.style.flex = "none";
+      element.append(spacer);
+      element.style.flex = "none";
+      element.style.height = "200px";
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll"));
+      await new Promise(requestAnimationFrame);
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+      element.style.height = "199px";
+      await new Promise(requestAnimationFrame);
+      element.style.height = "200px";
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const top = element.scrollTop;
+      spacer.remove();
+      element.style.flex = "";
+      element.style.height = "";
+      for (const child of children) child.style.display = "";
+      return top;
+    }),
+  ).toBe(0);
   await expect(
     page.getByRole("button", { name: "Show full tool output", exact: true }),
   ).toHaveCount(0);
   await expect(tool.locator(".tool-body")).toHaveCount(0);
+  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
@@ -886,7 +941,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
-  await tool.locator(".tool-toggle").click();
+  await toggle.click();
   await expect(tool.getByRole("status")).toContainText(
     "Loading full tool output",
   );
@@ -898,9 +953,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  await tool.locator(".tool-toggle").click();
-  await expect(tool.locator(".tool-body")).toHaveCount(0);
-  await tool.locator(".tool-toggle").click();
+  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  await expect(tool.locator(".katex")).toHaveCount(0);
+  await toggle.click();
+  await expect(tool.locator(".tool-body")).toBeHidden();
+  await toggle.click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
   await page
@@ -958,7 +1015,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     incoming: 0,
   }));
   const snapshot = (metadata, context = 1000, cursor = 10) => ({
-    v: 1,
+    v: 2,
     epoch,
     cursor,
     metadata,
@@ -1004,7 +1061,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     if (path === "/api/sessions")
       return route.fulfill({
         json: {
-          v: 1,
+          v: 2,
           epoch,
           cursor: 10,
           sessions,
@@ -1027,6 +1084,20 @@ test("late snapshots and retired streams cannot replace current session state", 
     return route.fulfill({ json: snapshot(session) });
   });
   await page.goto(`/#session=${sessions[0].id}`);
+  await expect
+    .poll(() => page.evaluate(() => globalThis.testStreams.length))
+    .toBe(1);
+  const ready = (index, cursor) =>
+    page.evaluate(
+      ({ index, epoch, cursor }) =>
+        globalThis.testStreams[index].dispatchEvent(
+          new MessageEvent("ready", {
+            data: JSON.stringify({ epoch, cursor }),
+          }),
+        ),
+      { index, epoch, cursor },
+    );
+  await ready(0, 10);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await page
     .getByRole("button", { name: "Show full message", exact: true })
@@ -1043,7 +1114,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       {
         index,
         event: {
-          v: 1,
+          v: 2,
           epoch,
           sequence,
           session_id: metadata.id,
@@ -1090,6 +1161,7 @@ test("late snapshots and retired streams cannot replace current session state", 
   await expect
     .poll(() => page.evaluate(() => globalThis.testStreams.length))
     .toBe(2);
+  await ready(1, 12);
   await send(1, sessions[1], 12000, 13);
   await expect(context).toContainText("ctx 12k/");
   await send(0, sessions[1], 800000, 99);
@@ -1172,11 +1244,35 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await page.goto(`${fixture.origin}/#session=${session.id}`);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
+    await page
+      .locator("html")
+      .evaluate((element) =>
+        element.style.setProperty("--safe-bottom-resting", "34px"),
+      );
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
       150,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
     await input(prompt, draft);
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
+    expect(
+      await page.evaluate(() => {
+        const app = document.getElementById("app").getBoundingClientRect();
+        const composer = document
+          .querySelector(".composer")
+          .getBoundingClientRect();
+        return app.bottom - composer.bottom;
+      }),
+    ).toBeLessThan(2);
+    await prompt.blur();
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
+    await viewport(844);
+    await expect(page.locator("html[data-keyboard]")).toHaveCount(0);
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
+    await prompt.focus();
     for (const [height, top] of [
       [330, 110],
       [460, 30],
@@ -1288,17 +1384,6 @@ test.describe("mobile navigation and commands", () => {
     context,
     host: fixture,
   }, testInfo) => {
-    await page.addInitScript(() => {
-      // Emulate browser scroll restoration after the URL changes but before
-      // the app replaces the departing transcript.
-      addEventListener("popstate", () => {
-        const element = document.querySelector(".transcript");
-        if (element) {
-          element.scrollTop = 0;
-          element.dispatchEvent(new Event("scroll"));
-        }
-      });
-    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -1307,7 +1392,7 @@ test.describe("mobile navigation and commands", () => {
       const response = await page.request.post("/api/command", {
         headers: { Origin: fixture.origin },
         data: {
-          v: 1,
+          v: 2,
           request_id: crypto.randomUUID().replaceAll("-", ""),
           kind,
           ...(session
@@ -1391,10 +1476,18 @@ test.describe("mobile navigation and commands", () => {
     ).toBeVisible();
     await prompt.fill("Draft A");
     await choose(secondTitle);
+    await expect(page).toHaveURL(new RegExp(second));
+    await expect(
+      page.getByRole("heading", { name: secondTitle, exact: true }),
+    ).toBeVisible();
     await expect(prompt).toBeVisible();
     await prompt.fill("Draft B");
     const retiredTranscript = await page.locator(".transcript").elementHandle();
     await choose(firstTitle);
+    await expect(page).toHaveURL(new RegExp(first));
+    await expect(
+      page.getByRole("heading", { name: firstTitle, exact: true }),
+    ).toBeVisible();
     await expect(prompt).toHaveValue("Draft A");
     // A queued scroll from the previous surface cannot rewrite this session.
     await retiredTranscript.evaluate((element) => {
@@ -1527,7 +1620,7 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   const explored = page.locator(".exploration > summary");
   await expect(explored).toHaveText("Explored · 2 calls");
   await explored.click();
-  await expect(page.locator(".exploration .tool-toggle")).toHaveCount(2);
+  await expect(page.locator(".exploration .tool-disclosure")).toHaveCount(2);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1542,7 +1635,7 @@ test("native exploration and memory receipts survive reload and mobile rotation"
     parseFloat(getComputedStyle(element).fontSize),
   );
   expect(cellSize.height).toBeLessThan(cellFontSize * 4);
-  const title = page.locator(".tool-toggle strong").first();
+  const title = page.locator(".tool-disclosure .disclosure-label").first();
   await title.evaluate((element) => {
     element.textContent = "long-command-".repeat(200);
   });
@@ -1556,17 +1649,30 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   await prompt.press("Enter");
   await expect(
     page
-      .locator(".tool-toggle")
+      .locator(".tool-disclosure")
       .filter({ hasText: "◆ memory created · project/browser-proof" }),
   ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
   await page.reload();
   await expect(explored).toHaveText("Explored · 2 calls");
   await expect(
     page
-      .locator(".tool-toggle")
+      .locator(".tool-disclosure")
       .filter({ hasText: "◆ memory created · project/browser-proof" }),
   ).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator(".transcript")
+        .evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
+    )
+    .toBeLessThan(2);
   await prompt.fill("Keep this draft across rotation");
   const fontSize = await prompt.evaluate(
     (element) => getComputedStyle(element).fontSize,
@@ -1592,6 +1698,199 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   await expect(prompt).toHaveValue("Keep this draft across rotation");
   await expect(prompt).toHaveCSS("font-size", fontSize);
   await page.screenshot({ path: testInfo.outputPath("portrait-activity.png") });
+});
+
+test("stream completion preserves disclosure, markdown nodes, selection and copy state", async ({
+  page,
+  host: fixture,
+  session,
+  command,
+  request,
+}, testInfo) => {
+  test.setTimeout(45_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => {} },
+    });
+  });
+  await page.goto(fixture.origin);
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.goto(`/#session=${session.id}`);
+  await expect(page).toHaveURL(new RegExp(session.id));
+  await expect(page.locator(".conversation-head h1")).toBeVisible();
+  const prompt = page.getByLabel("Message or guidance");
+  await expect(prompt).toBeVisible();
+  await prompt.fill("Long continuity probe");
+  await prompt.press("Enter");
+  await expect(page.locator(".composer .status-led.running")).toBeVisible();
+
+  const thinking = page.locator(".thinking");
+  await expect(thinking).toBeVisible();
+  // A never-opened disclosure has no Markdown tree or optional renderer work.
+  await expect(thinking.locator(".markdown")).toHaveCount(0);
+  await thinking.locator("summary").click();
+  await expect(thinking.locator(".markdown")).toBeVisible();
+
+  const opening = page
+    .locator(".message.response > .markdown p")
+    .filter({ hasText: "Stable opening paragraph" });
+  await expect(opening).toBeVisible();
+  const completedBlock = opening.locator("..");
+  await completedBlock.evaluate((node) => {
+    window.__completedMarkdownBlock = node;
+  });
+
+  const copy = page.getByRole("button", { name: "Copy code" }).first();
+  await expect(copy).toBeVisible();
+  const stableTable = page.locator(".message.response table");
+  await expect(stableTable).toBeVisible();
+  await copy.evaluate((node) => {
+    window.__stableCopyControl = node;
+  });
+  await stableTable.evaluate((node) => {
+    window.__stableMarkdownTable = node;
+    window.__stableRemovalCount = 0;
+    window.__maximumAnswerLength = 0;
+    window.__stableRemovalObserver = new MutationObserver((records) => {
+      window.__maximumAnswerLength = Math.max(
+        window.__maximumAnswerLength,
+        document.querySelector(".message.response > .markdown")?.textContent
+          ?.length || 0,
+      );
+      for (const record of records)
+        for (const removed of record.removedNodes)
+          if (
+            removed === window.__completedMarkdownBlock ||
+            removed === window.__stableMarkdownTable ||
+            removed === window.__stableCopyControl ||
+            (removed instanceof Element &&
+              (removed.contains(window.__completedMarkdownBlock) ||
+                removed.contains(window.__stableMarkdownTable) ||
+                removed.contains(window.__stableCopyControl)))
+          )
+            window.__stableRemovalCount++;
+    });
+    window.__stableRemovalObserver.observe(
+      document.querySelector(".message.response > .markdown"),
+      { childList: true, subtree: true },
+    );
+    window.__maximumAnswerLength = document.querySelector(
+      ".message.response > .markdown",
+    ).textContent.length;
+  });
+
+  await opening.evaluate((node) => {
+    const selection = getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const selected = await page.evaluate(() => getSelection().toString());
+
+  const answer = page.locator(".message.response > .markdown");
+  await copy.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        connected: window.__stableCopyControl.isConnected,
+        copied:
+          window.__stableCopyControl.getAttribute("aria-label") === "Copied!",
+        same:
+          window.__stableCopyControl ===
+          document.querySelector('.message.response [aria-label*="Cop"]'),
+      })),
+    )
+    .toEqual({ connected: true, copied: true, same: true });
+  await expect(page.locator(".composer .status-led.running")).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  const maximumLength = await page.evaluate(() => window.__maximumAnswerLength);
+  const finalSnapshot = await (
+    await request.get(`/api/sessions/${session.id}`)
+  ).json();
+  const finalBlock = finalSnapshot.state.view.blocks.find(
+    (block) => block.kind === "assistant",
+  );
+  await testInfo.attach("continuity-metadata.json", {
+    body: JSON.stringify(
+      {
+        id: finalBlock?.id,
+        response_id: finalBlock?.response_id,
+        content_revision: finalBlock?.content_revision,
+        content_complete: finalBlock?.content_complete,
+        text_bytes: finalBlock?.text_bytes,
+        retained_text_bytes: finalBlock?.retained_text_bytes,
+        snapshot_text_length: finalBlock?.text?.length,
+        maximum_dom_length: maximumLength,
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+  });
+  expect(
+    maximumLength,
+    JSON.stringify({
+      id: finalBlock?.id,
+      response_id: finalBlock?.response_id,
+      content_revision: finalBlock?.content_revision,
+      content_complete: finalBlock?.content_complete,
+      text_bytes: finalBlock?.text_bytes,
+      retained_text_bytes: finalBlock?.retained_text_bytes,
+      snapshot_text_length: finalBlock?.text?.length,
+      maximum_dom_length: maximumLength,
+    }),
+  ).toBeGreaterThan(8000);
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "ask",
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        same:
+          window.__completedMarkdownBlock ===
+          [
+            ...document.querySelectorAll(".message.response > .markdown p"),
+          ].find((node) =>
+            node.textContent?.includes("Stable opening paragraph"),
+          )?.parentElement,
+        selected: getSelection().toString(),
+        thinking: document.querySelector(".thinking")?.open,
+        copy:
+          window.__stableCopyControl ===
+          document.querySelector('.message.response [aria-label*="Cop"]'),
+        table:
+          window.__stableMarkdownTable ===
+          document.querySelector(".message.response table"),
+        length: document.querySelector(".message.response > .markdown")
+          ?.textContent?.length,
+        removals: window.__stableRemovalCount,
+      })),
+    )
+    .toEqual({
+      same: true,
+      selected,
+      thinking: true,
+      copy: true,
+      table: true,
+      length: maximumLength,
+      removals: 0,
+    });
+  await page.evaluate(() => window.__stableRemovalObserver.disconnect());
+  await page.screenshot({
+    path: testInfo.outputPath("stream-continuity.png"),
+  });
 });
 
 test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
@@ -1630,6 +1929,18 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
     .filter({ hasText: "Review the full task." })
     .click();
   const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  await expect(detail.locator(".detail-label, .detail-task")).toHaveCount(0);
+  const followUp = detail.getByRole("textbox", { name: "Follow-up" });
+  await expect(followUp).toHaveCSS("border-top-style", "solid");
+  const followUpNode = await followUp.elementHandle();
+  await followUp.fill("Retained follow-up");
+  await followUp.focus();
+  await page.waitForTimeout(1100);
+  expect(await followUpNode?.evaluate((element) => element.isConnected)).toBe(
+    true,
+  );
+  await expect(followUp).toHaveValue("Retained follow-up");
+  await expect(followUp).toBeFocused();
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
     .click();

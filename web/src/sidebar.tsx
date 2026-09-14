@@ -10,7 +10,7 @@ import {
   Library,
   CalendarClock,
 } from "lucide-preact";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { Mark } from "./ui.tsx";
 import FolderLabel from "./folder-label.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
@@ -88,7 +88,9 @@ export function ConversationMenu({
       >
         Rename
       </MenuItem>
-      <MenuItem onClick={() => open({ type: "statistics", session: item })}>
+      <MenuItem
+        onClick={() => open({ type: "statistics", session_id: item.id })}
+      >
         Statistics
       </MenuItem>
       {item.generation && (

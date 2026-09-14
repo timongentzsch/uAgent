@@ -23,29 +23,13 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import {
-  api,
-  command,
-  liveBlocks,
-  requestId,
-  readStored,
-  writeStored,
-} from "./store.ts";
-import { PanelLeft, Settings } from "lucide-preact";
-import { Mark, Modal, Deferred, Skeleton, LoadError } from "./ui.tsx";
-import {
-  ManagementPageSkeleton,
-  ComposerSkeleton,
-  SidebarSkeleton,
-  RawSkeleton,
-  SettingsSkeleton,
-  StatsSkeleton,
-} from "./loading.tsx";
+import { readStored, writeStored } from "./store.ts";
+import { api, command, requestId } from "./api.ts";
+import { Mark, Modal, Deferred, Skeleton } from "./ui.tsx";
 
 import { useHost } from "./use-host.ts";
 import { parseSlash } from "./slash.ts";
-import { selectedFromURL } from "./navigation.ts";
-import { observeResize, trackViewport } from "./layout.ts";
+import { useTranscriptScroll } from "./use-transcript-scroll.ts";
 import "./style.css";
 const sidebarModule = () => import("./sidebar.tsx");
 const menuModule = () =>
@@ -56,7 +40,7 @@ const libraryModule = () => import("./library.tsx");
 const scheduledModule = () => import("./scheduled.tsx");
 const pairing = () => import("./pairing.tsx");
 const composer = () => import("./composer.tsx");
-const messages = () => import("./message.tsx");
+const chat = () => import("./chat.tsx");
 const rawDialog = () => import("./raw.tsx");
 const conversationActions = () => import("./conversation-actions.tsx");
 const statisticsDialog = () => import("./statistics.tsx");
@@ -64,6 +48,7 @@ const promptDialog = () => import("./prompt.tsx");
 const settingsDialog = () => import("./settings.tsx");
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
+const noBlocks: Block[] = [];
 function App() {
   const [page, setPage] = useState<"chat" | "library" | "scheduled">("chat");
   const [drawer, setDrawer] = useState(false);
@@ -102,6 +87,7 @@ function App() {
     refresh,
     report,
     updateView,
+    correlate,
     reset,
   } = useHost(onResult, page === "chat");
   const [folder, setFolder] = useState("");
@@ -120,13 +106,12 @@ function App() {
     () => localStorage.getItem("uagent-theme") || "system",
   );
   const transcript = useRef<HTMLDivElement>(null);
-  const scrollPositions = useRef(new Map<string, number>());
-  const restoredScroll = useRef<{
-    element: HTMLElement;
-    top: number;
-    height: number;
-    client: number;
-  }>();
+  const sentinel = useRef<HTMLDivElement>(null);
+  const { jumpToLatest, preservePrepend } = useTranscriptScroll(
+    transcript,
+    sentinel,
+    setFollowing,
+  );
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
   const session =
@@ -135,11 +120,22 @@ function App() {
   const draft = drafts[selected] || emptyDraft();
   const pending = snapshot?.pending;
   const running = online && !!session?.turn_active;
-  const view = snapshot?.state?.view;
-  const streamed = useMemo(
-    () => snapshot?.streamed || liveBlocks(snapshot?.live || []),
-    [snapshot?.live, snapshot?.streamed],
+  const showMessageHttp = useCallback(
+    (exchanges: NonNullable<Block["http"]>) =>
+      setModal({ type: "raw", session: selected, exchanges }),
+    [selected],
   );
+  const showMessageStatistics = useCallback(
+    (block: Block) =>
+      setModal({
+        type: "statistics",
+        session_id: selected,
+        block_id: block.occurrence_id || block.response_id || block.id,
+      }),
+    [selected],
+  );
+  const view = snapshot?.state?.view;
+  const streamed = snapshot?.streamed || noBlocks;
   const blocks = useMemo(
     () => [
       ...(view?.blocks || []),
@@ -152,7 +148,6 @@ function App() {
     ],
     [view?.blocks, streamed, outgoing, selected],
   );
-
   function setDraft(value: Draft, id = selected) {
     setDrafts((current) => ({ ...current, [id]: value }));
   }
@@ -169,86 +164,46 @@ function App() {
         ),
       );
   }, [sizes]);
-  const restoreScroll = useCallback(() => {
-    const element = transcript.current;
-    if (!element) return;
-    element.scrollTop = following
-      ? element.scrollHeight
-      : scrollPositions.current.get(selected) || 0;
-    // A clamped restoration is not a user scroll or a request to follow output.
-    restoredScroll.current = {
-      element,
-      top: element.scrollTop,
-      height: element.scrollHeight,
-      client: element.clientHeight,
-    };
-  }, [selected, following]);
-  useLayoutEffect(restoreScroll, [restoreScroll, blocks]);
+  useLayoutEffect(() => {
+    jumpToLatest();
+  }, [selected, page, jumpToLatest]);
   useEffect(() => {
-    const element = transcript.current;
-    if (element) return observeResize(restoreScroll, element);
-  }, [restoreScroll, session?.id, page]);
-  useEffect(() => {
-    const media = matchMedia("(max-width: 900px)");
-    const changed = () => {
-      setCompact(media.matches);
-      setDrawer(false);
+    let viewport: (() => void) | undefined;
+    let compact: (() => void) | undefined;
+    import("./layout.ts").then(({ trackViewport, observeCompact }) => {
+      viewport = trackViewport();
+      compact = observeCompact((value) => {
+        setCompact(value);
+        setDrawer(false);
+      });
+    });
+    return () => {
+      viewport?.();
+      compact?.();
     };
-    media.addEventListener("change", changed);
-    return () => media.removeEventListener("change", changed);
   }, []);
-  useEffect(trackViewport, []);
   useEffect(() => {
-    const media = matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      const resolved =
-        theme === "system" ? (media.matches ? "dark" : "light") : theme;
-      document.documentElement.dataset.theme = resolved;
-      document.querySelector<HTMLMetaElement>(
-        'meta[name="theme-color"]',
-      )!.content = resolved === "dark" ? "#000000" : "#ffffff";
-    };
-    apply();
-    localStorage.setItem("uagent-theme", theme);
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
+    let stop: (() => void) | undefined;
+    import("./layout.ts").then(({ applyTheme }) => (stop = applyTheme(theme)));
+    return () => stop?.();
   }, [theme]);
   useEffect(() => {
-    const prompt = (event: Event) => {
-      event.preventDefault();
-      setInstall(event as InstallPrompt);
-    };
-    addEventListener("beforeinstallprompt", prompt);
-    if ("serviceWorker" in navigator && isSecureContext) {
-      navigator.serviceWorker
-        .register("/sw.js", { updateViaCache: "none" })
-        .then((registration) => {
-          if (registration.waiting) setUpdate(registration.waiting);
-          registration.addEventListener("updatefound", () => {
-            const worker = registration.installing;
-            worker?.addEventListener("statechange", () => {
-              if (
-                worker.state === "installed" &&
-                navigator.serviceWorker.controller
-              )
-                setUpdate(worker);
-            });
-          });
-        })
-        .catch(report);
-    }
-    return () => removeEventListener("beforeinstallprompt", prompt);
+    let stop: (() => void) | undefined;
+    import("./pwa.ts").then(
+      ({ watchPwa }) => (stop = watchPwa(setInstall, setUpdate, report)),
+    );
+    return () => stop?.();
   }, [report]);
 
-  const act: Act = async <K extends CommandKind>(
-    kind: K,
-    fields: CommandFields = {},
-  ) => {
-    if (!online)
-      throw new Error("Reconnect and refresh before sending commands.");
-    const result = await command(kind, session, fields);
-    return result;
-  };
+  const act: Act = useCallback(
+    async <K extends CommandKind>(kind: K, fields: CommandFields = {}) => {
+      if (!online)
+        throw new Error("Reconnect and refresh before sending commands.");
+      if (fields.request_id) correlate(fields.request_id);
+      return command(kind, session, fields);
+    },
+    [online, session, correlate],
+  );
   useEffect(() => {
     const openSession = (event: MessageEvent) => {
       if (
@@ -466,32 +421,37 @@ function App() {
   // Recall returns queued guidance to the composer while it is still
   // queued. Delivered guidance belongs to the turn; dropping the row is
   // then the only correct move.
-  async function recallGuidance(block: Block) {
-    const target = block.request_id;
-    if (!target || block.status !== "Guidance queued" || !online) return;
-    const text = block.text || "";
-    const id = selected;
-    try {
-      await act("recall", { target_id: target });
-    } catch (error) {
-      const issue = failure(error);
-      if (!/already delivered/i.test(issue.message)) {
-        report(error);
-        return;
+  const recallGuidance = useCallback(
+    async (block: Block) => {
+      const target = block.request_id;
+      if (!target || block.status !== "Guidance queued" || !online) return;
+      const text = block.text || "";
+      const id = selected;
+      try {
+        await act("recall", { target_id: target });
+      } catch (error) {
+        const issue = failure(error);
+        if (!/already delivered/i.test(issue.message)) {
+          report(error);
+          return;
+        }
       }
-    }
-    setOutgoing((items) => items.filter((item) => item.request_id !== target));
-    if (text) {
-      setDrafts((current) => {
-        const prior = current[id]?.text || "";
-        const next = prior ? `${prior}\n${text}` : text;
-        return {
-          ...current,
-          [id]: { ...(current[id] || emptyDraft()), text: next },
-        };
-      });
-    }
-  }
+      setOutgoing((items) =>
+        items.filter((item) => item.request_id !== target),
+      );
+      if (text) {
+        setDrafts((current) => {
+          const prior = current[id]?.text || "";
+          const next = prior ? `${prior}\n${text}` : text;
+          return {
+            ...current,
+            [id]: { ...(current[id] || emptyDraft()), text: next },
+          };
+        });
+      }
+    },
+    [online, selected, act, report],
+  );
   async function upload(files: File[]) {
     if (!session || !online || uploading || !files.length) return;
     const id = selected;
@@ -557,47 +517,42 @@ function App() {
       setUploading(false);
     }
   }
-  function inspect(id: string) {
-    setModal({ type: "raw", id, session: selected });
-  }
+  const inspect = useCallback(
+    (id: string) => {
+      setModal({ type: "raw", id, session: selected });
+    },
+    [selected],
+  );
   async function older() {
-    setFollowing(false);
     if (!view?.more || !transcript.current) return;
     const before = view.before;
     const id = selected;
-    const element = transcript.current,
-      height = element.scrollHeight;
-    const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
-
-    let applied = false;
-    updateView(id, (current) => {
-      if (
-        current.epoch !== value.epoch ||
-        current.metadata.generation !== value.metadata.generation ||
-        current.state?.view?.before !== before
-      )
-        return current;
-      applied = true;
-      return {
-        ...current,
-        state: {
-          ...current.state,
-          view: {
-            ...value.state?.view,
-            blocks: [
-              ...(value.state?.view?.blocks || []),
-              ...(current.state?.view?.blocks || []),
-            ].slice(0, 256),
+    await preservePrepend(async () => {
+      const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
+      let applied = false;
+      updateView(id, (current) => {
+        if (
+          current.epoch !== value.epoch ||
+          current.metadata.generation !== value.metadata.generation ||
+          current.state?.view?.before !== before
+        )
+          return current;
+        applied = true;
+        return {
+          ...current,
+          state: {
+            ...current.state,
+            view: {
+              ...value.state?.view,
+              blocks: [
+                ...(value.state?.view?.blocks || []),
+                ...(current.state?.view?.blocks || []),
+              ].slice(0, 256),
+            },
           },
-        },
-      };
-    });
-    if (!applied) return;
-    requestAnimationFrame(() => {
-      if (element.isConnected && element.dataset.session === id) {
-        element.scrollTop += element.scrollHeight - height;
-        scrollPositions.current.set(id, element.scrollTop);
-      }
+        };
+      });
+      return applied;
     });
   }
   async function logout() {
@@ -657,7 +612,7 @@ function App() {
   const sidebar = (
     <Deferred
       load={sidebarModule}
-      fallback={<SidebarSkeleton />}
+      fallback={<Skeleton rows={8} label="Connecting…" />}
       page={page}
       navigate={(value) => {
         setPage(value);
@@ -717,7 +672,7 @@ function App() {
         />
       ) : authenticated === null ? (
         <main class="shell loading-shell">
-          {!compact && <SidebarSkeleton />}
+          {!compact && <Skeleton rows={8} label="Connecting…" />}
           <div class="conversation">
             <header class="conversation-head">
               <Skeleton rows={1} />
@@ -725,7 +680,7 @@ function App() {
             <div class="transcript">
               <Skeleton className="history-skeleton" rows={8} />
             </div>
-            <ComposerSkeleton />
+            <Skeleton rows={2} label="Loading composer…" />
           </div>
         </main>
       ) : (
@@ -753,7 +708,7 @@ function App() {
                   onClick={() => setDrawer(true)}
                   aria-label="Open sessions"
                 >
-                  <PanelLeft />
+                  <span aria-hidden="true">☰</span>
                 </button>
               )}
               <div>
@@ -771,7 +726,7 @@ function App() {
                   onClick={() => open({ type: "settings" })}
                   aria-label="Settings"
                 >
-                  <Settings />
+                  <span aria-hidden="true">⚙</span>
                 </button>
               )}
               {page === "chat" && session && conversationMenu(session)}
@@ -788,141 +743,39 @@ function App() {
                 unread={unread}
                 choose={choose}
                 refresh={refresh}
-                fallback={<ManagementPageSkeleton compact={compact} />}
+                fallback={<Skeleton rows={12} label="Loading workspace…" />}
               />
             ) : session ? (
               <>
-                <div
-                  class="transcript"
-                  key={selected}
-                  data-session={selected}
-                  aria-busy={(!snapshot && !loadErrors[selected]) || undefined}
-                  ref={transcript}
-                  onScroll={(event) => {
-                    const element = event.currentTarget;
-                    if (
-                      !element.isConnected ||
-                      element.dataset.session !== selectedFromURL()
-                    )
-                      return;
-                    const restored = restoredScroll.current;
-                    if (
-                      restored?.element === element &&
-                      (restored.height !== element.scrollHeight ||
-                        restored.client !== element.clientHeight)
-                    ) {
-                      // Layout can clamp scroll before ResizeObserver restores it.
-                      restoreScroll();
-                      return;
-                    }
-                    if (
-                      restored?.element === element &&
-                      restored.top === element.scrollTop
-                    )
-                      return;
-                    scrollPositions.current.set(selected, element.scrollTop);
-                    if (scrollPositions.current.size > 64)
-                      scrollPositions.current.delete(
-                        scrollPositions.current.keys().next().value!,
-                      );
-                    setFollowing(
-                      element.scrollHeight -
-                        element.scrollTop -
-                        element.clientHeight <
-                        80,
-                    );
-                  }}
-                >
-                  {view?.more && (
-                    <button
-                      class="history-button"
-                      disabled={!online}
-                      onClick={() => older().catch(report)}
-                    >
-                      Load older retained messages
-                    </button>
-                  )}
-                  {(view?.dropped_segments || 0) > 0 && (
-                    <p class="retention">
-                      {view?.dropped_segments} older segments are outside
-                      retention.
-                    </p>
-                  )}
-                  {snapshot?.live_truncated && (
-                    <p class="retention">
-                      The live preview exceeded its buffer. Retained history
-                      refreshes when this turn saves.
-                    </p>
-                  )}
-                  {!snapshot &&
-                    (loadErrors[selected] ? (
-                      <LoadError
-                        error={loadErrors[selected]}
-                        retry={() => load(selected).catch(() => {})}
-                      />
-                    ) : (
-                      <Skeleton
-                        className="history-skeleton"
-                        rows={8}
-                        label="Loading conversation…"
-                      />
-                    ))}
-                  {snapshot && loadErrors[selected] && (
-                    <LoadError
-                      error={loadErrors[selected]}
-                      retry={() => load(selected).catch(() => {})}
+                <Deferred
+                  load={chat}
+                  fallback={
+                    <Skeleton
+                      className="transcript history-skeleton"
+                      rows={8}
+                      label="Loading conversation…"
                     />
-                  )}
-                  {snapshot && blocks.length === 0 && (
-                    <div class="empty">
-                      <Mark className="cursor-mark" />
-                      <h2>What are we working on?</h2>
-                      <p>
-                        Describe a task, attach a file, or use an existing slash
-                        command.
-                      </p>
-                    </div>
-                  )}
-                  {snapshot && (
-                    <Deferred
-                      load={messages}
-                      blocks={blocks}
-                      online={online}
-                      restoreScroll={restoreScroll}
-                      session={session}
-                      report={report}
-                      recall={recallGuidance}
-                      inspect={inspect}
-                      http={(exchanges) =>
-                        setModal({ type: "raw", session: selected, exchanges })
-                      }
-                      activity={setActivityTarget}
-                      statistics={(block) =>
-                        setModal({
-                          type: "statistics",
-                          block,
-                          session,
-                          snapshot,
-                        })
-                      }
-                      fallback={
-                        <Skeleton
-                          className="history-skeleton"
-                          rows={6}
-                          label="Loading messages…"
-                        />
-                      }
-                    />
-                  )}
-                  {session?.error && <p class="failure">{session.error}</p>}
-                  {snapshot?.state?.error && (
-                    <p class="failure">{snapshot.state.error}</p>
-                  )}
-                </div>
+                  }
+                  scroller={transcript}
+                  sentinel={sentinel}
+                  selected={selected}
+                  snapshot={snapshot}
+                  loadError={loadErrors[selected]}
+                  blocks={blocks}
+                  session={session}
+                  online={online}
+                  loadSnapshot={load}
+                  older={older}
+                  report={report}
+                  recall={recallGuidance}
+                  inspect={inspect}
+                  http={showMessageHttp}
+                  activity={setActivityTarget}
+                  statistics={showMessageStatistics}
+                />
                 <Deferred
                   load={composer}
-                  fallback={<ComposerSkeleton />}
-                  key={selected}
+                  fallback={<Skeleton rows={2} label="Loading composer…" />}
                   session={session}
                   commands={catalogue.commands || []}
                   snapshot={snapshot}
@@ -936,15 +789,11 @@ function App() {
                   act={act}
                   report={report}
                   following={following}
-                  jump={() =>
-                    load(selected)
-                      .then(() => setFollowing(true))
-                      .catch(report)
-                  }
+                  jump={() => load(selected).then(jumpToLatest).catch(report)}
                   activityTarget={activityTarget}
                   clearActivity={() => setActivityTarget(null)}
                   showStatistics={() =>
-                    setModal({ type: "statistics", session, snapshot })
+                    setModal({ type: "statistics", session_id: selected })
                   }
                   showContext={showContext}
                   sizes={sizes}
@@ -978,7 +827,7 @@ function App() {
               ? "Rename conversation"
               : modal.type === "delete"
                 ? "Delete conversation"
-                : modal.block
+                : "block_id" in modal && modal.block_id
                   ? "Message statistics"
                   : "Conversation statistics"
           }
@@ -988,7 +837,7 @@ function App() {
           {modal.type === "statistics" ? (
             <Deferred
               load={statisticsDialog}
-              fallback={<StatsSkeleton />}
+              fallback={<Skeleton rows={8} label="Loading statistics…" />}
               modal={modal}
               loadSnapshot={load}
             />
@@ -1049,9 +898,7 @@ function App() {
             load={rawDialog}
             prompt={() => setModal({ type: "prompt" })}
             fallback={
-              <RawSkeleton
-                http={modal.context || modal.exchanges !== undefined}
-              />
+              <Skeleton rows={12} label="Loading full body…" />
             }
             id={modal.id}
             session={modal.session}
@@ -1093,7 +940,7 @@ function App() {
         >
           <Deferred
             load={settingsDialog}
-            fallback={<SettingsSkeleton />}
+            fallback={<Skeleton rows={8} label="Loading settings…" />}
             theme={theme}
             setTheme={setTheme}
             sizes={sizes}

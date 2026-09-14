@@ -13,7 +13,7 @@ import type {
 import { Deferred, Field, Select, Skeleton, LoadError } from "./ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
 const configuration = () => import("./configuration.tsx");
-import { api, command } from "./store.ts";
+import { api, command } from "./api.ts";
 export default function Settings({
   theme,
   setTheme,

@@ -1,6 +1,6 @@
 import type { SessionRef, State, ModelCatalogue, Model } from "./types.ts";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { command } from "./store.ts";
+import { command } from "./api.ts";
 import { Field, Select, LoadError } from "./ui.tsx";
 import { ModelSkeleton } from "./loading.tsx";
 
@@ -122,7 +122,15 @@ export default function ModelPicker({
                 <optgroup key={provider} label={provider}>
                   {models.map((item) => (
                     <option value={item.value} key={item.value}>
-                      {item.label}
+                      {[
+                        item.label,
+                        item.name && item.name !== item.label ? item.name : "",
+                        item.efforts?.length
+                          ? `supports ${item.efforts.join(",")}`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </option>
                   ))}
                 </optgroup>

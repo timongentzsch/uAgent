@@ -37,9 +37,24 @@
   color: var(--text);
   overflow-wrap: anywhere;
 }
+.activity-view .detail-task {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.activity-view .detail-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .activity-view .markdown {
   overflow-wrap: anywhere;
 }
 .activity-view section {
   min-width: 0;
+}
+.child-thread {
+  max-height: min(50vh, 520px);
+  overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }

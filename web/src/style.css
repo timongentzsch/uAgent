@@ -23,14 +23,8 @@
     var(--viewport-width) - var(--safe-left) - var(--safe-right)
   );
   --safe-top: env(safe-area-inset-top, 0px);
-  /* Safari can retain the home-indicator inset above an open keyboard. */
-  --safe-bottom: max(
-    0px,
-    calc(
-      env(safe-area-inset-bottom) -
-        max(0px, 100dvh - var(--viewport-height) - var(--viewport-top))
-    )
-  );
+  --safe-bottom-resting: env(safe-area-inset-bottom, 0px);
+  --safe-bottom: var(--safe-bottom-resting);
   --content-height: calc(
     var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
   );
@@ -42,6 +36,9 @@
   color: var(--text);
   font-size: calc(14px * var(--display-scale, 1));
   line-height: 1.5;
+}
+:root[data-keyboard] {
+  --safe-bottom: 0px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -509,13 +506,26 @@ pre code {
   text-overflow: ellipsis;
 }
 .transcript {
-  overflow-anchor: none;
+  overflow-anchor: auto;
   flex: 1;
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
   padding: var(--gap) max(var(--pad), calc((100% - 1040px) / 2));
   overscroll-behavior: contain;
+  /* Single spacing mechanism for the whole column: uniform gap, zero
+     child margins. Flex gaps never collapse, so doubles are impossible. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.transcript > p,
+.transcript > details {
+  margin-block: 0;
+}
+.transcript-sentinel {
+  height: 1px;
+  overflow-anchor: auto;
 }
 .retention {
   font-size: 0.8rem;
@@ -545,7 +555,7 @@ pre code {
 }
 .history-button {
   display: block;
-  margin: 8px auto;
+  margin-inline: auto;
 }
 
 /* Draft, controls and status share a compact footer. */
@@ -559,12 +569,12 @@ pre code {
   max-height: calc(var(--viewport-height) - 100px);
   overflow: visible;
 }
-.composer form {
+.composer > form {
   gap: 0;
   border: 1px solid var(--line);
   background: var(--surface);
 }
-.composer textarea {
+.composer > form > textarea {
   display: block;
   border: 0;
   resize: none;
@@ -668,10 +678,11 @@ pre code {
   flex-shrink: 0;
   font-size: 0.7rem;
 }
-.context-button {
+.metrics > button {
   font-size: inherit;
-  padding: 0 2px;
   min-height: 24px;
+  padding: 0 6px;
+  white-space: nowrap;
 }
 .unread-dot {
   display: inline-block;
@@ -913,11 +924,11 @@ dialog section {
   :root textarea {
     font-size: max(16px, 1rem);
   }
-  :root .composer textarea {
+  :root .composer > form > textarea {
     font-size: max(16px, calc(16px * var(--text-scale, 1)));
   }
   .activity-toggle,
-  .context-button {
+  .metrics > button {
     min-height: 32px;
   }
 }
@@ -1004,7 +1015,7 @@ dialog section {
   .conversation-head {
     min-height: 40px;
   }
-  .composer textarea {
+  .composer > form > textarea {
     min-height: max(38px, calc(1.5em + 12px));
     max-height: calc(var(--viewport-height) * 0.2);
     padding-block: 6px;

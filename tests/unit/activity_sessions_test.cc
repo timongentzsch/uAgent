@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/app/session_host.h"
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
@@ -141,6 +142,86 @@ void TestSignalAndFileWatch() {
     close(watched_fd);
     unlink(watched_path);
   }
+
+  // A catalogue change wakes the host so it can register a newly introduced
+  // project path; the following external prompt edit is then notification
+  // driven even though the file did not exist during the first wait.
+  char project_root[] = "/tmp/uagent-watch-project-XXXXXX";
+  REQUIRE(mkdtemp(project_root) != nullptr);
+  int catalogue_wake[2] = {-1, -1};
+  REQUIRE(pipe(catalogue_wake) == 0);
+  const std::string prompt =
+      std::string(project_root) + "/.uagent/system-prompt.json";
+  FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
+  std::thread catalogue_watcher([&] {
+    catalogue_changed = WaitForAnyFileChange(
+        {prompt}, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  CHECK(write(catalogue_wake[1], "x", 1) == 1);
+  catalogue_watcher.join();
+  CHECK(catalogue_changed == FileWaitResult::kInterrupted);
+  char byte = 0;
+  CHECK(read(catalogue_wake[0], &byte, 1) == 1);
+
+  FileWaitResult prompt_changed = FileWaitResult::kTimedOut;
+  std::thread prompt_watcher([&] {
+    prompt_changed = WaitForAnyFileChange(
+        {prompt}, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  CreatePrivateDirectories(std::filesystem::path(prompt).parent_path());
+  std::ofstream(prompt) << R"({"prompt":"changed externally"})";
+  prompt_watcher.join();
+  CHECK(prompt_changed == FileWaitResult::kChanged);
+
+  std::vector<std::string> converging(512);
+  for (size_t i = 0; i < converging.size(); ++i) {
+    converging[i] = std::string(project_root) + "/missing/" +
+                    std::to_string(i) + "/prompt.json";
+  }
+  FileWaitResult duplicate_changed = FileWaitResult::kTimedOut;
+  std::thread duplicate_watcher([&] {
+    duplicate_changed = WaitForAnyFileChange(
+        converging, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  CHECK(write(catalogue_wake[1], "x", 1) == 1);
+  duplicate_watcher.join();
+  CHECK(duplicate_changed == FileWaitResult::kInterrupted);
+  CHECK(read(catalogue_wake[0], &byte, 1) == 1);
+
+  char host_home[] = "/tmp/uagent-watch-host-XXXXXX";
+  REQUIRE(mkdtemp(host_home) != nullptr);
+  {
+    ScopedEnv home("HOME", host_home);
+    const std::string project = std::string(host_home) + "/project";
+    const std::string web = std::string(host_home) + "/.uagent/web";
+    const std::string parent =
+        UagentDir(kHistoryDir) + "/" + WorkspaceId(project);
+    CreatePrivateDirectories(web + "/drafts");
+    CreatePrivateDirectories(parent);
+    REQUIRE(PathExists(web + "/drafts"));
+    REQUIRE(PathExists(parent));
+    for (size_t i = 0; i < 300; ++i) {
+      const std::string path = parent + "/web-" + std::to_string(i) + ".json";
+      const std::string id = HashHex(path);
+      std::ofstream(web + "/drafts/" + id + ".json")
+          << JsonDump({{"id", id}, {"path", path}, {"cwd", project}});
+    }
+    session::SessionHost host("test", 4096, {}, web);
+    host.LoadDrafts();
+    const auto paths = host.PresencePaths();
+    CHECK(paths.size() == 2);
+    CHECK(std::count(paths.begin(), paths.end(), parent) == 1);
+  }
+  std::error_code host_remove_error;
+  std::filesystem::remove_all(host_home, host_remove_error);
+  close(catalogue_wake[0]);
+  close(catalogue_wake[1]);
+  std::error_code remove_error;
+  std::filesystem::remove_all(project_root, remove_error);
 }
 
 void TestActivityBufferAndAdmission() {
@@ -207,6 +288,7 @@ void TestActivityBufferAndAdmission() {
   const int64_t delegated_id = views[0].id;
   const json first_inspection = delegating.InspectActivity(delegated_id);
   CHECK(first_inspection == delegating.InspectActivity(delegated_id));
+  CHECK(first_inspection["command"] == "child");
   CHECK(JsonValue(first_inspection, "output", "").find("done") !=
         std::string::npos);
   {

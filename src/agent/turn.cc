@@ -685,6 +685,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
   Usage usage;
   usage.Add(response.usage);
   json facts = {
+      {"response_id", response.response_id},
+      {"content_revision", 1},
+      {"content_complete", true},
+      {"text_bytes", response.content.size()},
       {"time", response.started_at.empty() ? UtcStamp() : response.started_at},
       {"route", RouteSelection(api_, LoadProviderCatalog().providers)},
       {"duration_ms", response.duration_ms},
@@ -699,7 +703,10 @@ void Agent::PushAssistantMessage(ChatResult& response,
   conversation_.RecordDisplay(
       conversation_.LastDisplayId(),
       {{"reasoning", Utf8Trunc(response.reasoning, size_t{48} * 1024)},
-       {"reasoning_available", !response.reasoning.empty()}});
+       {"reasoning_available", !response.reasoning.empty()},
+       {"reasoning_revision", 1},
+       {"reasoning_complete", true},
+       {"reasoning_bytes", response.reasoning.size()}});
   PublishMessage();
 }
 

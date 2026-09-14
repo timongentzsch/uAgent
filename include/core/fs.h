@@ -78,6 +78,10 @@ inline std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
   return cwd / ".uagent";
 }
 
+// Create a directory inside the private user state tree without following
+// directory symlinks, and verify its ownership and mode.
+bool EnsurePrivateDirectory(const std::string& path);
+
 // The agent's directory layout. Named where a second file also spells the
 // name: a writer, a reader and the pruner disagreeing would strand data
 // somewhere nothing looks. Single-use names stay literal at their one site.

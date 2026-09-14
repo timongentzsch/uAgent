@@ -76,7 +76,11 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     }
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
-  conversation_.RecordDisplay("t-" + call.id, std::move(facts));
+  facts["call_id"] = call.id;
+  facts["response_id"] = call.response_id;
+  facts["occurrence_id"] = call.occurrence_id;
+  facts["detail_id"] = call.detail_id;
+  conversation_.RecordDisplay(call.detail_id, std::move(facts));
   const Tool* tool = FindTool(tools_, call.name);
   if (tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
@@ -100,6 +104,11 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     message[kReadRangeField] = {range.path, range.first, range.last};
   }
   conversation_.Push(std::move(message), MessageKind::kToolResult);
+  conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                              {{"call_id", call.id},
+                               {"response_id", call.response_id},
+                               {"occurrence_id", call.occurrence_id},
+                               {"detail_id", call.detail_id}});
   PublishMessage();
 }
 
@@ -207,7 +216,11 @@ bool Agent::RunCalls(
                            (required == ApprovalClass::kYoloEligibleMutation &&
                             ApprovalIsAutomatic())) &&
                           call.name != "skill"}};
-    conversation_.RecordDisplay("t-" + call.id, {{"activity", task.activity}});
+    task.activity["response_id"] = call.response_id;
+    task.activity["call_id"] = call.id;
+    task.activity["occurrence_id"] = call.occurrence_id;
+    task.activity["detail_id"] = call.detail_id;
+    conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
     Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
     call_event.data["activity"] = task.activity;
     if (task.issue) {
@@ -323,7 +336,7 @@ bool Agent::RunCalls(
   GroupToolActivities(activities);
   for (size_t index = 0; index < tasks.size(); ++index) {
     tasks[index].activity = std::move(activities[index]);
-    conversation_.RecordDisplay("t-" + calls[index].id,
+    conversation_.RecordDisplay(calls[index].detail_id,
                                 {{"activity", tasks[index].activity}});
     {
       Event result_event{EventId::kPresentation};

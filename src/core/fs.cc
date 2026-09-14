@@ -23,6 +23,30 @@
 #include "include/core/strings.h"
 
 namespace uagent {
+bool EnsurePrivateDirectory(const std::string& path) {
+  std::filesystem::path current = GlobalBase();
+  auto relative = std::filesystem::path(path).lexically_relative(current);
+  if (relative.empty() || relative.is_absolute()) return false;
+  for (const auto& part : relative) {
+    if (part == "..") return false;
+  }
+  std::error_code ec;
+  if (std::filesystem::is_symlink(
+          std::filesystem::symlink_status(current, ec))) {
+    return false;
+  }
+  for (const auto& part : relative) {
+    current /= part;
+    if (std::filesystem::is_symlink(
+            std::filesystem::symlink_status(current, ec))) {
+      return false;
+    }
+  }
+  CreatePrivateDirectories(path);
+  struct stat info{};
+  return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) &&
+         info.st_uid == geteuid() && (info.st_mode & 0077) == 0;
+}
 namespace {
 
 template <typename Visit>

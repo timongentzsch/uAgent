@@ -28,6 +28,7 @@ namespace uagent {
 // Incremental SSE parser; emits provider-independent reasoning and answer
 // streams.
 struct StreamCtx {
+  json event_context = json::object();
   std::function<void(const json&, size_t)> observe_progress;
   json last_usage;
   size_t last_response_bytes = 0;
@@ -62,13 +63,17 @@ struct StreamCtx {
   }
 
   void OutputText(const std::string& value) {
-    Event event{EventId::kAnswerDelta};
+    json data = event_context;
+    data["text"] = value;
+    Event event{EventId::kAnswerDelta, std::move(data)};
     event.text = value;
     Emit(std::move(event));
   }
 
   void OutputReasoning(const std::string& value) {
-    Event event{EventId::kReasoningDelta};
+    json data = event_context;
+    data["text"] = value;
+    Event event{EventId::kReasoningDelta, std::move(data)};
     event.text = value;
     Emit(std::move(event));
   }
@@ -104,8 +109,9 @@ struct StreamCtx {
       res->first_token_ms = ElapsedMs(started);
     }
     if (delta.hosted_tool) {
-      Emit(Event{EventId::kHostedToolActivity,
-                 HostedToolJson(*delta.hosted_tool)});
+      json data = HostedToolJson(*delta.hosted_tool);
+      data.update(event_context);
+      Emit(Event{EventId::kHostedToolActivity, std::move(data)});
     }
     if (!delta.reasoning.empty()) {
       res->reasoning += delta.reasoning;

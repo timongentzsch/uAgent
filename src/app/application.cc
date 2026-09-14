@@ -417,7 +417,8 @@ class Application {
       }
       output = Trim(output);
       Emit(Event{EventId::kCommandCompleted,
-                 {{"command", command.spec->name},
+                 {{"request_id", request_id_},
+                  {"command", command.spec->name},
                   {"argument", command.argument},
                   {"inspect", command.spec->inspect_result},
                   {"output", std::move(output)},

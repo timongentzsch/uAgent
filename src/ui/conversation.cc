@@ -79,13 +79,15 @@ void PrintConversationHistory(const Conversation& conversation,
       record.activity = JsonValue(detail, "activity", json::object());
       PrintPresentation(record);
     } else if (kind == MessageKind::kAssistant) {
-      PrintMessageHeader();
-      if (content.is_string()) {
-        const std::string& text = content.get_ref<const std::string&>();
-        if (!text.empty()) {
-          MdPrint(text);
-          printf("\n");
-        }
+      const bool has_text = content.is_string() &&
+                            !content.get_ref<const std::string&>().empty();
+      // Mirror the live presenter, which prints the mark lazily with the
+      // first text: a text-empty assistant turn (tool calls only) shows
+      // tool rows with no header, never a bare mark line.
+      if (has_text) {
+        PrintMessageHeader();
+        MdPrint(content.get_ref<const std::string&>());
+        printf("\n");
       }
       if (message.contains("tool_calls")) {
         for (const json& call : message["tool_calls"]) {

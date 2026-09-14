@@ -489,7 +489,8 @@ json ProcessSupervisor::ActivityViews() const {
 json ProcessSupervisor::InspectActivity(int64_t id) const {
   auto job = Find(id);
   if (!job) return {{"error", "activity unavailable in this session"}};
-  json result = {{"id", id}, {"agent_id", job->source_id}};
+  json result = {
+      {"id", id}, {"agent_id", job->source_id}, {"command", job->cmd}};
   // Inspection never takes the consuming tool's interaction lock or output.
   if (job->session) {
     std::lock_guard lock(job->session->mutex);

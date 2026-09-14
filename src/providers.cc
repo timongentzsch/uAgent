@@ -660,6 +660,7 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response) {
     std::string id = JsonValue(model, "id", "");
     if (id.empty()) continue;
     ModelInfo info{std::move(id), {}, {}, CatalogContextLength(model)};
+    info.name = JsonValue(model, "name", "");
     const json* modalities = JsonArray(model, "input_modalities");
     if (const json* architecture = JsonObject(model, "architecture")) {
       if (!modalities) {
@@ -700,6 +701,23 @@ std::string NormalizeModelQuery(std::string query) {
   return query;
 }
 
+// Users type display names with spaces ("Muse Spark") while ids use hyphens
+// ("muse-spark"). Unify separators before the fallback comparison so both
+// spellings match; the exact substring check above runs first and is
+// unchanged for id-style queries.
+std::string SearchKey(std::string text) {
+  for (char& c : text) {
+    if (c == ' ' || c == '_' || c == '-') c = '-';
+  }
+  return text;
+}
+
+bool MatchesModelQuery(const std::string& haystack,
+                       const std::string& query) {
+  if (ContainsCaseInsensitive(haystack, query)) return true;
+  return ContainsCaseInsensitive(SearchKey(haystack), SearchKey(query));
+}
+
 ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                          const std::vector<NamedProvider>& providers,
                          std::string query) {
@@ -708,7 +726,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
   std::set<std::string> selections;
   std::set<std::string> route_identities;
   for (const ModelRoute& route : routes) {
-    if (!ContainsCaseInsensitive(route.name + " " + route.model, query)) {
+    if (!MatchesModelQuery(route.name + " " + route.model, query)) {
       continue;
     }
     std::string identity =
@@ -735,6 +753,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
   }
 
   using CatalogModels = std::optional<std::vector<ModelInfo>>;
+  result.queried = catalogs.size();
   std::vector<CatalogModels> responses(catalogs.size());
   std::atomic<size_t> next{0};
   size_t worker_count =
@@ -786,7 +805,7 @@ ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
         candidate.info = info;
         candidate.info.context = route.context;
       }
-      if (!ContainsCaseInsensitive(selection, query) ||
+      if (!MatchesModelQuery(selection + " " + info.name, query) ||
           !selections.insert(selection).second ||
           !route_identities.insert(std::move(identity)).second) {
         continue;
@@ -834,6 +853,7 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
           RouteSelection(SideRoute{.model = candidate.route.model,
                                    .base_url = candidate.route.base_url},
                          providers)},
+         {"name", candidate.info.name},
          {"efforts", candidate.info.efforts},
          {"input_modalities", candidate.info.input_modalities},
          {"variants", candidate.route.protocol == ProviderProtocol::kOpenRouter
@@ -842,9 +862,7 @@ json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
          {"default_effort", candidate.info.default_effort},
          {"active", active}});
   }
-  return {{"models", models},
-          {"unavailable", search.unavailable},
-          {"more", search.matches.size() > models.size()}};
+  return {{"models", models}, {"unavailable", search.unavailable}};
 }
 
 }  // namespace uagent

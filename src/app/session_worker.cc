@@ -63,28 +63,39 @@ class WorkerChannel final : public ApplicationChannel {
     }
     std::string phase;
     if (event.type == "turn.started") {
-      phase = "Working";
+      phase = "working";
     } else if (event.type == "response.started") {
-      phase = "Waiting for model";
+      phase = "waiting";
     } else if (event.type == "response.reasoning.delta") {
-      phase = "Thinking";
+      phase = "thinking";
     } else if (event.type == "response.answer.delta") {
-      phase = "Responding";
+      phase = "responding";
     } else if (event.type == "tool.call") {
-      phase = "Running " + JsonValue(data, "name", "tool");
+      phase = "tool";
     } else if (event.type == "tool.result") {
-      phase = "Working";
+      phase = "working";
     } else if (event.type == "response.hosted_tool") {
-      phase = "Searching";
+      phase = "searching";
     } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
-      phase = "Finishing";
+      phase = "finishing";
     }
     if (!phase.empty()) {
+      std::string activity = phase == "waiting"      ? "Waiting for model"
+                             : phase == "thinking"   ? "Thinking"
+                             : phase == "responding" ? "Responding"
+                             : phase == "tool"
+                                 ? "Running " + JsonValue(data, "name", "tool")
+                             : phase == "searching" ? "Searching"
+                             : phase == "finishing" ? "Finishing"
+                                                    : "Working";
       std::lock_guard lock(mutex_);
-      if (JsonValue(state_, "activity", "") != phase) {
-        state_["activity"] = phase;
+      if (JsonValue(state_, "phase", "") != phase ||
+          JsonValue(state_, "activity", "") != activity) {
+        state_["phase"] = phase;
+        state_["activity"] = activity;
         Send({{"kind", "activity"},
-              {"activity", phase},
+              {"activity", activity},
+              {"phase", phase},
               {"busy", turn_active_}});
       }
     }
@@ -151,6 +162,7 @@ class WorkerChannel final : public ApplicationChannel {
     if (JsonValue(approval_, "id", "") == request.id) {
       decision_["approval"] = approval_;
     }
+    state_["phase"] = "decision";
     SendState();
     while (!closed_ && !reply_ && !AbortRequested()) {
       lock.unlock();
@@ -166,6 +178,7 @@ class WorkerChannel final : public ApplicationChannel {
     reply_cancelled_ = false;
     pending_.clear();
     decision_ = nullptr;
+    state_["phase"] = turn_active_ ? "working" : "idle";
     SendState();
     return answer;
   }
@@ -176,9 +189,11 @@ class WorkerChannel final : public ApplicationChannel {
   void PublishState(const json& state, bool checkpoint) override {
     std::lock_guard lock(mutex_);
     std::string activity = JsonValue(state_, "activity", "Ready");
+    std::string phase = JsonValue(state_, "phase", "idle");
     state_ = state;
     state_["notices"] = notices_;
     state_["activity"] = activity;
+    state_["phase"] = phase;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -192,6 +207,7 @@ class WorkerChannel final : public ApplicationChannel {
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
       state_["activity"] = "Ready";
+      state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
       auto queued = SteeringState().TakeAutoStartMessages();
@@ -241,6 +257,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_["error"] = "";
     state_.erase("stop");
     state_["activity"] = "Working";
+    state_["phase"] = "working";
   }
   void SendState(bool checkpoint = false) {
     Send({{"kind", "state"},
@@ -248,6 +265,8 @@ class WorkerChannel final : public ApplicationChannel {
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},
+          {"pending_decision", decision_},
+          {"phase", JsonValue(state_, "phase", "idle")},
           {"guidance", SteeringState().QueuedCount()},
           {"completed_request_id",
            checkpoint ? std::exchange(active_command_, "") : ""},

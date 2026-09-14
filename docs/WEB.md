@@ -28,6 +28,10 @@ Commands carry stable request IDs and a runtime generation. Repeated delivery of
 the same command returns its receipt; conflicting reuse is rejected. A changed
 generation requires a fresh snapshot. The bounded event suffix supports clients
 joining during a turn; the saved conversation remains durable replay authority.
+Opening the stream establishes transport only. A `ready` watermark follows
+ordered replay, and browser mutations stay disabled until that watermark and the
+selected snapshot are applied. Healthy foreground transitions retain their
+stream; disconnected and bfcache-restored pages share one recovery path.
 See [Architecture](ARCHITECTURE.md) and [Persistence](PERSISTENCE.md).
 
 Submitted messages have an immediate pending row, reconciled with the runtime's
@@ -92,7 +96,10 @@ and [Operations](OPERATIONS.md) for extraction and fallback limits.
 ## Offline conversations
 
 IndexedDB caches bounded transcript pages by authenticated host and conversation.
-The service worker caches the public app shell separately. Previously loaded
+Dirty transcript and draft changes are coalesced; usage-only changes do not
+rewrite transcript snapshots. The service worker precaches the shell and core
+conversation assets. Build-derived optional renderer assets enter a bounded
+runtime cache after first use. Previously loaded
 history remains readable offline; older uncached pages and original attachments
 require the host. Reconnect refreshes authoritative state before enabling writes.
 The cache is an optional replica: storage failure cannot prevent online use, and
@@ -121,7 +128,7 @@ For browser testing without installation, an explicit HTTP origin with a literal
 IPv4 address in the tailnet range `100.64.0.0/10` is also accepted:
 
 ```sh
-uagent --web --web-port 18080 --web-origin http://100.64.0.9:18080
+uagent --web --web-port 18080 --web-origin http://100.64.0.10:18080
 tailscale serve --bg --tcp=18080 tcp://127.0.0.1:18080
 ```
 

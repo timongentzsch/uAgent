@@ -100,9 +100,14 @@ struct ToolCall {
   std::string id;
   std::string name;
   std::string args;
+  std::string response_id{};
+  std::string occurrence_id{};
+  std::string detail_id{};
 };
 
 struct ChatResult {
+  std::string response_id;
+  int64_t attempt = 0;
   std::string content;
   std::string reasoning;
   bool reasoning_field = false;

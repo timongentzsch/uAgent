@@ -531,8 +531,15 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
          {"attempt", attempt},
          {"model", RequestModel()}});
     HttpExchange exchange(capture_http, payload, std::move(metadata));
+    json response_context = exchange_context;
+    response_context["attempt"] = attempt;
+    response_context["response_id"] =
+        JsonValue(exchange_context, "response_base", "r") + "-" +
+        std::to_string(attempt);
+    response_context.erase("response_base");
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      render_output, full_reasoning, &exchange);
+                      render_output, full_reasoning, &exchange,
+                      std::move(response_context));
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
@@ -672,8 +679,10 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
                             bool render_output, bool full_reasoning,
-                            HttpExchange* exchange) {
+                            HttpExchange* exchange, json response_context) {
   ChatResult res;
+  res.response_id = JsonValue(response_context, "response_id", "");
+  res.attempt = JsonValue(response_context, "attempt", int64_t{0});
   CURL* h =
       Prepare(base_url + std::string(WireEndpoint(capabilities.wire_api)));
   if (!h) {
@@ -681,6 +690,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     return res;
   }
   StreamCtx ctx;
+  ctx.event_context = response_context;
   ctx.observe_progress = observe_progress;
   ctx.handle = h;
   ctx.res = &res;
@@ -742,7 +752,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       web_available ? std::string(kWaitingActivity) + " · web available"
                     : std::string(kWaitingActivity);
   ResponseObservation observation(render_stream && render_output,
-                                  full_reasoning, activity, turn_started);
+                                  full_reasoning, activity, turn_started,
+                                  std::move(response_context));
 
   CURLcode rc = CURLE_OK;
   bool cancelled =

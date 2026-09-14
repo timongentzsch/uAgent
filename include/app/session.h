@@ -9,7 +9,7 @@
 #include "include/core/fd.h"
 #include "include/core/json.h"
 namespace uagent::session {
-inline constexpr int kProtocol = 1;
+inline constexpr int kProtocol = 2;
 inline constexpr size_t kFrameBytes = size_t{1024} * 1024;
 inline constexpr size_t kCommandBytes = size_t{512} * 1024;
 inline constexpr size_t kQueueBytes = size_t{4} * 1024 * 1024;

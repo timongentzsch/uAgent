@@ -48,7 +48,7 @@ class WebClient:
 
     def command(self, kind, session=None, **values):
         self.sequence += 1
-        payload = {"v": 1, "kind": kind, "request_id": f"{self.sequence:032x}"}
+        payload = {"v": 2, "kind": kind, "request_id": f"{self.sequence:032x}"}
         if session:
             payload.update(session_id=session["id"], generation=session.get("generation", ""))
         payload.update(values)

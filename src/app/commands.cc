@@ -149,6 +149,11 @@ std::optional<ModelCandidate> PickModel(
     }
     printf("%s[%zu]%s %s%c %s", BOLD(), i + 1, RST(), active ? BOLD() : DIM(),
            active ? '*' : ' ', TerminalSafe(candidate.selection).c_str());
+    if (!candidate.info.name.empty() &&
+        candidate.info.name != candidate.info.id &&
+        candidate.info.name != candidate.selection) {
+      printf(" · %s", TerminalSafe(candidate.info.name).c_str());
+    }
     std::string effort = active ? api.reasoning_effort : candidate.route.effort;
     if (effort.empty()) effort = candidate.info.default_effort;
     printf(" · effort %s", effort.empty() ? "default" : effort.c_str());
@@ -168,9 +173,24 @@ std::optional<ModelCandidate> PickModel(
                                           .base_url = candidate.route.base_url,
                                           .effort = effort},
                                 providers);
+    std::string option_label = candidate.selection;
+    if (!candidate.info.name.empty() &&
+        candidate.info.name != candidate.info.id) {
+      option_label += " · " + candidate.info.name;
+    }
+    // The choice list (terminal TUI and web dropdown alike) renders labels
+    // only, so the supported efforts ride along here, same vocabulary as
+    // the printf rows below.
+    if (!candidate.info.efforts.empty()) {
+      option_label += " · supports ";
+      for (size_t index = 0; index < candidate.info.efforts.size(); ++index) {
+        option_label +=
+            (index ? "," : "") + candidate.info.efforts[index];
+      }
+    }
     options.push_back({{"value", std::to_string(i + 1)},
                        {"route", std::move(route_label)},
-                       {"label", candidate.selection},
+                       {"label", std::move(option_label)},
                        {"active", active},
                        {"effort", effort},
                        {"context", candidate.info.context},
@@ -231,11 +251,21 @@ void HandleModels(AppSession& session, const std::string& argument) {
     return;
   }
   if (session.context.channel && search.matches.empty()) {
-    Emit(NoticeEvent(
-        PresentationStatus::kFailed,
-        search.unavailable.empty()
-            ? "No matching models."
-            : "Model catalogs are unavailable. Check provider settings."));
+    // A dead sidecar (e.g. an unreachable local proxy) must not disguise a
+    // plain non-match as an outage: only blame the catalogs when every
+    // queried one failed.
+    const bool catalogs_down = search.queried > 0 &&
+                               search.unavailable.size() >= search.queried;
+    Emit(NoticeEvent(PresentationStatus::kFailed,
+                     catalogs_down ? "Model catalogs are unavailable. Check "
+                                     "provider settings."
+                                   : "No matching models."));
+    if (!catalogs_down) {
+      for (const std::string& unavailable : search.unavailable) {
+        Emit(NoticeEvent(PresentationStatus::kWarned,
+                         unavailable + " catalog unavailable"));
+      }
+    }
   }
   if (session.context.channel && search.matches.size() > 256) {
     search.matches.resize(256);

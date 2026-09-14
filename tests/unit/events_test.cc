@@ -113,9 +113,26 @@ void TestObservabilityEvents() {
   // What was searched for is the model's own prose; the fact of the search is
   // what a subscriber needs, so the query never reaches this payload.
   CHECK(!received[2].data.contains("query"));
+  SetObservability(&observable);
+  {
+    ResponseObservation response(false, false, "waiting", {},
+                                 {{"response_id", "r-2-4-1"},
+                                  {"turn", 2},
+                                  {"request", 4},
+                                  {"attempt", 1}});
+  }
+  SetObservability(nullptr);
+  REQUIRE(received.size() == 5);
+  CHECK(received[3].type == "response.started");
+  CHECK(received[3].data["response_id"] == "r-2-4-1");
+  CHECK(received[3].data["turn"] == 2);
+  CHECK(received[4].type == "response.finished");
+  CHECK(received[4].data["response_id"] == "r-2-4-1");
+  CHECK(received[4].data["turn"] == 2);
+  CHECK(received[4].data["attempt"] == 1);
   observable.Unsubscribe(subscription);
   observable.Emit(Event{EventId::kResponseFinished});
-  CHECK(received.size() == 3);
+  CHECK(received.size() == 5);
 
   Observability interactions;
   interactions.EnableTerminal(false);
@@ -222,7 +239,8 @@ void TestObservabilityEvents() {
   Event result{EventId::kToolResult,
                {{"turn", 1},
                 {"step", 1},
-                {"id", "poll"},
+                {"call_id", "provider-private"},
+                {"occurrence_id", "response-1:opaque"},
                 {"name", "activity"},
                 {"status", "ok"},
                 {"issue_code", "schema.type"},
@@ -242,6 +260,8 @@ void TestObservabilityEvents() {
   CHECK(projection_text.find("schema.type") != std::string::npos);
   CHECK(projection_text.find("activity_operation") != std::string::npos);
   CHECK(projection_text.find("no_change") != std::string::npos);
+  CHECK(projection_text.find("response-1:opaque") != std::string::npos);
+  CHECK(projection_text.find("provider-private") == std::string::npos);
 
   SessionJournal journal;
   for (int64_t sequence = 1; sequence <= 600; ++sequence) {

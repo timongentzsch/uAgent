@@ -239,10 +239,14 @@ void Emit(Event event) noexcept;
 class ResponseObservation {
  public:
   ResponseObservation(bool render, bool verbose, const std::string& label,
-                      std::chrono::steady_clock::time_point anchor = {});
+                      std::chrono::steady_clock::time_point anchor = {},
+                      json context = json::object());
   ~ResponseObservation();
   ResponseObservation(const ResponseObservation&) = delete;
   ResponseObservation& operator=(const ResponseObservation&) = delete;
+
+ private:
+  json context_ = json::object();
 };
 
 }  // namespace uagent

@@ -168,6 +168,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                            {"reply_to", reply_to_},
                            {"reply_excerpt", reply_excerpt_},
                            {"request", request},
+                           {"turn", turn_id_},
+                           {"response_base", "r-" + std::to_string(turn_id_) +
+                                                 "-" + std::to_string(request)},
                            {"step", step},
                            {"purpose", purpose}};
   std::string started_at = UtcStamp();
@@ -190,6 +193,13 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                                 render_output, estimated_bytes, verbose_);
   api_.observe_progress = {};
   result.started_at = std::move(started_at);
+  for (ToolCall& call : result.tool_calls) {
+    call.response_id = result.response_id;
+    call.occurrence_id =
+        result.response_id + ":" + HashHex(call.id).substr(0, 16);
+    call.detail_id =
+        "t-" + HashHex(result.response_id + "\n" + call.id).substr(0, 24);
+  }
   ++revision_;  // Preserve failed attempts and their accounting after the user
                 // checkpoint.
   if (!api_.http_exchanges.empty()) {

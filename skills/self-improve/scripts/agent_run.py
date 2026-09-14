@@ -144,7 +144,7 @@ def trace_metrics(
                 except json.JSONDecodeError:
                     arguments = {}
             call = {
-                "id": str(data.get("id") or ""),
+                "occurrence_id": str(data.get("occurrence_id") or ""),
                 "turn": data.get("turn"),
                 "step": data.get("step"),
                 "name": data.get("name"),
@@ -153,7 +153,7 @@ def trace_metrics(
             calls.append(call)
             if call["name"] == "run" and isinstance(arguments, dict):
                 if "playwright-cli" in str(arguments.get("command", "")):
-                    browser_calls.add(call["id"])
+                    browser_calls.add(call["occurrence_id"])
             if batches:
                 batches[-1] += 1
         elif name == "tool_result":
@@ -162,7 +162,7 @@ def trace_metrics(
             tool_name = str(data.get("name") or "?")
             tool_result_chars += chars
             result_chars_by_tool[tool_name] += chars
-            if str(data.get("id") or "") in browser_calls:
+            if str(data.get("occurrence_id") or "") in browser_calls:
                 browser_snapshot_chars += chars
             issue = str(data.get("issue_code") or "")
             if issue:

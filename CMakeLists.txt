@@ -114,6 +114,7 @@ add_library(
   src/app/reference.cc
   src/app/runtime.cc
   src/app/self_description.cc
+  src/app/session_host.cc
   src/cli.cc
   src/core/child_env.cc
   src/core/config_document.cc

@@ -9,6 +9,7 @@ namespace uagent {
   X(TestRegistries)                            \
   X(TestCommandAndDisplayRegistries)           \
   X(TestModelCatalogParsing)                   \
+  X(TestModelQueryMatching)                   \
   X(TestOptions)                               \
   X(TestMarkdownBlankLines)                    \
   X(TestTableRetroErasesRenderedRows)          \
@@ -71,6 +72,7 @@ namespace uagent {
   X(TestProjectInstructionDiscovery)           \
   X(TestMcpContractHelpers)                    \
   X(TestConversation)                          \
+  X(TestHistoryReplaySkipsBareHeader)         \
   X(TestCompactionKeepsDisplayIdentity)        \
   X(TestObservabilityEvents)                   \
   X(TestWorkspaceScopedSession)                \

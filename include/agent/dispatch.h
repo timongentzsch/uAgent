@@ -127,7 +127,10 @@ inline json ToolResultData(const CallTask& task, const ToolCall& call,
   json data = {
       {"turn", turn},
       {"step", step},
-      {"id", call.id},
+      {"call_id", call.id},
+      {"response_id", call.response_id},
+      {"occurrence_id", call.occurrence_id},
+      {"detail_id", call.detail_id},
       {"name", call.name},
       {"activity", task.activity},
       {"status", task.trace_status},
@@ -185,7 +188,10 @@ inline json ToolCallData(const ToolCall& call, int64_t turn, int64_t step) {
   // and a fingerprint is enough to see that the same call was made twice.
   return {{"turn", turn},
           {"step", step},
-          {"id", call.id},
+          {"call_id", call.id},
+          {"response_id", call.response_id},
+          {"occurrence_id", call.occurrence_id},
+          {"detail_id", call.detail_id},
           {"name", call.name},
           {"arguments", call.args},
           {"arguments_digest", HashHex(call.args).substr(0, 12)}};

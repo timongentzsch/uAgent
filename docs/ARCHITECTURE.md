@@ -47,15 +47,19 @@ reply wins and a second client cannot answer a stale approval.
 One poll thread owns client sockets and bounded fanout queues. Publishing does
 not wait for a slow terminal or browser. A joining client receives a checkpoint
 and its ordered event suffix. Gaps require refresh, not command replay. The web
-adapter adds its host epoch and SSE cursor so stale connections cannot overwrite
-newer state. A changed runtime generation invalidates pending commands; recovery
-never automatically repeats tools or an uncertain submission.
+adapter uses the native `SessionHost` sequence and bounded replay log to add its
+host epoch and SSE cursor. After replay it sends an unsequenced `ready` watermark;
+this means transport catch-up, not that the engine is idle. Stale connections
+cannot overwrite newer state. A changed runtime generation invalidates pending
+commands; recovery never automatically repeats tools or an uncertain submission.
 
 Closing a client detaches it. Closing the runtime cancels work, saves state and
 reaps session-owned children. An internal writer lease prevents two runtimes
 from owning one file; clients do not acquire that lease. Runtime discovery uses
-private sockets and bounded catalogue scans, not live JSON sidecars, inbox files
-or terminal-specific mirroring. Independent conversations may share a project
+private sockets, a bounded startup scan and native directory notifications, not
+live JSON sidecars, inbox files or terminal-specific mirroring. Schedule,
+prompt and library invalidation uses the native multi-path watcher and wakes at
+the next actual schedule deadline. Independent conversations may share a project
 folder; edits to shared project files still require coordination.
 
 A normal collaborator follow-up starts a bounded child process from its saved
@@ -86,6 +90,15 @@ provider accounting, `activities.changed` reports supervised work,
 events carry correlated decisions. Final checkpoints reconcile complete state.
 Terminal Markdown/ANSI and browser DOM state are projections, never alternate
 writers.
+
+A model attempt receives a runtime response identity before its first delta.
+That identity reaches the saved assistant display record, while provider tool
+call IDs remain raw provider facts. Tool occurrences are scoped to the response
+and have a separate retained-detail identity. Content revision and completeness
+are independent: a bounded checkpoint preview at the same revision cannot
+replace a fuller body already held by a client. The runtime also publishes its
+canonical execution phase and pending decision; transport connection health
+remains client-owned.
 
 Provider-reported partial usage is combined with the confirmed session total for
 live display. Final usage replaces that provisional view through the normal

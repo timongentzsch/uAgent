@@ -11,6 +11,7 @@
 #include "include/agent/trace.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
+#include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -452,6 +453,138 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(JsonEstimatedBytes(view) < size_t{512} * 1024);
   CHECK(view["more"] == true);
   CHECK(view["blocks"].back()["id"] == "large-63");
+
+  // Live deltas and the saved preview are one response projection. A bounded
+  // checkpoint may enrich metadata, but it cannot shorten a body this client
+  // already received at the same content revision.
+  json state = {{"view", {{"blocks", json::array()}}}};
+  const json response = {
+      {"response_id", "r-7-3-1"}, {"turn", 7}, {"request", 3}, {"attempt", 1}};
+  CHECK(ApplySessionEvent(state, "response.started", response));
+  CHECK(ApplySessionEvent(
+      state, "response.answer.delta",
+      {{"response_id", "r-7-3-1"}, {"text", "complete streamed body"}}));
+  MergeDisplayBlock(state["view"], {{"id", "m-99"},
+                                    {"row_id", "r-7-3-1"},
+                                    {"response_id", "r-7-3-1"},
+                                    {"kind", "assistant"},
+                                    {"text", "preview"},
+                                    {"text_bytes", 7},
+                                    {"truncated", true},
+                                    {"content_revision", 1},
+                                    {"content_complete", false},
+                                    {"status", "complete"}});
+  REQUIRE(state["view"]["blocks"].size() == 1);
+  const json& reconciled = state["view"]["blocks"][0];
+  CHECK(reconciled["id"] == "m-99");
+  CHECK(reconciled["row_id"] == "r-7-3-1");
+  CHECK(reconciled["text"] == "complete streamed body");
+  CHECK(reconciled["text_bytes"] == 22);
+  CHECK(reconciled["content_revision"] == 1);
+  CHECK(reconciled["status"] == "complete");
+
+  // A response and its tool results share response_id, but each occurrence is
+  // a distinct transcript row. Checkpoint enrichment must preserve the live
+  // assistant body and reasoning while adding every saved result exactly once.
+  CHECK(ApplySessionEvent(
+      state, "response.reasoning.delta",
+      {{"response_id", "r-7-3-1"}, {"text", "visible thinking"}}));
+  MergeDisplayBlock(state["view"], {{"id", "m-100"},
+                                    {"response_id", "r-7-3-1"},
+                                    {"occurrence_id", "r-7-3-1:call-a"},
+                                    {"kind", "tool_result"},
+                                    {"text", "first result"}});
+  MergeDisplayBlock(state["view"], {{"id", "m-101"},
+                                    {"response_id", "r-7-3-1"},
+                                    {"occurrence_id", "r-7-3-1:call-b"},
+                                    {"kind", "tool_result"},
+                                    {"text", "second result"}});
+  REQUIRE(state["view"]["blocks"].size() == 3);
+  CHECK(state["view"]["blocks"][0]["kind"] == "assistant");
+  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
+  CHECK(state["view"]["blocks"][1]["text"] == "first result");
+  CHECK(state["view"]["blocks"][2]["text"] == "second result");
+  MergeDisplayBlock(state["view"], {{"id", "m-100"},
+                                    {"response_id", "r-7-3-1"},
+                                    {"occurrence_id", "r-7-3-1:call-a"},
+                                    {"kind", "tool_result"},
+                                    {"text", "first result"},
+                                    {"status", "completed"}});
+  REQUIRE(state["view"]["blocks"].size() == 3);
+  CHECK(state["view"]["blocks"][1]["status"] == "completed");
+  CHECK(state["view"]["blocks"][0]["reasoning"] == "visible thinking");
+
+  Conversation long_answer;
+  long_answer.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                    {MessageKind::kSystem});
+  const std::string full_body(9000, 'a');
+  const std::string full_reasoning(9000, 'r');
+  long_answer.Push({{"role", "assistant"}, {"content", full_body}},
+                   MessageKind::kAssistant);
+  long_answer.RecordDisplay(long_answer.LastDisplayId(),
+                            {{"response_id", "r-8-2-1"},
+                             {"content_revision", 1},
+                             {"content_complete", true},
+                             {"text_bytes", full_body.size()},
+                             {"reasoning", full_reasoning},
+                             {"reasoning_revision", 1},
+                             {"reasoning_complete", true},
+                             {"reasoning_bytes", full_reasoning.size()}});
+  const json preview = LastMessageView(long_answer);
+  const size_t preview_text_bytes = preview["text"].get<std::string>().size();
+  CHECK(preview_text_bytes <= 4096 && preview_text_bytes < full_body.size());
+  CHECK(preview["text_bytes"] == preview_text_bytes);
+  CHECK(preview["retained_text_bytes"] == 9000);
+  CHECK(preview["content_complete"] == false);
+  const size_t preview_reasoning_bytes =
+      preview["reasoning"].get<std::string>().size();
+  CHECK(preview_reasoning_bytes <= 4096 &&
+        preview_reasoning_bytes < full_reasoning.size());
+  CHECK(preview["reasoning_bytes"] == preview_reasoning_bytes);
+  CHECK(preview["retained_reasoning_bytes"] == 9000);
+  CHECK(preview["reasoning_complete"] == false);
+}
+
+void TestHistoryReplaySkipsBareHeader() {
+  Conversation replay;
+  replay.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                 {MessageKind::kSystem});
+  replay.Push({{"role", "user"}, {"content", "hi"}},
+                MessageKind::kUser);
+  // A text-empty assistant turn (tool calls only): the live presenter
+  // prints its mark lazily with the first text, so the replay must not
+  // leave a bare mark line either.
+  replay.Push({{"role", "assistant"},
+                 {"content", ""},
+                 {"tool_calls",
+                  json::array(
+                      {{{"id", "call-1"},
+                        {"function",
+                         {{"name", "read_file"},
+                          {"arguments", "{}"}}}}})}},
+                MessageKind::kAssistant);
+  bool prior_unicode = g_unicode;
+  g_unicode = true;
+  const std::vector<Tool> no_tools;
+  const std::string drawn =
+      CaptureStdout([&] { PrintConversationHistory(replay, no_tools); });
+  g_unicode = prior_unicode;
+  CHECK(drawn.find("hi") != std::string::npos);
+  CHECK(drawn.find("µ") == std::string::npos);
+  CHECK(drawn.find("uagent") == std::string::npos);
+  // Control: a text turn keeps its header mark.
+  Conversation spoken;
+  spoken.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                 {MessageKind::kSystem});
+  spoken.Push({{"role", "assistant"}, {"content", "hello"}},
+                MessageKind::kAssistant);
+  g_unicode = true;
+  const std::string voiced =
+      CaptureStdout([&] { PrintConversationHistory(spoken, no_tools); });
+  g_unicode = prior_unicode;
+  CHECK(voiced.find("uagent") != std::string::npos);
+  CHECK(voiced.find("µ") == std::string::npos);
+  CHECK(voiced.find("hello") != std::string::npos);
 }
 
 }  // namespace uagent

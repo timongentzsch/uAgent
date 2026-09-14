@@ -85,14 +85,48 @@ std::string Text(const json& message) {
 void MergeDisplayBlock(json& view, const json& block) {
   json& blocks = view["blocks"];
   if (!blocks.is_array()) blocks = json::array();
+  const std::string response_id = JsonValue(block, "response_id", "");
+  const std::string occurrence_id = JsonValue(block, "occurrence_id", "");
+  const std::string kind = JsonValue(block, "kind", "");
   auto found =
       std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
-        return JsonValue(item, "id", "") == JsonValue(block, "id", "");
+        if (JsonValue(item, "id", "") == JsonValue(block, "id", ""))
+          return true;
+        if (!occurrence_id.empty() &&
+            JsonValue(item, "occurrence_id", "") == occurrence_id) {
+          return true;
+        }
+        return kind == "assistant" &&
+               JsonValue(item, "kind", "") == "assistant" &&
+               !response_id.empty() &&
+               JsonValue(item, "response_id", "") == response_id;
       });
   if (found == blocks.end()) {
     blocks.push_back(block);
   } else {
-    *found = block;
+    json merged = block;
+    const uint64_t old_revision =
+        JsonValue(*found, "content_revision", uint64_t{0});
+    const uint64_t new_revision =
+        JsonValue(block, "content_revision", uint64_t{0});
+    if (old_revision == new_revision &&
+        JsonValue(*found, "text_bytes", size_t{0}) >
+            JsonValue(block, "text_bytes", size_t{0})) {
+      merged["text"] = JsonValue(*found, "text", "");
+      merged["text_bytes"] = (*found)["text_bytes"];
+      merged["truncated"] = JsonValue(*found, "truncated", false);
+      merged["content_complete"] = JsonValue(*found, "content_complete", false);
+    }
+    if (JsonValue(*found, "reasoning_revision", uint64_t{0}) ==
+            JsonValue(block, "reasoning_revision", uint64_t{0}) &&
+        JsonValue(*found, "reasoning_bytes", size_t{0}) >
+            JsonValue(block, "reasoning_bytes", size_t{0})) {
+      merged["reasoning"] = JsonValue(*found, "reasoning", "");
+      merged["reasoning_bytes"] = (*found)["reasoning_bytes"];
+      merged["reasoning_complete"] =
+          JsonValue(*found, "reasoning_complete", false);
+    }
+    *found = std::move(merged);
   }
   size_t bytes = JsonEstimatedBytes(blocks);
   while (!blocks.empty() &&
@@ -113,6 +147,44 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
       state["context_tokens"] = data["context_tokens"];
     }
     if (data.contains("statistics")) state["statistics"] = data["statistics"];
+  } else if (type == "response.started") {
+    const std::string response_id = JsonValue(data, "response_id", "");
+    if (!response_id.empty()) {
+      MergeDisplayBlock(state["view"],
+                        {{"id", response_id},
+                         {"row_id", response_id},
+                         {"response_id", response_id},
+                         {"kind", "assistant"},
+                         {"turn", JsonValue(data, "turn", int64_t{0})},
+                         {"request", JsonValue(data, "request", int64_t{0})},
+                         {"attempt", JsonValue(data, "attempt", int64_t{0})},
+                         {"text", ""},
+                         {"text_bytes", 0},
+                         {"content_revision", 1},
+                         {"content_complete", false},
+                         {"reasoning", ""},
+                         {"reasoning_bytes", 0},
+                         {"reasoning_revision", 1},
+                         {"reasoning_complete", false}});
+    }
+  } else if (type == "response.answer.delta" ||
+             type == "response.reasoning.delta") {
+    const std::string response_id = JsonValue(data, "response_id", "");
+    json& blocks = state["view"]["blocks"];
+    if (blocks.is_array()) {
+      auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
+        return JsonValue(block, "response_id", "") == response_id;
+      });
+      if (found != blocks.end()) {
+        const char* field =
+            type == "response.answer.delta" ? "text" : "reasoning";
+        const char* bytes =
+            type == "response.answer.delta" ? "text_bytes" : "reasoning_bytes";
+        (*found)[field] =
+            JsonValue(*found, field, "") + JsonValue(data, "text", "");
+        (*found)[bytes] = JsonValue(*found, field, "").size();
+      }
+    }
   } else if (type == "message.changed") {
     MergeDisplayBlock(state["view"], data["block"]);
   } else if (type == "activities.changed") {
@@ -155,42 +227,93 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   json block = {{"id", id},
                 {"sequence", sequence},
                 {"kind", entry.kind},
-                {"text", Utf8Trunc(text, 4096)},
+                {"text", Utf8Trunc(text, 4093)},
                 {"truncated", text.size() > 4096}};
   json metadata = JsonValue(facts, id.c_str(), json::object());
-  for (const char* key :
-       {"time",      "incoming",        "activity_id",    "agent_id",
-        "status",    "request_id",      "route",          "duration_ms",
-        "ttft_ms",   "usage",           "usage_reported", "tokens_per_second",
-        "turn_root", "reply_to",        "reply_excerpt",  "http",
-        "files",     "summary",         "deliveries",     "activity",
-        "origin",    "source_call_ids", "compaction",     "memory"}) {
+  for (const char* key : {"time",
+                          "incoming",
+                          "activity_id",
+                          "agent_id",
+                          "status",
+                          "request_id",
+                          "route",
+                          "duration_ms",
+                          "ttft_ms",
+                          "usage",
+                          "usage_reported",
+                          "tokens_per_second",
+                          "turn_root",
+                          "reply_to",
+                          "reply_excerpt",
+                          "http",
+                          "files",
+                          "summary",
+                          "deliveries",
+                          "activity",
+                          "origin",
+                          "source_call_ids",
+                          "compaction",
+                          "memory",
+                          "response_id",
+                          "content_revision",
+                          "content_complete",
+                          "text_bytes",
+                          "reasoning_revision",
+                          "reasoning_complete",
+                          "reasoning_bytes",
+                          "call_id",
+                          "occurrence_id",
+                          "detail_id"}) {
     if (metadata.contains(key)) block[key] = metadata[key];
   }
+  block["retained_text_bytes"] = text.size();
+  block["text_bytes"] = JsonValue(block, "text", "").size();
+  block["content_complete"] = !JsonValue(block, "truncated", false);
   if (entry.kind == "assistant") {
+    const std::string response_id = JsonValue(metadata, "response_id", "");
+    if (!response_id.empty()) block["row_id"] = response_id;
+    if (!block.contains("content_revision")) block["content_revision"] = 1;
+    if (!block.contains("content_complete")) {
+      block["content_complete"] = text.size() <= 4096;
+    }
+    if (!block.contains("text_bytes")) block["text_bytes"] = text.size();
     std::string reasoning = JsonValue(metadata, "reasoning", "");
     if (reasoning.empty()) {
       reasoning = JsonValue(message, "reasoning_content",
                             JsonValue(message, "reasoning", ""));
     }
-    block["reasoning"] = Utf8Trunc(reasoning, 4096);
+    block["reasoning"] = Utf8Trunc(reasoning, 4093);
     block["reasoning_available"] = !reasoning.empty();
+    if (!block.contains("reasoning_revision")) block["reasoning_revision"] = 1;
+    block["retained_reasoning_bytes"] = reasoning.size();
+    block["reasoning_bytes"] = JsonValue(block, "reasoning", "").size();
+    block["reasoning_complete"] = reasoning.size() <= 4096;
     if (const json* calls = JsonArray(message, "tool_calls")) {
       block["tools"] = json::array();
       for (const json& call : *calls) {
         std::string call_id = JsonValue(call, "id", "");
+        std::string occurrence_id =
+            response_id.empty()
+                ? call_id
+                : response_id + ":" + HashHex(call_id).substr(0, 16);
+        std::string detail_id =
+            response_id.empty()
+                ? "t-" + call_id
+                : "t-" + HashHex(response_id + "\n" + call_id).substr(0, 24);
+        json detail = JsonValue(facts, detail_id.c_str(), json::object());
         json function = JsonValue(call, "function", json::object());
-        json tool = {
-            {"id", call_id},
-            {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
-            {"arguments",
-             Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
-            {"status", JsonValue(JsonValue(facts, ("t-" + call_id).c_str(),
-                                           json::object()),
-                                 "status", "not recorded")}};
-        tool["activity"] = JsonValue(
-            JsonValue(facts, ("t-" + call_id).c_str(), json::object()),
-            "activity", json::object());
+        json tool = {{"call_id", call_id},
+                     {"response_id", response_id},
+                     {"occurrence_id", occurrence_id},
+                     {"detail_id", detail_id},
+                     {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
+                     {"arguments",
+                      Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
+                     {"status", JsonValue(detail, "status", "running")}};
+        tool["activity"] = JsonValue(detail, "activity", json::object());
+        if (detail.contains("exchange_path")) {
+          tool["exchange_path"] = detail["exchange_path"];
+        }
         block["tools"].push_back(std::move(tool));
         if (block["tools"].size() >= 32) {
           break;
@@ -200,15 +323,16 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   }
   if (entry.kind == "tool_result") {
     std::string call_id = JsonValue(message, "tool_call_id", "");
-    json detail = JsonValue(facts, ("t-" + call_id).c_str(), json::object());
+    std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
+    json detail = JsonValue(facts, detail_id.c_str(), json::object());
     block["call_id"] = call_id;
     block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
-    block["status"] = JsonValue(detail, "status", "not recorded");
+    block["status"] = JsonValue(detail, "status", "running");
     if (detail.contains("duration_ms")) {
       block["duration_ms"] = detail["duration_ms"];
     }
-    block["detail_id"] = "t-" + call_id;
+    block["detail_id"] = detail_id;
     block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), 4096);
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("exchange_path")) {

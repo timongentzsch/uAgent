@@ -101,7 +101,7 @@ constexpr SlashCommandSpec kSlashCommands[] = {
      "search and select across providers"},
     {SlashCommandId::kProcesses, "/ps", "[ID [output|stop]]",
      "inspect or stop background work"},
-    {SlashCommandId::kQuit, "/quit", "", "exit µAgent", false},
+    {SlashCommandId::kQuit, "/quit", "", "exit uagent", false},
     {SlashCommandId::kReset, "/reset", "", "start a new chat", false},
     {SlashCommandId::kReview, "/review", "[TARGET]",
      "review my current changes and find issues"},

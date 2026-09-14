@@ -216,7 +216,7 @@ class Terminal {
       }
       std::string text = Trim(input.text);
       if (text == "/q" || text == "/quit") break;
-      if (text == "/sessions" || text == "/reset") {
+      if (text == "/sessions" || text == "/resume" || text == "/reset") {
         std::lock_guard lock(mutex_);
         next_ = text;
         break;
@@ -424,7 +424,9 @@ class Terminal {
     if (JsonValue(state, "turn_active", false) &&
         !CurrentTerminalActivity().empty()) {
       status = RenderCurrentTerminalActivity(TerminalWidth(14)) + " · " +
-               JsonValue(state, "route", "");
+               JsonValue(state, "route", "") + " · " +
+               ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
+                              JsonValue(state, "context_window", int64_t{0}));
     } else {
       status += " · " +
                 ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
@@ -512,7 +514,8 @@ int TerminalMain(Options options) {
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/reset") {
       path.clear();
-    } else if (terminal.Next() == "/sessions") {
+    } else if (terminal.Next() == "/sessions" ||
+               terminal.Next() == "/resume") {
       std::string selected = PickSession();
       if (!selected.empty()) path = std::move(selected);
     } else {

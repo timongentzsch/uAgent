@@ -186,7 +186,10 @@ constexpr const char* kSearchingActivity = "searching the web";
 
 void PrintMessageHeader() {
   if (!g_tty) return;
-  printf("%s%s%s\n", BOLD(), g_unicode ? "µ" : "u", RST());
+  // Assistant header is the binary name in ASCII, identical on live turns
+  // and --resume replay. Never the bare unicode mark: it renders as a
+  // random glyph on dumb PTYs and mismatches the spinner labels.
+  printf("%suagent%s\n", BOLD(), RST());
 }
 
 struct TerminalPresenter::State {
@@ -261,7 +264,7 @@ struct TerminalPresenter::State {
       // renderer applies it, so that whole-buffer pass runs once per drawn
       // frame instead of once per streamed token — an order of magnitude
       // apart — while the ticker still shows the newest text.
-      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
+      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
       return;
     }
 
@@ -275,7 +278,7 @@ struct TerminalPresenter::State {
       if (content_started && line_open) markdown.FeedPlain("\n");
       markdown.Control(RST());
       markdown.Control(DIM());
-      markdown.FeedPlain("· thinking\n");
+      markdown.FeedPlain("· Thinking\n");
       line_open = false;
       in_reasoning = true;
     }
@@ -302,7 +305,7 @@ struct TerminalPresenter::State {
     if (!active_searches.empty()) {
       spinner->SetLabel(kSearchingActivity);
     } else if (!reasoning_tail.empty()) {
-      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
+      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
     } else {
       spinner->SetLabel(base_label);
     }

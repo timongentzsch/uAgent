@@ -130,7 +130,7 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, verbose)
-        assert_true(b"\xc2\xb7 thinking" in verbose, verbose)
+        assert_true(b"\xc2\xb7 Thinking" in verbose, verbose)
         reasoning_style = b"\x1b[0m\x1b[39m\x1b[49m\x1b[90m\x1b[3m"
         assert_true(reasoning_style + b"latest line" in verbose, verbose)
         assert_true(verbose.find(b"first line") < verbose.find(b"Final answer"), verbose)
@@ -150,11 +150,11 @@ def test_reasoning_modes_render_consistently(root, home, *, binary):
             binary=binary,
         )
         assert_true(code == 0, compact)
-        assert_true(b"thinking \xc2\xb7" in compact, compact)
+        assert_true(b"Thinking \xc2\xb7" in compact, compact)
         assert_true(b"provider normalization phases" in compact, compact)
-        assert_true(b"thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
+        assert_true(b"Thinking \xc2\xb7 \xe2\x80\xa6" not in compact, compact)
         assert_true(b"****" not in compact, compact)
-        assert_true(b"\xc2\xb7 thinking" not in compact, compact)
+        assert_true(b"\xc2\xb7 Thinking" not in compact, compact)
 
 
 def test_multiline_bracketed_paste(root, home, *, binary):
@@ -485,7 +485,7 @@ def test_input_redraw_status_animation_does_not_repaint_draft(root, home, *, bin
         assert_true(output.count(b"status-redraw-ok") == 1, output)
         # Real response output starts with its actor header; its pipe write
         # may arrive separately from the text and legitimately repaint input.
-        response_at = output.index("µ".encode())
+        response_at = output.index(b"uagent")
         assert_true(output[:response_at].count(b"pending draft") == 1, output)
 
 

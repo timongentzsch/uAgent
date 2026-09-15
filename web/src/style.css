@@ -12,6 +12,10 @@
   --line: #404040;
   --accent: #fff;
   --live: #22a35a;
+  --added: #3fb950;
+  --added-bg: rgba(63, 185, 80, 0.12);
+  --removed: #f85149;
+  --removed-bg: rgba(248, 81, 73, 0.12);
   --on-accent: #000;
   --viewport-height: 100dvh;
   --viewport-width: 100%;
@@ -50,6 +54,10 @@
   --muted: #666;
   --line: #ccc;
   --accent: #000;
+  --added: #1a7f37;
+  --added-bg: rgba(26, 127, 55, 0.1);
+  --removed: #d1242f;
+  --removed-bg: rgba(209, 36, 47, 0.1);
   --on-accent: #fff;
 }
 * {
@@ -288,6 +296,35 @@ pre code {
   white-space: pre;
   overflow-wrap: normal;
   display: block;
+}
+.diff {
+  white-space: pre;
+  overflow-wrap: normal;
+  padding: 0;
+}
+.diff > span {
+  display: block;
+  padding: 0 12px;
+}
+.diff-head {
+  font-weight: 600;
+}
+.diff-add {
+  color: var(--added);
+  background: var(--added-bg);
+}
+.diff-del {
+  color: var(--removed);
+  background: var(--removed-bg);
+}
+.diff-hunk {
+  color: var(--muted);
+}
+.diff-cut {
+  color: var(--muted);
+}
+.diff-ctx {
+  color: var(--muted);
 }
 .muted,
 .small,

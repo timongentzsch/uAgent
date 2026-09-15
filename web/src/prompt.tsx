@@ -9,6 +9,7 @@ import { readStored, writeStored } from "./store.ts";
 import { command } from "./api.ts";
 import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
 import { ProjectField } from "./management.tsx";
+import DiffView from "./diff-view.tsx";
 import "./prompt.css";
 
 export default function PromptEditor({
@@ -266,7 +267,7 @@ export default function PromptEditor({
                   {preview?.diff && (
                     <details open>
                       <summary>Changes</summary>
-                      <pre>{preview.diff}</pre>
+                      <DiffView text={preview.diff} />
                     </details>
                   )}
                   <pre aria-label="Effective system prompt">

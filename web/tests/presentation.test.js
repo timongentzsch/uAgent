@@ -1,6 +1,10 @@
 import { contextSummary } from "../src/context.ts";
 import { duration } from "../src/duration.ts";
-import { isRunningStatus, statusLine } from "../src/display.ts";
+import {
+  isRunningStatus,
+  statusLine,
+  diffLineClass,
+} from "../src/display.ts";
 import { getToolPreview } from "../src/tool-preview.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -264,6 +268,25 @@ test("running rows never read as not recorded", () => {
   });
   assert.equal(preview.title, "$ sleep 60");
   assert.equal(preview.subtitle, "Running\u2026");
+});
+
+test("change receipts classify git-style lines", () => {
+  const change = [
+    "Replaced web/src/a.ts (+2 -1)",
+    " context",
+    "-removed",
+    "+added",
+    "@line 3",
+    " … diff truncated",
+  ];
+  assert.deepEqual(
+    change.map((line, index) => diffLineClass(line, index === 0)),
+    ["diff-head", "diff-ctx", "diff-del", "diff-add", "diff-hunk", "diff-cut"],
+  );
+  assert.equal(diffLineClass("@@ -1,3 +1,4 @@", false), "diff-hunk");
+  assert.equal(diffLineClass("--- a/f", false), "diff-head");
+  assert.equal(diffLineClass("+++ b/f", false), "diff-head");
+  assert.equal(diffLineClass("+x", false), "diff-add");
 });
 
 test("durations scale consistently with the CLI", () => {

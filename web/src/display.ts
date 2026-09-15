@@ -6,6 +6,22 @@ import { duration } from "./duration.ts";
 export const cleanText = (text = "") =>
   text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "");
 
+// Git-style change line roles shared by tool receipts (' '/'-'/'+'/'@'
+// markers with a file header) and unified diffs ('---'/'+++'/'@@').
+export function diffLineClass(line: string, first: boolean): string {
+  if (first && /^(Replaced|Created|Deleted|diff --git) /.test(line))
+    return "diff-head";
+  if (line.startsWith("@@")) return "diff-hunk";
+  if (line.startsWith("--- ") || line.startsWith("+++ "))
+    return "diff-head";
+  const marker = line.charAt(0);
+  if (marker === "+") return "diff-add";
+  if (marker === "-") return "diff-del";
+  if (marker === "@") return "diff-hunk";
+  if (/^[ +-]?… /.test(line)) return "diff-cut";
+  return "diff-ctx";
+}
+
 export function formatTime(iso?: string): string {
   if (!iso) return "—";
   const time = new Date(iso);

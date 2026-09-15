@@ -1,6 +1,7 @@
 import "./attachments.css";
 import { TurnFooter } from "./statistics.tsx";
 import Markdown from "./markdown-view.tsx";
+import DiffView from "./diff-view.tsx";
 import "./message.css";
 import { bytes, count } from "./quantities.ts";
 import { Component, type ComponentProps } from "preact";
@@ -283,9 +284,7 @@ function MessageView({
                   </p>
                 )
               )}
-              {block.change && (
-                <pre class="diff">{cleanText(block.change)}</pre>
-              )}
+              {block.change && <DiffView text={cleanText(block.change)} />}
               {inspect && (
                 <button
                   onClick={() =>

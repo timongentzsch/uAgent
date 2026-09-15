@@ -20,6 +20,10 @@ export function ModelSkeleton() {
           <Control />
         </Field>
       </div>
+      <div class="dialog-actions" aria-hidden="true">
+        <Skeleton decorative rows={1} className="action-skeleton" />
+        <Skeleton decorative rows={1} className="action-skeleton" />
+      </div>
     </div>
   );
 }

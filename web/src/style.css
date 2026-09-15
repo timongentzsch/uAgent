@@ -897,6 +897,14 @@ dialog section {
   height: var(--control);
   width: 100%;
 }
+.action-skeleton {
+  width: auto;
+  padding: 0;
+}
+.action-skeleton span {
+  height: var(--control);
+  width: 96px;
+}
 .stats .skeleton {
   padding: 4px 0;
 }

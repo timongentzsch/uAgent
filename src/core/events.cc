@@ -310,6 +310,7 @@ json JournalProjection(const Event& event) {
     case EventId::kActivityCompleted:
       copy("id");
       copy("kind");
+      copy("command");
       copy("status");
       copy("output_chars");
       break;

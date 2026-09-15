@@ -770,6 +770,10 @@ void Agent::DeliverActivityCompletions(
     json block = conversation_.RecordEntry(
         {{"text", std::move(text)},
          {"activity_id", completion.activity_id},
+         // The full command travels with the record (bounded): rows and
+         // titles abbreviate, but the popup and history must not lose it
+         // when the supervisor no longer retains the job.
+         {"command", Utf8Trunc(completion.command, 8192)},
          {"activity", completion_activity},
          {"agent_id", completion.source_id},
          {"status", succeeded ? "completed" : "failed"}});
@@ -778,6 +782,7 @@ void Agent::DeliverActivityCompletions(
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},
          {"kind", ActivityKindName(completion.kind)},
+         {"command", Utf8Trunc(completion.command, 8192)},
          {"status",
           WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
          {"output_chars", completion.output.size()}}};

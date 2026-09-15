@@ -513,14 +513,17 @@ pre code {
   scrollbar-gutter: stable;
   padding: var(--gap) max(var(--pad), calc((100% - 1040px) / 2));
   overscroll-behavior: contain;
-  /* Single spacing mechanism for the whole column: uniform gap, zero
-     child margins. Flex gaps never collapse, so doubles are impossible. */
+}
+/* Single spacing mechanism for the whole column: uniform gap, zero
+   child margins. Flex gaps never collapse, so doubles are impossible. */
+.transcript-content {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  min-height: 100%;
 }
-.transcript > p,
-.transcript > details {
+.transcript-content > p,
+.transcript-content > details {
   margin-block: 0;
 }
 .transcript-sentinel {

@@ -106,9 +106,11 @@ function App() {
     () => localStorage.getItem("uagent-theme") || "system",
   );
   const transcript = useRef<HTMLDivElement>(null);
+  const transcriptContent = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const { jumpToLatest, preservePrepend } = useTranscriptScroll(
     transcript,
+    transcriptContent,
     sentinel,
     setFollowing,
   );
@@ -757,6 +759,7 @@ function App() {
                     />
                   }
                   scroller={transcript}
+                  content={transcriptContent}
                   sentinel={sentinel}
                   selected={selected}
                   snapshot={snapshot}

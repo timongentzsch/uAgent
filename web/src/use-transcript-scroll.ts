@@ -10,11 +10,15 @@ const STICK_PX = 100;
 //   - passive scroll listener (rAF-throttled) + sentinel observer feed one
 //     sticky flag: sentinel visible OR within STICK_PX of the bottom.
 //   - after every render, if sticky and not at the bottom, pin to bottom.
+//   - a ResizeObserver on the content column re-pins while sticky when
+//     late layout (async markdown, diagrams, images, fonts) grows the
+//     transcript without a render or scroll event.
 //   - resource loads (images), viewport resizes (mobile keyboard) and mount
 //     re-pin when sticky.
 // No MutationObserver, no per-frame DOM queries while idle.
 export function useTranscriptScroll(
   scroller: RefObject<HTMLDivElement>,
+  content: RefObject<HTMLDivElement>,
   sentinel: RefObject<HTMLDivElement>,
   onFollow: (following: boolean) => void,
 ) {
@@ -116,6 +120,29 @@ export function useTranscriptScroll(
     return () => observer.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scroller.current, sentinel.current, setSticky]);
+
+  // Late layout (async markdown, mermaid, images, web fonts) grows the
+  // content column without a render or scroll event. One observer on the
+  // column re-pins while sticky; setting scrollTop never resizes content,
+  // so this cannot self-trigger.
+  useEffect(() => {
+    const target = content.current;
+    if (!target || typeof ResizeObserver === "undefined") return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (sticky.current) pinToBottom();
+      });
+    });
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content.current, pinToBottom]);
 
   // Late subresource loads (images, fonts) shift the bottom without a
   // render. Capture-phase "load" catches them; pin only when sticky.

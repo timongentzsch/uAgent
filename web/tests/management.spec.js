@@ -66,7 +66,7 @@ test("library drafts, shared controls and scheduled results", async ({
     name: fixture.project,
     exact: true,
   });
-  await expect(projectGroup.locator(".library-row")).toContainText(
+  await expect(projectGroup.locator("button.library-row")).toContainText(
     "browser-lesson",
   );
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -95,7 +95,12 @@ test("library drafts, shared controls and scheduled results", async ({
   });
   try {
     await expect(secondGroup.getByRole("status")).toBeVisible();
-    await expect(secondGroup.locator(".library-row")).toHaveCount(0);
+    // Faithful loading skeleton mirrors the row shell: placeholders only
+    // (aria-hidden), never stale entries from the previous project.
+    await expect(
+      secondGroup.locator('.library-row:not([aria-hidden="true"])'),
+    ).toHaveCount(0);
+    await expect(secondGroup.getByText("browser-lesson")).toHaveCount(0);
   } finally {
     releaseList();
   }
@@ -108,7 +113,7 @@ test("library drafts, shared controls and scheduled results", async ({
   await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
   await editor.fill("This belongs only to the second project.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(secondGroup.locator(".library-row")).toContainText(
+  await expect(secondGroup.locator("button.library-row")).toContainText(
     "browser-lesson",
   );
   const filter = page.getByLabel("Filter library");
@@ -134,22 +139,22 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(projectGroup).toHaveCount(0);
   await filter.selectOption("all");
   await secondGroup.getByRole("button", { expanded: false }).click();
-  await secondGroup.locator(".library-row").click();
+  await secondGroup.locator("button.library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );
   await projectGroup.getByRole("button", { expanded: false }).click();
-  await projectGroup.locator(".library-row").click();
+  await projectGroup.locator("button.library-row").click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await filter.selectOption(`project:${secondProject}`);
-  await expect(secondGroup.locator(".library-row")).toBeVisible();
+  await expect(secondGroup.locator("button.library-row")).toBeVisible();
   await expect(secondGroup.getByRole("status")).toHaveCount(0);
   await expect(projectGroup).toHaveCount(0);
-  await secondGroup.locator(".library-row").click();
+  await secondGroup.locator("button.library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );

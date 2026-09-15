@@ -196,6 +196,7 @@ function MessageView({
         : block.kind;
   return (
     <article
+      data-message-id={block.key || block.id}
       className={`message ${tool ? "tool" : userOwned ? "user" : "response"}${block.turn_root === block.id ? " turn-start" : ""}`}
     >
       {!tool && (
@@ -457,8 +458,8 @@ export function MessageRows({ blocks, ...props }: MessageRowsProps) {
           <DisclosureRow
             className="message exploration"
             key={block.key}
+            messageId={block.key}
             label={block.activity?.group?.label || "Exploration"}
-            icon={<Mark />}
           >
             <div className="exploration-children">
               {block.children.map((child) => (

@@ -117,7 +117,7 @@ test("unread completions, background activity and conversation lifecycle", async
   await model.click();
   await page
     .getByLabel("Model", { exact: true })
-    .selectOption({ label: "mock/model-b" });
+    .selectOption("mock/model-b");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText(/mock\/model-b/);
   const secondHash = await page.evaluate(() => location.hash);
@@ -369,4 +369,133 @@ test("retained history stays bounded and merges overlapping pages once", async (
   await expect(page.locator(".message").last()).toContainText(
     "Retained message 1999.",
   );
+});
+
+test("load-older holds position, spins, and keeps the newest tail", async ({
+  page,
+  host: fixture,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await mkdir(`${fixture.home}/.uagent/history`, { recursive: true });
+  const messages = Array.from({ length: 300 }, (_, index) => ({
+    role: index % 2 ? "assistant" : "user",
+    content: `Retained message ${index}. ` + "History anchor. ".repeat(20),
+  }));
+  await writeFile(
+    `${fixture.home}/.uagent/history/large.json`,
+    JSON.stringify({
+      format: 3,
+      cwd: fixture.project,
+      model: "test",
+      session_id: "anchor-history",
+      title: "Anchor history",
+      turns: 150,
+    }) +
+      "\n" +
+      JSON.stringify({
+        messages,
+        message_kinds: messages.map((item) => item.role),
+        archive: [],
+        archive_dropped_segments: 0,
+        context_tokens: 0,
+        usage: {},
+        tool_displays: {},
+      }),
+    { mode: 0o600 },
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Anchor history/ }).click();
+  const older = page.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  await expect(older).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const newest = await page
+    .locator(".message")
+    .last()
+    .getAttribute("data-message-id");
+  const first = await page.locator(".transcript").evaluate((element) => {
+    const top = element.scrollTop;
+    const rows = [...element.querySelectorAll("article.message")];
+    const row = rows.find(
+      (item) => item.offsetTop + item.offsetHeight > top,
+    );
+    return row
+      ? {
+          id: row.getAttribute("data-message-id"),
+          offset: row.offsetTop - top,
+        }
+      : null;
+  });
+  const firstId = first?.id;
+  const firstOffset = first?.offset || 0;
+  // Gate the older page: the button must go stateful while loading.
+  let releasePage;
+  const pageGate = new Promise((resolve) => (releasePage = resolve));
+  const olderRoute = async (route) => {
+    const response = await route.fetch();
+    await pageGate;
+    await route.fulfill({ response });
+  };
+  await page.route("**/api/sessions/*?before=*", olderRoute);
+  await older.click();
+  const loading = page.getByRole("button", {
+    name: "Loading older messages…",
+  });
+  await expect(loading).toBeVisible();
+  await expect(loading).toBeDisabled();
+  releasePage();
+  await expect
+    .poll(
+      () =>
+        page
+          .locator(".transcript")
+          .evaluate(
+            (element) =>
+              element.scrollHeight -
+              element.scrollTop -
+              element.clientHeight,
+          ),
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(100);
+  // Still reading history: not pinned to the bottom, the same first
+  // message stays under the reader, and the newest tail survived.
+  const gap = await page
+    .locator(".transcript")
+    .evaluate(
+      (element) =>
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+    );
+  expect(gap).toBeGreaterThan(100);
+  const held = await page.locator(".transcript").evaluate(
+    (element, anchorId) => {
+      const top = element.scrollTop;
+      const anchor = [...element.querySelectorAll("article.message")].find(
+        (row) => row.getAttribute("data-message-id") === anchorId,
+      );
+      return anchor
+        ? {
+            id: anchor.getAttribute("data-message-id"),
+            drift: anchor.offsetTop - top,
+          }
+        : null;
+    },
+    firstId,
+  );
+  expect(held?.id).toBe(firstId);
+  // The prepended page lands above the anchor: the previously first row
+  // (plus part of its older neighbour) is visible, so "first visible"
+  // cannot stay identical. What must hold is the anchor row itself staying
+  // at the same offset under the reader.
+  expect(Math.abs((held?.drift || 0) - firstOffset)).toBeLessThan(4);
+  await expect(page.locator(".message").last()).toHaveAttribute(
+    "data-message-id",
+    newest || "",
+  );
+  await page.unroute("**/api/sessions/*?before=*", olderRoute);
 });

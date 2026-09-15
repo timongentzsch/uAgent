@@ -441,7 +441,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await model.click();
   await picker
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption({ label: "mock/model-b" });
+    .selectOption("mock/model-b");
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(picker).toHaveCount(0);
   await expect(model).toContainText("mock/model-b");

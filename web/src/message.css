@@ -116,6 +116,22 @@
 .message .action-menu {
   flex-shrink: 0;
 }
+/* Off-screen rows skip layout and paint; intrinsic size (remembered
+   after first render) keeps the scrollbar stable. This is what makes
+   the first seconds of a long retrieval cheap: only the viewport pays
+   full layout. */
+article.message,
+.message.exploration {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+}
+/* Load-older measurement bypass: while the anchor lock holds, every row
+   lays out at its real height so prepend math is exact instead of chasing
+   intrinsic estimates across frames. Removed when the settle finishes, at
+   which point all rows have remembered real sizes. */
+.transcript-content.anchor-lock .message {
+  content-visibility: visible;
+}
 .tool-disclosure > summary {
   font-size: calc(14px * var(--text-scale, 1));
 }
@@ -141,16 +157,6 @@
 }
 .exploration > summary {
   font-size: 0.8rem;
-}
-.exploration > summary .mark {
-  /* Actor mark inside dense rows: match the text line, not the brand. */
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-.exploration > summary .mark {
-  vertical-align: -3px;
-  margin-right: 4px;
 }
 .tool-body {
   padding: 4px 0;

@@ -1,2 +1,0 @@
-import{n as e}from"./display-DNGVSrWw.js";import{C as t}from"./index-kLh1dUj-.js";function n({text:n}){let r=n.replace(/\n$/,``).split(`
-`);return t(`pre`,{class:`diff`,"aria-label":`File changes`,tabIndex:0,children:r.map((n,r)=>t(`span`,{class:e(n,r===0),children:n===``?` `:n},r))})}export{n as t};

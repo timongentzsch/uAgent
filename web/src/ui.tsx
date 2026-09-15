@@ -198,6 +198,7 @@ export function DisclosureRow({
   open,
   onToggle,
   className = "",
+  messageId,
   children,
 }: {
   label: string;
@@ -207,6 +208,7 @@ export function DisclosureRow({
   open?: boolean;
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
   className?: string;
+  messageId?: string;
   children: ComponentChildren;
 }) {
   const [isOpen, setIsOpen] = useState(!!open);
@@ -223,6 +225,7 @@ export function DisclosureRow({
     <details
       class={`disclosure-row ${className}`}
       data-status={status}
+      data-message-id={messageId}
       open={isOpen}
       onToggle={(event) => {
         const next = event.currentTarget.open;

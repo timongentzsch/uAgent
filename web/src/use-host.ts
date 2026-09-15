@@ -692,7 +692,13 @@ export function useHost(
     setSelected: (id: string) => {
       selection.current = id;
       writeSelection(id);
-      setFollowing(false);
+      // Following is owned solely by the transcript scroll stick
+      // (use-transcript-scroll): app.tsx pins to the latest on every
+      // selection change via jumpToLatest, which notifies through
+      // onFollow. Clearing it here diverged React state (false) from the
+      // stick ref (still true), so the pin became a no-op notification
+      // and following stayed false forever: the Jump button lingered,
+      // unread badges never cleared, and read marking stopped.
       if (live.current[id])
         setSnapshots((prior) =>
           prior[id] === live.current[id]

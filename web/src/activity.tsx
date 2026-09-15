@@ -128,6 +128,12 @@ export default function Activities({
       label: target.activity?.label || "Recorded event",
       status: target.status,
       memory: target.memory,
+      // The full command travels on the transcript block (bounded 8k);
+      // rows abbreviate to 160 chars, so the recorded popup must prefer
+      // the block when the supervisor no longer retains the job.
+      command:
+        (target as unknown as { command?: string }).command ||
+        (item as unknown as { command?: string } | undefined)?.command,
       output: target.text,
     };
     if (item || target.agent_id || target.memory) inspect(receipt);
@@ -262,7 +268,12 @@ export default function Activities({
         >
           {error && <LoadError error={error} retry={() => inspect(detail)} />}
           {loading && <Skeleton label="Loading activity…" />}
-          {!detail.conversation && <p class="detail-label">{detail.label}</p>}
+          {/* Lean header: full command scrollable on top, then the task.
+              Labels repeat the modal title, so they only show for plain
+              command records without a thread. */}
+          {!detail.conversation && detail.label && (
+            <p class="detail-label">{detail.label}</p>
+          )}
           <p class="muted">
             {currentDetail?.status}
             {detail.model && ` · ${detail.model}`}
@@ -272,9 +283,7 @@ export default function Activities({
               {cleanText(detail.command || target?.command || "")}
             </pre>
           )}
-          {detail.task && !detail.conversation && (
-            <p class="detail-task">{detail.task}</p>
-          )}
+          {detail.task && <p class="detail-task">{detail.task}</p>}
           {detail.directive && (
             <details>
               <summary>Persistent directive</summary>

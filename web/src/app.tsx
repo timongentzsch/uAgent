@@ -119,7 +119,7 @@ function App() {
   );
   const transcript = useRef<HTMLDivElement>(null);
   const transcriptContent = useRef<HTMLDivElement>(null);
-  const { jumpToLatest, preservePrepend } = useTranscriptScroll(
+  const { jumpToLatest, stopFollowing } = useTranscriptScroll(
     transcript,
     transcriptContent,
     setFollowing,
@@ -535,36 +535,39 @@ function App() {
     },
     [selected],
   );
+  // Prepend anchoring lives in chat.tsx (single owner): this only grows
+  // the window newest-last and caps at 256, never touching scroll.
   async function older() {
     if (!view?.more || !transcript.current) return;
     const before = view.before;
     const id = selected;
-    await preservePrepend(async () => {
-      const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
-      let applied = false;
-      updateView(id, (current) => {
-        if (
-          current.epoch !== value.epoch ||
-          current.metadata.generation !== value.metadata.generation ||
-          current.state?.view?.before !== before
-        )
-          return current;
-        applied = true;
-        return {
-          ...current,
-          state: {
-            ...current.state,
-            view: {
-              ...value.state?.view,
-              blocks: [
-                ...(value.state?.view?.blocks || []),
-                ...(current.state?.view?.blocks || []),
-              ].slice(0, 256),
-            },
+    const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
+    updateView(id, (current) => {
+      if (
+        current.epoch !== value.epoch ||
+        current.metadata.generation !== value.metadata.generation ||
+        current.state?.view?.before !== before
+      )
+        return current;
+      return {
+        ...current,
+        state: {
+          ...current.state,
+          view: {
+            ...value.state?.view,
+            blocks: [
+              ...(value.state?.view?.blocks || []),
+              ...(current.state?.view?.blocks || []),
+              // History window slides toward older content: the reader is
+              // at the TOP, so overflow drops off the TAIL (newest, far
+              // from the viewport). slice(-256) here dropped the just-
+              // fetched older page off the front and wedged the window:
+              // the visible front never advanced while `before` marched
+              // backwards. Jump-to-latest refetches the newest window.
+            ].slice(0, 256),
           },
-        };
-      });
-      return applied;
+        },
+      };
     });
   }
   async function logout() {
@@ -765,6 +768,7 @@ function App() {
                   }
                   scroller={transcript}
                   content={transcriptContent}
+                  stopFollowing={stopFollowing}
                   selected={selected}
                   snapshot={snapshot}
                   loadError={loadErrors[selected]}

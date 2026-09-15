@@ -592,6 +592,13 @@ pre code {
 .history-button {
   display: block;
   margin-inline: auto;
+  /* Stable height across the Loading swap so the anchor math below it
+     never shifts by the label change. Never a scroll anchor itself. */
+  min-height: var(--control);
+  overflow-anchor: none;
+}
+.retention {
+  overflow-anchor: none;
 }
 
 /* Draft, controls and status share a compact footer. */

@@ -2,7 +2,8 @@ import "./raw.css";
 import type { RawOptions, Exchange, JSONValue } from "./types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
-import { Field, Select, Skeleton, LoadError } from "./ui.tsx";
+import { Field, Select, LoadError } from "./ui.tsx";
+import { RawSkeleton } from "./loading.tsx";
 import { readPages, command } from "./api.ts";
 import { formatBody } from "./format.ts";
 import { formatEventStream } from "./event-stream.ts";
@@ -186,7 +187,7 @@ export default function Raw({
         {error ? (
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
         ) : body === undefined ? (
-          <Skeleton rows={12} label="Loading full body…" />
+          <RawSkeleton http={http} />
         ) : !text.trim() ? (
           <p class="muted">No content recorded.</p>
         ) : (

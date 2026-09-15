@@ -934,6 +934,53 @@ dialog section {
   height: var(--control);
   width: 100%;
 }
+/* Inert structural mirrors (loading.tsx): same shells as the live
+   surfaces, shimmer blocks only. Widths defeat the nth-child variation
+   below because single bars never match 3n+2/3n. */
+.title-skeleton,
+.meta-skeleton,
+.brand-skeleton,
+.icon-skeleton,
+.composer-input-skeleton {
+  padding: 0;
+}
+.title-skeleton span {
+  height: 1em;
+  width: 42%;
+}
+.meta-skeleton span {
+  height: 0.75em;
+  width: 68%;
+}
+.brand-skeleton {
+  width: 32px;
+}
+.brand-skeleton span {
+  height: 32px;
+  width: 32px;
+}
+.session-mirror {
+  min-height: var(--control);
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+.icon-skeleton {
+  width: var(--control);
+}
+.icon-skeleton span {
+  height: var(--control);
+  width: 100%;
+}
+.composer-actions > .send-skeleton {
+  margin-left: auto;
+}
+.composer-input-skeleton span {
+  min-height: max(40px, calc(1.5em + 12px));
+  width: 100%;
+}
 .action-skeleton {
   width: auto;
   padding: 0;

@@ -154,6 +154,7 @@ export interface Block {
   reply_excerpt?: string;
   activity_id?: number;
   agent_id?: string;
+  command?: string;
 }
 export interface PresentedBlock extends Block {
   children?: PresentedBlock[];

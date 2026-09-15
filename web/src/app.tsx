@@ -26,6 +26,18 @@ import {
 import { readStored, writeStored } from "./store.ts";
 import { api, command, requestId } from "./api.ts";
 import { Mark, Modal, Deferred, Skeleton } from "./ui.tsx";
+import {
+  ComposerSkeleton,
+  ConversationActionSkeleton,
+  HistorySkeleton,
+  ManagementSkeleton,
+  PairingSkeleton,
+  PromptSkeleton,
+  RawSkeleton,
+  SettingsSkeleton,
+  SidebarSkeleton,
+  StatsSkeleton,
+} from "./loading.tsx";
 
 import { useHost } from "./use-host.ts";
 import { parseSlash } from "./slash.ts";
@@ -612,7 +624,7 @@ function App() {
   const sidebar = (
     <Deferred
       load={sidebarModule}
-      fallback={<Skeleton rows={8} label="Connecting…" />}
+      fallback={<SidebarSkeleton />}
       page={page}
       navigate={(value) => {
         setPage(value);
@@ -663,24 +675,19 @@ function App() {
           load={pairing}
           paired={refresh}
           report={report}
-          fallback={
-            <main class="pairing">
-              <Mark className="wordmark" />
-              <Skeleton rows={5} label="Loading connection form…" />
-            </main>
-          }
+          fallback={<PairingSkeleton />}
         />
       ) : authenticated === null ? (
         <main class="shell loading-shell">
-          {!compact && <Skeleton rows={8} label="Connecting…" />}
+          {!compact && <SidebarSkeleton />}
           <div class="conversation">
             <header class="conversation-head">
-              <Skeleton rows={1} />
+              <Skeleton rows={1} className="title-skeleton" />
             </header>
             <div class="transcript">
-              <Skeleton className="history-skeleton" rows={8} />
+              <HistorySkeleton />
             </div>
-            <Skeleton rows={2} label="Loading composer…" />
+            <ComposerSkeleton />
           </div>
         </main>
       ) : (
@@ -743,18 +750,18 @@ function App() {
                 unread={unread}
                 choose={choose}
                 refresh={refresh}
-                fallback={<Skeleton rows={12} label="Loading workspace…" />}
+                fallback={<ManagementSkeleton />}
               />
             ) : session ? (
               <>
                 <Deferred
                   load={chat}
                   fallback={
-                    <Skeleton
-                      className="transcript history-skeleton"
-                      rows={8}
-                      label="Loading conversation…"
-                    />
+                    <div className="transcript">
+                      <div className="transcript-content">
+                        <HistorySkeleton />
+                      </div>
+                    </div>
                   }
                   scroller={transcript}
                   content={transcriptContent}
@@ -775,7 +782,7 @@ function App() {
                 />
                 <Deferred
                   load={composer}
-                  fallback={<Skeleton rows={2} label="Loading composer…" />}
+                  fallback={<ComposerSkeleton />}
                   session={session}
                   commands={catalogue.commands || []}
                   snapshot={snapshot}
@@ -789,7 +796,14 @@ function App() {
                   act={act}
                   report={report}
                   following={following}
-                  jump={() => load(selected).then(jumpToLatest).catch(report)}
+                  // Optimistic: pin to the end synchronously (<1 frame),
+                  // refresh the snapshot in the background. jumpToLatest
+                  // is idempotent and load() dedupes in flight, so rapid
+                  // presses stay a single pin + a single fetch.
+                  jump={() => {
+                    jumpToLatest();
+                    load(selected).catch(report);
+                  }}
                   activityTarget={activityTarget}
                   clearActivity={() => setActivityTarget(null)}
                   showStatistics={() =>
@@ -837,14 +851,16 @@ function App() {
           {modal.type === "statistics" ? (
             <Deferred
               load={statisticsDialog}
-              fallback={<Skeleton rows={8} label="Loading statistics…" />}
+              fallback={<StatsSkeleton />}
               modal={modal}
               loadSnapshot={load}
             />
           ) : (
             <Deferred
               load={conversationActions}
-              fallback={<Skeleton className="form-skeleton" rows={1} />}
+              fallback={
+                <ConversationActionSkeleton kind={modal.type} />
+              }
               key={`${modal.type}-${modal.session.id}`}
               modal={modal}
               close={() => setModal(null)}
@@ -898,7 +914,9 @@ function App() {
             load={rawDialog}
             prompt={() => setModal({ type: "prompt" })}
             fallback={
-              <Skeleton rows={12} label="Loading full body…" />
+              <RawSkeleton
+                http={modal.context || modal.exchanges !== undefined}
+              />
             }
             id={modal.id}
             session={modal.session}
@@ -921,7 +939,7 @@ function App() {
         >
           <Deferred
             load={promptDialog}
-            fallback={<Skeleton rows={12} label="Loading system prompt…" />}
+            fallback={<PromptSkeleton />}
             session={session}
             projects={projects}
             online={online}
@@ -940,7 +958,7 @@ function App() {
         >
           <Deferred
             load={settingsDialog}
-            fallback={<Skeleton rows={8} label="Loading settings…" />}
+            fallback={<SettingsSkeleton />}
             theme={theme}
             setTheme={setTheme}
             sizes={sizes}

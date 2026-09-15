@@ -1,6 +1,7 @@
 import type { Block, Exchange, Report, Session, Snapshot } from "./types.ts";
 import type { RefObject } from "preact";
-import { LoadError, Mark, Skeleton } from "./ui.tsx";
+import { LoadError, Mark } from "./ui.tsx";
+import { HistorySkeleton } from "./loading.tsx";
 import { MessageRows } from "./message.tsx";
 
 export default function Chat({
@@ -72,11 +73,7 @@ export default function Chat({
         (loadError ? (
           <LoadError error={loadError} retry={retry} />
         ) : (
-          <Skeleton
-            className="history-skeleton"
-            rows={8}
-            label="Loading conversation…"
-          />
+          <HistorySkeleton />
         ))}
       {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
       {snapshot && blocks.length === 0 && (

@@ -1,7 +1,8 @@
 import "./attachments.css";
 import { useCommandSuggestions } from "./command-suggestions.tsx";
 import { parseSlash } from "./slash.ts";
-import { ModelSkeleton } from "./loading.tsx";
+import { Deferred, Field, Select } from "./ui.tsx";
+import { DecisionSkeleton, ModelSkeleton } from "./loading.tsx";
 import { bytes, count } from "./quantities.ts";
 import { contextSummary } from "./context.ts";
 import { observeResize } from "./layout.ts";
@@ -27,7 +28,6 @@ import {
   X,
 } from "lucide-preact";
 import { command } from "./api.ts";
-import { Deferred, Field, Select, Skeleton } from "./ui.tsx";
 import { Popover } from "./popover.tsx";
 import Activities from "./activity-status.tsx";
 const modelPicker = () => import("./model-picker.tsx");
@@ -138,9 +138,7 @@ export default function Composer({
           act={act}
           online={online}
           report={report}
-          fallback={
-            <Skeleton className="form-skeleton" label="Loading decision…" />
-          }
+          fallback={<DecisionSkeleton />}
         />
       ) : online && !session.generation ? (
         <button

@@ -1,7 +1,8 @@
 import type { LibraryItem } from "./types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { Plus, ArrowLeft, ChevronDown, Pencil } from "lucide-preact";
-import { Field, LoadError, Modal, Select, Skeleton } from "./ui.tsx";
+import { Field, LoadError, Modal, Select } from "./ui.tsx";
+import { EditorSkeleton, LibraryRows } from "./loading.tsx";
 import { Menu, MenuItem } from "./popover.tsx";
 import { readStored, writeStored } from "./store.ts";
 import { bytes } from "./quantities.ts";
@@ -191,7 +192,7 @@ export default function Library({
   );
   function rows(group?: string) {
     if (listError) return null;
-    if (!data) return <Skeleton rows={3} label="Loading library…" />;
+    if (!data) return <LibraryRows />;
     const entries = group
       ? items.filter((entry) => entry.scope === group)
       : items;
@@ -336,7 +337,7 @@ export default function Library({
           </div>
           <fieldset disabled={busy} class="management-editor">
             {loading ? (
-              <Skeleton rows={12} label="Loading document…" />
+              <EditorSkeleton />
             ) : item ? (
               <>
                 <div class="editor-head">

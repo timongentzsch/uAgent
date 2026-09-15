@@ -267,9 +267,9 @@ export default function Activities({
             {currentDetail?.status}
             {detail.model && ` · ${detail.model}`}
           </p>
-          {detail.command && (
+          {(detail.command || target?.command) && (
             <pre class="detail-command" tabIndex={0}>
-              {cleanText(detail.command)}
+              {cleanText(detail.command || target?.command || "")}
             </pre>
           )}
           {detail.task && !detail.conversation && (
@@ -294,12 +294,15 @@ export default function Activities({
             </p>
           )}
           {detail.statistics && (
-            <p class="muted">
-              {count(detail.turns)} turns ·{" "}
-              {count(detail.statistics.model_calls)} model calls ·{" "}
-              {count(detail.statistics.tool_calls)} tool calls ·{" "}
-              {count(detail.usage?.output)} output tokens
-            </p>
+            <details>
+              <summary>Run statistics</summary>
+              <p class="muted">
+                {count(detail.turns)} turns ·{" "}
+                {count(detail.statistics.model_calls)} model calls ·{" "}
+                {count(detail.statistics.tool_calls)} tool calls ·{" "}
+                {count(detail.usage?.output)} output tokens
+              </p>
+            </details>
           )}
           {detail.conversation ? (
             <>

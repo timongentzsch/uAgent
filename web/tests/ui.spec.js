@@ -286,9 +286,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
-  await page.addInitScript(() =>
-    localStorage.setItem("uagent-offline-enabled", "false"),
-  );
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // A valid empty worker keeps cold lazy-module tests independent of precaching.

@@ -6,7 +6,6 @@ import { MessageRows } from "./message.tsx";
 export default function Chat({
   scroller,
   content,
-  sentinel,
   selected,
   snapshot,
   loadError,
@@ -24,7 +23,6 @@ export default function Chat({
 }: {
   scroller: RefObject<HTMLDivElement>;
   content: RefObject<HTMLDivElement>;
-  sentinel: RefObject<HTMLDivElement>;
   selected: string;
   snapshot?: Snapshot;
   loadError?: unknown;
@@ -105,7 +103,6 @@ export default function Chat({
       )}
       {session.error && <p class="failure">{session.error}</p>}
       {snapshot?.state?.error && <p class="failure">{snapshot.state.error}</p>}
-      <div ref={sentinel} class="transcript-sentinel" aria-hidden="true" />
       </div>
     </div>
   );

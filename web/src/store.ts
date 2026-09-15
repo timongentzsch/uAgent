@@ -178,6 +178,43 @@ export function reconcileBlock(
   };
 }
 
+// Merge a fresh snapshot over the live view, keeping older retained pages
+// and never downgrading a fuller block revision. Pure; used by the live
+// event stream, independent of any persistence.
+export function mergeCached(
+  previous: Snapshot | undefined,
+  latest: Snapshot,
+): Snapshot {
+  const a = previous?.state?.view,
+    b = latest.state?.view;
+  if (
+    !a ||
+    !b ||
+    previous?.epoch !== latest.epoch ||
+    a.dropped_segments !== b.dropped_segments
+  )
+    return latest;
+  const first = b.before || b.blocks[0]?.sequence;
+  if (!first) return latest;
+  const older = a.blocks.filter((block) => (block.sequence || 0) < first);
+  const old = new Map(a.blocks.map((block) => [block.id, block]));
+  const blocks = b.blocks.map((block) =>
+    reconcileBlock(old.get(block.id), block),
+  );
+  return {
+    ...latest,
+    state: {
+      ...latest.state,
+      view: {
+        ...b,
+        blocks: [...older, ...blocks],
+        before: older.length ? a.before : b.before,
+        more: older.length ? a.more : b.more,
+      },
+    },
+  };
+}
+
 export function applySessionEvent(
   current: Snapshot,
   event: HostEvent,

@@ -107,11 +107,9 @@ function App() {
   );
   const transcript = useRef<HTMLDivElement>(null);
   const transcriptContent = useRef<HTMLDivElement>(null);
-  const sentinel = useRef<HTMLDivElement>(null);
   const { jumpToLatest, preservePrepend } = useTranscriptScroll(
     transcript,
     transcriptContent,
-    sentinel,
     setFollowing,
   );
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
@@ -760,7 +758,6 @@ function App() {
                   }
                   scroller={transcript}
                   content={transcriptContent}
-                  sentinel={sentinel}
                   selected={selected}
                   snapshot={snapshot}
                   loadError={loadErrors[selected]}

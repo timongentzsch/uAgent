@@ -1,5 +1,3 @@
-import { offline } from "./offline.ts";
-import { useDownloads } from "./offline-settings.tsx";
 import type { ComponentChildren } from "preact";
 import type { Session, Report, AppModal, Snapshot } from "./types.ts";
 import { useState } from "preact/hooks";
@@ -42,22 +40,8 @@ export function ConversationMenu({
   report: Report;
   open: (modal: AppModal) => void;
 }) {
-  const downloads = useDownloads();
-  const pinned = downloads.some(
-    (download) => download.id === item.id && download.pinned,
-  );
   return (
     <Menu label="Conversation menu">
-      <MenuItem
-        disabled={!online || !offline.enabled}
-        onClick={() =>
-          (pinned ? offline.remove(item.id) : offline.keep(item.id)).catch(
-            report,
-          )
-        }
-      >
-        {pinned ? "Remove offline copy" : "Keep offline"}
-      </MenuItem>
       <MenuItem
         disabled={
           !online ||
@@ -268,16 +252,10 @@ export default function Sidebar({
       <footer>
         <span
           class={`connection ${online ? "connected" : ""}`}
-          title={
-            online
-              ? "Connected"
-              : connecting
-                ? "Connecting…"
-                : "Offline · unsent drafts stay here"
-          }
+          title={online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
         >
           <StatusLed state={online ? "active" : "idle"} />{" "}
-          {online ? "Connected" : connecting ? "Connecting…" : "Offline"}
+          {online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
         </span>
         <button
           class="quiet icon-button"

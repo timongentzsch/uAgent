@@ -42,8 +42,11 @@
   overflow-wrap: anywhere;
 }
 .activity-view .detail-command {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+  max-width: 100%;
+  max-height: 16rem;
 }
 .activity-view .markdown {
   overflow-wrap: anywhere;

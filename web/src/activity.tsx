@@ -246,7 +246,13 @@ export default function Activities({
       {detail && (
         <Modal
           title={
-            detail.memory ? "Memory" : detail.agent_id ? "Subagent" : "Activity"
+            detail.memory
+              ? "Memory"
+              : detail.command
+                ? "Activity"
+                : detail.agent_id
+                  ? "Subagent"
+                  : "Activity"
           }
           className="activity-view"
           close={() => {
@@ -261,8 +267,10 @@ export default function Activities({
             {currentDetail?.status}
             {detail.model && ` · ${detail.model}`}
           </p>
-          {detail.command && !detail.agent_id && (
-            <pre class="detail-command">{cleanText(detail.command)}</pre>
+          {detail.command && (
+            <pre class="detail-command" tabIndex={0}>
+              {cleanText(detail.command)}
+            </pre>
           )}
           {detail.task && !detail.conversation && (
             <p class="detail-task">{detail.task}</p>

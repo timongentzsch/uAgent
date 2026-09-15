@@ -368,7 +368,7 @@ export default function Composer({
         present={online && !!session?.presence}
         phase={
           !online
-            ? "Offline"
+            ? "Disconnected"
             : detached || state?.activity || (state ? "Ready" : "Loading…")
         }
         running={online && running}

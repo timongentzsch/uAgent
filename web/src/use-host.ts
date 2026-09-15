@@ -14,11 +14,11 @@ import {
   retainedViews,
   applySessionEvent,
   isIncoming,
+  mergeCached,
   readStored,
   writeStored,
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
-import { mergeCached, offline } from "./offline.ts";
 import { selectedFromURL, writeSelection } from "./navigation.ts";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
@@ -81,19 +81,6 @@ export function useHost(
     if (loads.current.has(id)) return loads.current.get(id)!;
     setLoadErrors((prior) => ({ ...prior, [id]: null }));
     const signal = lifetime.current.signal;
-    const cached = offline.snapshot(id).catch(() => undefined);
-    cached.then((value) => {
-      if (
-        value &&
-        !revoked.current &&
-        !signal.aborted &&
-        !live.current[id] &&
-        loads.current.get(id) === request
-      ) {
-        live.current[id] = value;
-        setSnapshots({ ...live.current });
-      }
-    });
     const request = api<Snapshot>(`/api/sessions/${id}`, undefined, {
       signal,
     })
@@ -124,10 +111,13 @@ export function useHost(
         return value;
       })
       .catch(async (error) => {
-        if (failure(error).network && !revoked.current && !signal.aborted) {
-          const value = live.current[id] || (await cached);
-          if (value) return value;
-        }
+        if (
+          failure(error).network &&
+          !revoked.current &&
+          !signal.aborted &&
+          live.current[id]
+        )
+          return live.current[id];
         if (!signal.aborted && loads.current.get(id) === request)
           setLoadErrors((prior) => ({ ...prior, [id]: error }));
         throw error;
@@ -139,7 +129,6 @@ export function useHost(
     return request;
   }, []);
   const forget = useCallback((id: string) => {
-    offline.remove(id).catch(report);
     loads.current.delete(id);
     delete live.current[id];
     setLoadErrors((prior) => {
@@ -187,9 +176,7 @@ export function useHost(
       });
       if (signal.aborted) return;
       revoked.current = false;
-      if (list.device) offline.select(list.device);
       catalogueRef.current = list;
-      offline.catalogue(list).catch(report);
       setCatalogue(list);
       // Activation can precede the first snapshot of a newly created session.
       const knownSessions = new Map(
@@ -550,7 +537,6 @@ export function useHost(
         revoked.current = true;
         catalogueRef.current = undefined;
         setCatalogue({ sessions: [], devices: [], capabilities: {} });
-        offline.clear().catch(report);
         setDrafts({});
         setAuthenticated(false);
         live.current = {};
@@ -570,37 +556,6 @@ export function useHost(
   useEffect(() => {
     const restoration = history.scrollRestoration;
     history.scrollRestoration = "manual";
-    offline
-      .bootstrap()
-      .then(async (cached) => {
-        if (
-          !cached ||
-          revoked.current ||
-          lifetime.current.signal.aborted ||
-          (catalogueRef.current &&
-            catalogueRef.current.device !== cached.catalogue.device)
-        )
-          return;
-        if (!catalogueRef.current) {
-          setCatalogue(cached.catalogue);
-          setAuthenticated(true);
-        }
-        setDrafts((current) => ({ ...cached.drafts, ...current }));
-        const id = selection.current;
-        const value = id && (await offline.snapshot(id));
-        if (
-          value &&
-          !revoked.current &&
-          !lifetime.current.signal.aborted &&
-          (!catalogueRef.current ||
-            catalogueRef.current.device === cached.catalogue.device) &&
-          !live.current[id]
-        ) {
-          live.current[id] = value;
-          setSnapshots({ ...live.current });
-        }
-      })
-      .catch(() => {});
     refresh();
     const recover = (event?: Event) => {
       if (document.visibilityState !== "visible") return;
@@ -706,45 +661,6 @@ export function useHost(
         localRequests.current.values().next().value!,
       );
   }, []);
-  const persisted = useRef({ snapshots, drafts, catalogue });
-  persisted.current = { snapshots, drafts, catalogue };
-  const saved = useRef(persisted.current);
-  const saveTimer = useRef<ReturnType<typeof setTimeout>>();
-  const save = useCallback(() => {
-    clearTimeout(saveTimer.current);
-    saveTimer.current = undefined;
-    const previous = saved.current;
-    const next = persisted.current;
-    if (next === previous || revoked.current) return;
-    for (const [id, snapshot] of Object.entries(next.snapshots)) {
-      const old = previous.snapshots[id];
-      if (
-        old?.state?.view !== snapshot.state?.view ||
-        old?.metadata.title !== snapshot.metadata.title ||
-        old?.metadata.generation !== snapshot.metadata.generation
-      )
-        offline.save(snapshot).catch(report);
-    }
-    if (previous.drafts !== next.drafts)
-      offline.drafts(next.drafts).catch(report);
-    if (previous.catalogue !== next.catalogue && catalogueRef.current)
-      offline.catalogue(next.catalogue).catch(report);
-    saved.current = next;
-  }, [report]);
-  useEffect(() => {
-    if (!saveTimer.current) saveTimer.current = setTimeout(save, 350);
-  }, [snapshots, drafts, catalogue, save]);
-  useEffect(() => {
-    const lifecycle = () => document.visibilityState === "hidden" && save();
-    document.addEventListener("visibilitychange", lifecycle);
-    addEventListener("pagehide", save);
-    return () => {
-      save();
-      clearTimeout(saveTimer.current);
-      document.removeEventListener("visibilitychange", lifecycle);
-      removeEventListener("pagehide", save);
-    };
-  }, [save]);
   function reset() {
     lifetime.current.abort();
     lifetime.current = new AbortController();
@@ -757,7 +673,6 @@ export function useHost(
     setOutgoing([]);
     revoked.current = true;
     catalogueRef.current = undefined;
-    offline.clear().catch(report);
     setCatalogue({ sessions: [], devices: [], capabilities: {} });
     setOnline(false);
     setAuthenticated(false);

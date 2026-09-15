@@ -45,7 +45,7 @@ show the reported route, tokens, timing and tool counts.
 One status indicator is used in the sidebar and composer: hollow without a live
 runtime, filled when connected, breathing while work runs. A pending decision has
 a steady indicator and a “Needs your input” label. A separate dot marks unread
-responses. Offline views stop animation and disable commands.
+responses. Disconnected views stop animation and disable commands.
 
 ## Conversation controls
 
@@ -95,15 +95,12 @@ and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
 ## Offline conversations
 
-IndexedDB caches bounded transcript pages by authenticated host and conversation.
-Dirty transcript and draft changes are coalesced; usage-only changes do not
-rewrite transcript snapshots. The service worker precaches the shell and core
-conversation assets. Build-derived optional renderer assets enter a bounded
-runtime cache after first use. Previously loaded
-history remains readable offline; older uncached pages and original attachments
-require the host. Reconnect refreshes authoritative state before enabling writes.
-The cache is an optional replica: storage failure cannot prevent online use, and
-cached events never execute commands. Signing out removes the device's cache.
+There is no offline conversation storage: transcripts, drafts and history
+require a live host connection, and disconnecting disables commands until
+reconnect refreshes authoritative state. The service worker precaches the
+shell and core conversation assets. Build-derived optional renderer assets
+enter a bounded runtime cache after first use. Signing out clears local
+UI state.
 
 The UI uses a single viewport owner, safe-area insets and shared popovers/modals.
 Input focus, orientation changes and returning from the background preserve the

@@ -1,78 +1,69 @@
-import { useCallback, useEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "preact/hooks";
 import type { RefObject } from "preact";
 
 // Distance (px) from the bottom that still counts as "at the end". Catches
-// the streaming case where the sentinel flickers out of view for a frame
+// the streaming case where a frame lands a few pixels shy of the maximum
 // while the user never scrolled up.
 const STICK_PX = 100;
+// Ignore sub-pixel and rubber-band noise when judging scroll direction.
+const MOVE_PX = 2;
 
-// Hybrid stick-to-bottom owner for the transcript:
-//   - passive scroll listener (rAF-throttled) + sentinel observer feed one
-//     sticky flag: sentinel visible OR within STICK_PX of the bottom.
-//   - after every render, if sticky and not at the bottom, pin to bottom.
-//   - a ResizeObserver on the content column re-pins while sticky when
-//     late layout (async markdown, diagrams, images, fonts) grows the
-//     transcript without a render or scroll event.
-//   - resource loads (images), viewport resizes (mobile keyboard) and mount
-//     re-pin when sticky.
-// No MutationObserver, no per-frame DOM queries while idle.
+// Stick-to-bottom owner, built around one invariant:
+//
+//   Only the user can break the stick, and only by moving UP.
+//
+// Content growth never fires scroll events, so it can never break the
+// stick. Programmatic pins only ever move DOWN, so comparing scrollTop
+// across scroll events unambiguously separates user intent from our own
+// pins. (A sentinel IntersectionObserver cannot do this: its callback is
+// async post-layout, so fast growth during a turn unpins between the
+// observe fire and the pin. That race was the unreliability.)
+//
+// Signals:
+//   scroll listener  — the ONLY writer that clears sticky (scrollTop moved
+//                      up since the last event); re-arms sticky inside the
+//                      bottom band.
+//   layout pin       — useLayoutEffect after every render pins before
+//                      paint, so streaming never shows a detached frame.
+//   content observer — one ResizeObserver on the column re-pins while
+//                      sticky when async markdown/diagrams/images/fonts
+//                      grow the transcript without a render.
+//   viewport resize  — window/visualViewport (mobile keyboard) re-pin
+//                      while sticky.
+// No sentinel observer, no MutationObserver, no gesture listeners.
 export function useTranscriptScroll(
   scroller: RefObject<HTMLDivElement>,
   content: RefObject<HTMLDivElement>,
-  sentinel: RefObject<HTMLDivElement>,
   onFollow: (following: boolean) => void,
 ) {
   const sticky = useRef(true);
-  const followRef = useRef(true);
+  const lastTop = useRef(0);
   const onFollowRef = useRef(onFollow);
   onFollowRef.current = onFollow;
-
-  const distanceToBottom = useCallback(() => {
-    const element = scroller.current;
-    if (!element) return 0;
-    return element.scrollHeight - element.scrollTop - element.clientHeight;
-  }, [scroller]);
 
   const pinToBottom = useCallback(() => {
     const element = scroller.current;
     if (!element) return;
     const target = element.scrollHeight - element.clientHeight;
     if (element.scrollTop !== target) element.scrollTop = target;
+    lastTop.current = element.scrollTop;
   }, [scroller]);
 
   const setSticky = useCallback((value: boolean) => {
+    if (sticky.current === value) return;
     sticky.current = value;
-    if (followRef.current !== value) {
-      followRef.current = value;
-      onFollowRef.current(value);
-    }
+    onFollowRef.current(value);
   }, []);
 
-  // Recompute stickiness from the live geometry. OR-combined with the
-  // sentinel signal so a single flickering source can't drop the stick.
-  const refreshSticky = useCallback(() => {
-    setSticky(distanceToBottom() <= STICK_PX);
-  }, [distanceToBottom, setSticky]);
-
-  const refreshStickyRef = useRef(refreshSticky);
-  refreshStickyRef.current = refreshSticky;
-
   // After every render (new blocks, streaming deltas, session switch):
-  // if the user is sticky but layout moved the bottom, pin it back.
-  // Runs in layout phase so the paint never shows a detached bottom.
-  useEffect(() => {
-    if (!sticky.current) return;
-    pinToBottom();
-    // One more pin on the next frame catches late layout (web fonts,
-    // image dimensions, markdown highlight) without a steady observer.
-    const frame = requestAnimationFrame(() => {
-      if (sticky.current) pinToBottom();
-    });
-    return () => cancelAnimationFrame(frame);
+  // pin before paint while sticky so no frame shows a detached bottom.
+  useLayoutEffect(() => {
+    if (sticky.current) pinToBottom();
   });
 
-  // Passive scroll listener: the only signal that can *break* the stick
-  // (user scrolling up) and the one that re-arms it near the bottom.
+  // Scroll is the only unstick signal. A decrease in scrollTop is always
+  // the user (pins only move down; growth fires no event). Bottom-band
+  // contact re-arms the stick whichever way the user arrived.
   useEffect(() => {
     const element = scroller.current;
     if (!element) return;
@@ -81,7 +72,22 @@ export function useTranscriptScroll(
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        refreshStickyRef.current();
+        const top = element.scrollTop;
+        if (top < lastTop.current - MOVE_PX) {
+          if (sticky.current) {
+            sticky.current = false;
+            onFollowRef.current(false);
+          }
+        } else if (
+          element.scrollHeight - top - element.clientHeight <=
+          STICK_PX
+        ) {
+          if (!sticky.current) {
+            sticky.current = true;
+            onFollowRef.current(true);
+          }
+        }
+        lastTop.current = top;
       });
     };
     element.addEventListener("scroll", onScroll, { passive: true });
@@ -92,39 +98,9 @@ export function useTranscriptScroll(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scroller.current]);
 
-  // Sentinel observer as a second stickiness source: intersecting means
-  // sticky, but a non-intersecting sentinel must NOT clear a stick that
-  // the geometry check still confirms (fast streaming growth).
-  useEffect(() => {
-    const root = scroller.current;
-    const target = sentinel.current;
-    if (!root || !target) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setSticky(true);
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.target !== target) continue;
-          if (entry.isIntersecting) {
-            setSticky(true);
-          } else {
-            refreshStickyRef.current();
-          }
-        }
-      },
-      { root, threshold: 0 },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scroller.current, sentinel.current, setSticky]);
-
   // Late layout (async markdown, mermaid, images, web fonts) grows the
-  // content column without a render or scroll event. One observer on the
-  // column re-pins while sticky; setting scrollTop never resizes content,
-  // so this cannot self-trigger.
+  // content column without a render or scroll event. Re-pin while sticky;
+  // setting scrollTop never resizes content, so this cannot self-trigger.
   useEffect(() => {
     const target = content.current;
     if (!target || typeof ResizeObserver === "undefined") return;
@@ -144,35 +120,26 @@ export function useTranscriptScroll(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content.current, pinToBottom]);
 
-  // Late subresource loads (images, fonts) shift the bottom without a
-  // render. Capture-phase "load" catches them; pin only when sticky.
-  // Visual-viewport resizes (mobile keyboard) do the same for clientHeight.
+  // Window and visual-viewport (mobile keyboard) resizes move the bottom
+  // without scrolling. Re-pin while sticky.
   useEffect(() => {
-    const element = scroller.current;
-    if (!element) return;
-    const onResource = () => {
-      if (sticky.current) pinToBottom();
-    };
-    element.addEventListener("load", onResource, true);
-    const viewport = window.visualViewport;
     const onResize = () => {
       if (sticky.current) pinToBottom();
     };
+    window.addEventListener("resize", onResize);
+    const viewport = window.visualViewport;
     viewport?.addEventListener("resize", onResize);
     return () => {
-      element.removeEventListener("load", onResource, true);
+      window.removeEventListener("resize", onResize);
       viewport?.removeEventListener("resize", onResize);
     };
-  }, [pinToBottom, scroller]);
+  }, [pinToBottom]);
 
   const jumpToLatest = useCallback(() => {
     setSticky(true);
     pinToBottom();
     // Content may still be arriving (jump right after a reload); the
-    // per-render effect keeps pinning while sticky stays true.
-    requestAnimationFrame(() => {
-      if (sticky.current) pinToBottom();
-    });
+    // layout pin and content observer keep holding while sticky is true.
   }, [pinToBottom, setSticky]);
 
   // Prepend older pages without moving the visible anchor. Only needed where
@@ -190,7 +157,10 @@ export function useTranscriptScroll(
       const before = element.scrollHeight;
       const top = element.scrollTop;
       const applied = await load();
-      if (applied) element.scrollTop = top + (element.scrollHeight - before);
+      if (applied) {
+        element.scrollTop = top + (element.scrollHeight - before);
+        lastTop.current = element.scrollTop;
+      }
       return applied;
     },
     [scroller],

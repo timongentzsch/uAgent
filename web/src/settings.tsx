@@ -1,6 +1,5 @@
 import "./settings.css";
 import { SizeControls } from "./size-controls.tsx";
-import OfflineSettings from "./offline-settings.tsx";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
   Sizes,
@@ -187,10 +186,6 @@ export default function Settings({
               Advanced configuration
             </button>
           </div>
-          <details class="settings-section">
-            <summary>Offline storage</summary>
-            <OfflineSettings />
-          </details>
           <details class="settings-section">
             <summary>Install</summary>
             {installed ? (

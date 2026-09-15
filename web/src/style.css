@@ -526,10 +526,6 @@ pre code {
 .transcript-content > details {
   margin-block: 0;
 }
-.transcript-sentinel {
-  height: 1px;
-  overflow-anchor: auto;
-}
 .retention {
   font-size: 0.8rem;
   color: var(--muted);

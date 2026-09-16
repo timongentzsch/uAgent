@@ -11,16 +11,12 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/signals.h"
+#include "include/core/time.h"
 
 namespace uagent {
 namespace {
 constexpr size_t kStoreBytes = size_t{4} * 1024 * 1024;
 constexpr size_t kTasks = 64, kRuns = 128;
-int64_t Now() {
-  return std::chrono::duration_cast<std::chrono::seconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 json Empty() {
   return {{"v", 1},
           {"revision", ""},
@@ -80,7 +76,7 @@ json Run(const json& task, int64_t at, const std::string& status) {
           {"task_revision", task["revision"]},
           {"title", task["name"]},
           {"scheduled_for", at},
-          {"updated", Now()},
+          {"updated", NowSeconds()},
           {"status", status},
           {"cwd", cwd},
           {"project", project},
@@ -146,7 +142,7 @@ json ReadSchedules() {
 json ScheduleCalendar(const json& request) {
   const auto schedule = JsonValue(request, "schedule", json::object());
   const auto type = JsonValue(schedule, "type", "");
-  int64_t after = JsonValue(request, "after", Now());
+  int64_t after = JsonValue(request, "after", NowSeconds());
   if (after < 0 || after > 4102444800LL) {
     return {{"error", "schedule date is outside 1970–2100"}};
   }
@@ -257,7 +253,7 @@ json ScheduleControl(const json& request) {
   }
   if (action == "preview") {
     return ScheduleTimes(JsonValue(request, "schedule", json::object()),
-                         JsonValue(request, "after", Now()));
+                         JsonValue(request, "after", NowSeconds()));
   }
   if (action == "get") {
     auto store = Public(ReadSchedules());
@@ -281,7 +277,7 @@ json ScheduleControl(const json& request) {
           run["status"] = JsonValue(run, "status", "") == "queued"
                               ? "interrupted"
                               : "stopping";
-          run["updated"] = Now();
+          run["updated"] = NowSeconds();
           return {{"stopped", id}};
         }
       }
@@ -321,9 +317,9 @@ json ScheduleControl(const json& request) {
       auto schedule = JsonValue(task, "schedule", json::object());
       if (JsonValue(schedule, "type", "") == "interval" &&
           !schedule.contains("start")) {
-        schedule["start"] = Now();
+        schedule["start"] = NowSeconds();
       }
-      auto preview = ScheduleTimes(schedule, Now());
+      auto preview = ScheduleTimes(schedule, NowSeconds());
       if (preview.contains("error")) return preview;
       if (preview["times"].empty()) {
         return {{"error", "choose a future run time"}};
@@ -357,7 +353,7 @@ json ScheduleControl(const json& request) {
       if (Busy(store, id)) {
         return {{"error", "this task already has an active run"}};
       }
-      auto run = Run(*found, Now(), "queued");
+      auto run = Run(*found, NowSeconds(), "queued");
       store["runs"].push_back(run);
       return {{"run", Public({{"runs", json::array({run})}})["runs"][0]}};
     }
@@ -372,7 +368,7 @@ json ScheduleControl(const json& request) {
           if (JsonValue(run, "task_id", "") == id &&
               JsonValue(run, "status", "") == "queued") {
             run["status"] = "interrupted";
-            run["updated"] = Now();
+            run["updated"] = NowSeconds();
           }
         }
       }
@@ -380,7 +376,7 @@ json ScheduleControl(const json& request) {
     if (action == "pause" || action == "resume") {
       (*found)["enabled"] = action == "resume";
       if (action == "resume") {
-        auto preview = ScheduleTimes((*found)["schedule"], Now());
+        auto preview = ScheduleTimes((*found)["schedule"], NowSeconds());
         if (preview.contains("error") || preview["times"].empty()) {
           return {{"error", "edit the task to choose a future run time"}};
         }
@@ -440,7 +436,7 @@ json UpdateScheduledRun(const std::string& id, const std::string& status,
           continue;
         }
         run["status"] = status;
-        run["updated"] = Now();
+        run["updated"] = NowSeconds();
         if (!error.empty()) run["error"] = error;
       }
     }

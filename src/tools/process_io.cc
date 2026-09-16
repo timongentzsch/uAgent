@@ -401,9 +401,7 @@ size_t ProcessSupervisor::Count(ActivityKind kind) const {
 
 std::vector<SubagentView> ProcessSupervisor::SubagentViews() const {
   std::vector<SubagentView> views;
-  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+  const int64_t now = NowMillis();
   for (const json& row : ActivityViews()) {
     const std::string status = JsonValue(row, "status", "");
     if (JsonValue(row, "kind", "") != "agent" ||

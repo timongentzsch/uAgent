@@ -47,6 +47,7 @@
 #include "include/core/lease.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
+#include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/assets.h"
 #include "include/web/protocol.h"
@@ -79,12 +80,6 @@ bool EqualSecret(std::string_view a, std::string_view b) {
     difference |= static_cast<unsigned char>(a[i] ^ b[i]);
   }
   return difference == 0;
-}
-
-int64_t NowMillis() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
 }
 
 struct Device {

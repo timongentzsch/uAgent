@@ -75,6 +75,51 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
   }
   return usage;
 }
+
+// Negative or unparsable offsets read from the start; callers pass paths, not
+// positions, so a clamp is the whole policy.
+size_t ClampedOffset(const std::string& text) {
+  int64_t offset = 0;
+  ParseInt64(text.c_str(), offset);
+  return static_cast<size_t>(std::max(int64_t{0}, offset));
+}
+
+// Attachment display names travel in frames and land on disk-adjacent
+// records: no path separators, no control bytes, bounded length.
+bool ValidAssetName(const std::string& name) {
+  if (name.size() > 128 || name.find('/') != std::string::npos ||
+      name.find('\\') != std::string::npos) {
+    return false;
+  }
+  for (char ch : name) {
+    const auto code = static_cast<unsigned char>(ch);
+    if (code < 32 || code == 127) return false;
+  }
+  return true;
+}
+
+std::string RunResultFor(const std::string& outcome) {
+  return outcome == "complete"      ? "completed"
+         : outcome == "interrupted" ? "interrupted"
+                                    : "failed";
+}
+
+void UnclaimAttachments(std::vector<std::pair<std::string, json>>& claims,
+                        size_t count) {
+  for (size_t i = 0; i < count && i < claims.size(); ++i) {
+    claims[i].second["committed"] = false;
+    ToolWritePrivateFile(claims[i].first, JsonDump(claims[i].second));
+  }
+}
+
+std::vector<std::string> PromptPaths(const std::vector<std::string>& projects) {
+  std::vector<std::string> paths{
+      (std::filesystem::path(GlobalBase()) / "system-prompt.json").string()};
+  for (const std::string& project : projects) {
+    paths.push_back((ProjectBase(project) / "system-prompt.json").string());
+  }
+  return paths;
+}
 }  // namespace
 
 HostSession::~HostSession() {
@@ -312,9 +357,7 @@ std::shared_ptr<HostSession> SessionHost::CreateSession(
   session->title = title.empty() ? "New conversation" : title;
   session->draft_title = title;
   session->status = "draft";
-  session->updated = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::system_clock::now().time_since_epoch())
-                         .count();
+  session->updated = NowMillis();
   auto written =
       ToolWritePrivateFile(directory_ + "/drafts/" + session->id + ".json",
                            JsonDump({{"cwd", cwd},
@@ -644,11 +687,8 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
         if (const auto* blocks = JsonArray(session.state["view"], "blocks")) {
           for (auto it = blocks->rbegin(); it != blocks->rend(); ++it) {
             if (JsonValue(*it, "kind", "") != "turn_summary") continue;
-            const std::string outcome =
-                JsonValue((*it)["summary"], "outcome", "error");
-            session.run_result = outcome == "complete"      ? "completed"
-                                 : outcome == "interrupted" ? "interrupted"
-                                                            : "failed";
+            session.run_result =
+                RunResultFor(JsonValue((*it)["summary"], "outcome", "error"));
             break;
           }
         }
@@ -656,9 +696,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
       if (!session.run_result.empty()) session.run_checkpoint = true;
       session.live_truncated = false;
       session.active_exchanges.clear();
-      session.updated = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::system_clock::now().time_since_epoch())
-                            .count();
+      session.updated = NowMillis();
       const std::string title = JsonValue(session.state, "title", "");
       if (!title.empty()) session.title = title;
     }
@@ -683,10 +721,9 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string type = JsonValue(frame, "type", "");
   if (!session.run_id.empty()) {
     if (type == "turn.completed") {
-      const std::string outcome = JsonValue(frame["data"], "outcome", "error");
-      session.run_result = outcome == "complete"      ? "completed"
-                           : outcome == "interrupted" ? "interrupted"
-                                                      : "failed";
+      const std::string outcome =
+          JsonValue(frame["data"], "outcome", "error");
+      session.run_result = RunResultFor(outcome);
       if (session.run_result == "failed") {
         session.error = "Turn ended: " + outcome;
       }
@@ -722,9 +759,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
 std::chrono::steady_clock::time_point SessionHost::NextScheduleDeadline()
     const {
   auto deadline = std::chrono::steady_clock::now() + std::chrono::hours(24);
-  const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+  const int64_t now = NowSeconds();
   if (const auto* tasks = JsonArray(schedule_state_, "tasks")) {
     for (const json& task : *tasks) {
       const int64_t next = JsonValue(task, "next", int64_t{0});
@@ -871,9 +906,7 @@ ScheduleTick SessionHost::TickSchedules() {
   constexpr size_t kScheduledConcurrency = 2;
   const size_t slots =
       workers < kScheduledConcurrency ? kScheduledConcurrency - workers : 0;
-  const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
+  const int64_t now = NowSeconds();
   bool due = std::any_of(runs->begin(), runs->end(), [](const json& run) {
     return JsonValue(run, "status", "") == "queued";
   });
@@ -901,10 +934,8 @@ std::vector<json> SessionHost::RefreshInvalidations(
     const std::vector<std::string>& projects) {
   std::vector<json> events;
   std::map<std::string, FileStamp> prompts;
-  prompts[(std::filesystem::path(GlobalBase()) / "system-prompt.json")
-              .string()] = {};
-  for (const std::string& project : projects) {
-    prompts[(ProjectBase(project) / "system-prompt.json").string()] = {};
+  for (const std::string& path : PromptPaths(projects)) {
+    prompts[path] = {};
   }
   for (auto& [path, stamp] : prompts) stamp = SnapshotFile(path);
   if (prompts != prompt_stamps_) {
@@ -929,11 +960,9 @@ std::vector<json> SessionHost::RefreshInvalidations(
 
 std::vector<std::string> SessionHost::InvalidationPaths(
     const std::vector<std::string>& projects) const {
-  std::vector<std::string> paths{
-      SchedulePath(), LibraryChangePath(),
-      (std::filesystem::path(GlobalBase()) / "system-prompt.json").string()};
-  for (const std::string& project : projects) {
-    paths.push_back((ProjectBase(project) / "system-prompt.json").string());
+  std::vector<std::string> paths{SchedulePath(), LibraryChangePath()};
+  for (const std::string& path : PromptPaths(projects)) {
+    paths.push_back(path);
   }
   std::sort(paths.begin(), paths.end());
   paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
@@ -1208,11 +1237,9 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
     if (query.part != "request" && query.part != "response") {
       return {{{"error", "choose request or response"}}, 400};
     }
-    int64_t offset = 0;
-    ParseInt64(query.offset.c_str(), offset);
     json body = ReadPrivateArtifact(
         JsonValue(exchange, (query.part + "_path").c_str(), ""),
-        static_cast<size_t>(std::max(int64_t{0}, offset)));
+        ClampedOffset(query.offset));
     body["exchange"] = exchange;
     const int status = body.contains("error") ? 404 : 200;
     return {std::move(body), status};
@@ -1260,9 +1287,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
         }
       }
     }
-    int64_t offset = 0;
-    ParseInt64(query.offset.c_str(), offset);
-    const size_t start = static_cast<size_t>(std::max(int64_t{0}, offset));
+    const size_t start = ClampedOffset(query.offset);
     if (!path.empty()) {
       json body = ReadPrivateArtifact(path, start);
       const int status = body.contains("error") ? 404 : 200;
@@ -1291,10 +1316,8 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
                               record.state.display)) {
       return {{{"error", "invalid conversation metadata"}}, 422};
     }
-    int64_t position = 0;
     if (query.has_detail) {
-      ParseInt64(query.offset.c_str(), position);
-      size_t offset = static_cast<size_t>(std::max(int64_t{0}, position));
+      size_t offset = ClampedOffset(query.offset);
       json detail =
           query.raw ? ConversationExchange(conversation, query.detail, offset)
           : query.artifact
@@ -1307,18 +1330,17 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
       const int status = detail.contains("error") ? 404 : 200;
       return {std::move(detail), status};
     }
-    ParseInt64(query.before.c_str(), position);
-    state = {
-        {"view", ConversationView(conversation, static_cast<uint64_t>(std::max(
-                                                    int64_t{0}, position)))},
-        {"usage", UsageJson(record.state.usage)},
-        {"context_tokens", record.state.context_tokens},
-        {"model", record.metadata.model},
-        {"turns", record.metadata.turns},
-        {"statistics", conversation.Statistics()},
-        {"http", JsonValue(JsonValue(conversation.DisplayFacts(), "http-latest",
-                                     json::object()),
-                           "http", json::array())}};
+    state = {{"view", ConversationView(
+                          conversation,
+                          static_cast<uint64_t>(ClampedOffset(query.before)))},
+             {"usage", UsageJson(record.state.usage)},
+             {"context_tokens", record.state.context_tokens},
+             {"model", record.metadata.model},
+             {"turns", record.metadata.turns},
+             {"statistics", conversation.Statistics()},
+             {"http", JsonValue(JsonValue(conversation.DisplayFacts(),
+                                          "http-latest", json::object()),
+                                "http", json::array())}};
   } else if (PathExists(session->path)) {
     return {{{"error", loaded.status.message}}, 422};
   }
@@ -1409,10 +1431,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     } else if (PathExists(session->path)) {
       stored = SessionStore::Rename(session->path, title);
     } else {
-      const int64_t updated =
-          std::chrono::duration_cast<std::chrono::milliseconds>(
-              std::chrono::system_clock::now().time_since_epoch())
-              .count();
+      const int64_t updated = NowMillis();
       auto written =
           ToolWritePrivateFile(draft_path, JsonDump({{"id", session->id},
                                                      {"path", session->path},
@@ -1503,14 +1522,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
           result.error = "invalid asset ID";
           break;
         }
-        if (!display.empty()) {
-          if (display.size() > 128 || display.find('/') != std::string::npos ||
-              display.find('\\') != std::string::npos ||
-              display.find_first_of("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f") !=
-                  std::string::npos) {
-            result.error = "invalid attachment name";
-            break;
-          }
+        if (!display.empty() && !ValidAssetName(display)) {
+          result.error = "invalid attachment name";
+          break;
         }
         std::string stem = session->path + ".assets/" + asset_id;
         std::string metadata, read_error;
@@ -1556,10 +1570,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
           ++committed;
         }
         if (!result.error.empty()) {
-          for (size_t i = 0; i < committed; ++i) {
-            claims[i].second["committed"] = false;
-            ToolWritePrivateFile(claims[i].first, JsonDump(claims[i].second));
-          }
+          UnclaimAttachments(claims, committed);
         }
       }
       asset_lock.unlock();
@@ -1583,10 +1594,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
         if (!dispatched && !claims.empty()) {
           lock.unlock();
           std::lock_guard asset_lock(asset_mutex_);
-          for (auto& [path, asset] : claims) {
-            asset["committed"] = false;
-            ToolWritePrivateFile(path, JsonDump(asset));
-          }
+          UnclaimAttachments(claims, claims.size());
           lock.lock();
         }
       }

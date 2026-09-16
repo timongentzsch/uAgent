@@ -295,6 +295,10 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/ci_changes_test.py)
   set_tests_properties(ci_changes PROPERTIES LABELS source)
+  add_test(NAME consumer_boundary
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/boundary_test.py)
+  set_tests_properties(consumer_boundary PROPERTIES LABELS source)
   add_test(NAME session_metrics_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py

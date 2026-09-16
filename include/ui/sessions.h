@@ -19,14 +19,14 @@
 #include "include/agent.h"
 #include "include/agent/session_store.h"
 #include "include/cli.h"
-#include "include/core/fs.h"
 #include "include/core/events.h"
+#include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/ui/display.h"
 #include "include/ui/conversation.h"
+#include "include/ui/display.h"
 
 namespace uagent {
 

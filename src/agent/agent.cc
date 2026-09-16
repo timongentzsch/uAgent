@@ -293,6 +293,10 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
+  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"), which live
+  // views match on across worker generations. A resumed runtime must continue
+  // the persisted numbering or its live blocks collide with earlier turns'.
+  turn_id_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
   logged_msgs_ = 0;

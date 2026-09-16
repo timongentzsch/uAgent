@@ -170,6 +170,12 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
   } else if (type == "response.answer.delta" ||
              type == "response.reasoning.delta") {
     const std::string response_id = JsonValue(data, "response_id", "");
+    // Deltas without a response id have no started block to extend (the
+    // started branch above requires one). Matching them against any block
+    // whose id is also absent would append one turn's streamed text onto an
+    // earlier turn's completed block. The full block still arrives via
+    // message.changed, so skipping here loses nothing.
+    if (response_id.empty()) return true;
     json& blocks = state["view"]["blocks"];
     if (blocks.is_array()) {
       auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {

@@ -543,6 +543,26 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(preview["reasoning_bytes"] == preview_reasoning_bytes);
   CHECK(preview["retained_reasoning_bytes"] == 9000);
   CHECK(preview["reasoning_complete"] == false);
+
+  // Deltas without a response id belong to no started block. Providers that
+  // omit response ids must not append one turn's streamed text onto an
+  // earlier turn's completed block; the full block still arrives via
+  // message.changed.
+  json live = {{"view", {{"blocks", json::array()}}}};
+  MergeDisplayBlock(live["view"], {{"id", "m-1"},
+                                   {"sequence", 1},
+                                   {"kind", "assistant"},
+                                   {"text", "first answer"},
+                                   {"text_bytes", 12},
+                                   {"content_revision", 1},
+                                   {"content_complete", true}});
+  CHECK(ApplySessionEvent(live, "response.answer.delta",
+                          {{"text", "second answer"}}));
+  REQUIRE(live["view"]["blocks"].size() == 1);
+  CHECK(JsonValue(live["view"]["blocks"][0], "text", "") == "first answer");
+  CHECK(ApplySessionEvent(live, "response.reasoning.delta",
+                          {{"text", "thinking"}}));
+  CHECK(JsonValue(live["view"]["blocks"][0], "reasoning", "") == "");
 }
 
 void TestHistoryReplaySkipsBareHeader() {

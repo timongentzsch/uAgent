@@ -171,14 +171,17 @@ add_library(
   src/app/application_headless.cc
   src/app/bootstrap.cc
   src/app/commands.cc
+  src/app/commands_control.cc
+  src/app/commands_model.cc
+  src/app/commands_session.cc
   src/app/config_proposal.cc
   src/app/config_control.cc
   src/app/library.cc
   src/app/prompt_control.cc
   src/app/control.cc
   src/app/schedule.cc
-  src/app/options.cc
-  src/app/reference.cc
+  src/cli/options.cc
+  src/cli/reference.cc
   src/app/runtime.cc
   src/app/self_description.cc
   src/app/session_assets.cc
@@ -187,7 +190,7 @@ add_library(
   src/app/session_schedules.cc
   src/app/session_snapshot.cc
   src/app/session_supervisor.cc
-  src/app/cli.cc
+  src/cli/cli.cc
   src/app/session_transport.cc
   src/app/session_server.cc
   src/app/session_worker.cc

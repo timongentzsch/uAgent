@@ -8,9 +8,11 @@ no application server language runtime or dynamically loaded plugin layer.
 
 | Domain | Responsibility |
 | --- | --- |
-| `src/app/` | Bootstrap, commands, configuration, session transport and lifecycle |
+| `src/app/` | Bootstrap, session transport and lifecycle |
+| `src/app/commands_*.cc` | Slash-command dispatcher (commands.cc) plus model, session and control handlers |
+| `src/cli/` | Terminal entry surface: flag parsing, interactive reads, `--emit-reference` |
+| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in client.cc, request-body construction in wire_request.cc |
 | `src/agent/` | Turn execution, canonical conversation, context preparation and persistence |
-| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | SSE framing for event delivery |

@@ -94,6 +94,8 @@ add_library(
   src/agent/tool_loop.cc
   src/agent/trace.cc
   src/agent/turn.cc
+  src/agent/turn_budgets.cc
+  src/agent/turn_response.cc
   src/api/capabilities.cc
   src/api/client.cc
   src/api/exchange.cc
@@ -148,7 +150,9 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/media/attachments.cc
+  src/model_select.cc
   src/providers.cc
+  src/route_policy.cc
   src/tools/adapt_system.cc
   src/tools/activity_completion.cc
   src/tools/activity_log.cc

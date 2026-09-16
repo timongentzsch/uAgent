@@ -422,32 +422,11 @@ class ToolSchemaCache {
  public:
   void Reset() { valid_ = false; }
 
+  // Availability selection lives in tools/policy.cc so every translation
+  // unit including this header does not compile it again.
   const json& Get(const std::vector<Tool>& tools, const json& schemas,
                   const std::unordered_map<std::string, int64_t>& counts,
-                  ToolAvailability availability = {}) {
-    std::vector<size_t> selected;
-    for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
-      const Tool& tool = tools[i];
-      if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
-          !availability.detached_terminal) {
-        continue;
-      }
-      auto count = counts.find(tool.name);
-      if (tool.max_calls_per_turn >= 0 && count != counts.end() &&
-          count->second >= tool.max_calls_per_turn) {
-        continue;
-      }
-      selected.push_back(i);
-    }
-    if (!valid_ || selected != selected_) {
-      available_ = json::array();
-      for (size_t i : selected) available_.push_back(schemas[i]);
-      selected_ = std::move(selected);
-      bytes_ = JsonEstimatedBytes(available_);
-      valid_ = true;
-    }
-    return available_;
-  }
+                  ToolAvailability availability = {});
 
   size_t Bytes() const { return bytes_; }
   const json& Schemas() const { return available_; }

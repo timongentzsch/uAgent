@@ -338,6 +338,10 @@ if(BUILD_TESTING)
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/boundary_test.py)
   set_tests_properties(consumer_boundary PROPERTIES LABELS source)
+  add_test(NAME wire_contract
+           COMMAND ${Python3_EXECUTABLE}
+                   ${CMAKE_CURRENT_SOURCE_DIR}/tests/wire_contract_test.py)
+  set_tests_properties(wire_contract PROPERTIES LABELS source)
   add_test(NAME session_metrics_self_test
            COMMAND ${Python3_EXECUTABLE}
                    ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/session_metrics.py

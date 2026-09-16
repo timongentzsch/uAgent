@@ -1,5 +1,8 @@
 # Embed the checked-in public bundle. No frontend tooling in native builds.
 file(GLOB_RECURSE _web_assets CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/web/dist/*")
+if(NOT _web_assets)
+  message(FATAL_ERROR "web/dist is empty or missing: run `npm run build` in web/ to generate the PWA bundle, or configure with -DUAGENT_WEB=OFF for a headless-only binary")
+endif()
 list(FILTER _web_assets EXCLUDE REGEX "/\\.vite/")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_web_assets})
 set(_web_generated "${CMAKE_CURRENT_BINARY_DIR}/web_assets.cc")

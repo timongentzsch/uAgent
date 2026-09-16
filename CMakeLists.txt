@@ -82,49 +82,14 @@ if(UAGENT_BUILD_FUZZERS)
   target_link_options(uagent_options INTERFACE -fsanitize=address,undefined)
 endif()
 
+# Layered static libs mirror the event-spine dependency DAG:
+#   core_base (leaf: core/transport/media) <- api <- domain
+#   (agent/tools/mcp/providers, kept together: agent<->tools include
+#   each other) <- app (app/ui/cli, the consumer shell).
+# Touching tools/ headers rebuilds domain+app only, not core/api.
 add_library(
-  uagent_core
-  src/agent/agent.cc
-  src/agent/conversation.cc
-  src/agent/prompt.cc
-  src/agent/prompt_profile.cc
-  src/agent/request.cc
-  src/agent/session_store.cc
-  src/agent/session_view.cc
-  src/agent/tool_loop.cc
-  src/agent/trace.cc
-  src/agent/turn.cc
-  src/agent/turn_budgets.cc
-  src/agent/turn_response.cc
-  src/api/capabilities.cc
-  src/api/client.cc
-  src/api/exchange.cc
-  src/api/openai_stream.cc
-  src/api/wire_request.cc
-  src/api/wire_stream.cc
-  src/app/application.cc
-  src/app/application_channel.cc
-  src/app/application_headless.cc
-  src/app/bootstrap.cc
-  src/app/commands.cc
-  src/app/config_proposal.cc
-  src/app/config_control.cc
-  src/app/library.cc
-  src/app/prompt_control.cc
-  src/app/control.cc
-  src/app/schedule.cc
+  uagent_core_base
   src/core/capture.cc
-  src/app/options.cc
-  src/app/reference.cc
-  src/app/runtime.cc
-  src/app/self_description.cc
-  src/app/session_assets.cc
-  src/app/session_host.cc
-  src/app/session_router.cc
-  src/app/session_schedules.cc
-  src/app/session_snapshot.cc
-  src/app/session_supervisor.cc
-  src/cli.cc
   src/core/child_env.cc
   src/core/config_document.cc
   src/core/config_registry.cc
@@ -143,16 +108,43 @@ add_library(
   src/core/steering.cc
   src/core/strings.cc
   src/core/term.cc
+  src/transport/sse.cc
+  src/media/attachments.cc)
+target_link_libraries(uagent_core_base PUBLIC uagent_options)
+
+add_library(
+  uagent_api
+  src/api/capabilities.cc
+  src/api/client.cc
+  src/api/exchange.cc
+  src/api/openai_stream.cc
+  src/api/wire_request.cc
+  src/api/wire_stream.cc)
+target_link_libraries(uagent_api PUBLIC uagent_core_base)
+
+add_library(
+  uagent_domain
+  src/agent/agent.cc
+  src/agent/conversation.cc
+  src/agent/prompt.cc
+  src/agent/prompt_profile.cc
+  src/agent/request.cc
+  src/agent/session_store.cc
+  src/agent/session_view.cc
+  src/agent/tool_loop.cc
+  src/agent/trace.cc
+  src/agent/turn.cc
+  src/agent/turn_budgets.cc
+  src/agent/turn_response.cc
+  src/providers/selection.cc
+  src/providers/catalog.cc
+  src/providers/policy.cc
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
   src/mcp/result.cc
   src/mcp/rpc.cc
   src/mcp/server.cc
-  src/media/attachments.cc
-  src/model_select.cc
-  src/providers.cc
-  src/route_policy.cc
   src/tools/adapt_system.cc
   src/tools/activity_completion.cc
   src/tools/activity_log.cc
@@ -169,8 +161,33 @@ add_library(
   src/tools/shell.cc
   src/tools/subagent.cc
   src/tools/web_fetch.cc
-  src/tools/web_search.cc
-  src/transport/sse.cc
+  src/tools/web_search.cc)
+target_link_libraries(uagent_domain PUBLIC uagent_api)
+
+add_library(
+  uagent_app
+  src/app/application.cc
+  src/app/application_channel.cc
+  src/app/application_headless.cc
+  src/app/bootstrap.cc
+  src/app/commands.cc
+  src/app/config_proposal.cc
+  src/app/config_control.cc
+  src/app/library.cc
+  src/app/prompt_control.cc
+  src/app/control.cc
+  src/app/schedule.cc
+  src/app/options.cc
+  src/app/reference.cc
+  src/app/runtime.cc
+  src/app/self_description.cc
+  src/app/session_assets.cc
+  src/app/session_host.cc
+  src/app/session_router.cc
+  src/app/session_schedules.cc
+  src/app/session_snapshot.cc
+  src/app/session_supervisor.cc
+  src/app/cli.cc
   src/app/session_transport.cc
   src/app/session_server.cc
   src/app/session_worker.cc
@@ -181,7 +198,12 @@ add_library(
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
-target_link_libraries(uagent_core PUBLIC uagent_options)
+target_link_libraries(uagent_app PUBLIC uagent_domain)
+
+# Umbrella preserves the existing `uagent_core` link name for tests, benches,
+# fuzzers and the web lib while the DAG above does the real work.
+add_library(uagent_core INTERFACE)
+target_link_libraries(uagent_core INTERFACE uagent_app)
 
 add_executable(uagent src/main.cc)
 option(UAGENT_WEB "Embed the native web master and PWA" ON)
@@ -222,15 +244,18 @@ set(UAGENT_PCH
     <string_view>
     <utility>
     <vector>)
-target_precompile_headers(uagent_core PRIVATE ${UAGENT_PCH})
+foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_domain uagent_app)
+  target_precompile_headers(${_uagent_lib} PRIVATE ${UAGENT_PCH})
+endforeach()
 
-# Link-time optimization has to cover the library: main.cc is a few lines and
-# every code path lives in uagent_core.
+# Link-time optimization has to cover the libraries: main.cc is a few lines
+# and every code path lives in the layered static libs behind uagent_core.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
-  set_property(TARGET uagent_core PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE
-                                           TRUE)
+  foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_domain uagent_app)
+    set_property(TARGET ${_uagent_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+  endforeach()
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   if(UAGENT_WEB)
     set_property(TARGET uagent_web PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)

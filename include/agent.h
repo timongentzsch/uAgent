@@ -61,11 +61,10 @@ class Agent {
   const json& LastStop() const { return last_stop_; }
   const std::string& SessionId() const { return session_id_; }
   uint64_t Revision() const { return revision_; }
-  // Show the most recent completed turn's archived tool traffic. Server search
-  // can expose sources and snippets, but not necessarily the provider-internal
-  // query.
-  void PrintTrace() const;
-
+  // The most recent completed turn's archived tool traffic as data. Server
+  // search can expose sources and snippets, but not necessarily the
+  // provider-internal query. Consumer interfaces render it; the agent never
+  // prints.
   json LatestToolTrace() const;
 
   // final assistant prose — the whole result of a headless (-p) run
@@ -89,10 +88,11 @@ class Agent {
   // Real user prompts are tracked out of band from model-readable text.
   int64_t UserTurns() const;
 
-  // Replay the conversation to the terminal, in the live REPL's visual
-  // language (user prompts, rendered assistant prose, dim tool traffic), so a
-  // resumed session shows the context it is picking up from.
-  void PrintHistory() const;
+  // Data views for consumer interfaces (terminal, web, headless). Rendering
+  // lives in ui/; the agent only supplies facts.
+  const Conversation& History() const { return conversation_; }
+  const std::vector<Tool>& Tools() const { return tools_; }
+  const json& TraceArchive() const { return conversation_.Archive(); }
   json DisplaySnapshot() const;
   json RawExchange(const std::string& id, size_t offset = 0) const;
   void RetainExchanges(bool enabled) {
@@ -112,7 +112,6 @@ class Agent {
   }
 
   json ModelRequest();
-  void PrintContext();
 
   bool Save(const std::string& path, std::string& error) const;
 

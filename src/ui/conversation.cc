@@ -131,4 +131,75 @@ void PrintModelContext(const json& request) {
   printf("%s\n", TerminalSafe(JsonDump(request, 2)).c_str());
 }
 
+std::string PrintToolCallSummary(const json& call,
+                                 const std::vector<Tool>& tools) {
+  const json* found = JsonObject(call, "function");
+  if (!found) return "";
+  const json& function = *found;
+  std::string name = JsonValue(function, "name", "");
+  json args = ParsedToolCallArguments(function);
+  PrintPresentation(ToolCallPresentation(name, args, tools));
+  return name;
+}
+
+void PrintTraceToolCall(const json& call, const std::vector<Tool>& tools,
+                        const std::string& ordinal) {
+  std::string name = JsonValue(call, "name", "tool");
+  json arguments =
+      call.contains("arguments") ? call["arguments"] : json::object();
+  PrintPresentation(ToolCallPresentation(name, arguments, tools, ordinal));
+}
+
+void PrintTraceToolResult(const json& call, const std::string& ordinal) {
+  std::string name = JsonValue(call, "name", "tool");
+  PresentationRecord record;
+  record.kind = PresentationKind::kToolResult;
+  record.title = ordinal + name;
+  record.status = PresentationStatus::kSucceeded;
+  if (!call.contains("result") || call["result"].is_null()) {
+    record.summary = "(no result)";
+    PrintPresentation(record);
+    return;
+  }
+  std::string result = call["result"].is_string()
+                           ? call["result"].get<std::string>()
+                           : JsonDump(call["result"]);
+  if (result.find('\n') != std::string::npos) {
+    record.detail = std::move(result);
+    record.multiline = true;
+  } else {
+    record.summary = std::move(result);
+  }
+  PrintPresentation(record);
+}
+
+void PrintLatestTrace(const json& archive, const std::vector<Tool>& tools) {
+  const json* segment = LatestTraceSegment(archive);
+  if (!segment) {
+    printf("%s· no completed tool trace%s\n", DIM(), RST());
+    return;
+  }
+  json calls =
+      ToolTraceMessages(JsonValue(*segment, "messages", json::array()),
+                        JsonValue(*segment, "message_kinds", json::array()));
+  size_t tool_count = calls.size();
+  int64_t searches = JsonValue(*segment, "web_searches", int64_t{0});
+  std::string turn = std::to_string(JsonValue(*segment, "turn", int64_t{0}));
+  printf("%slatest trace · turn %s · %zu tool%s", DIM(), turn.c_str(),
+         tool_count, tool_count == 1 ? "" : "s");
+  if (searches > 0) {
+    std::string count = std::to_string(searches);
+    printf(" · %s search%s", count.c_str(), searches == 1 ? "" : "es");
+  }
+  printf("%s\n", RST());
+  for (size_t index = 0; index < calls.size(); ++index) {
+    std::string ordinal =
+        calls.size() > 1 ? "[" + std::to_string(index + 1) + "] " : "";
+    PrintTraceToolCall(calls[index], tools, ordinal);
+    PrintTraceToolResult(calls[index], ordinal);
+  }
+  PrintSearchReceipt(searches,
+                     JsonValue(*segment, "annotations", json::array()), true);
+}
+
 }  // namespace uagent

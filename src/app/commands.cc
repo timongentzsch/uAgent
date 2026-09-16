@@ -35,6 +35,7 @@
 #include "include/tools/memory.h"
 #include "include/tools/process.h"
 #include "include/tools/subagent.h"
+#include "include/ui/conversation.h"
 #include "include/ui/sessions.h"
 
 namespace uagent {
@@ -492,7 +493,7 @@ void HandleContext(AppSession& session) {
   printf("%seffective configuration%s\n%s\n", BOLD(), RST(),
          TerminalSafe(JsonDump(effective, 2)).c_str());
   printf("%smodel request%s\n", BOLD(), RST());
-  session.ActiveAgent().PrintContext();
+  PrintModelContext(session.ActiveAgent().ModelRequest());
 }
 
 // The startup row is a snapshot; MCP refresh and config reloads change the
@@ -911,7 +912,8 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
         fflush(stdout);
         return false;
       }
-      session.ActiveAgent().PrintTrace();
+      PrintLatestTrace(session.ActiveAgent().TraceArchive(),
+                       session.context.tools);
       break;
     case SlashCommandId::kVariant:
       HandleVariant(session, command.argument);

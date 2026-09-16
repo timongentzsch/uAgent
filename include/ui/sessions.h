@@ -20,11 +20,13 @@
 #include "include/agent/session_store.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
+#include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/display.h"
+#include "include/ui/conversation.h"
 
 namespace uagent {
 
@@ -92,7 +94,7 @@ inline bool ResumeInto(Agent& agent, const std::string& path,
   if (render) {
     printf("%s· resumed — %zu messages%s\n", DIM(), agent.MessageCount() - 1,
            RST());
-    agent.PrintHistory();
+    PrintConversationHistory(agent.History(), agent.Tools());
     printf("%s· end of history, continuing%s\n", DIM(), RST());
   }
   return true;

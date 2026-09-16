@@ -21,6 +21,7 @@
 #include "include/api/exchange.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
@@ -28,7 +29,6 @@
 #include "include/tools/jobs.h"
 #include "include/tools/memory.h"
 #include "include/tools/output_buffer.h"
-#include "include/ui/conversation.h"
 
 namespace uagent {
 
@@ -64,14 +64,6 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
          {"project_instructions_truncated", project_instructions_.truncated}});
   }
   Reset();
-}
-
-void Agent::PrintTrace() const {
-  PrintLatestTrace(conversation_.Archive(), tools_);
-}
-
-void Agent::PrintHistory() const {
-  PrintConversationHistory(conversation_, tools_);
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
@@ -211,8 +203,6 @@ json Agent::ModelRequest() {
   if (fallback) ApplyImageAnalysisFallback(messages, false);
   return api_.BuildRequestBody(messages, schemas_, session_id_);
 }
-
-void Agent::PrintContext() { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());

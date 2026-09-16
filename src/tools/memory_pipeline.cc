@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/agent/session_store.h"
 #include "include/api.h"
 #include "include/core/child_env.h"
 #include "include/core/env.h"
@@ -31,7 +32,6 @@
 #include "include/tools/memory.h"
 #include "include/tools/process.h"
 #include "include/tools/shell.h"
-#include "include/ui/sessions.h"
 
 namespace uagent {
 namespace {

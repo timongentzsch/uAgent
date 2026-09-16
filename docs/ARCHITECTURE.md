@@ -11,17 +11,31 @@ no application server language runtime or dynamically loaded plugin layer.
 | `src/app/` | Bootstrap, commands, configuration, session transport and lifecycle |
 | `src/agent/` | Turn execution, canonical conversation, context preparation and persistence |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures |
+| `src/providers/` | Route catalog, model selection grammar and route policy |
+| `src/media/` | Attachment encoding and display projections |
+| `src/transport/` | SSE framing for event delivery |
 | `src/tools/` | Tool implementations and supervised processes |
 | `src/core/` | Shared policy, events, limits, filesystem, signals and platform primitives |
 | `src/ui/` | Terminal input and presentation |
 | `src/web/` | Authenticated HTTP/SSE adapter, assets and optional push |
-| `web/src/` | Browser event projection and presentation |
+| `web/src/` | Browser event projection and presentation (`app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting) |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
 The registry owns tool contracts, configuration descriptors own settings, route
 capabilities own provider behavior, and the runtime owns conversation state.
 Clients do not interpret shell text to infer permission or mutation authority.
+
+## Build layers
+
+CMake mirrors the dependency DAG: `uagent_core_base` (core/transport/media,
+leaf) <- `uagent_api` <- `uagent_domain` (agent/tools/mcp/providers, kept
+together across the agent<->tools include cycle) <- `uagent_app` (app/ui/cli).
+`uagent_core` is an INTERFACE umbrella so tests, benches, fuzzers and the web
+lib keep one link name. Public headers live under `include/` (top-level
+facades plus `include/<module>/`); only module-private shared declarations
+stay in `src/<module>/*_internal.h`. The web bundle embeds `web/dist` or
+fails with instructions (`npm run build` in `web/`, or `-DUAGENT_WEB=OFF`).
 
 ## Session runtime and clients
 

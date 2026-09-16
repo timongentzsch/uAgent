@@ -1,20 +1,31 @@
-import { contextSummary } from "../src/context.ts";
-import { duration } from "../src/duration.ts";
-import { isRunningStatus, statusLine, diffLineClass } from "../src/display.ts";
-import { getToolPreview, getToolRow } from "../src/tool-preview.ts";
-import { liveBlocks } from "../src/store.ts";
+import { contextSummary } from "../src/state/context.ts";
+import { duration } from "../src/shared/duration.ts";
+import {
+  isRunningStatus,
+  statusLine,
+  diffLineClass,
+} from "../src/shared/display.ts";
+import {
+  getToolPreview,
+  getToolRow,
+} from "../src/features/chat/tool-preview.ts";
+import { liveBlocks } from "../src/state/store.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatBody, formatJSON } from "../src/format.ts";
-import { formatEventStream } from "../src/event-stream.ts";
-import { count, bytes } from "../src/quantities.ts";
+import { formatBody, formatJSON } from "../src/shared/format.ts";
+import { formatEventStream } from "../src/state/event-stream.ts";
+import { count, bytes } from "../src/shared/quantities.ts";
 import {
   presentMessages,
   splitMentionTokens,
   stripAttachedTrailer,
-} from "../src/message-view.ts";
-import { dedupeName } from "../src/mention.ts";
-import { encodeMention, matchMention, mentionOptions } from "../src/mention.ts";
+} from "../src/features/chat/message-view.ts";
+import { dedupeName } from "../src/features/composer/mention.ts";
+import {
+  encodeMention,
+  matchMention,
+  mentionOptions,
+} from "../src/features/composer/mention.ts";
 
 test("JSON display preserves large numbers, escapes, duplicate keys and arrays", () => {
   const raw =

@@ -25,7 +25,7 @@ const precached = new Set(
 const app = new Set();
 function visit(key) {
   const chunk = manifest[key];
-  if (!chunk || app.has(chunk.file) || key === "src/diagram.tsx") return;
+  if (!chunk || app.has(chunk.file) || key === "src/shared/diagram.tsx") return;
   app.add(chunk.file);
   for (const dependency of [
     ...(chunk.imports || []),

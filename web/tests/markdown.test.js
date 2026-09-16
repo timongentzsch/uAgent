@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdown, renderMarkdownBlocks } from "../src/markdown.ts";
+import {
+  renderMarkdown,
+  renderMarkdownBlocks,
+} from "../src/shared/markdown.ts";
 
 const concatenate = (blocks) => blocks.map((block) => block.html).join("");
 

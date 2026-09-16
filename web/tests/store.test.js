@@ -1,12 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { liveBlocks, applySessionEvent, readStored } from "../src/store.ts";
-import { api, command, receiveOutcome } from "../src/api.ts";
+import {
+  liveBlocks,
+  applySessionEvent,
+  readStored,
+} from "../src/state/store.ts";
+import { api, command, receiveOutcome } from "../src/state/api.ts";
 import {
   renderMarkdown,
   renderMarkdownBlocks,
   safeURL,
-} from "../src/markdown.ts";
+} from "../src/shared/markdown.ts";
 
 test("parallel tools retain call identity and semantic completion status", () => {
   const events = [
@@ -316,7 +320,7 @@ test("corrupt browser preferences fall back without breaking the app", () => {
 });
 
 test("saved-history browsing retains the selected view and four recent views", async () => {
-  const { retainedViews } = await import("../src/store.ts");
+  const { retainedViews } = await import("../src/state/store.ts");
   const views = Object.fromEntries(
     Array.from({ length: 100 }, (_, index) => [
       String(index),

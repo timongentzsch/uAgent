@@ -1,4 +1,4 @@
-import { markPath } from "../src/mark.ts";
+import { markPath } from "../src/shared/mark.ts";
 import { chromium } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 

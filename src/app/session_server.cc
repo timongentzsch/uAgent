@@ -56,6 +56,40 @@ std::string SocketPath(const std::string& path) {
   return "/tmp/uagent-" + std::to_string(geteuid()) + "-" +
          HashHex(GlobalBase()) + "/" + HashHex(path) + ".sock";
 }
+
+std::string ExecutableIdentity(const std::string& executable) {
+  std::error_code ec;
+  const auto bytes = std::filesystem::file_size(executable, ec);
+  if (ec) return "";
+  const auto mtime = std::filesystem::last_write_time(executable, ec);
+  if (ec) return "";
+  return std::to_string(static_cast<long long>(mtime.time_since_epoch().count())) +
+         ":" + std::to_string(static_cast<unsigned long long>(bytes));
+}
+
+std::string WorkerBinaryPath(const std::string& path) {
+  return SocketPath(path) + ".binary";
+}
+
+bool WriteWorkerBinary(const std::string& path, const std::string& identity) {
+  if (identity.empty()) return false;
+  std::string error;
+  return AtomicWriteFile(WorkerBinaryPath(path), identity, 0600, false,
+                         error);
+}
+
+std::string ReadWorkerBinary(const std::string& path) {
+  std::string recorded, error;
+  if (!ReadRegularFile(WorkerBinaryPath(path), 256, recorded, error))
+    return "";
+  return recorded;
+}
+
+bool WorkerBinaryStale(const std::string& current,
+                       const std::string& recorded) {
+  if (current.empty()) return false;
+  return recorded != current;
+}
 Connection Connect(const std::string& path) {
   Connection result;
   const std::string address = SocketPath(path);

@@ -13,6 +13,7 @@ import { Deferred, Field, Select, Skeleton, LoadError } from "./ui.tsx";
 import { useEffect, useRef, useState } from "preact/hooks";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "./api.ts";
+import { applyUpdate } from "./pwa.ts";
 export default function Settings({
   theme,
   setTheme,
@@ -225,14 +226,7 @@ export default function Settings({
                   uploading ||
                   Object.values(snapshots).some((item) => item.pending)
                 }
-                onClick={() => {
-                  navigator.serviceWorker.addEventListener(
-                    "controllerchange",
-                    () => location.reload(),
-                    { once: true },
-                  );
-                  update.postMessage({ type: "ACTIVATE_UPDATE" });
-                }}
+                onClick={() => applyUpdate(update)}
               >
                 Apply update
               </button>

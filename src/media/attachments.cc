@@ -276,8 +276,7 @@ bool Base64Decode(std::string_view input, std::string& output,
   return true;
 }
 
-json AttachmentContent(const std::string& prompt,
-                       const std::vector<Attachment>& attachments,
+json AttachmentContent(const std::string& prompt,                       const std::vector<Attachment>& attachments,
                        std::string& error) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
@@ -319,6 +318,32 @@ json AttachmentContent(const std::string& prompt,
                        {"id", attachment.asset_id}});
   }
   return content;
+}
+
+Attachment AttachmentFromJson(const json& item) {
+  Attachment attachment;
+  attachment.path = JsonValue(item, "path", "");
+  attachment.name = JsonValue(item, "name", "attachment");
+  attachment.mime = JsonValue(item, "mime", "application/octet-stream");
+  attachment.image = JsonValue(item, "image", false);
+  attachment.asset_id = JsonValue(item, "id", "");
+  return attachment;
+}
+
+std::pair<json, bool> ComposeSteeredContent(const std::string& input,
+                                            const json& attachments,
+                                            std::string& error) {
+  std::vector<Attachment> files;
+  if (attachments.is_array()) {
+    for (const json& item : attachments) {
+      Attachment file = AttachmentFromJson(item);
+      if (!file.path.empty()) files.push_back(std::move(file));
+    }
+  }
+  if (files.empty()) return {json(input), false};
+  json content = AttachmentContent(input, files, error);
+  if (!error.empty()) return {json(input), false};
+  return {std::move(content), true};
 }
 
 namespace {
@@ -428,6 +453,22 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
 }
 }  // namespace
 
+namespace {
+// Identity for within-request dedup: same bytes on disk. Size and mtime
+// catch edits; an unreadable mtime disables dedup for the part.
+std::string AttachmentFingerprint(const Attachment& attachment) {
+  if (attachment.path.empty()) return "";
+  std::error_code ec;
+  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
+  if (ec) return "";
+  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            mtime.time_since_epoch())
+                            .count();
+  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
+         std::to_string(nanos);
+}
+}  // namespace
+
 bool PrepareAttachments(json& messages,
                         const ProviderCapabilities& capabilities,
                         bool vision_fallback, const std::string& route,
@@ -436,6 +477,13 @@ bool PrepareAttachments(json& messages,
   uintmax_t remaining =
       static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024;
   if (deliveries) *deliveries = json::array();
+  // Fingerprints of parts already prepared in this request. Re-reading an
+  // unchanged file (the model re-reading an attached screenshot, the same
+  // path queued twice in one step) must reference the first copy instead
+  // of duplicating payload and re-rendering the attachment row on every
+  // agent step. Path, size and mtime catch edits; a changed file prepares
+  // normally with its own delivery row.
+  std::map<std::string, std::string> delivered;
   for (size_t index = 0; index < messages.size(); ++index) {
     json& message = messages[index];
     if (!message.contains("content") || !message["content"].is_array()) {
@@ -467,6 +515,14 @@ bool PrepareAttachments(json& messages,
       const bool processed =
           JsonValue(part, "processed_route", "") == route && !route.empty();
       if (!processed && InspectAttachment(path, attachment, detail)) {
+        const std::string fingerprint = AttachmentFingerprint(attachment);
+        if (!fingerprint.empty() && delivered.contains(fingerprint)) {
+          prepared.push_back(
+              {{"type", "text"},
+               {"text", "[File reference: " + path +
+                             "; earlier attachment]"}});
+          continue;
+        }
         if (attachment.bytes > remaining) {
           detail = "request attachment budget exceeded";
         } else {
@@ -534,6 +590,11 @@ bool PrepareAttachments(json& messages,
                           (processed ? "; earlier attachment"
                                      : "; contents not included") +
                           "]"}});
+      } else if (detail.empty()) {
+        // Successful first delivery: later identical parts in this request
+        // reference it (see above) instead of duplicating payload.
+        const std::string fingerprint = AttachmentFingerprint(attachment);
+        if (!fingerprint.empty()) delivered[fingerprint] = name;
       }
       if (deliveries && !processed) {
         deliveries->push_back({{"message_index", index},

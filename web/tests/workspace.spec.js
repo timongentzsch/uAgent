@@ -115,9 +115,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await model.click();
-  await page
-    .getByLabel("Model", { exact: true })
-    .selectOption("mock/model-b");
+  await page.getByLabel("Model", { exact: true }).selectOption("mock/model-b");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText(/mock\/model-b/);
   const secondHash = await page.evaluate(() => location.hash);
@@ -421,9 +419,7 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
   const first = await page.locator(".transcript").evaluate((element) => {
     const top = element.scrollTop;
     const rows = [...element.querySelectorAll("article.message")];
-    const row = rows.find(
-      (item) => item.offsetTop + item.offsetHeight > top,
-    );
+    const row = rows.find((item) => item.offsetTop + item.offsetHeight > top);
     return row
       ? {
           id: row.getAttribute("data-message-id"),
@@ -456,9 +452,7 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
           .locator(".transcript")
           .evaluate(
             (element) =>
-              element.scrollHeight -
-              element.scrollTop -
-              element.clientHeight,
+              element.scrollHeight - element.scrollTop - element.clientHeight,
           ),
       { timeout: 15000 },
     )
@@ -472,8 +466,9 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
         element.scrollHeight - element.scrollTop - element.clientHeight,
     );
   expect(gap).toBeGreaterThan(100);
-  const held = await page.locator(".transcript").evaluate(
-    (element, anchorId) => {
+  const held = await page
+    .locator(".transcript")
+    .evaluate((element, anchorId) => {
       const top = element.scrollTop;
       const anchor = [...element.querySelectorAll("article.message")].find(
         (row) => row.getAttribute("data-message-id") === anchorId,
@@ -484,9 +479,7 @@ test("load-older holds position, spins, and keeps the newest tail", async ({
             drift: anchor.offsetTop - top,
           }
         : null;
-    },
-    firstId,
-  );
+    }, firstId);
   expect(held?.id).toBe(firstId);
   // The prepended page lands above the anchor: the previously first row
   // (plus part of its older neighbour) is visible, so "first visible"

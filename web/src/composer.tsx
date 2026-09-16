@@ -16,7 +16,8 @@ import type {
   Block,
   Sizes,
 } from "./types.ts";
-import { useLayoutEffect, useRef } from "preact/hooks";
+import type { JSX } from "preact";
+import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import {
   ArrowDown,
   ArrowUp,
@@ -28,6 +29,7 @@ import {
   X,
 } from "lucide-preact";
 import { command } from "./api.ts";
+import { dedupeName, encodeMention, matchMention } from "./mention.ts";
 import { Popover } from "./popover.tsx";
 import Activities from "./activity-status.tsx";
 const modelPicker = () => import("./model-picker.tsx");
@@ -75,6 +77,91 @@ export default function Composer({
   sizes: Sizes;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  // @-mention over attached files: caret-driven, independent of the
+  // slash menu (slash only matches a lone leading /command).
+  const [caret, setCaret] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(-1);
+  const [mentionClosed, setMentionClosed] = useState(false);
+  const mention = matchMention(draft.text, caret);
+  const mentionCandidates = mention
+    ? draft.files.filter(
+        (item) =>
+          !item.pending &&
+          item.name.toLowerCase().includes(mention.query.toLowerCase()),
+      )
+    : [];
+  const mentionOpen =
+    !!mention && !mentionClosed && mentionCandidates.length > 0;
+  const insertMention = (id: string) => {
+    const target = draft.files.find((item) => item.id === id);
+    if (!mention || !target || !input.current) return;
+    const token = `${encodeMention(target.name, target.id)} `;
+    setDraft({
+      ...draft,
+      text:
+        draft.text.slice(0, mention.start) +
+        token +
+        draft.text.slice(mention.end),
+    });
+    setMentionIndex(-1);
+    setMentionClosed(true);
+    const position = mention.start + token.length;
+    // The textarea value commits on the next render; place the caret after.
+    requestAnimationFrame(() => {
+      input.current?.setSelectionRange(position, position);
+      input.current?.focus({ preventScroll: true });
+    });
+  };
+  const mentionKeyDown = (
+    event: JSX.TargetedKeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (
+      event.isComposing ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.altKey
+    )
+      return false;
+    if (event.key === "Escape") setMentionClosed(true);
+    else if (event.key === "ArrowDown" || event.key === "ArrowUp")
+      setMentionIndex(
+        (mentionIndex +
+          (event.key === "ArrowDown" ? 1 : mentionIndex < 0 ? 0 : -1) +
+          mentionCandidates.length) %
+          mentionCandidates.length,
+      );
+    else if (
+      event.key === "Tab" ||
+      (event.key === "Enter" && mentionIndex >= 0)
+    ) {
+      const target =
+        mentionCandidates[
+          Math.min(mentionIndex, mentionCandidates.length - 1)
+        ] ??
+        (mentionCandidates.length === 1 ? mentionCandidates[0] : undefined);
+      if (target && !event.repeat) insertMention(target.id);
+      else return false;
+    } else return false;
+    event.preventDefault();
+    return true;
+  };
+  const commitRename = (id: string, raw: string) => {
+    setRenaming(null);
+    const taken = draft.files
+      .filter((item) => item.id !== id)
+      .map((item) => item.name);
+    const name = dedupeName(raw, taken);
+    if (!draft.files.some((item) => item.id === id && item.name !== name))
+      return;
+    setDraft({
+      ...draft,
+      files: draft.files.map((item) =>
+        item.id === id ? { ...item, name } : item,
+      ),
+    });
+  };
   const suggestions = useCommandSuggestions(
     commands,
     draft.text,
@@ -105,12 +192,27 @@ export default function Composer({
   useLayoutEffect(() => {
     const element = input.current;
     if (!element) return;
+    let lastWidth = element.clientWidth;
     const resize = () => {
+      lastWidth = element.clientWidth;
+      const next = element.scrollHeight;
+      // Guard the write: an identical height must not touch layout, or
+      // the transcript box observer pins to a no-op resize while
+      // content-visibility re-estimates rows above (the 1→2 line wrap
+      // glitch that read as history jumping while typing).
+      if (Math.abs(next - element.clientHeight) < 1 && element.style.height)
+        return;
       element.style.height = "0px";
       element.style.height = `${element.scrollHeight}px`;
     };
     resize();
-    return observeResize(resize, element.parentElement!);
+    // Width-only parent subscription: the textarea's own height growth
+    // changes the parent height, which must not re-trigger a shrink to
+    // zero (the old feedback loop). Only a width change alters wrapping.
+    const onParent = () => {
+      if (element.clientWidth !== lastWidth) resize();
+    };
+    return observeResize(onParent, element.parentElement!);
   }, [draft.text, sizes.text, sizes.display, pending?.id, session.generation]);
   const permission = state?.permissions;
   const effective =
@@ -151,6 +253,28 @@ export default function Composer({
       ) : (
         <form onSubmit={send}>
           {suggestions.list}
+          {mentionOpen && (
+            <div
+              class="command-suggestions"
+              role="listbox"
+              aria-label="Attached files"
+            >
+              {mentionCandidates.map((item, position) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="option"
+                  aria-selected={position === mentionIndex}
+                  tabIndex={-1}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => insertMention(item.id)}
+                >
+                  <strong>@{item.name}</strong>
+                  <span>{bytes(item.bytes)}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <label class="sr-only" for="prompt">
             Message or guidance
           </label>
@@ -161,8 +285,17 @@ export default function Composer({
             rows={1}
             placeholder={running ? "Add guidance…" : "Ask µAgent…"}
             value={draft.text}
-            onInput={(event) =>
-              setDraft({ ...draft, text: event.currentTarget.value })
+            onInput={(event) => {
+              setDraft({ ...draft, text: event.currentTarget.value });
+              setCaret(event.currentTarget.selectionStart ?? 0);
+              setMentionIndex(-1);
+              setMentionClosed(false);
+            }}
+            onKeyUp={(event) =>
+              setCaret(event.currentTarget.selectionStart ?? 0)
+            }
+            onClick={(event) =>
+              setCaret(event.currentTarget.selectionStart ?? 0)
             }
             onPaste={(event) => {
               const files = [...(event.clipboardData?.files || [])];
@@ -172,6 +305,7 @@ export default function Composer({
               }
             }}
             onKeyDown={(event) => {
+              if (mentionOpen && mentionKeyDown(event)) return;
               if (suggestions.keyDown(event)) return;
               if (
                 event.key === "Enter" &&
@@ -207,7 +341,38 @@ export default function Composer({
                     <Paperclip />
                   )}
                   <span title={asset.name}>
-                    {asset.name}
+                    {renaming === asset.id && !asset.pending ? (
+                      <input
+                        aria-label={`Rename ${asset.name}`}
+                        defaultValue={asset.name}
+                        // eslint-disable-next-line jsx-a11y/no-autofocus
+                        autoFocus
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter")
+                            commitRename(asset.id, event.currentTarget.value);
+                          else if (event.key === "Escape") {
+                            // Reset before closing: the unmount blur
+                            // would otherwise commit the edit.
+                            event.currentTarget.value = asset.name;
+                            setRenaming(null);
+                          }
+                        }}
+                        onBlur={(event) =>
+                          commitRename(asset.id, event.currentTarget.value)
+                        }
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        class="chip-name"
+                        title={`Rename ${asset.name}`}
+                        aria-label={`Rename ${asset.name}`}
+                        disabled={asset.pending}
+                        onClick={() => setRenaming(asset.id)}
+                      >
+                        {asset.name}
+                      </button>
+                    )}
                     <small>
                       {asset.pending ? "Uploading…" : bytes(asset.bytes)}
                     </small>

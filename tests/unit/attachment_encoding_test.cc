@@ -90,6 +90,31 @@ void TestAttachmentEncoding() {
   CHECK(std::string(ModelImageInputInstruction(false, false))
             .find("Image input unavailable") != std::string::npos);
 
+  // Re-reading an unchanged file in the same request references the first
+  // copy: one payload, one delivery row, no repeat rendering per step.
+  error.clear();
+  json twin =
+      json::array({{{"role", "user"},
+                    {"content", AttachmentContent("again", {image_attachment},
+                                                    error)}}});
+  CHECK(error.empty());
+  twin[0]["content"].push_back(twin[0]["content"][1]);
+  capabilities.SetInputModalities(json::array({"text", "image", "pdf"}));
+  request = twin;
+  CHECK(PrepareAttachments(request, capabilities, false, "vision", error,
+                           &deliveries));
+  CHECK(error.empty());
+  CHECK(deliveries.size() == 1);
+  CHECK(deliveries[0]["delivery"] == "Image");
+  CHECK(request[0]["content"].size() == 3);
+  CHECK(JsonValue(request[0]["content"][2], "text", "").find(
+            "earlier attachment") != std::string::npos);
+  size_t image_parts = 0;
+  for (const json& part : request[0]["content"]) {
+    if (JsonValue(part, "type", "") == "image_url") ++image_parts;
+  }
+  CHECK(image_parts == 1);
+
   // The media read has no per-turn call cap, so this queue ceiling is what
   // bounds a runaway caller -- including an MCP server, which queues images
   // with no model call to budget against.
@@ -114,6 +139,32 @@ void TestAttachmentEncoding() {
   CHECK(Attachments().Add(file.string()).Ok());
   CHECK(Attachments().Take().size() == 1);
   unsetenv("UAGENT_PENDING_ATTACHMENTS");
+
+  // Steered content composes exactly like submitted content.
+  std::string steer_error;
+  auto [plain, plain_kind] =
+      ComposeSteeredContent("go", json::array(), steer_error);
+  CHECK(steer_error.empty());
+  CHECK(!plain_kind);
+  CHECK(plain.get<std::string>() == "go");
+  auto [missing, missing_kind] = ComposeSteeredContent(
+      "go", json::array({{{"path", (root / "gone.png").string()}}}),
+      steer_error);
+  CHECK(!steer_error.empty());
+  CHECK(!missing_kind);
+  json resolved = json::array(
+      {{{"path", image_path.string()}, {"name", "steer.png"},
+        {"mime", "image/png"}, {"image", true}, {"id", "abc123"}}});
+  steer_error.clear();
+  auto [composed, composed_kind] =
+      ComposeSteeredContent("look", resolved, steer_error);
+  CHECK(steer_error.empty());
+  CHECK(composed_kind);
+  CHECK(composed.is_array());
+  CHECK(composed[0]["text"].get<std::string>().find("\n\nAttached:\n- path ") !=
+        std::string::npos);
+  CHECK(AttachmentFromJson(resolved[0]).asset_id == "abc123");
+  CHECK(AttachmentFromJson(json::object()).path.empty());
 
   std::error_code ec;
   fs::remove_all(root, ec);

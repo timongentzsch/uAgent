@@ -18,7 +18,6 @@ import { render } from "preact";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +25,10 @@ import {
 import { readStored, writeStored } from "./store.ts";
 import { api, command, requestId } from "./api.ts";
 import { Mark, Modal, Deferred, Skeleton } from "./ui.tsx";
+// Prefetch helpers live next to the renderer so marker regexes stay in one
+// place. Loaded dynamically: a static import would drag markdown.css into
+// the initial bundle and break the CSS size budget.
+const markdownView = () => import("./markdown-view.tsx");
 import {
   ComposerSkeleton,
   ConversationActionSkeleton,
@@ -41,6 +44,7 @@ import {
 
 import { useHost } from "./use-host.ts";
 import { parseSlash } from "./slash.ts";
+import { dedupeName } from "./mention.ts";
 import { useTranscriptScroll } from "./use-transcript-scroll.ts";
 import "./style.css";
 const sidebarModule = () => import("./sidebar.tsx");
@@ -58,6 +62,12 @@ const conversationActions = () => import("./conversation-actions.tsx");
 const statisticsDialog = () => import("./statistics.tsx");
 const promptDialog = () => import("./prompt.tsx");
 const settingsDialog = () => import("./settings.tsx");
+
+// Own scroll restoration from the first paint. history restoration only
+// covers the document, and a late opt-out lets the browser restore the
+// inner transcript scroller after our mount pin (the mobile reload jump).
+// The transcript hook owns all scrolling from here on.
+if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
 const noBlocks: Block[] = [];
@@ -123,6 +133,10 @@ function App() {
     transcript,
     transcriptContent,
     setFollowing,
+    // Session-scoped surfaces: switching conversations resumes the saved
+    // scroll position (or pins a fresh one); the hook owns this, so there
+    // is no pin-on-select here to clobber the restore.
+    page === "chat" ? `${page}:${selected}` : `page:${page}`,
   );
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
@@ -176,9 +190,34 @@ function App() {
         ),
       );
   }, [sizes]);
-  useLayoutEffect(() => {
-    jumpToLatest();
-  }, [selected, page, jumpToLatest]);
+  // Note: session-switch scroll is owned by the transcript stick
+  // (restore-or-pin in use-transcript-scroll); nothing pins here so a
+  // returning conversation keeps its position.
+  useEffect(() => {
+    // The core renderer chunk is needed for every assistant message, so
+    // fetch it immediately at boot (not idle: on mobile the idle callback
+    // can fire after the first snapshot already mounted, which spreads
+    // the plain-to-markdown height wave across the first seconds and
+    // fights the bottom pin). Marker-based chunks warm per text below.
+    markdownView().then((view) => view.prefetchMarkdown());
+  }, []);
+  const scanned = useRef("");
+  useEffect(() => {
+    // Retained blocks hydrate right after mount. Prefetch the heavy chunks
+    // their markers need (math/highlight/mermaid) once per conversation so
+    // hydration lands as one early wave instead of staggered late ones.
+    const key = `${selected}:${snapshot?.state?.view?.before ?? ""}:${snapshot?.state?.view?.blocks?.length ?? 0}`;
+    if (!snapshot?.state?.view?.blocks?.length || scanned.current === key)
+      return;
+    scanned.current = key;
+    const sample = snapshot.state.view.blocks
+      .slice(0, 64)
+      .map((block) =>
+        `${block.text || ""}\n${block.reasoning || ""}`.slice(0, 4000),
+      )
+      .join("\n");
+    markdownView().then((view) => view.prefetchHeavy(sample));
+  }, [selected, snapshot]);
   useEffect(() => {
     let viewport: (() => void) | undefined;
     let compact: (() => void) | undefined;
@@ -330,6 +369,12 @@ function App() {
     )
       return;
     setBusy(true);
+    // Sending always produces bottom content (optimistic message, command
+    // output, streamed answer): re-stick synchronously so the turn stays
+    // attached even if the stick was lost while reading history or the
+    // send-frame layout churn (composer shrink, optimistic append) moves
+    // scroll before the observers re-pin. Idempotent when already sticky.
+    jumpToLatest();
     const id = selected,
       sent = draft,
       request_id = requestId();
@@ -361,11 +406,6 @@ function App() {
     }
     const kind = running && !pending ? "steer" : "submit";
     const visible = !sent.text.startsWith("/") || sent.files.length;
-    if (kind === "steer" && sent.files.length) {
-      report(new Error("Attachments must be sent with a new turn."));
-      setBusy(false);
-      return;
-    }
     if (visible)
       setOutgoing((items) => [
         ...items,
@@ -387,8 +427,13 @@ function App() {
       const result = await act(kind, {
         request_id,
         text: sent.text,
-        ...(kind === "submit"
-          ? { attachment_ids: sent.files.map((item) => item.id) }
+        ...(kind === "submit" || kind === "steer"
+          ? {
+              attachment_ids: sent.files.map((item) => ({
+                id: item.id,
+                name: item.name,
+              })),
+            }
           : {}),
       });
       setOutgoing((items) =>
@@ -474,12 +519,20 @@ function App() {
       report(new Error("Attach up to 8 files, at most 8 MiB each."));
       return;
     }
-    const pendingFiles = files.map((file) => ({
-      id: `upload-${requestId()}`,
-      name: file.name || "attachment",
-      bytes: file.size,
-      pending: true,
-    }));
+    // Display names dedupe against the live draft, so two pastes never
+    // share a label. The deduped name is the upload name: server record,
+    // model payload and UI agree with no migration.
+    const taken = new Set(draft.files.map((item) => item.name));
+    const pendingFiles = files.map((file) => {
+      const name = dedupeName(file.name || "attachment", taken);
+      taken.add(name);
+      return {
+        id: `upload-${requestId()}`,
+        name,
+        bytes: file.size,
+        pending: true,
+      };
+    });
     setUploading(true);
     setDrafts((current) => ({
       ...current,
@@ -673,6 +726,30 @@ function App() {
           </button>
         </div>
       )}
+      {/* A waiting service worker means this view is stale (notably in an
+          installed PWA with no chrome to pull-to-refresh). Surface it
+          here, not only in Settings, so reloads actually pick up fixes. */}
+      {update && (
+        <div role="status" class="update-banner">
+          <span>Update available with the latest fixes.</span>
+          <button
+            class="primary"
+            disabled={
+              Object.values(drafts).some(
+                (item) => item.text || item.files.length,
+              ) ||
+              uploading ||
+              Object.values(snapshots).some((item) => item.pending)
+            }
+            title="Reloads this view. Send or copy unsent drafts first."
+            onClick={() =>
+              import("./pwa.ts").then(({ applyUpdate }) => applyUpdate(update))
+            }
+          >
+            Refresh now
+          </button>
+        </div>
+      )}
       {authenticated === false ? (
         <Deferred
           load={pairing}
@@ -757,7 +834,12 @@ function App() {
               />
             ) : session ? (
               <>
+                {/* Remount the transcript per session: a stale surface's
+                    node detaches, so queued scrolls from it can never
+                    rewrite the live one, and each surface keeps its own
+                    DOM state (expansion, disclosure, scroll). */}
                 <Deferred
+                  key={selected}
                   load={chat}
                   fallback={
                     <div className="transcript">
@@ -862,9 +944,7 @@ function App() {
           ) : (
             <Deferred
               load={conversationActions}
-              fallback={
-                <ConversationActionSkeleton kind={modal.type} />
-              }
+              fallback={<ConversationActionSkeleton kind={modal.type} />}
               key={`${modal.type}-${modal.session.id}`}
               modal={modal}
               close={() => setModal(null)}

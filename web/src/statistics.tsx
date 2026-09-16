@@ -1,7 +1,7 @@
 import { duration } from "./duration.ts";
 import { count } from "./quantities.ts";
 import "./statistics.css";
-import type { Usage, StatisticsModal, Snapshot, TurnSummary } from "./types.ts";
+import type { Usage, StatisticsModal, Snapshot } from "./types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError } from "./ui.tsx";
 import { StatsSkeleton } from "./loading.tsx";
@@ -36,35 +36,6 @@ function UsageRows({ usage }: { usage?: Usage }) {
         ],
       ]}
     />
-  );
-}
-export function TurnFooter({
-  summary,
-  open,
-}: {
-  summary: TurnSummary;
-  open: () => void;
-}) {
-  return (
-    <button
-      class="quiet turn-summary"
-      onClick={open}
-      aria-label="Turn statistics"
-    >
-      {summary.usage_reported !== false && (
-        <span class="turn-tokens">
-          {count((summary.usage.input || 0) + (summary.usage.output || 0))}{" "}
-          tokens ·{" "}
-        </span>
-      )}
-      <span>
-        {count(summary.steps)} model calls · {count(summary.tool_calls)} tools ·{" "}
-        {duration(summary.duration_ms)}
-      </span>
-      {summary.outcome !== "complete" && summary.outcome !== "completed" && (
-        <span> · {summary.outcome}</span>
-      )}
-    </button>
   );
 }
 export default function Statistics({

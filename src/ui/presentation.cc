@@ -467,8 +467,32 @@ void TerminalPresenter::Block(const json& block) {
   if (kind == "user" || kind == "attachment") {
     WriteTerminalRecord(UserEchoRow(InputPrompt(), text) + "\n");
   } else if (kind == "assistant") {
-    PrintMessageHeader();
-    MdPrint(text);
+    // Mirror the stored-transcript printer and the live presenter: the mark
+    // only prints with text (tool-only turns show rows, never a bare mark),
+    // the answer is line-terminated, and tool rows replay the exact live
+    // record from facts instead of being dropped.
+    if (!JsonValue(block, "text", "").empty()) {
+      PrintMessageHeader();
+      MdPrint(text);
+      WriteTerminalRecord("\n");
+    }
+    if (const json* tools = JsonArray(block, "tools")) {
+      for (const json& tool : *tools) {
+        const json* replay = JsonObject(tool, "replay");
+        if (!replay) continue;
+        PresentationRecord record;
+        record.kind = PresentationKind::kToolCall;
+        record.id = JsonValue(tool, "call_id", "");
+        record.activity = JsonValue(tool, "activity", json::object());
+        record.title = JsonValue(*replay, "title", "");
+        record.summary = JsonValue(*replay, "summary", "");
+        record.detail = JsonValue(*replay, "detail", "");
+        record.multiline = JsonValue(*replay, "multiline", false);
+        record.skill = JsonValue(tool, "name", "") == "skill";
+        record.poll = JsonValue(*replay, "poll", false);
+        PrintPresentation(record);
+      }
+    }
   } else if (kind == "turn_summary") {
     WriteTerminalRecord(
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
@@ -477,6 +501,26 @@ void TerminalPresenter::Block(const json& block) {
   } else if (kind == "activity") {
     WriteTerminalRecord("· " + text + "\n");
   } else if (kind == "tool_result") {
+    if (const json* replay = JsonObject(block, "replay")) {
+      // Same row the live printer drew: recorded title/summary plus the
+      // block's activity (groups), change (diffs) and final status.
+      PresentationRecord record;
+      record.kind = PresentationKind::kToolResult;
+      record.id = JsonValue(block, "call_id", "");
+      record.activity = JsonValue(block, "activity", json::object());
+      record.title =
+          JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
+      record.summary = JsonValue(*replay, "summary", "");
+      record.change = JsonValue(block, "change", "");
+      const std::string status = JsonValue(block, "status", "");
+      record.status = status == "success"     ? PresentationStatus::kSucceeded
+                      : status == "cancelled" ? PresentationStatus::kCancelled
+                      : status == "failed" || status == "timed_out"
+                          ? PresentationStatus::kFailed
+                          : PresentationStatus::kNeutral;
+      PrintPresentation(record);
+      return;
+    }
     json activity = JsonValue(block, "activity", json::object());
     WriteTerminalRecord(
         TerminalSafe(JsonValue(activity, "label",

@@ -3,13 +3,31 @@
 // only (never sniffs output). Mirrors backend ToolSummary in registry.cc.
 import type { Block } from "./types.ts";
 import { cleanText, statusLine, stringifyArgs } from "./display.ts";
+import { bytes } from "./quantities.ts";
+
+// Retained blocks carry arguments as a truncated JSON string while live
+// blocks carry the parsed object. Accept both so history rows keep their
+// specific titles after retention instead of degrading to the bare tool
+// name (most visible on activity rows, which poll every few seconds).
+function argsObject(args: unknown): Record<string, unknown> {
+  if (typeof args === "object" && args !== null)
+    return args as Record<string, unknown>;
+  if (typeof args === "string") {
+    try {
+      const parsed: unknown = JSON.parse(args);
+      if (typeof parsed === "object" && parsed !== null)
+        return parsed as Record<string, unknown>;
+    } catch {
+      // Truncated or lexical JSON: fall through to no known keys.
+    }
+  }
+  return {};
+}
 
 function arg(args: unknown, key: string): string {
-  if (typeof args === "object" && args !== null) {
-    const value = (args as Record<string, unknown>)[key];
-    if (typeof value === "string") return value;
-    if (typeof value === "number") return String(value);
-  }
+  const value = argsObject(args)[key];
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
   return "";
 }
 
@@ -53,21 +71,39 @@ export function getToolPreview(block: Block): {
       break;
     case "run":
     case "scratch": {
-      const cmd = firstLine(
-        arg(args, "command") || stringifyArgs(args),
-      );
+      const cmd = firstLine(arg(args, "command") || stringifyArgs(args));
       title = cmd ? `$ ${cmd}` : name;
       break;
     }
-    case "activity":
-      title = arg(args, "operation")
-        ? `Activity ${arg(args, "operation")}`
-        : "Activity";
+    case "activity": {
+      // Mirrors backend ToolSummary in registry.cc (minus the wait≤
+      // timeout suffix, which is call config rather than what it does).
+      const operation = arg(args, "operation");
+      const id = arg(args, "id");
+      const target = id ? `activity ${id}` : "activities";
+      if (operation === "list") title = "List activities";
+      else if (operation === "wait") {
+        const mode = arg(args, "mode") || "any";
+        const ids = argsObject(args)["ids"];
+        const which =
+          Array.isArray(ids) && ids.length
+            ? ids.map((entry) => String(entry)).join(", ")
+            : "all";
+        title = `Wait for ${mode} \u00b7 ${which}`;
+      } else if (operation === "write") {
+        const size = argsObject(args)["chars"];
+        title = `Write ${typeof size === "string" ? bytes(size.length) : "?"} \u2192 ${target}`;
+      } else if (operation === "resize") {
+        title = `Resize ${arg(args, "rows") || "?"}\u00d7${arg(args, "cols") || "?"} \u2192 ${target}`;
+      } else if (operation === "stop") title = `Stop ${target}`;
+      else if (operation === "poll") {
+        const until = firstLine(arg(args, "until"));
+        title = until ? `Await ${until} \u00b7 ${target}` : `Poll ${target}`;
+      } else title = operation ? `Activity ${operation}` : "Activity";
       break;
+    }
     case "memory":
-      title = arg(args, "action")
-        ? `Memory ${arg(args, "action")}`
-        : "Memory";
+      title = arg(args, "action") ? `Memory ${arg(args, "action")}` : "Memory";
       break;
     case "web_fetch":
       title = arg(args, "url") ? `Fetch ${arg(args, "url")}` : "Fetch URL";
@@ -83,4 +119,40 @@ export function getToolPreview(block: Block): {
   }
   const output = typeof block.text === "string" ? firstLine(block.text) : "";
   return { title, subtitle, preview: output };
+}
+
+export interface ToolRow {
+  title: string;
+  subtitle: string;
+  preview: string;
+  diffOnly: boolean;
+  server: boolean;
+}
+
+// Single GUI adapter for every tool row. The server owns the compact
+// receipt (ToolSummary + ToolResultSummary in tool_output.h, replayed as
+// block.replay); the TUI prints the same fields via PrintPresentation, so
+// both surfaces name the same action the same way. Per-tool differences
+// stay in the title formatter above plus the diffOnly flag below — never
+// in per-call JSX — mirroring the backend's per-tool `summary` lambdas.
+export function getToolRow(block: Block): ToolRow {
+  const fallback = getToolPreview(block);
+  const replayTitle = block.replay?.title?.trim();
+  const replaySummary = block.replay?.summary?.trim();
+  const diffOnly =
+    (block.name === "write_file" ||
+      block.name === "edit_file" ||
+      block.name === "delete_file") &&
+    !!block.change &&
+    !/fail|error/i.test(block.status || "");
+  if (replayTitle || replaySummary) {
+    return {
+      title: replayTitle || fallback.title,
+      subtitle: fallback.subtitle,
+      preview: replaySummary || fallback.preview,
+      diffOnly,
+      server: true,
+    };
+  }
+  return { ...fallback, diffOnly, server: false };
 }

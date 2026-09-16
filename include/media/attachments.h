@@ -62,6 +62,17 @@ json AttachmentContent(const std::string& prompt,
                        const std::vector<Attachment>& attachments,
                        std::string& error);
 
+// Resolved attachment records ({path,name,mime,bytes,image,id}) back into an
+// Attachment. Display-only fields stay out of the model struct.
+Attachment AttachmentFromJson(const json& item);
+
+// Compose a steered user message: attachment content when files ride along,
+// plain prompt text otherwise. The bool selects the message kind
+// (kAttachment vs kUser); error carries compose failures for logging.
+std::pair<json, bool> ComposeSteeredContent(const std::string& input,
+                                            const json& attachments,
+                                            std::string& error);
+
 // Resolve retained references into a request projection; originals stay in
 // history.
 bool PrepareAttachments(json& messages,

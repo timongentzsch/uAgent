@@ -252,7 +252,9 @@ export default function Sidebar({
       <footer>
         <span
           class={`connection ${online ? "connected" : ""}`}
-          title={online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
+          title={
+            online ? "Connected" : connecting ? "Connecting…" : "Disconnected"
+          }
         >
           <StatusLed state={online ? "active" : "idle"} />{" "}
           {online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}

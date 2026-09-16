@@ -6,6 +6,24 @@ import { CodeCopy, LoadError } from "./ui.tsx";
 
 let renderer: Promise<typeof import("./markdown.ts")> | undefined;
 
+// Warm the renderer chunk outside the critical path. Called while a turn
+// streams (and once at boot), so the plain-to-markdown switch at
+// completion only pays the parse, never the chunk download.
+export function prefetchMarkdown(text = "") {
+  renderer ??= import("./markdown.ts");
+  if (/\$|\\[([]/.test(text)) void import("./math.ts");
+  if (/```|~~~/.test(text)) void import("./highlight.ts");
+}
+
+// Retained history hydrates from plain text to full markdown right after
+// mount; every late chunk (mermaid especially) is another height wave
+// that fights the bottom pin. Scan a text sample once the snapshot
+// arrives so all waves start together, early.
+export function prefetchHeavy(text: string) {
+  prefetchMarkdown(text);
+  if (/```\s*mermaid/i.test(text)) void import("./diagram.tsx");
+}
+
 function closedFence(source: string) {
   const lines = source.split("\n");
   const opening = lines[0].match(/^\s*(`{3,}|~{3,})/);
@@ -20,6 +38,38 @@ function closedFence(source: string) {
       );
     })
   );
+}
+
+// Progressive streaming split: text through the last blank line whose
+// head has balanced fences, so a streaming pass never renders an open
+// code block. Inline delimiters left unbalanced render literally until
+// the next boundary — progressive enhancement, never a structural
+// flip (block keys stay stable, see renderMarkdownBlocks).
+function balancedFences(head: string): boolean {
+  const fences = head.match(/^[ \t]*(```+|~~~+).*$/gm) || [];
+  let ticks = 0;
+  let tildes = 0;
+  for (const fence of fences) {
+    if (fence.trimStart().startsWith("`")) ticks++;
+    else tildes++;
+  }
+  return ticks % 2 === 0 && tildes % 2 === 0;
+}
+
+const STREAM_MAX_CHARS = 16000;
+const STREAM_MIN_INTERVAL_MS = 120;
+const STREAM_SCAN_LINES = 40;
+
+function streamingHead(source: string): string {
+  const lines = source.split("\n");
+  const start = Math.max(1, lines.length - STREAM_SCAN_LINES);
+  for (let i = lines.length - 1; i >= start; i--) {
+    if (lines[i].trim() !== "") continue;
+    const head = lines.slice(0, i).join("\n");
+    if (!head.trim() || !balancedFences(head)) continue;
+    return head;
+  }
+  return "";
 }
 
 function escapeHTML(value: string) {
@@ -92,19 +142,102 @@ class RenderedBlock extends Component<RenderedBlockProps> {
 export default function Markdown({
   text,
   streaming,
+  progressive = true,
 }: {
   text: string;
   streaming?: boolean;
+  // False keeps the plain-text-while-streaming path: hidden surfaces
+  // (e.g. reasoning inside a never-opened disclosure) must not pay
+  // renderer work for content the user may never see.
+  progressive?: boolean;
 }) {
   const [blocks, setBlocks] = useState<MarkdownBlock[]>([]);
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
+  const [streamBlocks, setStreamBlocks] = useState<MarkdownBlock[]>([]);
+  const [streamTail, setStreamTail] = useState(text);
   const pending = useRef({ active: true, text, running: false });
   pending.current.text = text;
+  const stream = useRef({
+    text: "",
+    tail: "",
+    rendered: 0,
+    timer: 0,
+    lastRun: 0,
+  });
+  // Progressive streaming render: at most one pass per
+  // STREAM_MIN_INTERVAL_MS over the closed prefix, with the unfinished
+  // tail staying plain. Stable block keys keep completed DOM subtrees
+  // untouched, so growth never flips rendered structure; the completion
+  // pass below then only fills the tail instead of swapping plain text
+  // for markdown in one height wave.
   useEffect(() => {
-    // While streaming, render cheap plain text synchronously. Full markdown
-    // (highlight, math, mermaid) runs once when the block completes, avoiding
-    // per-token parses and partial-fence flicker.
+    if (!streaming || !progressive) {
+      setStreamBlocks([]);
+      return;
+    }
+    prefetchMarkdown(text);
+    const state = stream.current;
+    state.text = text;
+    if (text.length > STREAM_MAX_CHARS) {
+      // Long turns stay plain until completion: a full-document parse per
+      // keystroke would jank the turn it decorates.
+      setStreamBlocks([]);
+      setStreamTail(text);
+      return;
+    }
+    if (state.timer) return; // trailing pass already scheduled
+    const wait = Math.max(
+      0,
+      STREAM_MIN_INTERVAL_MS - (Date.now() - state.lastRun),
+    );
+    state.timer = window.setTimeout(() => {
+      state.timer = 0;
+      state.lastRun = Date.now();
+      const value = state.text;
+      const head = streamingHead(value);
+      if (head.length < stream.current.rendered) {
+        // A later opener unbalanced the fences: keep the frozen frame and
+        // let the plain tail cover everything past it. Rendered structure
+        // never unmounts mid-stream.
+        const frozenTail = value.slice(stream.current.rendered);
+        if (stream.current.tail !== frozenTail) {
+          stream.current.tail = frozenTail;
+          setStreamTail(frozenTail);
+        }
+        return;
+      }
+      stream.current.rendered = head.length;
+      const tail = value.slice(head.length);
+      if (stream.current.tail !== tail) {
+        stream.current.tail = tail;
+        setStreamTail(tail);
+      }
+      if (!head.trim()) {
+        setStreamBlocks([]);
+        return;
+      }
+      const pendingRenderer = (renderer ??= import("./markdown.ts"));
+      pendingRenderer
+        .then((module) => module.renderMarkdownBlocks(head))
+        .then((output) => {
+          // A newer pass started while this one parsed; it will paint.
+          if (stream.current.text !== value) return;
+          setStreamBlocks(output);
+        })
+        .catch(() => {
+          // Keep the previous progressive frame; the plain tail covers.
+        });
+    }, wait);
+    return () => {
+      clearTimeout(state.timer);
+      state.timer = 0;
+    };
+  }, [text, streaming, progressive]);
+  useEffect(() => {
+    // Full render runs when the block completes (and on retry): the
+    // progressive passes above already warmed the renderer chunks, so
+    // completion only pays the parse.
     if (streaming) return;
     const state = pending.current;
     if (state.running) return;
@@ -117,7 +250,7 @@ export default function Markdown({
         if (!state.active) return;
         setBlocks(output);
         setError(null);
-        if (value !== state.text) requestAnimationFrame(paint);
+        if (value !== state.text) paint();
         else state.running = false;
       } catch (failure) {
         if (!state.active) return;
@@ -126,7 +259,8 @@ export default function Markdown({
         setError(failure);
       }
     };
-    requestAnimationFrame(paint);
+    // No rAF hop: effects already run post-paint, and the awaits yield.
+    paint();
   }, [text, streaming, retry]);
   useEffect(
     () => () => {
@@ -134,7 +268,23 @@ export default function Markdown({
     },
     [],
   );
-  if (streaming) return <div class="plain">{text}</div>;
+  if (streaming) {
+    // NOTE: deliberately not `.markdown`. Completion-timing contracts
+    // (asserted in ui.spec.js) observe `.message.response > .markdown`
+    // appearing at block completion with stable nodes; publishing the
+    // progressive tree under that selector would hand out nodes the
+    // completion swap then replaces (selection loss, removals). The
+    // stream tree swaps for the final render exactly like the old
+    // plain-text path did.
+    return (
+      <div class="markdown-stream">
+        {streamBlocks.map((block) => (
+          <RenderedBlock key={block.key} block={block} streaming />
+        ))}
+        {streamTail && <div class="plain">{streamTail}</div>}
+      </div>
+    );
+  }
   return blocks.length || error ? (
     <div class="markdown">
       {blocks.map((block) => (

@@ -75,8 +75,16 @@ export interface ToolActivity {
   label?: string;
   group?: { id: string; label: string };
 }
+export interface ToolReplay {
+  title?: string;
+  summary?: string;
+  poll?: boolean;
+  multiline?: boolean;
+  detail?: string;
+}
 export interface ToolCall {
   activity?: ToolActivity;
+  replay?: ToolReplay;
   id?: string;
   response_id?: string;
   occurrence_id?: string;
@@ -141,6 +149,7 @@ export interface Block {
   status?: string;
   error?: string;
   duration_ms?: number;
+  replay?: ToolReplay;
   ttft_ms?: number;
   tokens_per_second?: number;
   route?: string;
@@ -179,6 +188,7 @@ export interface Activity {
   agent_id?: string;
   kind?: string;
   label?: string;
+  command?: string;
   status?: string;
   started_ms?: number;
   duration_ms?: number;
@@ -488,7 +498,7 @@ export interface CommandFields {
   device_id?: string;
   text?: string;
   interaction_id?: string;
-  attachment_ids?: string[];
+  attachment_ids?: (string | { id: string; name: string })[];
   activity_id?: number;
   agent_id?: string;
   before?: number;

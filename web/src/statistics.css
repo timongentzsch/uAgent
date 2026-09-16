@@ -20,19 +20,3 @@
   text-align: right;
   overflow-wrap: anywhere;
 }
-
-.turn-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 0.3em;
-  margin-inline: -8px;
-  padding: 6px 8px 12px;
-  color: var(--muted);
-  font-size: 0.75rem;
-  text-align: left;
-}
-@media (max-width: 600px) {
-  .turn-tokens {
-    display: none;
-  }
-}

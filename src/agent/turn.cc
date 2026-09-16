@@ -29,6 +29,7 @@
 #include "include/core/term.h"
 #include "include/core/time.h"
 #include "include/md.h"
+#include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/child_agent.h"
 #include "include/tools/jobs.h"
@@ -199,9 +200,7 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     const Tool* tool = FindTool(tools_, call.name);
     json arguments = json::parse(call.args, nullptr, false);
     if (tool) CanonicalizeToolArguments(*tool, arguments);
-    bool blocking_wait =
-        tool && tool->blocking_wait_default_ms >= 0 &&
-        JsonValue(arguments, "wait_ms", tool->blocking_wait_default_ms) > 0;
+    bool blocking_wait = tool && ToolCallBlocks(*tool, arguments);
     if (blocking_wait) {
       last_call.clear();
       repeated_calls = 0;
@@ -276,6 +275,29 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
     std::string& input = message.text;
     for (std::string& skill : ExplicitSkillContext(input)) {
       PushSkillContext(std::move(skill));
+    }
+    // Steered files join the steered message exactly like submitted ones:
+    // composed content for the model, display files for the transcript.
+    // A compose failure degrades to text (the claim validated the files
+    // seconds ago) rather than failing the running turn.
+    if (message.attachments.is_array() && !message.attachments.empty()) {
+      std::string error;
+      auto [content, attachment] =
+          ComposeSteeredContent(input, message.attachments, error);
+      if (error.empty()) {
+        conversation_.Push(
+            {{"role", "user"}, {"content", std::move(content)}},
+            attachment ? MessageKind::kAttachment : MessageKind::kUser);
+        if (attachment && message.images.is_array() &&
+            !message.images.empty()) {
+          conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                                      {{"files", message.images}});
+        }
+        PublishMessage(message.request_id);
+        continue;
+      }
+      DebugLog("steering_attachments_failed",
+               {{"turn", turn_id_}, {"error", error}});
     }
     conversation_.Push({{"role", "user"}, {"content", std::move(input)}},
                        MessageKind::kUser);
@@ -1035,14 +1057,16 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
       {"generated_tokens", state.metrics.model_generated_tokens},
       {"usage_reported", state.metrics.usage_reported},
       {"usage", UsageJson(state.metrics.usage)}};
-  json block = conversation_.RecordEntry({{"kind", "turn_summary"},
-                                          {"turn_root", turn_root_},
-                                          {"summary", summary}});
-  Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+  // The stored block already carries the full summary: the footer the live
+  // turn prints and the one --resume replays read identical inputs.
   summary.update({{"session_usage", UsageJson(session_usage_)},
                   {"messages", conversation_.Size()},
                   {"context_tokens", ContextUsed()},
                   {"line_open", state.line_open}});
+  json block = conversation_.RecordEntry({{"kind", "turn_summary"},
+                                          {"turn_root", turn_root_},
+                                          {"summary", summary}});
+  Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
   Event completed{EventId::kTurnCompleted, std::move(summary)};
   completed.render = true;
   Emit(std::move(completed));

@@ -339,9 +339,17 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
     options.overrides["UAGENT_APPROVAL"] =
         JsonValue(session.launch, "permissions", "prompt");
   }
-  return create ? Open(executable_, session.cwd, session.path,
-                       session.draft_title, options, error)
-                : Connect(session.path);
+  Connection connection =
+      create ? Open(executable_, session.cwd, session.path,
+                    session.draft_title, options, error)
+               : Connect(session.path);
+  // Record which executable this worker runs before anyone can adopt it:
+  // a later host compares this against the binary on disk. Written only
+  // for fresh spawns; a dead-on-arrival spawn leaves no socket, so the
+  // next attempt overwrites the record with its own spawn.
+  if (create && connection.socket)
+    WriteWorkerBinary(session.path, ExecutableIdentity(executable_));
+  return connection;
 }
 
 json SessionHost::SendCommand(const std::shared_ptr<HostSession>& session,
@@ -488,6 +496,30 @@ void SessionHost::Received(HostSession* session, json frame) {
   changed_.notify_all();
 }
 
+bool SessionHost::RecycleStaleWorkerLocked(
+    const std::shared_ptr<HostSession>& session,
+    std::unique_lock<std::mutex>& lock) {
+  if (!WorkerBinaryStale(ExecutableIdentity(executable_),
+                         ReadWorkerBinary(session->path)))
+    return false;
+  // Binary upgraded since this worker spawned: graceful close, then the
+  // caller spawns fresh. Same semantics as user-initiated close of a busy
+  // session; a worker that ignores close keeps serving (fail open, retried
+  // on the next touch).
+  DebugLog("worker_binary_recycle", {{"session", session->id}});
+  session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
+  changed_.wait_for(lock, std::chrono::seconds(5),
+                    [&] { return session->exited.load(); });
+  if (!session->exited) return false;
+  session->pid = -1;
+  if (session->reader.joinable()) {
+    lock.unlock();
+    session->reader.join();
+    lock.lock();
+  }
+  return true;
+}
+
 bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
                                  std::string& error,
                                  std::unique_lock<std::mutex>& lock,
@@ -496,7 +528,12 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     error = "session is closing";
     return false;
   }
-  if (session->pid > 0 && !session->exited) return true;
+  bool create_now = create;
+  for (int attempt = 0;; ++attempt) {
+    if (session->pid > 0 && !session->exited) {
+      if (!RecycleStaleWorkerLocked(session, lock)) return true;
+      create_now = true;  // recycled: fall through to a fresh spawn
+    }
   if (session->connecting) {
     error = "session is starting";
     return false;
@@ -514,7 +551,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     }
   }
   lock.unlock();
-  auto connected = OpenRuntime(*session, create, error);
+  auto connected = OpenRuntime(*session, create_now, error);
   lock.lock();
   session->connecting = false;
   auto owner = sessions_.find(session->id);
@@ -558,9 +595,21 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     session->exited = true;
     changed_.notify_all();
   });
+  // Adopted a live worker through Connect: it may predate the executable
+  // (host restarted over it). Recycle through the same gate, then spawn.
+  // Fresh spawns match the record OpenRuntime just wrote and skip this.
+  if (RecycleStaleWorkerLocked(session, lock)) {
+    if (attempt > 0) {
+      error = "worker binary changed during activation";
+      return false;
+    }
+    create_now = true;
+    continue;
+  }
   PublishLocked(session->id, session->generation,
                 {{"kind", "activated"}, {"metadata", Metadata(*session)}});
   return true;
+  }  // for (attempt): single pass unless a stale worker recycled above
 }
 
 void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
@@ -1440,13 +1489,30 @@ SessionCommandResult SessionHost::ExecuteCommand(
       if (!EnsurePrivateDirectory(session->path + ".assets")) {
         result.error = "unsafe asset directory";
       }
-      for (const json& id : *ids) {
+      for (const json& claim : *ids) {
         if (!result.error.empty()) break;
-        if (!id.is_string() || !OpaqueId(id.get<std::string>())) {
+        // Claims are bare asset IDs, or {id, name} objects carrying the
+        // composer's display name (deduped/renamed labels). The display
+        // name is stored on the record before commit, so the history echo
+        // and the model payload agree with what the sender saw.
+        std::string asset_id = claim.is_string() ? claim.get<std::string>()
+                                                 : JsonValue(claim, "id", "");
+        std::string display =
+            claim.is_object() ? JsonValue(claim, "name", "") : "";
+        if (!OpaqueId(asset_id)) {
           result.error = "invalid asset ID";
           break;
         }
-        std::string stem = session->path + ".assets/" + id.get<std::string>();
+        if (!display.empty()) {
+          if (display.size() > 128 || display.find('/') != std::string::npos ||
+              display.find('\\') != std::string::npos ||
+              display.find_first_of("\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f") !=
+                  std::string::npos) {
+            result.error = "invalid attachment name";
+            break;
+          }
+        }
+        std::string stem = session->path + ".assets/" + asset_id;
         std::string metadata, read_error;
         if (!ReadRegularFile(stem + ".json", 1024, metadata, read_error)) {
           result.error = "attachment is unavailable";
@@ -1461,10 +1527,11 @@ SessionCommandResult SessionHost::ExecuteCommand(
           result.error = "invalid file asset";
           break;
         }
+        if (!display.empty()) asset["name"] = display;
         claims.emplace_back(stem + ".json", asset);
         command["attachments"].push_back(
             {{"path", stem + extension},
-             {"id", id},
+             {"id", asset_id},
              {"name", JsonValue(asset, "name", "attachment" + extension)},
              {"mime", JsonValue(asset, "mime", "application/octet-stream")},
              {"image", JsonValue(asset, "image", extension != ".data")}});

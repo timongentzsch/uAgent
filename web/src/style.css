@@ -360,6 +360,18 @@ pre code {
   max-height: 25vh;
   overflow: auto;
 }
+.update-banner {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--live);
+  background: var(--raised);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  font-size: 0.85rem;
+}
 .load-error {
   padding: 8px 0;
   overflow-wrap: anywhere;
@@ -543,7 +555,11 @@ pre code {
   text-overflow: ellipsis;
 }
 .transcript {
-  overflow-anchor: auto;
+  /* Sticky is the default state and the hook owns the bottom
+     uncontested; native anchoring only engages while reading history
+     (the hook toggles it inline). Starting at auto lets the browser
+     fight the first mount pin on reload. */
+  overflow-anchor: none;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -855,6 +871,15 @@ dialog {
 dialog[open] {
   display: flex;
   flex-direction: column;
+}
+/* Paint gate (ui.tsx Modal): the dialog opens invisibly and fades in
+   once mount work has committed paint, so open never flashes. */
+dialog {
+  opacity: 0;
+}
+dialog[data-ready] {
+  opacity: 1;
+  transition: opacity 120ms ease-out;
 }
 dialog::backdrop {
   background: rgb(0 0 0 / 0.6);

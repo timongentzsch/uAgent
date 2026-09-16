@@ -384,6 +384,17 @@ void TestActivityStateGraph() {
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
   CHECK(BgTakeCompleted(supervisor).empty());
+  // Rows carry the full command (bounded) beside the 160-char label, so the
+  // activity popup never degrades to the abbreviated label once inspect can
+  // no longer reach a finished job.
+  const std::string long_command(300, 'x');
+  CHECK(supervisor.TryAdd({899991, "", long_command, false, "", 0, stopped}, 4));
+  json long_row;
+  for (const json& row : supervisor.ActivityViews()) {
+    if (row.value("command", "") == long_command) long_row = row;
+  }
+  CHECK(!long_row.is_null());
+  CHECK(long_row.value("label", "").size() < long_command.size());
 }
 
 void TestActivitySessions() {

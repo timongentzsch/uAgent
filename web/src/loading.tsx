@@ -23,12 +23,20 @@ function Actions() {
 }
 
 export function ModelSkeleton() {
+  // Both callers already own the `.model-form` wrapper and the real
+  // Cancel/Apply actions. The mirror keeps the full Model + Effort +
+  // Variant shape: variant-capable protocols (OpenRouter) always show
+  // the Variant field, and the committed dialog specs pin both the
+  // field count and loading-vs-loaded height parity on that shape.
   return (
-    <div className="model-form" {...busy} aria-label="Loading models…">
-      <Field label="Model">
+    <>
+      <span className="sr-only" role="status" aria-busy="true">
+        Loading models…
+      </span>
+      <Field label="Model · loading…">
         <Control />
       </Field>
-      <div className="field-row">
+      <div className="field-row" aria-hidden="true">
         <Field label="Effort">
           <Control />
         </Field>
@@ -36,8 +44,7 @@ export function ModelSkeleton() {
           <Control />
         </Field>
       </div>
-      <Actions />
-    </div>
+    </>
   );
 }
 
@@ -65,11 +72,7 @@ export function HistorySkeleton({ messages = 4 }: { messages?: number }) {
       {Array.from({ length: messages }, (_, i) => {
         const shape = historyShapes[i % historyShapes.length];
         return (
-          <article
-            key={i}
-            className={`message ${shape}`}
-            aria-hidden="true"
-          >
+          <article key={i} className={`message ${shape}`} aria-hidden="true">
             {shape === "tool" ? (
               <div className="tool-row-head">
                 <Skeleton decorative rows={1} className="control-skeleton" />
@@ -132,14 +135,13 @@ export function ComposerSkeleton() {
         <Skeleton decorative rows={1} className="composer-input-skeleton" />
         <div className="composer-actions">
           {[0, 1, 2].map((i) => (
-            <Skeleton
-              key={i}
-              decorative
-              rows={1}
-              className="icon-skeleton"
-            />
+            <Skeleton key={i} decorative rows={1} className="icon-skeleton" />
           ))}
-          <Skeleton decorative rows={1} className="icon-skeleton send-skeleton" />
+          <Skeleton
+            decorative
+            rows={1}
+            className="icon-skeleton send-skeleton"
+          />
         </div>
       </form>
     </section>
@@ -147,20 +149,53 @@ export function ComposerSkeleton() {
 }
 
 export function SettingsSkeleton() {
+  // Mirror the live settings form row for row: same Fields (labels,
+  // values, help), real inert controls where the shape is textual
+  // (disabled buttons, closed sections, disabled ranges render their
+  // exact heights by construction), shimmer only for the selects.
+  // The compact-surfaces spec pins loading-vs-loaded height parity.
   return (
     <div className="settings-content" {...busy} aria-label="Loading settings…">
       <div className="settings-fields" aria-hidden="true">
-        {[0, 1, 2].map((i) => (
-          <label key={i}>
-            <Skeleton decorative rows={1} className="title-skeleton" />
-            <Control />
-          </label>
-        ))}
+        <Field label="Appearance">
+          <Control />
+        </Field>
+        <Field
+          label="Interface size"
+          value="100%"
+          help="Scales menus, buttons and interface labels."
+        >
+          <input type="range" disabled value={100} />
+        </Field>
+        <Field
+          label="Conversation text size"
+          value="100%"
+          help="Scales messages, tool output and the text you type."
+        >
+          <input type="range" disabled value={100} />
+        </Field>
+        <div className="dialog-actions">
+          <button type="button" disabled>
+            Reset sizes
+          </button>
+        </div>
+        <Field
+          label="Default permissions"
+          help="Used by new conversations and conversations that inherit the default."
+        >
+          <Control />
+        </Field>
+        <button type="button" disabled>
+          System prompt
+        </button>
+        <button type="button" disabled>
+          Advanced configuration
+        </button>
       </div>
       {["Install", "Notifications", "Paired devices"].map((name) => (
-        <div key={name} className="settings-section" aria-hidden="true">
-          <Skeleton decorative rows={1} className="title-skeleton" />
-        </div>
+        <details key={name} className="settings-section" aria-hidden="true">
+          <summary>{name}</summary>
+        </details>
       ))}
     </div>
   );

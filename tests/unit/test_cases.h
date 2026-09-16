@@ -21,6 +21,7 @@ namespace uagent {
   X(TestHostedSearchStatusRow)                 \
   X(TestActivityBar)                           \
   X(TestDiffLineColoring)                      \
+  X(TestReplayBlocksMirrorLiveRows)            \
   X(TestStatusBarDropsByPriority)              \
   X(TestPollCollapse)                          \
   X(TestTerminalSafety)                        \
@@ -55,8 +56,10 @@ namespace uagent {
   X(TestActivityWaitAndDelivery)               \
   X(TestCollaboratorMail)                      \
   X(TestToolExecutionPolicy)                   \
+  X(TestBlockingWaitCalls)                     \
   X(TestOpenRouterServerSearch)                \
   X(TestAttachmentEncoding)                    \
+  X(TestWorkerBinaryIdentity)                  \
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \
   X(TestMemoryAlwaysOnSelection)               \

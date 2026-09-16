@@ -312,6 +312,11 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                       Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
                      {"status", JsonValue(detail, "status", "running")}};
         tool["activity"] = JsonValue(detail, "activity", json::object());
+        // Kept receipts replay the exact live row; sessions saved before
+        // replay facts fall back to the legacy synthesis in the presenter.
+        if (detail.contains("call_replay")) {
+          tool["replay"] = detail["call_replay"];
+        }
         if (detail.contains("exchange_path")) {
           tool["exchange_path"] = detail["exchange_path"];
         }
@@ -336,6 +341,9 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
     block["detail_id"] = detail_id;
     block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), 4096);
     block["artifact"] = detail.contains("artifact");
+    if (detail.contains("result_replay")) {
+      block["replay"] = detail["result_replay"];
+    }
     if (detail.contains("exchange_path")) {
       block["exchange_path"] = detail["exchange_path"];
     }

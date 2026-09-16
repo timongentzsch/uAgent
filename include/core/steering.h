@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "include/core/json.h"
+
 namespace uagent {
 
 // Enter queues active-turn guidance. Bare ESC alone requests foreground
@@ -21,6 +23,10 @@ class Steering {
   struct Message {
     std::string text, request_id;
     bool auto_start = true;
+    // Resolved host-claimed attachments ({path,name,mime,bytes,image,id})
+    // and their transcript display images. Empty for text-only guidance.
+    json attachments = json::array();
+    json images = json::array();
   };
   bool Requested() const { return requested_; }
 
@@ -29,7 +35,8 @@ class Steering {
   bool Take();
 
   void Queue(std::string input, std::string request_id = "",
-             bool auto_start = true);
+             bool auto_start = true, json attachments = json::array(),
+             json images = json::array());
   // Drop one queued entry by client request id. True when an entry was
   // still queued; consumed steering is never resurrected.
   bool Recall(const std::string& request_id);

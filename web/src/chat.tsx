@@ -52,7 +52,7 @@ export default function Chat({
     // rects (not offsetTop, which depends on offsetParent and breaks with
     // content-visibility): the first visible row stays under the reader
     // across the prepend, whether it is an ARTICLE message or a DETAILS
-    // exploration group. Falls back to a height delta when the anchor is
+    // tool row. Falls back to a height delta when the anchor is
     // gone (window cap trimmed it).
     stopFollowing();
     let anchor: HTMLElement | null = null;
@@ -165,59 +165,63 @@ export default function Chat({
       ref={scroller}
     >
       <div class="transcript-content" ref={content}>
-      {view?.more && (
-        <button
-          type="button"
-          class="history-button"
-          disabled={!online || loadingOlder}
-          aria-busy={loadingOlder || undefined}
-          onClick={() => loadOlder().catch(report)}
-        >
-          {loadingOlder ? "Loading older messages…" : "Load older retained messages"}
-        </button>
-      )}
-      {(view?.dropped_segments || 0) > 0 && (
-        <p class="retention">
-          {view?.dropped_segments} older segments are outside retention.
-        </p>
-      )}
-      {snapshot?.live_truncated && (
-        <p class="retention">
-          The live preview exceeded its buffer. Retained history refreshes when
-          this turn saves.
-        </p>
-      )}
-      {!snapshot &&
-        (loadError ? (
-          <LoadError error={loadError} retry={retry} />
-        ) : (
-          <HistorySkeleton />
-        ))}
-      {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-      {snapshot && blocks.length === 0 && (
-        <div class="empty">
-          <Mark className="cursor-mark" />
-          <h2>What are we working on?</h2>
-          <p>
-            Describe a task, attach a file, or use an existing slash command.
+        {view?.more && (
+          <button
+            type="button"
+            class="history-button"
+            disabled={!online || loadingOlder}
+            aria-busy={loadingOlder || undefined}
+            onClick={() => loadOlder().catch(report)}
+          >
+            {loadingOlder
+              ? "Loading older messages…"
+              : "Load older retained messages"}
+          </button>
+        )}
+        {(view?.dropped_segments || 0) > 0 && (
+          <p class="retention">
+            {view?.dropped_segments} older segments are outside retention.
           </p>
-        </div>
-      )}
-      {snapshot && (
-        <MessageRows
-          blocks={blocks}
-          online={online}
-          session={session}
-          report={report}
-          recall={recall}
-          inspect={inspect}
-          http={http}
-          activity={activity}
-          statistics={statistics}
-        />
-      )}
-      {session.error && <p class="failure">{session.error}</p>}
-      {snapshot?.state?.error && <p class="failure">{snapshot.state.error}</p>}
+        )}
+        {snapshot?.live_truncated && (
+          <p class="retention">
+            The live preview exceeded its buffer. Retained history refreshes
+            when this turn saves.
+          </p>
+        )}
+        {!snapshot &&
+          (loadError ? (
+            <LoadError error={loadError} retry={retry} />
+          ) : (
+            <HistorySkeleton />
+          ))}
+        {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
+        {snapshot && blocks.length === 0 && (
+          <div class="empty">
+            <Mark className="cursor-mark" />
+            <h2>What are we working on?</h2>
+            <p>
+              Describe a task, attach a file, or use an existing slash command.
+            </p>
+          </div>
+        )}
+        {snapshot && (
+          <MessageRows
+            blocks={blocks}
+            online={online}
+            session={session}
+            report={report}
+            recall={recall}
+            inspect={inspect}
+            http={http}
+            activity={activity}
+            statistics={statistics}
+          />
+        )}
+        {session.error && <p class="failure">{session.error}</p>}
+        {snapshot?.state?.error && (
+          <p class="failure">{snapshot.state.error}</p>
+        )}
       </div>
     </div>
   );

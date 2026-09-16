@@ -60,6 +60,7 @@
   font-size: 0.7rem;
 }
 .message .markdown,
+.message .markdown-stream,
 .message .plain,
 .tool-body {
   font-size: calc(14px * var(--text-scale, 1));
@@ -120,8 +121,7 @@
    after first render) keeps the scrollbar stable. This is what makes
    the first seconds of a long retrieval cheap: only the viewport pays
    full layout. */
-article.message,
-.message.exploration {
+article.message {
   content-visibility: auto;
   contain-intrinsic-size: auto 240px;
 }
@@ -130,6 +130,14 @@ article.message,
    intrinsic estimates across frames. Removed when the settle finishes, at
    which point all rows have remembered real sizes. */
 .transcript-content.anchor-lock .message {
+  content-visibility: visible;
+}
+/* Live edge: while following, the last rows lay out at real sizes so the
+   bottom pin measures exact heights instead of chasing content-visibility
+   estimates while typing or streaming (the pin-then-settle chase read as
+   the transcript glitching up and down, and as a small upward jump after
+   scrolling to the bottom). History rows keep virtualization. */
+.transcript.is-following .transcript-content > :nth-last-child(-n + 3) {
   content-visibility: visible;
 }
 .tool-disclosure > summary {
@@ -149,14 +157,6 @@ article.message,
   max-width: 32ch;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.exploration-children {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap);
-}
-.exploration > summary {
-  font-size: 0.8rem;
 }
 .tool-body {
   padding: 4px 0;
@@ -230,4 +230,24 @@ article.message,
 }
 .event-body .markdown {
   color: var(--text);
+}
+
+/* Turn footer button (turn-footer.tsx): lives in the main bundle with the
+   transcript, so its rules must load with message.css — not with the lazy
+   statistics dialog chunk — or the footer renders unstyled until the
+   dialog first opens. */
+.turn-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.3em;
+  margin-inline: -8px;
+  padding: 6px 8px 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: left;
+}
+@media (max-width: 600px) {
+  .turn-tokens {
+    display: none;
+  }
 }

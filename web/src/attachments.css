@@ -36,3 +36,33 @@
   height: 36px;
   object-fit: cover;
 }
+/* Rename control: reads as the file name until focused. */
+.chip-name {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+.chip-name:disabled {
+  cursor: default;
+}
+.file-chip input[aria-label^="Rename"] {
+  width: 12ch;
+  max-width: 100%;
+  font: inherit;
+}
+/* Inline @-mention references inside message text. */
+.mention-image {
+  display: block;
+  max-width: min(100%, 320px);
+  max-height: 180px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  margin: 4px 0;
+}
+.mention-chip {
+  vertical-align: baseline;
+}

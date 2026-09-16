@@ -138,6 +138,25 @@ inline PresentationRecord ToolResultPresentation(
   return record;
 }
 
+// Kept receipts replay exactly what the live row showed. Only the compact
+// row shape is recorded (title/summary/flags); bodies, diffs and groups
+// already travel on the view block, so facts stay small and sessions saved
+// before this change fall back to the legacy synthesis. There is no render
+// flag: the worker's render bit only ever gated worker stdout (which does
+// not exist); every visible CLI row is drawn client-side with render forced
+// on, so presence of the fact is the show condition. Poll suppression rides
+// the poll flag through the shared printer.
+inline json ToolReplayJson(const PresentationRecord& record) {
+  json value = {{"title", record.title},
+                {"summary", record.summary},
+                {"poll", record.poll}};
+  if (record.multiline) {
+    value["multiline"] = true;
+    value["detail"] = Utf8Trunc(record.detail, 2048);
+  }
+  return value;
+}
+
 inline PresentationRecord StoredToolResultPresentation(
     const std::string& name, const std::string& output,
     const std::string& display = "",

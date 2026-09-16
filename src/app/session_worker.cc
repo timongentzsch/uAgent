@@ -25,6 +25,54 @@
 
 namespace uagent::session {
 namespace {
+// Host-claimed command["attachments"] entries ({path,id,name,mime,image})
+// become worker Attachment records plus transcript display images (path
+// omitted: display facts reach the client). Submit and steer share it.
+bool ResolveCommandAttachments(const json& command,
+                               std::vector<Attachment>& attachments,
+                               json& images, std::string& error) {
+  const json* paths = JsonArray(command, "attachments");
+  if (!paths) return true;
+  if (paths->size() > kUploadCount) {
+    error = "too many attachments";
+    return false;
+  }
+  for (const json& path : *paths) {
+    Attachment attachment;
+    std::string file =
+        path.is_string() ? path.get<std::string>() : JsonValue(path, "path", "");
+    if (!InspectAttachment(file, attachment, error)) return false;
+    attachment.asset_id =
+        std::filesystem::path(attachment.path).stem().string();
+    if (path.is_object()) {
+      attachment.asset_id = JsonValue(path, "id", "");
+      attachment.name = JsonValue(path, "name", attachment.name);
+      attachment.mime = JsonValue(path, "mime", attachment.mime);
+      attachment.image = JsonValue(path, "image", false);
+    }
+    images.push_back({{"id", attachment.asset_id},
+                      {"name", attachment.name},
+                      {"mime", attachment.mime},
+                      {"bytes", attachment.bytes},
+                      {"image", attachment.image}});
+    attachments.push_back(std::move(attachment));
+  }
+  return true;
+}
+
+json AttachmentsToJson(const std::vector<Attachment>& attachments) {
+  json out = json::array();
+  for (const Attachment& attachment : attachments) {
+    out.push_back({{"path", attachment.path},
+                   {"name", attachment.name},
+                   {"mime", attachment.mime},
+                   {"bytes", attachment.bytes},
+                   {"image", attachment.image},
+                   {"id", attachment.asset_id}});
+  }
+  return out;
+}
+
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
@@ -215,10 +263,14 @@ class WorkerChannel final : public ApplicationChannel {
         input_ = ApplicationInput{
             .text = std::move(queued.front().text),
             .request_id = std::move(queued.front().request_id)};
+        for (const json& item : queued.front().attachments)
+          input_->attachments.push_back(AttachmentFromJson(item));
         for (size_t i = 1; i < queued.size(); ++i) {
           SteeringState().Queue(std::move(queued[i].text),
                                 std::move(queued[i].request_id),
-                                queued[i].auto_start);
+                                queued[i].auto_start,
+                                std::move(queued[i].attachments),
+                                std::move(queued[i].images));
         }
         busy_ = turn_active_ = true;
         BeginTurn();
@@ -336,9 +388,16 @@ class WorkerChannel final : public ApplicationChannel {
         // Guidance only: the turn reads it at its next steering check and
         // passive waits yield on the queued message. Requesting a foreground
         // abort here would report every steer as an interruption.
-        SteeringState().Queue(std::move(text),
-                              JsonValue(command, "client_request_id", ""),
-                              kind != "guide");
+        // Files ride the same queue: the turn composes them into the
+        // steered user message, so steering sees what the composer showed.
+        std::vector<Attachment> attachments;
+        json images = json::array();
+        if (ResolveCommandAttachments(command, attachments, images, error)) {
+          SteeringState().Queue(
+              std::move(text), JsonValue(command, "client_request_id", ""),
+              kind != "guide", AttachmentsToJson(attachments),
+              std::move(images));
+        }
       }
     } else if (kind == "recall") {
       // Pre-delivery only: the queue owns recallability, the turn owns
@@ -404,27 +463,14 @@ class WorkerChannel final : public ApplicationChannel {
         }
         input.request_id = JsonValue(command, "client_request_id", "");
         input.text = JsonValue(command, "text", "");
-        const json* paths = JsonArray(command, "attachments");
-        if (paths && paths->size() <= kUploadCount) {
-          for (const json& path : *paths) {
-            Attachment attachment;
-            std::string file = path.is_string() ? path.get<std::string>()
-                                                : JsonValue(path, "path", "");
-            if (!InspectAttachment(file, attachment, error)) {
-              break;
-            }
-            attachment.asset_id =
-                std::filesystem::path(attachment.path).stem().string();
-            if (path.is_object()) {
-              attachment.asset_id = JsonValue(path, "id", "");
-              attachment.name = JsonValue(path, "name", attachment.name);
-              attachment.mime = JsonValue(path, "mime", attachment.mime);
-              attachment.image = JsonValue(path, "image", false);
-            }
-            input.attachments.push_back(std::move(attachment));
-          }
-        } else if (paths) {
-          error = "too many attachments";
+        json images = json::array();
+        if (!ResolveCommandAttachments(command, input.attachments, images,
+                                       error)) {
+          Send({{"kind", "outcome"},
+                {"request_id", request},
+                {"accepted", false},
+                {"error", error}});
+          return true;
         }
         if (input.text.empty() && input.attachments.empty()) {
           error = "empty message";

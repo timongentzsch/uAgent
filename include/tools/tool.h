@@ -285,6 +285,18 @@ inline bool ToolMutates(const Tool& tool, const json& arguments) {
   return tool.mutating || (tool.mutates && tool.mutates(arguments));
 }
 
+// Repeat-guard exemption for Agent::ToolCallsWithinLimits: a call that
+// deliberately blocks — activity wait_ms or run yield_ms — is waiting for
+// something to finish, not stuck in a tight identical-call loop, so it
+// resets the counter instead of tripping it.
+inline bool ToolCallBlocks(const Tool& tool, const json& arguments) {
+  if (tool.blocking_wait_default_ms >= 0 &&
+      JsonValue(arguments, "wait_ms", tool.blocking_wait_default_ms) > 0) {
+    return true;
+  }
+  return JsonValue(arguments, "yield_ms", int64_t{0}) > 0;
+}
+
 // Contract-defined for native operations; arbitrary execution may declare its
 // purpose. Neither this label nor a successful exit proves absence of effects.
 inline std::string ToolActivityCategory(const Tool& tool, const json& args) {

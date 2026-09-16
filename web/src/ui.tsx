@@ -121,12 +121,24 @@ export function Skeleton({
   className = "",
   label = "Loading…",
   decorative = false,
+  delayMs = 150,
 }: {
   rows?: number;
   className?: string;
   label?: string;
   decorative?: boolean;
+  delayMs?: number;
 }) {
+  // Announced loaders wait out fast resolves: a skeleton that lives for
+  // a single frame IS the flash. Structural mirrors stay immediate
+  // (decorative) because they are the geometry reservation.
+  const [visible, setVisible] = useState(decorative || delayMs <= 0);
+  useEffect(() => {
+    if (decorative || delayMs <= 0) return;
+    const timer = setTimeout(() => setVisible(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [decorative, delayMs]);
+  if (!visible) return null;
   return (
     <div
       class={`skeleton ${className}`}
@@ -195,7 +207,6 @@ export function DisclosureRow({
   status,
   time,
   icon,
-  open,
   onToggle,
   className = "",
   messageId,
@@ -205,22 +216,15 @@ export function DisclosureRow({
   status?: string;
   time?: string;
   icon?: ComponentChildren;
-  open?: boolean;
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
   className?: string;
   messageId?: string;
   children: ComponentChildren;
 }) {
-  const [isOpen, setIsOpen] = useState(!!open);
-  const [mounted, setMounted] = useState(!!open);
-  // Controlled prop wins when provided; otherwise internal state preserves
-  // user toggles across streaming re-renders (never reset to closed).
-  useEffect(() => {
-    if (open !== undefined) {
-      setIsOpen(open);
-      if (open) setMounted(true);
-    }
-  }, [open]);
+  const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  // Internal state only, so user toggles survive streaming re-renders
+  // (never reset to closed) with no post-paint prop sync to lag a frame.
   return (
     <details
       class={`disclosure-row ${className}`}
@@ -285,11 +289,21 @@ export function Modal({
   className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const prior = document.activeElement;
     const dialog = ref.current;
     dialog?.showModal();
+    // Paint gate: mount work and the first async data land before the
+    // dialog becomes visible, so open never flashes an unsettled box.
+    // One frame is layout, the second commits paint.
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => setReady(true));
+    });
     return () => {
+      cancelAnimationFrame(first);
+      cancelAnimationFrame(second);
       dialog?.close();
       if (prior instanceof HTMLElement && prior.isConnected)
         prior.focus({ preventScroll: true });
@@ -299,6 +313,7 @@ export function Modal({
     <dialog
       ref={ref}
       class={className}
+      data-ready={ready || undefined}
       aria-label={title}
       onCancel={(event) => {
         event.preventDefault();
@@ -352,6 +367,6 @@ export function Deferred<P extends object>({
   ) : error ? (
     <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
   ) : (
-    fallback || <Skeleton />
+    fallback || <Skeleton delayMs={0} />
   );
 }

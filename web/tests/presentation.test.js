@@ -1,17 +1,20 @@
 import { contextSummary } from "../src/context.ts";
 import { duration } from "../src/duration.ts";
-import {
-  isRunningStatus,
-  statusLine,
-  diffLineClass,
-} from "../src/display.ts";
-import { getToolPreview } from "../src/tool-preview.ts";
+import { isRunningStatus, statusLine, diffLineClass } from "../src/display.ts";
+import { getToolPreview, getToolRow } from "../src/tool-preview.ts";
+import { liveBlocks } from "../src/store.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/format.ts";
 import { formatEventStream } from "../src/event-stream.ts";
 import { count, bytes } from "../src/quantities.ts";
-import { presentMessages } from "../src/message-view.ts";
+import {
+  presentMessages,
+  splitMentionTokens,
+  stripAttachedTrailer,
+} from "../src/message-view.ts";
+import { dedupeName } from "../src/mention.ts";
+import { encodeMention, matchMention, mentionOptions } from "../src/mention.ts";
 
 test("JSON display preserves large numbers, escapes, duplicate keys and arrays", () => {
   const raw =
@@ -209,6 +212,35 @@ test("tool-sourced attachments stay inline with uploads", () => {
   );
 });
 
+test("server Attached trailers strip at render, user words survive", () => {
+  const files = [{ id: "f1", name: "chart.png" }];
+  assert.equal(
+    stripAttachedTrailer(
+      'look at this\n\nAttached:\n- path "/tmp/x/805b.data"',
+      files,
+    ),
+    "look at this",
+  );
+  assert.equal(
+    stripAttachedTrailer(
+      'a\n\nAttached:\n- path "/a/1.data" (from tool call "c1")\n- path "/b/2 \\"q\\".data"',
+      files,
+    ),
+    "a",
+  );
+  // No files: a user literally typing the format keeps their words.
+  assert.equal(
+    stripAttachedTrailer('note\n\nAttached:\n- path "/x"', []),
+    'note\n\nAttached:\n- path "/x"',
+  );
+  assert.equal(stripAttachedTrailer(undefined, files), undefined);
+  // Mid-text lookalikes are not trailers.
+  assert.equal(
+    stripAttachedTrailer('x\n\nAttached:\n- path "/a"\n\nmore', files),
+    'x\n\nAttached:\n- path "/a"\n\nmore',
+  );
+});
+
 test("reused IDs, incomplete calls and orphaned results remain in their own turns", () => {
   const result = presentMessages([
     { id: "user-1", kind: "user" },
@@ -241,13 +273,7 @@ test("reused IDs, incomplete calls and orphaned results remain in their own turn
 });
 
 test("running rows never read as not recorded", () => {
-  for (const status of [
-    undefined,
-    "",
-    "running",
-    "pending",
-    "not recorded",
-  ]) {
+  for (const status of [undefined, "", "running", "pending", "not recorded"]) {
     assert.ok(isRunningStatus(status), JSON.stringify(status));
     assert.equal(statusLine({ status }), "Running\u2026");
   }
@@ -268,6 +294,84 @@ test("running rows never read as not recorded", () => {
   });
   assert.equal(preview.title, "$ sleep 60");
   assert.equal(preview.subtitle, "Running\u2026");
+});
+
+test("activity rows name the operation, including retained string arguments", () => {
+  // Live blocks carry parsed objects; retained blocks carry a truncated
+  // JSON string. Both must render what the call actually does.
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "poll", id: 12 },
+    }).title,
+    "Poll activity 12",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: JSON.stringify({ operation: "poll", id: 12 }),
+    }).title,
+    "Poll activity 12",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "poll", id: 12, until: "READY\nnoise" },
+    }).title,
+    "Await READY \u00b7 activity 12",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "wait", mode: "any", ids: [1, 2] },
+    }).title,
+    "Wait for any \u00b7 1, 2",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "stop", id: 7 },
+    }).title,
+    "Stop activity 7",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "list" },
+    }).title,
+    "List activities",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: { operation: "write", id: 3, chars: "hello" },
+    }).title,
+    "Write 5 B \u2192 activity 3",
+  );
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "activity",
+      arguments: "{}",
+    }).title,
+    "Activity",
+  );
+  // String arguments rescue the other tools too.
+  assert.equal(
+    getToolPreview({
+      kind: "tool_result",
+      name: "run",
+      arguments: JSON.stringify({ command: "sleep 60" }),
+    }).title,
+    "$ sleep 60",
+  );
 });
 
 test("change receipts classify git-style lines", () => {
@@ -347,7 +451,7 @@ test("readable bodies decode text and nested JSON without losing lexical facts",
   );
 });
 
-test("native exploration membership survives reversed results and keeps boundaries", () => {
+test("reversed tool results join by ID as flat rows", () => {
   const group = { id: "a", label: "Explored · 2 calls" };
   const blocks = [
     { id: "request", kind: "user", text: "Inspect" },
@@ -379,18 +483,18 @@ test("native exploration membership survives reversed results and keeps boundari
   const rows = presentMessages(blocks);
   assert.deepEqual(
     rows.map((row) => row.id),
-    ["request", "result-a", "answer", "failed"],
+    ["request", "result-a", "result-b", "answer", "failed"],
   );
   assert.deepEqual(
-    rows[1].children.map((row) => row.text),
+    rows.slice(1, 3).map((row) => row.text),
     ["A", "B"],
   );
-  assert.equal(rows[1].children[1].name, "run");
+  assert.equal(rows[2].name, "run");
   assert.deepEqual(presentMessages(structuredClone(blocks)), rows);
   assert.ok(!blocks[1].children);
 });
 
-test("occurrence identities isolate repeated provider call IDs and stabilize groups", () => {
+test("occurrence identities isolate repeated provider call IDs", () => {
   const group = { id: "explore", label: "Explored 2 files" };
   const blocks = [
     { id: "u-1", kind: "user", text: "first" },
@@ -457,21 +561,315 @@ test("occurrence identities isolate repeated provider call IDs and stabilize gro
     },
   ];
   const first = presentMessages(blocks);
-  const groupRow = first[1];
-  assert.equal(groupRow.key, "group-response-1-explore");
   assert.deepEqual(
-    groupRow.children.map((row) => [row.key, row.text]),
+    first.map((row) => [row.key, row.text]),
     [
+      ["u-1", "first"],
       ["response-1:1", "first"],
       ["response-1:2", "second"],
+      ["u-2", "again"],
+      ["response-2:1", "later"],
     ],
   );
   assert.equal(first.at(-1).key, "response-2:1");
   assert.equal(first.at(-1).text, "later");
   const checkpoint = presentMessages(structuredClone(blocks));
-  assert.equal(checkpoint[1].key, groupRow.key);
   assert.deepEqual(
-    checkpoint[1].children.map((row) => row.key),
-    groupRow.children.map((row) => row.key),
+    checkpoint.map((row) => row.key),
+    first.map((row) => row.key),
+  );
+});
+
+test("empty assistant placeholders drop, content stays", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    { id: "r-empty", kind: "assistant", text: "", reasoning: "" },
+    { id: "r-stream", kind: "assistant", streaming: true },
+    { id: "m1", kind: "assistant", text: "working" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["u1", "m1"],
+  );
+});
+
+test("upload names dedupe with numbered copies", () => {
+  assert.equal(dedupeName("image.png", []), "image.png");
+  assert.equal(dedupeName("image.png", ["image.png"]), "image (2).png");
+  assert.equal(
+    dedupeName("image.png", ["image.png", "image (2).png"]),
+    "image (3).png",
+  );
+  assert.equal(dedupeName("README", ["README"]), "README (2)");
+  assert.equal(dedupeName("  ", []), "attachment");
+});
+
+test("@-mention matches the caret word, never emails", () => {
+  assert.deepEqual(matchMention("see @cha", 8), {
+    start: 4,
+    end: 8,
+    query: "cha",
+  });
+  assert.deepEqual(matchMention("@", 1), { start: 0, end: 1, query: "" });
+  assert.equal(matchMention("a@b", 3), null);
+  assert.equal(matchMention("mail x@y", 8), null);
+  assert.equal(matchMention("see chart", 9), null);
+  assert.deepEqual(matchMention("@a @b", 5), {
+    start: 3,
+    end: 5,
+    query: "b",
+  });
+  const files = [{ name: "chart.png" }, { name: "photo.png" }];
+  assert.deepEqual(mentionOptions(files, "ch"), [{ name: "chart.png" }]);
+  assert.deepEqual(mentionOptions(files, ""), files);
+  assert.equal(encodeMention("a]b(c", "f1"), "![a b c](attachment:f1)");
+});
+
+test("mention tokens split outside fences, never without files", () => {
+  const files = [{ id: "f1" }];
+  assert.deepEqual(splitMentionTokens("see ![c](attachment:f1) ok", files), [
+    { text: "see " },
+    { mention: { id: "f1", alt: "c" } },
+    { text: " ok" },
+  ]);
+  assert.deepEqual(splitMentionTokens("plain", files), [{ text: "plain" }]);
+  // No files: still splits — MentionFile degrades the dangling id.
+  assert.deepEqual(splitMentionTokens("a ![c](attachment:f1)"), [
+    { text: "a " },
+    { mention: { id: "f1", alt: "c" } },
+  ]);
+  assert.deepEqual(
+    splitMentionTokens(
+      "```\n![c](attachment:f1)\n```\nreal ![d](attachment:f2)",
+      files,
+    ),
+    [
+      { text: "```\n![c](attachment:f1)\n```\nreal " },
+      { mention: { id: "f2", alt: "d" } },
+    ],
+  );
+});
+
+test("live call and result frames merge into one completed row", () => {
+  // Journal-faithful slim frames: occurrence only, no arguments/activity.
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    {
+      id: "r-3-41-1:c77f",
+      kind: "tool_result",
+      call_id: undefined,
+      occurrence_id: "r-3-41-1:c77f",
+      name: "run",
+      status: "running",
+    },
+    {
+      id: "r-3-41-1:c77f",
+      kind: "tool_result",
+      occurrence_id: "r-3-41-1:c77f",
+      name: "run",
+      status: "success",
+      duration_ms: 807,
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].status, "success");
+  assert.equal(rows[1].duration_ms, 807);
+});
+
+test("retained call and result join in either order", () => {
+  const call = {
+    id: "m-1",
+    kind: "assistant",
+    response_id: "r-3-41-1",
+    tools: [
+      {
+        call_id: "call_abc",
+        occurrence_id: "r-3-41-1:c77f",
+        response_id: "r-3-41-1",
+        detail_id: "t-deadbeef",
+        name: "run",
+        arguments: '{"command":"ssh dev"}',
+        activity: { category: "execute", label: "$ ssh dev" },
+        status: "running",
+      },
+    ],
+  };
+  const result = {
+    id: "m-2",
+    kind: "tool_result",
+    call_id: "call_abc",
+    occurrence_id: "r-3-41-1:c77f",
+    response_id: "r-3-41-1",
+    detail_id: "t-deadbeef",
+    name: "run",
+    text: "OK",
+    status: "success",
+    duration_ms: 807,
+  };
+  for (const blocks of [
+    [{ id: "u1", kind: "user", text: "go" }, call, result],
+    [{ id: "u1", kind: "user", text: "go" }, result, call],
+  ]) {
+    const rows = presentMessages(structuredClone(blocks));
+    assert.equal(rows.length, 2);
+    assert.equal(rows[1].status, "success");
+    assert.equal(rows[1].duration_ms, 807);
+    assert.equal(rows[1].arguments, '{"command":"ssh dev"}');
+    assert.equal(rows[1].activity?.label, "$ ssh dev");
+  }
+});
+
+test("results without occurrence rejoin by response/call and detail", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    {
+      id: "m-1",
+      kind: "assistant",
+      response_id: "r-1",
+      tools: [
+        {
+          call_id: "call_old",
+          response_id: "r-1",
+          detail_id: "t-aaa",
+          name: "run",
+          arguments: '{"command":"ls"}',
+          status: "running",
+        },
+      ],
+    },
+    {
+      id: "m-2",
+      kind: "tool_result",
+      call_id: "call_old",
+      response_id: "r-1",
+      detail_id: "t-aaa",
+      name: "run",
+      text: "out",
+      status: "success",
+      duration_ms: 12,
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].text, "out");
+  assert.equal(rows[1].arguments, '{"command":"ls"}');
+});
+
+test("completed rows never regress to stale Running arrivals", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    {
+      id: "m-2",
+      kind: "tool_result",
+      occurrence_id: "r-1:abc",
+      name: "run",
+      text: "done",
+      status: "success",
+      duration_ms: 45,
+    },
+    {
+      id: "m-1",
+      kind: "assistant",
+      response_id: "r-1",
+      tools: [
+        {
+          call_id: "c1",
+          occurrence_id: "r-1:abc",
+          response_id: "r-1",
+          name: "run",
+          status: "running",
+        },
+      ],
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].status, "success");
+  assert.equal(rows[1].duration_ms, 45);
+  assert.equal(rows[1].text, "done");
+});
+
+test("absent fields never wipe present ones across paths", () => {
+  // Slim result frame (no activity/arguments, like the journal) must
+  // not clear the call record it lands on.
+  const live = liveBlocks([
+    {
+      type: "tool.call",
+      data: {
+        occurrence_id: "r-1:abc",
+        name: "run",
+        activity: { category: "execute", label: "$ ls" },
+        arguments: '{"command":"ls"}',
+      },
+    },
+    {
+      type: "tool.result",
+      data: {
+        occurrence_id: "r-1:abc",
+        name: "run",
+        completion_status: "success",
+        duration_ms: 12,
+      },
+    },
+  ]);
+  assert.equal(live.length, 1);
+  assert.equal(live[0].activity?.label, "$ ls");
+  assert.equal(live[0].arguments, '{"command":"ls"}');
+  assert.equal(live[0].status, "success");
+  // Same guarantee in the retained join: a bare duplicate carries no
+  // activity, so the merged row keeps the call's.
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    ...live,
+    {
+      id: "m-2",
+      kind: "tool_result",
+      occurrence_id: "r-1:abc",
+      name: "run",
+      status: "success",
+      duration_ms: 12,
+    },
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].activity?.label, "$ ls");
+  assert.equal(rows[1].status, "success");
+});
+
+test("server replay owns the tool title when present", () => {
+  const base = {
+    kind: "tool_result",
+    name: "read_path",
+    arguments: { path: "a.txt" },
+    text: "local first line\nsecond",
+    status: "success",
+  };
+  const local = getToolRow(base);
+  assert.equal(local.server, false);
+  assert.equal(local.title, "Read a.txt");
+  const server = getToolRow({
+    ...base,
+    replay: { title: "[2] read_path", summary: "a.txt · +3 lines" },
+  });
+  assert.equal(server.server, true);
+  assert.equal(server.title, "[2] read_path");
+  assert.equal(server.preview, "a.txt · +3 lines");
+});
+
+test("consecutive tools stay flat rows in order", () => {
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    { id: "t1", kind: "tool_result", call_id: "c1", text: "one" },
+    { id: "t2", kind: "tool_result", call_id: "c2", text: "two" },
+    {
+      id: "a1",
+      kind: "attachment",
+      origin: "tool",
+      files: [{ id: "f1" }],
+    },
+    { id: "m1", kind: "assistant", text: "done" },
+    { id: "t3", kind: "tool_result", call_id: "c3", text: "solo" },
+    { id: "m2", kind: "assistant", text: "end" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    ["u1", "t1", "t2", "a1", "m1", "t3", "m2"],
   );
 });

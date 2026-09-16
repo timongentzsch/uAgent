@@ -541,7 +541,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       await registration.unregister();
   });
   await page.reload();
-  await expect(page.locator(".transcript .skeleton")).toBeVisible();
+  // While history is held the transcript shows the announced loading
+  // mirror (many decorative shimmer bars share .skeleton, so pin the
+  // singular status region instead of the strict-violating class).
+  await expect(page.locator(".transcript [role='status']")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toHaveCount(0);
@@ -658,9 +661,10 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     exact: true,
   });
   await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  await expect(
-    raw.getByRole("button", { name: "Download", exact: true }),
-  ).toBeDisabled();
+  // The loading shell is structural shimmer by design (never buttons),
+  // so assert its geometry while the chunk is gated instead of a
+  // disabled Download: the shell must already have final shape.
+  await expect(raw.locator(".raw-body .code-skeleton")).toBeVisible();
   const rawLoadingBox = await raw.boundingBox();
   releaseRaw();
   await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
@@ -848,14 +852,16 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.goto(`/#session=${session.id}`);
   const tool = page.locator(".message.tool");
   await expect(tool).toBeVisible();
-  const assistantHeader = tool.locator(":scope > header");
-  await expect(assistantHeader.locator(".mark")).toHaveCount(1);
+  // Tool rows are headerless by design (attribution lives on response
+  // rows); the disclosure summary is the row's top edge, and it carries
+  // no mark (the inline-icon removal).
+  await expect(tool.locator(":scope > header")).toHaveCount(0);
   await expect(tool.locator(".tool-disclosure > summary .mark")).toHaveCount(0);
-  const headerBox = await assistantHeader.boundingBox();
+  const toolBox = await tool.boundingBox();
   const summaryBox = await tool
     .locator(".tool-disclosure > summary")
     .boundingBox();
-  expect(summaryBox.y).toBeGreaterThanOrEqual(headerBox.y + headerBox.height);
+  expect(summaryBox.y).toBeGreaterThanOrEqual(toolBox.y);
   // However long the label grows, it takes the ellipsis and the status
   // metadata stays on one line.
   const toggle = tool.locator(".tool-disclosure > summary");
@@ -1593,7 +1599,7 @@ test.describe("mobile navigation and commands", () => {
   });
 });
 
-test("native exploration and memory receipts survive reload and mobile rotation", async ({
+test("tool rows and memory receipts survive reload and mobile rotation", async ({
   page,
   session,
   command,
@@ -1614,10 +1620,7 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  const explored = page.locator(".exploration > summary");
-  await expect(explored).toHaveText("Explored · 2 calls");
-  await explored.click();
-  await expect(page.locator(".exploration .tool-disclosure")).toHaveCount(2);
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1654,7 +1657,7 @@ test("native exploration and memory receipts survive reload and mobile rotation"
     element.scrollTop = 0;
   });
   await page.reload();
-  await expect(explored).toHaveText("Explored · 2 calls");
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
   await expect(
     page
       .locator(".tool-disclosure")
@@ -1947,10 +1950,13 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   expect(
     (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
   ).toBeGreaterThan(16000);
-  await detail.getByText("System prompt", { exact: true }).click();
-  await expect(detail.locator(".prompt-disclosure pre")).toContainText(
-    "You are a coding agent",
+  // No System prompt disclosure anymore; run details render open at the top.
+  await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
+    0,
   );
+  await expect(
+    detail.locator('section[aria-label="Run details"]'),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("subagent-task-phone.png"),
   });

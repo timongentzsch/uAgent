@@ -250,6 +250,7 @@ if(BUILD_TESTING)
     tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/sandbox_test.cc
+    tests/unit/session_server_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc
     tests/unit/test_main.cc

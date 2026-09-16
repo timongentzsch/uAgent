@@ -375,4 +375,19 @@ void TestToolExecutionPolicy() {
   }
 }
 
+void TestBlockingWaitCalls() {
+  Tool run;
+  run.name = "run";
+  // run's wait knob is yield_ms, not wait_ms: a waiting poll is not a
+  // stuck loop, so it must reset the identical-call counter.
+  CHECK(!ToolCallBlocks(run, json::object()));
+  CHECK(!ToolCallBlocks(run, {{"yield_ms", 0}}));
+  CHECK(ToolCallBlocks(run, {{"yield_ms", 25000}}));
+  Tool activity;
+  activity.name = "activity";
+  activity.blocking_wait_default_ms = 0;
+  CHECK(!ToolCallBlocks(activity, json::object()));
+  CHECK(ToolCallBlocks(activity, {{"wait_ms", 5000}}));
+}
+
 }  // namespace uagent

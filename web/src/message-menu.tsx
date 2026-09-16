@@ -17,8 +17,7 @@ export function MessageMenu({
   if (!statistics && !http) return null;
   const exchanges = block.http || block.source?.http;
   const showHttp =
-    !!http &&
-    (block.kind === "assistant" || (exchanges?.length || 0) > 0);
+    !!http && (block.kind === "assistant" || (exchanges?.length || 0) > 0);
   return (
     <Menu label={label}>
       {statistics && (

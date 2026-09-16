@@ -1,14 +1,18 @@
 import "./attachments.css";
-import { TurnFooter } from "./statistics.tsx";
+import { TurnFooter } from "./turn-footer.tsx";
 import Markdown from "./markdown-view.tsx";
-import DiffView from "./diff-view.tsx";
 import "./message.css";
 import { bytes, count } from "./quantities.ts";
 import { Component, type ComponentProps } from "preact";
-import { presentMessages } from "./message-view.ts";
+import {
+  presentMessages,
+  splitMentionTokens,
+  stripAttachedTrailer,
+} from "./message-view.ts";
 import type {
   PresentedBlock,
   Block,
+  Asset,
   SessionRef,
   Exchange,
   Report,
@@ -25,7 +29,8 @@ import {
 } from "./ui.tsx";
 import { MessageMenu } from "./message-menu.tsx";
 import { useBlockReader } from "./block-reader.ts";
-import { getToolPreview } from "./tool-preview.ts";
+import { getToolRow } from "./tool-preview.ts";
+import { ToolRow } from "./tool-row.tsx";
 import {
   formatDateTime,
   formatDuration,
@@ -35,6 +40,43 @@ import {
   statusLine,
   stringifyArgs,
 } from "./display.ts";
+
+// Inline @-mention reference. Resolves against the message's own files so
+// a renamed file shows its current name; a removed one degrades to muted
+// text instead of a broken image. No files (assistant rows echoing the
+// syntax): the splitter never emits mentions, so this stays unreachable.
+function MentionFile({
+  id,
+  alt,
+  files,
+  sessionId,
+  online,
+}: {
+  id: string;
+  alt: string;
+  files?: (Asset | string)[];
+  sessionId: string;
+  online: boolean;
+}) {
+  const file = files?.find(
+    (item): item is Asset => typeof item === "object" && item.id === id,
+  );
+  if (!file) return <span class="muted">@{alt} (attachment removed)</span>;
+  const href = `/api/sessions/${sessionId}/assets/${file.id}`;
+  return file.image && online ? (
+    <img
+      class="mention-image"
+      src={href}
+      alt={file.name}
+      title={file.name}
+      loading="lazy"
+    />
+  ) : (
+    <a class="file-chip mention-chip" href={href} download={file.name}>
+      @{file.name}
+    </a>
+  );
+}
 
 function MessageView({
   block,
@@ -68,7 +110,7 @@ function MessageView({
   const [expanded, setExpanded] = useState(false);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
-  const text = full ?? block.text;
+  const text = stripAttachedTrailer(full ?? block.text, block.files);
   const tool = block.kind === "tool_result";
   const load = useBlockReader(session, read);
   useEffect(() => {
@@ -236,86 +278,79 @@ function MessageView({
           />
         </header>
       )}
-      {tool && (() => {
-        const preview = getToolPreview(block);
-        const running =
-          block.duration_ms == null && isRunningStatus(block.status);
-        return (
-        <div class="tool-row-head">
-          <DisclosureRow
-            className="tool-disclosure"
-            label={preview.title}
-            status={preview.subtitle}
-            icon={
-              running ? (
-                <span class="status-led running" aria-hidden="true" />
-              ) : undefined
-            }
-            onToggle={(event) => setExpanded(event.currentTarget.open)}
-          >
-            <div class="tool-body">
-              {block.source?.time && (
-                <p class="small muted">
-                  Called {formatDateTime(block.source.time)}
-                  {block.result_loaded &&
-                    block.time &&
-                    ` · completed ${formatDateTime(block.time)}`}
-                </p>
-              )}
-              <p class="small muted">{block.name}</p>
-              {argumentsText && <pre>{input}</pre>}
-              {!online && block.truncated && full === null && (
-                <p class="small muted">
-                  Recent output only. Connect to load the full result.
-                </p>
-              )}
-              {expanding && <Skeleton label="Loading full tool output…" />}
-              {loadError && (
-                <LoadError
-                  error={loadError}
-                  retry={() => setRetry(retry + 1)}
-                />
-              )}
-              {text ? (
-                <pre>{output}</pre>
-              ) : (
-                block.result_loaded === false && (
-                  <p class="muted">
-                    Output is not loaded. Open the full tool input/output.
-                  </p>
-                )
-              )}
-              {block.change && <DiffView text={cleanText(block.change)} />}
-              {inspect && (
-                <button
-                  onClick={() =>
-                    inspect(block.detail_id || `t-${block.call_id}`)
-                  }
-                >
-                  Tool input/output
-                </button>
-              )}
+      {tool &&
+        (() => {
+          const row = getToolRow(block);
+          const running =
+            block.duration_ms == null && isRunningStatus(block.status);
+          return (
+            <div class="tool-row-head">
+              <ToolRow
+                block={block}
+                title={row.title}
+                subtitle={row.subtitle}
+                running={running}
+                diffOnly={row.diffOnly}
+                argumentsText={argumentsText}
+                input={input}
+                output={output}
+                text={text}
+                expanded={expanded}
+                expanding={expanding}
+                loadError={loadError}
+                retry={() => setRetry(retry + 1)}
+                online={online}
+                inspect={inspect}
+                onToggle={(event) => setExpanded(event.currentTarget.open)}
+              />
+              <MessageMenu
+                label="Tool menu"
+                block={block}
+                statistics={statistics}
+                http={http}
+              />
             </div>
-          </DisclosureRow>
-          <MessageMenu
-            label="Tool menu"
-            block={block}
-            statistics={statistics}
-            http={http}
-          />
-        </div>
-        );
-      })()}
+          );
+        })()}
       {block.reasoning && (
         <DisclosureRow
           className="thinking"
           label="Thinking"
           status={block.streaming ? "streaming" : undefined}
         >
-          <Markdown text={block.reasoning} streaming={block.streaming} />
+          {/* Reasoning stays plain while streaming: a never-opened
+              disclosure must not pay renderer work. */}
+          <Markdown
+            text={block.reasoning}
+            streaming={block.streaming}
+            progressive={false}
+          />
         </DisclosureRow>
       )}
-      {!tool && text && <Markdown text={text} streaming={block.streaming} />}
+      {!tool &&
+        text &&
+        splitMentionTokens(text).map((part, index) =>
+          "text" in part ? (
+            part.text ? (
+              // Segments render independently: emphasis spanning a token
+              // keeps its words but loses the styling (rare, accepted).
+              <Markdown
+                key={`t-${index}`}
+                text={part.text}
+                streaming={block.streaming}
+              />
+            ) : null
+          ) : (
+            <MentionFile
+              key={`m-${part.mention.id}-${index}`}
+              id={part.mention.id}
+              alt={part.mention.alt}
+              files={block.files}
+              sessionId={session.id}
+              online={online}
+            />
+          ),
+        )}
       {block.deliveries?.map((item) => (
         <p class="small muted">
           {item.name} · {item.delivery}
@@ -426,7 +461,11 @@ function messagePropsEqual(before: MessageProps, after: MessageProps): boolean {
     x.arguments === y.arguments &&
     x.summary === y.summary &&
     x.compaction === y.compaction &&
-    x.memory === y.memory
+    x.memory === y.memory &&
+    x.replay?.title === y.replay?.title &&
+    x.replay?.summary === y.replay?.summary &&
+    (x.duration_ms ?? null) === (y.duration_ms ?? null) &&
+    (x.change ?? "") === (y.change ?? "")
   );
 }
 
@@ -446,31 +485,20 @@ export type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {
   blocks: Block[];
 };
 
-// Flat list with stable keys, except native exploration groups which nest
-// adjacent rows for disclosure. presentMessages is memoized per blocks array;
-// per-row shouldComponentUpdate skips unchanged rows during streaming.
+// Flat list with stable keys: one row per message, tool call or attachment.
+// presentMessages is memoized per blocks array; per-row shouldComponentUpdate
+// skips unchanged rows during streaming.
+// Keys are scoped to the session: stable message IDs are local to a
+// conversation, so a reused instance must never carry expansion,
+// disclosure or markdown state from another conversation for the same ID.
 export function MessageRows({ blocks, ...props }: MessageRowsProps) {
   const rows = useMemo(() => presentMessages(blocks), [blocks]);
+  const scope = props.session?.id ? `${props.session.id}:` : "";
   return (
     <>
-      {rows.map((block) =>
-        block.children ? (
-          <DisclosureRow
-            className="message exploration"
-            key={block.key}
-            messageId={block.key}
-            label={block.activity?.group?.label || "Exploration"}
-          >
-            <div className="exploration-children">
-              {block.children.map((child) => (
-                <Message key={child.key || child.id} block={child} {...props} />
-              ))}
-            </div>
-          </DisclosureRow>
-        ) : (
-          <Message key={block.key || block.id} block={block} {...props} />
-        ),
-      )}
+      {rows.map((row) => (
+        <Message key={`${scope}${row.key || row.id}`} block={row} {...props} />
+      ))}
     </>
   );
 }

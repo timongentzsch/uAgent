@@ -31,9 +31,15 @@ export function writeStored(
 // One incremental projection, also used to hydrate the server's replay.
 export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
   let blocks = prior;
+  // Frames omit keys other paths carry (slim live frames vs retained
+  // blocks): absent fields must never wipe present ones.
+  const defined = (patch: Partial<Block>) =>
+    Object.fromEntries(
+      Object.entries(patch).filter(([, value]) => value !== undefined),
+    );
   const update = (index: number, change: Partial<Block>) => {
     const next = blocks.slice();
-    next[index] = { ...next[index], ...change };
+    next[index] = { ...next[index], ...defined(change) };
     blocks = next;
     return next[index];
   };

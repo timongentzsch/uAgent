@@ -202,6 +202,12 @@ class SessionHost {
   bool ActivateLocked(const std::shared_ptr<HostSession>& session,
                       std::string& error, std::unique_lock<std::mutex>& lock,
                       bool create);
+  // Graceful binary-upgrade recycle: when the executable on disk is newer
+  // than the attached worker's spawn record, close it and report true so
+  // the caller spawns fresh. False keeps the worker: fresh record, or a
+  // worker that ignores close (fail open, retried on the next touch).
+  bool RecycleStaleWorkerLocked(const std::shared_ptr<HostSession>& session,
+                                std::unique_lock<std::mutex>& lock);
   void Received(HostSession* session, json frame);
   void DeactivateLocked(HostSession& session);
 };

@@ -12,8 +12,7 @@ export function diffLineClass(line: string, first: boolean): string {
   if (first && /^(Replaced|Created|Deleted|diff --git) /.test(line))
     return "diff-head";
   if (line.startsWith("@@")) return "diff-hunk";
-  if (line.startsWith("--- ") || line.startsWith("+++ "))
-    return "diff-head";
+  if (line.startsWith("--- ") || line.startsWith("+++ ")) return "diff-head";
   const marker = line.charAt(0);
   if (marker === "+") return "diff-add";
   if (marker === "-") return "diff-del";

@@ -554,8 +554,8 @@ export function useHost(
     }
   }, [load, report, forget, onResult]);
   useEffect(() => {
-    const restoration = history.scrollRestoration;
-    history.scrollRestoration = "manual";
+    // Scroll restoration is owned from module scope (see above); the
+    // transcript hook is the only writer from the first paint on.
     refresh();
     const recover = (event?: Event) => {
       if (document.visibilityState !== "visible") return;
@@ -603,7 +603,6 @@ export function useHost(
       });
     };
     return () => {
-      history.scrollRestoration = restoration;
       lifetime.current.abort();
       stream.current?.close();
       cancelAnimationFrame(frame);
@@ -693,10 +692,10 @@ export function useHost(
       selection.current = id;
       writeSelection(id);
       // Following is owned solely by the transcript scroll stick
-      // (use-transcript-scroll): app.tsx pins to the latest on every
-      // selection change via jumpToLatest, which notifies through
-      // onFollow. Clearing it here diverged React state (false) from the
-      // stick ref (still true), so the pin became a no-op notification
+      // (use-transcript-scroll): a switch resumes the saved position
+      // (or pins a fresh surface), which notifies through onFollow.
+      // Clearing it here diverged React state (false) from the stick
+      // ref (still true), so the pin became a no-op notification
       // and following stayed false forever: the Jump button lingered,
       // unread badges never cleared, and read marking stopped.
       if (live.current[id])

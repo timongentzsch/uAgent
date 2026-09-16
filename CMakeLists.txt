@@ -101,6 +101,8 @@ add_library(
   src/api/wire_request.cc
   src/api/wire_stream.cc
   src/app/application.cc
+  src/app/application_channel.cc
+  src/app/application_headless.cc
   src/app/bootstrap.cc
   src/app/commands.cc
   src/app/config_proposal.cc

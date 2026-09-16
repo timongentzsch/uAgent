@@ -189,6 +189,8 @@ class SessionHost {
   bool ResolveOutcome(HostSession& session, json& frame);
   void FailPending(HostSession& session);
   void ApplyRuntimeFrame(HostSession& session, json& frame);
+  // Outcome labels shared by live frames and the schedule supervisor.
+  static std::string RunResultFor(const std::string& outcome);
   std::chrono::steady_clock::time_point NextScheduleDeadline() const;
   bool RecoverSchedules(std::vector<std::shared_ptr<HostSession>>& activate);
   ScheduleTick TickSchedules();

@@ -114,7 +114,12 @@ add_library(
   src/app/reference.cc
   src/app/runtime.cc
   src/app/self_description.cc
+  src/app/session_assets.cc
   src/app/session_host.cc
+  src/app/session_router.cc
+  src/app/session_schedules.cc
+  src/app/session_snapshot.cc
+  src/app/session_supervisor.cc
   src/cli.cc
   src/core/child_env.cc
   src/core/config_document.cc

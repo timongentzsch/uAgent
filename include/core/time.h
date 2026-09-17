@@ -56,6 +56,20 @@ inline int64_t NowMillis() {
       .count();
 }
 
+// Millisecond/second conversions shared by turn metrics, retry delays and
+// API progress reporting. Round up so a sub-second remainder stays usable
+// by second-granularity APIs instead of collapsing to zero.
+inline int64_t MillisToSecondsCeil(int64_t millis) {
+  if (millis <= 0) return 0;
+  return (millis + 999) / 1000;
+}
+
+inline int64_t SecondsToMillis(int64_t seconds) { return seconds * 1000; }
+
+inline double MillisToSecondsDouble(int64_t millis) {
+  return static_cast<double>(millis) / 1000.0;
+}
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_CORE_TIME_H_

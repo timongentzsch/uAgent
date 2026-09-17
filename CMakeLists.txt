@@ -83,10 +83,14 @@ if(UAGENT_BUILD_FUZZERS)
 endif()
 
 # Layered static libs mirror the event-spine dependency DAG:
-#   core_base (leaf: core/transport/media) <- api <- domain
-#   (agent/tools/mcp/providers, kept together: agent<->tools include
-#   each other) <- app (app/ui/cli, the consumer shell).
-# Touching tools/ headers rebuilds domain+app only, not core/api.
+#   core_base (leaf: core/transport/media) <- api <- toolcore (tool
+#   vocabulary + provider catalog: no agent, tool, or app dependency)
+#   <- agent (turn loop, session persistence, supervision services:
+#   process/jobs/child_agent, file writes, memory store, observation
+#   records) <- tools (tool surface + mcp adapters, consuming agent
+#   services) <- app (app/ui/cli, the consumer shell).
+# Touching agent/ headers rebuilds agent+tools+app, not toolcore/api/core;
+# touching tools/ headers rebuilds tools+app only.
 add_library(
   uagent_core_base
   src/core/capture.cc
@@ -123,22 +127,39 @@ add_library(
 target_link_libraries(uagent_api PUBLIC uagent_core_base)
 
 add_library(
-  uagent_domain
+  uagent_toolcore
+  src/tools/tool.cc
+  src/providers/selection.cc
+  src/providers/catalog.cc
+  src/providers/policy.cc)
+target_link_libraries(uagent_toolcore PUBLIC uagent_api)
+
+add_library(
+  uagent_agent
   src/agent/agent.cc
+  src/agent/child_agent.cc
   src/agent/conversation.cc
+  src/agent/delegation.cc
+  src/agent/dispatch.cc
+  src/agent/file_services.cc
+  src/agent/jobs.cc
+  src/agent/memory_store.cc
   src/agent/prompt.cc
+  src/agent/process_io.cc
   src/agent/prompt_profile.cc
   src/agent/request.cc
   src/agent/session_store.cc
   src/agent/session_view.cc
   src/agent/tool_loop.cc
+  src/agent/tool_presentation.cc
   src/agent/trace.cc
   src/agent/turn.cc
   src/agent/turn_budgets.cc
-  src/agent/turn_response.cc
-  src/providers/selection.cc
-  src/providers/catalog.cc
-  src/providers/policy.cc
+  src/agent/turn_response.cc)
+target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
+
+add_library(
+  uagent_tools
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
@@ -148,25 +169,29 @@ add_library(
   src/tools/adapt_system.cc
   src/tools/activity_completion.cc
   src/tools/activity_log.cc
-  src/tools/child_agent.cc
   src/tools/collaborator_runtime.cc
   src/tools/files.cc
-  src/tools/jobs.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
-  src/tools/process_io.cc
   src/tools/configure.cc
   src/tools/registry.cc
+  src/tools/registry_activity.cc
+  src/tools/registry_exec.cc
+  src/tools/registry_files.cc
+  src/tools/registry_memory.cc
   src/tools/shell.cc
   src/tools/subagent.cc
+  src/tools/tool.cc
   src/tools/web_fetch.cc
   src/tools/web_search.cc)
-target_link_libraries(uagent_domain PUBLIC uagent_api)
+target_link_libraries(uagent_tools PUBLIC uagent_agent)
 
 add_library(
   uagent_app
   src/app/application.cc
+  src/app/session_command.cc
+  src/app/outcome_store.cc
   src/app/application_channel.cc
   src/app/application_headless.cc
   src/app/bootstrap.cc
@@ -184,9 +209,11 @@ add_library(
   src/cli/reference.cc
   src/app/runtime.cc
   src/app/self_description.cc
+  src/app/asset_store.cc
   src/app/session_assets.cc
   src/app/session_host.cc
   src/app/session_router.cc
+  src/app/replay_log.cc
   src/app/session_schedules.cc
   src/app/session_snapshot.cc
   src/app/session_supervisor.cc
@@ -201,7 +228,7 @@ add_library(
   src/ui/editor.cc
   src/ui/markdown.cc
   src/ui/presentation.cc)
-target_link_libraries(uagent_app PUBLIC uagent_domain)
+target_link_libraries(uagent_app PUBLIC uagent_tools)
 
 # Umbrella preserves the existing `uagent_core` link name for tests, benches,
 # fuzzers and the web lib while the DAG above does the real work.
@@ -247,7 +274,7 @@ set(UAGENT_PCH
     <string_view>
     <utility>
     <vector>)
-foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_domain uagent_app)
+foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
   target_precompile_headers(${_uagent_lib} PRIVATE ${UAGENT_PCH})
 endforeach()
 
@@ -256,7 +283,7 @@ endforeach()
 include(CheckIPOSupported)
 check_ipo_supported(RESULT ipo_ok OUTPUT _)
 if(ipo_ok)
-  foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_domain uagent_app)
+  foreach(_uagent_lib IN ITEMS uagent_core_base uagent_api uagent_toolcore uagent_agent uagent_tools uagent_app)
     set_property(TARGET ${_uagent_lib} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
   endforeach()
   set_property(TARGET uagent PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
@@ -272,6 +299,7 @@ if(BUILD_TESTING)
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc
+    tests/unit/config_coherence_test.cc
     tests/unit/config_registry_test.cc
     tests/unit/config_test.cc
     tests/unit/conversation_test.cc
@@ -289,6 +317,7 @@ if(BUILD_TESTING)
     tests/unit/python_tool_test.cc
     tests/unit/runtime_test.cc
     tests/unit/sandbox_test.cc
+    tests/unit/session_command_test.cc
     tests/unit/session_server_test.cc
     tests/unit/skills_test.cc
     tests/unit/stream_test.cc

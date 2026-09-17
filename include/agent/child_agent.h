@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_CHILD_AGENT_H_
-#define UAGENT_INCLUDE_TOOLS_CHILD_AGENT_H_
+#ifndef UAGENT_INCLUDE_AGENT_CHILD_AGENT_H_
+#define UAGENT_INCLUDE_AGENT_CHILD_AGENT_H_
 // What every delegated child shares: the route it runs on, the ledger it
 // reports usage to, and how it is invoked. The subagent and memory extractor
 // differ only in the policy they append — toolset, limits,
@@ -16,7 +16,7 @@
 #include "include/api.h"
 #include "include/core/child_env.h"
 #include "include/providers.h"
-#include "include/tools/process.h"
+#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -110,4 +110,4 @@ std::optional<ToolResult> ChildAgentBudgetBlock(
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_CHILD_AGENT_H_
+#endif  // UAGENT_INCLUDE_AGENT_CHILD_AGENT_H_

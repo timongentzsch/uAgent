@@ -22,8 +22,9 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/subagent.h"
+#include "include/agent/delegation.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/delegation.h"
 
 namespace uagent {
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
@@ -203,10 +204,8 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   result.started_at = std::move(started_at);
   for (ToolCall& call : result.tool_calls) {
     call.response_id = result.response_id;
-    call.occurrence_id =
-        result.response_id + ":" + HashHex(call.id).substr(0, 16);
-    call.detail_id =
-        "t-" + HashHex(result.response_id + "\n" + call.id).substr(0, 24);
+    call.occurrence_id = OccurrenceId(result.response_id, call.id);
+    call.detail_id = DetailId(result.response_id, call.id);
   }
   ++revision_;  // Preserve failed attempts and their accounting after the user
                 // checkpoint.

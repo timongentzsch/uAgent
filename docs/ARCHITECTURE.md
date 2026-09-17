@@ -9,14 +9,16 @@ no application server language runtime or dynamically loaded plugin layer.
 | Domain | Responsibility |
 | --- | --- |
 | `src/app/` | Bootstrap, session transport and lifecycle |
+| `src/app/session_*.cc` | Session-host facets: routing, schedules, supervision, snapshots (facade: `session_host.h`; event log: `replay_log`, attachments: `asset_store`, receipts: `outcome_store`) |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
 | `src/app/commands_*.cc` | Slash-command dispatcher (commands.cc) plus model, session and control handlers |
 | `src/cli/` | Terminal entry surface: flag parsing, interactive reads, `--emit-reference` |
 | `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in client.cc, request-body construction in wire_request.cc |
-| `src/agent/` | Turn execution, canonical conversation, context preparation and persistence |
+| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process/jobs/child_agent), memory store and observation records |
 | `src/providers/` | Route catalog, model selection grammar and route policy |
 | `src/media/` | Attachment encoding and display projections |
 | `src/transport/` | SSE framing for event delivery |
-| `src/tools/` | Tool implementations and supervised processes |
+| `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
 | `src/core/` | Shared policy, events, limits, filesystem, signals and platform primitives |
 | `src/ui/` | Terminal input and presentation |
 | `src/web/` | Authenticated HTTP/SSE adapter, assets and optional push |
@@ -31,8 +33,11 @@ Clients do not interpret shell text to infer permission or mutation authority.
 ## Build layers
 
 CMake mirrors the dependency DAG: `uagent_core_base` (core/transport/media,
-leaf) <- `uagent_api` <- `uagent_domain` (agent/tools/mcp/providers, kept
-together across the agent<->tools include cycle) <- `uagent_app` (app/ui/cli).
+leaf) <- `uagent_api` <- `uagent_toolcore` (tool vocabulary + provider
+catalog: no agent, tool, or app dependency) <- `uagent_agent` (turn loop,
+session persistence, supervision services, memory store, observation
+records) <- `uagent_tools` (tool surface + mcp adapters, consuming agent
+services) <- `uagent_app` (app/ui/cli).
 `uagent_core` is an INTERFACE umbrella so tests, benches, fuzzers and the web
 lib keep one link name. Public headers live under `include/` (top-level
 facades plus `include/<module>/`); only module-private shared declarations

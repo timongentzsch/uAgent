@@ -45,6 +45,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
@@ -290,7 +291,7 @@ class Master {
         }
         response.set_header("Cache-Control",
                             path.starts_with("/assets/")
-                                ? "public, max-age=31536000, immutable"
+                                ? "public, max-age=" + std::to_string(kSecondsPerYear) + ", immutable"
                                 : "no-cache");
         response.set_content(reinterpret_cast<const char*>(asset.data),
                              asset.size, std::string(asset.mime));

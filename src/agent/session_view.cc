@@ -13,7 +13,9 @@
 #include <vector>
 
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/agent/protocol.h"
 
 namespace uagent {
 namespace {
@@ -255,8 +257,8 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   json block = {{"id", id},
                 {"sequence", sequence},
                 {"kind", entry.kind},
-                {"text", Utf8Trunc(text, 4093)},
-                {"truncated", text.size() > 4096}};
+                {"text", Utf8Trunc(text, kPreviewChars - 3)},
+                {"truncated", text.size() > kPreviewChars}};
   json metadata = JsonValue(facts, id.c_str(), json::object());
   for (const char* key : {"time",
                           "incoming",
@@ -311,24 +313,18 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
       reasoning = JsonValue(message, "reasoning_content",
                             JsonValue(message, "reasoning", ""));
     }
-    block["reasoning"] = Utf8Trunc(reasoning, 4093);
+    block["reasoning"] = Utf8Trunc(reasoning, kPreviewChars - 3);
     block["reasoning_available"] = !reasoning.empty();
     if (!block.contains("reasoning_revision")) block["reasoning_revision"] = 1;
     block["retained_reasoning_bytes"] = reasoning.size();
     block["reasoning_bytes"] = JsonValue(block, "reasoning", "").size();
-    block["reasoning_complete"] = reasoning.size() <= 4096;
+    block["reasoning_complete"] = reasoning.size() <= kPreviewChars;
     if (const json* calls = JsonArray(message, "tool_calls")) {
       block["tools"] = json::array();
       for (const json& call : *calls) {
         std::string call_id = JsonValue(call, "id", "");
-        std::string occurrence_id =
-            response_id.empty()
-                ? call_id
-                : response_id + ":" + HashHex(call_id).substr(0, 16);
-        std::string detail_id =
-            response_id.empty()
-                ? "t-" + call_id
-                : "t-" + HashHex(response_id + "\n" + call_id).substr(0, 24);
+        std::string occurrence_id = OccurrenceId(response_id, call_id);
+        std::string detail_id = DetailId(response_id, call_id);
         const json* found =
             FindToolFacts(facts, detail_id, call_id, &detail_id);
         const json detail = found ? *found : json::object();
@@ -376,7 +372,7 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
       block["duration_ms"] = detail["duration_ms"];
     }
     block["detail_id"] = detail_id;
-    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), 4096);
+    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
     block["artifact"] = detail.contains("artifact");
     if (detail.contains("result_replay")) {
       block["replay"] = detail["result_replay"];

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_PATH_POLICY_H_
-#define UAGENT_INCLUDE_TOOLS_PATH_POLICY_H_
+#ifndef UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
+#define UAGENT_INCLUDE_AGENT_PATH_POLICY_H_
 
 #include <filesystem>
 #include <optional>
@@ -120,4 +120,4 @@ inline std::optional<ToolResult> ValidatePathTarget(const std::string& path,
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_PATH_POLICY_H_
+#endif  // UAGENT_INCLUDE_AGENT_PATH_POLICY_H_

@@ -13,7 +13,7 @@
 
 #include "include/core/tool_activity.h"
 #include "include/tools/adapt_system.h"
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"

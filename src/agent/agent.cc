@@ -26,9 +26,9 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
-#include "include/tools/jobs.h"
-#include "include/tools/memory.h"
-#include "include/tools/output_buffer.h"
+#include "include/agent/jobs.h"
+#include "include/agent/memory_store.h"
+#include "include/core/output_buffer.h"
 
 namespace uagent {
 

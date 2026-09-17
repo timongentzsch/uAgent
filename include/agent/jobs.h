@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_JOBS_H_
-#define UAGENT_INCLUDE_TOOLS_JOBS_H_
+#ifndef UAGENT_INCLUDE_AGENT_JOBS_H_
+#define UAGENT_INCLUDE_AGENT_JOBS_H_
 // Bounded job-log, detached-terminal, and process lifecycle declarations.
 
 #include <cstdint>
@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "include/core/json.h"
-#include "include/tools/process.h"
+#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -100,4 +100,4 @@ size_t BgCancelSubagents(ProcessSupervisor& supervisor);
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_JOBS_H_
+#endif  // UAGENT_INCLUDE_AGENT_JOBS_H_

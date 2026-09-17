@@ -97,8 +97,10 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.status = "saved";
   session.error.clear();
   session.state["activity"] = "Ready";
-  PublishLocked(session.id, "",
-                {{"kind", "deactivated"}, {"metadata", Metadata(session)}});
+  replay_.Publish(epoch_, session.id, "",
+                    {{"kind", "deactivated"},
+                     {"metadata", Metadata(session)}},
+                    !session.run_id.empty());
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
@@ -118,7 +120,7 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "outcome") {
-    if (!ResolveOutcome(*session, frame)) {
+    if (!outcomes_.ResolveOutcome(*session, frame)) {
       if (!session->run_id.empty() && !JsonValue(frame, "accepted", false)) {
         session->error =
             JsonValue(frame, "error", "scheduled submission failed");
@@ -135,7 +137,8 @@ void SessionHost::Received(HostSession* session, json frame) {
   } else {
     ApplyRuntimeFrame(*session, frame);
   }
-  PublishLocked(session->id, session->generation, std::move(frame));
+  replay_.Publish(epoch_, session->id, session->generation, std::move(frame),
+                  !session->run_id.empty());
   if (kind == "gap") {
     lock.unlock();
     session->Send({{"kind", "refresh"}, {"request_id", RandomToken(16)}});
@@ -228,7 +231,7 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     std::lock_guard state_lock(mutex_);
     auto current = sessions_.find(session->id);
     if (current != sessions_.end() && current->second.get() == session) {
-      FailPending(*session);
+      outcomes_.FailPending(*session);
       session->turn_active = false;
       session->pending = nullptr;
       if (session->closing) {
@@ -236,7 +239,8 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       } else {
         session->status = "interrupted";
         session->state["activity"] = "Interrupted";
-        PublishLocked(session->id, session->generation, {{"kind", "closed"}});
+        replay_.Publish(epoch_, session->id, session->generation,
+                        {{"kind", "closed"}}, !session->run_id.empty());
       }
     }
     session->exited = true;
@@ -253,8 +257,10 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
     create_now = true;
     continue;
   }
-  PublishLocked(session->id, session->generation,
-                {{"kind", "activated"}, {"metadata", Metadata(*session)}});
+  replay_.Publish(epoch_, session->id, session->generation,
+                  {{"kind", "activated"},
+                   {"metadata", Metadata(*session)}},
+                  !session->run_id.empty());
   return true;
   }  // for (attempt): single pass unless a stale worker recycled above
 }

@@ -17,19 +17,18 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
   const char* editor = getenv("VISUAL");
   if (!editor || !*editor) editor = getenv("EDITOR");
   if (!editor || !*editor || !isatty(terminal_fd)) return false;
-  std::string path = UagentDir("drafts") + "/edit-XXXXXX";
-  int fd = mkstemp(path.data());
-  if (fd < 0) return false;
-  close(fd);
+  ScopedTempFile draft(UagentDir("drafts") + "/edit-XXXXXX");
+  if (!draft) return false;
+  draft.Close();
   std::string error;
-  bool ok = AtomicWriteFile(path, text, kPrivateFileMode, false, error);
+  bool ok = AtomicWriteFile(draft.Path(), text, kPrivateFileMode, false, error);
   if (ok) {
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
     for (int target : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
       posix_spawn_file_actions_adddup2(&actions, terminal_fd, target);
     }
-    const auto command = std::string(editor) + " " + ShellQuote(path);
+    const auto command = std::string(editor) + " " + ShellQuote(draft.Path());
     const char* argv[] = {"sh", "-c", command.c_str(), nullptr};
     pid_t pid = 0;
     const int spawned =
@@ -45,11 +44,9 @@ bool EditExternalText(std::string& text, int terminal_fd, size_t limit) {
     }
     std::string edited;
     ok = waited == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0 &&
-         ReadRegularFile(path, limit, edited, error);
+         ReadRegularFile(draft.Path(), limit, edited, error);
     if (ok) text = std::move(edited);
   }
-  std::error_code ignored;
-  std::filesystem::remove(path, ignored);
   return ok;
 }
 }  // namespace uagent

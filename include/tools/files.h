@@ -13,13 +13,10 @@
 #include <vector>
 
 #include "include/tools/tool.h"
+#include "include/agent/file_services.h"
 
 namespace uagent {
 
-ToolErrorCode FileToolError(const std::error_code& error);
-ToolResult ToolAtomicWrite(const std::string& path, const std::string& content,
-                           mode_t create_mode, bool preserve_mode,
-                           bool overwrite = true);
 ToolResult ToolReadFile(const std::string& path, int64_t offset, int64_t limit,
                         const std::string& call_id = "");
 ToolResult ToolWriteFile(const std::string& path, const std::string& content);
@@ -34,8 +31,6 @@ std::string WholeFileDiffDisplay(const std::string& path,
                                  const std::string& content, bool existed);
 std::string DeletedFileDiffDisplay(const std::string& path,
                                    const std::string& previous);
-ToolResult ToolWritePrivateFile(const std::string& path,
-                                const std::string& content);
 std::string StripLineNumbers(const std::string& text);
 
 struct FileEdit {

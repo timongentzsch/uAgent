@@ -31,8 +31,8 @@
 #include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/jobs.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {

@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_PROCESS_H_
-#define UAGENT_INCLUDE_TOOLS_PROCESS_H_
+#ifndef UAGENT_INCLUDE_AGENT_PROCESS_H_
+#define UAGENT_INCLUDE_AGENT_PROCESS_H_
 
 #include <sys/types.h>
 
@@ -19,7 +19,7 @@
 #include "include/core/fd.h"
 #include "include/core/json.h"
 #include "include/core/thread_annotations.h"
-#include "include/tools/output_buffer.h"
+#include "include/core/output_buffer.h"
 
 namespace uagent {
 
@@ -235,4 +235,4 @@ class ProcessSupervisor {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_PROCESS_H_
+#endif  // UAGENT_INCLUDE_AGENT_PROCESS_H_

@@ -10,10 +10,10 @@
 
 #include "include/app/options.h"
 #include "include/core/term.h"
-#include "include/tools/child_agent.h"
+#include "include/agent/child_agent.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
-#include "include/ui/tool_output.h"
+#include "include/agent/tool_presentation.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {

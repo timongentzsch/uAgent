@@ -11,14 +11,13 @@
 #include "include/api.h"
 #include "include/core/json.h"
 #include "include/providers.h"
-#include "include/tools/process.h"
+#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
 class CollaboratorRuntime;
 
-std::string DefaultSubagentModel(const Api& api);
 // The workspace's collaborator records, one object each: id, name,
 // description, model, mode, status, and the activity id when the child is
 // still running. Shared with the TUI so `/agents` and the tool's `list`
@@ -34,7 +33,6 @@ ToolResult MessageCollaborator(const ProcessSupervisor& processes,
                                CollaboratorRuntime* runtime,
                                const std::string& id, const std::string& text,
                                const std::string& from = "", int hops = 0);
-std::string DelegationRuntimeContext(const Api& api);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,

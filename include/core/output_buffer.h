@@ -1,7 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_TOOLS_OUTPUT_BUFFER_H_
-#define UAGENT_INCLUDE_TOOLS_OUTPUT_BUFFER_H_
+#ifndef UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_
+#define UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_
 
 #include <algorithm>
 #include <cstddef>
@@ -102,4 +102,4 @@ class HeadTailBuffer {
 
 }  // namespace uagent
 
-#endif  // UAGENT_INCLUDE_TOOLS_OUTPUT_BUFFER_H_
+#endif  // UAGENT_INCLUDE_CORE_OUTPUT_BUFFER_H_

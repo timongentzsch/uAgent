@@ -8,10 +8,9 @@
 #include <cstdint>
 #include <string>
 
-namespace uagent {
+#include "include/core/limits.h"
 
-inline constexpr size_t kAdaptiveSystemBytes = size_t{64} * 1024;
-inline constexpr size_t kAdaptiveSystemReasonBytes = 512;
+namespace uagent {
 
 struct AdaptiveSystemState {
   std::string instructions;

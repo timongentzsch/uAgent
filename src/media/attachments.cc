@@ -507,22 +507,25 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   // bounded lifetime, original retained. Linux uses ImageMagick when installed.
   // Vector originals rasterize first: neither inspector below reads SVG,
   // and the raster re-enters the normal inspect/resize/encode flow.
-  std::string path = attachment.path, temporary, raster;
+  std::string path = attachment.path;
+  // Scratch files live exactly as long as this function: every early return
+  // below used to unlink them by hand.
+  ScopedTempFile raster_file(
+      (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX")
+          .string());
+  ScopedTempFile temporary_file(
+      (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
+          .string());
   mime = attachment.mime;
   if (mime == "image/svg+xml") {
-    Fd vector_out(CreateTempFile(
-        (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX")
-            .string(),
-        raster));
-    if (!vector_out) {
+    if (!raster_file) {
       error = "cannot prepare image";
       return "";
     }
-    if (!RasterizeVector(attachment.path, raster, error)) {
-      unlink(raster.c_str());
+    if (!RasterizeVector(attachment.path, raster_file.Path(), error)) {
       return "";
     }
-    path = raster;
+    path = raster_file.Path();
     mime = "image/png";
   }
 #ifdef __APPLE__
@@ -549,7 +552,6 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   if ((inspected.error.empty() && !inspected.Ok()) ||
       (inspected.Ok() && (width <= 0 || height <= 0))) {
     error = "image could not be decoded";
-    if (!raster.empty()) unlink(raster.c_str());
     return "";
   }
   // HEIC/HEIF data URIs are rejected by most vision endpoints, so they
@@ -557,56 +559,50 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   // through like small PNGs do. A missing converter then fails loudly
   // here instead of degrading the whole route on a provider rejection.
   const bool normalize = mime == "image/heic" || mime == "image/heif";
-  if (width > 2048 || height > 2048 || attachment.bytes > kImageBytes ||
-      normalize) {
+  if (width > kMaxImageDimension || height > kMaxImageDimension ||
+      attachment.bytes > kImageBytes || normalize) {
     const std::string format =
         (mime == "image/jpeg" || mime == "image/heic" ||
          mime == "image/heif")
             ? "jpeg"
             : "png";
-    Fd output(CreateTempFile(
-        (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
-            .string(),
-        temporary));
-    if (!output) {
+    if (!temporary_file) {
       error = "cannot prepare image";
       return "";
     }
 #ifdef __APPLE__
-    auto resized =
-        CaptureProcess({"/usr/bin/sips", "-Z", "2048", "-s", "format", format,
-                        "-s", "formatOptions", "85", path, "--out", temporary});
+    auto resized = CaptureProcess(
+        {"/usr/bin/sips", "-Z", std::to_string(kMaxImageDimension), "-s",
+         "format", format, "-s", "formatOptions", "85", path, "--out",
+         temporary_file.Path()});
 #else
-    auto resized = CaptureProcess({"magick", "-limit", "memory", "128MiB",
-                                   "-limit", "map", "256MiB", path + "[0]",
-                                   "-auto-orient", "-resize", "2048x2048>",
-                                   "-quality", "85", format + ":" + temporary});
+    const std::string geometry = std::to_string(kMaxImageDimension) + "x" +
+                                 std::to_string(kMaxImageDimension) + ">";
+    auto resized =
+        CaptureProcess({"magick", "-limit", "memory", "128MiB", "-limit",
+                        "map", "256MiB", path + "[0]", "-auto-orient",
+                        "-resize", geometry, "-quality", "85",
+                        format + ":" + temporary_file.Path()});
 #endif
     if (!resized.Ok()) {
-      unlink(temporary.c_str());
-      if (!raster.empty()) unlink(raster.c_str());
       error =
           "image resizing failed; install ImageMagick on Linux or attach a "
           "smaller image";
       return "";
     }
-    if (!raster.empty()) unlink(raster.c_str());
-    raster.clear();
-    path = temporary;
+    path = temporary_file.Path();
     mime = "image/" + format;
   }
   Attachment prepared = attachment;
   prepared.path = path;
   std::string encoded =
       Base64File(prepared, kImageBytes, error, "data:" + mime + ";base64,");
-  if (!temporary.empty()) unlink(temporary.c_str());
-  if (!raster.empty()) unlink(raster.c_str());
   if (!error.empty()) return "";
   std::lock_guard lock(mutex);
   cache[key] = {mime, encoded};
   size_t total = 0;
   for (const auto& item : cache) total += item.second.second.size();
-  while (total > size_t{16} * 1024 * 1024 && !cache.empty()) {
+  while (total > kImageCacheBytes && !cache.empty()) {
     total -= cache.begin()->second.second.size();
     cache.erase(cache.begin());
   }

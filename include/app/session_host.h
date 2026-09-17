@@ -20,29 +20,16 @@
 #include <vector>
 
 #include "include/agent/session_store.h"
+#include "include/app/asset_store.h"
 #include "include/app/options.h"
+#include "include/app/outcome_store.h"
+#include "include/app/replay_log.h"
 #include "include/app/session.h"
 #include "include/core/events.h"
 #include "include/core/file_watch.h"
 #include "include/core/json.h"
 
 namespace uagent::session {
-
-struct HostReplay {
-  uint64_t sequence = 0;
-  std::string frame;
-};
-
-struct ReplayBatch {
-  uint64_t cursor = 0;
-  bool reset = false;
-  std::vector<HostReplay> events;
-};
-
-struct HostNotice {
-  std::string attention_id, session;
-  bool wake = false;
-};
 
 // One attached conversation runtime. Socket and reader lifetime stay together;
 // destroying the record wakes and joins its reader before dependent state dies.
@@ -105,12 +92,6 @@ struct HostWaitState {
   bool wake = false;
 };
 
-struct AssetStoreResult {
-  json value;
-  std::string error;
-  int status = 200;
-};
-
 class SessionHost {
  public:
   SessionHost(std::string epoch, size_t byte_limit, std::string executable = {},
@@ -128,7 +109,9 @@ class SessionHost {
   bool RefreshCatalogue(bool force = false);
   void RefreshPresence();
   json CommandOutcome(const std::string& worker_request,
-                      const std::string& client_request) const;
+                      const std::string& client_request) const {
+    return outcomes_.CommandOutcome(worker_request, client_request);
+  }
   std::vector<json> RefreshInvalidations(
       const std::vector<std::string>& projects);
   std::vector<std::string> PresencePaths() const;
@@ -146,25 +129,18 @@ class SessionHost {
  private:
   std::string epoch_;
   std::string executable_, directory_;
-  size_t byte_limit_;
-  size_t event_limit_;
-  size_t replay_bytes_ = 0;
-  uint64_t sequence_ = 0;
-  std::deque<HostReplay> replay_;
-  std::map<std::string, HostNotice> notices_;
+  // Ordered event log and attachment quotas live in their own components;
+  // the host keeps the lock, the wakeup signal and session identity.
+  ReplayLog replay_;
+  AssetStore assets_;
   mutable std::mutex mutex_;
   std::condition_variable changed_;
   std::atomic<bool> stopping_{false};
   std::map<std::string, std::shared_ptr<HostSession>> sessions_;
   std::mutex scan_mutex_;
   std::mutex history_mutex_;
-  std::mutex asset_mutex_;
-  std::chrono::steady_clock::time_point assets_scanned_{};
-  size_t asset_bytes_ = 0;
   std::chrono::steady_clock::time_point scanned_{};
-  mutable std::mutex outcome_mutex_;
-  std::condition_variable outcome_changed_;
-  std::map<std::string, json> outcomes_;
+  OutcomeStore outcomes_;
   FileStamp library_stamp_, schedule_stamp_;
   std::map<std::string, FileStamp> prompt_stamps_;
   json schedule_state_ = json::object();
@@ -182,12 +158,6 @@ class SessionHost {
                                              std::string& error);
   Connection OpenRuntime(const HostSession& session, bool create,
                          std::string& error) const;
-  json SendCommand(const std::shared_ptr<HostSession>& session, json command,
-                   const std::string& worker_request,
-                   const std::string& client_request, bool& dispatched);
-  size_t PendingCommands(const HostSession& session) const;
-  bool ResolveOutcome(HostSession& session, json& frame);
-  void FailPending(HostSession& session);
   void ApplyRuntimeFrame(HostSession& session, json& frame);
   // Outcome labels shared by live frames and the schedule supervisor.
   static std::string RunResultFor(const std::string& outcome);
@@ -199,8 +169,6 @@ class SessionHost {
   json Metadata(const HostSession& session) const;
   json LiveSnapshot(const HostSession& session) const;
   std::shared_ptr<HostSession> StartScheduledRun(const json& run);
-  HostReplay PublishLocked(const std::string& session,
-                           const std::string& generation, json value);
   bool ActivateLocked(const std::shared_ptr<HostSession>& session,
                       std::string& error, std::unique_lock<std::mutex>& lock,
                       bool create);

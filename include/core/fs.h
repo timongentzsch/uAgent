@@ -4,6 +4,8 @@
 #define UAGENT_INCLUDE_CORE_FS_H_
 // Agent directories and crash-safe file writing. Global state stays under
 // ~/.uagent; explicitly project-scoped files use the workspace's .uagent.
+// Bodies live in src/core/fs.cc so widely-included helpers do not recompile
+// in every translation unit.
 
 #include <fcntl.h>
 #include <pwd.h>
@@ -36,47 +38,19 @@ namespace uagent {
 
 // The throwing overload aborts under -fno-exceptions on a lookup error
 // (EACCES on a parent, ELOOP). A path we cannot look up is not there.
-inline bool PathExists(const std::filesystem::path& path) {
-  std::error_code ignored;
-  return std::filesystem::exists(path, ignored);
-}
+bool PathExists(const std::filesystem::path& path);
 
-inline std::string UserHome() {
-  const char* home = getenv("HOME");
-  if (home && *home) return home;
-  int64_t buffer_size = sysconf(_SC_GETPW_R_SIZE_MAX);
-  if (buffer_size < 0) buffer_size = int64_t{16} * 1024;
-  std::vector<char> buffer(static_cast<size_t>(buffer_size));
-  struct passwd entry{};
-  struct passwd* result = nullptr;
-  if (getpwuid_r(getuid(), &entry, buffer.data(), buffer.size(), &result) !=
-      0) {
-    return "";
-  }
-  return result && entry.pw_dir ? entry.pw_dir : "";
-}
+std::string UserHome();
 
-inline std::string Tilde(const std::string& path) {
-  std::string home = UserHome();
-  if (!home.empty() && path.starts_with(home)) {
-    return "~" + path.substr(home.size());
-  }
-  return path;
-}
+std::string Tilde(const std::string& path);
 
 // ~/.uagent. Falls back to a per-uid temp directory when the account has no
 // home, never to a project-controlled location.
-inline std::string GlobalBase() {
-  std::string home = UserHome();
-  return home.empty() ? "/tmp/uagent-" + std::to_string(getuid()) + "/.uagent"
-                      : home + "/.uagent";
-}
+std::string GlobalBase();
 
 // The directory a workspace opts into. Named once: several modules need it,
 // and a reader and a writer disagreeing about it would silently lose data.
-inline std::filesystem::path ProjectBase(const std::filesystem::path& cwd) {
-  return cwd / ".uagent";
-}
+std::filesystem::path ProjectBase(const std::filesystem::path& cwd);
 
 // Create a directory inside the private user state tree without following
 // directory symlinks, and verify its ownership and mode.
@@ -103,187 +77,77 @@ inline constexpr const char* kMcpDir = "mcp";
 inline constexpr const char* kConfigDir = "config";
 
 // Write every byte or report why not; errno is left set for the caller.
-inline bool WriteFully(int fd, std::string_view data) {
-  return WriteAll(fd, data.data(), data.size());
-}
+bool WriteFully(int fd, std::string_view data);
 
 // mkstemp over a pattern string. `path` always receives the expanded template,
 // including on failure — callers name it in their error message.
-inline int CreateTempFile(const std::string& pattern, std::string& path) {
-  std::vector<char> buffer(pattern.begin(), pattern.end());
-  buffer.push_back('\0');
-  int fd = mkstemp(buffer.data());
-  path = buffer.data();
-  return fd;
-}
+int CreateTempFile(const std::string& pattern, std::string& path);
+
+// RAII mkstemp: owns the file descriptor and unlinks the path on destruction
+// unless released. Replaces the hand-rolled Fd-plus-unlink dances, where an
+// early return could either leak the file or unlink one the caller kept.
+class ScopedTempFile {
+ public:
+  explicit ScopedTempFile(std::string pattern);
+  ~ScopedTempFile();
+  ScopedTempFile(ScopedTempFile&& other) noexcept;
+  ScopedTempFile& operator=(ScopedTempFile&& other) noexcept;
+  ScopedTempFile(const ScopedTempFile&) = delete;
+  ScopedTempFile& operator=(const ScopedTempFile&) = delete;
+
+  explicit operator bool() const { return static_cast<bool>(fd_); }
+  int Get() const { return fd_.Get(); }
+  const std::string& Path() const { return path_; }
+  // Close early; the path is still unlinked on destruction unless released.
+  void Close();
+  // Keep the file and hand over its path. Discard the result only when the
+  // path is already held elsewhere.
+  std::string Release();
+  // Hand over the descriptor; the file persists and the path is forgotten.
+  int ReleaseFd();
+
+ private:
+  // path_ precedes fd_: the constructor fills path_ while creating fd_,
+  // and members initialize in declaration order.
+  std::string path_;
+  Fd fd_;
+  bool keep_ = false;
+};
 
 // Read at most `cap` bytes from an open stream — one byte further, so a longer
 // source is detectable — cut back to a UTF-8 boundary. Returns whether the
 // source had more to give.
-inline bool ReadBounded(std::istream& input, size_t cap, std::string& out) {
-  out.assign(cap + 1, '\0');
-  input.read(out.data(), static_cast<std::streamsize>(out.size()));
-  size_t read = static_cast<size_t>(input.gcount());
-  out.resize(std::min(read, cap));
-  out = Utf8Prefix(std::move(out), cap);
-  return read > cap;
-}
+bool ReadBounded(std::istream& input, size_t cap, std::string& out);
 
 // Private state and web assets must never follow a final symlink or read a
 // device/FIFO. A prefix read is useful for cheap catalogue headers.
-inline bool ReadRegularFile(const std::string& path, size_t cap,
-                            std::string& out, std::string& error,
-                            bool prefix = false) {
-  out.clear();
-  Fd fd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-  struct stat info{};
-  if (!fd || fstat(fd.Get(), &info) != 0 || !S_ISREG(info.st_mode) ||
-      info.st_size < 0) {
-    error = "cannot read regular file";
-    return false;
-  }
-  if (!prefix && static_cast<uintmax_t>(info.st_size) > cap) {
-    error = "file exceeds read limit";
-    return false;
-  }
-  char buffer[8192];
-  while (out.size() < cap) {
-    ssize_t count =
-        read(fd.Get(), buffer, std::min(sizeof buffer, cap - out.size()));
-    if (count < 0 && errno == EINTR) continue;
-    if (count < 0) {
-      error = strerror(errno);
-      return false;
-    }
-    if (count == 0) return true;
-    out.append(buffer, static_cast<size_t>(count));
-  }
-  if (prefix) return true;
-  ssize_t extra;
-  do {
-    extra = read(fd.Get(), buffer, 1);
-  } while (extra < 0 && errno == EINTR);
-  if (extra == 0) return true;
-  error = "file changed or exceeds read limit";
-  return false;
-}
+bool ReadRegularFile(const std::string& path, size_t cap,
+                     std::string& out, std::string& error,
+                     bool prefix = false);
 
-inline std::string UagentConfigPath() {
-  std::string home = UserHome();
-  return home.empty() ? "" : home + "/.uagent/.config";
-}
+std::string UagentConfigPath();
 
 // The path is stable even before the file exists: scratch state may also create
 // .uagent, but only this specific file opts a workspace into local settings.
-inline std::string ProjectConfigFilePath() {
-  std::error_code ec;
-  std::filesystem::path cwd = std::filesystem::current_path(ec);
-  return ec ? "" : (ProjectBase(cwd) / ".config").string();
-}
+std::string ProjectConfigFilePath();
 
 // Atomic shared writer for config, trust state, tools, and preferences. A temp
 // file in the target directory makes replacement crash-safe.
-inline bool AtomicWriteFile(const std::string& path, const std::string& content,
+bool AtomicWriteFile(const std::string& path, const std::string& content,
                             mode_t create_mode, bool preserve_mode,
-                            std::string& error, bool overwrite = true) {
-  namespace fs = std::filesystem;
-  std::error_code ec;
-  fs::path target(path);
-  if (target.has_parent_path()) {
-    fs::create_directories(target.parent_path(), ec);
-  }
-  if (ec) {
-    error = "cannot create parent directory for " + path + ": " + ec.message();
-    return false;
-  }
-  if (overwrite && fs::is_symlink(target, ec)) {
-    target = fs::canonical(target, ec);
-    if (ec) {
-      error = "cannot resolve symlink " + path + ": " + ec.message();
-      return false;
-    }
-  }
-  fs::path parent =
-      target.has_parent_path() ? target.parent_path() : fs::path(".");
-  std::string temp;
-  Fd fd(CreateTempFile(
-      (parent / ("." + target.filename().string() + ".uagent.XXXXXX")).string(),
-      temp));
-  if (!fd) {
-    error = "cannot create temporary file for " + path + ": " + strerror(errno);
-    return false;
-  }
-  // `message` is built by the caller before unlink() can clobber errno.
-  auto fail = [&](std::string message) {
-    error = std::move(message);
-    unlink(temp.c_str());
-    return false;
-  };
-  struct stat st{};
-  mode_t mode = preserve_mode && stat(target.c_str(), &st) == 0
-                    ? st.st_mode & 07777
-                    : create_mode;
-  if (fchmod(fd.Get(), mode) != 0) return fail(strerror(errno));
-  if (!WriteFully(fd.Get(), content)) {
-    return fail("write to " + path + " failed: " + strerror(errno));
-  }
-  // A deferred write can still fail in close(2), so the commit is fsync plus
-  // a close that returned zero.
-  int failure = fsync(fd.Get()) != 0 ? errno : 0;
-  if (fd.Close() != 0 && !failure) failure = errno;
-  if (failure) {
-    return fail("write to " + path + " failed: " + strerror(failure));
-  }
-  if ((overwrite ? rename(temp.c_str(), target.c_str())
-                 : link(temp.c_str(), target.c_str())) != 0) {
-    return fail("cannot write " + path + ": " + strerror(errno) +
-                (errno == EEXIST ? "; use edit_file or overwrite=true" : ""));
-  }
-  if (!overwrite) unlink(temp.c_str());
-  // The rename is already atomic; syncing the directory is what makes it
-  // durable, so a crash cannot leave the entry pointing at nothing. A failure
-  // here means the new contents may not survive power loss, not that the
-  // replacement was lost, so it is reported without unlinking the new file.
-  Fd directory(open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
-  if (directory && fsync(directory.Get()) != 0) {
-    error = "replaced " + path +
-            " but could not sync its directory: " + strerror(errno);
-    return false;
-  }
-  return true;
-}
+                            std::string& error, bool overwrite = true);
 
 // create_directories() applies the ambient umask, so hardening only the leaf
 // leaves every directory it had to create along the way world-traversable.
 // Every private path is built through here so the whole chain is owner-only.
-inline void CreatePrivateDirectories(const std::filesystem::path& dir) {
-  namespace fs = std::filesystem;
-  std::error_code ec;
-  std::vector<fs::path> missing;
-  for (fs::path walk = dir; !walk.empty() && !fs::exists(walk, ec);
-       walk = walk.parent_path()) {
-    missing.push_back(walk);
-    if (!walk.has_relative_path()) break;
-  }
-  fs::create_directories(dir, ec);
-  for (auto it = missing.rbegin(); it != missing.rend(); ++it) {
-    chmod(it->c_str(), kPrivateDirMode);
-  }
-}
+void CreatePrivateDirectories(const std::filesystem::path& dir);
 
-inline std::string MakePrivateDir(const std::string& base, const char* sub) {
-  CreatePrivateDirectories(base);
-  std::string dir = base + "/" + sub;
-  CreatePrivateDirectories(dir);
-  return dir;
-}
+std::string MakePrivateDir(const std::string& base, const char* sub);
 
 // ~/.uagent/<sub>, created on demand. History, sessions, logs, the trust store,
 // and preferences stay global: a workspace must not be able to relocate — or
 // grant itself — any of them.
-inline std::string UagentDir(const char* sub) {
-  return MakePrivateDir(GlobalBase(), sub);
-}
+std::string UagentDir(const char* sub);
 
 // Artifact pruning walks whole directory trees; it lives in src/core/fs.cc so
 // that every includer of this header stops compiling the walk.
@@ -296,141 +160,35 @@ void MaintainArtifacts();
 
 // Restrict to [A-Za-z0-9_-] and cap the length. The cap differs by consumer:
 // file components and protocol-visible tool names have different limits.
-inline std::string SanitizeComponent(std::string value, size_t cap) {
-  for (char& c : value) {
-    if (!isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_') {
-      c = '_';
-    }
-  }
-  if (value.size() > cap) value.resize(cap);
-  return value;
-}
+std::string SanitizeComponent(std::string value, size_t cap);
 
-inline std::string SafeFileComponent(std::string value) {
-  if (value.empty()) return "unnamed";
-  return SanitizeComponent(std::move(value), 80);
-}
+std::string SafeFileComponent(std::string value);
 
-inline std::string CanonicalCwd() {
-  std::error_code ec;
-  auto path =
-      std::filesystem::weakly_canonical(std::filesystem::current_path(), ec);
-  return ec ? std::filesystem::current_path().string() : path.string();
-}
+std::string CanonicalCwd();
 
 // Unique per process and per call. The counter it needs is process-wide
 // mutable state, so the definition lives in src/core/fs.cc.
 std::string MakeSessionId();
 
-inline std::string WorkspaceId(const std::string& root) {
-  return HashHex(root);
-}
+std::string WorkspaceId(const std::string& root);
 
-inline bool LockFileExclusive(int fd) {
-  int result;
-  do {
-    result = flock(fd, LOCK_EX);
-  } while (result != 0 && errno == EINTR);
-  return result == 0;
-}
+bool LockFileExclusive(int fd);
 
-inline bool AppendPrivateLine(const std::string& path, const std::string& line,
-                              std::string& error) {
-  Fd fd(open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode));
-  if (!fd) {
-    error = strerror(errno);
-    return false;
-  }
-  fchmod(fd.Get(), kPrivateFileMode);
-  if (!LockFileExclusive(fd.Get())) {
-    error = strerror(errno);
-    return false;
-  }
-  const bool written = WriteFully(fd.Get(), line + "\n");
-  if (!written) error = strerror(errno);
-  flock(fd.Get(), LOCK_UN);
-  return written;
-}
+bool AppendPrivateLine(const std::string& path, const std::string& line,
+                              std::string& error);
 
 // Atomically drain a small private append-only file. Truncating the locked
 // inode instead of unlinking it keeps writers that opened before the lock from
 // appending to an unreachable file.
-inline bool TakePrivateText(const std::string& path, std::string& content,
-                            std::string& error) {
-  content.clear();
-  Fd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
-  if (!fd) {
-    if (errno == ENOENT) return true;
-    error = strerror(errno);
-    return false;
-  }
-  if (!LockFileExclusive(fd.Get())) {
-    error = strerror(errno);
-    return false;
-  }
-  constexpr size_t kMaxBytes = size_t{16} * 1024 * 1024;
-  char buffer[4096];
-  bool ok = true;
-  for (;;) {
-    ssize_t count = read(fd.Get(), buffer, sizeof buffer);
-    if (count < 0 && errno == EINTR) continue;
-    if (count < 0) {
-      error = strerror(errno);
-      ok = false;
-      break;
-    }
-    if (count == 0) break;
-    size_t bytes = static_cast<size_t>(count);
-    if (AdditionExceeds(content.size(), bytes, kMaxBytes)) {
-      error = "private file exceeds 16 MiB";
-      ok = false;
-      break;
-    }
-    content.append(buffer, bytes);
-  }
-  if (ok && ftruncate(fd.Get(), 0) != 0) {
-    error = strerror(errno);
-    ok = false;
-  }
-  flock(fd.Get(), LOCK_UN);
-  return ok;
-}
+bool TakePrivateText(const std::string& path, std::string& content,
+                            std::string& error);
 
-inline std::filesystem::path CanonicalAccessPath(const std::string& path) {
-  std::error_code ec;
-  std::filesystem::path p = path.empty() ? "." : path;
-  // Made absolute before resolving, because the two standard libraries
-  // disagree about a relative path whose target does not exist: libc++
-  // returns it absolute, libstdc++ returns it unchanged and reports no
-  // error. Every caller compares the answer against an absolute root, so a
-  // relative one reads as outside the workspace.
-  std::filesystem::path rooted = std::filesystem::absolute(p, ec);
-  if (ec) return p.lexically_normal();
-  auto canonical = std::filesystem::weakly_canonical(rooted, ec);
-  return ec ? rooted.lexically_normal() : canonical;
-}
+std::filesystem::path CanonicalAccessPath(const std::string& path);
 
-inline std::string DisplayPath(const std::string& path) {
-  std::error_code error;
-  std::filesystem::path relative = std::filesystem::relative(
-      CanonicalAccessPath(path), CanonicalCwd(), error);
-  if (error || relative.empty() ||
-      (relative.begin() != relative.end() && *relative.begin() == "..")) {
-    return path;
-  }
-  return relative.string();
-}
+std::string DisplayPath(const std::string& path);
 
-inline bool PathWithin(const std::filesystem::path& path,
-                       const std::filesystem::path& root) {
-  auto p = path.lexically_normal();
-  auto r = root.lexically_normal();
-  auto pi = p.begin(), ri = r.begin();
-  for (; ri != r.end(); ++ri, ++pi) {
-    if (pi == p.end() || *pi != *ri) return false;
-  }
-  return true;
-}
+bool PathWithin(const std::filesystem::path& path,
+                       const std::filesystem::path& root);
 
 }  // namespace uagent
 

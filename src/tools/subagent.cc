@@ -15,19 +15,21 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/delegation.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
-#include "include/tools/child_agent.h"
+#include "include/agent/child_agent.h"
 #include "include/tools/collaborator_runtime.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 #include "include/tools/shell.h"
 
 namespace uagent {
@@ -68,7 +70,7 @@ std::string NewCollaboratorId() {
   std::error_code code;
   for (int attempt = 0; attempt < 8; ++attempt) {
     std::string id =
-        "agent-" + HashHex(seed + ":" + std::to_string(attempt)).substr(0, 8);
+        "agent-" + TruncatedHash(seed + ":" + std::to_string(attempt), kAgentNameChars);
     if (!std::filesystem::exists(CollaboratorPath(id), code) &&
         !std::filesystem::exists(CollaboratorSessionPath(id), code)) {
       return id;
@@ -382,24 +384,6 @@ std::string SubagentDiagnosticRoute(
 }
 
 }  // namespace
-
-std::string DefaultSubagentModel(const Api& api) {
-  std::string selection = NormalizeModelId(SubagentModel());
-  if (!selection.empty()) return selection;
-  return api.model;
-}
-
-std::string DelegationRuntimeContext(const Api& api) {
-  // No provider list reaches here; the built-in templates still scope the
-  // common routes, and a custom endpoint degrades to a bare model id.
-  std::string parent = TerminalSafe(RouteSelection(api, {}));
-  std::string child_model = DefaultSubagentModel(api);
-  if (child_model == api.model) {
-    return "[delegation: parent=" + parent + "; default=parent]";
-  }
-  return "[delegation: parent=" + parent +
-         "; default=" + TerminalSafe(child_model) + "]";
-}
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,

@@ -22,7 +22,7 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 
 namespace uagent {
 namespace {

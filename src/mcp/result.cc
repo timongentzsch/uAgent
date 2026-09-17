@@ -52,8 +52,7 @@ ToolResult McpImageResult(const json& content, std::string source_call_id) {
   ToolResult attached = Attachments().Add(path, std::move(source_call_id));
   if (!attached.Ok()) {
     std::string reason = std::move(attached.output);
-    constexpr std::string_view kErrorPrefix = "error: ";
-    if (reason.starts_with(kErrorPrefix)) reason.erase(0, kErrorPrefix.size());
+    if (reason.starts_with(kToolErrorPrefix)) reason.erase(0, kToolErrorPrefix.size());
     return ToolSuccess("[mcp image saved: " + path +
                        "; not attached: " + reason + "]");
   }

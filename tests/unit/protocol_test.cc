@@ -24,7 +24,7 @@
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
-#include "include/ui/tool_output.h"
+#include "include/agent/tool_presentation.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {

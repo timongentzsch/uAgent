@@ -15,11 +15,11 @@
 #include "include/cli.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
+#include "include/agent/tool_presentation.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/tools/tool.h"
 #include "include/ui/presentation.h"
-#include "include/ui/tool_output.h"
 
 namespace uagent {
 

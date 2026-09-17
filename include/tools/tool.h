@@ -33,29 +33,15 @@ enum class ToolErrorCode {
   kInternal,
 };
 
-inline const char* ToolErrorCodeName(ToolErrorCode code) {
-  switch (code) {
-    case ToolErrorCode::kNone:
-      return "none";
-    case ToolErrorCode::kInvalidArguments:
-      return "invalid_arguments";
-    case ToolErrorCode::kPermissionDenied:
-      return "permission_denied";
-    case ToolErrorCode::kNotFound:
-      return "not_found";
-    case ToolErrorCode::kLimitExceeded:
-      return "limit_exceeded";
-    case ToolErrorCode::kUnavailable:
-      return "unavailable";
-    case ToolErrorCode::kProcessFailed:
-      return "process_failed";
-    case ToolErrorCode::kRemoteError:
-      return "remote_error";
-    case ToolErrorCode::kInternal:
-      return "internal";
-  }
-  return "internal";
-}
+const char* ToolErrorCodeName(ToolErrorCode code);
+
+// Single spelling of the human-facing failure prefix. ToolFailure and its
+// siblings do not auto-prepend: existing call sites already carry the prefix
+// and mass rewording would churn golden outputs. New code should build
+// messages via ToolErrorText so the envelope stays greppable in one place.
+inline constexpr std::string_view kToolErrorPrefix = "error: ";
+
+std::string ToolErrorText(std::string_view message);
 
 struct ToolArgumentIssue {
   std::string code;
@@ -63,22 +49,15 @@ struct ToolArgumentIssue {
   std::string field;
 };
 
-inline ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
-                                       std::string field = {}) {
-  return {std::move(code), std::move(message), std::move(field)};
-}
+ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
+                                       std::string field = {});
 
 struct ToolArtifact {
   std::string path;
   uint64_t bytes = 0;
 };
 
-inline std::string ArtifactHint(const ToolArtifact& artifact) {
-  return "\n[captured log: " + artifact.path + " (" +
-         std::to_string(artifact.bytes) +
-         " bytes); query with jq/python via run or read selected ranges; do "
-         "not read it whole]";
-}
+std::string ArtifactHint(const ToolArtifact& artifact);
 
 struct ReadRange {
   std::string path;
@@ -101,34 +80,10 @@ struct ToolResult {
   bool Ok() const { return status == CompletionStatus::kSuccess; }
 };
 
-inline ToolResult ToolSuccess(std::string output, int64_t result_chars = -1) {
-  ToolResult result;
-  result.output = std::move(output);
-  result.result_chars = result_chars;
-  return result;
-}
-
-inline ToolResult ToolFailure(ToolErrorCode error, std::string output) {
-  ToolResult result;
-  result.status = CompletionStatus::kFailed;
-  result.output = std::move(output);
-  result.error = error;
-  return result;
-}
-
-inline ToolResult ToolCancelled(std::string output) {
-  ToolResult result;
-  result.status = CompletionStatus::kCancelled;
-  result.output = std::move(output);
-  return result;
-}
-
-inline ToolResult ToolTimedOut(std::string output) {
-  ToolResult result;
-  result.status = CompletionStatus::kTimedOut;
-  result.output = std::move(output);
-  return result;
-}
+ToolResult ToolSuccess(std::string output, int64_t result_chars = -1);
+ToolResult ToolFailure(ToolErrorCode error, std::string output);
+ToolResult ToolCancelled(std::string output);
+ToolResult ToolTimedOut(std::string output);
 
 struct ToolContext {
   ToolContext() = default;
@@ -140,31 +95,11 @@ struct ToolContext {
   int64_t timeout_s = 0;
   std::string call_id;
 
-  bool Expired() const {
-    return deadline != std::chrono::steady_clock::time_point::max() &&
-           std::chrono::steady_clock::now() >= deadline;
-  }
+  bool Expired() const;
 
-  ToolContext WithTimeout(int64_t seconds) const {
-    ToolContext out = *this;
-    out.timeout_s = std::max(int64_t{0}, seconds);
-    if (seconds > 0) {
-      out.deadline = std::min(out.deadline, DeadlineAfter(seconds));
-    }
-    return out;
-  }
+  ToolContext WithTimeout(int64_t seconds) const;
 
-  int64_t RemainingSeconds(int64_t configured) const {
-    if (deadline == std::chrono::steady_clock::time_point::max()) {
-      return configured;
-    }
-    int64_t remaining =
-        static_cast<int64_t>(std::chrono::duration_cast<std::chrono::seconds>(
-                                 deadline - std::chrono::steady_clock::now())
-                                 .count());
-    remaining = std::max(int64_t{1}, remaining);
-    return configured > 0 ? std::min(configured, remaining) : remaining;
-  }
+  int64_t RemainingSeconds(int64_t configured) const;
 };
 
 enum class ToolCapability : uint32_t {
@@ -266,122 +201,42 @@ struct ToolPolicy {
 ToolPolicy ToolPolicyFromEnvironment();
 void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy);
 
-inline Tool MakeTool(std::string name, std::string description, json parameters,
-                     Tool::Run run) {
-  Tool tool;
-  tool.name = std::move(name);
-  tool.description = std::move(description);
-  tool.parameters = std::move(parameters);
-  tool.run = std::move(run);
-  return tool;
-}
+Tool MakeTool(std::string name, std::string description, json parameters,
+                     Tool::Run run);
 
-inline Tool& AddTool(std::vector<Tool>& tools, Tool tool) {
-  tools.push_back(std::move(tool));
-  return tools.back();
-}
+Tool& AddTool(std::vector<Tool>& tools, Tool tool);
 
-inline bool ToolMutates(const Tool& tool, const json& arguments) {
-  return tool.mutating || (tool.mutates && tool.mutates(arguments));
-}
+bool ToolMutates(const Tool& tool, const json& arguments);
 
-// Repeat-guard exemption for Agent::ToolCallsWithinLimits: a call that
-// deliberately blocks — activity wait_ms or run yield_ms — is waiting for
-// something to finish, not stuck in a tight identical-call loop, so it
-// resets the counter instead of tripping it.
-inline bool ToolCallBlocks(const Tool& tool, const json& arguments) {
-  if (tool.blocking_wait_default_ms >= 0 &&
-      JsonValue(arguments, "wait_ms", tool.blocking_wait_default_ms) > 0) {
-    return true;
-  }
-  return JsonValue(arguments, "yield_ms", int64_t{0}) > 0;
-}
+bool ToolCallBlocks(const Tool& tool, const json& arguments);
 
 // Contract-defined for native operations; arbitrary execution may declare its
 // purpose. Neither this label nor a successful exit proves absence of effects.
-inline std::string ToolActivityCategory(const Tool& tool, const json& args) {
-  if (tool.declared_intent) {
-    std::string intent = JsonValue(args, "intent", "execute");
-    return intent == "explore" || intent == "change" ? intent : "execute";
-  }
-  if (tool.capabilities & (Capability(ToolCapability::kExecute) |
-                           Capability(ToolCapability::kDelegate))) {
-    return "execute";
-  }
-  return ToolMutates(tool, args) ? "change" : "explore";
-}
+std::string ToolActivityCategory(const Tool& tool, const json& args);
 
 // The authority a call needs. A tool may escalate specific arguments; nothing
 // can de-escalate below what the tool itself declares.
-inline ApprovalClass RequiredApproval(const Tool& tool, const json& arguments) {
-  if (tool.approval_class) {
-    ApprovalClass escalated = tool.approval_class(arguments);
-    if (escalated == ApprovalClass::kMandatoryHuman) return escalated;
-  }
-  bool required = ToolMutates(tool, arguments) ||
-                  (tool.needs_approval && tool.needs_approval(arguments));
-  return required ? ApprovalClass::kYoloEligibleMutation : ApprovalClass::kNone;
-}
+ApprovalClass RequiredApproval(const Tool& tool, const json& arguments);
 
-inline void KeepLeanTools(std::vector<Tool>& tools) {
-  std::erase_if(tools,
-                [](const Tool& tool) { return !tool.available_in_lean; });
-}
+void KeepLeanTools(std::vector<Tool>& tools);
 
-inline std::string ToolDescription(const Tool& tool) {
-  std::string s = tool.description;
-  // Mark tools that actually overlap, so the base prompt's batching rule is
-  // actionable.
-  if (tool.parallel_safe) s += " Batchable with independent calls.";
-  if (tool.max_calls_per_turn >= 0) {
-    s += " Limit: " + std::to_string(tool.max_calls_per_turn) + "/turn.";
-  }
-  return s;
-}
+std::string ToolDescription(const Tool& tool);
 
-inline json ToolParameters(const Tool& tool) {
-  if (tool.provider.starts_with("mcp:")) return tool.parameters;
-  json parameters = tool.parameters;
-  if (!parameters.is_object()) parameters = json::object();
-  if (!parameters.contains("type")) parameters["type"] = "object";
-  if (!parameters.contains("properties") ||
-      !parameters["properties"].is_object()) {
-    parameters["properties"] = json::object();
-  }
-  if (!parameters.contains("additionalProperties")) {
-    parameters["additionalProperties"] = false;
-  }
-  return parameters;
-}
+json ToolParameters(const Tool& tool);
 
 // One-line display for a call: the tool's own formatter, else `path` (the
 // common case), else the raw args. Shared by the approval prompt and the
 // call trace so both name the same action the same way.
-inline std::string ToolSummary(const Tool& t, const json& args) {
-  if (t.summary) return t.summary(args);
-  if (args.contains("path") && args["path"].is_string()) {
-    return args["path"].get<std::string>();
-  }
-  return JsonDump(args);
-}
+std::string ToolSummary(const Tool& t, const json& args);
 
-inline const Tool* FindTool(const std::vector<Tool>& tools,
-                            const std::string& name) {
-  for (auto& t : tools) {
-    if (t.name == name) return &t;
-  }
-  return nullptr;
-}
+const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name);
 
 // Structured argument validation against a tool's JSON schema.
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args);
 
 // Compatibility helper for callers that only need the human-readable error.
-inline std::string InvalidToolArgument(const Tool& tool, const json& args) {
-  auto issue = FindToolArgumentIssue(tool, args);
-  return issue ? issue->message : std::string();
-}
+std::string InvalidToolArgument(const Tool& tool, const json& args);
 
 // Pull the tool's `clamped_arguments` back inside their schema bounds. Runs
 // before validation, so an overshooting hint is honoured at the bound. Each
@@ -401,22 +256,10 @@ std::string StableArgumentError(
     const Tool& tool, const json& args,
     std::unordered_map<std::string, std::string>& values);
 
-inline json ToolSchema(const Tool& tool) {
-  return {{"type", "function"},
-          {"function",
-           {{"name", tool.name},
-            {"description", ToolDescription(tool)},
-            {"parameters", ToolParameters(tool)}}}};
-}
+json ToolSchema(const Tool& tool);
 
 // registry -> the `tools` array for a chat request
-inline json ToolSchemas(const std::vector<Tool>& tools) {
-  json out = json::array();
-  for (const Tool& tool : tools) {
-    out.push_back(ToolSchema(tool));
-  }
-  return out;
-}
+json ToolSchemas(const std::vector<Tool>& tools);
 
 class ToolSchemaCache {
  public:

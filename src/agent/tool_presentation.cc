@@ -1,40 +1,36 @@
 // Copyright 2026 Timon Gentzsch
 
-#ifndef UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_
-#define UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_
-// One terminal renderer for every tool call and result. Calls are complete;
-// compact result rows stay bounded, while verbose results use scrollback.
+#include "include/agent/tool_presentation.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "include/agent/dispatch.h"
-#include "include/core/events.h"
+#include "include/agent/protocol.h"
+#include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/core/term.h"
-#include "include/ui/presentation.h"
 
 namespace uagent {
 
-inline bool IsActivityPoll(const CallTask& task) {
+bool IsActivityPoll(const CallTask& task) {
   return task.tool && task.tool->name == "activity" &&
          JsonValue(task.args, "operation", "") == "poll" &&
          JsonValue(task.args, "id", int64_t{0}) > 0;
 }
 
-inline size_t TextLines(const std::string& text) {
+size_t TextLines(const std::string& text) {
   if (text.empty()) return 0;
   return static_cast<size_t>(std::count(text.begin(), text.end(), '\n')) +
          (text.back() == '\n' ? 0 : 1);
 }
 
-inline std::string ToolResultSummary(const ToolResult& result,
-                                     const std::string& output,
-                                     bool truncated) {
+std::string ToolResultSummary(const ToolResult& result,
+                              const std::string& output, bool truncated) {
   std::string summary = output.empty() ? "(empty)" : FirstLine(output);
   size_t lines = TextLines(output);
   // The first line is shown, so the count reports what is elided: a header
@@ -51,10 +47,8 @@ inline std::string ToolResultSummary(const ToolResult& result,
   return summary;
 }
 
-// Compact rows stay bounded: a long result is summarised by its first line
-// and a count, and /verbose prints the whole thing.
-inline PresentationRecord ToolCallPresentation(const CallTask& task,
-                                               const ToolCall& call) {
+PresentationRecord ToolCallPresentation(const CallTask& task,
+                                        const ToolCall& call) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolCall;
   record.id = call.id;
@@ -67,10 +61,9 @@ inline PresentationRecord ToolCallPresentation(const CallTask& task,
   return record;
 }
 
-// Stored transcript path: same row as a live call, from replay data.
-inline PresentationRecord ToolCallPresentation(
+PresentationRecord ToolCallPresentation(
     const std::string& name, const json& arguments,
-    const std::vector<Tool>& tools, const std::string& ordinal = "") {
+    const std::vector<Tool>& tools, const std::string& ordinal) {
   CallTask task;
   task.tool = FindTool(tools, name);
   task.ordinal = ordinal;
@@ -83,9 +76,10 @@ inline PresentationRecord ToolCallPresentation(
   return ToolCallPresentation(task, call);
 }
 
-inline PresentationRecord ToolResultPresentation(
-    const CallTask& task, const ToolCall& call, const std::string& model_output,
-    bool verbose) {
+PresentationRecord ToolResultPresentation(const CallTask& task,
+                                          const ToolCall& call,
+                                          const std::string& model_output,
+                                          bool verbose) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   record.id = call.id;
@@ -138,29 +132,20 @@ inline PresentationRecord ToolResultPresentation(
   return record;
 }
 
-// Kept receipts replay exactly what the live row showed. Only the compact
-// row shape is recorded (title/summary/flags); bodies, diffs and groups
-// already travel on the view block, so facts stay small and sessions saved
-// before this change fall back to the legacy synthesis. There is no render
-// flag: the worker's render bit only ever gated worker stdout (which does
-// not exist); every visible CLI row is drawn client-side with render forced
-// on, so presence of the fact is the show condition. Poll suppression rides
-// the poll flag through the shared printer.
-inline json ToolReplayJson(const PresentationRecord& record) {
+json ToolReplayJson(const PresentationRecord& record) {
   json value = {{"title", record.title},
                 {"summary", record.summary},
                 {"poll", record.poll}};
   if (record.multiline) {
     value["multiline"] = true;
-    value["detail"] = Utf8Trunc(record.detail, 2048);
+    value["detail"] = Utf8Trunc(record.detail, kReplayDetailChars);
   }
   return value;
 }
 
-inline PresentationRecord StoredToolResultPresentation(
+PresentationRecord StoredToolResultPresentation(
     const std::string& name, const std::string& output,
-    const std::string& display = "",
-    PresentationStatus status = PresentationStatus::kNeutral) {
+    const std::string& display, PresentationStatus status) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   record.status = status;
@@ -179,10 +164,43 @@ inline PresentationRecord StoredToolResultPresentation(
   }
   record.summary = TerminalSummary(ToolResultSummary(replayed, output,
                                                      /*truncated=*/false),
-                                   record.title.size() + 6);
+                                   record.title.size() + kRecordTitleReserveChars);
   return record;
 }
 
-}  // namespace uagent
+namespace {
 
-#endif  // UAGENT_INCLUDE_UI_TOOL_OUTPUT_H_
+struct PollAnchor {
+  std::chrono::steady_clock::time_point started;
+  std::chrono::steady_clock::time_point seen;
+};
+
+// An activity can also vanish without a final poll, by completing in the
+// background or being stopped, so anchors expire instead of relying on every
+// such path to announce itself.
+constexpr std::chrono::hours kPollAnchorTtl{1};
+
+std::unordered_map<int64_t, PollAnchor>& PollAnchors() {
+  static std::unordered_map<int64_t, PollAnchor> anchors;
+  return anchors;
+}
+
+}  // namespace
+
+std::chrono::steady_clock::duration PollElapsed(int64_t activity_id) {
+  auto now = std::chrono::steady_clock::now();
+  auto& anchors = PollAnchors();
+  auto [it, inserted] = anchors.try_emplace(activity_id, PollAnchor{now, now});
+  it->second.seen = now;
+  auto elapsed = now - it->second.started;
+  if (inserted) {
+    std::erase_if(anchors, [now](const auto& entry) {
+      return entry.second.seen + kPollAnchorTtl < now;
+    });
+  }
+  return elapsed;
+}
+
+void ClearPollAnchor(int64_t activity_id) { PollAnchors().erase(activity_id); }
+
+}  // namespace uagent

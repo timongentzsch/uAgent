@@ -17,6 +17,7 @@
 #include "include/app/session.h"
 #include "include/core/capture.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/usage.h"
@@ -43,8 +44,7 @@ SessionHost::SessionHost(std::string epoch, size_t byte_limit,
     : epoch_(std::move(epoch)),
       executable_(std::move(executable)),
       directory_(std::move(directory)),
-      byte_limit_(byte_limit),
-      event_limit_(event_limit) {
+      replay_(byte_limit, event_limit) {
   schedule_state_ = ReadSchedules();
   scheduled_view_ = ScheduleControl({{"action", "list"}});
 }
@@ -52,88 +52,36 @@ SessionHost::SessionHost(std::string epoch, size_t byte_limit,
 HostReplay SessionHost::Publish(const std::string& session,
                                 const std::string& generation, json value) {
   std::lock_guard lock(mutex_);
-  return PublishLocked(session, generation, std::move(value));
-}
-
-HostReplay SessionHost::PublishLocked(const std::string& session,
-                                      const std::string& generation,
-                                      json value) {
-  const std::string type = JsonValue(value, "type", "");
-  const std::string kind = JsonValue(value, "kind", "");
-  HostNotice notice;
-  notice.session = session;
-  if (type == "turn.completed" || type == "approval.requested" ||
-      type == "error" || kind == "error") {
-    notice.attention_id = epoch_ + ":" + std::to_string(sequence_ + 1);
-    value["attention_id"] = notice.attention_id;
-  }
   auto owner = sessions_.find(session);
-  notice.wake = kind == "scheduled.changed" || kind == "management.changed" ||
-                kind == "metadata" || kind == "activated" ||
-                kind == "deactivated" ||
-                (owner != sessions_.end() && !owner->second->run_id.empty());
-  if (kind == "deleted") notices_.erase(session);
-  value["epoch"] = epoch_;
-  value["sequence"] = ++sequence_;
-  value["session_id"] = session;
-  value["generation"] = generation;
-  value["v"] = kProtocol;
-  HostReplay published{sequence_, JsonDump(value)};
-  replay_bytes_ += published.frame.size();
-  replay_.push_back(published);
-  while (replay_bytes_ > byte_limit_ || replay_.size() > event_limit_) {
-    replay_bytes_ -= replay_.front().frame.size();
-    replay_.pop_front();
-  }
-  if (!notice.attention_id.empty() || notice.wake) {
-    auto& pending = notices_[notice.session];
-    pending.session = notice.session;
-    pending.wake |= notice.wake;
-    if (!notice.attention_id.empty()) {
-      pending.attention_id = std::move(notice.attention_id);
-    }
-  }
+  const bool run_owned =
+      owner != sessions_.end() && !owner->second->run_id.empty();
+  HostReplay published =
+      replay_.Publish(epoch_, session, generation, std::move(value), run_owned);
   changed_.notify_all();
   return published;
 }
 
 uint64_t SessionHost::Cursor() const {
   std::lock_guard lock(mutex_);
-  return sequence_;
+  return replay_.Cursor();
 }
 
 ReplayBatch SessionHost::ReadReplay(uint64_t next, bool valid,
                                     uint64_t watermark) const {
   std::lock_guard lock(mutex_);
-  ReplayBatch batch;
-  batch.cursor = sequence_;
-  batch.reset = !valid || next > sequence_ ||
-                (!replay_.empty() && next + 1 < replay_.front().sequence);
-  if (batch.reset) return batch;
-  for (const HostReplay& event : replay_) {
-    if (event.sequence > next && event.sequence <= watermark) {
-      batch.events.push_back(event);
-    }
-  }
-  return batch;
+  return replay_.Read(next, valid, watermark);
 }
 
 void SessionHost::WaitForReplay(uint64_t cursor, std::chrono::seconds timeout) {
   std::unique_lock lock(mutex_);
   changed_.wait_for(lock, timeout,
-                    [&] { return stopping_ || sequence_ > cursor; });
+                    [&] { return stopping_ || replay_.Cursor() > cursor; });
 }
 
 std::vector<HostNotice> SessionHost::WaitForNotices() {
   std::unique_lock lock(mutex_);
-  changed_.wait(lock, [&] { return stopping_ || !notices_.empty(); });
-  std::vector<HostNotice> notices;
-  notices.reserve(notices_.size());
-  for (auto& [session, notice] : notices_) {
-    notices.push_back(std::move(notice));
-  }
-  notices_.clear();
-  return notices;
+  changed_.wait(lock, [&] { return stopping_ || replay_.HasNotices(); });
+  return replay_.TakeNotices();
 }
 
 void SessionHost::Stop() {
@@ -150,10 +98,10 @@ void SessionHost::LoadDrafts() {
   const std::string folder = directory_ + "/drafts";
   if (!EnsurePrivateDirectory(folder)) return;
   for (const auto& entry : std::filesystem::directory_iterator(folder, ec)) {
-    if (sessions_.size() >= 4096) break;
+    if (sessions_.size() >= kMaxCatalogueEntries) break;
     if (entry.path().extension() != ".json") continue;
     std::string bytes, error;
-    if (!ReadRegularFile(entry.path().string(), 4096, bytes, error)) continue;
+    if (!ReadRegularFile(entry.path().string(), kCatalogueHeaderBytes, bytes, error)) continue;
     json draft = json::parse(bytes, nullptr, false);
     auto session = std::make_shared<HostSession>();
     session->id = JsonValue(draft, "id", "");
@@ -180,8 +128,9 @@ bool SessionHost::PublishMetadata(const std::string& id, HostSession& session) {
   json after = Metadata(session);
   if (session.published == after) return false;
   session.published = after;
-  PublishLocked(id, session.generation,
-                {{"kind", "metadata"}, {"metadata", std::move(after)}});
+  replay_.Publish(epoch_, id, session.generation,
+                    {{"kind", "metadata"}, {"metadata", std::move(after)}},
+                    !session.run_id.empty());
   return true;
 }
 
@@ -279,7 +228,7 @@ json SessionHost::Metadata(const HostSession& session) const {
 json SessionHost::LiveSnapshot(const HostSession& session) const {
   return {{"v", kProtocol},
           {"epoch", epoch_},
-          {"cursor", sequence_},
+          {"cursor", replay_.Cursor()},
           {"metadata", Metadata(session)},
           {"state", session.state},
           {"pending", session.pending},
@@ -292,7 +241,7 @@ json SessionHost::Catalogue() const {
   for (const auto& [id, session] : sessions_) {
     sessions.push_back(Metadata(*session));
   }
-  return {{"cursor", sequence_},
+  return {{"cursor", replay_.Cursor()},
           {"sessions", std::move(sessions)},
           {"scheduled", scheduled_view_}};
 }

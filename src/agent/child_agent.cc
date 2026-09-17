@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/tools/child_agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/file_services.h"
 
 #include <unistd.h>
 
@@ -25,8 +26,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
-#include "include/tools/files.h"
-#include "include/tools/output_buffer.h"
+#include "include/core/output_buffer.h"
 
 namespace uagent {
 namespace {

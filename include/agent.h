@@ -26,7 +26,7 @@
 #include "include/core/skills.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
-#include "include/tools/process.h"
+#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

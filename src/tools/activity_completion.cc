@@ -21,8 +21,8 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/jobs.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
 
 namespace uagent {
 namespace {

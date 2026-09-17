@@ -248,7 +248,7 @@ SnapshotResult SessionHost::Snapshot(const std::string& id,
   }
   return {{{"v", kProtocol},
            {"epoch", epoch_},
-           {"cursor", sequence_},
+           {"cursor", replay_.Cursor()},
            {"metadata", Metadata(*session)},
            {"state", std::move(state)},
            {"pending", session->pending},

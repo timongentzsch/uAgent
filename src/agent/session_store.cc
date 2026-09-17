@@ -14,13 +14,13 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/file_services.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/tools/files.h"
 
 namespace uagent {
 namespace {
@@ -374,12 +374,11 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           CanonicalAccessPath(file.parent_path()) == artifacts) {
         auto [it, added] = copies.try_emplace(text);
         if (added) {
-          Fd copy(CreateTempFile(
+          ScopedTempFile copy(
               (artifacts / (file.filename().string().starts_with("http-")
                                 ? "http-XXXXXX"
                                 : "exchange-XXXXXX"))
-                  .string(),
-              it->second));
+                  .string());
           if (!copy) {
             ec = std::make_error_code(std::errc::io_error);
             return;
@@ -391,7 +390,6 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
               !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
               info.st_size < 0 ||
               static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
-            unlink(it->second.c_str());
             it->second.clear();
           } else {
             char buffer[16384];
@@ -410,6 +408,9 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
               }
               copied += static_cast<size_t>(count);
             }
+            // Kept even when partial: the previous hand-rolled cleanup
+            // removed only rejected inputs, not short copies.
+            it->second = copy.Release();
           }
         }
         value = it->second;

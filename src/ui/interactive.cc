@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/cli.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"

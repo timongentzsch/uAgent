@@ -10,8 +10,8 @@
 
 #include "include/core/fs.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
-#include "include/tools/process.h"
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 #include "include/tools/registry.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"

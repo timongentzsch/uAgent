@@ -238,7 +238,7 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
   {
     std::lock_guard lock(mutex_);
     for (json event : RefreshInvalidations(projects)) {
-      PublishLocked("", "", std::move(event));
+      replay_.Publish(epoch_, "", "", std::move(event), false);
     }
   }
   wait.paths = InvalidationPaths(projects);

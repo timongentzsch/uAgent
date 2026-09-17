@@ -205,7 +205,7 @@ std::string ToolsMarkdown() {
            " | " + (JsonValue(tool, "lean", false) ? "yes" : "no") + " | " +
            (JsonValue(tool, "parallel_safe", false) ? "yes" : "no") + " | " +
            JsonValue(tool, "when", std::string()) + " | `" +
-           HashHex(JsonDump(parameters)).substr(0, 12) + "` | " +
+           TruncatedHash(JsonDump(parameters), kDigestChars) + "` | " +
            Escape(description) + " |\n";
   }
   return out;

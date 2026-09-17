@@ -32,6 +32,13 @@ namespace uagent {
   X(TestConfigProposalAndCommit)               \
   X(TestProjectConfigTrustRestamp)             \
   X(TestConfigRegistryContract)                \
+  X(TestRuntimeConfigCoherence)                \
+  X(TestSessionCommandKinds)                   \
+  X(TestSessionCommandFields)                  \
+  X(TestSessionCommandRejects)                 \
+  X(TestReceiptLog)                            \
+  X(TestReceiptLogBackpressure)                \
+  X(TestHostCommandKinds)                      \
   X(TestSandboxPolicy)                         \
   X(TestSandboxRendering)                      \
   X(TestSandboxTrampolineArgs)                 \

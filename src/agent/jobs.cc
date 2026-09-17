@@ -1,6 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 
 #include <fcntl.h>
 #include <signal.h>
@@ -35,8 +35,7 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/files.h"
+#include "include/agent/child_agent.h"
 
 namespace uagent {
 

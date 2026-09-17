@@ -10,6 +10,7 @@
 #include "include/app/control.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
 
@@ -143,18 +144,18 @@ json ScheduleCalendar(const json& request) {
   const auto schedule = JsonValue(request, "schedule", json::object());
   const auto type = JsonValue(schedule, "type", "");
   int64_t after = JsonValue(request, "after", NowSeconds());
-  if (after < 0 || after > 4102444800LL) {
+  if (after < 0 || after > kMaxScheduleEpoch) {
     return {{"error", "schedule date is outside 1970–2100"}};
   }
   json times = json::array();
   if (type == "once") {
     int64_t at = JsonValue(schedule, "at", int64_t{0});
-    if (at > after && at < 4102444800LL) times.push_back(at);
+    if (at > after && at < kMaxScheduleEpoch) times.push_back(at);
   } else if (type == "interval") {
     int64_t interval = JsonValue(schedule, "seconds", int64_t{0});
     int64_t start = JsonValue(schedule, "start", int64_t{0});
-    if (interval < 60 || interval > 31536000 || start < 0 ||
-        start > 4102444800LL) {
+    if (interval < kSecondsPerMinute || interval > kSecondsPerYear || start < 0 ||
+        start > kMaxScheduleEpoch) {
       return {{"error", "interval must be between one minute and one year"}};
     }
     int64_t next = start > after

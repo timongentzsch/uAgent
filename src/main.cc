@@ -31,7 +31,7 @@ extern char** environ;
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/core/usage.h"
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 #ifdef UAGENT_WEB
 #include "include/web/protocol.h"
 #endif

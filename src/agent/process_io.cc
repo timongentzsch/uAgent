@@ -23,8 +23,8 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
-#include "include/tools/jobs.h"
-#include "include/tools/process.h"
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 
 namespace uagent {
 namespace {

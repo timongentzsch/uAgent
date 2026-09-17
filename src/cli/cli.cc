@@ -13,8 +13,8 @@
 #include <string>
 #include <utility>
 
-#include "include/agent/adaptive_system.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/ui/editor.h"

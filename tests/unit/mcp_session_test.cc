@@ -17,6 +17,7 @@
 #include "include/core/skills.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
+#include "include/agent/memory_store.h"
 #include "include/mcp/register.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"

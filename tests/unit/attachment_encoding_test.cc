@@ -11,7 +11,7 @@
 #include "include/core/config.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 #include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 

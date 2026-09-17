@@ -129,12 +129,17 @@ export interface ToolRow {
   server: boolean;
 }
 
-// Single GUI adapter for every tool row. The server owns the compact
-// receipt (ToolSummary + ToolResultSummary in tool_output.h, replayed as
-// block.replay); the TUI prints the same fields via PrintPresentation, so
-// both surfaces name the same action the same way. Per-tool differences
-// stay in the title formatter above plus the diffOnly flag below — never
-// in per-call JSX — mirroring the backend's per-tool `summary` lambdas.
+// Single GUI adapter for every tool row. Titles come from the live
+// receipt the server maintains on activity.label (updated post-execution
+// to FirstLine(display), so live and retained rows read identically);
+// local synthesis covers rows whose activity facts are missing, and the
+// result replay title only ever carries the bare tool name
+// (ToolResultPresentation records ordinal+name for the TUI resume path,
+// which replays through PrintPresentation, not this adapter). The replay
+// summary still owns the compact preview (ToolResultSummary). Per-tool
+// differences stay in the title formatter above plus the diffOnly flag
+// below — never in per-call JSX — mirroring the backend's per-tool
+// `summary` lambdas.
 export function getToolRow(block: Block): ToolRow {
   const fallback = getToolPreview(block);
   const replayTitle = block.replay?.title?.trim();
@@ -147,7 +152,9 @@ export function getToolRow(block: Block): ToolRow {
     !/fail|error/i.test(block.status || "");
   if (replayTitle || replaySummary) {
     return {
-      title: replayTitle || fallback.title,
+      // fallback.title is the native label when present, else synthesis:
+      // a bare-name replay title must never shadow the live receipt.
+      title: fallback.title,
       subtitle: fallback.subtitle,
       preview: replaySummary || fallback.preview,
       diffOnly,

@@ -38,6 +38,9 @@ namespace {
 // them.
 constexpr size_t kAdvertisedRoutes = 4;
 constexpr int kCollaboratorFormat = 1;
+constexpr size_t kAgentNameMax = 32;
+constexpr size_t kAgentDescriptionMax = 280;
+constexpr int kMailMaxHops = 8;
 
 std::string CollaboratorPath(const std::string& id) {
   return UagentDir("collaborators") + "/" + id + ".json";
@@ -82,12 +85,34 @@ std::string NewCollaboratorId() {
 // back on the way out is the only place that covers all of them.
 struct MailRestore {
   std::string id;
-  std::vector<std::string> taken;
+  std::vector<CollaboratorMail> taken;
 
   ~MailRestore() {
-    for (const std::string& queued : taken) WriteCollaboratorMail(id, queued);
+    for (const CollaboratorMail& queued : taken) {
+      WriteCollaboratorMail(id, queued.text, queued.from, queued.hops);
+    }
   }
 };
+
+bool ValidAgentName(std::string_view name) {
+  if (name.empty() || name.size() > kAgentNameMax) return false;
+  if (name.front() == '-' || name.back() == '-') return false;
+  for (char c : name) {
+    const bool lower = c >= 'a' && c <= 'z';
+    const bool digit = c >= '0' && c <= '9';
+    if (!lower && !digit && c != '-') return false;
+  }
+  return true;
+}
+
+// Same-team peers see each other's records; other sessions stay isolated.
+// The owner check preserves the old boundary, the team check opens the swarm.
+bool CollaboratorAllowed(const ProcessSupervisor& processes, const json& state) {
+  if (JsonValue(state, "owner", "") == processes.Owner()) return true;
+  const std::string team = JsonValue(state, "team", "");
+  const std::string mine = OwnTeam();
+  return !team.empty() && !mine.empty() && team == mine;
+}
 
 bool LoadCollaborator(const std::string& id, json& state, std::string& error) {
   if (id.empty() || SafeFileComponent(id) != id) {
@@ -150,13 +175,18 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes,
         JsonValue(state, "cwd", "") != CanonicalCwd()) {
       continue;
     }
+    const std::string team = JsonValue(state, "team", "");
     if (!processes.Owner().empty() &&
-        JsonValue(state, "owner", "") != processes.Owner()) {
+        JsonValue(state, "owner", "") != processes.Owner() &&
+        (team.empty() || team != OwnTeam() || OwnTeam().empty())) {
       continue;
     }
     std::string id = JsonValue(state, "id", "");
     std::optional<int64_t> activity = ActiveCollaborator(processes, id);
     json row = {{"id", id},
+                {"name", JsonValue(state, "name", "")},
+                {"description", JsonValue(state, "description", "")},
+                {"team", team},
                 {"model", JsonValue(state, "model", "")},
                 {"label", JsonValue(state, "label", "Subagent")},
                 {"mode", JsonValue(state, "mode", "lean")},
@@ -176,13 +206,14 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes,
 
 ToolResult MessageCollaborator(const ProcessSupervisor& processes,
                                CollaboratorRuntime* runtime,
-                               const std::string& id, const std::string& text) {
+                               const std::string& id, const std::string& text,
+                               const std::string& from, int hops) {
   json record;
   std::string error;
   if (!LoadCollaborator(id, record, error)) {
     return ToolFailure(ToolErrorCode::kNotFound, error);
   }
-  if (JsonValue(record, "owner", "") != processes.Owner()) {
+  if (!CollaboratorAllowed(processes, record)) {
     return ToolFailure(ToolErrorCode::kPermissionDenied,
                        "collaborator belongs to another conversation");
   }
@@ -190,15 +221,23 @@ ToolResult MessageCollaborator(const ProcessSupervisor& processes,
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "message requires text");
   }
-  if (runtime && JsonValue(record, "persistent", false)) {
-    ToolResult sent = runtime->Message(id, text);
-    // Only a definite rejection is safe to queue. A missing receipt can mean
-    // the command was already consumed and must never trigger automatic replay.
-    if (sent.Ok() || sent.error != ToolErrorCode::kUnavailable) return sent;
+  if (hops >= kMailMaxHops) {
+    return ToolSuccess("dropped message for collaborator " + id +
+                       " [loop-clamped]");
   }
-  ToolResult saved = WriteCollaboratorMail(id, text);
-  return saved.Ok() ? ToolSuccess("queued message for collaborator " + id)
-                    : saved;
+  const std::string sender =
+      from.empty() ? (OwnCollaboratorId().empty() ? "parent"
+                                                 : OwnCollaboratorId())
+                   : from;
+  // Mail-first: the file is the delivery. The socket is only a wake-up ping
+  // for a live persistent child; its result is best-effort and never the
+  // receipt, so a crash between accept and drain repeats instead of losing.
+  ToolResult saved = WriteCollaboratorMail(id, text, sender, hops);
+  if (!saved.Ok()) return saved;
+  if (runtime && JsonValue(record, "persistent", false)) {
+    (void)runtime->Message(id, "");
+  }
+  return ToolSuccess("queued message for collaborator " + id);
 }
 
 json InspectCollaborator(const ProcessSupervisor& processes,
@@ -207,11 +246,14 @@ json InspectCollaborator(const ProcessSupervisor& processes,
   json state;
   std::string error;
   if (!LoadCollaborator(id, state, error)) return {{"error", error}};
-  if (JsonValue(state, "owner", "") != processes.Owner()) {
+  if (!CollaboratorAllowed(processes, state)) {
     return {{"error", "collaborator belongs to another conversation"}};
   }
   auto loaded = SessionStore::Inspect(CollaboratorSessionPath(id));
   json detail = {{"agent_id", id},
+                 {"name", JsonValue(state, "name", "")},
+                 {"description", JsonValue(state, "description", "")},
+                 {"team", JsonValue(state, "team", "")},
                  {"label", JsonValue(state, "label", "Subagent")},
                  {"task", JsonValue(state, "task", "")},
                  {"directive", JsonValue(state, "directive", "")},
@@ -373,8 +415,32 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
          "otherwise holds it for the next followup; list shows "
          "collaborators"}}},
       {"agent_id",
+       {{"type", json::array({"string", "array"})},
+        {"items", {{"type", "string"}}},
+        {"description",
+         "durable collaborator id for followup or message; message "
+         "accepts an array for fan-out"}}},
+      {"name",
        {{"type", "string"},
-        {"description", "durable collaborator id for followup or message"}}},
+        {"maxLength", 32},
+        {"description",
+         "spawn/followup: reusable role like api-reviewer, lowercase "
+         "letters/digits/hyphens; identify expertise for reuse"}}},
+      {"description",
+       {{"type", "string"},
+        {"maxLength", 280},
+        {"description",
+         "spawn/followup: 1-2 sentences on expertise and when to reuse"}}},
+      {"broadcast",
+       {{"type", "boolean"},
+        {"description",
+         "message only: fan out to every teammate in this conversation"}}},
+      {"hops",
+       {{"type", "integer"},
+        {"minimum", 0},
+        {"maximum", 8},
+        {"description",
+         "message only: peer-forward count for loop clamping"}}},
       {"prompt",
        {{"type", "string"},
         {"description",
@@ -425,8 +491,10 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       "parent rounds; for a broad request with orthogonal parts, issue one "
       "task per part in a single batch. Spawn creates a durable collaborator "
       "whose conversation can be resumed with operation=followup; message "
-      "reaches a running child between its steps without waiting for a "
-      "followup, while activity handles waiting, output and stopping. Keep "
+      "queues guidance a child reads at its next step (live children get a "
+      "wake-up ping), broadcast fans out to teammates, while activity "
+      "handles waiting, output and stopping. Always set name+description at "
+      "spawn: name the reusable role, describe expertise and reuse. Keep "
       "background=true when useful parent work can continue.",
       {{"type", "object"}, {"properties", std::move(properties)}},
       [&api, &routes, &providers, debug, &processes, runtime](
@@ -447,6 +515,27 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
 
         std::string collaborator_id = JsonValue(arguments, "agent_id", "");
+        // message fan-out: single id, array of ids, or team broadcast.
+        std::vector<std::string> target_ids;
+        if (operation == "message") {
+          const bool broadcast = JsonValue(arguments, "broadcast", false);
+          const json* ids = JsonArray(arguments, "agent_id");
+          if (ids != nullptr) {
+            for (const json& entry : *ids) {
+              if (entry.is_string()) target_ids.push_back(entry.get<std::string>());
+            }
+          } else if (!collaborator_id.empty()) {
+            target_ids.push_back(collaborator_id);
+          } else if (broadcast) {
+            for (const json& row : CollaboratorSummaries(processes, runtime)) {
+              target_ids.push_back(JsonValue(row, "id", ""));
+            }
+            target_ids.erase(
+                std::remove_if(target_ids.begin(), target_ids.end(),
+                               [](const std::string& id) { return id.empty(); }),
+                target_ids.end());
+          }
+        }
         json collaborator;
         bool persistent = false;
         if (operation == "spawn") {
@@ -455,23 +544,34 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                "error: agent_id is assigned by spawn");
           }
           collaborator_id = NewCollaboratorId();
+          const std::string name = JsonValue(arguments, "name", "");
+          if (!name.empty() && !ValidAgentName(name)) {
+            return ToolFailure(
+                ToolErrorCode::kInvalidArguments,
+                "error: name must match [a-z0-9-]{1,32}, no leading/trailing '-'");
+          }
           collaborator = {
               {"format", kCollaboratorFormat},
               {"id", collaborator_id},
               {"cwd", CanonicalCwd()},
               {"owner", processes.Owner()},
+              {"team", processes.Owner()},
+              {"name", name},
+              {"description",
+               Utf8Trunc(JsonValue(arguments, "description", ""),
+                         kAgentDescriptionMax)},
               {"session_file", CollaboratorSessionPath(collaborator_id)},
               {"created_at", UtcStamp()},
               {"directive", JsonValue(arguments, "directive", "")},
               {"persistent", JsonValue(arguments, "persistent", false)}};
           persistent = JsonValue(collaborator, "persistent", false);
-          json retained =
-              persistent && runtime ? runtime->Snapshot() : json::object();
-          if (!retained.empty()) {
-            return ToolFailure(ToolErrorCode::kLimitExceeded,
-                               "error: persistent collaborator " +
-                                   JsonValue(retained, "id", "") +
-                                   " already owns this conversation's runtime");
+          if (persistent && runtime &&
+              runtime->Count() >= static_cast<size_t>(PersistentMax())) {
+            return ToolFailure(
+                ToolErrorCode::kLimitExceeded,
+                "error: persistent limit reached (" +
+                    std::to_string(PersistentMax()) +
+                    "); stop a retained collaborator to free its runtime");
           }
         } else {
           if (arguments.contains("persistent")) {
@@ -479,16 +579,17 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                "error: persistent is fixed when spawning");
           }
           std::string load_error;
-          if (!LoadCollaborator(collaborator_id, collaborator, load_error)) {
-            return ToolFailure(ToolErrorCode::kNotFound,
-                               "error: " + load_error);
+          if (operation != "message") {
+            if (!LoadCollaborator(collaborator_id, collaborator, load_error)) {
+              return ToolFailure(ToolErrorCode::kNotFound,
+                                 "error: " + load_error);
+            }
+            if (!CollaboratorAllowed(processes, collaborator)) {
+              return ToolFailure(ToolErrorCode::kInvalidArguments,
+                                 "collaborator belongs to another conversation");
+            }
+            persistent = JsonValue(collaborator, "persistent", false);
           }
-          if (!processes.Owner().empty() &&
-              JsonValue(collaborator, "owner", "") != processes.Owner()) {
-            return ToolFailure(ToolErrorCode::kInvalidArguments,
-                               "collaborator belongs to another conversation");
-          }
-          persistent = JsonValue(collaborator, "persistent", false);
         }
 
         std::string prompt = JsonValue(arguments, "prompt", "");
@@ -498,8 +599,24 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                                "error: message cannot change directive; use "
                                "followup");
           }
-          return MessageCollaborator(processes, runtime, collaborator_id,
-                                     prompt);
+          if (target_ids.empty()) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: message requires agent_id or broadcast");
+          }
+          const int hops =
+              static_cast<int>(JsonValue(arguments, "hops", int64_t{0}));
+          const std::string from =
+              OwnCollaboratorId().empty() ? "parent" : OwnCollaboratorId();
+          std::string combined;
+          for (const std::string& target : target_ids) {
+            ToolResult one = MessageCollaborator(processes, runtime, target,
+                                                prompt, from, hops);
+            if (!combined.empty()) combined += "\n";
+            combined += one.Ok() ? one.output
+                                  : ("error " + target + ": " + one.output);
+            if (!one.Ok()) return ToolFailure(one.error, combined);
+          }
+          return ToolSuccess(combined);
         }
 
         if (runtime && runtime->Active(collaborator_id)) {
@@ -526,6 +643,25 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           if (arguments.contains("directive")) {
             collaborator["directive"] = JsonValue(arguments, "directive", "");
           }
+          if (arguments.contains("name")) {
+            const std::string name = JsonValue(arguments, "name", "");
+            if (!name.empty() && !ValidAgentName(name)) {
+              return ToolFailure(
+                  ToolErrorCode::kInvalidArguments,
+                  "error: name must match [a-z0-9-]{1,32}, no leading/trailing '-'");
+            }
+            collaborator["name"] = name;
+          }
+          if (arguments.contains("description")) {
+            collaborator["description"] = Utf8Trunc(
+                JsonValue(arguments, "description", ""), kAgentDescriptionMax);
+          }
+          if (arguments.contains("team") &&
+              JsonValue(arguments, "team", "") !=
+                  JsonValue(collaborator, "team", "")) {
+            return ToolFailure(ToolErrorCode::kInvalidArguments,
+                               "error: team is fixed when spawning");
+          }
         }
         std::string directive = JsonValue(collaborator, "directive", "");
         if (!directive.empty()) {
@@ -538,9 +674,13 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         MailRestore restore{collaborator_id, {}};
         if (operation == "followup") {
           restore.taken = TakeCollaboratorMail(collaborator_id);
-          for (const std::string& queued : restore.taken) {
+          for (const CollaboratorMail& queued : restore.taken) {
             if (!prompt.empty()) prompt += "\n\n";
-            prompt += "[queued guidance]\n" + queued;
+            prompt += std::string("[queued guidance") +
+                      (queued.from.empty() || queued.from == "parent"
+                           ? ""
+                           : " from " + queued.from) +
+                      "]\n" + queued.text;
           }
         }
         if (prompt.empty()) {
@@ -577,6 +717,11 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
         }
         EnvironmentOverrides environment =
             ChildAgentEnvironment(std::move(route));
+        // Team identity travels with the child so same-team peers can reach
+        // each other; the coordinator stamps Owner() at spawn and it is fixed.
+        environment.emplace_back(
+            "UAGENT_TEAM", JsonValue(collaborator, "team",
+                                       processes.Owner()));
         // A caller that knows the shape of the subtask may raise or lower the
         // ceiling for that one child; the schema bounds it, and the session
         // budgets still apply underneath.
@@ -667,6 +812,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["task"] = JsonValue(arguments, "prompt", "");
           collaborator["label"] = Utf8Trunc(
               FirstLine(JsonValue(arguments, "prompt", "Sidekick")), 160);
+          if (operation == "spawn" || arguments.contains("name")) {
+            collaborator["name"] = JsonValue(arguments, "name",
+                                              JsonValue(collaborator, "name", ""));
+          }
+          if (operation == "spawn" || arguments.contains("description")) {
+            collaborator["description"] = Utf8Trunc(
+                JsonValue(arguments, "description",
+                          JsonValue(collaborator, "description", "")),
+                kAgentDescriptionMax);
+          }
           collaborator["memory"] = child_memory;
           collaborator["updated_at"] = UtcStamp();
           collaborator["route"] = route_label;
@@ -767,6 +922,16 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           collaborator["task"] = JsonValue(arguments, "prompt", "");
           collaborator["label"] = Utf8Trunc(
               FirstLine(JsonValue(arguments, "prompt", "Subagent")), 160);
+          if (operation == "spawn" || arguments.contains("name")) {
+            collaborator["name"] = JsonValue(arguments, "name",
+                                              JsonValue(collaborator, "name", ""));
+          }
+          if (operation == "spawn" || arguments.contains("description")) {
+            collaborator["description"] = Utf8Trunc(
+                JsonValue(arguments, "description",
+                          JsonValue(collaborator, "description", "")),
+                kAgentDescriptionMax);
+          }
           collaborator["memory"] = child_memory;
           collaborator["updated_at"] = UtcStamp();
           ToolResult saved = SaveCollaborator(collaborator);
@@ -803,10 +968,21 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
     std::string mode = JsonValue(arguments, "mode", "lean");
     std::string prompt = JsonValue(arguments, "prompt", "");
     std::string id = JsonValue(arguments, "agent_id", "");
-    if (operation == "message") return "[message " + id + "] " + prompt;
+    const json* ids = JsonArray(arguments, "agent_id");
+    if (id.empty() && ids != nullptr && !ids->empty() &&
+        (*ids)[0].is_string()) {
+      id = (*ids)[0].get<std::string>();
+      if (ids->size() > 1) id += ",+" + std::to_string(ids->size() - 1);
+    }
+    if (operation == "message") {
+      if (JsonValue(arguments, "broadcast", false)) return "[message team] " + prompt;
+      return "[message " + id + "] " + prompt;
+    }
     std::string label = SubagentTargetLabel(
         api, routes, providers,
         NormalizeModelId(JsonValue(arguments, "model", "")));
+    const std::string name = JsonValue(arguments, "name", "");
+    if (!name.empty()) label = name + " · " + label;
     if (mode == "full") label += " · full";
     const bool persistent = JsonValue(arguments, "persistent", false);
     if (persistent) label += " · persistent";

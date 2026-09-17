@@ -42,9 +42,9 @@ test("tool calls render exactly once and never stick on Running", async ({
   // row per call, still nothing stuck.
   await page.reload();
   await expect(page.getByLabel("Message or guidance")).toBeVisible();
-  await expect(
-    page.locator(".transcript .tool-disclosure"),
-  ).toHaveCount(2, { timeout: 60000 });
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2, {
+    timeout: 60000,
+  });
   await expect(
     page.locator(".transcript .tool-disclosure", { hasText: "Running" }),
   ).toHaveCount(0, { timeout: 30000 });

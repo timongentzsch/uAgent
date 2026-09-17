@@ -170,4 +170,103 @@ void TestAttachmentEncoding() {
   fs::remove_all(root, ec);
 }
 
+// HEIC stills and SVG diagrams enter the image pipeline; MP4 video,
+// HTML, and mislabeled files must not. Sniffing and inspection need no
+// converter, so this stays deterministic on every platform. Conversion
+// itself reuses the exercised PreparedImage machinery.
+void TestVectorAndHeicAttachments() {
+  // HEIC shares the ISO BMFF ftyp box with MP4: the brand decides.
+  const std::string box = std::string("\x00\x00\x00\x18", 4) + "ftyp";
+  const std::string pad = std::string("\x00\x00\x00\x00", 4);
+  for (const char* brand : {"heic", "heix", "hevc", "mif1", "msf1"}) {
+    CHECK(RasterMime(box + brand + pad) == "image/heic");
+  }
+  for (const char* brand : {"isom", "mp42", "avc1", "avif"}) {
+    CHECK(RasterMime(box + brand + pad).empty());
+  }
+  CHECK(RasterMime("ftyp").empty());
+  CHECK(RasterMime("").empty());
+  CHECK(ImageExtension("image/heic") == ".heic");
+  CHECK(ImageExtension("image/svg+xml") == ".svg");
+
+  // SVG recognition scans the prolog, not just the first bytes.
+  CHECK(SvgMime("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>") ==
+        "image/svg+xml");
+  CHECK(SvgMime("<?xml version=\"1.0\"?>\n<svg width=\"8\">") ==
+        "image/svg+xml");
+  CHECK(SvgMime("\xEF\xBB\xBF  \n<!-- c -->\n<!DOCTYPE svg>\n<svg>") ==
+        "image/svg+xml");
+  CHECK(SvgMime("<?xml version=\"1.0\"?>" + std::string(200, ' ') +
+                "<svg>") == "image/svg+xml");
+  CHECK(SvgMime("<SVG></SVG>") == "image/svg+xml");
+  CHECK(SvgMime("<html><body></body></html>").empty());
+  CHECK(SvgMime("<?xml version=\"1.0\"?><html/>").empty());
+  CHECK(SvgMime("hello world").empty());
+  CHECK(SvgMime("<!-- unterminated").empty());
+  CHECK(SvgMime("<svgx></svgx>").empty());
+
+  namespace fs = std::filesystem;
+  fs::path root = fs::temp_directory_path() /
+                  ("uagent-vector-test-" +
+                   std::to_string(static_cast<int64_t>(getpid())));
+  fs::create_directories(root);
+  Attachment attachment;
+  std::string error;
+  fs::path diagram = root / "diagram.svg";
+  CHECK(ToolWriteFile(diagram.string(),
+                      "<?xml version=\"1.0\"?>\n<svg "
+                      "xmlns=\"http://www.w3.org/2000/svg\"></svg>")
+            .Ok());
+  CHECK(InspectAttachment(diagram.string(), attachment, error));
+  CHECK(attachment.image);
+  CHECK(attachment.mime == "image/svg+xml");
+  // A long prolog hides <svg past the old 32-byte sniff window.
+  fs::path prolog = root / "prolog.svg";
+  CHECK(ToolWriteFile(prolog.string(),
+                      "<?xml version=\"1.0\"?>\n<!--" +
+                          std::string(300, 'x') + "-->\n<svg></svg>")
+            .Ok());
+  error.clear();
+  CHECK(InspectAttachment(prolog.string(), attachment, error));
+  CHECK(attachment.mime == "image/svg+xml");
+  // Text renamed to .svg fails closed instead of reaching a converter.
+  fs::path fake = root / "fake.svg";
+  CHECK(ToolWriteFile(fake.string(), "just some text").Ok());
+  error.clear();
+  CHECK(!InspectAttachment(fake.string(), attachment, error));
+  CHECK(error.find("not an SVG document") != std::string::npos);
+  // A HEIC header inspects as an image; decoding happens later.
+  fs::path photo = root / "photo.heic";
+  CHECK(ToolWriteFile(photo.string(), box + "heic" + pad + pad).Ok());
+  error.clear();
+  CHECK(InspectAttachment(photo.string(), attachment, error));
+  CHECK(attachment.image);
+  CHECK(attachment.mime == "image/heic");
+  // MP4 bytes never enter the image pipeline, whatever the name.
+  fs::path clip = root / "clip.mp4";
+  CHECK(ToolWriteFile(clip.string(), box + "isom" + pad + pad).Ok());
+  error.clear();
+  CHECK(InspectAttachment(clip.string(), attachment, error));
+  CHECK(!attachment.image);
+  // Truncated HEIC bytes can never pass for a photo at request time:
+  // conversion fails loudly instead of sending provider-rejected bytes.
+  ProviderCapabilities capabilities;
+  capabilities.SetInputModalities(json::array({"text", "image"}));
+  // Re-inspect the photo so the part below carries the image claim.
+  error.clear();
+  CHECK(InspectAttachment(photo.string(), attachment, error));
+  json request = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("look", {attachment}, error)}}});
+  json deliveries;
+  CHECK(PrepareAttachments(request, capabilities, false, "vision", error,
+                           &deliveries));
+  CHECK(!error.empty());
+  CHECK(JsonDump(request).find("image_url") == std::string::npos);
+  CHECK(deliveries[0]["delivery"] == "File reference");
+
+  std::error_code cleanup;
+  fs::remove_all(root, cleanup);
+}
+
 }  // namespace uagent

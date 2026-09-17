@@ -3,13 +3,13 @@
 
 .activity-panel {
   display: grid;
-  gap: 4px;
+  gap: calc(4rem / 14);
 }
 
 /* Inline list owns its scroll; the toggle below it never scrolls. */
 .activity-list {
   list-style: none;
-  margin: 4px 0 0;
+  margin: calc(4rem / 14) 0 0;
   padding: 0;
   max-height: min(160px, calc(var(--viewport-height) * 0.2));
   overflow: auto;
@@ -17,7 +17,7 @@
 }
 
 .activity-empty {
-  padding: 8px 2px;
+  padding: calc(8rem / 14) calc(2rem / 14);
 }
 
 .activity-row {
@@ -61,6 +61,12 @@
 }
 
 /* Modal: single grid, zero child margins, sections carry the labels. */
+/* Subagent/activity modal carries a full thread: widen toward the chat
+   measure so rows wrap like the transcript instead of a narrow card. */
+.activity-view {
+  width: min(880px, calc(var(--content-width) - 16px));
+}
+
 .activity-view .dialog-body {
   display: flex;
   flex-direction: column;
@@ -85,7 +91,7 @@
 
 .activity-detail > section {
   display: grid;
-  gap: 4px;
+  gap: calc(4rem / 14);
 }
 
 .activity-detail h3 {
@@ -134,16 +140,15 @@
   overflow-wrap: anywhere;
 }
 
-/* The thread scrolls inside the modal body; the frame keeps it distinct
-   from the surrounding detail so nested scrolling reads as one surface. */
+/* The thread reads as the transcript: rows sit directly on the modal
+   surface (no inset frame) and follow the live edge with the same
+   stick; the cap keeps the guidance form reachable on long runs. */
 .child-thread {
   max-height: min(50vh, 520px);
   overflow: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  border: 1px solid var(--line);
-  padding: var(--gap);
 }
 
 .child-thread .history-button {

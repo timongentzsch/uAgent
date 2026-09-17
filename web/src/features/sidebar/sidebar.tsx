@@ -53,6 +53,11 @@ export function ConversationMenu({
           item.turn_active ||
           ["starting", "draft"].includes(item.status || "")
         }
+        title={
+          item.turn_active || ["starting", "draft"].includes(item.status || "")
+            ? "Wait for the running turn to finish before forking"
+            : undefined
+        }
         onClick={async () => {
           try {
             const response = await command("fork", item);
@@ -95,12 +100,7 @@ export function ConversationMenu({
         </MenuItem>
       )}
       <MenuItem
-        disabled={!online || !!item.generation || !!item.presence}
-        title={
-          item.generation || item.presence
-            ? "Stop and close this conversation before deleting it"
-            : undefined
-        }
+        disabled={!online}
         onClick={() => {
           open({ type: "delete", session: item });
         }}

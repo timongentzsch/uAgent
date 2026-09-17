@@ -112,20 +112,24 @@ export default function Decision({
             />
           </label>
         )}
-        <button disabled={!online || sending || !reply}>Send response</button>
-        <button
-          type="button"
-          onClick={() =>
-            act("reply", {
-              interaction_id: pending.id,
-              text: "",
-              cancelled: true,
-            }).catch(report)
-          }
-          disabled={!online}
-        >
-          Cancel
-        </button>
+        <div class="dialog-actions">
+          <button
+            type="button"
+            onClick={() =>
+              act("reply", {
+                interaction_id: pending.id,
+                text: "",
+                cancelled: true,
+              }).catch(report)
+            }
+            disabled={!online}
+          >
+            Cancel
+          </button>
+          <button class="primary" disabled={!online || sending || !reply}>
+            Send response
+          </button>
+        </div>
       </form>
     </section>
   );

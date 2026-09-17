@@ -3,7 +3,7 @@
 }
 .command-suggestions {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + 4rem / 14);
   inset-inline: 0;
   z-index: 5;
   max-height: min(220px, calc(var(--viewport-height) * 0.4));

@@ -32,13 +32,20 @@
   --content-height: calc(
     var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
   );
-  --surface-inset: 8px;
+  --surface-inset: calc(8rem / 14);
+  /* Touch-target floor never shrinks below 28px (WCAG 2.5.8: 24px min). */
   --control: max(28px, 2.2rem);
-  --gap: 8px;
-  --pad: 12px;
+  /* Spacing scales with zoom via rem, exactly like type. The N/14
+     fractional form keeps 100% pixel-exact with the px design base
+     (root is 14px): use calc(Nrem / 14) for fixed design px, never
+     rounded decimals (they drift sub-pixels and break geometry). */
+  --gap: calc(8rem / 14);
+  --pad: calc(12rem / 14);
   background: var(--bg);
   color: var(--text);
-  font-size: calc(14px * var(--display-scale, 1));
+  /* % of the user's browser font size (never px) so their preference is
+     respected; 87.5% of the 16px default keeps the 14px design base. */
+  font-size: calc(87.5% * var(--zoom, 1));
   line-height: 1.5;
 }
 :root[data-keyboard] {
@@ -117,7 +124,7 @@ input[type="checkbox"] {
   height: 18px;
   min-width: 18px;
   min-height: 18px;
-  margin: 2px 0 0;
+  margin: calc(2rem / 14) 0 0;
   padding: 0;
   accent-color: var(--accent);
 }
@@ -138,7 +145,7 @@ input[type="checkbox"] {
 button,
 .file-button {
   min-height: var(--control);
-  padding: 4px 8px;
+  padding: calc(4rem / 14) calc(8rem / 14);
   cursor: pointer;
   line-height: 1.3;
 }
@@ -184,7 +191,7 @@ select:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: calc(6rem / 14);
 }
 button:focus-visible,
 a:focus-visible,
@@ -206,7 +213,7 @@ textarea {
   width: 100%;
   min-width: 0;
   min-height: var(--control);
-  padding: 4px 8px;
+  padding: calc(4rem / 14) calc(8rem / 14);
 }
 input[type="range"] {
   min-height: 24px;
@@ -222,7 +229,7 @@ input[type="range"] {
 }
 .select select {
   appearance: none;
-  padding-inline-end: 34px;
+  padding-inline-end: calc(34rem / 14);
 }
 .select > .lucide {
   position: absolute;
@@ -234,7 +241,7 @@ input[type="range"] {
 label,
 .field {
   display: grid;
-  gap: 4px;
+  gap: calc(4rem / 14);
   min-width: 0;
 }
 .field-label {
@@ -282,10 +289,10 @@ pre {
   font: inherit;
   font-size: 0.92em;
   line-height: 1.55;
-  padding: 12px;
+  padding: calc(12rem / 14);
   background: var(--surface);
   border: 1px solid var(--line);
-  margin: 8px 0;
+  margin: calc(8rem / 14) 0;
 }
 code {
   font-family: inherit;
@@ -304,7 +311,7 @@ pre code {
 }
 .diff > span {
   display: block;
-  padding: 0 12px;
+  padding: 0 var(--pad);
 }
 .diff-head {
   font-weight: 600;
@@ -349,7 +356,7 @@ pre code {
 }
 .error-banner {
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: calc(6rem / 14) calc(12rem / 14);
   border-bottom: 1px solid var(--line);
   background: var(--raised);
   display: flex;
@@ -362,7 +369,7 @@ pre code {
 }
 .update-banner {
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: calc(6rem / 14) calc(12rem / 14);
   border-bottom: 1px solid var(--line);
   border-left: 3px solid var(--live);
   background: var(--raised);
@@ -373,7 +380,7 @@ pre code {
   font-size: 0.85rem;
 }
 .load-error {
-  padding: 8px 0;
+  padding: calc(8rem / 14) 0;
   overflow-wrap: anywhere;
 }
 .load-error p {
@@ -408,7 +415,7 @@ pre code {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
-  padding: 8px;
+  padding: calc(8rem / 14);
   min-height: 0;
   min-width: 0;
 }
@@ -421,7 +428,7 @@ pre code {
 }
 .sidebar-head button {
   font-size: 0.8rem;
-  padding-inline: 6px;
+  padding-inline: calc(6rem / 14);
 }
 .search input {
   font-size: 0.8rem;
@@ -432,13 +439,13 @@ pre code {
   min-height: 0;
 }
 .sidebar nav section + section {
-  margin-top: 8px;
+  margin-top: calc(8rem / 14);
 }
 .sidebar h2 {
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--muted);
-  padding: 8px;
+  padding: calc(8rem / 14);
 }
 .folder-label {
   display: flex;
@@ -473,7 +480,7 @@ pre code {
   text-align: left;
   border: 0;
   background: none;
-  padding: 6px 8px;
+  padding: calc(6rem / 14) calc(8rem / 14);
 }
 .session > span {
   display: block;
@@ -486,10 +493,16 @@ pre code {
   display: block;
   font-size: 0.7rem;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: calc(2rem / 14);
+  /* Single line, always: activity labels stream in while a turn runs
+     and a wrap would change the row height (sidebar ticking). The
+     time keeps its title tooltip; overflow ellipsizes like the title. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .session small .activity-status {
-  margin-right: 6px;
+  margin-right: calc(6rem / 14);
 }
 .status-led {
   display: inline-block;
@@ -516,9 +529,9 @@ pre code {
 .sidebar footer {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(4rem / 14);
   border-top: 1px solid var(--line);
-  padding-top: 8px;
+  padding-top: calc(8rem / 14);
 }
 .connection {
   flex: 1;
@@ -526,7 +539,7 @@ pre code {
   font-size: 0.7rem;
 }
 .connection .status-led {
-  margin-right: 6px;
+  margin-right: calc(6rem / 14);
 }
 .conversation {
   min-width: 0;
@@ -542,7 +555,7 @@ pre code {
   gap: var(--gap);
   flex-shrink: 0;
   min-height: 44px;
-  padding: 4px var(--pad);
+  padding: calc(4rem / 14) var(--pad);
   border-bottom: 1px solid var(--line);
 }
 .conversation-head > div:first-of-type {
@@ -583,7 +596,7 @@ pre code {
   font-size: 0.8rem;
   color: var(--muted);
   border: 1px dashed var(--line);
-  padding: 8px;
+  padding: calc(8rem / 14);
 }
 .empty {
   margin: auto;
@@ -596,7 +609,7 @@ pre code {
 }
 .empty h1,
 .empty h2 {
-  margin: 12px 0;
+  margin: calc(12rem / 14) 0;
 }
 .empty p {
   color: var(--muted);
@@ -623,7 +636,7 @@ pre code {
   flex-shrink: 0;
   min-width: 0;
   margin: 0 max(var(--pad), calc((100% - 1040px) / 2));
-  padding: 4px 0;
+  padding: calc(4rem / 14) 0;
   background: var(--bg);
   max-height: calc(var(--viewport-height) - 100px);
   overflow: visible;
@@ -640,17 +653,17 @@ pre code {
   min-height: max(40px, calc(1.5em + 12px));
   max-height: min(160px, calc(var(--viewport-height) * 0.25));
   background: transparent;
-  padding: 6px 8px;
+  padding: calc(6rem / 14) calc(8rem / 14);
   outline-offset: -2px;
   overflow: auto;
-  font-size: calc(16px * var(--text-scale, 1));
+  font-size: calc(16rem / 14);
 }
 .composer-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 4px;
+  gap: calc(4rem / 14);
+  padding: calc(2rem / 14) calc(4rem / 14) calc(4rem / 14);
   min-width: 0;
 }
 .composer-actions > .primary {
@@ -666,7 +679,7 @@ pre code {
   text-align: left;
   justify-content: flex-start;
   font-size: 0.8rem;
-  padding-inline: 6px;
+  padding-inline: calc(6rem / 14);
 }
 .model-selector > span {
   overflow: hidden;
@@ -681,7 +694,7 @@ pre code {
 }
 .permission-control > button {
   font-size: 0.8rem;
-  padding-inline: 6px;
+  padding-inline: calc(6rem / 14);
 }
 .file-button {
   position: relative;
@@ -702,7 +715,7 @@ pre code {
 }
 .jump {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + calc(4rem / 14));
   right: 0;
   background: var(--raised);
   font-size: 0.75rem;
@@ -713,16 +726,16 @@ pre code {
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-top: 4px;
+  padding-top: calc(4rem / 14);
 }
 .activity-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(6rem / 14);
   text-align: left;
   min-width: 0;
   min-height: 24px;
-  padding: 0 2px;
+  padding: 0 calc(2rem / 14);
   font-size: 0.75rem;
 }
 .activity-status {
@@ -740,7 +753,7 @@ pre code {
 .metrics > button {
   font-size: inherit;
   min-height: 24px;
-  padding: 0 6px;
+  padding: 0 calc(6rem / 14);
   white-space: nowrap;
 }
 .unread-dot {
@@ -757,7 +770,7 @@ pre code {
   flex-direction: column;
   gap: var(--gap);
   border: 1px solid var(--accent);
-  padding: 12px;
+  padding: calc(12rem / 14);
   max-height: min(
     calc(var(--viewport-height) * 0.65),
     calc(var(--viewport-height) - 100px)
@@ -769,7 +782,7 @@ pre code {
   font-size: 0.85rem;
 }
 .decision-preview pre {
-  margin-top: 6px;
+  margin-top: calc(6rem / 14);
 }
 .decision form {
   display: flex;
@@ -806,7 +819,7 @@ pre code {
 }
 .menu-panel {
   min-width: 180px;
-  padding: 4px;
+  padding: calc(4rem / 14);
 }
 .menu-panel button {
   display: block;
@@ -923,7 +936,7 @@ dialog section {
   overflow: auto;
 }
 .skeleton {
-  padding: 12px 0;
+  padding: calc(12rem / 14) 0;
   width: 100%;
 }
 .loading-label {
@@ -993,11 +1006,11 @@ dialog section {
 }
 .session-mirror {
   min-height: var(--control);
-  padding: 4px 8px;
+  padding: calc(4rem / 14) calc(8rem / 14);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
+  gap: calc(2rem / 14);
 }
 .icon-skeleton {
   width: var(--control);
@@ -1022,16 +1035,16 @@ dialog section {
   width: 96px;
 }
 .stats .skeleton {
-  padding: 4px 0;
+  padding: calc(4rem / 14) 0;
 }
 .composer .status-line > .skeleton {
-  padding: 6px 0;
+  padding: calc(6rem / 14) 0;
 }
 .history-skeleton {
-  padding: 24px;
+  padding: calc(24rem / 14);
 }
 .history-skeleton > div {
-  gap: 24px;
+  gap: calc(24rem / 14);
 }
 .history-skeleton span:nth-child(4n + 1) {
   height: 48px;
@@ -1048,7 +1061,7 @@ dialog section {
     font-size: max(16px, 1rem);
   }
   :root .composer > form > textarea {
-    font-size: max(16px, calc(16px * var(--text-scale, 1)));
+    font-size: max(16px, calc(16rem / 14));
   }
   .activity-toggle,
   .metrics > button {
@@ -1060,7 +1073,7 @@ dialog section {
     grid-template-columns: minmax(0, 1fr);
   }
   .conversation-head {
-    padding-inline: 8px;
+    padding-inline: var(--surface-inset);
   }
   dialog.sidebar.drawer[open] {
     top: calc(var(--viewport-top) + var(--safe-top));
@@ -1077,7 +1090,7 @@ dialog section {
     flex-direction: column;
     flex: 1;
     gap: var(--gap);
-    padding: 8px;
+    padding: calc(8rem / 14);
   }
   .drawer .sidebar-head .brand {
     display: none;
@@ -1088,41 +1101,42 @@ dialog section {
 }
 @media (max-width: 600px) {
   :root {
-    --pad: 8px;
-    --gap: 6px;
+    --pad: calc(8rem / 14);
+    --gap: calc(6rem / 14);
   }
   .conversation-head h1 {
     font-size: 0.95rem;
   }
   .transcript {
-    padding: 8px;
+    /* Outer scroll-area inset is page layout; rem keeps it on zoom. */
+    padding: calc(8rem / 14);
     scrollbar-gutter: auto;
   }
   .composer {
-    margin: 0 8px;
-    padding-top: 4px;
+    margin: 0 calc(8rem / 14);
+    padding-top: calc(4rem / 14);
   }
   .composer-actions {
-    gap: 2px;
-    padding-inline: 4px;
+    gap: calc(2rem / 14);
+    padding-inline: calc(4rem / 14);
   }
   .model-selector {
     font-size: 0.72rem;
-    gap: 4px;
-    padding-inline: 2px;
+    gap: calc(4rem / 14);
+    padding-inline: calc(2rem / 14);
   }
   .model-selector > .lucide:first-child {
     display: none;
   }
   .permission-control > button {
     min-width: var(--control);
-    padding-inline: 4px;
+    padding-inline: calc(4rem / 14);
     font-size: 0.75rem;
-    gap: 4px;
+    gap: calc(4rem / 14);
   }
   .status-line {
     flex-wrap: wrap;
-    gap: 0 8px;
+    gap: 0 var(--gap);
   }
   .metrics {
     font-size: 0.65rem;
@@ -1141,14 +1155,14 @@ dialog section {
   .composer > form > textarea {
     min-height: max(38px, calc(1.5em + 12px));
     max-height: calc(var(--viewport-height) * 0.2);
-    padding-block: 6px;
+    padding-block: calc(6rem / 14);
   }
   .transcript {
-    padding-block: 4px;
+    padding-block: calc(4rem / 14);
   }
   .decision {
     max-height: calc(var(--viewport-height) - 100px);
-    padding: 8px;
+    padding: calc(8rem / 14);
   }
   .decision-preview pre {
     max-height: calc(var(--viewport-height) * 0.22);

@@ -63,6 +63,37 @@ export function observeViewport(update: () => void) {
   };
 }
 
+// Mobile keyboards shrink the visual viewport without moving layout: a
+// focused field can end up under the keyboard even though its surface
+// fits the visible window. Reveal it inside its own scroll container
+// (dialog body, management editor) — never the transcript (the scroll
+// stick owns it) and never the document (which must stay at scroll 0).
+// Runs on focus and on every viewport change: real keyboards arrive
+// after focus, and mocked viewports (tests) after the fill.
+export function revealFocusedField() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || active === document.body) return;
+  if (active.closest(".transcript, .composer")) return;
+  const surface = active.closest("dialog, .management");
+  if (!(surface instanceof HTMLElement)) return;
+  let scroller: HTMLElement | null = active.parentElement;
+  while (scroller && scroller !== surface) {
+    if (scroller.scrollHeight > scroller.clientHeight + 1) break;
+    scroller = scroller.parentElement;
+  }
+  if (scroller === surface) {
+    scroller = surface.scrollHeight > surface.clientHeight + 1 ? surface : null;
+  }
+  if (!scroller) return;
+  const field = active.getBoundingClientRect();
+  const view = scroller.getBoundingClientRect();
+  const pad = parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0;
+  if (field.bottom > view.bottom)
+    scroller.scrollTop += field.bottom - view.bottom + pad;
+  else if (field.top < view.top)
+    scroller.scrollTop -= view.top - field.top + pad;
+}
+
 export function trackViewport() {
   const restingHeights = new Map<number, number>();
   return observeViewport(() => {
@@ -97,8 +128,11 @@ export function trackViewport() {
         `--viewport-${key}`,
         `${value}px`,
       );
-    // No scrollIntoView here: the transcript owns scroll via sentinel follow
-    // and native overflow-anchor. Stealing scroll on focus caused jumps.
+    // No transcript scrollIntoView here: the transcript owns scroll via
+    // the stick and native overflow-anchor; stealing its scroll on focus
+    // caused jumps. Dialog and management surfaces reveal their focused
+    // field inside their own body instead (see revealFocusedField).
+    revealFocusedField();
   });
 }
 

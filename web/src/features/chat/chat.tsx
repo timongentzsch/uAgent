@@ -6,14 +6,17 @@ import type {
   Snapshot,
 } from "../../shared/types.ts";
 import type { RefObject } from "preact";
-import { useState } from "preact/hooks";
+import { useCallback, useState } from "preact/hooks";
 import { LoadError, Mark } from "../../shared/ui.tsx";
 import { HistorySkeleton } from "../../shared/loading.tsx";
 import { MessageRows } from "./message.tsx";
+import { setAnchorMode } from "../../state/use-stick-to-bottom.ts";
 
 export default function Chat({
   scroller,
   content,
+  attachScroller,
+  attachContent,
   selected,
   snapshot,
   loadError,
@@ -32,6 +35,8 @@ export default function Chat({
 }: {
   scroller: RefObject<HTMLDivElement>;
   content: RefObject<HTMLDivElement>;
+  attachScroller: (node: HTMLDivElement | null) => void;
+  attachContent: (node: HTMLDivElement | null) => void;
   selected: string;
   snapshot?: Snapshot;
   loadError?: unknown;
@@ -48,6 +53,22 @@ export default function Chat({
   activity: (block: Block) => void;
   statistics: (block: Block) => void;
 }) {
+  // Keep the hook's mirrors current and rebind its node-keyed effects
+  // on every remount; both callbacks are stable, so no ref churn.
+  const attachBox = useCallback(
+    (node: HTMLDivElement | null) => {
+      scroller.current = node;
+      attachScroller(node);
+    },
+    [scroller, attachScroller],
+  );
+  const attachColumn = useCallback(
+    (node: HTMLDivElement | null) => {
+      content.current = node;
+      attachContent(node);
+    },
+    [content, attachContent],
+  );
   const [loadingOlder, setLoadingOlder] = useState(false);
   async function loadOlder() {
     if (loadingOlder) return;
@@ -73,7 +94,7 @@ export default function Chat({
     // estimates) so the math below is exact on the first frame instead
     // of chasing intrinsic sizes while rows resolve.
     const boxAnchor = box?.style.overflowAnchor;
-    if (box) box.style.overflowAnchor = "none";
+    setAnchorMode(box, false);
     column?.classList.add("anchor-lock");
     if (box && column) {
       heightBefore = box.scrollHeight;
@@ -96,13 +117,9 @@ export default function Chat({
     } finally {
       setLoadingOlder(false);
     }
-    // Restore after paint with a closed loop. The locked phase runs under
-    // the anchor lock (real row heights, native anchoring suppressed) and
-    // corrects the anchor to its pre-load box-relative target. It then
-    // releases the lock and native anchoring and keeps holding the target
-    // while late layout (skipped rows settling, fonts, composer chrome)
-    // quiets down. Without the hold, the unlock ripple alone can leave
-    // the anchor ~a row off with nobody left to correct it.
+    // Restore after paint with one exact correction under lock (real
+    // row heights, native anchoring suppressed), then release. Two
+    // frames let the prepended render land before measuring.
     const target = anchorTop - boxTop;
     const read = () =>
       anchor?.isConnected && box
@@ -118,48 +135,16 @@ export default function Chat({
       finish();
       return;
     }
-    let locked = true;
-    let frames = 0;
-    let stable = 0;
-    const step = () => {
+    requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        if (!box || !anchor?.isConnected) {
-          finish();
-          return;
-        }
-        const correction = read() - target;
-        const off = Number.isFinite(correction) && Math.abs(correction) >= 1;
-        if (locked) {
-          // Exact settle while measurements are trustworthy.
-          if (off && frames < 3) {
+        if (box && anchor?.isConnected) {
+          const correction = read() - target;
+          if (Number.isFinite(correction) && Math.abs(correction) >= 1)
             box.scrollTop += correction;
-            frames += 1;
-            step();
-            return;
-          }
-          // Release the lock, then prove the position holds.
-          locked = false;
-          frames = 0;
-          stable = 0;
-          finish();
-          step();
-          return;
         }
-        if (off && frames < 6) {
-          box.scrollTop += correction;
-          frames += 1;
-          stable = 0;
-          step();
-          return;
-        }
-        // Already unlocked: stop after two consecutive stable frames.
-        if (!off) stable += 1;
-        if (stable >= 2 || frames >= 6) return;
-        frames += 1;
-        step();
-      });
-    };
-    step();
+        finish();
+      }),
+    );
   }
   const view = snapshot?.state?.view;
   const retry = () => loadSnapshot(selected).catch(() => {});
@@ -168,9 +153,9 @@ export default function Chat({
       class="transcript"
       data-session={selected}
       aria-busy={(!snapshot && !loadError) || undefined}
-      ref={scroller}
+      ref={attachBox}
     >
-      <div class="transcript-content" ref={content}>
+      <div class="transcript-content" ref={attachColumn}>
         {view?.more && (
           <button
             type="button"

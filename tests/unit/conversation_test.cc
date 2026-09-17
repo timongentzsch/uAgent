@@ -607,4 +607,224 @@ void TestHistoryReplaySkipsBareHeader() {
   CHECK(voiced.find("hello") != std::string::npos);
 }
 
+void TestToolResultHealsMissingMetadata() {
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  // Assistant call record without response metadata, as observed live.
+  conversation.Push(
+      {{"role", "assistant"},
+       {"content", nullptr},
+       {"tool_calls",
+        json::array({{{"id", "call-1"},
+                      {"type", "function"},
+                      {"function",
+                       {{"name", "run"},
+                        {"arguments", "{\"command\":\"ls\"}"}}}}})}},
+      MessageKind::kAssistant);
+  // Receipt facts filed under the call's own detail id …
+  conversation.RecordDisplay(
+      "t-hash1", {{"name", "run"},
+                  {"status", "success"},
+                  {"duration_ms", 12.5},
+                  {"call_id", "call-1"},
+                  {"response_id", "r-1"},
+                  {"occurrence_id", "r-1:abc"},
+                  {"detail_id", "t-hash1"},
+                  {"activity", {{"label", "$ ls"}}}});
+  // … but the result message lost its id metadata (only Push's time).
+  conversation.Push(
+      {{"role", "tool"}, {"tool_call_id", "call-1"}, {"content", "out"}},
+      MessageKind::kToolResult);
+  json view = ConversationView(conversation);
+  const json& result = view["blocks"].back();
+  CHECK(result["kind"] == "tool_result");
+  CHECK(result["name"] == "run");
+  CHECK(result["status"] == "success");
+  CHECK(result["duration_ms"] == 12.5);
+  CHECK(result["detail_id"] == "t-hash1");
+  CHECK(!result.contains("receipt_missing"));
+  const json& call = view["blocks"][view["blocks"].size() - 2];
+  CHECK(call["tools"][0]["status"] == "success");
+  // A message with neither metadata nor facts reads complete, never a
+  // forever-"running" ghost.
+  conversation.Push(
+      {{"role", "tool"}, {"tool_call_id", "call-2"}, {"content", "out"}},
+      MessageKind::kToolResult);
+  json orphan_view = ConversationView(conversation);
+  const json& orphan = orphan_view["blocks"].back();
+  CHECK(orphan["name"] == "tool");
+  CHECK(orphan["status"] == "complete");
+  CHECK(orphan["receipt_missing"] == true);
+}
+
+// Delivery receipts dedupe the per-request attachment notice. Display facts
+// are evictable, so the announcement record lives beside them: the first
+// delivery and later delivery changes announce, repeats stay quiet.
+void TestAttachmentDeliveryAnnouncements() {
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  conversation.Push(
+      {{"role", "user"},
+       {"content", json::array({{{"type", "attachment"}}})}},
+      MessageKind::kAttachment);
+  const std::string id = conversation.LastDisplayId();
+  CHECK(conversation.AnnouncedDeliveries(id) == json::array());
+  CHECK(conversation.AnnouncedDeliveries("m-9999") == json::array());
+  const json first = json::array(
+      {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
+        {"path", "/tmp/image.png"}}});
+  conversation.RecordAnnouncedDeliveries(id, first);
+  CHECK(conversation.AnnouncedDeliveries(id) == first);
+  // A delivery flip (route lost vision, file fell back to a path reference)
+  // is a change the request path must announce once.
+  const json degraded = json::array(
+      {{{"id", ""}, {"name", "image.png"}, {"delivery", "File reference"},
+        {"path", "/tmp/image.png"}}});
+  CHECK(degraded != first);
+  conversation.RecordAnnouncedDeliveries(id, degraded);
+  CHECK(conversation.AnnouncedDeliveries(id) == degraded);
+  // Empty ids and non-arrays never record.
+  conversation.RecordAnnouncedDeliveries("", first);
+  conversation.RecordAnnouncedDeliveries("m-1", json::object());
+  CHECK(conversation.AnnouncedDeliveries("") == json::array());
+  CHECK(conversation.AnnouncedDeliveries("m-1") == json::array());
+  // The receipt survives a session save/restore round-trip.
+  Conversation reloaded;
+  CHECK(reloaded.Restore(conversation.Messages(), conversation.Kinds(),
+                         conversation.Archive(),
+                         conversation.DroppedSegments(),
+                         conversation.ToolDisplays(),
+                         conversation.DisplayMetadata()));
+  CHECK(reloaded.AnnouncedDeliveries(id) == degraded);
+  // Sessions written before receipts existed restore without any: the next
+  // request announces once, then dedupes from there.
+  Conversation legacy;
+  CHECK(legacy.Restore(conversation.Messages(), conversation.Kinds(),
+                       json::array(), 0));
+  CHECK(legacy.AnnouncedDeliveries(id) == json::array());
+  // The receipt store is bounded; bulk attachment sessions cannot grow it
+  // without limit.
+  for (size_t seq = 0; seq < 1100; ++seq) {
+    reloaded.RecordAnnouncedDeliveries("m-bulk-" + std::to_string(seq),
+                                       first);
+  }
+  CHECK(reloaded.AnnouncedDeliveries(id) == json::array());
+  CHECK(reloaded.AnnouncedDeliveries("m-bulk-1099") == first);
+}
+
+// Under display-fact pressure the eviction used to delete the oldest keys
+// first -- exactly where attachment delivery receipts live -- which made the
+// request path re-print their notice after every tool result. Largest-first
+// eviction drops fat tool rows instead and keeps tiny control receipts.
+void TestDisplayFactEvictionKeepsSmallReceipts() {
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  conversation.Push({{"role", "user"}, {"content", "look"}},
+                    MessageKind::kAttachment);
+  const std::string id = conversation.LastDisplayId();
+  const json receipt = json::array(
+      {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
+        {"path", "/tmp/image.png"}}});
+  conversation.RecordDisplay(id, {{"deliveries", receipt}});
+  // Single facts over 64 KiB never record; flood with just-under facts
+  // until the 4 MiB display budget overflows several times over.
+  const std::string bulk(size_t{48} * 1024, 'x');
+  for (size_t i = 0; i < 120; ++i) {
+    conversation.RecordDisplay("t-flood-" + std::to_string(i),
+                               {{"activity", bulk}});
+  }
+  const json kept =
+      JsonValue(JsonValue(conversation.DisplayFacts(), id.c_str(),
+                          json::object()),
+                "deliveries", json::array());
+  CHECK(kept == receipt);
+  CHECK(JsonEstimatedBytes(conversation.DisplayFacts()) <=
+        size_t{4} * 1024 * 1024);
+  // Count pressure with only tiny facts left still makes progress by
+  // dropping the oldest key.
+  Conversation crowded;
+  crowded.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                {MessageKind::kSystem});
+  for (size_t i = 0; i < 4100; ++i) {
+    crowded.RecordDisplay("k-" + std::to_string(i), {{"n", i}});
+  }
+  CHECK(crowded.DisplayFacts().size() <= size_t{4096});
+}
+
+// CLI history shows the prompt without the stored "Attached:" path trailer
+// plus one gallery row per recorded delivery -- the web rendering contract.
+// A user literally typing the trailer without an attachment keeps it
+// verbatim.
+void TestAttachmentHistoryRendering() {
+  CHECK(StripAttachedTrailer("plain prompt") == "plain prompt");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"") ==
+        "look");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\"\n") ==
+        "look");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\n- path \"/tmp/a.png\" "
+                             "(from tool call \"call-1\")") == "look");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\nnot a reference") ==
+        "look\n\nAttached:\nnot a reference");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\n") ==
+        "look\n\nAttached:\n");
+  CHECK(AttachmentDeliveryRows(json::array()) == "");
+  CHECK(AttachmentDeliveryRows(json::object()) == "");
+
+  Conversation conversation;
+  conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                     {MessageKind::kSystem});
+  const std::string prompt = "why is this slow";
+  const std::string path = "/tmp/image.png";
+  conversation.Push(
+      {{"role", "user"},
+       {"content",
+        json::array(
+            {{{"type", "text"},
+              {"text", prompt + "\n\nAttached:\n- path \"" + path +
+                           "\""}},
+             {{"type", "attachment"},
+              {"path", path},
+              {"name", "image.png"},
+              {"mime", "image/png"},
+              {"bytes", 12},
+              {"id", ""}}})}},
+      MessageKind::kAttachment);
+  conversation.RecordDisplay(
+      conversation.LastDisplayId(),
+      {{"deliveries",
+        json::array(
+            {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
+              {"path", path}}})}});
+  const std::vector<Tool> no_tools;
+  bool prior_unicode = g_unicode;
+  g_unicode = true;
+  const std::string drawn =
+      CaptureStdout([&] { PrintConversationHistory(conversation, no_tools); });
+  g_unicode = prior_unicode;
+  CHECK(drawn.find(prompt) != std::string::npos);
+  CHECK(drawn.find(path) == std::string::npos);
+  // Array user content without an attachment part keeps a literal trailer:
+  // the gallery gate is the attachment part, not the marker text.
+  const std::string nl(1, static_cast<char>(10));
+  const std::string quote(1, static_cast<char>(34));
+  Conversation literal;
+  literal.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
+                {MessageKind::kSystem});
+  literal.Push(
+      {{"role", "user"},
+       {"content",
+        json::array(
+            {{{"type", "text"},
+              {"text", "note" + nl + nl + "Attached:" + nl + "- path " +
+                                                      quote + "/tmp/x.png" + quote}}})}},      MessageKind::kUser);
+  const std::string kept =
+      CaptureStdout([&] { PrintConversationHistory(literal, no_tools); });
+  CHECK(kept.find("note") != std::string::npos);
+  CHECK(kept.find("/tmp/x.png") != std::string::npos);
+  CHECK(drawn.find("image.png \u00b7 Image") != std::string::npos);
+}
+
 }  // namespace uagent

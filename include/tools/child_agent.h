@@ -69,6 +69,19 @@ std::string ChildAgentStopNote(const json& stop);
 // the question "am I somebody's child" on paths that run every step.
 const std::string& CollaboratorSessionFile();
 
+// Id this process runs as (from UAGENT_INTERNAL_SESSION_FILE), or empty.
+std::string OwnCollaboratorId();
+
+// Team this process belongs to (UAGENT_TEAM), empty for the coordinator.
+std::string OwnTeam();
+
+// One queued guidance message. hops counts peer forwards for loop clamping.
+struct CollaboratorMail {
+  std::string text;
+  std::string from;
+  int hops = 0;
+};
+
 // Guidance for a collaborator, one message per file beside its record. A file
 // rather than an array in the record because the recipient may be running: two
 // processes appending to one JSON document race, and a running child would not
@@ -76,10 +89,12 @@ const std::string& CollaboratorSessionFile();
 // between steps; a message to an idle collaborator waits for its next
 // followup, which drains the same files.
 ToolResult WriteCollaboratorMail(const std::string& id,
-                                 const std::string& prompt);
+                                 const std::string& prompt,
+                                 const std::string& from = "",
+                                 int hops = 0);
 // Oldest first, consumed as they are read. Corrupt mail is dropped rather than
 // retried, the same posture unreadable detached records get.
-std::vector<std::string> TakeCollaboratorMail(const std::string& id);
+std::vector<CollaboratorMail> TakeCollaboratorMail(const std::string& id);
 // The child half: queue whatever has arrived as ordinary steering, then unlink.
 // Queue-before-unlink makes redelivery the failure mode rather than loss. A
 // no-op in a process that is not a collaborator.

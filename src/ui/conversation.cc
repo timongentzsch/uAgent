@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <map>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -21,6 +22,93 @@
 #include "include/ui/tool_output.h"
 
 namespace uagent {
+
+namespace {
+
+// Scans a double-quoted segment with backslash escapes. `pos` starts on the
+// opening quote and ends past the closing one; false when unterminated.
+bool ScanQuotedSegment(std::string_view line, size_t& pos) {
+  if (pos >= line.size() || line[pos] != '"') return false;
+  ++pos;
+  while (pos < line.size()) {
+    if (line[pos] == '\\') {
+      pos += 2;
+      continue;
+    }
+    if (line[pos] == '"') {
+      ++pos;
+      return true;
+    }
+    ++pos;
+  }
+  return false;
+}
+
+// One `- path "..."` reference line as AttachmentContent writes it, with
+// the optional ` (from tool call "...")` suffix.
+bool IsAttachmentReference(std::string_view line) {
+  constexpr std::string_view kPrefix = "- path ";
+  constexpr std::string_view kFrom = " (from tool call ";
+  if (!line.starts_with(kPrefix)) return false;
+  size_t pos = kPrefix.size();
+  if (!ScanQuotedSegment(line, pos)) return false;
+  if (pos == line.size()) return true;
+  if (!line.substr(pos).starts_with(kFrom)) return false;
+  pos += kFrom.size();
+  if (!ScanQuotedSegment(line, pos)) return false;
+  if (pos >= line.size() || line[pos] != ')') return false;
+  ++pos;
+  return pos == line.size();
+}
+
+bool IsBlankLine(std::string_view line) {
+  return line.find_first_not_of(" \t\r") == std::string_view::npos;
+}
+
+}  // namespace
+
+std::string StripAttachedTrailer(const std::string& text) {
+  constexpr std::string_view kMarker = "\n\nAttached:\n";
+  const size_t marker = text.rfind(kMarker);
+  if (marker == std::string::npos) return text;
+  size_t pos = marker + kMarker.size();
+  bool referenced = false;
+  while (pos < text.size()) {
+    size_t end = text.find('\n', pos);
+    const size_t stop = end == std::string::npos ? text.size() : end;
+    const std::string_view line(text.data() + pos, stop - pos);
+    if (IsBlankLine(line)) {
+      // A trailing whitespace tail is formatting, not user text.
+      if (text.find_first_not_of(" \t\r\n", pos) == std::string::npos) {
+        break;
+      }
+      return text;
+    }
+    if (!IsAttachmentReference(line)) return text;
+    referenced = true;
+    pos = end == std::string::npos ? text.size() : end + 1;
+  }
+  if (!referenced) return text;
+  return text.substr(0, marker);
+}
+
+std::string AttachmentDeliveryRows(const json& deliveries) {
+  std::string rows;
+  if (!deliveries.is_array()) return rows;
+  for (const json& delivery : deliveries) {
+    if (!delivery.is_object()) continue;
+    std::string name = JsonValue(delivery, "name", "");
+    std::string kind = JsonValue(delivery, "delivery", "");
+    if (name.empty() && kind.empty()) continue;
+    if (name.empty()) name = "attachment";
+    if (kind.empty()) kind = "attached";
+    // Chrome downgrades on non-UTF-8 terminals; the file name is user
+    // content and stays byte-preserved.
+    rows += std::string(DIM()) + "  " + TerminalSafe(name) +
+            AsciiGlyphs(" · ") + TerminalSafe(kind) + RST() + "\n";
+  }
+  return rows;
+}
 
 void PrintConversationHistory(const Conversation& conversation,
                               const std::vector<Tool>& tools) {
@@ -111,12 +199,36 @@ void PrintConversationHistory(const Conversation& conversation,
     } else if ((kind == MessageKind::kAttachment ||
                 kind == MessageKind::kUser) &&
                content.is_array()) {
+      const std::string text = content.empty()
+                                   ? "[attachment]"
+                                   : JsonValue(content[0], "text",
+                                               "[attachment]");
+      // The stored text keeps the "Attached:" path trailer for the model
+      // payload; transcripts render the delivery gallery below instead.
+      // Only array content holding a real attachment part strips: a user
+      // literally typing the trailer keeps their words.
+      bool referenced = false;
+      for (const json& part : content) {
+        if (part.is_object() &&
+            JsonValue(part, "type", "") == "attachment") {
+          referenced = true;
+          break;
+        }
+      }
       printf("%s\n",
              UserEchoRow(InputPrompt(),
-                         content.is_array() && !content.empty()
-                             ? JsonValue(content[0], "text", "[attachment]")
-                             : "[attachment]")
+                         referenced ? StripAttachedTrailer(text) : text)
                  .c_str());
+      if (index < conversation.DisplayIds().size()) {
+        const std::string id =
+            "m-" + std::to_string(conversation.DisplayIds()[index]);
+        const json facts = JsonValue(conversation.DisplayFacts(), id.c_str(),
+                                     json::object());
+        printf("%s",
+               AttachmentDeliveryRows(
+                   JsonValue(facts, "deliveries", json::array()))
+                   .c_str());
+      }
     } else if (content.is_string()) {
       printf("%s  ← %s%s\n", DIM(),
              TerminalSafe(FirstLine(content.get_ref<const std::string&>()))

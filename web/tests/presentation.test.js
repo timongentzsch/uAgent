@@ -9,7 +9,7 @@ import {
   getToolPreview,
   getToolRow,
 } from "../src/features/chat/tool-preview.ts";
-import { liveBlocks } from "../src/state/store.ts";
+import { liveBlocks, reconcileBlock } from "../src/state/store.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatBody, formatJSON } from "../src/shared/format.ts";
@@ -765,6 +765,70 @@ test("results without occurrence rejoin by response/call and detail", () => {
   assert.equal(rows[1].arguments, '{"command":"ls"}');
 });
 
+test("receipt-less retained results never shadow their call record", () => {
+  const call = {
+    id: "m-1",
+    kind: "assistant",
+    tools: [
+      {
+        call_id: "c1",
+        occurrence_id: "c1",
+        detail_id: "t-c1",
+        name: "run",
+        arguments: '{"command":"ls"}',
+        status: "running",
+      },
+    ],
+  };
+  // The retained message proves the call finished; the receipt facts are
+  // gone, so only fallbacks arrive. The row keeps the call's identity
+  // and reads completed, never "tool" / "Running".
+  const ghost = {
+    id: "t1",
+    kind: "tool_result",
+    call_id: "c1",
+    detail_id: "t-c1",
+    name: "tool",
+    status: "complete",
+    receipt_missing: true,
+    text: "out",
+  };
+  const rows = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    call,
+    ghost,
+  ]);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1].name, "run");
+  assert.equal(rows[1].status, "complete");
+  assert.equal(rows[1].text, "out");
+  assert.equal(rows[1].arguments, '{"command":"ls"}');
+  // …and the same ghost never downgrades a receipt that already landed.
+  const kept = presentMessages([
+    { id: "u1", kind: "user", text: "go" },
+    {
+      id: "t0",
+      kind: "tool_result",
+      call_id: "c1",
+      name: "run",
+      text: "done",
+      status: "success",
+      duration_ms: 45,
+    },
+    ghost,
+  ]);
+  assert.equal(kept[1].name, "run");
+  assert.equal(kept[1].status, "success");
+  assert.equal(kept[1].duration_ms, 45);
+  // Block-level reconcile keeps the live name over the retained fallback.
+  const merged = reconcileBlock(
+    { id: "t0", kind: "tool_result", name: "run", status: "running" },
+    ghost,
+  );
+  assert.equal(merged.name, "run");
+  assert.equal(merged.status, "complete");
+});
+
 test("completed rows never regress to stale Running arrivals", () => {
   const rows = presentMessages([
     { id: "u1", kind: "user", text: "go" },
@@ -844,7 +908,7 @@ test("absent fields never wipe present ones across paths", () => {
   assert.equal(rows[1].status, "success");
 });
 
-test("server replay owns the tool title when present", () => {
+test("server replay never shadows the live receipt title", () => {
   const base = {
     kind: "tool_result",
     name: "read_path",
@@ -855,13 +919,22 @@ test("server replay owns the tool title when present", () => {
   const local = getToolRow(base);
   assert.equal(local.server, false);
   assert.equal(local.title, "Read a.txt");
+  // Result replay titles carry the bare tool name (ordinal+name for the
+  // TUI resume path); the row keeps the synthesized receipt instead.
   const server = getToolRow({
     ...base,
     replay: { title: "[2] read_path", summary: "a.txt · +3 lines" },
   });
   assert.equal(server.server, true);
-  assert.equal(server.title, "[2] read_path");
+  assert.equal(server.title, "Read a.txt");
   assert.equal(server.preview, "a.txt · +3 lines");
+  // The native activity label is the live receipt: it wins over replay.
+  const receipt = getToolRow({
+    ...base,
+    activity: { label: "◆ memory created · project/proof" },
+    replay: { title: "memory", summary: "" },
+  });
+  assert.equal(receipt.title, "◆ memory created · project/proof");
 });
 
 test("consecutive tools stay flat rows in order", () => {

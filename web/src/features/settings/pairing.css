@@ -1,17 +1,17 @@
 .pairing .wordmark {
   width: 48px;
   height: 48px;
-  margin-bottom: 8px;
+  margin-bottom: calc(8rem / 14);
 }
 .pairing h1 {
   font-size: 1.3rem;
 }
 .pairing p {
   color: var(--muted);
-  margin: 12px 0;
+  margin: calc(12rem / 14) 0;
 }
 .pairing form {
-  margin: 12px 0;
+  margin: calc(12rem / 14) 0;
 }
 .pairing form button {
   justify-self: start;

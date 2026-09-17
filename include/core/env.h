@@ -40,6 +40,7 @@ int64_t SubagentMaxSteps();
 int64_t SubagentMaxToolCalls();
 int64_t SubagentTimeoutSeconds();
 int64_t SubagentCallsPerTurn();
+int64_t PersistentMax();
 std::string SubagentModel();
 int64_t MaxOutputTokens();
 bool SteeringEnabled();

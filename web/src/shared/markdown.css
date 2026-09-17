@@ -27,7 +27,7 @@
 .markdown ol,
 .markdown-stream ul,
 .markdown-stream ol {
-  padding-left: 24px;
+  padding-left: calc(24rem / 14);
 }
 .table-scroll {
   min-width: 0;
@@ -44,7 +44,7 @@
 .markdown-stream th,
 .markdown-stream td {
   border: 1px solid var(--line);
-  padding: 4px 8px;
+  padding: calc(4rem / 14) calc(8rem / 14);
   /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
   overflow-wrap: normal;
   word-break: normal;
@@ -52,7 +52,7 @@
 .markdown blockquote,
 .markdown-stream blockquote {
   border-left: 2px solid var(--accent);
-  padding-left: 12px;
+  padding-left: calc(12rem / 14);
   margin-left: 0;
   color: var(--muted);
 }
@@ -86,7 +86,7 @@
 
 .code-block {
   position: relative;
-  margin: 8px 0;
+  margin: calc(8rem / 14) 0;
 }
 .code-block pre {
   margin: 0;

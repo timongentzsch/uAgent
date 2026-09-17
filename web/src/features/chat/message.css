@@ -9,7 +9,7 @@
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
   overflow-wrap: break-word;
-  padding: 6px 8px;
+  padding: calc(6rem / 14) calc(8rem / 14);
   /* No vertical margins anywhere in here: the transcript column owns all
      inter-message rhythm with one flex gap, so spacing cannot collapse or
      double up between header variants. */
@@ -39,14 +39,14 @@
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
      read wider by exactly this much. */
-  margin-top: 4px;
+  margin-top: calc(4rem / 14);
 }
 .message > header {
   display: flex;
   align-items: center;
   gap: var(--gap);
   min-height: var(--control);
-  margin-bottom: 4px;
+  margin-bottom: calc(4rem / 14);
   font-size: 0.75rem;
 }
 .message > header > span:first-child {
@@ -59,32 +59,26 @@
   white-space: nowrap;
   font-size: 0.7rem;
 }
-.message .markdown,
-.message .markdown-stream,
-.message .plain,
-.tool-body {
-  font-size: calc(14px * var(--text-scale, 1));
-}
 .thinking {
   --text: var(--muted);
   --accent: var(--muted);
   color: var(--muted);
 }
 .message details {
-  margin: 6px 0;
+  margin: calc(6rem / 14) 0;
 }
 .message summary,
 .disclosure-row > summary {
   cursor: pointer;
   color: var(--muted);
   min-height: 28px;
-  padding: 3px 0;
+  padding: calc(3rem / 14) 0;
 }
 .disclosure-row > summary {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 4px;
+  gap: calc(4rem / 14);
   list-style: none;
   text-align: left;
 }
@@ -111,8 +105,8 @@
 }
 .disclosure-body {
   border-left: 1px solid var(--line);
-  margin-left: 7px;
-  padding-left: 12px;
+  margin-left: 0.5rem;
+  padding-left: calc(12rem / 14);
 }
 .message .action-menu {
   flex-shrink: 0;
@@ -140,14 +134,11 @@ article.message {
 .transcript.is-following .transcript-content > :nth-last-child(-n + 3) {
   content-visibility: visible;
 }
-.tool-disclosure > summary {
-  font-size: calc(14px * var(--text-scale, 1));
-}
 .tool-row-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 4px;
+  gap: calc(4rem / 14);
 }
 .tool-row-head > .tool-disclosure {
   min-width: 0;
@@ -159,7 +150,7 @@ article.message {
   text-overflow: ellipsis;
 }
 .tool-body {
-  padding: 4px 0;
+  padding: calc(4rem / 14) 0;
 }
 @media (pointer: coarse) {
   .message {
@@ -172,18 +163,18 @@ article.message {
 }
 @media (max-width: 600px) {
   .message {
-    padding: 4px 6px;
+    padding: calc(4rem / 14) calc(6rem / 14);
   }
   .message > header,
   .tool-disclosure > summary {
-    gap: 4px;
+    gap: calc(4rem / 14);
   }
 }
 
 @container (max-width: 500px) {
   .tool-disclosure > summary {
     grid-template-columns: auto auto minmax(0, 1fr) auto;
-    row-gap: 2px;
+    row-gap: calc(2rem / 14);
   }
   .tool-disclosure > summary small {
     grid-column: 3;
@@ -240,8 +231,8 @@ article.message {
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.3em;
-  margin-inline: -8px;
-  padding: 6px 8px 12px;
+  margin-inline: calc(-8rem / 14);
+  padding: calc(6rem / 14) calc(8rem / 14) calc(12rem / 14);
   color: var(--muted);
   font-size: 0.75rem;
   text-align: left;

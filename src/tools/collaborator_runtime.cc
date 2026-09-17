@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <map>
 #include <mutex>
 #include <string>
 #include <utility>
@@ -16,6 +17,7 @@
 #include "include/agent/conversation.h"
 #include "include/agent/session_store.h"
 #include "include/app/session.h"
+#include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
@@ -176,37 +178,45 @@ void PublishCollaborator(json collaborator, bool removed = false) {
 }  // namespace
 
 struct CollaboratorRuntime::State {
+  struct Slot {
+    std::string path, generation, label, model, route, handoff, identity;
+    Fd owner;
+    pid_t pid = -1;
+    uint64_t handoff_generation = 0;
+    bool active = false;
+    Usage accounted;
+    RouteUsage accounted_routes;
+    json latest = json::object();
+  };
+
   explicit State(UsageAccumulator& target) : usage(target) {}
 
-  void Account(const json& snapshot) {
+  void Account(Slot& slot, const json& snapshot) {
     const Usage current = UsageFromJson(JsonValue(snapshot, "usage", json{}));
     const RouteUsage current_routes =
         RouteUsageFromJson(JsonValue(snapshot, "route_usage", json{}));
     if (current_routes.empty()) {
-      usage.Add(Difference(current, accounted));
+      usage.Add(Difference(current, slot.accounted));
     } else {
       for (const auto& [route_name, value] : current_routes) {
-        auto prior = accounted_routes.find(route_name);
-        usage.Add(route_name, Difference(value, prior == accounted_routes.end()
-                                                    ? Usage{}
-                                                    : prior->second));
+        auto prior = slot.accounted_routes.find(route_name);
+        usage.Add(route_name,
+                  Difference(value, prior == slot.accounted_routes.end()
+                                         ? Usage{}
+                                         : prior->second));
       }
     }
-    accounted = current;
-    accounted_routes = current_routes;
+    slot.accounted = current;
+    slot.accounted_routes = current_routes;
   }
 
   UsageAccumulator& usage;
   mutable std::mutex mutex;
-  std::string id, path, generation, label, model, route, handoff, identity;
-  Fd owner;
-  pid_t pid = -1;
-  uint64_t handoff_generation = 0;
-  bool active = false;
+  std::map<std::string, Slot> slots;
+  // Handoff counts survive Stop so a resumed-after-loss record still shows
+  // how many briefs this collaborator has received.
+  std::map<std::string, uint64_t> generations;
   bool shutdown = false;
-  Usage accounted;
-  RouteUsage accounted_routes;
-  json latest = json::object();
 };
 
 CollaboratorRuntime::CollaboratorRuntime(UsageAccumulator& usage)
@@ -230,23 +240,29 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
       return ToolFailure(ToolErrorCode::kUnavailable,
                          "error: collaborator runtime is stopping");
     }
-    if (!state.id.empty() && state.id != launch.id) {
-      return ToolFailure(ToolErrorCode::kLimitExceeded,
-                         "error: persistent collaborator " + state.id +
-                             " already owns this conversation's runtime");
-    }
-    if (state.active) {
+    auto existing = state.slots.find(launch.id);
+    if (existing != state.slots.end() && existing->second.active) {
       return ToolFailure(ToolErrorCode::kUnavailable,
                          "error: collaborator " + launch.id +
                              " already has an active handoff");
     }
+    if (existing == state.slots.end() &&
+        state.slots.size() >= static_cast<size_t>(PersistentMax())) {
+      return ToolFailure(
+          ToolErrorCode::kLimitExceeded,
+          "error: persistent limit reached (" +
+              std::to_string(PersistentMax()) +
+              "); stop a retained collaborator to free its runtime");
+    }
     connection = session::Connect(launch.path);
-    runtime_lost =
-        !state.id.empty() &&
-        (!connection.socket || connection.generation != state.generation);
-    id = state.id;
-    path = state.path;
-    if (runtime_lost) state.active = false;
+    runtime_lost = existing != state.slots.end() &&
+                   (!connection.socket ||
+                    connection.generation != existing->second.generation);
+    if (existing != state.slots.end()) {
+      id = existing->first;
+      path = existing->second.path;
+      if (runtime_lost) existing->second.active = false;
+    }
     if (!connection.socket && !runtime_lost) {
       std::string error;
       connection = session::Open(ExecutablePath(), launch.cwd, launch.path,
@@ -257,27 +273,27 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
       }
     }
     if (!runtime_lost) {
-      if (state.id.empty()) {
+      State::Slot& slot = state.slots[launch.id];
+      if (slot.path.empty()) {
         if (auto loaded = SessionStore::Inspect(launch.path); loaded.record) {
-          state.accounted = loaded.record->state.usage;
-          state.accounted_routes = loaded.record->state.route_usage;
+          slot.accounted = loaded.record->state.usage;
+          slot.accounted_routes = loaded.record->state.route_usage;
         }
       }
-      state.id = std::move(launch.id);
-      state.path = std::move(launch.path);
-      state.generation = connection.generation;
-      if (connection.owner) state.owner = std::move(connection.owner);
-      state.pid = connection.pid;
-      state.identity = ProcessIdentity(connection.pid);
-      state.label = std::move(launch.title);
-      state.model = std::move(launch.model);
-      state.route = std::move(launch.route);
-      state.active = true;
+      id = launch.id;
+      slot.path = std::move(launch.path);
+      slot.generation = connection.generation;
+      if (connection.owner) slot.owner = std::move(connection.owner);
+      slot.pid = connection.pid;
+      slot.identity = ProcessIdentity(connection.pid);
+      slot.label = std::move(launch.title);
+      slot.model = std::move(launch.model);
+      slot.route = std::move(launch.route);
+      slot.active = true;
       request_generation = session::RandomToken(16);
-      state.handoff = request_generation;
-      ++state.handoff_generation;
-      id = state.id;
-      path = state.path;
+      slot.handoff = request_generation;
+      slot.handoff_generation = ++state.generations[id];
+      path = slot.path;
     }
   }
   if (runtime_lost) {
@@ -308,12 +324,17 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
     const bool retained = !idle.empty();
     if (retained) {
       std::lock_guard lock(state.mutex);
-      state.Account(idle);
+      if (auto it = state.slots.find(id); it != state.slots.end()) {
+        state.Account(it->second, idle);
+      }
     }
     if (!retained) Stop(id);
     if (retained) {
       std::lock_guard lock(state.mutex);
-      if (state.handoff == request_generation) state.active = false;
+      if (auto it = state.slots.find(id);
+          it != state.slots.end() && it->second.handoff == request_generation) {
+        it->second.active = false;
+      }
     }
     if (retained) PublishCollaborator(Snapshot(id));
     if (context.Expired()) {
@@ -342,12 +363,13 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
   }
   {
     std::lock_guard lock(state.mutex);
-    if (state.handoff != request_generation) {
+    auto it = state.slots.find(id);
+    if (it == state.slots.end() || it->second.handoff != request_generation) {
       return ToolCancelled("error: collaborator handoff was superseded");
     }
-    state.active = false;
-    state.latest = result;
-    state.Account(result);
+    it->second.active = false;
+    it->second.latest = result;
+    state.Account(it->second, result);
   }
   PublishCollaborator(Snapshot(id));
   const std::string error = JsonValue(result, "error", "");
@@ -387,12 +409,13 @@ ToolResult CollaboratorRuntime::Control(const std::string& id,
   std::string path, generation;
   {
     std::lock_guard lock(state.mutex);
-    if (state.id != id || state.path.empty()) {
+    auto it = state.slots.find(id);
+    if (it == state.slots.end() || it->second.path.empty()) {
       return ToolFailure(ToolErrorCode::kNotFound,
                          "error: persistent collaborator is not live");
     }
-    path = state.path;
-    generation = state.generation;
+    path = it->second.path;
+    generation = it->second.generation;
   }
   auto connection = session::Connect(path);
   if (!connection.socket || connection.generation != generation) {
@@ -422,12 +445,15 @@ ToolResult CollaboratorRuntime::Control(const std::string& id,
 }
 
 ToolResult CollaboratorRuntime::Message(const std::string& id,
-                                        const std::string& text) {
+                                        const std::string& /*text*/) {
+  // Mail-first delivery: the payload is already on disk via
+  // WriteCollaboratorMail, so this is only a wake-up ping. Empty text keeps
+  // the child's SessionWorker from queueing a duplicate alongside the drain.
   if (!Active(id)) {
     return ToolFailure(ToolErrorCode::kUnavailable,
                        "error: collaborator is idle");
   }
-  return Control(id, "guide", "[parent guidance]\n" + text);
+  return Control(id, "guide", "");
 }
 
 ToolResult CollaboratorRuntime::Interrupt(const std::string& id) {
@@ -440,13 +466,14 @@ ToolResult CollaboratorRuntime::Stop(const std::string& id) {
   pid_t pid = -1;
   {
     std::lock_guard lock(state.mutex);
-    if (state.id != id) {
+    auto it = state.slots.find(id);
+    if (it == state.slots.end()) {
       return ToolFailure(ToolErrorCode::kNotFound,
                          "error: persistent collaborator is not live");
     }
-    path = state.path;
-    pid = state.pid;
-    identity = state.identity;
+    path = it->second.path;
+    pid = it->second.pid;
+    identity = it->second.identity;
   }
   ToolResult result = Control(id, "close");
   const auto deadline = Clock::now() + std::chrono::seconds(2);
@@ -468,23 +495,7 @@ ToolResult CollaboratorRuntime::Stop(const std::string& id) {
   bool removed = false;
   {
     std::lock_guard lock(state.mutex);
-    if (state.id == id) {
-      state.id.clear();
-      state.path.clear();
-      state.generation.clear();
-      state.label.clear();
-      state.model.clear();
-      state.route.clear();
-      state.handoff.clear();
-      state.owner.Reset();
-      state.pid = -1;
-      state.identity.clear();
-      state.active = false;
-      state.accounted = {};
-      state.accounted_routes.clear();
-      state.latest = json::object();
-      removed = true;
-    }
+    removed = state.slots.erase(id) > 0;
   }
   if (removed) PublishCollaborator({{"id", id}}, true);
   return removed ? ToolSuccess("stopped persistent collaborator " + id)
@@ -494,20 +505,26 @@ ToolResult CollaboratorRuntime::Stop(const std::string& id) {
 json CollaboratorRuntime::Snapshot(const std::string& id) const {
   const State& state = *state_;
   std::lock_guard lock(state.mutex);
-  if (state.id.empty() || (!id.empty() && id != state.id)) {
-    return json::object();
+  const State::Slot* slot = nullptr;
+  if (!id.empty()) {
+    auto it = state.slots.find(id);
+    if (it == state.slots.end()) return json::object();
+    slot = &it->second;
+  } else {
+    if (state.slots.empty()) return json::object();
+    slot = &state.slots.begin()->second;
   }
-  json result = {{"id", state.id},
-                 {"label", state.label},
-                 {"model", state.model},
+  json result = {{"id", id.empty() ? state.slots.begin()->first : id},
+                 {"label", slot->label},
+                 {"model", slot->model},
                  {"persistent", true},
-                 {"status", state.active ? "running" : "idle"},
-                 {"runtime_generation", state.generation},
-                 {"handoff_id", state.handoff},
-                 {"handoff_generation", state.handoff_generation},
-                 {"pid", state.pid},
-                 {"route", state.route}};
-  const std::string prompt = JsonValue(state.latest, "system_prompt", "");
+                 {"status", slot->active ? "running" : "idle"},
+                 {"runtime_generation", slot->generation},
+                 {"handoff_id", slot->handoff},
+                 {"handoff_generation", slot->handoff_generation},
+                 {"pid", slot->pid},
+                 {"route", slot->route}};
+  const std::string prompt = JsonValue(slot->latest, "system_prompt", "");
   if (!prompt.empty()) result["system_prompt"] = prompt;
   return result;
 }
@@ -515,19 +532,27 @@ json CollaboratorRuntime::Snapshot(const std::string& id) const {
 bool CollaboratorRuntime::Active(const std::string& id) const {
   const State& state = *state_;
   std::lock_guard lock(state.mutex);
-  return state.id == id && state.active;
+  auto it = state.slots.find(id);
+  return it != state.slots.end() && it->second.active;
+}
+
+size_t CollaboratorRuntime::Count() const {
+  const State& state = *state_;
+  std::lock_guard lock(state.mutex);
+  return state.slots.size();
 }
 
 void CollaboratorRuntime::Shutdown() {
   State& state = *state_;
-  std::string id;
+  std::vector<std::string> ids;
   {
     std::lock_guard lock(state.mutex);
     if (state.shutdown) return;
     state.shutdown = true;
-    id = state.id;
+    ids.reserve(state.slots.size());
+    for (const auto& [key, _] : state.slots) ids.push_back(key);
   }
-  if (!id.empty()) Stop(id);
+  for (const std::string& id : ids) Stop(id);
 }
 
 }  // namespace uagent

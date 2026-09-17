@@ -829,7 +829,7 @@ void Master::AssetRead(const Request& request, Response& response) {
     return;
   }
   bool image = JsonValue(asset, "image", !ImageExtension(mime).empty());
-  if (image && RasterMime(bytes) != mime) {
+  if (image && RasterMime(bytes) != mime && SvgMime(bytes) != mime) {
     Error(response, "invalid image asset", 415);
     return;
   }

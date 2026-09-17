@@ -22,6 +22,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/conversation.h"
 #include "include/ui/interactive.h"
 
 namespace uagent {
@@ -465,7 +466,19 @@ void TerminalPresenter::Block(const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {
-    WriteTerminalRecord(UserEchoRow(InputPrompt(), text) + "\n");
+    // Stored text keeps the "Attached:" path trailer for the model
+    // payload; live rows render the delivery gallery instead, like history
+    // replay and the web client do.
+    const json deliveries = JsonValue(block, "deliveries", json::array());
+    const json files = JsonValue(block, "files", json::array());
+    const bool attached =
+        !deliveries.empty() || (files.is_array() && !files.empty());
+    const std::string echo =
+        attached ? TerminalSafe(
+                       StripAttachedTrailer(JsonValue(block, "text", "")))
+                   : text;
+    WriteTerminalRecord(UserEchoRow(InputPrompt(), echo) + "\n" +
+                        AttachmentDeliveryRows(deliveries));
   } else if (kind == "assistant") {
     // Mirror the stored-transcript printer and the live presenter: the mark
     // only prints with text (tool-only turns show rows, never a bare mark),

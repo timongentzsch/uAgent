@@ -1,7 +1,7 @@
 import type { ComponentChildren, ComponentType, JSX } from "preact";
 import { failure } from "./types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { ChevronDown, ChevronRight, X } from "lucide-preact";
+import { ChevronDown, ChevronRight, X, Check, Copy } from "lucide-preact";
 import { markPath } from "./mark.ts";
 
 import { cleanText } from "./display.ts";
@@ -44,7 +44,11 @@ export function CodeCopy({ text }: { text: string }) {
           }
         }}
       >
-        <span aria-hidden="true">{status === "Copied!" ? "✓" : "⧉"}</span>
+        {status === "Copied!" ? (
+          <Check aria-hidden="true" />
+        ) : (
+          <Copy aria-hidden="true" />
+        )}
       </IconButton>
       <span class="sr-only" role="status">
         {status}
@@ -225,6 +229,14 @@ export function DisclosureRow({
   const [mounted, setMounted] = useState(false);
   // Internal state only, so user toggles survive streaming re-renders
   // (never reset to closed) with no post-paint prop sync to lag a frame.
+  // The toggle is driven explicitly on click: a focus scroll landing
+  // between mousedown and mouseup can move the summary and swallow the
+  // native toggle (focus arrives, expansion does not). preventDefault
+  // plus explicit state makes every pointer and keyboard toggle land.
+  const setOpen = (next: boolean) => {
+    setIsOpen(next);
+    if (next) setMounted(true);
+  };
   return (
     <details
       class={`disclosure-row ${className}`}
@@ -232,13 +244,22 @@ export function DisclosureRow({
       data-message-id={messageId}
       open={isOpen}
       onToggle={(event) => {
-        const next = event.currentTarget.open;
-        setIsOpen(next);
-        if (next) setMounted(true);
+        // Backstop for non-click toggles (assistive tech driving the
+        // element directly): adopt DOM truth so state cannot strand.
+        setOpen(event.currentTarget.open);
         onToggle?.(event);
       }}
     >
-      <summary>
+      <summary
+        onClick={(event) => {
+          event.preventDefault();
+          const next = !isOpen;
+          setOpen(next);
+          onToggle?.({
+            currentTarget: { open: next },
+          } as JSX.TargetedEvent<HTMLDetailsElement>);
+        }}
+      >
         {icon}
         <ChevronRight class="disclosure-chevron" aria-hidden="true" />
         <span class="disclosure-label" title={label}>

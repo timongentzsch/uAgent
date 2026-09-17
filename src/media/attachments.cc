@@ -37,6 +37,9 @@ constexpr std::pair<const char*, const char*> kTypes[] = {
     {".jpeg", "image/jpeg"},
     {".webp", "image/webp"},
     {".gif", "image/gif"},
+    {".heic", "image/heic"},
+    {".heif", "image/heif"},
+    {".svg", "image/svg+xml"},
     {".pdf", "application/pdf"},
     {".txt", "text/plain"},
     {".md", "text/markdown"},
@@ -90,7 +93,93 @@ std::string RasterMime(std::string_view bytes) {
       bytes.substr(8, 4) == "WEBP") {
     return "image/webp";
   }
+  // HEIC/HEIF stills share the ISO BMFF `ftyp` header with MP4 video, so
+  // the brand allowlist is the whole check: still-photo brands in, video
+  // brands (isom, mp41, avc1, ...) out. The brand sits at offset 8.
+  if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
+    const std::string_view brand = bytes.substr(8, 4);
+    for (std::string_view still : {"heic", "heix", "hevc", "hevx",
+                                   "heim", "heis", "hevm", "hevs",
+                                   "mif1", "msf1"}) {
+      if (brand == still) return "image/heic";
+    }
+  }
   return {};
+}
+
+// SVG has no magic number: scan the prolog (BOM, whitespace, <?...?>,
+// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most ScanBytes
+// in. Anything else -- including bare <?xml without svg, HTML, or plain
+// text -- is not an SVG document.
+std::string SvgMime(std::string_view bytes) {
+  constexpr size_t kScanBytes = size_t{64} * 1024;
+  const size_t end = std::min(bytes.size(), kScanBytes);
+  size_t pos = 0;
+  if (end - pos >= 3 && bytes.substr(pos, 3) == "\xEF\xBB\xBF") pos += 3;
+  auto skip_blank = [&] {
+    while (pos < end && (bytes[pos] == ' ' || bytes[pos] == '\t' ||
+                         bytes[pos] == '\r' || bytes[pos] == '\n')) {
+      ++pos;
+    }
+  };
+  auto skip_to = [&](std::string_view mark) {
+    const size_t found = bytes.find(mark, pos);
+    if (found == std::string_view::npos || found > end) return false;
+    pos = found + mark.size();
+    return true;
+  };
+  for (;;) {
+    skip_blank();
+    if (pos >= end) return "";
+    if (bytes[pos] != '<') return "";
+    if (bytes.substr(pos, 4) == "<!--") {
+      pos += 4;
+      if (!skip_to("-->")) return "";
+      continue;
+    }
+    if (bytes.substr(pos, 2) == "<?") {
+      pos += 2;
+      if (!skip_to("?>")) return "";
+      continue;
+    }
+    if (bytes.substr(pos, 9) == "<!DOCTYPE" ||
+        bytes.substr(pos, 9) == "<!doctype") {
+      // A doctype can hide '>' inside an internal [...] subset.
+      size_t depth = 0;
+      while (pos < end) {
+        if (bytes[pos] == '[') ++depth;
+        if (bytes[pos] == ']') depth -= depth > 0 ? 1 : 0;
+        ++pos;
+        if (depth == 0 && bytes[pos - 1] == '>') break;
+      }
+      if (pos > end) return "";
+      continue;
+    }
+    break;
+  }
+  // The document element itself must be svg (case-insensitive for
+  // hand-written files), followed by a tag delimiter.
+  auto lower = [](char ch) {
+    return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch - 'A' + 'a') : ch;
+  };
+  constexpr std::string_view kTag = "<svg";
+  if (pos + kTag.size() > end) return "";
+  for (size_t i = 0; i < kTag.size(); ++i) {
+    if (lower(bytes[pos + i]) != kTag[i]) return "";
+  }
+  pos += kTag.size();
+  if (pos >= end) return "";
+  const char next = bytes[pos];
+  if (next != ' ' && next != '\t' && next != '\r' && next != '\n' &&
+      next != '>' && next != '/') {
+    return "";
+  }
+  return "image/svg+xml";
+}
+
+bool IsRasterMime(const std::string& mime) {
+  return mime == "image/png" || mime == "image/jpeg" ||
+         mime == "image/gif" || mime == "image/webp";
 }
 
 std::string ImageDetail() {
@@ -124,15 +213,23 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     return false;
   }
   std::string prefix, error_read;
-  if (!ReadRegularFile(path, 32, prefix, error_read, true)) {
+  // One head read covers the raster/HEIC signatures as well as the SVG
+  // prolog scan below; vector documents may legitimately start with
+  // kilobytes of XML declarations before <svg.
+  if (!ReadRegularFile(path, size_t{64} * 1024, prefix, error_read, true)) {
     error = error_read;
     return false;
   }
   std::string mime = RasterMime(prefix);
+  if (mime.empty()) mime = SvgMime(prefix);
   if (mime.empty()) {
     mime = AttachmentMime(path);
-    if (mime.starts_with("image/")) {
+    if (IsRasterMime(mime)) {
       error = "invalid image signature: " + path;
+      return false;
+    }
+    if (mime == "image/svg+xml") {
+      error = "not an SVG document: " + path;
       return false;
     }
   }
@@ -351,6 +448,37 @@ bool TextMime(const std::string& mime) {
   return mime.starts_with("text/") || mime == "application/json" ||
          mime == "application/xml";
 }
+
+// SVG has no wire-safe bytes: rasterize once to PNG, then run the normal
+// inspect/resize/encode flow on the raster. ImageMagick first on both
+// platforms (its built-in renderer needs no daemon); QuickLook covers
+// stock macOS when ImageMagick is missing or its SVG coder is locked
+// down. Providers never see raw SVG.
+bool RasterizeVector(const std::string& path, const std::string& out,
+                     std::string& error) {
+  auto raster = CaptureProcess(
+      {"magick", "-limit", "memory", "128MiB", "-limit", "map",
+       "256MiB", "-density", "192", "-background", "none",
+       path + "[0]", "-resize", "2048x2048>", "-strip", "png:" + out});
+  if (raster.Ok()) return true;
+#ifdef __APPLE__
+  const std::string dir =
+      std::filesystem::path(out).parent_path().string();
+  auto thumb = CaptureProcess(
+      {"/usr/bin/qlmanage", "-t", "-s", "2048", "-o", dir, path});
+  const std::string rendered =
+      dir + "/" + std::filesystem::path(path).filename().string() + ".png";
+  std::error_code ec;
+  if (thumb.Ok() && rendered != out) {
+    std::filesystem::rename(rendered, out, ec);
+    if (!ec) return true;
+  }
+#endif
+  error =
+      "cannot prepare SVG image; install ImageMagick (brew install "
+      "imagemagick) or attach a PNG instead";
+  return false;
+}
 std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
   constexpr size_t kImageBytes = size_t{4} * 1024 * 1024;
@@ -377,9 +505,29 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   }
   // Platform helpers keep image decoders out of the harness binary. No shell,
   // bounded lifetime, original retained. Linux uses ImageMagick when installed.
+  // Vector originals rasterize first: neither inspector below reads SVG,
+  // and the raster re-enters the normal inspect/resize/encode flow.
+  std::string path = attachment.path, temporary, raster;
+  mime = attachment.mime;
+  if (mime == "image/svg+xml") {
+    Fd vector_out(CreateTempFile(
+        (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX")
+            .string(),
+        raster));
+    if (!vector_out) {
+      error = "cannot prepare image";
+      return "";
+    }
+    if (!RasterizeVector(attachment.path, raster, error)) {
+      unlink(raster.c_str());
+      return "";
+    }
+    path = raster;
+    mime = "image/png";
+  }
 #ifdef __APPLE__
   auto inspected = CaptureProcess({"/usr/bin/sips", "-g", "pixelWidth", "-g",
-                                   "pixelHeight", attachment.path});
+                                   "pixelHeight", path});
   int width = 0, height = 0;
   std::istringstream lines(inspected.output);
   std::string line;
@@ -394,19 +542,28 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   }
 #else
   auto inspected = CaptureProcess({"magick", "identify", "-ping", "-format",
-                                   "%w %h", attachment.path + "[0]"});
+                                   "%w %h", path + "[0]"});
   int width = 0, height = 0;
   std::istringstream(inspected.output) >> width >> height;
 #endif
   if ((inspected.error.empty() && !inspected.Ok()) ||
       (inspected.Ok() && (width <= 0 || height <= 0))) {
     error = "image could not be decoded";
+    if (!raster.empty()) unlink(raster.c_str());
     return "";
   }
-  std::string path = attachment.path, temporary;
-  mime = attachment.mime;
-  if (width > 2048 || height > 2048 || attachment.bytes > kImageBytes) {
-    const std::string format = mime == "image/jpeg" ? "jpeg" : "png";
+  // HEIC/HEIF data URIs are rejected by most vision endpoints, so they
+  // always normalize through the converter below instead of passing
+  // through like small PNGs do. A missing converter then fails loudly
+  // here instead of degrading the whole route on a provider rejection.
+  const bool normalize = mime == "image/heic" || mime == "image/heif";
+  if (width > 2048 || height > 2048 || attachment.bytes > kImageBytes ||
+      normalize) {
+    const std::string format =
+        (mime == "image/jpeg" || mime == "image/heic" ||
+         mime == "image/heif")
+            ? "jpeg"
+            : "png";
     Fd output(CreateTempFile(
         (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
             .string(),
@@ -427,11 +584,14 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
 #endif
     if (!resized.Ok()) {
       unlink(temporary.c_str());
+      if (!raster.empty()) unlink(raster.c_str());
       error =
           "image resizing failed; install ImageMagick on Linux or attach a "
           "smaller image";
       return "";
     }
+    if (!raster.empty()) unlink(raster.c_str());
+    raster.clear();
     path = temporary;
     mime = "image/" + format;
   }
@@ -440,6 +600,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   std::string encoded =
       Base64File(prepared, kImageBytes, error, "data:" + mime + ";base64,");
   if (!temporary.empty()) unlink(temporary.c_str());
+  if (!raster.empty()) unlink(raster.c_str());
   if (!error.empty()) return "";
   std::lock_guard lock(mutex);
   cache[key] = {mime, encoded};

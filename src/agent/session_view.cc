@@ -224,6 +224,28 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
 }
 
 namespace {
+// Receipt facts live under the call's detail id. A message whose id
+// metadata was never recorded still carries the call id, so scan by it
+// before admitting the receipt is gone. Message-metadata entries carry
+// call ids too but never a receipt name, so they cannot self-match.
+const json* FindToolFacts(const json& facts, const std::string& detail_id,
+                          const std::string& call_id,
+                          std::string* resolved_id) {
+  const auto direct = facts.find(detail_id);
+  if (direct != facts.end() && direct->is_object() && !direct->empty()) {
+    if (resolved_id) *resolved_id = detail_id;
+    return &*direct;
+  }
+  for (auto it = facts.begin(); it != facts.end(); ++it) {
+    if (!call_id.empty() && it->is_object() &&
+        JsonValue(*it, "call_id", "") == call_id && it->contains("name")) {
+      if (resolved_id) *resolved_id = it.key();
+      return &*it;
+    }
+  }
+  return nullptr;
+}
+
 json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                   const Entry& entry) {
   const json& facts = conversation.DisplayFacts();
@@ -307,7 +329,9 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
             response_id.empty()
                 ? "t-" + call_id
                 : "t-" + HashHex(response_id + "\n" + call_id).substr(0, 24);
-        json detail = JsonValue(facts, detail_id.c_str(), json::object());
+        const json* found =
+            FindToolFacts(facts, detail_id, call_id, &detail_id);
+        const json detail = found ? *found : json::object();
         json function = JsonValue(call, "function", json::object());
         json tool = {{"call_id", call_id},
                      {"response_id", response_id},
@@ -336,11 +360,18 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   if (entry.kind == "tool_result") {
     std::string call_id = JsonValue(message, "tool_call_id", "");
     std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
-    json detail = JsonValue(facts, detail_id.c_str(), json::object());
+    const json* found = FindToolFacts(facts, detail_id, call_id, &detail_id);
+    const json detail = found ? *found : json::object();
+    // Retained rows finished by definition: a missing receipt is a gap in
+    // history, never live activity (live rows stream separately). Say so
+    // explicitly instead of counterfeiting a "running" state.
+    const bool receipt_missing = found == nullptr;
     block["call_id"] = call_id;
     block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
-    block["status"] = JsonValue(detail, "status", "running");
+    block["status"] =
+        JsonValue(detail, "status", receipt_missing ? "complete" : "running");
+    if (receipt_missing) block["receipt_missing"] = true;
     if (detail.contains("duration_ms")) {
       block["duration_ms"] = detail["duration_ms"];
     }

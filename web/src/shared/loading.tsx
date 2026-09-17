@@ -161,22 +161,15 @@ export function SettingsSkeleton() {
           <Control />
         </Field>
         <Field
-          label="Interface size"
+          label="Zoom"
           value="100%"
-          help="Scales menus, buttons and interface labels."
-        >
-          <input type="range" disabled value={100} />
-        </Field>
-        <Field
-          label="Conversation text size"
-          value="100%"
-          help="Scales messages, tool output and the text you type."
+          help="Scales the entire interface, conversation included."
         >
           <input type="range" disabled value={100} />
         </Field>
         <div className="dialog-actions">
           <button type="button" disabled>
-            Reset sizes
+            Reset zoom
           </button>
         </div>
         <Field

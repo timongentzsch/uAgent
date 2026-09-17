@@ -2,7 +2,6 @@ import type {
   AppModal,
   JSONValue,
   Draft,
-  Sizes,
   InstallPrompt,
   Block,
   Session,
@@ -24,7 +23,8 @@ import {
 } from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
 import { api, command, requestId } from "../state/api.ts";
-import { Mark, Modal, Deferred, Skeleton } from "../shared/ui.tsx";
+import { Mark, Modal, Deferred, Skeleton, IconButton } from "../shared/ui.tsx";
+import { Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -45,7 +45,7 @@ import {
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
-import { useTranscriptScroll } from "../state/use-transcript-scroll.ts";
+import { useStickToBottom } from "../state/use-stick-to-bottom.ts";
 import "../shared/style.css";
 import {
   chat,
@@ -63,9 +63,11 @@ import {
 } from "./dialogs.ts";
 
 // Own scroll restoration from the first paint. history restoration only
-// covers the document, and a late opt-out lets the browser restore the
-// inner transcript scroller after our mount pin (the mobile reload jump).
-// The transcript hook owns all scrolling from here on.
+// covers the document; the early opt-out in index.html (<head>, before any
+// module) keeps the browser from restoring the inner transcript scroller
+// after our mount pin (the mobile reload jump). Repeated here as a
+// backstop for mounts that precede it. The transcript hook owns all
+// scrolling from here on.
 if (typeof history !== "undefined") history.scrollRestoration = "manual";
 
 const emptyDraft = (): Draft => ({ text: "", files: [] });
@@ -114,28 +116,14 @@ function App() {
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [sizes, setSizes] = useState(() =>
-    readStored<Sizes>(localStorage, "uagent-sizes", {
-      display: 100,
-      text: 100,
-    }),
+  const [zoom, setZoom] = useState(() =>
+    readStored<number>(localStorage, "uagent-zoom", 100),
   );
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
   const [notificationMode, setNotificationMode] = useState(false);
   const [theme, setTheme] = useState(
     () => localStorage.getItem("uagent-theme") || "system",
-  );
-  const transcript = useRef<HTMLDivElement>(null);
-  const transcriptContent = useRef<HTMLDivElement>(null);
-  const { jumpToLatest, stopFollowing } = useTranscriptScroll(
-    transcript,
-    transcriptContent,
-    setFollowing,
-    // Session-scoped surfaces: switching conversations resumes the saved
-    // scroll position (or pins a fresh one); the hook owns this, so there
-    // is no pin-on-select here to clobber the restore.
-    page === "chat" ? `${page}:${selected}` : `page:${page}`,
   );
   const [activityTarget, setActivityTarget] = useState<Block | null>(null);
   const snapshot = snapshots[selected];
@@ -173,24 +161,37 @@ function App() {
     ],
     [view?.blocks, streamed, outgoing, selected],
   );
+  // Session-scoped surfaces: switching conversations resumes the saved
+  // scroll position (or pins a fresh one); the hook owns this, so there
+  // is no pin-on-select here to clobber the restore.
+  const {
+    scroller: transcript,
+    content: transcriptContent,
+    attachScroller,
+    attachContent,
+    jumpToLatest,
+    stopFollowing,
+    unseen,
+  } = useStickToBottom(
+    setFollowing,
+    page === "chat" ? `${page}:${selected}` : `page:${page}`,
+    blocks.length,
+  );
   function setDraft(value: Draft, id = selected) {
     setDrafts((current) => ({ ...current, [id]: value }));
   }
   useEffect(() => {
-    writeStored(localStorage, "uagent-sizes", sizes);
-    for (const [key, value] of Object.entries(sizes))
-      document.documentElement.style.setProperty(
-        `--${key}-scale`,
-        String(
-          Math.min(
-            key === "text" ? 300 : 200,
-            Math.max(50, Number(value) || 100),
-          ) / 100,
-        ),
-      );
-  }, [sizes]);
+    writeStored(localStorage, "uagent-zoom", zoom);
+    // Single zoom axis (VS Code / Slack / Discord model): one factor
+    // scales the whole UI proportionally via :root font-size, so text
+    // and spacing can never drift apart.
+    document.documentElement.style.setProperty(
+      "--zoom",
+      String(Math.min(200, Math.max(50, zoom || 100)) / 100),
+    );
+  }, [zoom]);
   // Note: session-switch scroll is owned by the transcript stick
-  // (restore-or-pin in use-transcript-scroll); nothing pins here so a
+  // (restore-or-pin in use-stick-to-bottom); nothing pins here so a
   // returning conversation keeps its position.
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
@@ -733,24 +734,31 @@ function App() {
       {update && (
         <div role="status" class="update-banner">
           <span>Update available with the latest fixes.</span>
-          <button
-            class="primary"
-            disabled={
-              Object.values(drafts).some(
-                (item) => item.text || item.files.length,
-              ) ||
-              uploading ||
-              Object.values(snapshots).some((item) => item.pending)
-            }
-            title="Reloads this view. Send or copy unsent drafts first."
-            onClick={() =>
-              import("../shared/pwa.ts").then(({ applyUpdate }) =>
-                applyUpdate(update),
-              )
-            }
-          >
-            Refresh now
-          </button>
+          {(() => {
+            const blocked = Object.values(drafts).some(
+              (item) => item.text || item.files.length,
+            )
+              ? "Send or copy unsent drafts first."
+              : uploading
+                ? "Wait for uploads to finish."
+                : Object.values(snapshots).some((item) => item.pending)
+                  ? "Wait for the running turn to finish."
+                  : "";
+            return (
+              <button
+                class="primary"
+                disabled={!!blocked}
+                title={blocked || "Reloads this view with the latest fixes."}
+                onClick={() =>
+                  import("../shared/pwa.ts").then(({ applyUpdate }) =>
+                    applyUpdate(update),
+                  )
+                }
+              >
+                Refresh now
+              </button>
+            );
+          })()}
         </div>
       )}
       {authenticated === false ? (
@@ -793,13 +801,12 @@ function App() {
           <main class="conversation">
             <header class="conversation-head">
               {compact && (
-                <button
-                  class="quiet icon-button"
+                <IconButton
+                  label="Open sessions"
                   onClick={() => setDrawer(true)}
-                  aria-label="Open sessions"
                 >
-                  <span aria-hidden="true">☰</span>
-                </button>
+                  <Menu aria-hidden="true" />
+                </IconButton>
               )}
               <div>
                 <h1 title={session?.cwd}>
@@ -811,13 +818,12 @@ function App() {
                 </h1>
               </div>
               {compact && (
-                <button
-                  class="quiet icon-button"
+                <IconButton
+                  label="Settings"
                   onClick={() => open({ type: "settings" })}
-                  aria-label="Settings"
                 >
-                  <span aria-hidden="true">⚙</span>
-                </button>
+                  <Settings aria-hidden="true" />
+                </IconButton>
               )}
               {page === "chat" && session && conversationMenu(session)}
             </header>
@@ -853,6 +859,8 @@ function App() {
                   }
                   scroller={transcript}
                   content={transcriptContent}
+                  attachScroller={attachScroller}
+                  attachContent={attachContent}
                   stopFollowing={stopFollowing}
                   selected={selected}
                   snapshot={snapshot}
@@ -885,6 +893,7 @@ function App() {
                   act={act}
                   report={report}
                   following={following}
+                  unseen={unseen}
                   // Optimistic: pin to the end synchronously (<1 frame),
                   // refresh the snapshot in the background. jumpToLatest
                   // is idempotent and load() dedupes in flight, so rapid
@@ -899,7 +908,7 @@ function App() {
                     setModal({ type: "statistics", session_id: selected })
                   }
                   showContext={showContext}
-                  sizes={sizes}
+                  zoom={zoom}
                 />
               </>
             ) : (
@@ -966,6 +975,8 @@ function App() {
             <label>
               Directory on the host
               <input
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                autoFocus
                 value={folder}
                 onInput={(event) => setFolder(event.currentTarget.value)}
                 placeholder="/path/to/project"
@@ -1048,8 +1059,8 @@ function App() {
             fallback={<SettingsSkeleton />}
             theme={theme}
             setTheme={setTheme}
-            sizes={sizes}
-            setSizes={setSizes}
+            zoom={zoom}
+            setZoom={setZoom}
             installed={installed}
             install={install}
             setInstall={setInstall}

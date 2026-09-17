@@ -357,11 +357,35 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       metrics[name].composer.y + metrics[name].composer.height,
     ).toBeLessThanOrEqual(metrics[name].viewport.height + 1);
     if (await page.locator(".message.user").count()) {
+      // Off-screen rows keep content-visibility remembered boxes across
+      // viewport/zoom changes (e.g. landscape width measured at 390px
+      // width), so force real row layout while measuring, exactly like
+      // the prepend anchor lock does. A reload follows these measures,
+      // so no scroll state survives the bypass.
+      await page.evaluate(() =>
+        document
+          .querySelector(".transcript-content")
+          ?.classList.add("anchor-lock"),
+      );
+      // Flipping skipped rows to real layout settles asynchronously:
+      // a synchronous read right after the flip can still report the
+      // remembered box. Two frames cover style recalc plus layout.
+      await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          ),
+      );
       const user = await page.locator(".message.user").first().boundingBox();
       const response = await page
         .locator(".message.response")
         .first()
         .boundingBox();
+      await page.evaluate(() =>
+        document
+          .querySelector(".transcript-content")
+          ?.classList.remove("anchor-lock"),
+      );
       expect(Math.abs(user.x - response.x)).toBeLessThan(2);
       expect(Math.abs(user.width - response.width)).toBeLessThan(2);
       await expect(page.locator(".message.user").first()).toHaveCSS(
@@ -386,10 +410,22 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     picker.getByRole("combobox", { name: "Model", exact: true }),
   ).toBeFocused();
-  const anchor = await model.boundingBox(),
-    panel = await picker.boundingBox();
-  expect(Math.abs(anchor.x - panel.x)).toBeLessThan(2);
-  expect(Math.abs(anchor.y - panel.y - panel.height - 8)).toBeLessThan(2);
+  // The panel docks after its content lands: place() runs on open for
+  // the shell, then re-places on the content resize, so pin the docked
+  // geometry once it settles instead of sampling mid-growth. The exact
+  // tolerances are unchanged.
+  await expect
+    .poll(async () => {
+      const anchorBox = await model.boundingBox();
+      const panelBox = await picker.boundingBox();
+      if (!anchorBox || !panelBox) return Number.POSITIVE_INFINITY;
+      const delta = Math.max(
+        Math.abs(anchorBox.x - panelBox.x),
+        Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8),
+      );
+      return delta;
+    })
+    .toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
@@ -419,16 +455,36 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     settings.getByRole("button", { name: "Close settings" }),
   ).toBeFocused();
+  // The skeleton can report a mid-growth box on the opening frames
+  // (identical DOM measures 394 then settles at 572), so snapshot it
+  // once two consecutive frames agree instead of sampling one frame.
+  let skeletonLast = -1;
+  await expect
+    .poll(async () => {
+      const height = (await settings.boundingBox())?.height ?? -1;
+      const settled =
+        skeletonLast >= 0 && Math.abs(height - skeletonLast) < 0.5;
+      skeletonLast = height;
+      return settled ? height : -1;
+    })
+    .toBeGreaterThan(0);
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
   await expect(settings.getByLabel("Default permissions")).toBeVisible();
-  expect(
-    Math.abs((await settings.boundingBox()).height - settingsLoadingBox.height),
-  ).toBeLessThan(6);
+  // The loaded form fills in over staged renders (chunk, then config
+  // data), so pin parity once the settled height matches instead of
+  // sampling a mid-render frame. The invariant is unchanged.
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await settings.boundingBox()).height - settingsLoadingBox.height,
+      ),
+    )
+    .toBeLessThan(6);
   const appearance = await settings.getByLabel("Appearance").boundingBox();
   const displayField = await settings
-    .getByLabel("Interface size", { exact: true })
+    .getByLabel("Zoom", { exact: true })
     .locator("..")
     .boundingBox();
   expect(
@@ -480,10 +536,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
   await settingsButton.click();
-  await settings.getByLabel("Interface size", { exact: true }).fill("200");
-  await settings
-    .getByLabel("Conversation text size", { exact: true })
-    .fill("300");
+  await settings.getByLabel("Zoom", { exact: true }).fill("200");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -494,8 +547,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(
     await prompt.evaluate((element) => {
       const style = getComputedStyle(element);
+      // +1px: integer scrollHeight autosize can undershoot fractional
+      // line/padding sums by a sub-pixel at scaled zooms.
       return (
-        element.clientHeight >=
+        element.clientHeight + 1 >=
         parseFloat(style.lineHeight) +
           parseFloat(style.paddingTop) +
           parseFloat(style.paddingBottom)
@@ -504,7 +559,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBe(true);
   await settingsButton.click();
   await settings
-    .getByRole("button", { name: "Reset sizes", exact: true })
+    .getByRole("button", { name: "Reset zoom", exact: true })
     .click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
@@ -857,11 +912,15 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   // no mark (the inline-icon removal).
   await expect(tool.locator(":scope > header")).toHaveCount(0);
   await expect(tool.locator(".tool-disclosure > summary .mark")).toHaveCount(0);
-  const toolBox = await tool.boundingBox();
-  const summaryBox = await tool
-    .locator(".tool-disclosure > summary")
-    .boundingBox();
-  expect(summaryBox.y).toBeGreaterThanOrEqual(toolBox.y);
+  // Atomic read: the stream can shift rows between two boundingBox
+  // calls (skeleton swaps), inverting a split comparison.
+  const edges = await tool.evaluate((element) => {
+    const summary = element.querySelector(".tool-disclosure > summary");
+    const row = element.getBoundingClientRect();
+    const head = summary?.getBoundingClientRect();
+    return { toolY: row.y, summaryY: head?.y ?? row.y };
+  });
+  expect(edges.summaryY).toBeGreaterThanOrEqual(edges.toolY);
   // However long the label grows, it takes the ellipsis and the status
   // metadata stays on one line.
   const toggle = tool.locator(".tool-disclosure > summary");
@@ -1321,18 +1380,15 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Settings",
       exact: true,
     });
-    await settings.getByLabel("Interface size", { exact: true }).fill("50");
-    await settings
-      .getByLabel("Conversation text size", { exact: true })
-      .fill("50");
+    await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web");
     await contained(settings, 390, 70);
-    await settings.getByRole("button", { name: "← Back", exact: true }).tap();
+    await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
-      .getByRole("button", { name: "Reset sizes", exact: true })
+      .getByRole("button", { name: "Reset zoom", exact: true })
       .tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1941,6 +1997,35 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   );
   await expect(followUp).toHaveValue("Retained follow-up");
   await expect(followUp).toBeFocused();
+  // Popup threads carry the same rows and viewers as chat history.
+  const thread = detail.locator('[aria-label="Subagent task"]');
+  await expect(thread.locator(".message")).not.toHaveCount(0);
+  await expect(thread.locator(".tool-disclosure")).not.toHaveCount(0);
+  const toolRow = thread.locator(".tool-disclosure").first();
+  await toolRow.locator("summary").click();
+  await toolRow
+    .getByRole("button", { name: "Tool input/output", exact: true })
+    .click();
+  const toolView = page.getByRole("dialog", {
+    name: "Tool input/output",
+    exact: true,
+  });
+  await expect(toolView).toBeVisible();
+  // Stacked, not swapped: the subagent dialog stays open underneath.
+  await expect(
+    page.getByRole("dialog", { name: "Subagent", exact: true }),
+  ).toBeVisible();
+  await toolView
+    .getByRole("button", { name: "Close tool input/output", exact: true })
+    .click();
+  await expect(toolView).toHaveCount(0);
+  // Follow-up sends from the popup and receipts like the composer.
+  await detail
+    .getByRole("button", { name: "Start follow-up", exact: true })
+    .click();
+  await expect(detail.getByText("Follow-up started.")).toBeVisible({
+    timeout: 20000,
+  });
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
     .click();

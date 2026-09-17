@@ -323,18 +323,26 @@ std::vector<std::filesystem::path> CollaboratorMailFiles(
   return files;
 }
 
-// The prompt, or nothing when the file is unreadable or malformed. Either way
-// the caller unlinks: mail that cannot be delivered would otherwise be retried
-// on every step for as long as the record survives.
-std::optional<std::string> ReadCollaboratorMail(
+// The prompt, sender and hop count, or nothing when the file is unreadable
+// or malformed. Either way the caller unlinks: mail that cannot be
+// delivered would otherwise be retried on every step for as long as the
+// record survives. Missing from/hops means a pre-team file from the parent.
+std::optional<CollaboratorMail> ReadCollaboratorMail(
     const std::filesystem::path& path) {
   std::ifstream input(path);
   json mail = json::parse(input, nullptr, false);
   if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
   std::string prompt = JsonValue(mail, "prompt", std::string());
   if (prompt.empty()) return std::nullopt;
-  return prompt;
+  CollaboratorMail out;
+  out.text = std::move(prompt);
+  out.from = JsonValue(mail, "from", std::string());
+  out.hops = static_cast<int>(JsonValue(mail, "hops", int64_t{0}));
+  if (out.hops < 0) out.hops = 0;
+  return out;
 }
+
+}  // namespace
 
 // The id this process is running as, from the session file the parent handed
 // down. Empty in a process that is not a collaborator.
@@ -348,10 +356,11 @@ std::string OwnCollaboratorId() {
   return name;
 }
 
-}  // namespace
+std::string OwnTeam() { return EnvStr("UAGENT_TEAM"); }
 
 ToolResult WriteCollaboratorMail(const std::string& id,
-                                 const std::string& prompt) {
+                                 const std::string& prompt,
+                                 const std::string& from, int hops) {
   static std::atomic<uint64_t> sequence{0};
   // Zero-padded so a plain filename sort is a chronological one within the
   // second the stamp resolves to.
@@ -361,15 +370,18 @@ ToolResult WriteCollaboratorMail(const std::string& id,
   std::string path = CollaboratorDir() + "/" + id + std::string(kMailInfix) +
                      UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
                      std::to_string(getpid()) + "-" + seq + ".json";
-  json mail = {{"format", 1}, {"prompt", prompt}};
+  json mail = {{"format", 1},
+                 {"prompt", prompt},
+                 {"from", from.empty() ? "parent" : from},
+                 {"hops", hops}};
   return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
                          /*preserve_mode=*/true);
 }
 
-std::vector<std::string> TakeCollaboratorMail(const std::string& id) {
-  std::vector<std::string> prompts;
+std::vector<CollaboratorMail> TakeCollaboratorMail(const std::string& id) {
+  std::vector<CollaboratorMail> prompts;
   for (const std::filesystem::path& path : CollaboratorMailFiles(id)) {
-    std::optional<std::string> prompt = ReadCollaboratorMail(path);
+    std::optional<CollaboratorMail> prompt = ReadCollaboratorMail(path);
     std::error_code error;
     std::filesystem::remove(path, error);
     if (prompt) prompts.push_back(std::move(*prompt));
@@ -381,10 +393,25 @@ void DrainCollaboratorMailIntoSteering() {
   const std::string id = OwnCollaboratorId();
   if (id.empty()) return;
   for (const std::filesystem::path& path : CollaboratorMailFiles(id)) {
-    std::optional<std::string> prompt = ReadCollaboratorMail(path);
+    std::optional<CollaboratorMail> prompt = ReadCollaboratorMail(path);
     // Queued before the unlink, so a crash in between costs a repeat rather
     // than the message. The reverse order would lose it outright.
-    if (prompt) SteeringState().Queue("[parent guidance]\n" + *prompt);
+    if (prompt) {
+      const std::string& from = prompt->from;
+      std::string prefix = "[parent guidance]\n";
+      if (!from.empty() && from != "parent") {
+        // Best-effort sender name; the id alone still routes on failure.
+        std::string name;
+        std::ifstream record(CollaboratorDir() + "/" + from + ".json");
+        if (record) {
+          json state = json::parse(record, nullptr, false);
+          if (state.is_object()) name = JsonValue(state, "name", "");
+        }
+        prefix = "[peer guidance from " +
+                 (name.empty() ? from : name + " (" + from + ")") + "]\n";
+      }
+      SteeringState().Queue(prefix + prompt->text);
+    }
     std::error_code error;
     std::filesystem::remove(path, error);
   }

@@ -22,6 +22,7 @@
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
+#include "include/tools/child_agent.h"
 
 namespace uagent::session {
 namespace {
@@ -382,6 +383,14 @@ class WorkerChannel final : public ApplicationChannel {
       }
     } else if (kind == "steer" || kind == "guide") {
       std::string text = JsonValue(command, "text", "");
+      if (kind == "guide" && text.empty()) {
+        // Mail-first ping: payload is on disk, just drain it into the queue.
+        // Best-effort from the worker thread; PrepareStep drains again anyway.
+        lock.unlock();
+        DrainCollaboratorMailIntoSteering();
+        wake_.Wake();
+        return true;
+      }
       if (!turn_active_ || text.empty() || SteeringState().QueuedCount() >= 8) {
         error = "guidance requires an active turn and space in its queue";
       } else {

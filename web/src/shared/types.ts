@@ -22,10 +22,6 @@ export interface Draft {
   text: string;
   files: Asset[];
 }
-export interface Sizes {
-  display: number;
-  text: number;
-}
 export interface InstallPrompt extends Event {
   prompt(): Promise<void>;
 }
@@ -149,6 +145,9 @@ export interface Block {
   status?: string;
   error?: string;
   duration_ms?: number;
+  // Retained tool_result whose receipt facts are gone: its fallbacks
+  // ("tool"/"running") must never shadow the call record it joins.
+  receipt_missing?: boolean;
   replay?: ToolReplay;
   ttft_ms?: number;
   tokens_per_second?: number;
@@ -188,6 +187,8 @@ export interface Activity {
   agent_id?: string;
   kind?: string;
   label?: string;
+  name?: string;
+  description?: string;
   command?: string;
   status?: string;
   started_ms?: number;
@@ -198,6 +199,9 @@ export interface Activity {
 export interface Collaborator {
   id: string;
   label?: string;
+  name?: string;
+  description?: string;
+  team?: string;
   model?: string;
   status?: string;
   persistent?: boolean;

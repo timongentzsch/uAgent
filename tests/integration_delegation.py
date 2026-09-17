@@ -379,7 +379,7 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
         if "retained-one" in combined:
             match = re.search(r"\[collaborator (agent-[^;\]]+)", combined)
             assert_true(match is not None, combined)
-            if "already owns this conversation's runtime" not in combined:
+            if "persistent limit reached" not in combined:
                 return tool_call(
                     "subagent",
                     {"prompt": "must not run", "persistent": True, "mode": "full"},
@@ -413,9 +413,11 @@ def test_persistent_subagent_reuses_runtime_and_owned_processes(root, home, *, b
         )
 
     with Server([route]) as server:
+        env = base_env(home, server.url)
+        env["UAGENT_PERSISTENT_MAX"] = "1"
         result = run(
             root,
-            base_env(home, server.url),
+            env,
             "--yolo",
             "--json",
             "-p",
@@ -670,10 +672,10 @@ def test_agents_command_lists_a_running_child(root, home, *, binary):
             binary=binary,
         )
         assert_true(result.returncode == 0, result.stderr)
-        assert_true("collaborators" in result.stdout, result.stdout)
+        assert_true("subagents" in result.stdout, result.stdout)
         # The row joins the record on disk with the live job: the id and the
         # mode come from the record, "running" only from the supervisor.
-        listing = result.stdout.split("collaborators", 1)[1]
+        listing = result.stdout.split("subagents", 1)[1]
         assert_true(re.search(r"agent-[0-9a-f]{8}\s+running · lean", listing), listing)
 
 

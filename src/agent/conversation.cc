@@ -162,6 +162,8 @@ void Conversation::Reset(json baseline, std::vector<MessageKind> kinds) {
   next_display_id_ = 1;
   tool_displays_ = json::object();
   display_facts_ = json::object();
+  fact_bytes_.clear();
+  announced_deliveries_ = json::object();
   statistics_ = {{"complete", true}};
   display_bytes_ = 0;
   ResetHistory(std::move(baseline), std::move(kinds));
@@ -228,6 +230,23 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   display_ids_ = std::move(restored_ids);
   display_facts_ = std::move(restored_facts);
   display_bytes_ = JsonEstimatedBytes(display_facts_);
+  fact_bytes_.clear();
+  if (display_facts_.is_object()) {
+    for (const auto& [key, value] : display_facts_.items()) {
+      fact_bytes_[key] =
+          SaturatingAdd(JsonEstimatedBytes(value), key.size());
+    }
+  }
+  // Sessions written before announcement receipts existed restore without
+  // any: the next request announces once, then dedupes from there.
+  announced_deliveries_ = json::object();
+  const json announced =
+      JsonValue(display, "announced", json::object());
+  if (announced.is_object() &&
+      announced.size() <= size_t{1024} &&
+      JsonEstimatedBytes(announced) <= size_t{64} * 1024) {
+    announced_deliveries_ = announced;
+  }
   next_display_id_ = next_id;
   statistics_ = std::move(statistics);
   return true;
@@ -280,6 +299,7 @@ const std::string* Conversation::ToolDisplay(const std::string& call_id) const {
 json Conversation::DisplayMetadata() const {
   return {{"ids", display_ids_},
           {"facts", display_facts_},
+          {"announced", announced_deliveries_},
           {"statistics", statistics_},
           {"next", next_display_id_}};
 }
@@ -321,6 +341,12 @@ json Conversation::RecordEntry(json facts) {
 
 void Conversation::RecordDisplay(std::string key, json facts) {
   constexpr size_t kFactBytes = size_t{64} * 1024;
+  constexpr size_t kFactCount = 4096;
+  constexpr size_t kDisplayBytes = size_t{4} * 1024 * 1024;
+  // Below this size a fact is control data (delivery receipts, links), not
+  // pressure: the count bound still needs a victim when only tiny facts are
+  // left, and then the oldest key goes as before.
+  constexpr size_t kTinyFactBytes = 512;
   if (key.empty() || !facts.is_object()) return;
   auto existing = display_facts_.find(key);
   if (existing != display_facts_.end() && existing->is_object()) {
@@ -330,17 +356,73 @@ void Conversation::RecordDisplay(std::string key, json facts) {
   }
   if (JsonEstimatedBytes(facts) > kFactBytes) return;
   if (existing != display_facts_.end()) {
-    display_bytes_ -= JsonEstimatedBytes(*existing) + key.size();
+    const size_t prior =
+        SaturatingAdd(JsonEstimatedBytes(*existing), key.size());
+    display_bytes_ -= std::min(display_bytes_, prior);
   }
-  display_bytes_ += JsonEstimatedBytes(facts) + key.size();
-  display_facts_[std::move(key)] = std::move(facts);
-  // Metadata is independently bounded. Deterministic eviction by key leaves
-  // an explicit not-recorded fallback when the byte/count ceiling is reached.
-  while (display_facts_.size() > 4096 ||
-         display_bytes_ > size_t{4} * 1024 * 1024) {
-    auto oldest = display_facts_.begin();
-    display_bytes_ -= JsonEstimatedBytes(*oldest) + oldest.key().size();
-    display_facts_.erase(oldest);
+  const size_t bytes =
+      SaturatingAdd(JsonEstimatedBytes(facts), key.size());
+  display_bytes_ = SaturatingAdd(display_bytes_, bytes);
+  display_facts_[key] = facts;
+  fact_bytes_[key] = bytes;
+  // Metadata is independently bounded. Evict the largest fact first: fat
+  // tool rows yield the most headroom, while tiny control receipts
+  // (attachment deliveries) survive pressure that used to delete them by
+  // key order and re-trigger their notices on every later step.
+  while (display_facts_.size() > kFactCount ||
+         display_bytes_ > kDisplayBytes) {
+    auto victim = display_facts_.end();
+    size_t victim_bytes = 0;
+    for (auto it = display_facts_.begin(); it != display_facts_.end();
+         ++it) {
+      size_t candidate = 0;
+      if (const auto sized = fact_bytes_.find(it.key());
+          sized != fact_bytes_.end()) {
+        candidate = sized->second;
+      } else {
+        candidate =
+            SaturatingAdd(JsonEstimatedBytes(*it), it.key().size());
+      }
+      if (victim == display_facts_.end() || candidate > victim_bytes ||
+          (candidate == victim_bytes && it.key() < victim.key())) {
+        victim = it;
+        victim_bytes = candidate;
+      }
+    }
+    if (victim == display_facts_.end()) break;
+    if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
+      victim = display_facts_.begin();
+      victim_bytes = 0;
+      if (const auto sized = fact_bytes_.find(victim.key());
+          sized != fact_bytes_.end()) {
+        victim_bytes = sized->second;
+      } else {
+        victim_bytes =
+            SaturatingAdd(JsonEstimatedBytes(*victim), victim.key().size());
+      }
+    }
+    display_bytes_ -= std::min(display_bytes_, victim_bytes);
+    fact_bytes_.erase(victim.key());
+    display_facts_.erase(victim);
+  }
+}
+
+json Conversation::AnnouncedDeliveries(const std::string& id) const {
+  if (announced_deliveries_.is_object()) {
+    const auto found = announced_deliveries_.find(id);
+    if (found != announced_deliveries_.end() && found->is_array()) {
+      return *found;
+    }
+  }
+  return json::array();
+}
+
+void Conversation::RecordAnnouncedDeliveries(std::string id, json values) {
+  constexpr size_t kAnnouncedIds = 1024;
+  if (id.empty() || !values.is_array()) return;
+  announced_deliveries_[std::move(id)] = std::move(values);
+  while (announced_deliveries_.size() > kAnnouncedIds) {
+    announced_deliveries_.erase(announced_deliveries_.begin());
   }
 }
 

@@ -537,36 +537,42 @@ export default function Library({
           title={dialog === "delete" ? `Delete ${item.name}?` : "Rename memory"}
           close={() => setDialog(null)}
         >
-          {dialog === "delete" ? (
-            <p>
-              Delete this {item.scope}{" "}
-              {kind === "memory" ? "memory" : "skill manifest"}?
-              {kind === "skills" && " Supporting files are kept."}
-            </p>
-          ) : (
-            <Field label="Name">
-              <input
-                value={rename}
-                onInput={(event) => setRename(event.currentTarget.value)}
-              />
-            </Field>
-          )}
-          {error && <LoadError error={error} />}
-          <div class="dialog-actions">
-            <button onClick={() => setDialog(null)}>Cancel</button>
-            <button
-              class="primary"
-              disabled={busy || !online}
-              onClick={() =>
-                mutate(
-                  dialog === "delete" ? "forget" : "rename",
-                  dialog === "rename" ? `${item.scope}/${rename}` : undefined,
-                )
-              }
-            >
-              {dialog === "delete" ? "Delete" : "Rename"}
-            </button>
-          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (busy || !online) return;
+              mutate(
+                dialog === "delete" ? "forget" : "rename",
+                dialog === "rename" ? `${item.scope}/${rename}` : undefined,
+              );
+            }}
+          >
+            {dialog === "delete" ? (
+              <p>
+                Delete this {item.scope}{" "}
+                {kind === "memory" ? "memory" : "skill manifest"}?
+                {kind === "skills" && " Supporting files are kept."}
+              </p>
+            ) : (
+              <Field label="Name">
+                <input
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  autoFocus
+                  value={rename}
+                  onInput={(event) => setRename(event.currentTarget.value)}
+                />
+              </Field>
+            )}
+            {error && <LoadError error={error} />}
+            <div class="dialog-actions">
+              <button type="button" onClick={() => setDialog(null)}>
+                Cancel
+              </button>
+              <button class="primary" disabled={busy || !online} type="submit">
+                {dialog === "delete" ? "Delete" : "Rename"}
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>

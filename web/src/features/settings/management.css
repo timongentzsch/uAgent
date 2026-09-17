@@ -40,10 +40,10 @@
   flex-direction: column;
   text-align: left;
   width: 100%;
-  gap: 2px;
+  gap: calc(2rem / 14);
   border: 0;
   background: none;
-  padding: 6px 8px;
+  padding: calc(6rem / 14) calc(8rem / 14);
   overflow-wrap: anywhere;
 }
 .library-row small,

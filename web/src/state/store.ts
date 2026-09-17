@@ -170,9 +170,14 @@ export function reconcileBlock(
   const preserveText = sameContent && priorTextBytes > changedTextBytes;
   const preserveReasoning =
     sameReasoning && priorReasoningBytes > changedReasoningBytes;
+  // A receipt-less retained block carries the fallback name "tool": keep
+  // the live row's identity, take the retained body.
+  const fallbackName =
+    changed.receipt_missing && prior.name != null ? { name: prior.name } : {};
   return {
     ...prior,
     ...changed,
+    ...fallbackName,
     text: preserveText ? prior.text : changed.text,
     reasoning: preserveReasoning ? prior.reasoning : changed.reasoning,
     truncated: preserveText ? prior.truncated || false : changed.truncated,

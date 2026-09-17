@@ -47,6 +47,15 @@ std::string NormalizedOperation(const json& arguments) {
 
 }  // namespace
 
+void Agent::PushToolResultMessage(const ToolCall& call, json message) {
+  conversation_.Push(std::move(message), MessageKind::kToolResult);
+  conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                              {{"call_id", call.id},
+                               {"response_id", call.response_id},
+                               {"occurrence_id", call.occurrence_id},
+                               {"detail_id", call.detail_id}});
+}
+
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
                              const ToolResult& original, double duration_ms) {
   conversation_.RecordToolDisplay(call.id,
@@ -86,9 +95,9 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
     constexpr char kDuplicate[] =
         "[unchanged duplicate; prior read result remains in recent context]";
-    conversation_.Push(
-        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}},
-        MessageKind::kToolResult);
+    PushToolResultMessage(
+        call,
+        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}});
     PublishMessage();
     DebugLog("tool_result_deduplicated",
              {{"turn", turn_id_},
@@ -103,12 +112,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     const ReadRange& range = *original.read_range;
     message[kReadRangeField] = {range.path, range.first, range.last};
   }
-  conversation_.Push(std::move(message), MessageKind::kToolResult);
-  conversation_.RecordDisplay(conversation_.LastDisplayId(),
-                              {{"call_id", call.id},
-                               {"response_id", call.response_id},
-                               {"occurrence_id", call.occurrence_id},
-                               {"detail_id", call.detail_id}});
+  PushToolResultMessage(call, std::move(message));
   PublishMessage();
 }
 

@@ -108,6 +108,8 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
 | `UAGENT_SUBAGENT_CALLS_PER_TURN` | integer | `32` | restart-required | delegated children one coordinator turn may start |
+| `UAGENT_PERSISTENT_MAX` | integer | `3` | restart-required | live persistent sidekicks kept per conversation (1-8) |
+| `UAGENT_TEAM` | string | empty | restart-required | team id shared by peer collaborators |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
 

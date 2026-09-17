@@ -310,6 +310,10 @@ class Agent {
   void AppendToolResult(const ToolCall& call, const std::string& result,
                         const ToolResult& original, double duration_ms);
 
+  // Pushes a tool_result message together with the ids the retained view
+  // and the UI join on. No push path may skip the metadata half.
+  void PushToolResultMessage(const ToolCall& call, json message);
+
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
                 std::unordered_map<std::string, int64_t>& tool_counts,

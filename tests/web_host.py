@@ -58,6 +58,14 @@ def answer(handler, body):
             },
             finish="tool_calls",
         )
+    if "Review the full task." in prompt and not any(
+        message.get("tool_call_id") == "review-read" for message in body["messages"]
+    ):
+        return tool_call(
+            "read_path",
+            {"path": "."},
+            call_id="review-read",
+        )
     if "Memory receipt probe" in prompt and not any(
         message.get("tool_call_id") == "memory-receipt" for message in body["messages"]
     ):

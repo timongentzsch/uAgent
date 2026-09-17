@@ -154,6 +154,7 @@ AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
     return {{}, "attachment storage limit reached", 413};
   }
   std::string mime = RasterMime(bytes);
+  if (mime.empty()) mime = SvgMime(bytes);
   const bool image = !mime.empty();
   name = Utf8Prefix(std::filesystem::path(name).filename().string(), 240);
   if (name.empty()) {

@@ -251,23 +251,36 @@ json ActivityControl(ProcessSupervisor& processes, const json& request,
 std::string ActivityText(const json& result) {
   for (const char* key : {"activities", "collaborators"}) {
     if (const json* rows = JsonArray(result, key)) {
-      std::string text =
-          std::string(std::string_view(key) == "activities" ? "background work"
-                                                            : key) +
-          " (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
+      const bool agents = std::string_view(key) == "collaborators";
+      std::string text = std::string(agents ? "subagents" : "background work") +
+                         " (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
       for (const json& row : *rows) {
         if (JsonValue(row, "detached", false)) text += "[detached] activity ";
         auto id = row.find("id");
-        text += id == row.end()   ? "—"
-                : id->is_string() ? id->get<std::string>()
-                                  : JsonDump(*id);
+        const std::string id_text =
+            id == row.end()   ? "—"
+            : id->is_string() ? id->get<std::string>()
+                              : JsonDump(*id);
+        if (agents) {
+          // Agents are named teammates, not tasks: name first, id for reuse.
+          const std::string name = JsonValue(row, "name", "");
+          text += name.empty() ? id_text : name + " (" + id_text + ")";
+        } else {
+          text += id_text;
+        }
         text += "  " + JsonValue(row, "status", "") + " · " +
                 JsonValue(row, "mode", JsonValue(row, "label", ""));
         for (const char* field : {"model", "progress"}) {
           const std::string value = JsonValue(row, field, "");
           if (!value.empty()) text += " · " + value;
         }
+        if (agents && JsonValue(row, "persistent", false)) text += " · persistent";
         text += "\n";
+        if (agents) {
+          const std::string about =
+              Utf8Trunc(JsonValue(row, "description", ""), 120);
+          if (!about.empty()) text += "  " + about + "\n";
+        }
       }
       return text;
     }

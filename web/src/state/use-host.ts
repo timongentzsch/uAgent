@@ -142,6 +142,10 @@ export function useHost(
       delete next[id];
       return next;
     });
+    // A queued message for a deleted session can never send (load() has
+    // no session to reconcile it against): drop it with the session
+    // instead of orphaning it in storage.
+    setOutgoing((prior) => prior.filter((item) => item.session_id !== id));
     setUnread((prior) => {
       const next = new Set(prior);
       next.delete(id);
@@ -692,7 +696,7 @@ export function useHost(
       selection.current = id;
       writeSelection(id);
       // Following is owned solely by the transcript scroll stick
-      // (use-transcript-scroll): a switch resumes the saved position
+      // (use-stick-to-bottom): a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.
       // Clearing it here diverged React state (false) from the stick
       // ref (still true), so the pin became a no-op notification

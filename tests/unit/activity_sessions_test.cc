@@ -1090,18 +1090,23 @@ void TestCollaboratorMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("collaborator-mail");
   const fs::path dir = fs::path(UagentDir("collaborators"));
+  auto texts = [](std::vector<CollaboratorMail> mails) {
+    std::vector<std::string> out;
+    for (auto& mail : mails) out.push_back(mail.text);
+    return out;
+  };
 
   // Order is the contract: guidance read out of sequence is guidance the
   // coordinator did not give.
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
   CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
-  std::vector<std::string> taken = TakeCollaboratorMail("agent-aaaa1111");
+  std::vector<std::string> taken = texts(TakeCollaboratorMail("agent-aaaa1111"));
   CHECK(taken == std::vector<std::string>({"first", "second"}));
   // Consumed on read, and only the addressee's: a second take returns nothing
   // while the other collaborator's message is still waiting.
   CHECK(TakeCollaboratorMail("agent-aaaa1111").empty());
-  CHECK(TakeCollaboratorMail("agent-bbbb2222") ==
+  CHECK(texts(TakeCollaboratorMail("agent-bbbb2222")) ==
         std::vector<std::string>({"other"}));
 
   // Unreadable mail is dropped rather than retried: left in place it would be
@@ -1129,7 +1134,7 @@ void TestCollaboratorMail() {
   CHECK(WriteCollaboratorMail("agent-dddd4444", "still waiting").Ok());
   MaintainArtifacts();
   CHECK(fs::exists(record));
-  CHECK(TakeCollaboratorMail("agent-dddd4444") ==
+  CHECK(texts(TakeCollaboratorMail("agent-dddd4444")) ==
         std::vector<std::string>({"still waiting"}));
   CHECK(!fs::exists(forgotten));
 }

@@ -20,6 +20,11 @@
   and the limits of exploratory recursive comparisons.
 - `scratch` accepts script arguments; `grep` supports literal searches and
   returning only the names of files with matching content.
+- Image attachments accept HEIC/HEIF phone photos and SVG diagrams: HEIC
+  normalizes to JPEG and SVG rasterizes to PNG before the normal
+  size-budgeted vision flow, so providers only ever see supported bytes.
+  Unconvertible files fail with an actionable error instead of degrading
+  the route.
 
 ### Changed
 

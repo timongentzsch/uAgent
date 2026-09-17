@@ -1,19 +1,33 @@
 import "./activity.css";
 import { count } from "../../shared/quantities.ts";
 import { duration } from "../../shared/duration.ts";
-import type { Activity, ActivityDetail } from "../../shared/types.ts";
+import type {
+  Activity,
+  ActivityDetail,
+  Block,
+  JSONValue,
+} from "../../shared/types.ts";
 import type { ActivityProps } from "./activity-status.tsx";
-import { useEffect, useRef, useState } from "preact/hooks";
-import { Bot, Terminal, Square } from "lucide-preact";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "preact/hooks";
+import { Bot, Terminal, Square, ArrowDown } from "lucide-preact";
 import { command, readPages } from "../../state/api.ts";
+import { useStickToBottom } from "../../state/use-stick-to-bottom.ts";
 import {
   cleanText,
+  Deferred,
   Field,
   Modal,
   Skeleton,
   LoadError,
   IconButton,
 } from "../../shared/ui.tsx";
+import { RawSkeleton } from "../../shared/loading.tsx";
 
 import { active } from "./activity-status.tsx";
 import { manage } from "../settings/management.tsx";
@@ -29,6 +43,54 @@ function rank(item: Activity): number {
   if (active(item)) return 1;
   return 2;
 }
+
+// Pure fetch half of an activity inspect: memory content or the full
+// agent/activity detail, with older-page appends merged. State (version
+// guards, loading, errors) stays with the caller so panel and nested
+// viewers share the loader without sharing UI state.
+async function fetchActivityDetail(
+  session: ActivityProps["session"],
+  cwd: string,
+  item: ActivityDetail,
+  before?: number,
+  prior?: ActivityDetail | null,
+): Promise<ActivityDetail> {
+  if (item.memory) {
+    const result = await manage("memory", {
+      action: "get",
+      cwd,
+      key: item.memory.key,
+    });
+    if (!result.item || result.item.error)
+      throw new Error(result.item?.error || "Memory is no longer available.");
+    return { ...item, output: result.item.content || "" };
+  }
+  const response = await command("activity", session, {
+    operation: "inspect",
+    activity_id: item.id || item.activity_id || 0,
+    agent_id: item.agent_id || "",
+    ...(before ? { before } : {}),
+  });
+  if (response.pending)
+    throw new Error("Activity is still loading. Try again shortly.");
+  return {
+    ...item,
+    ...response.result,
+    ...(before && prior?.conversation
+      ? {
+          conversation: {
+            ...response.result.conversation,
+            blocks: [
+              ...(response.result.conversation?.blocks || []),
+              ...prior.conversation.blocks,
+            ].slice(0, 256),
+          },
+        }
+      : {}),
+  };
+}
+
+const rawDialog = () => import("../settings/raw.tsx");
 
 export default function Activities({
   items = [],
@@ -46,7 +108,6 @@ export default function Activities({
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const inspection = useRef(0);
 
@@ -56,7 +117,13 @@ export default function Activities({
     },
     [],
   );
-  useEffect(() => setText(""), [detail?.agent_id]);
+
+  // Bound loader shared with nested viewers (which own their UI state).
+  const loadDetail = useCallback(
+    (item: ActivityDetail, before?: number, prior?: ActivityDetail | null) =>
+      fetchActivityDetail(session, cwd, item, before, prior),
+    [session, cwd],
+  );
 
   const rows: Activity[] = [
     ...items,
@@ -88,44 +155,9 @@ export default function Activities({
     setLoading(true);
     setError(null);
     try {
-      if (item.memory) {
-        const result = await manage("memory", {
-          action: "get",
-          cwd,
-          key: item.memory.key,
-        });
-        if (version !== inspection.current) return;
-        if (!result.item || result.item.error)
-          throw new Error(
-            result.item?.error || "Memory is no longer available.",
-          );
-        setDetail({ ...item, output: result.item.content || "" });
-        return;
-      }
-      const response = await command("activity", session, {
-        operation: "inspect",
-        activity_id: item.id || item.activity_id || 0,
-        agent_id: item.agent_id || "",
-        ...(before ? { before } : {}),
-      });
+      const next = await loadDetail(item, before, before ? detail : undefined);
       if (version !== inspection.current) return;
-      if (response.pending)
-        throw new Error("Activity is still loading. Try again shortly.");
-      setDetail((prior) => ({
-        ...item,
-        ...response.result,
-        ...(before && prior?.conversation
-          ? {
-              conversation: {
-                ...response.result.conversation,
-                blocks: [
-                  ...(response.result.conversation?.blocks || []),
-                  ...prior.conversation.blocks,
-                ].slice(0, 256),
-              },
-            }
-          : {}),
-      }));
+      setDetail(next);
     } catch (failure) {
       if (version === inspection.current) setError(failure);
     } finally {
@@ -178,25 +210,17 @@ export default function Activities({
     return () => clearTimeout(timer);
   }, [items, collaborators, detail?.id, detail?.agent_id]);
 
+  // Stop-only: guidance/follow-up submit lives in the modal (per-level
+  // text and receipts), so this never touches message state.
   async function act(item: Activity, operation: string) {
     setBusy(true);
     try {
-      const response = await command("activity", session, {
+      await command("activity", session, {
         operation,
         activity_id: item.id || 0,
         agent_id: item.agent_id || "",
-        text,
+        text: "",
       });
-      if (["message", "followup"].includes(operation) && !response.pending) {
-        setText("");
-        setDetail((prior) => ({
-          ...prior,
-          receipt:
-            operation === "message"
-              ? "Guidance queued for the next step."
-              : "Follow-up started.",
-        }));
-      }
     } catch (failure) {
       setError(failure);
     } finally {
@@ -207,60 +231,87 @@ export default function Activities({
   const ordered = [...rows].sort(
     (a, b) => rank(a) - rank(b) || (a.started_ms || 0) - (b.started_ms || 0),
   );
+  const isAgentRow = (item: Activity) => item.kind === "agent";
+  const agentName = (item: Activity) => item.name || item.label;
+  const visibleAgents = ordered.filter(
+    (item) =>
+      isAgentRow(item) &&
+      (showPast || active(item) || item.status === "failed"),
+  );
+  const visibleTasks = ordered.filter(
+    (item) =>
+      !isAgentRow(item) &&
+      (showPast || active(item) || item.status === "failed"),
+  );
   const past = ordered.filter(
     (item) => !active(item) && item.status !== "failed",
-  );
-  const visible = ordered.filter(
-    (item) => showPast || active(item) || item.status === "failed",
   );
   const close = () => {
     ++inspection.current;
     setDetail(null);
   };
 
+  const renderRow = (item: Activity) => (
+    <li class="activity-row" key={key(item)}>
+      <button
+        type="button"
+        class="quiet activity-open"
+        disabled={!online}
+        onClick={() => inspect(item).catch(report)}
+      >
+        {item.kind === "agent" ? <Bot /> : <Terminal />}
+        <span class="activity-text">
+          <strong>{isAgentRow(item) ? agentName(item) : item.label}</strong>
+          <small>
+            {item.status}
+            {(item.progress || item.model) &&
+              ` · ${cleanText(item.progress || item.model || "")}`}
+          </small>
+          {isAgentRow(item) && item.description && (
+            <small class="muted">{cleanText(item.description)}</small>
+          )}
+        </span>
+        {item.started_ms && (
+          <time>
+            {duration(
+              Math.max(0, item.duration_ms ?? now - item.started_ms),
+            )}
+          </time>
+        )}
+      </button>
+      {active(item) && (
+        <IconButton
+          label={`Stop ${isAgentRow(item) ? agentName(item) : item.label}`}
+          disabled={!online || busy || item.status === "stopping"}
+          onClick={() => act(item, "stop")}
+        >
+          <Square />
+        </IconButton>
+      )}
+    </li>
+  );
+
   return (
     <div class="activity-panel">
-      <ul class="activity-list">
-        {!rows.length && (
-          <li class="activity-empty muted">No background activity.</li>
-        )}
-        {visible.map((item) => (
-          <li class="activity-row" key={key(item)}>
-            <button
-              type="button"
-              class="quiet activity-open"
-              disabled={!online}
-              onClick={() => inspect(item).catch(report)}
-            >
-              {item.kind === "agent" ? <Bot /> : <Terminal />}
-              <span class="activity-text">
-                <strong>{item.label}</strong>
-                <small>
-                  {item.status}
-                  {(item.progress || item.model) &&
-                    ` · ${cleanText(item.progress || item.model || "")}`}
-                </small>
-              </span>
-              {item.started_ms && (
-                <time>
-                  {duration(
-                    Math.max(0, item.duration_ms ?? now - item.started_ms),
-                  )}
-                </time>
-              )}
-            </button>
-            {active(item) && (
-              <IconButton
-                label={`Stop ${item.label}`}
-                disabled={!online || busy || item.status === "stopping"}
-                onClick={() => act(item, "stop")}
-              >
-                <Square />
-              </IconButton>
-            )}
-          </li>
-        ))}
-      </ul>
+      {!rows.length && (
+        <p class="activity-empty muted">No background activity.</p>
+      )}
+      {visibleAgents.length > 0 && (
+        <section aria-label="Subagents">
+          <h3 class="activity-heading">
+            Subagents ({visibleAgents.length})
+          </h3>
+          <ul class="activity-list">{visibleAgents.map(renderRow)}</ul>
+        </section>
+      )}
+      {visibleTasks.length > 0 && (
+        <section aria-label="Background tasks">
+          <h3 class="activity-heading">
+            Background tasks ({visibleTasks.length})
+          </h3>
+          <ul class="activity-list">{visibleTasks.map(renderRow)}</ul>
+        </section>
+      )}
       {past.length > 0 && (
         <button
           type="button"
@@ -277,15 +328,13 @@ export default function Activities({
           running={running}
           online={online}
           session={session}
+          cwd={cwd}
           loading={loading}
-          busy={busy}
           error={error}
-          text={text}
-          setText={setText}
           inspect={inspect}
-          act={act}
           report={report}
           close={close}
+          loadDetail={loadDetail}
         />
       )}
     </div>
@@ -298,30 +347,30 @@ function ActivityModal({
   running,
   online,
   session,
+  cwd,
   loading,
-  busy,
   error,
-  text,
-  setText,
   inspect,
-  act,
   report,
   close,
+  loadDetail,
 }: {
   detail: ActivityDetail;
   rows: Activity[];
   running?: boolean;
   online: boolean;
   session: ActivityProps["session"];
+  cwd: string;
   loading: boolean;
-  busy: boolean;
   error: unknown;
-  text: string;
-  setText: (value: string) => void;
   inspect: (item: ActivityDetail, before?: number) => Promise<void>;
-  act: (item: Activity, operation: string) => Promise<void>;
   report: ActivityProps["report"];
   close: () => void;
+  loadDetail: (
+    item: ActivityDetail,
+    before?: number,
+    prior?: ActivityDetail | null,
+  ) => Promise<ActivityDetail>;
 }) {
   const current =
     rows.find((item) =>
@@ -331,8 +380,115 @@ function ActivityModal({
     ) || detail;
   const isAgent = !!detail.agent_id && !detail.memory;
   const isLive = active(current);
-  const title = detail.memory ? "Memory" : isAgent ? "Subagent" : "Activity";
+  const title = detail.memory
+    ? "Memory"
+    : isAgent
+      ? detail.name || "Subagent"
+      : "Activity";
   const bare = !detail.conversation && !detail.output && !detail.task;
+  // Thread follows the live edge exactly like the transcript (same
+  // hook, keyed by agent): growth pins while sticky, any upward move
+  // breaks, and the jump button below re-pins.
+  const [following, setFollowing] = useState(true);
+  const thread = useStickToBottom(
+    setFollowing,
+    `agent:${detail.agent_id || detail.id || "detail"}`,
+    detail.conversation?.blocks.length || 0,
+  );
+  // Guidance submit lives here (not the panel) so every nesting level
+  // sends with its own text and receipt.
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    setText("");
+    setNotice("");
+  }, [detail.agent_id]);
+  // Nested tool viewer + nested subagent: own dialogs stacked on this
+  // one, so the parent thread keeps its state underneath.
+  const [raw, setRaw] = useState<{ title: string; value: JSONValue } | null>(
+    null,
+  );
+  const [child, setChild] = useState<ActivityDetail | null>(null);
+  const childVersion = useRef(0);
+  // Key scope and the default block reader follow the CHILD
+  // conversation: stable child ids must never inherit parent row state.
+  const childSession = useMemo(
+    () => ({
+      id: detail.agent_id || `activity-${detail.id ?? "detail"}`,
+      generation: "",
+    }),
+    [detail.agent_id, detail.id],
+  );
+  const readDetail = useCallback(
+    (id: string, rawFlag: boolean, signal?: AbortSignal) =>
+      readPages(async (offset) => {
+        const response = await command("activity", session, {
+          operation: "inspect",
+          agent_id: detail.agent_id,
+          detail: id,
+          raw: rawFlag,
+          offset,
+        });
+        const body = response.pending ? undefined : response.result?.body;
+        if (!body) throw new Error("Message is unavailable.");
+        return body;
+      }, signal),
+    [session, detail.agent_id],
+  );
+  const openRaw = useCallback(
+    async (id: string) => {
+      try {
+        const page = await readDetail(id, true);
+        setRaw({
+          title: id.startsWith("t-") ? "Tool input/output" : "Full content",
+          value: id.startsWith("t-")
+            ? (JSON.parse(page.text) as JSONValue)
+            : { output: page.text },
+        });
+      } catch (failure) {
+        report(failure);
+      }
+    },
+    [readDetail, report],
+  );
+  const openNested = useCallback(
+    async (block: Block) => {
+      const version = ++childVersion.current;
+      try {
+        const full = await loadDetail({
+          activity_id: block.activity_id,
+          agent_id: block.agent_id,
+          label: block.activity?.label || "Subagent",
+          status: block.status,
+          command: (block as unknown as { command?: string }).command,
+          output: block.text,
+        });
+        if (version === childVersion.current) setChild(full);
+      } catch (failure) {
+        if (version === childVersion.current) report(failure);
+      }
+    },
+    [loadDetail, report],
+  );
+  const inspectChild = useCallback(
+    async (item: ActivityDetail, before?: number) => {
+      const version = ++childVersion.current;
+      const full = await loadDetail(item, before, before ? child : undefined);
+      if (version === childVersion.current) setChild(full);
+    },
+    [loadDetail, child],
+  );
+  // Live nested rows refresh like the top level (panel owns the top).
+  useEffect(() => {
+    if (!child) return;
+    const item = rows.find((row) =>
+      child.agent_id ? row.agent_id === child.agent_id : row.id === child.id,
+    );
+    if (!item || !active(item)) return;
+    const timer = setTimeout(() => inspectChild(child).catch(report), 150);
+    return () => clearTimeout(timer);
+  }, [rows, child?.id, child?.agent_id]);
   const meta = [
     current.status,
     detail.model,
@@ -351,6 +507,12 @@ function ActivityModal({
           <Skeleton label={`Loading ${title.toLowerCase()}…`} />
         )}
         {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
+
+        {isAgent && detail.description && (
+          <section aria-label="About">
+            <p class="muted">{cleanText(detail.description)}</p>
+          </section>
+        )}
 
         {(detail.directive || detail.statistics) && (
           <section aria-label="Run details">
@@ -388,30 +550,36 @@ function ActivityModal({
 
         {detail.conversation && (
           <section aria-label="Thread">
-            <div class="child-thread" aria-label="Subagent task">
-              <MessageRows
-                blocks={detail.conversation.blocks}
-                read={(id, raw, signal) =>
-                  readPages(async (offset) => {
-                    const response = await command("activity", session, {
-                      operation: "inspect",
-                      agent_id: detail.agent_id,
-                      detail: id,
-                      raw,
-                      offset,
-                    });
-                    const body = response.pending
-                      ? undefined
-                      : response.result?.body;
-                    if (!body) throw new Error("Message is unavailable.");
-                    return body;
-                  }, signal)
-                }
-                online={online}
-                session={session}
-                report={report}
-              />
+            <div
+              class="child-thread"
+              ref={thread.attachScroller}
+              aria-label="Subagent task"
+            >
+              <div ref={thread.attachContent}>
+                <MessageRows
+                  blocks={detail.conversation.blocks}
+                  read={readDetail}
+                  online={online}
+                  session={childSession}
+                  report={report}
+                  inspect={openRaw}
+                  activity={openNested}
+                />
+              </div>
             </div>
+            {!following && (
+              <button
+                type="button"
+                class="jump quiet with-icon"
+                onClick={() => thread.jumpToLatest()}
+              >
+                Jump to latest{" "}
+                {thread.unseen > 0 && (
+                  <span aria-hidden="true">({thread.unseen} new)</span>
+                )}
+                <ArrowDown aria-hidden="true" />
+              </button>
+            )}
             {detail.conversation.more && (
               <button
                 type="button"
@@ -458,9 +626,30 @@ function ActivityModal({
         {isAgent && (
           <form
             class="guidance-form"
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault();
-              act(detail, isLive ? "message" : "followup");
+              if (!text.trim() || sending) return;
+              setSending(true);
+              try {
+                const response = await command("activity", session, {
+                  operation: isLive ? "message" : "followup",
+                  activity_id: detail.id || 0,
+                  agent_id: detail.agent_id || "",
+                  text: text.trim(),
+                });
+                if (!response.pending) {
+                  setText("");
+                  setNotice(
+                    isLive
+                      ? "Guidance queued for the next step."
+                      : "Follow-up started.",
+                  );
+                }
+              } catch (failure) {
+                report(failure);
+              } finally {
+                setSending(false);
+              }
             }}
           >
             <Field label={isLive ? "Guidance" : "Follow-up"}>
@@ -468,6 +657,14 @@ function ActivityModal({
                 value={text}
                 rows={2}
                 onInput={(event) => setText(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (
+                    (event.metaKey || event.ctrlKey) &&
+                    event.key === "Enter"
+                  ) {
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
               />
             </Field>
             <div class="dialog-actions">
@@ -475,20 +672,45 @@ function ActivityModal({
                 type="submit"
                 class="primary"
                 disabled={
-                  !online || busy || !text.trim() || (!isLive && running)
+                  !online || sending || !text.trim() || (!isLive && running)
                 }
               >
-                {busy
+                {sending
                   ? "Sending…"
                   : isLive
                     ? "Send guidance"
                     : "Start follow-up"}
               </button>
             </div>
-            {detail.receipt && <p role="status">{detail.receipt}</p>}
+            {notice && <p role="status">{notice}</p>}
           </form>
         )}
       </div>
+      {raw && (
+        <Modal title={raw.title} close={() => setRaw(null)}>
+          <Deferred
+            load={rawDialog}
+            fallback={<RawSkeleton />}
+            value={raw.value}
+          />
+        </Modal>
+      )}
+      {child && (
+        <ActivityModal
+          detail={child}
+          rows={rows}
+          running={running}
+          online={online}
+          session={session}
+          cwd={cwd}
+          loading={false}
+          error={null}
+          inspect={inspectChild}
+          report={report}
+          close={() => setChild(null)}
+          loadDetail={loadDetail}
+        />
+      )}
     </Modal>
   );
 }

@@ -1,4 +1,5 @@
 import type { Block, PresentedBlock } from "../../shared/types.ts";
+import { isRunningStatus } from "../../shared/display.ts";
 
 // Flat, stable, uniform rows. Every row renders the same chrome, so there is
 // no header/matrix state to derive (and nothing to drift). Two things
@@ -83,18 +84,31 @@ export function presentMessages(blocks: Block[]): PresentedBlock[] {
     Object.fromEntries(
       Object.entries(patch).filter(([, value]) => value !== undefined),
     );
-  const mergeToolRow = (into: PresentedBlock, from: PresentedBlock) => ({
-    ...into,
-    ...defined(from),
-    ...(into.duration_ms != null && from.duration_ms == null
-      ? {
-          status: into.status,
-          duration_ms: into.duration_ms,
-          text: into.text || from.text,
-        }
-      : {}),
-    result_loaded: true,
-  });
+  const mergeToolRow = (into: PresentedBlock, from: PresentedBlock) => {
+    const patch = defined(from) as Partial<PresentedBlock>;
+    if (from.receipt_missing) {
+      // A receipt-less retained row only carries fallback values: never
+      // let its name shadow the call record it joins. Its status is the
+      // honest terminal marker ("complete") the retained message proves,
+      // so it wins over an unfinished-looking row but never over a real
+      // receipt that already landed.
+      delete patch.name;
+      const intoOpen = into.duration_ms == null && isRunningStatus(into.status);
+      if (!intoOpen) delete patch.status;
+    }
+    return {
+      ...into,
+      ...patch,
+      ...(into.duration_ms != null && patch.duration_ms == null
+        ? {
+            status: into.status,
+            duration_ms: into.duration_ms,
+            text: into.text || from.text,
+          }
+        : {}),
+      result_loaded: true,
+    };
+  };
   for (const block of blocks) {
     if (
       block.kind === "assistant" &&

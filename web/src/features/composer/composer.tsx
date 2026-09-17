@@ -14,7 +14,6 @@ import type {
   Act,
   Report,
   Block,
-  Sizes,
 } from "../../shared/types.ts";
 import type { JSX } from "preact";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
@@ -50,11 +49,12 @@ export default function Composer({
   report,
   following,
   jump,
+  unseen = 0,
   activityTarget,
   clearActivity,
   showContext,
   showStatistics,
-  sizes,
+  zoom,
 }: {
   session: Session;
   commands: SlashCommand[];
@@ -70,11 +70,12 @@ export default function Composer({
   report: Report;
   following: boolean;
   jump: () => void;
+  unseen?: number;
   activityTarget: Block | null;
   clearActivity: () => void;
   showContext: () => void;
   showStatistics: () => void;
-  sizes: Sizes;
+  zoom: number;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -195,15 +196,17 @@ export default function Composer({
     let lastWidth = element.clientWidth;
     const resize = () => {
       lastWidth = element.clientWidth;
-      const next = element.scrollHeight;
-      // Guard the write: an identical height must not touch layout, or
-      // the transcript box observer pins to a no-op resize while
-      // content-visibility re-estimates rows above (the 1→2 line wrap
-      // glitch that read as history jumping while typing).
-      if (Math.abs(next - element.clientHeight) < 1 && element.style.height)
-        return;
+      const prev = element.style.height;
+      // Reset before measuring: with a tall height applied, scrollHeight
+      // clamps to the box and a shrink is unobservable (the box grew on
+      // wrap but never shrank back on send or delete). Both writes land
+      // in one synchronous block, so observers only ever see the net
+      // size; restoring an identical height fires no resize (the guard
+      // below keeps the transcript box observer quiet while
+      // content-visibility re-estimates rows above).
       element.style.height = "0px";
-      element.style.height = `${element.scrollHeight}px`;
+      const final = `${element.scrollHeight}px`;
+      element.style.height = final === prev ? prev : final;
     };
     resize();
     // Width-only parent subscription: the textarea's own height growth
@@ -213,7 +216,7 @@ export default function Composer({
       if (element.clientWidth !== lastWidth) resize();
     };
     return observeResize(onParent, element.parentElement!);
-  }, [draft.text, sizes.text, sizes.display, pending?.id, session.generation]);
+  }, [draft.text, zoom, pending?.id, session.generation]);
   const permission = state?.permissions;
   const effective =
     permission?.mode === "default" ? permission.default : permission?.mode;
@@ -229,7 +232,9 @@ export default function Composer({
     >
       {!following && !pending && (
         <button class="jump quiet with-icon" onClick={jump}>
-          Jump to latest <ArrowDown />
+          Jump to latest{" "}
+          {unseen > 0 && <span aria-hidden="true">({unseen} new)</span>}
+          <ArrowDown />
         </button>
       )}
       {pending ? (

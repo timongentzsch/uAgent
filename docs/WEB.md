@@ -65,7 +65,8 @@ responses. Disconnected views stop animation and disable commands.
   details reuse the main conversation renderer and include the full task,
   effective system prompt and child conversation. Compaction leaves the
   conversation in place without opening a dialog.
-- Settings contain appearance, interface scale, text size, default permissions
+- Settings contain appearance, zoom (the entire interface, conversation
+  included), default permissions
   and registered configuration. Memory, skills, schedules and system prompts
   have dedicated editors; see [Management](MANAGEMENT.md) and
   [System prompts](SYSTEM_PROMPTS.md).

@@ -59,6 +59,7 @@ namespace uagent {
   X(TestBlockingWaitCalls)                     \
   X(TestOpenRouterServerSearch)                \
   X(TestAttachmentEncoding)                    \
+  X(TestVectorAndHeicAttachments)              \
   X(TestWorkerBinaryIdentity)                  \
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \
@@ -75,8 +76,12 @@ namespace uagent {
   X(TestProjectInstructionDiscovery)           \
   X(TestMcpContractHelpers)                    \
   X(TestConversation)                          \
+  X(TestAttachmentDeliveryAnnouncements)       \
+  X(TestDisplayFactEvictionKeepsSmallReceipts) \
+  X(TestAttachmentHistoryRendering)            \
   X(TestHistoryReplaySkipsBareHeader)         \
   X(TestCompactionKeepsDisplayIdentity)        \
+  X(TestToolResultHealsMissingMetadata)          \
   X(TestObservabilityEvents)                   \
   X(TestWorkspaceScopedSession)                \
   X(TestProjectTrustTracksSemanticConfig)      \

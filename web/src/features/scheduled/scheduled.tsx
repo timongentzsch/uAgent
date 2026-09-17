@@ -549,21 +549,27 @@ export default function Scheduled({
       )}
       {confirm && task && (
         <Modal title={`Delete ${task.name}?`} close={() => setConfirm(false)}>
-          <p>
-            Future runs will stop. Existing conversations and worktrees are
-            kept.
-          </p>
-          {error && <LoadError error={error} />}
-          <div class="dialog-actions">
-            <button onClick={() => setConfirm(false)}>Cancel</button>
-            <button
-              class="primary"
-              disabled={busy || !online}
-              onClick={() => action("forget")}
-            >
-              Delete
-            </button>
-          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (busy || !online) return;
+              action("forget");
+            }}
+          >
+            <p>
+              Future runs will stop. Existing conversations and worktrees are
+              kept.
+            </p>
+            {error && <LoadError error={error} />}
+            <div class="dialog-actions">
+              <button type="button" onClick={() => setConfirm(false)}>
+                Cancel
+              </button>
+              <button class="primary" disabled={busy || !online} type="submit">
+                Delete
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
     </div>

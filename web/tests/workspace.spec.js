@@ -23,36 +23,31 @@ test("appearance and configuration remain usable at large scales", async ({
     (element) => getComputedStyle(element).fontSize,
   );
   await expect(
-    page.getByText("Scales menus, buttons and interface labels."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Scales messages, tool output and the text you type."),
+    page.getByText("Scales the entire interface, conversation included"),
   ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
-  await page.getByLabel("Interface size", { exact: true }).fill("110");
-  await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
-  await expect(composer).toHaveCSS("font-size", originalText);
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);
-  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
-  await expect(composer).toHaveCSS("font-size", "20px");
-  await expect(page.locator(".conversation-head h1")).toHaveCSS(
+  await page.getByLabel("Zoom", { exact: true }).fill("110");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "1.1");
+  // One dial moves type and spacing together: conversation and chrome
+  // type both grow, unlike the composer staying put before.
+  await expect(composer).not.toHaveCSS("font-size", originalText);
+  await expect(page.locator(".conversation-head h1")).not.toHaveCSS(
     "font-size",
     interfaceText,
   );
-  await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
-  await expect(page.locator("html")).toHaveCSS("--text-scale", "1.25");
-  await page.getByLabel("Conversation text size", { exact: true }).fill("300");
-  await expect(page.locator("html")).toHaveCSS("--text-scale", "3");
-  await page.getByLabel("Interface size", { exact: true }).fill("200");
+  await page.getByLabel("Zoom", { exact: true }).fill("200");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "2");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("Interface size", { exact: true }).fill("110");
-  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
+  await page.getByLabel("Zoom", { exact: true }).fill("100");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "1");
+  await expect(composer).toHaveCSS("font-size", originalText);
   await page
     .getByRole("button", { name: "Advanced configuration", exact: true })
     .click();
@@ -65,7 +60,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator(".configuration")).toContainText(
     "active at the next user turn",
   );
-  await page.getByRole("button", { name: "← Back", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -226,27 +221,27 @@ test("unread completions, background activity and conversation lifecycle", async
     "UI refactor proof",
   );
   await conversationMenu.click();
+  // Live sessions delete directly now: the dialog closes the worker first.
   await expect(
     page
       .locator(".conversation-head")
       .getByRole("menuitem", { name: "Delete", exact: true }),
-  ).toBeDisabled();
-  await page
-    .locator(".conversation-head")
-    .getByRole("menuitem", { name: "Close session", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-line")).toContainText("Saved");
-  await conversationMenu.click();
+  ).toBeEnabled();
   await page
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Delete conversation" }),
-  ).toContainText("UI refactor proof");
+  const deleter = page.getByRole("dialog", { name: "Delete conversation" });
+  await expect(deleter).toContainText("UI refactor proof");
+  await expect(deleter).toContainText("closes first");
   await page
     .getByRole("button", { name: "Delete permanently", exact: true })
     .click();
+  // Close-then-delete chains a worker shutdown: the dialog stays up
+  // until the worker exits and the record is gone.
+  await expect(
+    page.getByRole("dialog", { name: "Delete conversation" }),
+  ).toBeHidden({ timeout: 20000 });
   await expect(page.locator(".conversation-head h1")).toHaveText(
     "Your workspace",
   );

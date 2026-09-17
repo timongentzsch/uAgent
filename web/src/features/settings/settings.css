@@ -7,12 +7,12 @@
 }
 .settings-section {
   border-top: 1px solid var(--line);
-  margin-top: 12px;
-  padding-top: 4px;
+  margin-top: calc(12rem / 14);
+  padding-top: calc(4rem / 14);
 }
 .settings-section > summary {
   cursor: pointer;
-  padding: 6px 0;
+  padding: calc(6rem / 14) 0;
 }
 .subview-head {
   display: flex;
@@ -21,7 +21,7 @@
   position: sticky;
   top: calc(-1 * var(--pad));
   background: var(--bg);
-  padding: 8px 0;
+  padding: calc(8rem / 14) 0;
   z-index: 1;
 }
 .device {

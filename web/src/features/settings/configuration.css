@@ -21,7 +21,7 @@
   overflow-wrap: anywhere;
 }
 .config-row small {
-  margin: 6px 0;
+  margin: calc(6rem / 14) 0;
 }
 .config-value {
   display: flex;

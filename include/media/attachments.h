@@ -26,8 +26,10 @@ struct Attachment {
 
 std::string ImageExtension(const std::string& mime);
 std::string AttachmentMime(const std::string& name);
-// Web uploads require a recognized raster signature, not a filename claim.
+// Web uploads require a recognized image signature, not a filename claim:
+// raster and HEIC magic, or an SVG document root within the scan window.
 std::string RasterMime(std::string_view bytes);
+std::string SvgMime(std::string_view bytes);
 
 std::string ImageDetail();
 

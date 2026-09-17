@@ -2,7 +2,6 @@ import "./settings.css";
 import { SizeControls } from "../../shared/size-controls.tsx";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
-  Sizes,
   InstallPrompt,
   Draft,
   Snapshot,
@@ -19,12 +18,13 @@ import {
 import { useEffect, useRef, useState } from "preact/hooks";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
+import { ArrowLeft } from "lucide-preact";
 import { applyUpdate } from "../../shared/pwa.ts";
 export default function Settings({
   theme,
   setTheme,
-  sizes,
-  setSizes,
+  zoom,
+  setZoom,
   installed,
   install,
   setInstall,
@@ -46,8 +46,8 @@ export default function Settings({
 }: {
   theme: string;
   setTheme: Dispatch<StateUpdater<string>>;
-  sizes: Sizes;
-  setSizes: Dispatch<StateUpdater<Sizes>>;
+  zoom: number;
+  setZoom: Dispatch<StateUpdater<number>>;
   installed: boolean;
   install: InstallPrompt | null;
   setInstall: Dispatch<StateUpdater<InstallPrompt | null>>;
@@ -102,8 +102,13 @@ export default function Settings({
       {advanced ? (
         <>
           <div class="subview-head">
-            <button type="button" onClick={() => setAdvanced(false)}>
-              ← Back
+            <button
+              type="button"
+              class="quiet with-icon"
+              onClick={() => setAdvanced(false)}
+            >
+              <ArrowLeft aria-hidden="true" />
+              Back
             </button>
             <h3>Advanced configuration</h3>
           </div>
@@ -128,7 +133,7 @@ export default function Settings({
                 <option value="light">Light</option>
               </Select>
             </Field>
-            <SizeControls sizes={sizes} change={setSizes} />
+            <SizeControls zoom={zoom} change={setZoom} />
             {permission === null ? (
               error ? (
                 <LoadError

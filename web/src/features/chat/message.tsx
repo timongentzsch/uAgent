@@ -18,7 +18,7 @@ import type {
   Report,
 } from "../../shared/types.ts";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import { Activity as ActivityIcon, Brain, Minimize2 } from "lucide-preact";
+import { Activity as ActivityIcon, Brain, Minimize2, X } from "lucide-preact";
 import {
   DisclosureRow,
   Mark,
@@ -262,12 +262,12 @@ function MessageView({
             block.status === "Guidance queued" &&
             block.request_id && (
               <button
-                class="quiet"
+                class="quiet icon-button"
                 aria-label="Recall guidance to composer"
                 title="Recall to composer"
                 onClick={() => recall(block)}
               >
-                ×
+                <X aria-hidden="true" />
               </button>
             )}
           <MessageMenu

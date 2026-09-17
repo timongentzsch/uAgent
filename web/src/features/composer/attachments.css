@@ -1,19 +1,19 @@
 .attachments {
   display: flex;
-  gap: 6px;
+  gap: calc(6rem / 14);
   flex-wrap: wrap;
-  padding: 6px 0;
+  padding: calc(6rem / 14) 0;
   max-height: calc(var(--viewport-height) * 0.16);
   overflow: auto;
 }
 .composer .attachments {
-  padding: 4px 8px;
+  padding: calc(4rem / 14) calc(8rem / 14);
 }
 .file-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--gap);
-  padding: 4px 6px;
+  padding: calc(4rem / 14) calc(6rem / 14);
   border: 1px solid var(--line);
   max-width: 100%;
   min-width: 0;
@@ -61,7 +61,7 @@
   max-height: 180px;
   object-fit: contain;
   border: 1px solid var(--line);
-  margin: 4px 0;
+  margin: calc(4rem / 14) 0;
 }
 .mention-chip {
   vertical-align: baseline;

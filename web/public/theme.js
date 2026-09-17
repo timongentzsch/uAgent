@@ -1,14 +1,12 @@
-// Run before the stylesheet and app load; keep the native CSP free of inline JS.
+// Runs before the stylesheet and app load; an external file keeps the CSP free of inline JS.
 (() => {
-  let theme;
+  let t;
   try {
-    theme = localStorage.getItem("uagent-theme");
+    t = localStorage.getItem("uagent-theme");
   } catch {}
-  if (theme !== "light" && theme !== "dark")
-    theme = matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  document.documentElement.dataset.theme = theme;
+  if (t !== "light" && t !== "dark")
+    t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
   document.querySelector('meta[name="theme-color"]').content =
-    theme === "dark" ? "#000000" : "#ffffff";
+    t === "dark" ? "#000000" : "#ffffff";
 })();

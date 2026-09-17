@@ -273,9 +273,7 @@ export default function Activities({
         </span>
         {item.started_ms && (
           <time>
-            {duration(
-              Math.max(0, item.duration_ms ?? now - item.started_ms),
-            )}
+            {duration(Math.max(0, item.duration_ms ?? now - item.started_ms))}
           </time>
         )}
       </button>
@@ -298,9 +296,7 @@ export default function Activities({
       )}
       {visibleAgents.length > 0 && (
         <section aria-label="Subagents">
-          <h3 class="activity-heading">
-            Subagents ({visibleAgents.length})
-          </h3>
+          <h3 class="activity-heading">Subagents ({visibleAgents.length})</h3>
           <ul class="activity-list">{visibleAgents.map(renderRow)}</ul>
         </section>
       )}

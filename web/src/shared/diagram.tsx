@@ -4,10 +4,31 @@ import { CodeCopy, Modal } from "./ui.tsx";
 
 // Serialize Mermaid's global renderer and bound retained SVGs. SVG is displayed
 // as an image, so diagram content never creates active elements in the app DOM.
-const cache = new Map<string, string>();
+// Dimensions come from the SVG viewBox so the <img> reserves its exact box
+// before decode: an unsized image first lays out at intrinsic size, then
+// collapses under max-width, and that grow/shrink pair nets to a phantom
+// scroll gesture on engines without native scroll anchoring (WebKit).
+type RenderedDiagram = { svg: string; width: number; height: number };
+const cache = new Map<string, RenderedDiagram>();
 let queue = Promise.resolve();
 let sequence = 0;
-function diagram(source: string, dark: boolean): Promise<string> {
+function diagramSize(svg: string): { width: number; height: number } {
+  const match = svg.match(
+    /viewBox="([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)\s+([\d.\-]+)"/,
+  );
+  if (!match) return { width: 0, height: 0 };
+  const width = Number(match[3]) - Number(match[1]);
+  const height = Number(match[4]) - Number(match[2]);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  )
+    return { width: 0, height: 0 };
+  return { width: Math.round(width), height: Math.round(height) };
+}
+function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
   if (source.length > 20000)
     return Promise.reject(new Error("Diagram is too large"));
   const key = `${dark}:${source}`;
@@ -35,11 +56,12 @@ function diagram(source: string, dark: boolean): Promise<string> {
       },
     });
     const { svg } = await mermaid.render(`diagram-${++sequence}`, source);
+    const rendered = { svg, ...diagramSize(svg) };
     if (svg.length < 512000) {
-      cache.set(key, svg);
+      cache.set(key, rendered);
       while (cache.size > 24) cache.delete(cache.keys().next().value!);
     }
-    return svg;
+    return rendered;
   });
   queue = result.then(
     () => {},
@@ -52,6 +74,10 @@ export default function Diagram({ source }: { source: string }) {
     document.documentElement.dataset.theme === "dark",
   );
   const [url, setURL] = useState("");
+  const [size, setSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -72,8 +98,9 @@ export default function Diagram({ source }: { source: string }) {
       .then((value) => {
         if (active) {
           objectURL = URL.createObjectURL(
-            new Blob([value], { type: "image/svg+xml" }),
+            new Blob([value.svg], { type: "image/svg+xml" }),
           );
+          setSize({ width: value.width, height: value.height });
           setURL(objectURL);
         }
       })
@@ -96,7 +123,12 @@ export default function Diagram({ source }: { source: string }) {
           aria-label="Expand diagram"
           onClick={() => setExpanded(true)}
         >
-          <img src={url} alt="Mermaid diagram" />
+          <img
+            src={url}
+            alt="Mermaid diagram"
+            width={size.width || undefined}
+            height={size.height || undefined}
+          />
         </button>
       )}
       {error && (
@@ -104,7 +136,10 @@ export default function Diagram({ source }: { source: string }) {
           {error}
         </p>
       )}
-      <details open={!url}>
+      {/* Never flip open on resolve: closing the disclosure at the same
+          commit the image lands shrinks the box it just grew, another
+          phantom-gesture pair. Source stays one click away either way. */}
+      <details>
         <summary>
           {url
             ? "Show source"

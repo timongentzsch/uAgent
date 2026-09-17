@@ -154,6 +154,8 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   // steering and is applied by the very next statement, so nothing it queues
   // can strand at the end of a headless turn.
   DrainCollaboratorMailIntoSteering();
+  // Same for linked peer sessions: file mail drained as ordinary steering.
+  DrainSessionMailIntoSteering();
   ApplyQueuedSteering(loop);
   RefreshSystemMessage();
   if (!prompt_error_.empty()) {

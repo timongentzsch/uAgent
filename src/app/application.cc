@@ -16,6 +16,7 @@
 #include <map>
 #include <optional>
 #include <sstream>
+#include <cstdlib>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -278,6 +279,11 @@ void Application::EnsureSessionPath() {
     session_file_ = UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd()) +
                     "/" + UtcStamp("%Y%m%dT%H%M%SZ") + "-" + MakeSessionId() +
                     ".json";
+  }
+  // Peer sessions address this process by its session file; exporting it
+  // here covers the constructor path, resume, and first save alike.
+  if (!session_file_.empty()) {
+    ::setenv("UAGENT_INTERNAL_SESSION_PATH", session_file_.c_str(), 1);
   }
   runtime_.processes.SetOwner(session_file_.empty() ? agent_.SessionId()
                                                     : HashHex(session_file_));

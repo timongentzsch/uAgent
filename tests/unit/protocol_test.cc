@@ -648,6 +648,13 @@ void TestOptions() {
   CHECK(parsed.options.yolo);
   CHECK(parsed.options.prompt == "hello");
   CHECK(parsed.options.attach_paths == std::vector<std::string>({"image.png"}));
+  // --image is the Codex-style alias for --attach.
+  char image_flag[] = "--image";
+  char picture[] = "pic.png";
+  char* image_arguments[] = {executable, image_flag, picture};
+  ParsedOptions imaged = ParseOptions(3, image_arguments);
+  CHECK(imaged.Ok());
+  CHECK(imaged.options.attach_paths == std::vector<std::string>({"pic.png"}));
   CHECK(parsed.options.debug);
   CHECK(parsed.options.debug_path == "trace.jsonl");
   CHECK(parsed.options.json);

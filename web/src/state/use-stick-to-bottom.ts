@@ -23,6 +23,11 @@ const RELOADED =
   )?.type === "reload";
 // Ignore sub-pixel and rubber-band noise when judging scroll direction.
 const MOVE_PX = 2;
+// Coalescing window (ms) for shrink evidence below. WebKit dispatches
+// scroll events asynchronously: a shrink-clamp's event can arrive after
+// regrowth already restored the maximum, erasing the size evidence the
+// fast path checks. The low-water mark below survives that.
+const SHRINK_WINDOW_MS = 1000;
 
 // Single writer for the scroller's anchor mode: manual pins own the
 // bottom while sticky (native adjustments during the initial burst and
@@ -92,7 +97,18 @@ export function useStickToBottom(
   // upward move nobody chose. Comparing maxima across frames tells
   // that clamp apart from real scroll-aways (see the frame below).
   const lastFrameMax = useRef(0);
-  // Scroll positions are per surface: returning to a conversation
+  // Low-water mark of the scrollable maximum: the smallest maximum seen
+  // recently, with its timestamp. A shrink-then-regrow burst (estimate
+  // resolution under arriving rows) clamps the viewport to the shrunken
+  // end; when WebKit delivers that clamp's scroll event late, the live
+  // maximum already recovered and only this mark still proves the clamp.
+  // Consumed on forgive (one clamp, one forgiveness); shrinks re-arm it
+  // in the content observer, so a continued genuine gesture always
+  // breaks on its next event.
+  const lowWater = useRef<{ max: number; at: number }>({
+    max: Infinity,
+    at: 0,
+  });
   // resumes where the reader left it instead of jumping to the end.
   const positions = useRef(new Map<string, number>());
   const keyRef = useRef(sessionKey);
@@ -327,21 +343,37 @@ export function useStickToBottom(
       // lose this position and the next restore would land elsewhere
       // (the webkit-only flake). The frame keeps its copy for re-arm.
       positions.current.set(pendingKey, element.scrollTop);
-      // Fast path (and only unstick writer): any upward move breaks the
-      // stick synchronously, so an observer or layout pin landing before
-      // the frame below cannot yank the reader back down. Only pins move
-      // the viewport down and growth fires no scroll event, so an upward
-      // delta evaluated with zero delay is always the user. The frame
-      // below deliberately never unsticks: by the time it runs, a silent
-      // shrink-clamp (content-visibility estimates resolving, skeleton
-      // swaps) may have lowered scrollTop with no event, and judging
-      // that stale delta would flip the flag while the reader sits
-      // exactly at the bottom. Re-arm stays positional (bottom band,
-      // frame below) and keeps its layout read there, so this fast path
-      // costs no layout. The frame below still runs for re-arm and
-      // position recording.
+      // Fast path (and only unstick writer): an upward move is the user —
+      // unless the geometry proves a clamp. Pins only move the viewport
+      // down and growth fires no scroll event, so an upward delta with
+      // content still below the departure point is always intent. But
+      // when the content shrank under the pinned position, the browser
+      // clamps the viewport up to the shrunken end: an upward move
+      // nobody chose. An empty box (max <= 0, the mount skeleton swap)
+      // never breaks: there is no content to have intent about, and the
+      // frame below is blind there too, so judging would strand fresh
+      // surfaces at the top on every slow load (measured: pin to a
+      // 275px skeleton end, collapse to max 0 within 10ms). Past that,
+      // WebKit can deliver a clamp's event after regrowth restored the
+      // maximum, erasing the live evidence — the low-water mark covers
+      // those deep landings. Everything else breaks: top landings stay
+      // responsive (the frame's at-end rule still heals true end-clamps
+      // once layout exists). Forgiveness consumes the mark (one clamp,
+      // one forgiveness; shrinks re-arm it in the content observer), so
+      // a continued genuine gesture always breaks on its next event.
       if (element.scrollTop < lastTop.current - MOVE_PX) {
-        setSticky(false);
+        const top = element.scrollTop;
+        const max = element.scrollHeight - element.clientHeight;
+        const now = performance.now();
+        if (now - lowWater.current.at > SHRINK_WINDOW_MS)
+          lowWater.current = { max, at: now };
+        const prev = lastTop.current;
+        const intact =
+          max >= prev - MOVE_PX && lowWater.current.max >= prev - MOVE_PX;
+        const deepClamp =
+          top > STICK_PX && lowWater.current.max < prev - MOVE_PX;
+        if (max > 0 && (intact || !deepClamp)) setSticky(false);
+        else lowWater.current = { max, at: now };
       }
       if (frame) return;
       frame = requestAnimationFrame(() => {
@@ -402,6 +434,12 @@ export function useStickToBottom(
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
+      const element = scroller.current;
+      if (element) {
+        const max = element.scrollHeight - element.clientHeight;
+        if (max < lowWater.current.max)
+          lowWater.current = { max, at: performance.now() };
+      }
       if (sticky.current) pinToBottom();
     });
     if (column) observer.observe(column);

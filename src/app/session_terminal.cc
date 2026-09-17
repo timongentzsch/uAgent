@@ -16,6 +16,7 @@
 #include "include/agent/session_view.h"
 #include "include/app/session.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/ui/editor.h"
@@ -224,7 +225,9 @@ class Terminal {
       if (!decision.empty()) {
         Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
       } else if (text.starts_with("/attach ")) {
-        std::string file = Trim(text.substr(8));
+        // Terminals quote dropped paths containing spaces; strip one
+        // surrounding pair so a drop Just Works.
+        std::string file = Unquote(Trim(text.substr(8)));
         if (file == "clear") {
           files.clear();
         } else {
@@ -240,6 +243,19 @@ class Terminal {
       }
     }
     detaching_ = true;
+    if (!files.empty()) {
+      // Staged via /attach but never submitted (EOF/quit/compose-cancel):
+      // say so instead of dropping them silently.
+      std::string dropped = "· " + std::to_string(files.size()) +
+                            " staged attachment" +
+                            (files.size() == 1 ? "" : "s") +
+                            " discarded: nothing was submitted\n";
+      if (raw_) {
+        output_.Write("\r" + TerminalSafe(dropped));
+      } else {
+        fputs(TerminalSafe(dropped).c_str(), stdout);
+      }
+    }
     stop_.Wake();
     if (reader_.joinable()) {
       // Drain output while the presenter finishes; joining with a full pipe

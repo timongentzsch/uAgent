@@ -177,3 +177,18 @@ layout changes centralized. `quantities.ts` and native quantity helpers use
 decimal display units; raw exports retain exact values. Native and browser tests
 use mock providers. Physical iOS keyboard, install and notification behavior
 still requires device validation; browser emulation does not establish it.
+
+### Frontend bundle baseline (`web/scripts/size.js`, CI-gated)
+
+Measured 2026-09-17 at `ead0120` + Safari scroll-anchoring fallback. No
+dependency change since the budgets were set (`65cb7a5`); growth is shell
+surface (swarm messaging, stick-to-bottom rewrite in `21ebc0d`). Entry JS
+is the app shell + Preact; heavy renderers (mermaid, katex, highlight)
+stay in lazy chunks. Gzip caps are unchanged and passing.
+
+| Group | Raw | Gzip | Budget (raw / gzip) |
+| --- | --- | --- | --- |
+| Initial JS | 68,863 | 24,230 | 68 KiB / 25 KiB |
+| Initial CSS | 17,893 | 4,606 | 18 KiB / 4.6 KiB |
+| App (excl. diagrams) | 930,920 | 492,684 | 950 KiB / 520 KiB |
+| Diagrams (lazy) | 5,113,438 | 1,472,072 | 5.2 MiB / 1.6 MiB |

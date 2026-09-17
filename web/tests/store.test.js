@@ -263,6 +263,102 @@ test("tool results keep their assistant response and live sibling state", () => 
   assert.equal(view.streamed.length, 0);
 });
 
+test("identity-less retained tool rows rejoin by call keys in sequence order", () => {
+  // A live transient from an older turn plus a newer retained row already
+  // in view. The retained completion arrives WITHOUT occurrence/response
+  // identity (facts recorded after the emit, legacy paths): it must still
+  // clear the transient and land in sequence position — never appended
+  // after newer rows (the 6:15-after-6:24 report).
+  let view = {
+    metadata: {},
+    state: {
+      view: {
+        blocks: [
+          { id: "m-1", sequence: 1, kind: "assistant", response_id: "r-old" },
+          { id: "m-9", sequence: 9, kind: "assistant", response_id: "r-new" },
+        ],
+      },
+    },
+  };
+  for (const type of ["tool.call", "tool.result"])
+    view = applySessionEvent(view, {
+      kind: "event",
+      type,
+      data: {
+        response_id: "r-old",
+        occurrence_id: "r-old:a",
+        call_id: "a",
+        detail_id: "t-old-a",
+        ...(type === "tool.result"
+          ? { result: "old output", completion_status: "success" }
+          : { name: "run" }),
+      },
+    });
+  assert.equal(view.streamed.length, 1);
+  view = applySessionEvent(view, {
+    kind: "event",
+    type: "message.changed",
+    data: {
+      block: {
+        id: "m-5",
+        sequence: 5,
+        kind: "tool_result",
+        call_id: "a",
+        detail_id: "t-old-a",
+        name: "run",
+        status: "complete",
+        text: "old output",
+      },
+    },
+  });
+  assert.equal(view.streamed.length, 0);
+  assert.deepEqual(
+    view.state.view.blocks.map((block) => block.id),
+    ["m-1", "m-5", "m-9"],
+  );
+});
+
+test("repeated provider call ids across turns never cross-merge", () => {
+  // Same bare call id streaming in a new turn under a fresh detail id:
+  // a retained completion for the older turn (same call id, old detail)
+  // must leave the live transient alone.
+  let view = { metadata: {}, state: { view: { blocks: [] } } };
+  view = applySessionEvent(view, {
+    kind: "event",
+    type: "tool.call",
+    data: {
+      response_id: "r-new",
+      occurrence_id: "r-new:a",
+      call_id: "a",
+      detail_id: "t-new-a",
+      name: "run",
+    },
+  });
+  view = applySessionEvent(view, {
+    kind: "event",
+    type: "message.changed",
+    data: {
+      block: {
+        id: "m-1",
+        sequence: 1,
+        kind: "tool_result",
+        call_id: "a",
+        detail_id: "t-old-a",
+        status: "complete",
+        text: "older turn output",
+      },
+    },
+  });
+  assert.deepEqual(
+    view.streamed.map((block) => block.occurrence_id),
+    ["r-new:a"],
+  );
+  assert.deepEqual(
+    view.state.view.blocks.map((block) => block.id),
+    ["m-1"],
+  );
+});
+
 test("final previews and checkpoints cannot downgrade a fuller response revision", () => {
   const full = "complete streamed body ".repeat(400);
   let view = {

@@ -126,6 +126,17 @@ article.message {
 .transcript-content.anchor-lock .message {
   content-visibility: visible;
 }
+/* Engines without native scroll anchoring (WebKit before Safari 27 —
+   see use-stick-to-bottom.ts) cannot absorb estimate swings: a row
+   resolving from its 240px intrinsic size to its real height yanks
+   every reader below it. Lay those rows out at real sizes instead —
+   full layout cost upfront, zero later shifts. Self-removing:
+   @supports stops matching once anchoring ships. */
+@supports not (overflow-anchor: auto) {
+  .message {
+    content-visibility: visible;
+  }
+}
 /* Live edge: while following, the last rows lay out at real sizes so the
    bottom pin measures exact heights instead of chasing content-visibility
    estimates while typing or streaming (the pin-then-settle chase read as

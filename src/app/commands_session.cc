@@ -87,7 +87,8 @@ void HandleAttach(AppSession& session, const std::string& argument) {
   }
   Attachment attachment;
   std::string error;
-  if (!InspectAttachment(argument, attachment, error)) {
+  // Dropped or pasted paths often arrive quoted; accept one pair.
+  if (!InspectAttachment(Unquote(argument), attachment, error)) {
     printf("%s%s%s\n", RED(), error.c_str(), RST());
     return;
   }

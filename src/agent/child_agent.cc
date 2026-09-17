@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -27,6 +28,7 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/core/output_buffer.h"
+#include "include/tools/session.h"
 
 namespace uagent {
 namespace {
@@ -357,6 +359,124 @@ std::string OwnCollaboratorId() {
 }
 
 std::string OwnTeam() { return EnvStr("UAGENT_TEAM"); }
+
+std::string OwnSessionFile() {
+  const std::string& internal = CollaboratorSessionFile();
+  if (!internal.empty()) return internal;
+  return EnvStr("UAGENT_INTERNAL_SESSION_PATH");
+}
+
+std::string OwnSessionId() {
+  const std::string file = OwnSessionFile();
+  if (file.empty()) return {};
+  std::string name = std::filesystem::path(file).filename().string();
+  for (std::string_view suffix : {std::string_view{".session.json"},
+                                  std::string_view{".json"}}) {
+    if (name.ends_with(suffix) && name.size() > suffix.size()) {
+      name.resize(name.size() - suffix.size());
+      return name;
+    }
+  }
+  return {};
+}
+
+std::string SessionInboxDir() { return UagentDir("sessions") + "/inbox"; }
+
+std::vector<std::filesystem::path> SessionMailFiles(const std::string& id) {
+  std::vector<std::filesystem::path> files;
+  if (id.empty() || SafeFileComponent(id) != id) return files;
+  const std::string prefix = id + ".smail-";
+  std::error_code error;
+  for (std::filesystem::directory_iterator it(SessionInboxDir(), error), end;
+       !error && it != end; it.increment(error)) {
+    std::string name = it->path().filename().string();
+    if (name.starts_with(prefix) && name.ends_with(".json")) {
+      files.push_back(it->path());
+    }
+  }
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
+std::optional<SessionMail> ReadSessionMail(
+    const std::filesystem::path& path) {
+  std::ifstream input(path);
+  json mail = json::parse(input, nullptr, false);
+  if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
+  std::string text = JsonValue(mail, "text", std::string());
+  if (text.empty()) return std::nullopt;
+  SessionMail out;
+  out.text = std::move(text);
+  out.from = JsonValue(mail, "from", std::string());
+  out.hops = static_cast<int>(JsonValue(mail, "hops", int64_t{0}));
+  if (out.hops < 0) out.hops = 0;
+  return out;
+}
+
+ToolResult WriteSessionMail(const std::string& id, const std::string& text,
+                            const std::string& from, int hops) {
+  if (id.empty() || SafeFileComponent(id) != id) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "error: unknown session " + id);
+  }
+  if (text.empty()) {
+    return ToolFailure(ToolErrorCode::kInvalidArguments,
+                       "message requires text");
+  }
+  static std::atomic<uint64_t> sequence{0};
+  std::string seq =
+      std::to_string(sequence.fetch_add(1, std::memory_order_relaxed) % 10000);
+  seq.insert(0, 4 - std::min<size_t>(4, seq.size()), '0');
+  std::string path = SessionInboxDir() + "/" + id + ".smail-" +
+                     UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
+                     std::to_string(getpid()) + "-" + seq + ".json";
+  json mail = {{"format", 1},
+                 {"text", text},
+                 {"from", from},
+                 {"hops", hops}};
+  return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
+                         /*preserve_mode=*/true);
+}
+
+std::vector<SessionMail> TakeSessionMail(const std::string& id) {
+  std::vector<SessionMail> mails;
+  for (const std::filesystem::path& path : SessionMailFiles(id)) {
+    std::optional<SessionMail> mail = ReadSessionMail(path);
+    std::error_code error;
+    std::filesystem::remove(path, error);
+    if (mail) mails.push_back(std::move(*mail));
+  }
+  return mails;
+}
+
+void DrainSessionMailIntoSteering() {
+  const std::string id = OwnSessionId();
+  if (id.empty()) return;
+  const std::vector<std::filesystem::path> files = SessionMailFiles(id);
+  if (files.empty()) return;
+  // Titles once per drain, not per file: the summaries scan is directory IO.
+  std::map<std::string, std::string> titles;
+  for (const json& row : SessionSummaries()) {
+    titles[JsonValue(row, "id", "")] = JsonValue(row, "title", "");
+  }
+  for (const std::filesystem::path& path : files) {
+    std::optional<SessionMail> mail = ReadSessionMail(path);
+    // Gated here, not at take: a message sent before linking is delivered
+    // after linking instead of being dropped or bounced.
+    if (mail && (mail->from.empty() || !SharesLink(mail->from, id))) continue;
+    if (mail) {
+      std::string from = mail->from;
+      auto titled = titles.find(from);
+      if (titled != titles.end() && !titled->second.empty() &&
+          titled->second != from) {
+        from = titled->second + " (" + from + ")";
+      }
+      SteeringState().Queue("[session " + from + "]\n" + mail->text);
+    }
+    std::error_code error;
+    std::filesystem::remove(path, error);
+  }
+}
 
 ToolResult WriteCollaboratorMail(const std::string& id,
                                  const std::string& prompt,

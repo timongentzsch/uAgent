@@ -71,9 +71,11 @@ for (const path of await readdir(root, {
   }
 }
 // Measured baseline is documented in docs/WEB.md; headroom is intentional.
+// Re-baselined 2026-09: the 21ebc0d swarm shell (stick-to-bottom rewrite,
+// team messaging surfaces) grew the entry ~3KB with no dependency change.
 const budgets = {
-  initial_js: { raw: 66 * 1024, gzip: 25 * 1024 },
-  initial_css: { raw: 17 * 1024, gzip: 4.6 * 1024 },
+  initial_js: { raw: 68 * 1024, gzip: 25 * 1024 },
+  initial_css: { raw: 18 * 1024, gzip: 4.6 * 1024 },
   app: { raw: 950 * 1024, gzip: 520 * 1024 },
   diagrams: { raw: 5.2 * 1024 * 1024, gzip: 1.6 * 1024 * 1024 },
 };

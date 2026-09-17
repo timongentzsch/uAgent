@@ -565,6 +565,43 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(JsonValue(live["view"]["blocks"][0], "reasoning", "") == "");
 }
 
+void TestLateRetainedBlockInsertsInSequenceOrder() {
+  // A retained completion arriving after newer rows (replay, pre-facts
+  // emit) lands in sequence position, never appended after them.
+  json view = {{"blocks", json::array()}};
+  MergeDisplayBlock(view, {{"id", "m-9"},
+                           {"sequence", 9},
+                           {"kind", "assistant"},
+                           {"text", "new"}});
+  MergeDisplayBlock(view, {{"id", "m-5"},
+                           {"sequence", 5},
+                           {"kind", "tool_result"},
+                           {"call_id", "a"},
+                           {"detail_id", "t-a"},
+                           {"text", "old"}});
+  REQUIRE(view["blocks"].size() == 2);
+  CHECK(view["blocks"][0]["id"] == "m-5");
+  CHECK(view["blocks"][1]["id"] == "m-9");
+  MergeDisplayBlock(view, {{"id", "m-7"},
+                           {"sequence", 7},
+                           {"kind", "assistant"},
+                           {"text", "mid"}});
+  REQUIRE(view["blocks"].size() == 3);
+  CHECK(view["blocks"][1]["id"] == "m-7");
+  // Sequence-less rows keep their relative order around the insert.
+  MergeDisplayBlock(view,
+                      {{"id", "live-note"},
+                       {"kind", "error"},
+                       {"text", "x"}});
+  MergeDisplayBlock(view, {{"id", "m-6"},
+                           {"sequence", 6},
+                           {"kind", "assistant"},
+                           {"text", "six"}});
+  REQUIRE(view["blocks"].size() == 5);
+  CHECK(view["blocks"][1]["id"] == "m-6");
+  CHECK(view["blocks"].back()["id"] == "live-note");
+}
+
 void TestHistoryReplaySkipsBareHeader() {
   Conversation replay;
   replay.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),

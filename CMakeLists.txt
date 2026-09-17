@@ -181,6 +181,7 @@ add_library(
   src/tools/registry_files.cc
   src/tools/registry_memory.cc
   src/tools/shell.cc
+  src/tools/session.cc
   src/tools/subagent.cc
   src/tools/tool.cc
   src/tools/web_fetch.cc

@@ -62,6 +62,8 @@ namespace uagent {
   X(TestActivityDescriptorAndInputPolicy)      \
   X(TestActivityWaitAndDelivery)               \
   X(TestCollaboratorMail)                      \
+  X(TestSessionMail)                             \
+  X(TestSessionLinks)                            \
   X(TestToolExecutionPolicy)                   \
   X(TestBlockingWaitCalls)                     \
   X(TestOpenRouterServerSearch)                \
@@ -88,6 +90,7 @@ namespace uagent {
   X(TestAttachmentHistoryRendering)            \
   X(TestHistoryReplaySkipsBareHeader)         \
   X(TestCompactionKeepsDisplayIdentity)        \
+  X(TestLateRetainedBlockInsertsInSequenceOrder) \
   X(TestToolResultHealsMissingMetadata)          \
   X(TestObservabilityEvents)                   \
   X(TestWorkspaceScopedSession)                \

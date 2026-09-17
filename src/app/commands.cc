@@ -34,6 +34,7 @@
 #include "include/agent/jobs.h"
 #include "include/tools/memory.h"
 #include "include/agent/process.h"
+#include "include/tools/session.h"
 #include "include/tools/subagent.h"
 #include "include/ui/conversation.h"
 #include "include/ui/sessions.h"
@@ -258,6 +259,29 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       printf("%s", TerminalSafe(ActivityText(result)).c_str());
       fflush(stdout);
       return false;
+    case SlashCommandId::kPeers:
+      result = SessionSlashPeers();
+      printf("%s", TerminalSafe(SessionText(result)).c_str());
+      fflush(stdout);
+      return false;
+    case SlashCommandId::kTell: {
+      result = SessionSlashTell(command.argument);
+      printf("%s\n",
+             TerminalSafe(JsonValue(result, "output",
+                                    JsonValue(result, "error", "")))
+                 .c_str());
+      fflush(stdout);
+      return false;
+    }
+    case SlashCommandId::kLink: {
+      result = SessionSlashLink(command.argument);
+      printf("%s\n",
+             TerminalSafe(JsonValue(result, "output",
+                                    JsonValue(result, "error", "")))
+                 .c_str());
+      fflush(stdout);
+      return false;
+    }
     case SlashCommandId::kDiff:
     case SlashCommandId::kInit:
     case SlashCommandId::kReview:

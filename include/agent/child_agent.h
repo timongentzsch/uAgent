@@ -100,6 +100,34 @@ std::vector<CollaboratorMail> TakeCollaboratorMail(const std::string& id);
 // no-op in a process that is not a collaborator.
 void DrainCollaboratorMailIntoSteering();
 
+// Own session file: the collaborator record for delegated children, the
+// saved session file (UAGENT_INTERNAL_SESSION_PATH, exported on first save) for
+// interactive and web sessions. Empty for headless runs that never save.
+std::string OwnSessionFile();
+// Stable peer id: the session file stem (.session.json/.json stripped).
+// Empty when there is no session file yet.
+std::string OwnSessionId();
+
+// One queued peer message. Same at-least-once file posture as collaborator
+// mail, but between linked sessions instead of parent and child.
+struct SessionMail {
+  std::string text;
+  std::string from;
+  int hops = 0;
+};
+
+// Inbox lives at sessions/inbox/ so the sessions/ debug pruner never mistakes
+// it, and delivery needs no path lookup: the filename carries the recipient.
+ToolResult WriteSessionMail(const std::string& id, const std::string& text,
+                            const std::string& from = "", int hops = 0);
+// Oldest first, consumed as they are read. Ungated: the link check happens
+// at drain time so a message sent before linking still arrives after it.
+std::vector<SessionMail> TakeSessionMail(const std::string& id);
+// Queue arrived peer mail as ordinary steering, skipping senders outside the
+// reader's links. A no-op without a session file. Unlinked mail stays on
+// disk: linking later delivers it.
+void DrainSessionMailIntoSteering();
+
 // Under a session budget children run one at a time: two concurrent ones would
 // each be told the whole remainder and could overshoot together. Returns the
 // refusal to hand back, or nothing when the call may proceed, and reports the

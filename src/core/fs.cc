@@ -380,6 +380,8 @@ void MaintainArtifacts() {
   PruneArtifactTree(GlobalBase() + "/" + kMemoryDir + "/.processed",
                     HistoryDays(), HistoryFiles());
   PruneArtifactTree(UagentDir(kSessionsDir), DebugDays(), DebugFiles());
+  PruneArtifactTree(UagentDir(kSessionsDir) + "/inbox", DebugDays(),
+                    DebugFiles());
   PruneArtifactTree(UagentDir(kBgDir), BgDays(), BgFiles());
   PruneArtifactTree(UagentDir(kArtifactsDir), BgDays(), BgFiles());
   PruneCollaboratorTree(UagentDir("collaborators"), DebugDays(), DebugFiles());

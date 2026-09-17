@@ -104,7 +104,18 @@ void MergeDisplayBlock(json& view, const json& block) {
                JsonValue(item, "response_id", "") == response_id;
       });
   if (found == blocks.end()) {
-    blocks.push_back(block);
+    // Retained rows carry their sequence: insert in position so a late
+    // arrival (replay, pre-facts emit) can never strand older content
+    // after newer rows. Sequence-less rows keep their relative order.
+    auto at = blocks.end();
+    if (block.contains("sequence") && block["sequence"].is_number()) {
+      const auto sequence = block["sequence"].get<uint64_t>();
+      at = std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
+        return item.contains("sequence") && item["sequence"].is_number() &&
+               item["sequence"].get<uint64_t>() > sequence;
+      });
+    }
+    blocks.insert(at, block);
   } else {
     json merged = block;
     const uint64_t old_revision =

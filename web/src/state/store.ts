@@ -34,6 +34,34 @@ export function writeStored(
 
 // Only model-invoked calls produce tool rows; async receipts arrive as message.changed.
 // One incremental projection, also used to hydrate the server's replay.
+// A retained block rejoins the live row it completes. Strong keys first;
+// tool rows additionally match on call + detail identity: retained tool
+// blocks can arrive before their occurrence facts are recorded (or via
+// legacy paths), and an unmatched completion would strand its transient
+// after newer rows. Detail ids are response-scoped when facts resolve,
+// so a differing detail id on both sides vetoes the match — repeated
+// provider call ids across turns must never cross-merge.
+function rejoinsToolRow(changed: any, item: any): boolean {
+  if (!changed || !item) return false;
+  // Single identity, occurrence first: same-response siblings must never
+  // rejoin each other, only the row carrying the occurrence (or, without
+  // one, the whole response).
+  const identity = changed.occurrence_id || changed.response_id;
+  if (
+    identity &&
+    (item.occurrence_id === identity || item.response_id === identity)
+  )
+    return true;
+  return (
+    changed.kind === "tool_result" &&
+    item.kind === "tool_result" &&
+    !!changed.call_id &&
+    item.call_id === changed.call_id &&
+    (changed.detail_id == null ||
+      item.detail_id == null ||
+      item.detail_id === changed.detail_id)
+  );
+}
 export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
   let blocks = prior;
   // Frames omit keys other paths carry (slim live frames vs retained
@@ -130,12 +158,7 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
     }
     if (event.type === "message.changed") {
       const block = data.block;
-      const identity = block?.occurrence_id || block?.response_id;
-      if (identity)
-        blocks = blocks.filter(
-          (item) =>
-            item.response_id !== identity && item.occurrence_id !== identity,
-        );
+      blocks = blocks.filter((item) => !rejoinsToolRow(block, item));
     }
     if (event.type === "error")
       blocks = [
@@ -279,12 +302,8 @@ export function applySessionEvent(
     state = { ...(state || {}), permissions: data.permissions };
   if (event.type === "message.changed" && data.block) {
     const prior = state?.view;
-    const transient = (current.streamed || []).find(
-      (block) =>
-        (!!data.block?.response_id &&
-          block.response_id === data.block.response_id) ||
-        (!!data.block?.occurrence_id &&
-          block.occurrence_id === data.block.occurrence_id),
+    const transient = (current.streamed || []).find((block) =>
+      rejoinsToolRow(data.block, block),
     );
     const changed = reconcileBlock(transient, data.block);
     const blocks = [...(prior?.blocks || [])];
@@ -298,8 +317,21 @@ export function applySessionEvent(
           !!changed.response_id &&
           block.response_id === changed.response_id),
     );
-    if (index < 0) blocks.push(changed);
-    else blocks[index] = reconcileBlock(blocks[index], changed);
+    if (index < 0) {
+      // Retained rows carry their sequence: insert in position so a late
+      // arrival (replay, pre-facts emit) can never strand older content
+      // after newer rows. Sequence-less rows keep their relative order.
+      const sequence = (changed as Block).sequence;
+      const at =
+        typeof sequence === "number"
+          ? blocks.findIndex(
+              (block) =>
+                typeof block.sequence === "number" && block.sequence > sequence,
+            )
+          : -1;
+      if (at < 0) blocks.push(changed);
+      else blocks.splice(at, 0, changed);
+    } else blocks[index] = reconcileBlock(blocks[index], changed);
     state = {
       ...(state || {}),
       view: { ...prior, blocks: blocks.slice(-256) },

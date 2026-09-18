@@ -793,7 +793,7 @@ void Master::Upload(const Request& request, Response& response,
     Error(response, "upload exceeds file/session limit", 413);
     return;
   }
-  auto stored = host_.StoreAsset(request.matches[1].str(), std::move(bytes),
+  auto stored = host_.StoreAsset(request.matches[1].str(), bytes,
                                  request.get_param_value("name"));
   if (!stored.error.empty()) {
     Error(response, stored.error, stored.status);

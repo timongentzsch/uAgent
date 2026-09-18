@@ -298,10 +298,13 @@ std::string ActivityText(const json& result) {
                 JsonValue(row, "mode", JsonValue(row, "label", ""));
         for (const char* field : {"model", "progress"}) {
           const std::string value = JsonValue(row, field, "");
-          if (!value.empty()) text += " · " + value;
+          if (!value.empty()) {
+            text += " · " + value;
+          }
         }
-        if (agents && JsonValue(row, "persistent", false))
+        if (agents && JsonValue(row, "persistent", false)) {
           text += " · persistent";
+        }
         text += "\n";
         if (agents) {
           const std::string about =

@@ -81,8 +81,9 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
   // a later host compares this against the binary on disk. Written only
   // for fresh spawns; a dead-on-arrival spawn leaves no socket, so the
   // next attempt overwrites the record with its own spawn.
-  if (create && connection.socket)
+  if (create && connection.socket) {
     WriteWorkerBinary(session.path, ExecutableIdentity(executable_));
+  }
   return connection;
 }
 
@@ -148,8 +149,9 @@ bool SessionHost::RecycleStaleWorkerLocked(
     const std::shared_ptr<HostSession>& session,
     std::unique_lock<std::mutex>& lock) {
   if (!WorkerBinaryStale(ExecutableIdentity(executable_),
-                         ReadWorkerBinary(session->path)))
+                         ReadWorkerBinary(session->path))) {
     return false;
+  }
   // Binary upgraded since this worker spawned: graceful close, then the
   // caller spawns fresh. Same semantics as user-initiated close of a busy
   // session; a worker that ignores close keeps serving (fail open, retried

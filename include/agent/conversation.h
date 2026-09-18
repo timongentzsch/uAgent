@@ -47,7 +47,7 @@ class Conversation {
   void AddStatistics(const json& delta);
   const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
   const json& DisplayFacts() const { return display_facts_; }
-  void RecordDisplay(std::string key, json facts);
+  void RecordDisplay(const std::string& key, json facts);
   // Delivery receipts already announced as terminal notices. Display facts
   // are evictable, so they cannot dedupe the per-request receipt: this small
   // map (display id -> last announced deliveries array) survives fact

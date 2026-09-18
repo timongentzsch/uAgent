@@ -42,7 +42,7 @@ class AssetStore {
   // size-checks and commits. gate's non-empty return aborts uncommitted.
   // Committed records land in receipt for Unclaim on dispatch failure.
   std::string Claim(const std::string& session_path, const json& ids,
-                    json& command, std::function<std::string()> gate,
+                    json& command, const std::function<std::string()>& gate,
                     AssetClaim& receipt);
   void Unclaim(AssetClaim& receipt);
   // Guards a session-file mutation (rename/delete) that attachment scans

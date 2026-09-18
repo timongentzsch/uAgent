@@ -88,7 +88,7 @@ int CreateTempFile(const std::string& pattern, std::string& path);
 // early return could either leak the file or unlink one the caller kept.
 class ScopedTempFile {
  public:
-  explicit ScopedTempFile(std::string pattern);
+  explicit ScopedTempFile(const std::string& pattern);
   ~ScopedTempFile();
   ScopedTempFile(ScopedTempFile&& other) noexcept;
   ScopedTempFile& operator=(ScopedTempFile&& other) noexcept;

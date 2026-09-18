@@ -862,7 +862,6 @@ void TestAttachmentHistoryRendering() {
 // P1: fork-at-turn truncates message-exclusively at the Nth user turn and
 // stamps lineage; whole-session forks keep the legacy "Fork of" title.
 void TestForkAtTurnAndLineage() {
-  namespace fs = std::filesystem;
   TestWorkspace workspace("fork-at-turn");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();
@@ -934,7 +933,6 @@ void TestForkAtTurnAndLineage() {
 // reset-boundary fact; /share renders user/assistant text plus truncated
 // tool results and never leaks system or internal messages.
 void TestRewindAndShare() {
-  namespace fs = std::filesystem;
   TestWorkspace workspace("rewind-share");
   SessionRecord record;
   record.metadata.cwd = CanonicalCwd();

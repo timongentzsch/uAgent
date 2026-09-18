@@ -242,10 +242,11 @@ class Terminal {
         std::string target = "/reset";
         if (text != "/reset" && text != "/new") {
           std::string arg;
-          if (text.starts_with("/sessions "))
+          if (text.starts_with("/sessions ")) {
             arg = Trim(text.substr(10));
-          else if (text.starts_with("/resume "))
+          } else if (text.starts_with("/resume ")) {
             arg = Trim(text.substr(8));
+          }
           std::string matched = arg.empty() ? "" : MatchSessionPrefix(arg);
           if (!arg.empty() && matched.empty()) {
             WriteTerminalRecord("· no unique session matches \"" +

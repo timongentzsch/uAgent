@@ -14,9 +14,9 @@
 
 namespace uagent {
 
-static const char* kSession = "session-1";
-static const char* kGeneration = "gen-1";
-static const char* kRequest = "0123456789abcdef";
+static constexpr const char* kSession = "session-1";
+static constexpr const char* kGeneration = "gen-1";
+static constexpr const char* kRequest = "0123456789abcdef";
 
 static json CommandEnvelope(const std::string& kind) {
   return {{"session_id", kSession},

@@ -92,8 +92,9 @@ void MergeDisplayBlock(json& view, const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   auto found =
       std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
-        if (JsonValue(item, "id", "") == JsonValue(block, "id", ""))
+        if (JsonValue(item, "id", "") == JsonValue(block, "id", "")) {
           return true;
+        }
         if (!occurrence_id.empty() &&
             JsonValue(item, "occurrence_id", "") == occurrence_id) {
           return true;

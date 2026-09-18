@@ -330,7 +330,7 @@ json Conversation::RecordEntry(json facts) {
   return facts;
 }
 
-void Conversation::RecordDisplay(std::string key, json facts) {
+void Conversation::RecordDisplay(const std::string& key, json facts) {
   constexpr size_t kFactBytes = size_t{64} * 1024;
   constexpr size_t kFactCount = 4096;
   constexpr size_t kDisplayBytes = size_t{4} * 1024 * 1024;

@@ -507,8 +507,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
           const json* ids = JsonArray(arguments, "agent_id");
           if (ids != nullptr) {
             for (const json& entry : *ids) {
-              if (entry.is_string())
+              if (entry.is_string()) {
                 target_ids.push_back(entry.get<std::string>());
+              }
             }
           } else if (!collaborator_id.empty()) {
             target_ids.push_back(collaborator_id);
@@ -961,8 +962,9 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
       if (ids->size() > 1) id += ",+" + std::to_string(ids->size() - 1);
     }
     if (operation == "message") {
-      if (JsonValue(arguments, "broadcast", false))
+      if (JsonValue(arguments, "broadcast", false)) {
         return "[message team] " + prompt;
+      }
       return "[message " + id + "] " + prompt;
     }
     std::string label = SubagentTargetLabel(

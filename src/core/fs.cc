@@ -94,7 +94,7 @@ int CreateTempFile(const std::string& pattern, std::string& path) {
   return fd;
 }
 
-ScopedTempFile::ScopedTempFile(std::string pattern)
+ScopedTempFile::ScopedTempFile(const std::string& pattern)
     : path_(), fd_(CreateTempFile(pattern, path_)) {}
 
 ScopedTempFile::~ScopedTempFile() {

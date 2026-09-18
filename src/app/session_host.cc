@@ -102,8 +102,9 @@ void SessionHost::LoadDrafts() {
     if (entry.path().extension() != ".json") continue;
     std::string bytes, error;
     if (!ReadRegularFile(entry.path().string(), kCatalogueHeaderBytes, bytes,
-                         error))
+                         error)) {
       continue;
+    }
     json draft = json::parse(bytes, nullptr, false);
     auto session = std::make_shared<HostSession>();
     session->id = JsonValue(draft, "id", "");

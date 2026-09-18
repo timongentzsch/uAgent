@@ -282,12 +282,14 @@ void TestAudioVideoAttachments() {
   std::string error;
   // ID3 tags, RIFF/WAVE, FLAC and OggS sniff to speech types.
   fs::path song = root / "song.mp3";
-  CHECK(ToolWriteFile(song.string(), "ID3\x04\x00\x00\x00").Ok());
+  CHECK(ToolWriteFile(song.string(), std::string("ID3\x04\x00\x00\x00", 7))
+            .Ok());
   CHECK(InspectAttachment(song.string(), attachment, error));
   CHECK(attachment.mime == "audio/mpeg");
   CHECK(!attachment.image);
   fs::path wave = root / "clip.wav";
-  CHECK(ToolWriteFile(wave.string(), "RIFF\x24\x00\x00\x00WAVE").Ok());
+  CHECK(ToolWriteFile(wave.string(), std::string("RIFF\x24\x00\x00\x00WAVE", 12))
+            .Ok());
   CHECK(InspectAttachment(wave.string(), attachment, error));
   CHECK(attachment.mime == "audio/wav");
   // BMFF video brands sniff to video/mp4, the inverse of the HEIC check.

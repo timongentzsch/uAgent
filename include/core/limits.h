@@ -15,7 +15,7 @@ namespace uagent {
 // Byte multiples. Prefer these over bare `* 1024` chains so a budget reads
 // as a budget and a second spelling (registry::kMb) cannot drift.
 inline constexpr size_t kKiB = 1024;
-inline constexpr size_t kMiB = 1024 * 1024;
+inline constexpr size_t kMiB = size_t{1024} * 1024;
 
 inline constexpr size_t KiB(size_t n) { return n * kKiB; }
 inline constexpr size_t MiB(size_t n) { return n * kMiB; }

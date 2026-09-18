@@ -262,8 +262,9 @@ class WorkerChannel final : public ApplicationChannel {
         input_ = ApplicationInput{
             .text = std::move(queued.front().text),
             .request_id = std::move(queued.front().request_id)};
-        for (const json& item : queued.front().attachments)
+        for (const json& item : queued.front().attachments) {
           input_->attachments.push_back(AttachmentFromJson(item));
+        }
         for (size_t i = 1; i < queued.size(); ++i) {
           SteeringState().Queue(
               std::move(queued[i].text), std::move(queued[i].request_id),

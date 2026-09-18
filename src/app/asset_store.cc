@@ -184,7 +184,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
 }
 
 std::string AssetStore::Claim(const std::string& session_path, const json& ids,
-                              json& command, std::function<std::string()> gate,
+                              json& command,
+                              const std::function<std::string()>& gate,
                               AssetClaim& receipt) {
   std::lock_guard assets(mutex_);
   if (ids.size() > kUploadCount) return "too many attachments";

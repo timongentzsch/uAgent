@@ -1092,8 +1092,9 @@ void TestCollaboratorMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("collaborator-mail");
   const fs::path dir = fs::path(UagentDir("collaborators"));
-  auto texts = [](std::vector<CollaboratorMail> mails) {
+  auto texts = [](const std::vector<CollaboratorMail>& mails) {
     std::vector<std::string> out;
+    out.reserve(mails.size());
     for (auto& mail : mails) out.push_back(mail.text);
     return out;
   };
@@ -1145,8 +1146,9 @@ void TestCollaboratorMail() {
 void TestSessionMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("session-mail");
-  auto texts = [](std::vector<SessionMail> mails) {
+  auto texts = [](const std::vector<SessionMail>& mails) {
     std::vector<std::string> out;
+    out.reserve(mails.size());
     for (auto& mail : mails) out.push_back(mail.text);
     return out;
   };

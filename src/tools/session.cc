@@ -42,10 +42,12 @@ bool ValidLinkName(const std::string& name) {
 
 // Members whose session file is gone cannot come back; dropping them here
 // keeps links from pinning deleted sessions forever.
-json PruneMembers(json members) {
+json PruneMembers(const json& members) {
   json kept = json::array();
   for (const json& member : members) {
-    if (!member.is_object()) continue;
+    if (!member.is_object()) {
+      continue;
+    }
     const std::string path = JsonValue(member, "path", "");
     if (!path.empty() && !PathExists(path)) continue;
     kept.push_back(member);
@@ -72,7 +74,7 @@ ToolResult WriteLink(const std::string& name, json members) {
                        "error: bad link name");
   }
   json link = {{"format", kSessionLinkFormat},
-               {"members", PruneMembers(std::move(members))}};
+               {"members", PruneMembers(members)}};
   return ToolAtomicWrite(LinkPath(name), JsonDump(link, 2) + "\n",
                          kPrivateFileMode, /*preserve_mode=*/true);
 }

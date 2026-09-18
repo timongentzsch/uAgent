@@ -110,8 +110,7 @@ void TestSessionCommandRejects() {
   wrong_generation["generation"] = "other";
   CHECK(!session::ParseSessionCommand(wrong_generation, kSession, kGeneration,
                                       parsed, error));
-  for (const std::string& bad :
-       {"", "short", "0123456789ABCDEF", "xyz-!@#"}) {
+  for (const std::string bad : {"", "short", "0123456789ABCDEF", "xyz-!@#"}) {
     json command = CommandEnvelope("submit");
     command["request_id"] = bad;
     CHECK(!session::ParseSessionCommand(command, kSession, kGeneration,

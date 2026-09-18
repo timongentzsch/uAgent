@@ -18,6 +18,7 @@
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/process.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/json.h"
@@ -26,7 +27,6 @@
 #include "include/core/skills.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
-#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

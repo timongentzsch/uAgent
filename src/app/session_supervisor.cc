@@ -74,10 +74,9 @@ Connection SessionHost::OpenRuntime(const HostSession& session, bool create,
     options.overrides["UAGENT_APPROVAL"] =
         JsonValue(session.launch, "permissions", "prompt");
   }
-  Connection connection =
-      create ? Open(executable_, session.cwd, session.path,
-                    session.draft_title, options, error)
-               : Connect(session.path);
+  Connection connection = create ? Open(executable_, session.cwd, session.path,
+                                        session.draft_title, options, error)
+                                 : Connect(session.path);
   // Record which executable this worker runs before anyone can adopt it:
   // a later host compares this against the binary on disk. Written only
   // for fresh spawns; a dead-on-arrival spawn leaves no socket, so the
@@ -98,9 +97,8 @@ void SessionHost::DeactivateLocked(HostSession& session) {
   session.error.clear();
   session.state["activity"] = "Ready";
   replay_.Publish(epoch_, session.id, "",
-                    {{"kind", "deactivated"},
-                     {"metadata", Metadata(session)}},
-                    !session.run_id.empty());
+                  {{"kind", "deactivated"}, {"metadata", Metadata(session)}},
+                  !session.run_id.empty());
 }
 
 void SessionHost::Received(HostSession* session, json frame) {
@@ -184,84 +182,83 @@ bool SessionHost::ActivateLocked(const std::shared_ptr<HostSession>& session,
       if (!RecycleStaleWorkerLocked(session, lock)) return true;
       create_now = true;  // recycled: fall through to a fresh spawn
     }
-  if (session->connecting) {
-    error = "session is starting";
-    return false;
-  }
-  session->connecting = true;
-  if (session->reader.joinable()) {
-    lock.unlock();
-    session->reader.join();
-    lock.lock();
-    auto owner = sessions_.find(session->id);
-    if (stopping_ || owner == sessions_.end() || owner->second != session) {
-      session->connecting = false;
-      error = "session was closed while joining its prior runtime";
+    if (session->connecting) {
+      error = "session is starting";
       return false;
     }
-  }
-  lock.unlock();
-  auto connected = OpenRuntime(*session, create_now, error);
-  lock.lock();
-  session->connecting = false;
-  auto owner = sessions_.find(session->id);
-  if (stopping_ || owner == sessions_.end() || owner->second != session) {
-    error = "session was closed while connecting";
-    return false;
-  }
-  if (!connected.socket || !session->stop.Open()) return false;
-  if (session->generation != connected.generation) {
-    session->runtime_sequence = 0;
-  }
-  {
-    std::lock_guard send_lock(session->send_mutex);
-    session->socket = std::move(connected.socket);
-    session->generation = connected.generation;
-  }
-  session->pid = connected.pid;
-  session->exited = false;
-  session->status = "starting";
-  session->error.clear();
-  session->reader = std::thread([this, session = session.get()] {
-    ReadFrames(session->socket.Get(), session->stop.read.Get(), kFrameBytes,
-               [&](json frame) {
-                 Received(session, std::move(frame));
-                 return !stopping_;
-               });
-    std::lock_guard state_lock(mutex_);
-    auto current = sessions_.find(session->id);
-    if (current != sessions_.end() && current->second.get() == session) {
-      outcomes_.FailPending(*session);
-      session->turn_active = false;
-      session->pending = nullptr;
-      if (session->closing) {
-        DeactivateLocked(*session);
-      } else {
-        session->status = "interrupted";
-        session->state["activity"] = "Interrupted";
-        replay_.Publish(epoch_, session->id, session->generation,
-                        {{"kind", "closed"}}, !session->run_id.empty());
+    session->connecting = true;
+    if (session->reader.joinable()) {
+      lock.unlock();
+      session->reader.join();
+      lock.lock();
+      auto owner = sessions_.find(session->id);
+      if (stopping_ || owner == sessions_.end() || owner->second != session) {
+        session->connecting = false;
+        error = "session was closed while joining its prior runtime";
+        return false;
       }
     }
-    session->exited = true;
-    changed_.notify_all();
-  });
-  // Adopted a live worker through Connect: it may predate the executable
-  // (host restarted over it). Recycle through the same gate, then spawn.
-  // Fresh spawns match the record OpenRuntime just wrote and skip this.
-  if (RecycleStaleWorkerLocked(session, lock)) {
-    if (attempt > 0) {
-      error = "worker binary changed during activation";
+    lock.unlock();
+    auto connected = OpenRuntime(*session, create_now, error);
+    lock.lock();
+    session->connecting = false;
+    auto owner = sessions_.find(session->id);
+    if (stopping_ || owner == sessions_.end() || owner->second != session) {
+      error = "session was closed while connecting";
       return false;
     }
-    create_now = true;
-    continue;
-  }
-  replay_.Publish(epoch_, session->id, session->generation,
-                  {{"kind", "activated"},
-                   {"metadata", Metadata(*session)}},
-                  !session->run_id.empty());
-  return true;
+    if (!connected.socket || !session->stop.Open()) return false;
+    if (session->generation != connected.generation) {
+      session->runtime_sequence = 0;
+    }
+    {
+      std::lock_guard send_lock(session->send_mutex);
+      session->socket = std::move(connected.socket);
+      session->generation = connected.generation;
+    }
+    session->pid = connected.pid;
+    session->exited = false;
+    session->status = "starting";
+    session->error.clear();
+    session->reader = std::thread([this, session = session.get()] {
+      ReadFrames(session->socket.Get(), session->stop.read.Get(), kFrameBytes,
+                 [&](json frame) {
+                   Received(session, std::move(frame));
+                   return !stopping_;
+                 });
+      std::lock_guard state_lock(mutex_);
+      auto current = sessions_.find(session->id);
+      if (current != sessions_.end() && current->second.get() == session) {
+        outcomes_.FailPending(*session);
+        session->turn_active = false;
+        session->pending = nullptr;
+        if (session->closing) {
+          DeactivateLocked(*session);
+        } else {
+          session->status = "interrupted";
+          session->state["activity"] = "Interrupted";
+          replay_.Publish(epoch_, session->id, session->generation,
+                          {{"kind", "closed"}}, !session->run_id.empty());
+        }
+      }
+      session->exited = true;
+      changed_.notify_all();
+    });
+    // Adopted a live worker through Connect: it may predate the executable
+    // (host restarted over it). Recycle through the same gate, then spawn.
+    // Fresh spawns match the record OpenRuntime just wrote and skip this.
+    if (RecycleStaleWorkerLocked(session, lock)) {
+      if (attempt > 0) {
+        error = "worker binary changed during activation";
+        return false;
+      }
+      create_now = true;
+      continue;
+    }
+    replay_.Publish(epoch_, session->id, session->generation,
+                    {{"kind", "activated"}, {"metadata", Metadata(*session)}},
+                    !session->run_id.empty());
+    return true;
   }  // for (attempt): single pass unless a stale worker recycled above
 }
 
@@ -331,8 +328,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
   const std::string type = JsonValue(frame, "type", "");
   if (!session.run_id.empty()) {
     if (type == "turn.completed") {
-      const std::string outcome =
-          JsonValue(frame["data"], "outcome", "error");
+      const std::string outcome = JsonValue(frame["data"], "outcome", "error");
       session.run_result = RunResultFor(outcome);
       if (session.run_result == "failed") {
         session.error = "Turn ended: " + outcome;

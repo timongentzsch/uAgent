@@ -13,6 +13,7 @@
 
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
+#include "include/agent/tool_presentation.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
@@ -21,7 +22,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/tool_activity.h"
-#include "include/agent/tool_presentation.h"
 
 namespace uagent {
 namespace {

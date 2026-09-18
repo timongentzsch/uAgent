@@ -102,8 +102,7 @@ json ResponsesContent(const json& content, bool assistant) {
       if (!audio) continue;
       json payload;
       if (audio->contains("data")) payload["data"] = (*audio)["data"];
-      if (audio->contains("format"))
-        payload["format"] = (*audio)["format"];
+      if (audio->contains("format")) payload["format"] = (*audio)["format"];
       if (!payload.empty()) {
         blocks.push_back(
             {{"type", "input_audio"}, {"input_audio", std::move(payload)}});
@@ -602,6 +601,5 @@ std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
   return wire_cache_.Serialize(BuildRequestBody(
       messages, tool_schemas, session_id, web_available, &wire_cache_));
 }
-
 
 }  // namespace uagent

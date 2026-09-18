@@ -8,12 +8,12 @@
 #include <cstdio>
 #include <string>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/term.h"
-#include "include/agent/child_agent.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
-#include "include/agent/tool_presentation.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
@@ -272,18 +272,16 @@ void TestPollCollapse() {
 // replay facts keep the legacy synthesis.
 void TestReplayBlocksMirrorLiveRows() {
   TerminalPresenter presenter;
-  const json call_replay = {{"title", "[1] read_path"},
-                            {"summary", "a.txt"},
-                            {"poll", false}};
-  const json tools = json::array(
-      {{{"call_id", "call-0"},
-        {"name", "read_path"},
-        {"activity", json::object({{"category", "explore"}})},
-        {"replay", call_replay}}});
+  const json call_replay = {
+      {"title", "[1] read_path"}, {"summary", "a.txt"}, {"poll", false}};
+  const json tools =
+      json::array({{{"call_id", "call-0"},
+                    {"name", "read_path"},
+                    {"activity", json::object({{"category", "explore"}})},
+                    {"replay", call_replay}}});
   std::string drawn = CaptureStdout([&] {
-    presenter.Block({{"kind", "assistant"},
-                     {"text", "all three read"},
-                     {"tools", tools}});
+    presenter.Block(
+        {{"kind", "assistant"}, {"text", "all three read"}, {"tools", tools}});
   });
   CHECK(drawn.find("all three read\n") != std::string::npos);
   CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
@@ -333,8 +331,9 @@ void TestReplayBlocksMirrorLiveRows() {
   CHECK(drawn.find("Explored") != std::string::npos);
   // Legacy blocks without replay facts keep the old synthesis.
   drawn = CaptureStdout([&] {
-    presenter.Block(
-        {{"kind", "tool_result"}, {"name", "read_path"}, {"status", "success"}});
+    presenter.Block({{"kind", "tool_result"},
+                     {"name", "read_path"},
+                     {"status", "success"}});
   });
   CHECK(drawn.find("read_path \u00b7 success") != std::string::npos);
 }

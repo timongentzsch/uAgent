@@ -554,7 +554,12 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
                 raw=b"<svg onload='alert(1)'></svg>",
                 headers={"Content-Type": "image/png"},
             )
-            assert_true(status == 200 and not generic["image"], generic)
+            # SVG sniffs as an image (providers only ever see its raster);
+            # the claimed Content-Type is distrusted either way.
+            assert_true(
+                status == 200 and generic["image"] and generic["mime"] == "image/svg+xml",
+                generic,
+            )
             status, body, headers = client.request(
                 f"/api/sessions/{session['id']}/assets/{generic['id']}"
             )

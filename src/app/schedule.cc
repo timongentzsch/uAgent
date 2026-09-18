@@ -154,8 +154,8 @@ json ScheduleCalendar(const json& request) {
   } else if (type == "interval") {
     int64_t interval = JsonValue(schedule, "seconds", int64_t{0});
     int64_t start = JsonValue(schedule, "start", int64_t{0});
-    if (interval < kSecondsPerMinute || interval > kSecondsPerYear || start < 0 ||
-        start > kMaxScheduleEpoch) {
+    if (interval < kSecondsPerMinute || interval > kSecondsPerYear ||
+        start < 0 || start > kMaxScheduleEpoch) {
       return {{"error", "interval must be between one minute and one year"}};
     }
     int64_t next = start > after

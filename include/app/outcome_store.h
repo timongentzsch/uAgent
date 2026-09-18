@@ -10,11 +10,11 @@
 // a log with nothing completable refuses rather than forgets a live
 // command. Bodies live in src/app/outcome_store.cc.
 
+#include <condition_variable>
 #include <cstddef>
 #include <map>
 #include <memory>
 #include <mutex>
-#include <condition_variable>
 #include <string>
 
 #include "include/core/json.h"

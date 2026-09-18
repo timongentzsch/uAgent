@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/memory_store.h"
 #include "include/agent/session_store.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
@@ -17,7 +18,6 @@
 #include "include/core/skills.h"
 #include "include/mcp/config.h"
 #include "include/mcp/discover.h"
-#include "include/agent/memory_store.h"
 #include "include/mcp/register.h"
 #include "include/mcp/result.h"
 #include "include/mcp/rpc.h"

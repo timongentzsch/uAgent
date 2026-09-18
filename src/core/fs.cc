@@ -399,8 +399,8 @@ std::string MakeSessionId() {
 }
 
 bool AtomicWriteFile(const std::string& path, const std::string& content,
-                            mode_t create_mode, bool preserve_mode,
-                            std::string& error, bool overwrite) {
+                     mode_t create_mode, bool preserve_mode, std::string& error,
+                     bool overwrite) {
   namespace fs = std::filesystem;
   std::error_code ec;
   fs::path target(path);
@@ -509,9 +509,7 @@ std::string CanonicalCwd() {
       std::filesystem::weakly_canonical(std::filesystem::current_path(), ec);
   return ec ? std::filesystem::current_path().string() : path.string();
 }
-std::string WorkspaceId(const std::string& root) {
-  return HashHex(root);
-}
+std::string WorkspaceId(const std::string& root) { return HashHex(root); }
 bool LockFileExclusive(int fd) {
   int result;
   do {
@@ -520,7 +518,7 @@ bool LockFileExclusive(int fd) {
   return result == 0;
 }
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                              std::string& error) {
+                       std::string& error) {
   Fd fd(open(path.c_str(), O_CREAT | O_WRONLY | O_APPEND, kPrivateFileMode));
   if (!fd) {
     error = strerror(errno);
@@ -537,7 +535,7 @@ bool AppendPrivateLine(const std::string& path, const std::string& line,
   return written;
 }
 bool TakePrivateText(const std::string& path, std::string& content,
-                            std::string& error) {
+                     std::string& error) {
   content.clear();
   Fd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
   if (!fd) {
@@ -600,7 +598,7 @@ std::string DisplayPath(const std::string& path) {
   return relative.string();
 }
 bool PathWithin(const std::filesystem::path& path,
-                       const std::filesystem::path& root) {
+                const std::filesystem::path& root) {
   auto p = path.lexically_normal();
   auto r = root.lexically_normal();
   auto pi = p.begin(), ri = r.begin();

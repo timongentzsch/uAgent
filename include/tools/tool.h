@@ -50,7 +50,7 @@ struct ToolArgumentIssue {
 };
 
 ToolArgumentIssue ArgumentIssue(std::string code, std::string message,
-                                       std::string field = {});
+                                std::string field = {});
 
 struct ToolArtifact {
   std::string path;
@@ -202,7 +202,7 @@ ToolPolicy ToolPolicyFromEnvironment();
 void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy);
 
 Tool MakeTool(std::string name, std::string description, json parameters,
-                     Tool::Run run);
+              Tool::Run run);
 
 Tool& AddTool(std::vector<Tool>& tools, Tool tool);
 

@@ -27,8 +27,7 @@ AssetStoreResult SessionHost::StoreAsset(const std::string& session_id,
     }
     session_path = found->second->path;
   }
-  AssetStoreResult stored =
-      assets_.Store(session_path, bytes, std::move(name));
+  AssetStoreResult stored = assets_.Store(session_path, bytes, std::move(name));
   if (!stored.error.empty()) return stored;
   {
     std::lock_guard lock(mutex_);

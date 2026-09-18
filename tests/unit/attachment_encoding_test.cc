@@ -8,10 +8,10 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/core/config.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
-#include "include/agent/jobs.h"
 #include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 
@@ -93,10 +93,9 @@ void TestAttachmentEncoding() {
   // Re-reading an unchanged file in the same request references the first
   // copy: one payload, one delivery row, no repeat rendering per step.
   error.clear();
-  json twin =
-      json::array({{{"role", "user"},
-                    {"content", AttachmentContent("again", {image_attachment},
-                                                    error)}}});
+  json twin = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("again", {image_attachment}, error)}}});
   CHECK(error.empty());
   twin[0]["content"].push_back(twin[0]["content"][1]);
   capabilities.SetInputModalities(json::array({"text", "image", "pdf"}));
@@ -107,8 +106,8 @@ void TestAttachmentEncoding() {
   CHECK(deliveries.size() == 1);
   CHECK(deliveries[0]["delivery"] == "Image");
   CHECK(request[0]["content"].size() == 3);
-  CHECK(JsonValue(request[0]["content"][2], "text", "").find(
-            "earlier attachment") != std::string::npos);
+  CHECK(JsonValue(request[0]["content"][2], "text", "")
+            .find("earlier attachment") != std::string::npos);
   size_t image_parts = 0;
   for (const json& part : request[0]["content"]) {
     if (JsonValue(part, "type", "") == "image_url") ++image_parts;
@@ -152,9 +151,11 @@ void TestAttachmentEncoding() {
       steer_error);
   CHECK(!steer_error.empty());
   CHECK(!missing_kind);
-  json resolved = json::array(
-      {{{"path", image_path.string()}, {"name", "steer.png"},
-        {"mime", "image/png"}, {"image", true}, {"id", "abc123"}}});
+  json resolved = json::array({{{"path", image_path.string()},
+                                {"name", "steer.png"},
+                                {"mime", "image/png"},
+                                {"image", true},
+                                {"id", "abc123"}}});
   steer_error.clear();
   auto [composed, composed_kind] =
       ComposeSteeredContent("look", resolved, steer_error);
@@ -196,8 +197,8 @@ void TestVectorAndHeicAttachments() {
         "image/svg+xml");
   CHECK(SvgMime("\xEF\xBB\xBF  \n<!-- c -->\n<!DOCTYPE svg>\n<svg>") ==
         "image/svg+xml");
-  CHECK(SvgMime("<?xml version=\"1.0\"?>" + std::string(200, ' ') +
-                "<svg>") == "image/svg+xml");
+  CHECK(SvgMime("<?xml version=\"1.0\"?>" + std::string(200, ' ') + "<svg>") ==
+        "image/svg+xml");
   CHECK(SvgMime("<SVG></SVG>") == "image/svg+xml");
   CHECK(SvgMime("<html><body></body></html>").empty());
   CHECK(SvgMime("<?xml version=\"1.0\"?><html/>").empty());
@@ -206,9 +207,9 @@ void TestVectorAndHeicAttachments() {
   CHECK(SvgMime("<svgx></svgx>").empty());
 
   namespace fs = std::filesystem;
-  fs::path root = fs::temp_directory_path() /
-                  ("uagent-vector-test-" +
-                   std::to_string(static_cast<int64_t>(getpid())));
+  fs::path root =
+      fs::temp_directory_path() /
+      ("uagent-vector-test-" + std::to_string(static_cast<int64_t>(getpid())));
   fs::create_directories(root);
   Attachment attachment;
   std::string error;
@@ -222,9 +223,9 @@ void TestVectorAndHeicAttachments() {
   CHECK(attachment.mime == "image/svg+xml");
   // A long prolog hides <svg past the old 32-byte sniff window.
   fs::path prolog = root / "prolog.svg";
-  CHECK(ToolWriteFile(prolog.string(),
-                      "<?xml version=\"1.0\"?>\n<!--" +
-                          std::string(300, 'x') + "-->\n<svg></svg>")
+  CHECK(ToolWriteFile(prolog.string(), "<?xml version=\"1.0\"?>\n<!--" +
+                                           std::string(300, 'x') +
+                                           "-->\n<svg></svg>")
             .Ok());
   error.clear();
   CHECK(InspectAttachment(prolog.string(), attachment, error));
@@ -291,9 +292,9 @@ void TestAudioVideoAttachments() {
   CHECK(attachment.mime == "audio/wav");
   // BMFF video brands sniff to video/mp4, the inverse of the HEIC check.
   fs::path clip = root / "clip.mp4";
-  CHECK(ToolWriteFile(clip.string(),
-                        std::string("\x00\x00\x00\x20", 4) + "ftyp" +
-                            "mp41" + std::string(64, '\0'))
+  CHECK(ToolWriteFile(clip.string(), std::string("\x00\x00\x00\x20", 4) +
+                                         "ftyp" + "mp41" +
+                                         std::string(64, '\0'))
             .Ok());
   CHECK(InspectAttachment(clip.string(), attachment, error));
   CHECK(attachment.mime == "video/mp4");
@@ -301,11 +302,11 @@ void TestAudioVideoAttachments() {
   // Magic wins over the declared type the way it does for images: a PNG
   // renamed .mp3 stays an image and never enters the speech pipeline.
   fs::path spoof = root / "spoof.mp3";
-  CHECK(ToolWriteFile(spoof.string(),
-                        std::string("\x89PNG\r\n\x1a\n", 8) +
-                            std::string("\x00\x00\x00\x0dIHDR", 8) +
-                            std::string(16, '\0'))
-            .Ok());
+  CHECK(
+      ToolWriteFile(spoof.string(), std::string("\x89PNG\r\n\x1a\n", 8) +
+                                        std::string("\x00\x00\x00\x0dIHDR", 8) +
+                                        std::string(16, '\0'))
+          .Ok());
   CHECK(InspectAttachment(spoof.string(), attachment, error));
   CHECK(attachment.image);
   // An inconclusive sniff keeps the declared container for the provider.
@@ -316,8 +317,7 @@ void TestAudioVideoAttachments() {
   // Wire shapes: raw base64 plus a format word for speech, a data URL
   // mirroring image_url for video.
   ProviderCapabilities capabilities;
-  capabilities.SetInputModalities(
-      json::array({"text", "audio", "video"}));
+  capabilities.SetInputModalities(json::array({"text", "audio", "video"}));
   CHECK(capabilities.audio_input);
   CHECK(capabilities.video_input);
   CHECK(!capabilities.image_input);
@@ -332,8 +332,7 @@ void TestAudioVideoAttachments() {
                            &deliveries));
   CHECK(error.empty());
   CHECK(deliveries[0]["delivery"] == "Audio");
-  const json* audio = JsonObject(
-      request[0]["content"][1], "input_audio");
+  const json* audio = JsonObject(request[0]["content"][1], "input_audio");
   CHECK(audio != nullptr);
   CHECK(JsonValue(*audio, "format", "") == "mp3");
   CHECK(!JsonValue(*audio, "data", "").empty());
@@ -361,10 +360,10 @@ void TestAudioVideoAttachments() {
                            &deliveries));
   CHECK(deliveries[0]["delivery"] == "File reference");
   CHECK(JsonDump(request).find("input_audio") == std::string::npos);
-  CHECK(std::string(ModelAudioInputInstruction(false)).find(
-            "Audio input unavailable") != std::string::npos);
-  CHECK(std::string(ModelVideoInputInstruction(false)).find(
-            "Video input unavailable") != std::string::npos);
+  CHECK(std::string(ModelAudioInputInstruction(false))
+            .find("Audio input unavailable") != std::string::npos);
+  CHECK(std::string(ModelVideoInputInstruction(false))
+            .find("Video input unavailable") != std::string::npos);
   CHECK(std::string(ModelAudioInputInstruction(true)).empty());
   CHECK(std::string(ModelVideoInputInstruction(true)).empty());
 

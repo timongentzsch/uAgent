@@ -1,15 +1,15 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "src/tools/registry_internal.h"
-
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "include/core/env.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
 #include "include/tools/memory.h"
+#include "src/tools/registry_internal.h"
 
 namespace uagent {
 

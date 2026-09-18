@@ -63,8 +63,9 @@ std::string ExecutableIdentity(const std::string& executable) {
   if (ec) return "";
   const auto mtime = std::filesystem::last_write_time(executable, ec);
   if (ec) return "";
-  return std::to_string(static_cast<long long>(mtime.time_since_epoch().count())) +
-         ":" + std::to_string(static_cast<unsigned long long>(bytes));
+  return std::to_string(
+             static_cast<int64_t>(mtime.time_since_epoch().count())) +
+         ":" + std::to_string(static_cast<uint64_t>(bytes));
 }
 
 std::string WorkerBinaryPath(const std::string& path) {
@@ -74,14 +75,12 @@ std::string WorkerBinaryPath(const std::string& path) {
 bool WriteWorkerBinary(const std::string& path, const std::string& identity) {
   if (identity.empty()) return false;
   std::string error;
-  return AtomicWriteFile(WorkerBinaryPath(path), identity, 0600, false,
-                         error);
+  return AtomicWriteFile(WorkerBinaryPath(path), identity, 0600, false, error);
 }
 
 std::string ReadWorkerBinary(const std::string& path) {
   std::string recorded, error;
-  if (!ReadRegularFile(WorkerBinaryPath(path), 256, recorded, error))
-    return "";
+  if (!ReadRegularFile(WorkerBinaryPath(path), 256, recorded, error)) return "";
   return recorded;
 }
 

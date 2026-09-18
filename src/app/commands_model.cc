@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/commands.h"
-
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -12,8 +10,12 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/prompt_control.h"
@@ -30,14 +32,10 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/tools/memory.h"
-#include "include/agent/process.h"
 #include "include/tools/subagent.h"
 #include "include/ui/conversation.h"
 #include "include/ui/sessions.h"
-
 #include "src/app/commands_internal.h"
 namespace uagent {
 
@@ -125,8 +123,7 @@ std::optional<ModelCandidate> PickModel(
     if (!candidate.info.efforts.empty()) {
       option_label += " · supports ";
       for (size_t index = 0; index < candidate.info.efforts.size(); ++index) {
-        option_label +=
-            (index ? "," : "") + candidate.info.efforts[index];
+        option_label += (index ? "," : "") + candidate.info.efforts[index];
       }
     }
     options.push_back({{"value", std::to_string(i + 1)},
@@ -195,8 +192,8 @@ void HandleModels(AppSession& session, const std::string& argument) {
     // A dead sidecar (e.g. an unreachable local proxy) must not disguise a
     // plain non-match as an outage: only blame the catalogs when every
     // queried one failed.
-    const bool catalogs_down = search.queried > 0 &&
-                               search.unavailable.size() >= search.queried;
+    const bool catalogs_down =
+        search.queried > 0 && search.unavailable.size() >= search.queried;
     Emit(NoticeEvent(PresentationStatus::kFailed,
                      catalogs_down ? "Model catalogs are unavailable. Check "
                                      "provider settings."
@@ -334,6 +331,5 @@ void HandleVariant(AppSession& session, const std::string& argument) {
   printf("%s· variant %s — %s%s\n", DIM(), label.c_str(), detail, RST());
   PersistSelectionSuffix(session);
 }
-
 
 }  // namespace uagent

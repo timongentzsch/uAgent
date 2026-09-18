@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
@@ -35,7 +36,6 @@
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
-#include "include/agent/child_agent.h"
 
 namespace uagent {
 

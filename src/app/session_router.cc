@@ -76,8 +76,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     return result;
   }
-  if ((kind == HostCommandKind::kRename ||
-       kind == HostCommandKind::kDelete) &&
+  if ((kind == HostCommandKind::kRename || kind == HostCommandKind::kDelete) &&
       session->pid <= 0) {
     if (JsonValue(command, "generation", "") != session->generation) {
       result.error = "stale session; refresh before acting";
@@ -126,8 +125,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
               std::chrono::system_clock::now().time_since_epoch())
               .count();
       replay_.Publish(epoch_, session->id, "",
-                      {{"kind", "metadata"},
-                       {"metadata", Metadata(*session)}},
+                      {{"kind", "metadata"}, {"metadata", Metadata(*session)}},
                       !session->run_id.empty());
     }
     return result;
@@ -192,15 +190,14 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     if (result.error.empty()) {
       result.worker_request = HashHex(device) + HashHex(request_id);
-      command["client_request_id"] =
-          kind == HostCommandKind::kRecall
-              ? JsonValue(command, "target_id", "")
-              : request_id;
+      command["client_request_id"] = kind == HostCommandKind::kRecall
+                                         ? JsonValue(command, "target_id", "")
+                                         : request_id;
       lock.unlock();
       bool dispatched = false;
-      result.outcome = outcomes_.SendCommand(session, std::move(command),
-                                             result.worker_request, request_id,
-                                             dispatched);
+      result.outcome =
+          outcomes_.SendCommand(session, std::move(command),
+                                result.worker_request, request_id, dispatched);
       lock.lock();
       if (!JsonValue(result.outcome, "accepted", false)) {
         result.error = JsonValue(result.outcome, "error", "command rejected");

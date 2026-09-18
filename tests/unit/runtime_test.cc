@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/delegation.h"
 #include "include/api/retry.h"
 #include "include/app/self_description.h"
 #include "include/core/child_env.h"
@@ -22,9 +24,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"
-#include "include/agent/child_agent.h"
 #include "include/tools/files.h"
-#include "include/agent/delegation.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

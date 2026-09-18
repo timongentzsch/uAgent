@@ -12,10 +12,10 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/protocol.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/agent/protocol.h"
 
 namespace uagent {
 namespace {

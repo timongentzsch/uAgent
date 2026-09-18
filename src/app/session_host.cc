@@ -101,7 +101,9 @@ void SessionHost::LoadDrafts() {
     if (sessions_.size() >= kMaxCatalogueEntries) break;
     if (entry.path().extension() != ".json") continue;
     std::string bytes, error;
-    if (!ReadRegularFile(entry.path().string(), kCatalogueHeaderBytes, bytes, error)) continue;
+    if (!ReadRegularFile(entry.path().string(), kCatalogueHeaderBytes, bytes,
+                         error))
+      continue;
     json draft = json::parse(bytes, nullptr, false);
     auto session = std::make_shared<HostSession>();
     session->id = JsonValue(draft, "id", "");
@@ -129,8 +131,8 @@ bool SessionHost::PublishMetadata(const std::string& id, HostSession& session) {
   if (session.published == after) return false;
   session.published = after;
   replay_.Publish(epoch_, id, session.generation,
-                    {{"kind", "metadata"}, {"metadata", std::move(after)}},
-                    !session.run_id.empty());
+                  {{"kind", "metadata"}, {"metadata", std::move(after)}},
+                  !session.run_id.empty());
   return true;
 }
 

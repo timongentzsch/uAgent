@@ -13,10 +13,10 @@
 #include <string_view>
 #include <vector>
 
+#include "include/agent/process.h"
 #include "include/api.h"
 #include "include/core/child_env.h"
 #include "include/providers.h"
-#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -90,8 +90,7 @@ struct CollaboratorMail {
 // followup, which drains the same files.
 ToolResult WriteCollaboratorMail(const std::string& id,
                                  const std::string& prompt,
-                                 const std::string& from = "",
-                                 int hops = 0);
+                                 const std::string& from = "", int hops = 0);
 // Oldest first, consumed as they are read. Corrupt mail is dropped rather than
 // retried, the same posture unreadable detached records get.
 std::vector<CollaboratorMail> TakeCollaboratorMail(const std::string& id);

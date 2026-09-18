@@ -38,8 +38,8 @@ bool Steering::Take() {
   return value;
 }
 
-void Steering::Queue(std::string input, std::string request_id,
-                     bool auto_start, json attachments, json images) {
+void Steering::Queue(std::string input, std::string request_id, bool auto_start,
+                     json attachments, json images) {
   size_t queued = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);

@@ -13,8 +13,10 @@
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "include/agent/conversation.h"
+#include "include/agent/jobs.h"
 #include "include/agent/session_store.h"
 #include "include/app/session.h"
 #include "include/core/env.h"
@@ -22,7 +24,6 @@
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
-#include "include/agent/jobs.h"
 
 namespace uagent {
 namespace {
@@ -202,8 +203,8 @@ struct CollaboratorRuntime::State {
         auto prior = slot.accounted_routes.find(route_name);
         usage.Add(route_name,
                   Difference(value, prior == slot.accounted_routes.end()
-                                         ? Usage{}
-                                         : prior->second));
+                                        ? Usage{}
+                                        : prior->second));
       }
     }
     slot.accounted = current;

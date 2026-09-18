@@ -18,18 +18,18 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
 #include "include/app/session_host.h"
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
-#include "include/tools/session.h"
-#include "include/core/output_buffer.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -389,7 +389,8 @@ void TestActivityStateGraph() {
   // activity popup never degrades to the abbreviated label once inspect can
   // no longer reach a finished job.
   const std::string long_command(300, 'x');
-  CHECK(supervisor.TryAdd({899991, "", long_command, false, "", 0, stopped}, 4));
+  CHECK(
+      supervisor.TryAdd({899991, "", long_command, false, "", 0, stopped}, 4));
   json long_row;
   for (const json& row : supervisor.ActivityViews()) {
     if (row.value("command", "") == long_command) long_row = row;
@@ -1102,7 +1103,8 @@ void TestCollaboratorMail() {
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
   CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
-  std::vector<std::string> taken = texts(TakeCollaboratorMail("agent-aaaa1111"));
+  std::vector<std::string> taken =
+      texts(TakeCollaboratorMail("agent-aaaa1111"));
   CHECK(taken == std::vector<std::string>({"first", "second"}));
   // Consumed on read, and only the addressee's: a second take returns nothing
   // while the other collaborator's message is still waiting.
@@ -1162,9 +1164,8 @@ void TestSessionMail() {
   CHECK(taken.size() == 1 && taken[0].from == "sess-bbb");
 
   // Corrupt mail is dropped, traversal ids are silence.
-  const fs::path corrupt =
-      fs::path(UagentDir("sessions")) / "inbox" /
-      "sess-ddd.smail-19700101T000000Z-1-0000.json";
+  const fs::path corrupt = fs::path(UagentDir("sessions")) / "inbox" /
+                           "sess-ddd.smail-19700101T000000Z-1-0000.json";
   fs::create_directories(corrupt.parent_path());
   std::ofstream(corrupt) << "{not json";
   CHECK(TakeSessionMail("sess-ddd").empty());
@@ -1180,8 +1181,12 @@ void TestSessionLinks() {
   // the fixtures are real files.
   const fs::path fa = workspace.workspace / "aaa.json";
   const fs::path fb = workspace.workspace / "bbb.json";
-  { std::ofstream(fa) << "{}\n"; }
-  { std::ofstream(fb) << "{}\n"; }
+  {
+    std::ofstream(fa) << "{}\n";
+  }
+  {
+    std::ofstream(fb) << "{}\n";
+  }
   ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
   CHECK(!SharesLink("aaa", "bbb"));
   std::string token;
@@ -1192,8 +1197,7 @@ void TestSessionLinks() {
   {
     ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
     CHECK(JoinSessionLink(token).Ok());
-    CHECK(JoinSessionLink("no-such-token").error ==
-          ToolErrorCode::kNotFound);
+    CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
     // Gated delivery: linked peers pass, strangers are rejected, and the
     // hop clamp drops instead of queueing.
     CHECK(MessageSession("aaa", "hello a", "bbb", 0).Ok());

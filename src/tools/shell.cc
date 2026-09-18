@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -38,7 +39,6 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
-#include "include/agent/jobs.h"
 
 namespace uagent {
 namespace {
@@ -448,8 +448,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
-  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd,
-                        log_bytes);
+  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd, log_bytes);
 
   TrackPid(g_child_pgids, kFgMax, pid, true);
   bool cancelled = false;

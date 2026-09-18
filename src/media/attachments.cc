@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -113,9 +114,8 @@ std::string RasterMime(std::string_view bytes) {
   // brands (isom, mp41, avc1, ...) out. The brand sits at offset 8.
   if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
     const std::string_view brand = bytes.substr(8, 4);
-    for (std::string_view still : {"heic", "heix", "hevc", "hevx",
-                                   "heim", "heis", "hevm", "hevs",
-                                   "mif1", "msf1"}) {
+    for (std::string_view still : {"heic", "heix", "hevc", "hevx", "heim",
+                                   "heis", "hevm", "hevs", "mif1", "msf1"}) {
       if (brand == still) return "image/heic";
     }
   }
@@ -129,8 +129,8 @@ std::string RasterMime(std::string_view bytes) {
 std::string VideoMime(std::string_view bytes) {
   if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
     const std::string_view brand = bytes.substr(8, 4);
-    for (std::string_view video : {"isom", "iso2", "mp41", "mp42",
-                                   "avc1", "mmp4", "mp71"}) {
+    for (std::string_view video :
+         {"isom", "iso2", "mp41", "mp42", "avc1", "mmp4", "mp71"}) {
       if (brand == video) return "video/mp4";
     }
   }
@@ -221,17 +221,13 @@ std::string SvgMime(std::string_view bytes) {
 }
 
 bool IsRasterMime(const std::string& mime) {
-  return mime == "image/png" || mime == "image/jpeg" ||
-         mime == "image/gif" || mime == "image/webp";
+  return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif" ||
+         mime == "image/webp";
 }
 
-bool IsAudioMime(const std::string& mime) {
-  return mime.starts_with("audio/");
-}
+bool IsAudioMime(const std::string& mime) { return mime.starts_with("audio/"); }
 
-bool IsVideoMime(const std::string& mime) {
-  return mime.starts_with("video/");
-}
+bool IsVideoMime(const std::string& mime) { return mime.starts_with("video/"); }
 
 std::string AudioFormat(const std::string& mime) {
   if (mime == "audio/wav") return "wav";
@@ -450,7 +446,8 @@ bool Base64Decode(std::string_view input, std::string& output,
   return true;
 }
 
-json AttachmentContent(const std::string& prompt,                       const std::vector<Attachment>& attachments,
+json AttachmentContent(const std::string& prompt,
+                       const std::vector<Attachment>& attachments,
                        std::string& error) {
   uintmax_t bytes = 0;
   for (const Attachment& attachment : attachments) {
@@ -533,14 +530,13 @@ bool TextMime(const std::string& mime) {
 // down. Providers never see raw SVG.
 bool RasterizeVector(const std::string& path, const std::string& out,
                      std::string& error) {
-  auto raster = CaptureProcess(
-      {"magick", "-limit", "memory", "128MiB", "-limit", "map",
-       "256MiB", "-density", "192", "-background", "none",
-       path + "[0]", "-resize", "2048x2048>", "-strip", "png:" + out});
+  auto raster = CaptureProcess({"magick", "-limit", "memory", "128MiB",
+                                "-limit", "map", "256MiB", "-density", "192",
+                                "-background", "none", path + "[0]", "-resize",
+                                "2048x2048>", "-strip", "png:" + out});
   if (raster.Ok()) return true;
 #ifdef __APPLE__
-  const std::string dir =
-      std::filesystem::path(out).parent_path().string();
+  const std::string dir = std::filesystem::path(out).parent_path().string();
   auto thumb = CaptureProcess(
       {"/usr/bin/qlmanage", "-t", "-s", "2048", "-o", dir, path});
   const std::string rendered =
@@ -588,8 +584,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   // Scratch files live exactly as long as this function: every early return
   // below used to unlink them by hand.
   ScopedTempFile raster_file(
-      (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX")
-          .string());
+      (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX").string());
   ScopedTempFile temporary_file(
       (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
           .string());
@@ -606,8 +601,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     mime = "image/png";
   }
 #ifdef __APPLE__
-  auto inspected = CaptureProcess({"/usr/bin/sips", "-g", "pixelWidth", "-g",
-                                   "pixelHeight", path});
+  auto inspected = CaptureProcess(
+      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
   int width = 0, height = 0;
   std::istringstream lines(inspected.output);
   std::string line;
@@ -621,8 +616,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     }
   }
 #else
-  auto inspected = CaptureProcess({"magick", "identify", "-ping", "-format",
-                                   "%w %h", path + "[0]"});
+  auto inspected = CaptureProcess(
+      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
   int width = 0, height = 0;
   std::istringstream(inspected.output) >> width >> height;
 #endif
@@ -639,8 +634,7 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   if (width > kMaxImageDimension || height > kMaxImageDimension ||
       attachment.bytes > kImageBytes || normalize) {
     const std::string format =
-        (mime == "image/jpeg" || mime == "image/heic" ||
-         mime == "image/heif")
+        (mime == "image/jpeg" || mime == "image/heic" || mime == "image/heif")
             ? "jpeg"
             : "png";
     if (!temporary_file) {
@@ -648,18 +642,17 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
       return "";
     }
 #ifdef __APPLE__
-    auto resized = CaptureProcess(
-        {"/usr/bin/sips", "-Z", std::to_string(kMaxImageDimension), "-s",
-         "format", format, "-s", "formatOptions", "85", path, "--out",
-         temporary_file.Path()});
+    auto resized = CaptureProcess({"/usr/bin/sips", "-Z",
+                                   std::to_string(kMaxImageDimension), "-s",
+                                   "format", format, "-s", "formatOptions",
+                                   "85", path, "--out", temporary_file.Path()});
 #else
     const std::string geometry = std::to_string(kMaxImageDimension) + "x" +
                                  std::to_string(kMaxImageDimension) + ">";
-    auto resized =
-        CaptureProcess({"magick", "-limit", "memory", "128MiB", "-limit",
-                        "map", "256MiB", path + "[0]", "-auto-orient",
-                        "-resize", geometry, "-quality", "85",
-                        format + ":" + temporary_file.Path()});
+    auto resized = CaptureProcess(
+        {"magick", "-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+         path + "[0]", "-auto-orient", "-resize", geometry, "-quality", "85",
+         format + ":" + temporary_file.Path()});
 #endif
     if (!resized.Ok()) {
       error =
@@ -753,8 +746,7 @@ bool PrepareAttachments(json& messages,
         if (!fingerprint.empty() && delivered.contains(fingerprint)) {
           prepared.push_back(
               {{"type", "text"},
-               {"text", "[File reference: " + path +
-                             "; earlier attachment]"}});
+               {"text", "[File reference: " + path + "; earlier attachment]"}});
           continue;
         }
         if (attachment.bytes > remaining) {
@@ -793,7 +785,8 @@ bool PrepareAttachments(json& messages,
             delivery = capabilities.image_input ? "Image" : "Via vision model";
           }
         } else if (attachment.mime == "application/pdf" &&
-                   capabilities.file_input) {          std::string header;
+                   capabilities.file_input) {
+          std::string header;
           if (ReadRegularFile(path, 5, header, detail, true) &&
               header == "%PDF-") {
             std::string data = Base64File(
@@ -810,34 +803,30 @@ bool PrepareAttachments(json& messages,
           } else {
             detail = "invalid PDF signature";
           }
-        } else if (IsAudioMime(attachment.mime) &&
-                   capabilities.audio_input) {
+        } else if (IsAudioMime(attachment.mime) && capabilities.audio_input) {
           // OpenRouter takes raw base64 plus a format word, never a data
           // URI, and no audio URLs at all.
           std::string data = Base64File(
               attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
-              detail, "");
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
+              "");
           if (detail.empty()) {
-            prepared.push_back(
-                {{"type", "input_audio"},
-                 {"input_audio",
-                  {{"data", std::move(data)},
-                   {"format", AudioFormat(attachment.mime)}}}});
+            prepared.push_back({{"type", "input_audio"},
+                                {"input_audio",
+                                 {{"data", std::move(data)},
+                                  {"format", AudioFormat(attachment.mime)}}}});
             delivery = "Audio";
           }
-        } else if (IsVideoMime(attachment.mime) &&
-                   capabilities.video_input) {
+        } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
           // Local files ride as base64 data URLs, mirroring image_url;
           // remote URLs stay provider-specific and are out of scope.
           std::string data = Base64File(
               attachment,
-              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
-              detail, "data:" + attachment.mime + ";base64,");
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
+              "data:" + attachment.mime + ";base64,");
           if (detail.empty()) {
-            prepared.push_back(
-                {{"type", "video_url"},
-                 {"video_url", {{"url", std::move(data)}}}});
+            prepared.push_back({{"type", "video_url"},
+                                {"video_url", {{"url", std::move(data)}}}});
             delivery = "Video";
           }
         }

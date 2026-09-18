@@ -307,19 +307,17 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       return false;
     case SlashCommandId::kTell: {
       result = SessionSlashTell(command.argument);
-      printf("%s\n",
-             TerminalSafe(JsonValue(result, "output",
-                                    JsonValue(result, "error", "")))
-                 .c_str());
+      printf("%s\n", TerminalSafe(JsonValue(result, "output",
+                                            JsonValue(result, "error", "")))
+                         .c_str());
       fflush(stdout);
       return false;
     }
     case SlashCommandId::kLink: {
       result = SessionSlashLink(command.argument);
-      printf("%s\n",
-             TerminalSafe(JsonValue(result, "output",
-                                    JsonValue(result, "error", "")))
-                 .c_str());
+      printf("%s\n", TerminalSafe(JsonValue(result, "output",
+                                            JsonValue(result, "error", "")))
+                         .c_str());
       fflush(stdout);
       return false;
     }

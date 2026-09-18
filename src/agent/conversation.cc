@@ -227,17 +227,14 @@ bool Conversation::Restore(json messages, std::vector<MessageKind> kinds,
   fact_bytes_.clear();
   if (display_facts_.is_object()) {
     for (const auto& [key, value] : display_facts_.items()) {
-      fact_bytes_[key] =
-          SaturatingAdd(JsonEstimatedBytes(value), key.size());
+      fact_bytes_[key] = SaturatingAdd(JsonEstimatedBytes(value), key.size());
     }
   }
   // Sessions written before announcement receipts existed restore without
   // any: the next request announces once, then dedupes from there.
   announced_deliveries_ = json::object();
-  const json announced =
-      JsonValue(display, "announced", json::object());
-  if (announced.is_object() &&
-      announced.size() <= size_t{1024} &&
+  const json announced = JsonValue(display, "announced", json::object());
+  if (announced.is_object() && announced.size() <= size_t{1024} &&
       JsonEstimatedBytes(announced) <= size_t{64} * 1024) {
     announced_deliveries_ = announced;
   }
@@ -354,8 +351,7 @@ void Conversation::RecordDisplay(std::string key, json facts) {
         SaturatingAdd(JsonEstimatedBytes(*existing), key.size());
     display_bytes_ -= std::min(display_bytes_, prior);
   }
-  const size_t bytes =
-      SaturatingAdd(JsonEstimatedBytes(facts), key.size());
+  const size_t bytes = SaturatingAdd(JsonEstimatedBytes(facts), key.size());
   display_bytes_ = SaturatingAdd(display_bytes_, bytes);
   display_facts_[key] = facts;
   fact_bytes_[key] = bytes;
@@ -363,19 +359,16 @@ void Conversation::RecordDisplay(std::string key, json facts) {
   // tool rows yield the most headroom, while tiny control receipts
   // (attachment deliveries) survive pressure that used to delete them by
   // key order and re-trigger their notices on every later step.
-  while (display_facts_.size() > kFactCount ||
-         display_bytes_ > kDisplayBytes) {
+  while (display_facts_.size() > kFactCount || display_bytes_ > kDisplayBytes) {
     auto victim = display_facts_.end();
     size_t victim_bytes = 0;
-    for (auto it = display_facts_.begin(); it != display_facts_.end();
-         ++it) {
+    for (auto it = display_facts_.begin(); it != display_facts_.end(); ++it) {
       size_t candidate = 0;
       if (const auto sized = fact_bytes_.find(it.key());
           sized != fact_bytes_.end()) {
         candidate = sized->second;
       } else {
-        candidate =
-            SaturatingAdd(JsonEstimatedBytes(*it), it.key().size());
+        candidate = SaturatingAdd(JsonEstimatedBytes(*it), it.key().size());
       }
       if (victim == display_facts_.end() || candidate > victim_bytes ||
           (candidate == victim_bytes && it.key() < victim.key())) {

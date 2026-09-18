@@ -11,6 +11,7 @@
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/prompt.h"
+#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/app/options.h"
@@ -24,7 +25,6 @@
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
-#include "include/agent/tool_presentation.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
@@ -598,11 +598,10 @@ void TestModelCatalogParsing() {
     CHECK((*models)[0].efforts.size() == 5);
     CHECK((*models)[0].default_effort == "medium");
   }
-  models = ParseModels({{"data",
-                           json::array({{{"id", "meta/muse-spark-1.3"},
-                                          {"name",
-                                           "Meta: Muse Spark 1.3 "
-                                           "Contributor"}}})}});
+  models = ParseModels({{"data", json::array({{{"id", "meta/muse-spark-1.3"},
+                                               {"name",
+                                                "Meta: Muse Spark 1.3 "
+                                                "Contributor"}}})}});
   CHECK(models && models->size() == 1);
   if (models && !models->empty()) {
     // The display name survives parsing so /models can match it; the id

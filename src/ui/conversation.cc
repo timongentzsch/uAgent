@@ -11,11 +11,11 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/tool_presentation.h"
 #include "include/agent/trace.h"
 #include "include/cli.h"
 #include "include/core/json.h"
 #include "include/core/strings.h"
-#include "include/agent/tool_presentation.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/tools/tool.h"
@@ -167,8 +167,8 @@ void PrintConversationHistory(const Conversation& conversation,
       record.activity = JsonValue(detail, "activity", json::object());
       PrintPresentation(record);
     } else if (kind == MessageKind::kAssistant) {
-      const bool has_text = content.is_string() &&
-                            !content.get_ref<const std::string&>().empty();
+      const bool has_text =
+          content.is_string() && !content.get_ref<const std::string&>().empty();
       // Mirror the live presenter, which prints the mark lazily with the
       // first text: a text-empty assistant turn (tool calls only) shows
       // tool rows with no header, never a bare mark line.
@@ -199,35 +199,31 @@ void PrintConversationHistory(const Conversation& conversation,
     } else if ((kind == MessageKind::kAttachment ||
                 kind == MessageKind::kUser) &&
                content.is_array()) {
-      const std::string text = content.empty()
-                                   ? "[attachment]"
-                                   : JsonValue(content[0], "text",
-                                               "[attachment]");
+      const std::string text =
+          content.empty() ? "[attachment]"
+                          : JsonValue(content[0], "text", "[attachment]");
       // The stored text keeps the "Attached:" path trailer for the model
       // payload; transcripts render the delivery gallery below instead.
       // Only array content holding a real attachment part strips: a user
       // literally typing the trailer keeps their words.
       bool referenced = false;
       for (const json& part : content) {
-        if (part.is_object() &&
-            JsonValue(part, "type", "") == "attachment") {
+        if (part.is_object() && JsonValue(part, "type", "") == "attachment") {
           referenced = true;
           break;
         }
       }
-      printf("%s\n",
-             UserEchoRow(InputPrompt(),
-                         referenced ? StripAttachedTrailer(text) : text)
-                 .c_str());
+      printf("%s\n", UserEchoRow(InputPrompt(),
+                                 referenced ? StripAttachedTrailer(text) : text)
+                         .c_str());
       if (index < conversation.DisplayIds().size()) {
         const std::string id =
             "m-" + std::to_string(conversation.DisplayIds()[index]);
-        const json facts = JsonValue(conversation.DisplayFacts(), id.c_str(),
-                                     json::object());
-        printf("%s",
-               AttachmentDeliveryRows(
-                   JsonValue(facts, "deliveries", json::array()))
-                   .c_str());
+        const json facts =
+            JsonValue(conversation.DisplayFacts(), id.c_str(), json::object());
+        printf("%s", AttachmentDeliveryRows(
+                         JsonValue(facts, "deliveries", json::array()))
+                         .c_str());
       }
     } else if (content.is_string()) {
       printf("%s  ← %s%s\n", DIM(),

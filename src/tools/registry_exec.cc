@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "src/tools/registry_internal.h"
-
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -13,11 +11,11 @@
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/tools/shell.h"
+#include "src/tools/registry_internal.h"
 
 namespace uagent {
 
-void RegisterExecTools(std::vector<Tool>& tools,
-                       ProcessSupervisor& supervisor,
+void RegisterExecTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
   auto schema = [](const char* s) { return json::parse(s); };
   // The schema below is a raw JSON literal, so its "maximum" cannot be spelled

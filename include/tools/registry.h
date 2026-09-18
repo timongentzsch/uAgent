@@ -11,8 +11,8 @@
 #include <vector>
 
 #include "include/agent/adaptive_system.h"
-#include "include/core/fs.h"
 #include "include/agent/process.h"
+#include "include/core/fs.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

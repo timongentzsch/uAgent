@@ -12,7 +12,9 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
+#include "include/agent/child_agent.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
@@ -23,7 +25,6 @@
 #include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
-#include "include/agent/child_agent.h"
 
 namespace uagent::session {
 namespace {
@@ -41,8 +42,8 @@ bool ResolveCommandAttachments(const json& command,
   }
   for (const json& path : *paths) {
     Attachment attachment;
-    std::string file =
-        path.is_string() ? path.get<std::string>() : JsonValue(path, "path", "");
+    std::string file = path.is_string() ? path.get<std::string>()
+                                        : JsonValue(path, "path", "");
     if (!InspectAttachment(file, attachment, error)) return false;
     attachment.asset_id =
         std::filesystem::path(attachment.path).stem().string();
@@ -264,11 +265,10 @@ class WorkerChannel final : public ApplicationChannel {
         for (const json& item : queued.front().attachments)
           input_->attachments.push_back(AttachmentFromJson(item));
         for (size_t i = 1; i < queued.size(); ++i) {
-          SteeringState().Queue(std::move(queued[i].text),
-                                std::move(queued[i].request_id),
-                                queued[i].auto_start,
-                                std::move(queued[i].attachments),
-                                std::move(queued[i].images));
+          SteeringState().Queue(
+              std::move(queued[i].text), std::move(queued[i].request_id),
+              queued[i].auto_start, std::move(queued[i].attachments),
+              std::move(queued[i].images));
         }
         busy_ = turn_active_ = true;
         BeginTurn();
@@ -387,7 +387,8 @@ class WorkerChannel final : public ApplicationChannel {
         const bool guide = kind == SessionCommandKind::kGuide;
         if (guide && parsed.text.empty()) {
           // Mail-first ping: payload is on disk, just drain it into the queue.
-          // Best-effort from the worker thread; PrepareStep drains again anyway.
+          // Best-effort from the worker thread; PrepareStep drains again
+          // anyway.
           lock.unlock();
           DrainCollaboratorMailIntoSteering();
           wake_.Wake();
@@ -405,11 +406,10 @@ class WorkerChannel final : public ApplicationChannel {
           std::vector<Attachment> attachments;
           json images = json::array();
           if (ResolveCommandAttachments(parsed.raw, attachments, images,
-                                         error)) {
+                                        error)) {
             SteeringState().Queue(
-                std::string(parsed.text), parsed.client_request_id,
-                !guide, AttachmentsToJson(attachments),
-                std::move(images));
+                std::string(parsed.text), parsed.client_request_id, !guide,
+                AttachmentsToJson(attachments), std::move(images));
           }
         }
         break;

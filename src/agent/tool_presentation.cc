@@ -61,9 +61,10 @@ PresentationRecord ToolCallPresentation(const CallTask& task,
   return record;
 }
 
-PresentationRecord ToolCallPresentation(
-    const std::string& name, const json& arguments,
-    const std::vector<Tool>& tools, const std::string& ordinal) {
+PresentationRecord ToolCallPresentation(const std::string& name,
+                                        const json& arguments,
+                                        const std::vector<Tool>& tools,
+                                        const std::string& ordinal) {
   CallTask task;
   task.tool = FindTool(tools, name);
   task.ordinal = ordinal;
@@ -143,9 +144,10 @@ json ToolReplayJson(const PresentationRecord& record) {
   return value;
 }
 
-PresentationRecord StoredToolResultPresentation(
-    const std::string& name, const std::string& output,
-    const std::string& display, PresentationStatus status) {
+PresentationRecord StoredToolResultPresentation(const std::string& name,
+                                                const std::string& output,
+                                                const std::string& display,
+                                                PresentationStatus status) {
   PresentationRecord record;
   record.kind = PresentationKind::kToolResult;
   record.status = status;
@@ -162,9 +164,10 @@ PresentationRecord StoredToolResultPresentation(
     record.change = display;
     return record;
   }
-  record.summary = TerminalSummary(ToolResultSummary(replayed, output,
-                                                     /*truncated=*/false),
-                                   record.title.size() + kRecordTitleReserveChars);
+  record.summary =
+      TerminalSummary(ToolResultSummary(replayed, output,
+                                        /*truncated=*/false),
+                      record.title.size() + kRecordTitleReserveChars);
   return record;
 }
 

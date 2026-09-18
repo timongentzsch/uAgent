@@ -65,8 +65,7 @@ int RunTests(int argc, char** argv) {
   // names (hermetic under a bare C ambient, as on dev machines); fall
   // back to the ambient locale, mirroring production's contract.
   if (!std::setlocale(LC_CTYPE, "C.UTF-8"))
-    if (!std::setlocale(LC_CTYPE, "en_US.UTF-8"))
-      std::setlocale(LC_CTYPE, "");
+    if (!std::setlocale(LC_CTYPE, "en_US.UTF-8")) std::setlocale(LC_CTYPE, "");
   curl_global_init(CURL_GLOBAL_DEFAULT);
   size_t selected = 0;
   for (const TestCase& test : Tests()) {

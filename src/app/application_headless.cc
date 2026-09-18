@@ -23,6 +23,9 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 #include "include/app/bootstrap.h"
 #include "include/app/commands.h"
 #include "include/app/runtime.h"
@@ -42,10 +45,7 @@
 #include "include/mcp/rpc.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/tools/memory.h"
-#include "include/agent/process.h"
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"

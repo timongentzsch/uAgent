@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/providers.h"
-
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -21,6 +19,7 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/providers.h"
 
 namespace uagent {
 namespace {

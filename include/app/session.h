@@ -45,8 +45,7 @@ bool WriteWorkerBinary(const std::string& path, const std::string& identity);
 std::string ReadWorkerBinary(const std::string& path);
 // Missing record (pre-feature spawn) or disagreement (upgraded binary)
 // recycles; an unstatable executable never recycles blindly.
-bool WorkerBinaryStale(const std::string& current,
-                       const std::string& recorded);
+bool WorkerBinaryStale(const std::string& current, const std::string& recorded);
 struct Connection {
   Fd socket;
   Fd owner;  // Delegated runtime lifetime; close when the parent session exits.

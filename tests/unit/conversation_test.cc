@@ -576,10 +576,9 @@ void TestLateRetainedBlockInsertsInSequenceOrder() {
   // A retained completion arriving after newer rows (replay, pre-facts
   // emit) lands in sequence position, never appended after them.
   json view = {{"blocks", json::array()}};
-  MergeDisplayBlock(view, {{"id", "m-9"},
-                           {"sequence", 9},
-                           {"kind", "assistant"},
-                           {"text", "new"}});
+  MergeDisplayBlock(
+      view,
+      {{"id", "m-9"}, {"sequence", 9}, {"kind", "assistant"}, {"text", "new"}});
   MergeDisplayBlock(view, {{"id", "m-5"},
                            {"sequence", 5},
                            {"kind", "tool_result"},
@@ -589,21 +588,17 @@ void TestLateRetainedBlockInsertsInSequenceOrder() {
   REQUIRE(view["blocks"].size() == 2);
   CHECK(view["blocks"][0]["id"] == "m-5");
   CHECK(view["blocks"][1]["id"] == "m-9");
-  MergeDisplayBlock(view, {{"id", "m-7"},
-                           {"sequence", 7},
-                           {"kind", "assistant"},
-                           {"text", "mid"}});
+  MergeDisplayBlock(
+      view,
+      {{"id", "m-7"}, {"sequence", 7}, {"kind", "assistant"}, {"text", "mid"}});
   REQUIRE(view["blocks"].size() == 3);
   CHECK(view["blocks"][1]["id"] == "m-7");
   // Sequence-less rows keep their relative order around the insert.
   MergeDisplayBlock(view,
-                      {{"id", "live-note"},
-                       {"kind", "error"},
-                       {"text", "x"}});
-  MergeDisplayBlock(view, {{"id", "m-6"},
-                           {"sequence", 6},
-                           {"kind", "assistant"},
-                           {"text", "six"}});
+                    {{"id", "live-note"}, {"kind", "error"}, {"text", "x"}});
+  MergeDisplayBlock(
+      view,
+      {{"id", "m-6"}, {"sequence", 6}, {"kind", "assistant"}, {"text", "six"}});
   REQUIRE(view["blocks"].size() == 5);
   CHECK(view["blocks"][1]["id"] == "m-6");
   CHECK(view["blocks"].back()["id"] == "live-note");
@@ -612,21 +607,19 @@ void TestLateRetainedBlockInsertsInSequenceOrder() {
 void TestHistoryReplaySkipsBareHeader() {
   Conversation replay;
   replay.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
-                 {MessageKind::kSystem});
-  replay.Push({{"role", "user"}, {"content", "hi"}},
-                MessageKind::kUser);
+               {MessageKind::kSystem});
+  replay.Push({{"role", "user"}, {"content", "hi"}}, MessageKind::kUser);
   // A text-empty assistant turn (tool calls only): the live presenter
   // prints its mark lazily with the first text, so the replay must not
   // leave a bare mark line either.
-  replay.Push({{"role", "assistant"},
-                 {"content", ""},
-                 {"tool_calls",
-                  json::array(
-                      {{{"id", "call-1"},
-                        {"function",
-                         {{"name", "read_file"},
-                          {"arguments", "{}"}}}}})}},
-                MessageKind::kAssistant);
+  replay.Push(
+      {{"role", "assistant"},
+       {"content", ""},
+       {"tool_calls",
+        json::array(
+            {{{"id", "call-1"},
+              {"function", {{"name", "read_file"}, {"arguments", "{}"}}}}})}},
+      MessageKind::kAssistant);
   bool prior_unicode = g_unicode;
   g_unicode = true;
   const std::vector<Tool> no_tools;
@@ -639,9 +632,9 @@ void TestHistoryReplaySkipsBareHeader() {
   // Control: a text turn keeps its header mark.
   Conversation spoken;
   spoken.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
-                 {MessageKind::kSystem});
+               {MessageKind::kSystem});
   spoken.Push({{"role", "assistant"}, {"content", "hello"}},
-                MessageKind::kAssistant);
+              MessageKind::kAssistant);
   g_unicode = true;
   const std::string voiced =
       CaptureStdout([&] { PrintConversationHistory(spoken, no_tools); });
@@ -660,22 +653,21 @@ void TestToolResultHealsMissingMetadata() {
       {{"role", "assistant"},
        {"content", nullptr},
        {"tool_calls",
-        json::array({{{"id", "call-1"},
-                      {"type", "function"},
-                      {"function",
-                       {{"name", "run"},
-                        {"arguments", "{\"command\":\"ls\"}"}}}}})}},
+        json::array(
+            {{{"id", "call-1"},
+              {"type", "function"},
+              {"function",
+               {{"name", "run"}, {"arguments", "{\"command\":\"ls\"}"}}}}})}},
       MessageKind::kAssistant);
   // Receipt facts filed under the call's own detail id …
-  conversation.RecordDisplay(
-      "t-hash1", {{"name", "run"},
-                  {"status", "success"},
-                  {"duration_ms", 12.5},
-                  {"call_id", "call-1"},
-                  {"response_id", "r-1"},
-                  {"occurrence_id", "r-1:abc"},
-                  {"detail_id", "t-hash1"},
-                  {"activity", {{"label", "$ ls"}}}});
+  conversation.RecordDisplay("t-hash1", {{"name", "run"},
+                                         {"status", "success"},
+                                         {"duration_ms", 12.5},
+                                         {"call_id", "call-1"},
+                                         {"response_id", "r-1"},
+                                         {"occurrence_id", "r-1:abc"},
+                                         {"detail_id", "t-hash1"},
+                                         {"activity", {{"label", "$ ls"}}}});
   // … but the result message lost its id metadata (only Push's time).
   conversation.Push(
       {{"role", "tool"}, {"tool_call_id", "call-1"}, {"content", "out"}},
@@ -710,22 +702,23 @@ void TestAttachmentDeliveryAnnouncements() {
   conversation.Reset(json::array({{{"role", "system"}, {"content", "sys"}}}),
                      {MessageKind::kSystem});
   conversation.Push(
-      {{"role", "user"},
-       {"content", json::array({{{"type", "attachment"}}})}},
+      {{"role", "user"}, {"content", json::array({{{"type", "attachment"}}})}},
       MessageKind::kAttachment);
   const std::string id = conversation.LastDisplayId();
   CHECK(conversation.AnnouncedDeliveries(id) == json::array());
   CHECK(conversation.AnnouncedDeliveries("m-9999") == json::array());
-  const json first = json::array(
-      {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
-        {"path", "/tmp/image.png"}}});
+  const json first = json::array({{{"id", ""},
+                                   {"name", "image.png"},
+                                   {"delivery", "Image"},
+                                   {"path", "/tmp/image.png"}}});
   conversation.RecordAnnouncedDeliveries(id, first);
   CHECK(conversation.AnnouncedDeliveries(id) == first);
   // A delivery flip (route lost vision, file fell back to a path reference)
   // is a change the request path must announce once.
-  const json degraded = json::array(
-      {{{"id", ""}, {"name", "image.png"}, {"delivery", "File reference"},
-        {"path", "/tmp/image.png"}}});
+  const json degraded = json::array({{{"id", ""},
+                                      {"name", "image.png"},
+                                      {"delivery", "File reference"},
+                                      {"path", "/tmp/image.png"}}});
   CHECK(degraded != first);
   conversation.RecordAnnouncedDeliveries(id, degraded);
   CHECK(conversation.AnnouncedDeliveries(id) == degraded);
@@ -737,8 +730,7 @@ void TestAttachmentDeliveryAnnouncements() {
   // The receipt survives a session save/restore round-trip.
   Conversation reloaded;
   CHECK(reloaded.Restore(conversation.Messages(), conversation.Kinds(),
-                         conversation.Archive(),
-                         conversation.DroppedSegments(),
+                         conversation.Archive(), conversation.DroppedSegments(),
                          conversation.ToolDisplays(),
                          conversation.DisplayMetadata()));
   CHECK(reloaded.AnnouncedDeliveries(id) == degraded);
@@ -751,8 +743,7 @@ void TestAttachmentDeliveryAnnouncements() {
   // The receipt store is bounded; bulk attachment sessions cannot grow it
   // without limit.
   for (size_t seq = 0; seq < 1100; ++seq) {
-    reloaded.RecordAnnouncedDeliveries("m-bulk-" + std::to_string(seq),
-                                       first);
+    reloaded.RecordAnnouncedDeliveries("m-bulk-" + std::to_string(seq), first);
   }
   CHECK(reloaded.AnnouncedDeliveries(id) == json::array());
   CHECK(reloaded.AnnouncedDeliveries("m-bulk-1099") == first);
@@ -769,9 +760,10 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
   conversation.Push({{"role", "user"}, {"content", "look"}},
                     MessageKind::kAttachment);
   const std::string id = conversation.LastDisplayId();
-  const json receipt = json::array(
-      {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
-        {"path", "/tmp/image.png"}}});
+  const json receipt = json::array({{{"id", ""},
+                                     {"name", "image.png"},
+                                     {"delivery", "Image"},
+                                     {"path", "/tmp/image.png"}}});
   conversation.RecordDisplay(id, {{"deliveries", receipt}});
   // Single facts over 64 KiB never record; flood with just-under facts
   // until the 4 MiB display budget overflows several times over.
@@ -780,10 +772,9 @@ void TestDisplayFactEvictionKeepsSmallReceipts() {
     conversation.RecordDisplay("t-flood-" + std::to_string(i),
                                {{"activity", bulk}});
   }
-  const json kept =
-      JsonValue(JsonValue(conversation.DisplayFacts(), id.c_str(),
-                          json::object()),
-                "deliveries", json::array());
+  const json kept = JsonValue(
+      JsonValue(conversation.DisplayFacts(), id.c_str(), json::object()),
+      "deliveries", json::array());
   CHECK(kept == receipt);
   CHECK(JsonEstimatedBytes(conversation.DisplayFacts()) <=
         size_t{4} * 1024 * 1024);
@@ -812,8 +803,7 @@ void TestAttachmentHistoryRendering() {
                              "(from tool call \"call-1\")") == "look");
   CHECK(StripAttachedTrailer("look\n\nAttached:\nnot a reference") ==
         "look\n\nAttached:\nnot a reference");
-  CHECK(StripAttachedTrailer("look\n\nAttached:\n") ==
-        "look\n\nAttached:\n");
+  CHECK(StripAttachedTrailer("look\n\nAttached:\n") == "look\n\nAttached:\n");
   CHECK(AttachmentDeliveryRows(json::array()) == "");
   CHECK(AttachmentDeliveryRows(json::object()) == "");
 
@@ -824,24 +814,22 @@ void TestAttachmentHistoryRendering() {
   const std::string path = "/tmp/image.png";
   conversation.Push(
       {{"role", "user"},
-       {"content",
-        json::array(
-            {{{"type", "text"},
-              {"text", prompt + "\n\nAttached:\n- path \"" + path +
-                           "\""}},
-             {{"type", "attachment"},
-              {"path", path},
-              {"name", "image.png"},
-              {"mime", "image/png"},
-              {"bytes", 12},
-              {"id", ""}}})}},
+       {"content", json::array({{{"type", "text"},
+                                 {"text", prompt + "\n\nAttached:\n- path \"" +
+                                              path + "\""}},
+                                {{"type", "attachment"},
+                                 {"path", path},
+                                 {"name", "image.png"},
+                                 {"mime", "image/png"},
+                                 {"bytes", 12},
+                                 {"id", ""}}})}},
       MessageKind::kAttachment);
   conversation.RecordDisplay(
       conversation.LastDisplayId(),
-      {{"deliveries",
-        json::array(
-            {{{"id", ""}, {"name", "image.png"}, {"delivery", "Image"},
-              {"path", path}}})}});
+      {{"deliveries", json::array({{{"id", ""},
+                                    {"name", "image.png"},
+                                    {"delivery", "Image"},
+                                    {"path", path}}})}});
   const std::vector<Tool> no_tools;
   bool prior_unicode = g_unicode;
   g_unicode = true;
@@ -860,10 +848,10 @@ void TestAttachmentHistoryRendering() {
   literal.Push(
       {{"role", "user"},
        {"content",
-        json::array(
-            {{{"type", "text"},
-              {"text", "note" + nl + nl + "Attached:" + nl + "- path " +
-                                                      quote + "/tmp/x.png" + quote}}})}},      MessageKind::kUser);
+        json::array({{{"type", "text"},
+                      {"text", "note" + nl + nl + "Attached:" + nl + "- path " +
+                                   quote + "/tmp/x.png" + quote}}})}},
+      MessageKind::kUser);
   const std::string kept =
       CaptureStdout([&] { PrintConversationHistory(literal, no_tools); });
   CHECK(kept.find("note") != std::string::npos);

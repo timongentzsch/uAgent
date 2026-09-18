@@ -53,22 +53,22 @@ std::string ModelResultText(const ToolResult& result, int64_t cap);
 std::vector<std::string> ModelFacingToolResults(
     const std::vector<CallTask>& tasks, int64_t budget = -1);
 
-json ToolResultData(const CallTask& task, const ToolCall& call,
-                           int64_t turn, int64_t step);
+json ToolResultData(const CallTask& task, const ToolCall& call, int64_t turn,
+                    int64_t step);
 
 PresentationRecord ToolResultObservation(const CallTask& task,
-                                                const ToolCall& call);
+                                         const ToolCall& call);
 
 void EmitToolResultObservation(const CallTask& task, const ToolCall& call,
-                                      int64_t turn, int64_t step);
+                               int64_t turn, int64_t step);
 
 json ToolCallData(const ToolCall& call, int64_t turn, int64_t step);
 
 void CancelCall(CallTask& task);
 
 void ExecuteCall(CallTask& task, const ToolCall& call, int64_t turn,
-                        int64_t step, const ToolContext& context,
-                        int64_t global_timeout_s);
+                 int64_t step, const ToolContext& context,
+                 int64_t global_timeout_s);
 
 }  // namespace uagent
 

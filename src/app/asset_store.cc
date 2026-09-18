@@ -98,15 +98,13 @@ void UnclaimLocked(std::vector<std::pair<std::string, json>>& claims,
 }  // namespace
 
 AssetStoreResult AssetStore::Store(const std::string& session_path,
-                                   const std::string& bytes,
-                                   std::string name) {
+                                   const std::string& bytes, std::string name) {
   std::lock_guard assets(mutex_);
   const std::string folder = session_path + ".assets";
   if (!EnsurePrivateDirectory(folder)) {
     return {{}, "cannot create asset storage", 500};
   }
-  if (std::chrono::steady_clock::now() - scanned_ >=
-      std::chrono::minutes(1)) {
+  if (std::chrono::steady_clock::now() - scanned_ >= std::chrono::minutes(1)) {
     scanned_ = std::chrono::steady_clock::now();
     bytes_ = 0;
     std::error_code ec;
@@ -186,8 +184,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
 }
 
 std::string AssetStore::Claim(const std::string& session_path, const json& ids,
-                              json& command,
-                              std::function<std::string()> gate,
+                              json& command, std::function<std::string()> gate,
                               AssetClaim& receipt) {
   std::lock_guard assets(mutex_);
   if (ids.size() > kUploadCount) return "too many attachments";
@@ -202,8 +199,7 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
     // and the model payload agree with what the sender saw.
     std::string asset_id = claim.is_string() ? claim.get<std::string>()
                                              : JsonValue(claim, "id", "");
-    std::string display =
-        claim.is_object() ? JsonValue(claim, "name", "") : "";
+    std::string display = claim.is_object() ? JsonValue(claim, "name", "") : "";
     if (!OpaqueId(asset_id)) return "invalid asset ID";
     if (!display.empty() && !ValidAssetName(display)) {
       return "invalid attachment name";
@@ -230,7 +226,9 @@ std::string AssetStore::Claim(const std::string& session_path, const json& ids,
          {"mime", JsonValue(asset, "mime", "application/octet-stream")},
          {"image", JsonValue(asset, "image", extension != ".data")}});
   }
-  if (std::string blocked = gate(); !blocked.empty()) return blocked;
+  if (std::string blocked = gate(); !blocked.empty()) {
+    return blocked;
+  }
   if (JsonDump(command).size() > kCommandBytes) {
     return "message and resolved attachments exceed the command limit";
   }

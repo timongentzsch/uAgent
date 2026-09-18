@@ -28,7 +28,6 @@
 
 namespace uagent {
 
-
 // Assignment keywords whose value is redacted. UAGENT_MEMORY_REDACT_KEYWORDS
 // appends to this list; it can never shorten it, so a typo cannot disable
 // redaction. Keywords are matched literally (escaped before they reach the
@@ -72,7 +71,6 @@ struct TokenShape {
   const char* marker;
   const char* pattern;
 };
-
 
 constexpr TokenShape kTokenShapes[] = {
     {"sk-", R"(sk-(?:proj-)?[A-Za-z0-9_-]{16,})"},

@@ -111,9 +111,10 @@ ReceiptVerdict ReceiptLog::Check(const json& command,
     return ReceiptVerdict::kReplay;
   }
   if (receipts_.size() >= 256) {
-    auto completed = std::find_if(
-        receipts_.begin(), receipts_.end(),
-        [](const auto& item) { return !JsonValue(item.second.second, "pending", false); });
+    auto completed =
+        std::find_if(receipts_.begin(), receipts_.end(), [](const auto& item) {
+          return !JsonValue(item.second.second, "pending", false);
+        });
     if (completed == receipts_.end()) return ReceiptVerdict::kReject;
     receipts_.erase(completed);
   }

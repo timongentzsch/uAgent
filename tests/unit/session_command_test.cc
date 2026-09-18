@@ -5,9 +5,11 @@
 // ReceiptLog: first sight processes, identical retry replays, same id with
 // different content rejects, and a full log of pending commands backpressures.
 
-#include <string>
-
 #include "include/app/session_command.h"
+
+#include <string>
+#include <utility>
+
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -45,8 +47,8 @@ void TestSessionCommandKinds() {
   for (const auto& [kind, want] : cases) {
     session::SessionCommand parsed;
     std::string error = "dirty";
-    REQUIRE(session::ParseSessionCommand(CommandEnvelope(kind), kSession, kGeneration,
-                                         parsed, error));
+    REQUIRE(session::ParseSessionCommand(CommandEnvelope(kind), kSession,
+                                         kGeneration, parsed, error));
     CHECK(parsed.kind == want);
     CHECK(error.empty());
     CHECK(parsed.request_id == kRequest);
@@ -54,15 +56,15 @@ void TestSessionCommandKinds() {
   }
   // Missing or unrecognized kinds flow through as kUnknown so the caller
   // answers "unsupported command" with an outcome instead of dropping.
-  for (const json& command :
-       {CommandEnvelope(""), json{{"session_id", kSession},
-                           {"generation", kGeneration},
-                           {"request_id", kRequest}},
-        CommandEnvelope("teleport")}) {
+  for (const json& command : {CommandEnvelope(""),
+                              json{{"session_id", kSession},
+                                   {"generation", kGeneration},
+                                   {"request_id", kRequest}},
+                              CommandEnvelope("teleport")}) {
     session::SessionCommand parsed;
     std::string error;
-    REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration,
-                                          parsed, error));
+    REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
+                                         error));
     CHECK(parsed.kind == session::SessionCommandKind::kUnknown);
   }
 }
@@ -79,8 +81,8 @@ void TestSessionCommandFields() {
   command["budget"] = json{{"usd", 1}};
   session::SessionCommand parsed;
   std::string error;
-  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration,
-                                       parsed, error));
+  REQUIRE(session::ParseSessionCommand(command, kSession, kGeneration, parsed,
+                                       error));
   CHECK(parsed.text == "hello");
   CHECK(parsed.client_request_id == "client-1");
   CHECK(parsed.interaction_id == "interaction-1");
@@ -113,8 +115,8 @@ void TestSessionCommandRejects() {
   for (const std::string bad : {"", "short", "0123456789ABCDEF", "xyz-!@#"}) {
     json command = CommandEnvelope("submit");
     command["request_id"] = bad;
-    CHECK(!session::ParseSessionCommand(command, kSession, kGeneration,
-                                        parsed, error));
+    CHECK(!session::ParseSessionCommand(command, kSession, kGeneration, parsed,
+                                        error));
   }
 }
 
@@ -148,12 +150,11 @@ void TestReceiptLogBackpressure() {
   // Fill the log with pending commands: no completed receipt to evict.
   for (int i = 0; i < 256; ++i) {
     json command = CommandEnvelope("submit");
-    const std::string id = "abcdef012345678" + std::to_string(i % 10) +
-                           std::to_string(i / 10);
+    const std::string id =
+        "abcdef012345678" + std::to_string(i % 10) + std::to_string(i / 10);
     command["request_id"] = id;
     json previous;
-    REQUIRE(log.Check(command, id, previous) ==
-            session::ReceiptVerdict::kNew);
+    REQUIRE(log.Check(command, id, previous) == session::ReceiptVerdict::kNew);
   }
   json overflow = CommandEnvelope("submit");
   overflow["request_id"] = "ffffffffffffffff";
@@ -196,11 +197,10 @@ void TestHostCommandKinds() {
   for (int raw = 0;
        raw < static_cast<int>(session::SessionCommandKind::kUnknown); ++raw) {
     const auto worker = static_cast<session::SessionCommandKind>(raw);
-    const bool non_forwarded =
-        worker == session::SessionCommandKind::kClose ||
-        worker == session::SessionCommandKind::kGuide;
+    const bool non_forwarded = worker == session::SessionCommandKind::kClose ||
+                               worker == session::SessionCommandKind::kGuide;
     CHECK(session::ForwardsToWorker(session::ParseHostCommandKind(
-                session::SessionCommandKindName(worker))) == !non_forwarded);
+              session::SessionCommandKindName(worker))) == !non_forwarded);
     forwarded += !non_forwarded ? 1 : 0;
   }
   CHECK(forwarded == 16);

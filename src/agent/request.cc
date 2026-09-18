@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/delegation.h"
 #include "include/agent/prompt.h"
 #include "include/agent/protocol.h"
 #include "include/api/retry.h"
@@ -22,9 +24,6 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/agent/delegation.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/delegation.h"
 
 namespace uagent {
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,

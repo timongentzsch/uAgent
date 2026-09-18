@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "src/tools/registry_internal.h"
-
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -15,6 +13,7 @@
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 #include "include/tools/shell.h"
+#include "src/tools/registry_internal.h"
 
 namespace uagent {
 namespace {
@@ -32,8 +31,7 @@ std::vector<FileEdit> RequestedEdits(const json& arguments) {
 
 }  // namespace
 
-void RegisterFileTools(std::vector<Tool>& tools,
-                       ProcessSupervisor& supervisor,
+void RegisterFileTools(std::vector<Tool>& tools, ProcessSupervisor& supervisor,
                        const std::filesystem::path& workspace) {
   auto schema = [](const char* s) { return json::parse(s); };
   // "." is what a path-less read_path or grep operates on, so the hooks judge

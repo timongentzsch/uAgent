@@ -8,10 +8,10 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/process.h"
 #include "include/api.h"
 #include "include/core/json.h"
 #include "include/providers.h"
-#include "include/agent/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

@@ -13,8 +13,8 @@ namespace uagent {
 void TestWorkerBinaryIdentity() {
   namespace fs = std::filesystem;
   const fs::path root = fs::temp_directory_path() /
-                          ("uagent-worker-binary-test-" +
-                           std::to_string(static_cast<int64_t>(getpid())));
+                        ("uagent-worker-binary-test-" +
+                         std::to_string(static_cast<int64_t>(getpid())));
   std::error_code ec;
   fs::create_directories(root, ec);
   const std::string session = (root / "s.json").string();
@@ -32,7 +32,8 @@ void TestWorkerBinaryIdentity() {
     CHECK(!first.empty());
     CHECK(session::WriteWorkerBinary(session, first));
     CHECK(session::ReadWorkerBinary(session) == first);
-    CHECK(!session::WorkerBinaryStale(first, session::ReadWorkerBinary(session)));
+    CHECK(
+        !session::WorkerBinaryStale(first, session::ReadWorkerBinary(session)));
     // Same-second reinstalls still differ by size.
     CHECK(ToolWriteFile(probe.string(), "v1!").Ok());
     const std::string second = session::ExecutableIdentity(probe.string());

@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
 #include "include/agent/protocol.h"
 #include "include/agent/trace.h"
 #include "include/api/citations.h"
@@ -31,8 +33,6 @@
 #include "include/md.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "src/agent/turn_internal.h"
 
 namespace uagent {

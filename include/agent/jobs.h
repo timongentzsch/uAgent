@@ -10,8 +10,8 @@
 #include <string_view>
 #include <vector>
 
-#include "include/core/json.h"
 #include "include/agent/process.h"
+#include "include/core/json.h"
 #include "include/tools/tool.h"
 
 namespace uagent {

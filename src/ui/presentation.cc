@@ -439,9 +439,9 @@ void TerminalPresenter::Block(const json& block) {
     const bool attached =
         !deliveries.empty() || (files.is_array() && !files.empty());
     const std::string echo =
-        attached ? TerminalSafe(
-                       StripAttachedTrailer(JsonValue(block, "text", "")))
-                   : text;
+        attached
+            ? TerminalSafe(StripAttachedTrailer(JsonValue(block, "text", "")))
+            : text;
     WriteTerminalRecord(UserEchoRow(InputPrompt(), echo) + "\n" +
                         AttachmentDeliveryRows(deliveries));
   } else if (kind == "assistant") {

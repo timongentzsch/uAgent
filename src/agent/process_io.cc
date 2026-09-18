@@ -19,12 +19,12 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 #include "include/core/events.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/time.h"
-#include "include/agent/jobs.h"
-#include "include/agent/process.h"
 
 namespace uagent {
 namespace {

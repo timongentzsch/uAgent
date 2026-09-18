@@ -121,9 +121,8 @@ bool ReadBounded(std::istream& input, size_t cap, std::string& out);
 
 // Private state and web assets must never follow a final symlink or read a
 // device/FIFO. A prefix read is useful for cheap catalogue headers.
-bool ReadRegularFile(const std::string& path, size_t cap,
-                     std::string& out, std::string& error,
-                     bool prefix = false);
+bool ReadRegularFile(const std::string& path, size_t cap, std::string& out,
+                     std::string& error, bool prefix = false);
 
 std::string UagentConfigPath();
 
@@ -134,8 +133,8 @@ std::string ProjectConfigFilePath();
 // Atomic shared writer for config, trust state, tools, and preferences. A temp
 // file in the target directory makes replacement crash-safe.
 bool AtomicWriteFile(const std::string& path, const std::string& content,
-                            mode_t create_mode, bool preserve_mode,
-                            std::string& error, bool overwrite = true);
+                     mode_t create_mode, bool preserve_mode, std::string& error,
+                     bool overwrite = true);
 
 // create_directories() applies the ambient umask, so hardening only the leaf
 // leaves every directory it had to create along the way world-traversable.
@@ -175,20 +174,20 @@ std::string WorkspaceId(const std::string& root);
 bool LockFileExclusive(int fd);
 
 bool AppendPrivateLine(const std::string& path, const std::string& line,
-                              std::string& error);
+                       std::string& error);
 
 // Atomically drain a small private append-only file. Truncating the locked
 // inode instead of unlinking it keeps writers that opened before the lock from
 // appending to an unreachable file.
 bool TakePrivateText(const std::string& path, std::string& content,
-                            std::string& error);
+                     std::string& error);
 
 std::filesystem::path CanonicalAccessPath(const std::string& path);
 
 std::string DisplayPath(const std::string& path);
 
 bool PathWithin(const std::filesystem::path& path,
-                       const std::filesystem::path& root);
+                const std::filesystem::path& root);
 
 }  // namespace uagent
 

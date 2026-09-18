@@ -18,8 +18,8 @@
 
 #include "include/core/fd.h"
 #include "include/core/json.h"
-#include "include/core/thread_annotations.h"
 #include "include/core/output_buffer.h"
+#include "include/core/thread_annotations.h"
 
 namespace uagent {
 

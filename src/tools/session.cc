@@ -127,8 +127,7 @@ bool SharesLink(const std::string& a, const std::string& b) {
   for (const std::string& name : LinkFiles()) {
     json link = ReadLink(name);
     if (!link.is_object()) continue;
-    const json members =
-        JsonValue(link, "members", json::array());
+    const json members = JsonValue(link, "members", json::array());
     if (HasMember(members, a) && HasMember(members, b)) return true;
   }
   return false;
@@ -140,8 +139,8 @@ ToolResult EnsureSessionAutoLink() {
   if (!me.is_object()) return ToolSuccess({});
   const std::string name = AutoLinkName();
   json link = ReadLink(name);
-  json members =
-      !link.is_object() ? json::array() : JsonValue(link, "members", json::array());
+  json members = !link.is_object() ? json::array()
+                                   : JsonValue(link, "members", json::array());
   const std::string id = JsonValue(me, "id", "");
   if (HasMember(members, id)) return ToolSuccess({});
   if (members.size() >= kSessionLinkMembers) {
@@ -179,8 +178,7 @@ ToolResult JoinSessionLink(const std::string& token) {
   }
   json link = ReadLink(token);
   if (!link.is_object()) {
-    return ToolFailure(ToolErrorCode::kNotFound,
-                       "error: unknown link token");
+    return ToolFailure(ToolErrorCode::kNotFound, "error: unknown link token");
   }
   json me = OwnMember();
   if (!me.is_object()) {
@@ -246,7 +244,8 @@ std::vector<json> SessionSummaries() {
     const std::string id = JsonValue(member, "id", "");
     std::string path = JsonValue(member, "path", "");
     std::string kind = "session";
-    if (path.find("/collaborators/") != std::string::npos) kind = "collaborator";
+    if (path.find("/collaborators/") != std::string::npos)
+      kind = "collaborator";
     push(id, MemberTitle(id, path), kind, true);
   }
   // Then linkable workspace sessions.
@@ -294,17 +293,16 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
                        "error: unknown session " + id);
   }
   if (!SharesLink(me, id)) {
-    return ToolFailure(ToolErrorCode::kPermissionDenied,
-                       "error: session " + id +
-                           " is not linked; join its link first (/link)");
+    return ToolFailure(
+        ToolErrorCode::kPermissionDenied,
+        "error: session " + id + " is not linked; join its link first (/link)");
   }
   if (text.empty()) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "message requires text");
   }
   if (hops >= kSessionMailMaxHops) {
-    return ToolSuccess("dropped message for session " + id +
-                       " [loop-clamped]");
+    return ToolSuccess("dropped message for session " + id + " [loop-clamped]");
   }
   ToolResult saved = WriteSessionMail(id, text, from.empty() ? me : from, hops);
   return saved.Ok() ? ToolSuccess("queued message for session " + id) : saved;
@@ -313,30 +311,29 @@ ToolResult MessageSession(const std::string& id, const std::string& text,
 Tool SessionTool() {
   json parameters = json{
       {"type", "object"},
-       {"properties",
+      {"properties",
        {{"operation",
-           {{"type", "string"},
-            {"enum", json::array({"list", "message"})},
-            {"description", "list linked/linkable sessions or message one"}}},
-          {"session_id",
-           {{"type", json::array({"string", "array"})},
-            {"items", {{"type", "string"}}},
-            {"description",
-             "peer session id for message; accepts an array for fan-out"}}},
-          {"broadcast",
-           {{"type", "boolean"},
-            {"description",
-             "message only: fan out to every linked session"}}},
-          {"prompt",
-           {{"type", "string"},
-            {"description", "message text for operation=message"}}},
-          {"hops",
-           {{"type", "integer"},
-            {"minimum", 0},
-            {"maximum", 8},
-            {"description",
-             "message only: peer-forward count for loop clamping"}}}}},
-       {"required", json::array({"prompt"})}};
+         {{"type", "string"},
+          {"enum", json::array({"list", "message"})},
+          {"description", "list linked/linkable sessions or message one"}}},
+        {"session_id",
+         {{"type", json::array({"string", "array"})},
+          {"items", {{"type", "string"}}},
+          {"description",
+           "peer session id for message; accepts an array for fan-out"}}},
+        {"broadcast",
+         {{"type", "boolean"},
+          {"description", "message only: fan out to every linked session"}}},
+        {"prompt",
+         {{"type", "string"},
+          {"description", "message text for operation=message"}}},
+        {"hops",
+         {{"type", "integer"},
+          {"minimum", 0},
+          {"maximum", 8},
+          {"description",
+           "message only: peer-forward count for loop clamping"}}}}},
+      {"required", json::array({"prompt"})}};
   Tool tool = MakeTool(
       "session",
       "Message another live uagent session (terminal or browser) that shares "
@@ -346,8 +343,7 @@ Tool SessionTool() {
       "reads at its next step; broadcast fans out to every linked session. "
       "Delivery is at-least-once and ordered oldest-first; unlinked sessions "
       "reject with a permission error.",
-      parameters,
-      [](const json& arguments, const ToolContext&) {
+      parameters, [](const json& arguments, const ToolContext&) {
         (void)EnsureSessionAutoLink();
         std::string operation = JsonValue(arguments, "operation", "list");
         if (operation == "list") {
@@ -388,8 +384,8 @@ Tool SessionTool() {
         for (const std::string& target : targets) {
           ToolResult one = MessageSession(target, prompt, me, hops);
           if (!combined.empty()) combined += "\n";
-          combined += one.Ok() ? one.output
-                               : ("error " + target + ": " + one.output);
+          combined +=
+              one.Ok() ? one.output : ("error " + target + ": " + one.output);
           if (!one.Ok()) return ToolFailure(one.error, combined);
         }
         return ToolSuccess(combined);
@@ -398,7 +394,8 @@ Tool SessionTool() {
   return tool;
 }
 
-std::string SessionText(const json& result) {  const json* rows = JsonArray(result, "sessions");
+std::string SessionText(const json& result) {
+  const json* rows = JsonArray(result, "sessions");
   if (rows == nullptr) return JsonDump(result, 2) + "\n";
   std::string text =
       "sessions (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
@@ -440,8 +437,7 @@ json SessionSlashLink(const std::string& argument) {
     ToolResult made = CreateSessionLink(created);
     if (!made.Ok()) return {{"error", made.output}};
     return {{"output", "link token: " + created +
-                             "\nhand it to another session as /link " +
-                             created}};
+                           "\nhand it to another session as /link " + created}};
   }
   ToolResult joined = JoinSessionLink(token);
   if (!joined.Ok()) return {{"error", joined.output}};

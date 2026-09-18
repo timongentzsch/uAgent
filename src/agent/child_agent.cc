@@ -1,7 +1,6 @@
 // Copyright 2026 Timon Gentzsch
 
 #include "include/agent/child_agent.h"
-#include "include/agent/file_services.h"
 
 #include <unistd.h>
 
@@ -19,15 +18,16 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/file_services.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/limits.h"
+#include "include/core/output_buffer.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
-#include "include/core/output_buffer.h"
 #include "include/tools/session.h"
 
 namespace uagent {
@@ -370,8 +370,8 @@ std::string OwnSessionId() {
   const std::string file = OwnSessionFile();
   if (file.empty()) return {};
   std::string name = std::filesystem::path(file).filename().string();
-  for (std::string_view suffix : {std::string_view{".session.json"},
-                                  std::string_view{".json"}}) {
+  for (std::string_view suffix :
+       {std::string_view{".session.json"}, std::string_view{".json"}}) {
     if (name.ends_with(suffix) && name.size() > suffix.size()) {
       name.resize(name.size() - suffix.size());
       return name;
@@ -398,8 +398,7 @@ std::vector<std::filesystem::path> SessionMailFiles(const std::string& id) {
   return files;
 }
 
-std::optional<SessionMail> ReadSessionMail(
-    const std::filesystem::path& path) {
+std::optional<SessionMail> ReadSessionMail(const std::filesystem::path& path) {
   std::ifstream input(path);
   json mail = json::parse(input, nullptr, false);
   if (mail.is_discarded() || !mail.is_object()) return std::nullopt;
@@ -430,10 +429,7 @@ ToolResult WriteSessionMail(const std::string& id, const std::string& text,
   std::string path = SessionInboxDir() + "/" + id + ".smail-" +
                      UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
                      std::to_string(getpid()) + "-" + seq + ".json";
-  json mail = {{"format", 1},
-                 {"text", text},
-                 {"from", from},
-                 {"hops", hops}};
+  json mail = {{"format", 1}, {"text", text}, {"from", from}, {"hops", hops}};
   return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
                          /*preserve_mode=*/true);
 }
@@ -491,9 +487,9 @@ ToolResult WriteCollaboratorMail(const std::string& id,
                      UtcStamp("%Y%m%dT%H%M%SZ") + "-" +
                      std::to_string(getpid()) + "-" + seq + ".json";
   json mail = {{"format", 1},
-                 {"prompt", prompt},
-                 {"from", from.empty() ? "parent" : from},
-                 {"hops", hops}};
+               {"prompt", prompt},
+               {"from", from.empty() ? "parent" : from},
+               {"hops", hops}};
   return ToolAtomicWrite(path, JsonDump(mail, 2) + "\n", kPrivateFileMode,
                          /*preserve_mode=*/true);
 }

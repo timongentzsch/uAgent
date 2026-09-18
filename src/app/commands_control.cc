@@ -1,7 +1,5 @@
 // Copyright 2026 Timon Gentzsch
 
-#include "include/app/commands.h"
-
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -12,8 +10,12 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
+#include "include/app/commands.h"
 #include "include/app/config_proposal.h"
 #include "include/app/control.h"
 #include "include/app/prompt_control.h"
@@ -30,14 +32,10 @@
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
-#include "include/agent/child_agent.h"
-#include "include/agent/jobs.h"
 #include "include/tools/memory.h"
-#include "include/agent/process.h"
 #include "include/tools/subagent.h"
 #include "include/ui/conversation.h"
 #include "include/ui/sessions.h"
-
 #include "src/app/commands_internal.h"
 namespace uagent {
 
@@ -281,14 +279,14 @@ std::string ActivityText(const json& result) {
     if (const json* rows = JsonArray(result, key)) {
       const bool agents = std::string_view(key) == "collaborators";
       std::string text = std::string(agents ? "subagents" : "background work") +
-                         " (" + FmtCount(static_cast<int64_t>(rows->size())) + ")\n";
+                         " (" + FmtCount(static_cast<int64_t>(rows->size())) +
+                         ")\n";
       for (const json& row : *rows) {
         if (JsonValue(row, "detached", false)) text += "[detached] activity ";
         auto id = row.find("id");
-        const std::string id_text =
-            id == row.end()   ? "—"
-            : id->is_string() ? id->get<std::string>()
-                              : JsonDump(*id);
+        const std::string id_text = id == row.end()   ? "—"
+                                    : id->is_string() ? id->get<std::string>()
+                                                      : JsonDump(*id);
         if (agents) {
           // Agents are named teammates, not tasks: name first, id for reuse.
           const std::string name = JsonValue(row, "name", "");
@@ -302,7 +300,8 @@ std::string ActivityText(const json& result) {
           const std::string value = JsonValue(row, field, "");
           if (!value.empty()) text += " · " + value;
         }
-        if (agents && JsonValue(row, "persistent", false)) text += " · persistent";
+        if (agents && JsonValue(row, "persistent", false))
+          text += " · persistent";
         text += "\n";
         if (agents) {
           const std::string about =
@@ -348,6 +347,5 @@ json ActivityCommand(AppSession& session, const ParsedSlashCommand& command) {
   }
   return SessionControl(session, request);
 }
-
 
 }  // namespace uagent

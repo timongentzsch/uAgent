@@ -26,6 +26,8 @@ enum class RejectedCapability : uint8_t {
   kNone,
   kImageInput,
   kFileInput,
+  kAudioInput,
+  kVideoInput,
   kParallelTools,
   kStreamUsage,
 };
@@ -51,6 +53,9 @@ struct ProviderCapabilities {
   bool image_input = true;
   // Document parts, which not every route accepts even when it takes images.
   bool file_input = true;
+  // Speech and video parts, likewise negotiated per route.
+  bool audio_input = true;
+  bool video_input = true;
 
   // Stable route dialect features.
   bool model_catalog_required = true;

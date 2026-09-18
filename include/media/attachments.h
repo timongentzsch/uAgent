@@ -30,6 +30,10 @@ std::string AttachmentMime(const std::string& name);
 // raster and HEIC magic, or an SVG document root within the scan window.
 std::string RasterMime(std::string_view bytes);
 std::string SvgMime(std::string_view bytes);
+// Container sniffing for speech and video (ID3/RIFF/FLAC/OggS, BMFF video
+// brands). Empty when inconclusive; the declared extension then decides.
+std::string AudioMime(std::string_view bytes);
+std::string VideoMime(std::string_view bytes);
 
 std::string ImageDetail();
 
@@ -39,6 +43,14 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error);
 // second process-global copy of negotiated provider state.
 const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available);
+// Same posture for speech and video: silence when the route takes the kind,
+// otherwise tell the model attachments degrade to file paths.
+const char* ModelAudioInputInstruction(bool audio_input_available);
+const char* ModelVideoInputInstruction(bool video_input_available);
+// Short wire format for input_audio ("wav", "mp3", ...) from the MIME type.
+std::string AudioFormat(const std::string& mime);
+bool IsAudioMime(const std::string& mime);
+bool IsVideoMime(const std::string& mime);
 
 class AttachmentQueue {
  public:

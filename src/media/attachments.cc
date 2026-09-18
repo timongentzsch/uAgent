@@ -61,6 +61,21 @@ constexpr std::pair<const char*, const char*> kTypes[] = {
     {".xls", "application/vnd.ms-excel"},
     {".xlsx",
      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    {".mp3", "audio/mpeg"},
+    {".wav", "audio/wav"},
+    {".ogg", "audio/ogg"},
+    {".oga", "audio/ogg"},
+    {".flac", "audio/flac"},
+    {".m4a", "audio/mp4"},
+    {".opus", "audio/opus"},
+    {".aac", "audio/aac"},
+    {".aiff", "audio/aiff"},
+    {".aif", "audio/aiff"},
+    {".mp4", "video/mp4"},
+    {".mov", "video/quicktime"},
+    {".webm", "video/webm"},
+    {".mpeg", "video/mpeg"},
+    {".mpg", "video/mpeg"},
 };
 
 }  // namespace
@@ -104,6 +119,34 @@ std::string RasterMime(std::string_view bytes) {
       if (brand == still) return "image/heic";
     }
   }
+  return {};
+}
+
+// Video twin of the still check above: the same ftyp box with a video
+// brand means a video container. Extension-declared videos with unlisted
+// brands still pass below on the declared type; only image magic wins over
+// a video claim, never the reverse.
+std::string VideoMime(std::string_view bytes) {
+  if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
+    const std::string_view brand = bytes.substr(8, 4);
+    for (std::string_view video : {"isom", "iso2", "mp41", "mp42",
+                                   "avc1", "mmp4", "mp71"}) {
+      if (brand == video) return "video/mp4";
+    }
+  }
+  return {};
+}
+
+// Speech containers have real magic too: ID3 tags, RIFF/WAVE, FLAC, OggS.
+// Anything else rides on the declared extension, same as documents.
+std::string AudioMime(std::string_view bytes) {
+  if (bytes.size() >= 3 && bytes.starts_with("ID3")) return "audio/mpeg";
+  if (bytes.size() >= 12 && bytes.starts_with("RIFF") &&
+      bytes.substr(8, 4) == "WAVE") {
+    return "audio/wav";
+  }
+  if (bytes.size() >= 4 && bytes.starts_with("fLaC")) return "audio/flac";
+  if (bytes.size() >= 4 && bytes.starts_with("OggS")) return "audio/ogg";
   return {};
 }
 
@@ -182,6 +225,26 @@ bool IsRasterMime(const std::string& mime) {
          mime == "image/gif" || mime == "image/webp";
 }
 
+bool IsAudioMime(const std::string& mime) {
+  return mime.starts_with("audio/");
+}
+
+bool IsVideoMime(const std::string& mime) {
+  return mime.starts_with("video/");
+}
+
+std::string AudioFormat(const std::string& mime) {
+  if (mime == "audio/wav") return "wav";
+  if (mime == "audio/mpeg") return "mp3";
+  if (mime == "audio/flac") return "flac";
+  if (mime == "audio/ogg") return "ogg";
+  if (mime == "audio/mp4") return "mp3";
+  if (mime == "audio/opus") return "opus";
+  if (mime == "audio/aac") return "aac";
+  if (mime == "audio/aiff") return "aiff";
+  return "wav";
+}
+
 std::string ImageDetail() {
   std::string detail = EnvStr("UAGENT_IMAGE_DETAIL");
   return detail == "low" || detail == "high" || detail == "original" ||
@@ -222,6 +285,8 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
   }
   std::string mime = RasterMime(prefix);
   if (mime.empty()) mime = SvgMime(prefix);
+  if (mime.empty()) mime = AudioMime(prefix);
+  if (mime.empty()) mime = VideoMime(prefix);
   if (mime.empty()) {
     mime = AttachmentMime(path);
     if (IsRasterMime(mime)) {
@@ -255,6 +320,18 @@ const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available) {
   if (image_input_available || image_fallback_available) return "";
   return " Image input unavailable; image attachments are provided only as "
+         "file paths.";
+}
+
+const char* ModelAudioInputInstruction(bool audio_input_available) {
+  if (audio_input_available) return "";
+  return " Audio input unavailable; audio attachments are provided only as "
+         "file paths.";
+}
+
+const char* ModelVideoInputInstruction(bool video_input_available) {
+  if (video_input_available) return "";
+  return " Video input unavailable; video attachments are provided only as "
          "file paths.";
 }
 
@@ -716,8 +793,7 @@ bool PrepareAttachments(json& messages,
             delivery = capabilities.image_input ? "Image" : "Via vision model";
           }
         } else if (attachment.mime == "application/pdf" &&
-                   capabilities.file_input) {
-          std::string header;
+                   capabilities.file_input) {          std::string header;
           if (ReadRegularFile(path, 5, header, detail, true) &&
               header == "%PDF-") {
             std::string data = Base64File(
@@ -733,6 +809,36 @@ bool PrepareAttachments(json& messages,
             }
           } else {
             detail = "invalid PDF signature";
+          }
+        } else if (IsAudioMime(attachment.mime) &&
+                   capabilities.audio_input) {
+          // OpenRouter takes raw base64 plus a format word, never a data
+          // URI, and no audio URLs at all.
+          std::string data = Base64File(
+              attachment,
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
+              detail, "");
+          if (detail.empty()) {
+            prepared.push_back(
+                {{"type", "input_audio"},
+                 {"input_audio",
+                  {{"data", std::move(data)},
+                   {"format", AudioFormat(attachment.mime)}}}});
+            delivery = "Audio";
+          }
+        } else if (IsVideoMime(attachment.mime) &&
+                   capabilities.video_input) {
+          // Local files ride as base64 data URLs, mirroring image_url;
+          // remote URLs stay provider-specific and are out of scope.
+          std::string data = Base64File(
+              attachment,
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024,
+              detail, "data:" + attachment.mime + ";base64,");
+          if (detail.empty()) {
+            prepared.push_back(
+                {{"type", "video_url"},
+                 {"video_url", {{"url", std::move(data)}}}});
+            delivery = "Video";
           }
         }
       }

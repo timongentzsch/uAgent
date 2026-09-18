@@ -412,6 +412,12 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "This model does not support image input";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kImageInput);
+  rejected.error = "This model does not support audio input";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kAudioInput);
+  rejected.error = "This model does not support video input";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kVideoInput);
   rejected.error = "Invalid image input: size exceeds limit";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);

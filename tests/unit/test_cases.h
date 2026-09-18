@@ -69,6 +69,7 @@ namespace uagent {
   X(TestOpenRouterServerSearch)                \
   X(TestAttachmentEncoding)                    \
   X(TestVectorAndHeicAttachments)              \
+  X(TestAudioVideoAttachments)                 \
   X(TestWorkerBinaryIdentity)                  \
   X(TestGrepTool)                              \
   X(TestPythonTool)                            \

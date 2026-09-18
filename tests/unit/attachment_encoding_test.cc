@@ -269,4 +269,107 @@ void TestVectorAndHeicAttachments() {
   fs::remove_all(root, cleanup);
 }
 
+// Speech and video ride the same inspect/prepare flow as images: magic
+// first, declared container on inconclusive sniff, provider-judged after.
+void TestAudioVideoAttachments() {
+  namespace fs = std::filesystem;
+  fs::path root = fs::temp_directory_path() / "uagent-av-attachments";
+  std::error_code setup;
+  fs::remove_all(root, setup);
+  fs::create_directories(root, setup);
+  Attachment attachment;
+  std::string error;
+  // ID3 tags, RIFF/WAVE, FLAC and OggS sniff to speech types.
+  fs::path song = root / "song.mp3";
+  CHECK(ToolWriteFile(song.string(), "ID3\x04\x00\x00\x00").Ok());
+  CHECK(InspectAttachment(song.string(), attachment, error));
+  CHECK(attachment.mime == "audio/mpeg");
+  CHECK(!attachment.image);
+  fs::path wave = root / "clip.wav";
+  CHECK(ToolWriteFile(wave.string(), "RIFF\x24\x00\x00\x00WAVE").Ok());
+  CHECK(InspectAttachment(wave.string(), attachment, error));
+  CHECK(attachment.mime == "audio/wav");
+  // BMFF video brands sniff to video/mp4, the inverse of the HEIC check.
+  fs::path clip = root / "clip.mp4";
+  CHECK(ToolWriteFile(clip.string(),
+                        std::string("\x00\x00\x00\x20", 4) + "ftyp" +
+                            "mp41" + std::string(64, '\0'))
+            .Ok());
+  CHECK(InspectAttachment(clip.string(), attachment, error));
+  CHECK(attachment.mime == "video/mp4");
+  CHECK(!attachment.image);
+  // Magic wins over the declared type the way it does for images: a PNG
+  // renamed .mp3 stays an image and never enters the speech pipeline.
+  fs::path spoof = root / "spoof.mp3";
+  CHECK(ToolWriteFile(spoof.string(),
+                        std::string("\x89PNG\r\n\x1a\n", 8) +
+                            std::string("\x00\x00\x00\x0dIHDR", 8) +
+                            std::string(16, '\0'))
+            .Ok());
+  CHECK(InspectAttachment(spoof.string(), attachment, error));
+  CHECK(attachment.image);
+  // An inconclusive sniff keeps the declared container for the provider.
+  fs::path memo = root / "memo.m4a";
+  CHECK(ToolWriteFile(memo.string(), "voice memo bytes").Ok());
+  CHECK(InspectAttachment(memo.string(), attachment, error));
+  CHECK(attachment.mime == "audio/mp4");
+  // Wire shapes: raw base64 plus a format word for speech, a data URL
+  // mirroring image_url for video.
+  ProviderCapabilities capabilities;
+  capabilities.SetInputModalities(
+      json::array({"text", "audio", "video"}));
+  CHECK(capabilities.audio_input);
+  CHECK(capabilities.video_input);
+  CHECK(!capabilities.image_input);
+  CHECK(!capabilities.file_input);
+  error.clear();
+  CHECK(InspectAttachment(song.string(), attachment, error));
+  json request = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
+  json deliveries;
+  CHECK(PrepareAttachments(request, capabilities, false, "hearing", error,
+                           &deliveries));
+  CHECK(error.empty());
+  CHECK(deliveries[0]["delivery"] == "Audio");
+  const json* audio = JsonObject(
+      request[0]["content"][1], "input_audio");
+  CHECK(audio != nullptr);
+  CHECK(JsonValue(*audio, "format", "") == "mp3");
+  CHECK(!JsonValue(*audio, "data", "").empty());
+  error.clear();
+  CHECK(InspectAttachment(clip.string(), attachment, error));
+  request = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("watch", {attachment}, error)}}});
+  deliveries = json();
+  CHECK(PrepareAttachments(request, capabilities, false, "seeing", error,
+                           &deliveries));
+  CHECK(error.empty());
+  CHECK(deliveries[0]["delivery"] == "Video");
+  CHECK(JsonValue(request[0]["content"][1]["video_url"], "url", "")
+            .starts_with("data:video/mp4;base64,"));
+  // Without the flags both kinds degrade to file paths, like images.
+  capabilities.SetInputModalities(json::array({"text"}));
+  error.clear();
+  CHECK(InspectAttachment(song.string(), attachment, error));
+  request = json::array(
+      {{{"role", "user"},
+        {"content", AttachmentContent("transcribe", {attachment}, error)}}});
+  deliveries = json();
+  CHECK(PrepareAttachments(request, capabilities, false, "deaf", error,
+                           &deliveries));
+  CHECK(deliveries[0]["delivery"] == "File reference");
+  CHECK(JsonDump(request).find("input_audio") == std::string::npos);
+  CHECK(std::string(ModelAudioInputInstruction(false)).find(
+            "Audio input unavailable") != std::string::npos);
+  CHECK(std::string(ModelVideoInputInstruction(false)).find(
+            "Video input unavailable") != std::string::npos);
+  CHECK(std::string(ModelAudioInputInstruction(true)).empty());
+  CHECK(std::string(ModelVideoInputInstruction(true)).empty());
+
+  std::error_code cleanup;
+  fs::remove_all(root, cleanup);
+}
+
 }  // namespace uagent

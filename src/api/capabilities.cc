@@ -76,6 +76,10 @@ void ProviderCapabilities::SetInputModalities(const json& modalities) {
                    modalities.end() ||
                std::find(modalities.begin(), modalities.end(), "file") !=
                    modalities.end();
+  audio_input = std::find(modalities.begin(), modalities.end(), "audio") !=
+                modalities.end();
+  video_input = std::find(modalities.begin(), modalities.end(), "video") !=
+                modalities.end();
 }
 
 void ProviderCapabilities::ResetNegotiated() {
@@ -84,6 +88,8 @@ void ProviderCapabilities::ResetNegotiated() {
   stream_usage_option = wire_api == WireApi::kChatCompletions && !OpenRouter();
   image_input = true;
   file_input = true;
+  audio_input = true;
+  video_input = true;
   json modalities = std::move(input_modalities);
   input_modalities = nullptr;
   SetInputModalities(modalities);
@@ -112,6 +118,8 @@ json ProviderCapabilities::DiagnosticJson() const {
           {"stream_usage_option", stream_usage_option},
           {"image_input", image_input},
           {"file_input", file_input},
+          {"audio_input", audio_input},
+          {"video_input", video_input},
           {"input_modalities", input_modalities},
           {"web_search_sources", web_search_sources},
           {"model_catalog_required", model_catalog_required},
@@ -196,6 +204,12 @@ RejectedCapability RejectedRouteCapability(
        unsupported_modality("pdf"))) {
     return RejectedCapability::kFileInput;
   }
+  if (capabilities.audio_input && unsupported_modality("audio")) {
+    return RejectedCapability::kAudioInput;
+  }
+  if (capabilities.video_input && unsupported_modality("video")) {
+    return RejectedCapability::kVideoInput;
+  }
   if (result.http_status != 400) return RejectedCapability::kNone;
   if (capabilities.parallel_tools &&
       (evidence.find("parallel_tool_calls") != std::string::npos ||
@@ -215,6 +229,10 @@ const char* CapabilityName(RejectedCapability capability) {
       return "image_input";
     case RejectedCapability::kFileInput:
       return "file_input";
+    case RejectedCapability::kAudioInput:
+      return "audio_input";
+    case RejectedCapability::kVideoInput:
+      return "video_input";
     case RejectedCapability::kParallelTools:
       return "parallel_tool_calls";
     case RejectedCapability::kStreamUsage:

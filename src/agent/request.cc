@@ -510,11 +510,17 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
                 {"error", result.error}}});
   };
   if (rejected == RejectedCapability::kImageInput ||
-      rejected == RejectedCapability::kFileInput) {
+      rejected == RejectedCapability::kFileInput ||
+      rejected == RejectedCapability::kAudioInput ||
+      rejected == RejectedCapability::kVideoInput) {
     if (rejected == RejectedCapability::kImageInput) {
       api_.capabilities.image_input = false;
-    } else {
+    } else if (rejected == RejectedCapability::kFileInput) {
       api_.capabilities.file_input = false;
+    } else if (rejected == RejectedCapability::kAudioInput) {
+      api_.capabilities.audio_input = false;
+    } else {
+      api_.capabilities.video_input = false;
     }
     EnsureRuntimeContext();
     changed(rejected);
@@ -613,7 +619,9 @@ std::string Agent::RuntimeContextText() const {
   std::string content =
       EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
-                                 !api_.config.image_model.empty());
+                                 !api_.config.image_model.empty()) +
+      ModelAudioInputInstruction(api_.capabilities.audio_input) +
+      ModelVideoInputInstruction(api_.capabilities.video_input);
   if (std::any_of(tools_.begin(), tools_.end(),
                   [](const Tool& tool) { return tool.delegates; })) {
     content += DelegationRuntimeContext(api_);

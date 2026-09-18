@@ -33,6 +33,8 @@ enum class SessionCommandKind {
   kConfig,
   kContext,
   kFork,
+  kRewind,
+  kShare,
   kPrompt,
   kSubmit,
   kUnknown,
@@ -41,7 +43,7 @@ enum class SessionCommandKind {
 const char* SessionCommandKindName(SessionCommandKind kind);
 SessionCommandKind ParseSessionCommandKind(std::string_view kind);
 
-// Host-side command vocabulary. The sixteen worker kinds are shared: most
+// Host-side command vocabulary. The eighteen worker kinds are shared: most
 // are forwarded to the worker, but close is executed by the host close flow
 // and guide never crosses the socket. Create/delete/activate exist only on
 // the host (saved-session management without a live worker).
@@ -60,6 +62,8 @@ enum class HostCommandKind {
   kConfig,
   kContext,
   kFork,
+  kRewind,
+  kShare,
   kPrompt,
   kSubmit,
   kCreate,

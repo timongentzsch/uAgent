@@ -15,8 +15,6 @@ namespace uagent {
 
 enum class MessageKind {
   kSystem,
-  kProjectInstructions,
-  kMemory,
   kUser,
   kAssistant,
   kToolResult,
@@ -90,6 +88,11 @@ class Conversation {
   void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
+  // Drops the Nth user turn and everything after it (message-exclusive, so
+  // the dropped turn can be retried fresh). Attachment messages read as
+  // user turns, matching NormalizeRole. False when out of range, leaving
+  // the conversation untouched.
+  bool TruncateBeforeUserTurn(int64_t turn);
 
   std::string LastAssistantText() const;
   std::string LastText(MessageKind kind) const;

@@ -137,7 +137,35 @@ json SessionControl(AppSession& session, const json& request) {
       return {{"error", error}};
     }
     return SessionStore::Fork(session.session_file,
-                              JsonValue(request, "title", ""), true);
+                              JsonValue(request, "title", ""), true,
+                              JsonValue(request, "turn", int64_t{0}));
+  }
+  if (kind == "rewind") {
+    const int64_t turn = JsonValue(request, "turn", int64_t{0});
+    if (turn <= 0) return {{"error", "usage: /rewind [@]TURN"}};
+    if (session.session_file.empty()) {
+      return {{"error", "session has no file yet"}};
+    }
+    std::string error;
+    if (!session.ActiveAgent().RewindToTurn(turn, error)) {
+      return {{"error", error}};
+    }
+    SaveSessionSettings(session);
+    if (!session.ActiveAgent().Save(session.session_file, error)) {
+      return {{"error", error}};
+    }
+    return {{"rewound", true}, {"turns", turn - 1}};
+  }
+  if (kind == "share") {
+    if (session.session_file.empty()) {
+      return {{"error", "session has no file yet"}};
+    }
+    std::string error;
+    SaveSessionSettings(session);
+    if (!session.ActiveAgent().Save(session.session_file, error)) {
+      return {{"error", error}};
+    }
+    return SessionStore::Share(session.session_file);
   }
   if (kind == "config") {
     return ConfigurationControl(

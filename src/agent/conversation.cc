@@ -45,11 +45,7 @@ void NormalizeRole(json& message, MessageKind kind) {
       return;
     // Harness-injected context. Only the baseline at index zero may be
     // `system`: the OpenAI convention expects a single leading system message,
-    // and strict chat templates reject a later one outright. Project
-    // instructions and memory appear here only when resuming a session saved
-    // before the baseline was consolidated.
-    case MessageKind::kProjectInstructions:
-    case MessageKind::kMemory:
+    // and strict chat templates reject a later one outright.
     case MessageKind::kRuntimeContext:
     case MessageKind::kInternal:
       message["role"] = "user";
@@ -69,8 +65,6 @@ constexpr struct {
   MessageKind kind;
 } kKinds[] = {
     {"system", MessageKind::kSystem},
-    {"project_instructions", MessageKind::kProjectInstructions},
-    {"memory", MessageKind::kMemory},
     {"user", MessageKind::kUser},
     {"assistant", MessageKind::kAssistant},
     {"tool_result", MessageKind::kToolResult},
@@ -434,14 +428,6 @@ void Conversation::RefreshBaseline(json system) {
   } else {
     Set(0, std::move(system), MessageKind::kSystem);
   }
-  // Sessions saved before the baseline was consolidated still carry separate
-  // project-instruction and memory messages. Their content is already folded
-  // into the system message above, so drop the stale copies.
-  while (messages_.size() > 1 &&
-         (kinds_[1] == MessageKind::kProjectInstructions ||
-          kinds_[1] == MessageKind::kMemory)) {
-    Erase(1, 2);
-  }
 }
 
 void Conversation::Push(json message, MessageKind kind) {
@@ -511,6 +497,22 @@ void Conversation::Erase(size_t begin, size_t end) {
                      display_ids_.begin() + static_cast<std::ptrdiff_t>(end));
 }
 
+bool Conversation::TruncateBeforeUserTurn(int64_t turn) {
+  if (turn <= 0) return false;
+  int64_t seen = 0;
+  for (size_t index = 0; index < kinds_.size(); ++index) {
+    if (kinds_[index] != MessageKind::kUser &&
+        kinds_[index] != MessageKind::kAttachment) {
+      continue;
+    }
+    if (++seen == turn) {
+      Erase(index, kinds_.size());
+      return true;
+    }
+  }
+  return false;
+}
+
 bool Conversation::HasKind(MessageKind kind) const {
   return std::find(kinds_.begin(), kinds_.end(), kind) != kinds_.end();
 }
@@ -565,12 +567,7 @@ int64_t Conversation::UserTurns() const {
       std::count(kinds_.begin(), kinds_.end(), MessageKind::kUser));
 }
 
-size_t Conversation::UserVisibleCount() const {
-  return static_cast<size_t>(
-      std::count_if(kinds_.begin(), kinds_.end(), [](MessageKind kind) {
-        return kind != MessageKind::kProjectInstructions;
-      }));
-}
+size_t Conversation::UserVisibleCount() const { return kinds_.size(); }
 
 bool Conversation::HasRecentToolResult(const std::string& name,
                                        const std::string& arguments,

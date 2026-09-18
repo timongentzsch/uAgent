@@ -30,7 +30,7 @@ constexpr ProviderTemplate kProviderTemplates[] = {{
     "OPENROUTER_API_KEY",
     "OPENROUTER_MODEL",
     "OPENROUTER_EFFORT",
-    "openrouter/auto",
+    kDefaultModelRoute,
     OpenrouterUrl,
     ProviderProtocol::kOpenRouter,
     WireApi::kChatCompletions,

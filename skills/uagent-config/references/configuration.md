@@ -13,6 +13,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 - budget
 - tools
 - delegation
+- session
 - search
 - memory
 - skills
@@ -108,10 +109,16 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_SUBAGENT_MAX_TOOL_CALLS` | integer | `240` | restart-required | tool calls per delegated child |
 | `UAGENT_SUBAGENT_TIMEOUT` | integer | `0` | restart-required | wall-clock ceiling per delegated child; 0 is the turn |
 | `UAGENT_SUBAGENT_CALLS_PER_TURN` | integer | `32` | restart-required | delegated children one coordinator turn may start |
-| `UAGENT_PERSISTENT_MAX` | integer | `3` | restart-required | live persistent sidekicks kept per conversation (1-8) |
+| `UAGENT_PERSISTENT_MAX` | integer | `3` | restart-required | live persistent sidekicks kept per conversation |
 | `UAGENT_TEAM` | string | empty | restart-required | team id shared by peer collaborators |
 | `UAGENT_SUBAGENT_MODEL` | string | empty | restart-required | default model route for delegated children |
 | `UAGENT_TOOLSET` | string | empty | restart-required | lean withholds implementation tools from this process |
+
+## session
+
+| Setting | Type | Default | Takes effect | Description |
+| --- | --- | --- | --- | --- |
+| `UAGENT_TITLE_MODEL` | string | empty | restart-required | model route for background session titles; empty uses the shared default route |
 
 ## search
 
@@ -173,7 +180,7 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
-| `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images |
+| `UAGENT_IMAGE_MODEL` | string | empty | next-user-turn | model route that reads attached images; empty uses the main route when it reads images, else the shared default route |
 | `UAGENT_IMAGE_DETAIL` | string | empty | restart-required | low, high, or original image detail |
 | `UAGENT_PDF_ENGINE` | string | `cloudflare-ai` | restart-required | OpenRouter file-parser engine for documents |
 | `UAGENT_PENDING_ATTACHMENTS` | integer | `8` | restart-required | attachments queued for the next turn |

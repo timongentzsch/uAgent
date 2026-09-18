@@ -373,6 +373,11 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "delegation", "default model route for delegated children"),
+    registry::Str("UAGENT_TITLE_MODEL", {}, "",
+                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
+                  "session",
+                  "model route for background session titles; empty "
+                  "uses the shared default route"),
     registry::Str("UAGENT_TOOLSET", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "delegation",
                   "lean withholds implementation tools from this process"),
@@ -499,7 +504,9 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     // Attachments and terminal media.
     registry::Str("UAGENT_IMAGE_MODEL", "image_model", "",
                   ReloadPolicy::kNextUserTurn, Sensitivity::kPublic, "media",
-                  "model route that reads attached images"),
+                  "model route that reads attached images; empty uses the "
+                  "main route when it reads images, else the shared "
+                  "default route"),
     registry::Str("UAGENT_IMAGE_DETAIL", {}, "", ReloadPolicy::kRestartRequired,
                   Sensitivity::kPublic, "media",
                   "low, high, or original image detail"),

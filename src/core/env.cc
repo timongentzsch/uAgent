@@ -15,6 +15,7 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/providers.h"
 
 namespace uagent {
 
@@ -94,6 +95,11 @@ int64_t SubagentMaxToolCalls() {
 
 std::string SubagentModel() {
   return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
+}
+
+std::string TitleModel() {
+  std::string model = StringSetting(Cfg("UAGENT_TITLE_MODEL"));
+  return model.empty() ? kDefaultModelRoute : model;
 }
 
 int64_t SubagentTimeoutSeconds() {

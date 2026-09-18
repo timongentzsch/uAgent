@@ -455,6 +455,8 @@ class WorkerChannel final : public ApplicationChannel {
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
       case SessionCommandKind::kFork:
+      case SessionCommandKind::kRewind:
+      case SessionCommandKind::kShare:
       case SessionCommandKind::kPrompt: {
         if (QueueIdleControl(request, parsed.raw, error)) return true;
         break;
@@ -497,10 +499,13 @@ class WorkerChannel final : public ApplicationChannel {
           }
           ParsedSlashCommand slash = ParseSlashCommand(input.text);
           if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
+                             slash.spec->id == SlashCommandId::kClear ||
                              slash.spec->id == SlashCommandId::kFork ||
+                             slash.spec->id == SlashCommandId::kRewind ||
+                             slash.spec->id == SlashCommandId::kShare ||
                              slash.spec->id == SlashCommandId::kSessions ||
                              slash.spec->id == SlashCommandId::kQuit)) {
-            error = "use conversation controls to navigate, fork, or close";
+            error = "use conversation controls to navigate, branch, or close";
           }
           if (error.empty()) {
             ClearAbort();

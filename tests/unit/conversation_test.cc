@@ -7,10 +7,15 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/agent/trace.h"
 #include "include/app/runtime.h"
 #include "include/core/config.h"
+#include "include/core/env.h"
+#include "include/core/fs.h"
+#include "include/providers.h"
+#include "include/ui/sessions.h"
 #include "tests/unit/terminal_test_support.h"
 #include "tests/unit/test_support.h"
 
@@ -304,14 +309,14 @@ void TestConversation() {
   CHECK(!ParseMessageKinds(kinds, conversation.Size(), parsed));
 
   Conversation resumed;
-  resumed.Reset(
-      json::array({{{"role", "system"}, {"content", "old system"}},
-                   {{"role", "system"}, {"content", "old memory index"}},
-                   {{"role", "user"}, {"content", "continue"}}}),
-      {MessageKind::kSystem, MessageKind::kMemory, MessageKind::kUser});
+  resumed.Reset(json::array({{{"role", "system"}, {"content", "old system"}},
+                               {{"role", "user"}, {"content", "continue"}}}),
+                  {MessageKind::kSystem, MessageKind::kUser});
   resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}});
+  // No silent drops: the baseline refresh rewrites message zero and keeps
+  // the rest verbatim.
   CHECK(resumed.Size() == 2);
-  CHECK(!resumed.HasKind(MessageKind::kMemory));
+  CHECK(resumed.At(0).value("content", "") == "new system");
   CHECK(resumed.At(1).value("content", "") == "continue");
 
   // A rendered receipt is kept beside the transcript, never inside it: the
@@ -862,6 +867,192 @@ void TestAttachmentHistoryRendering() {
   CHECK(kept.find("note") != std::string::npos);
   CHECK(kept.find("/tmp/x.png") != std::string::npos);
   CHECK(drawn.find("image.png \u00b7 Image") != std::string::npos);
+}
+
+// P1: fork-at-turn truncates message-exclusively at the Nth user turn and
+// stamps lineage; whole-session forks keep the legacy "Fork of" title.
+void TestForkAtTurnAndLineage() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("fork-at-turn");
+  SessionRecord record;
+  record.metadata.cwd = CanonicalCwd();
+  record.metadata.model = "test";
+  record.metadata.session_id = "parent-1";
+  record.metadata.turns = 2;
+  record.metadata.title = "parent title";
+  record.state.messages = json::array({
+      {{"role", "system"}, {"content", "sys"}},
+      {{"role", "user"}, {"content", "one"}},
+      {{"role", "assistant"}, {"content", "uno"}},
+      {{"role", "user"}, {"content", "two"}},
+      {{"role", "assistant"}, {"content", "dos"}},
+  });
+  record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser,
+                                MessageKind::kAssistant, MessageKind::kUser,
+                                MessageKind::kAssistant};
+  const std::string source =
+      (workspace.workspace / "source.json").string();
+  CHECK(SessionStore::Save(source, record).Ok());
+
+  // Turn 2 keeps the prefix before the second user message: 3 messages.
+  json forked = SessionStore::Fork(source, "", true, 2);
+  CHECK(!forked.contains("error"));
+  const std::string child = forked.value("path", "");
+  CHECK(!child.empty());
+  auto reloaded = SessionStore::Inspect(child);
+  CHECK(reloaded.record.has_value());
+  CHECK(reloaded.record->state.messages.size() == 3);
+  CHECK(JsonValue(reloaded.record->state.messages[2], "content", "") ==
+        "uno");
+  CHECK(reloaded.record->metadata.turns == 1);
+  CHECK(reloaded.record->metadata.title == "Fork of parent title @ turn 2");
+  CHECK(reloaded.record->metadata.parent_session_id == "parent-1");
+  CHECK(reloaded.record->metadata.forked_at_turn == 2);
+  CHECK(!reloaded.record->metadata.forked_at_time.empty());
+  // The source still has everything.
+  auto kept = SessionStore::Inspect(source);
+  CHECK(kept.record->state.messages.size() == 5);
+  CHECK(kept.record->metadata.parent_session_id.empty());
+  // Out of range stays an error, never an empty fork.
+  json missed = SessionStore::Fork(source, "", true, 9);
+  CHECK(missed.contains("error"));
+  // Whole-session forks keep the legacy title and record parent turns.
+  json whole = SessionStore::Fork(source, "", true);
+  CHECK(!whole.contains("error"));
+  auto rewhole = SessionStore::Inspect(whole.value("path", ""));
+  CHECK(rewhole.record->state.messages.size() == 5);
+  CHECK(rewhole.record->metadata.title == "Fork of parent title");
+  CHECK(rewhole.record->metadata.forked_at_turn == 2);
+}
+
+// P2: in-place rewind keeps identity and title while stamping a
+// reset-boundary fact; /share renders user/assistant text plus truncated
+// tool results and never leaks system or internal messages.
+void TestRewindAndShare() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("rewind-share");
+  SessionRecord record;
+  record.metadata.cwd = CanonicalCwd();
+  record.metadata.model = "test";
+  record.metadata.session_id = "live-1";
+  record.metadata.turns = 3;
+  record.metadata.title = "live title";
+  record.state.messages = json::array({
+      {{"role", "system"}, {"content", "sys"}},
+      {{"role", "user"}, {"content", "one"}},
+      {{"role", "assistant"}, {"content", "uno"}},
+      {{"role", "user"},
+       {"content",
+        json::array({{{"type", "text"}, {"text", "see this"}},
+                     {{"type", "attachment"},
+                      {"path", "/tmp/a.png"}}})}},
+      {{"role", "assistant"}, {"content", "looks good"}},
+      {{"role", "tool"},
+       {"content", "file bytes"},
+       {"name", "read_path"}},
+      {{"role", "user"}, {"content", "three"}},
+      {{"role", "assistant"}, {"content", "tres"}},
+      {{"role", "user"}, {"content", "[note]"}},
+  });
+  record.state.message_kinds = {
+      MessageKind::kSystem,    MessageKind::kUser,       MessageKind::kAssistant,
+      MessageKind::kAttachment, MessageKind::kAssistant, MessageKind::kToolResult,
+      MessageKind::kUser,      MessageKind::kAssistant,  MessageKind::kInternal};
+  // The share view numbers the three user turns, keeps tool output under a
+  // named fence, and drops the internal note and the system prompt.
+  const std::string markdown = SessionStore::ShareMarkdown(record);
+  CHECK(markdown.find("# live title") != std::string::npos);
+  CHECK(markdown.find("## User 1") != std::string::npos);
+  CHECK(markdown.find("one") != std::string::npos);
+  CHECK(markdown.find("## User 2") != std::string::npos);
+  CHECK(markdown.find("[file: /tmp/a.png]") != std::string::npos);
+  CHECK(markdown.find("## User 3") != std::string::npos);
+  CHECK(markdown.find("three") != std::string::npos);
+  CHECK(markdown.find("## Assistant") != std::string::npos);
+  CHECK(markdown.find("tres") != std::string::npos);
+  CHECK(markdown.find("### tool `read_path`") != std::string::npos);
+  CHECK(markdown.find("file bytes") != std::string::npos);
+  CHECK(markdown.find("[note]") == std::string::npos);
+  CHECK(markdown.find("sys") == std::string::npos);
+  const std::string source = (workspace.workspace / "live.json").string();
+  CHECK(SessionStore::Save(source, record).Ok());
+  // Rewind to turn 3 drops it and keeps identity, title and lineage empty.
+  json rewound = SessionStore::Rewind(source, 3);
+  CHECK(!rewound.contains("error"));
+  auto reloaded = SessionStore::Inspect(source);
+  CHECK(reloaded.record.has_value());
+  CHECK(reloaded.record->state.messages.size() == 6);
+  CHECK(reloaded.record->metadata.turns == 2);
+  CHECK(reloaded.record->metadata.session_id == "live-1");
+  CHECK(reloaded.record->metadata.title == "live title");
+  CHECK(reloaded.record->metadata.parent_session_id.empty());
+  CHECK(JsonValue(reloaded.record->state.display["facts"]["reset-boundary"],
+                   "turn", int64_t{0}) == 3);
+  // Attachments count as user turns: rewinding to 2 keeps the prefix
+  // before it, including turn 1's assistant reply.
+  CHECK(!SessionStore::Rewind(source, 2).contains("error"));
+  auto prefix = SessionStore::Inspect(source);
+  CHECK(prefix.record->state.messages.size() == 3);
+  CHECK(prefix.record->metadata.turns == 1);
+  CHECK(JsonValue(prefix.record->state.display["facts"]["reset-boundary"],
+                   "turn", int64_t{0}) == 2);
+  // Out of range and non-positive turns stay errors, never truncations.
+  CHECK(SessionStore::Rewind(source, 9).contains("error"));
+  CHECK(SessionStore::Rewind(source, 0).contains("error"));
+  CHECK(SessionStore::Rewind(source, -1).contains("error"));
+  CHECK(SessionStore::Inspect(source).record->state.messages.size() == 3);
+  // The file export lands next to the session and renders its title.
+  json shared = SessionStore::Share(source);
+  CHECK(!shared.contains("error"));
+  const std::string sibling = shared.value("path", "");
+  CHECK(sibling == (workspace.workspace / "live.share.md").string());
+  std::string exported, error;
+  CHECK(ReadRegularFile(sibling, 1 << 20, exported, error));
+  CHECK(exported.find("# live title") != std::string::npos);
+}
+
+// P5: prefix switching resolves unique file-name/title matches and refuses
+// to guess on ambiguity, absence, or empty input.
+void TestSessionPrefixMatch() {
+  TestWorkspace workspace("session-prefix");
+  const std::string dir =
+      UagentDir(kHistoryDir) + "/" + WorkspaceId(CanonicalCwd());
+  std::error_code ec;
+  std::filesystem::create_directories(dir, ec);
+  auto save = [&](const std::string& file, const std::string& title) {
+    SessionRecord record;
+    record.metadata.cwd = CanonicalCwd();
+    record.metadata.model = "test";
+    record.metadata.session_id = file;
+    record.metadata.turns = 1;
+    record.metadata.title = title;
+    record.state.messages = json::array({{{"role", "system"},
+                                          {"content", "sys"}},
+                                         {{"role", "user"},
+                                          {"content", "hi"}}});
+    record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser};
+    CHECK(SessionStore::Save(dir + "/" + file, record).Ok());
+  };
+  save("match-a.json", "alpha task");
+  save("match-b.json", "beta task");
+  const std::string a = dir + "/match-a.json";
+  const std::string b = dir + "/match-b.json";
+  CHECK(MatchSessionPrefix("alpha") == a);
+  CHECK(MatchSessionPrefix("MATCH-B.JSON") == b);
+  CHECK(MatchSessionPrefix(b) == b);
+  CHECK(MatchSessionPrefix("task").empty());
+  CHECK(MatchSessionPrefix("zzz").empty());
+  CHECK(MatchSessionPrefix("").empty());
+  CHECK(MatchSessionPrefix("   ").empty());
+}
+
+// All side-model defaults resolve through one route: an explicit title
+// model wins, an empty setting follows the shared flash default.
+void TestTitleModelDefault() {
+  ScopedEnv unset("UAGENT_TITLE_MODEL");
+  CHECK(TitleModel() == kDefaultModelRoute);
+  ScopedEnv set("UAGENT_TITLE_MODEL", "custom/route");
+  CHECK(TitleModel() == "custom/route");
 }
 
 }  // namespace uagent

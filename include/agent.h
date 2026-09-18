@@ -82,6 +82,11 @@ class Agent {
 
   std::string ActiveRoute() const;
 
+  // Vision route for the analysis side call: the configured model wins;
+  // otherwise the main route reads images when it can, else the shared
+  // flash default (vision-capable) backs it. Empty means inherit main.
+  std::string EffectiveImageModel() const;
+
   // Session picker's one-line title.
   std::string FirstUserText() const;
 
@@ -117,6 +122,11 @@ class Agent {
 
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error);
+
+  // Drops the Nth live user turn and everything after it, mirroring
+  // SessionStore::Rewind on the running conversation. Numbering restarts
+  // at the cut; the caller persists with Save.
+  bool RewindToTurn(int64_t turn, std::string& error);
 
   // Estimated tokens in the request currently represented by the conversation.
   // Provider usage belongs to billing and may be cumulative or stale.

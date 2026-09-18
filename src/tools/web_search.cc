@@ -16,12 +16,13 @@
 #include "include/core/env.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/providers.h"
 
 namespace uagent {
 namespace {
 
 std::string DefaultSearchModel() {
-  return EnvStr("OPENROUTER_MODEL", "openrouter/auto");
+  return EnvStr("OPENROUTER_MODEL", kDefaultModelRoute);
 }
 
 ToolResult SearchError(int64_t http_status, const std::string& detail) {

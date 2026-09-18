@@ -25,6 +25,8 @@
 #include "include/core/fs.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
+#include "include/providers.h"
 #include "include/media/attachments.h"
 #include "include/agent/jobs.h"
 #include "include/agent/memory_store.h"
@@ -197,7 +199,7 @@ json Agent::ModelRequest() {
   json messages = conversation_.Messages();
   std::string error;
   const bool fallback =
-      !api_.capabilities.image_input && !api_.config.image_model.empty();
+      !api_.capabilities.image_input && !EffectiveImageModel().empty();
   PrepareAttachments(messages, api_.capabilities, fallback, ActiveRoute(),
                      error);
   if (fallback) ApplyImageAnalysisFallback(messages, false);
@@ -302,6 +304,35 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   logged_msgs_ = 0;
   logged_schemas_.clear();
   turn_search_trace_.Reset();
+  ++revision_;
+  return true;
+}
+
+bool Agent::RewindToTurn(int64_t turn, std::string& error) {
+  if (turn <= 0) {
+    error = "rewind turn must be positive";
+    return false;
+  }
+  int64_t live = 0;
+  for (MessageKind kind : conversation_.Kinds()) {
+    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) ++live;
+  }
+  if (turn > live) {
+    error = "session holds fewer than " + std::to_string(turn) +
+            " user turns (older turns may be compacted)";
+    return false;
+  }
+  if (!conversation_.TruncateBeforeUserTurn(turn)) {
+    error = "session holds fewer than " + std::to_string(turn) + " user turns";
+    return false;
+  }
+  // Numbering restarts at the cut like a fork at the same turn, so the
+  // retried turn reuses its number instead of colliding with dropped ids.
+  total_user_turns_ = turn - 1;
+  turn_id_ = turn - 1;
+  logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
+  conversation_.RecordDisplay("reset-boundary", {{"turn", turn},
+                                                   {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;
   return true;
 }

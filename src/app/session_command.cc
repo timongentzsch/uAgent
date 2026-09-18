@@ -40,6 +40,10 @@ const char* SessionCommandKindName(SessionCommandKind kind) {
       return "context";
     case SessionCommandKind::kFork:
       return "fork";
+    case SessionCommandKind::kRewind:
+      return "rewind";
+    case SessionCommandKind::kShare:
+      return "share";
     case SessionCommandKind::kPrompt:
       return "prompt";
     case SessionCommandKind::kSubmit:
@@ -65,6 +69,8 @@ SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
   if (kind == "config") return SessionCommandKind::kConfig;
   if (kind == "context") return SessionCommandKind::kContext;
   if (kind == "fork") return SessionCommandKind::kFork;
+  if (kind == "rewind") return SessionCommandKind::kRewind;
+  if (kind == "share") return SessionCommandKind::kShare;
   if (kind == "prompt") return SessionCommandKind::kPrompt;
   if (kind == "submit") return SessionCommandKind::kSubmit;
   return SessionCommandKind::kUnknown;
@@ -157,6 +163,10 @@ HostCommandKind ParseHostCommandKind(std::string_view kind) {
       return HostCommandKind::kContext;
     case SessionCommandKind::kFork:
       return HostCommandKind::kFork;
+    case SessionCommandKind::kRewind:
+      return HostCommandKind::kRewind;
+    case SessionCommandKind::kShare:
+      return HostCommandKind::kShare;
     case SessionCommandKind::kPrompt:
       return HostCommandKind::kPrompt;
     case SessionCommandKind::kSubmit:
@@ -185,6 +195,8 @@ bool ForwardsToWorker(HostCommandKind kind) {
     case HostCommandKind::kConfig:
     case HostCommandKind::kContext:
     case HostCommandKind::kFork:
+    case HostCommandKind::kRewind:
+    case HostCommandKind::kShare:
     case HostCommandKind::kPrompt:
       return true;
     case HostCommandKind::kClose:

@@ -2,6 +2,8 @@
 
 #include "include/app/commands.h"
 
+#include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -88,6 +90,46 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
     case SlashCommandId::kFork:
       result = {{"error", "conversation navigation belongs to the client"}};
       return false;
+    case SlashCommandId::kClear:
+      printf("\033[H\033[2J");
+      fflush(stdout);
+      return false;
+    case SlashCommandId::kRewind: {
+      std::string arg = Trim(command.argument);
+      if (arg.starts_with("@")) arg = Trim(arg.substr(1));
+      int64_t turn = 0;
+      if (!arg.empty() && arg.size() <= 9 &&
+          std::all_of(arg.begin(), arg.end(), ::isdigit)) {
+        turn = std::stoll(arg);
+      }
+      if (turn <= 0) {
+        result = {{"error", "usage: /rewind [@]TURN"}};
+        return false;
+      }
+      result = SessionControl(session, {{"kind", "rewind"}, {"turn", turn}});
+      if (session.context.channel == nullptr) {
+        printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+        fflush(stdout);
+      }
+      return false;
+    }
+    case SlashCommandId::kShare: {
+      if (!command.argument.empty()) {
+        result = {{"error", "usage: /share"}};
+        return false;
+      }
+      result = SessionControl(session, {{"kind", "share"}});
+      if (session.context.channel == nullptr) {
+        if (result.contains("path")) {
+          printf("%s· shared transcript: %s%s\n", DIM(),
+                 TerminalSafe(JsonValue(result, "path", "")).c_str(), RST());
+        } else {
+          printf("%s\n", TerminalSafe(JsonDump(result, 2)).c_str());
+        }
+        fflush(stdout);
+      }
+      return false;
+    }
     case SlashCommandId::kTrace:
       if (!command.argument.empty()) {
         size_t offset = 0;

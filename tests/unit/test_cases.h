@@ -80,12 +80,17 @@ namespace uagent {
   X(TestEffectiveConfigReload)                 \
   X(TestChildEnvironmentPolicy)                \
   X(TestModelPreference)                       \
+  X(TestEffectiveImageModel)                   \
   X(TestProviderTemplates)                     \
   X(TestNamedProviders)                        \
   X(TestSafeJsonValues)                        \
   X(TestProjectInstructionDiscovery)           \
   X(TestMcpContractHelpers)                    \
   X(TestConversation)                          \
+  X(TestForkAtTurnAndLineage)                  \
+  X(TestRewindAndShare)                        \
+  X(TestSessionPrefixMatch)                    \
+  X(TestTitleModelDefault)                     \
   X(TestAttachmentDeliveryAnnouncements)       \
   X(TestDisplayFactEvictionKeepsSmallReceipts) \
   X(TestAttachmentHistoryRendering)            \

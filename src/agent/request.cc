@@ -47,9 +47,9 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     std::string preparation_error;
     json deliveries;
     PrepareAttachments(projected, api_.capabilities,
-                       !api_.config.image_model.empty(), ActiveRoute(),
+                       !EffectiveImageModel().empty(), ActiveRoute(),
                        preparation_error, &deliveries);
-    if (!api_.capabilities.image_input && !api_.config.image_model.empty()) {
+    if (!api_.capabilities.image_input && !EffectiveImageModel().empty()) {
       preparation_error +=
           ApplyImageAnalysisFallback(projected, true, &deliveries);
     }
@@ -296,16 +296,18 @@ void AppendContentNote(json& content, const std::string& note) {
 
 }  // namespace
 
+std::string Agent::EffectiveImageModel() const {
+  if (!api_.config.image_model.empty()) return api_.config.image_model;
+  return api_.capabilities.image_input ? std::string() : kDefaultModelRoute;
+}
+
 std::string Agent::AnalyzeImageContent(const json& content,
                                        std::string& error) {
   error.clear();
-  if (api_.config.image_model.empty()) {
-    error = "UAGENT_IMAGE_MODEL is not configured";
-    return "";
-  }
+  const std::string image_model = EffectiveImageModel();
   ProviderCatalog catalog = SessionProviderCatalog();
   SideRoute route = ResolveSideRoute(api_, catalog.models, catalog.providers,
-                                     api_.config.image_model);
+                                     image_model);
   Api vision(api_.config);
   ApplySideRoute(vision, route);
   // The route decides where the request goes; these three facts are true of
@@ -359,8 +361,7 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
       std::string type = JsonValue(part, "type", "");
       if (type == "text" || type == "image_url") input.push_back(part);
     }
-    const std::string key =
-        api_.config.image_model + ":" + HashHex(JsonDump(input));
+    const std::string key = EffectiveImageModel() + ":" + HashHex(JsonDump(input));
     std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
     if (analysis.empty() && analyze) {
       analysis = AnalyzeImageContent(input, error);
@@ -619,7 +620,7 @@ std::string Agent::RuntimeContextText() const {
   std::string content =
       EnvironmentContext(LocalDay(), CanonicalCwd(), TerminalColumns()) +
       ModelImageInputInstruction(api_.capabilities.image_input,
-                                 !api_.config.image_model.empty()) +
+                                 !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
       ModelVideoInputInstruction(api_.capabilities.video_input);
   if (std::any_of(tools_.begin(), tools_.end(),

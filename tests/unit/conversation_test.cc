@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/process.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/agent/trace.h"
@@ -14,6 +15,7 @@
 #include "include/core/config.h"
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/usage.h"
 #include "include/providers.h"
 #include "include/ui/sessions.h"
 #include "tests/unit/terminal_test_support.h"
@@ -310,8 +312,8 @@ void TestConversation() {
 
   Conversation resumed;
   resumed.Reset(json::array({{{"role", "system"}, {"content", "old system"}},
-                               {{"role", "user"}, {"content", "continue"}}}),
-                  {MessageKind::kSystem, MessageKind::kUser});
+                             {{"role", "user"}, {"content", "continue"}}}),
+                {MessageKind::kSystem, MessageKind::kUser});
   resumed.RefreshBaseline({{"role", "system"}, {"content", "new system"}});
   // No silent drops: the baseline refresh rewrites message zero and keeps
   // the rest verbatim.
@@ -890,8 +892,7 @@ void TestForkAtTurnAndLineage() {
   record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser,
                                 MessageKind::kAssistant, MessageKind::kUser,
                                 MessageKind::kAssistant};
-  const std::string source =
-      (workspace.workspace / "source.json").string();
+  const std::string source = (workspace.workspace / "source.json").string();
   CHECK(SessionStore::Save(source, record).Ok());
 
   // Turn 2 keeps the prefix before the second user message: 3 messages.
@@ -902,8 +903,7 @@ void TestForkAtTurnAndLineage() {
   auto reloaded = SessionStore::Inspect(child);
   CHECK(reloaded.record.has_value());
   CHECK(reloaded.record->state.messages.size() == 3);
-  CHECK(JsonValue(reloaded.record->state.messages[2], "content", "") ==
-        "uno");
+  CHECK(JsonValue(reloaded.record->state.messages[2], "content", "") == "uno");
   CHECK(reloaded.record->metadata.turns == 1);
   CHECK(reloaded.record->metadata.title == "Fork of parent title @ turn 2");
   CHECK(reloaded.record->metadata.parent_session_id == "parent-1");
@@ -923,6 +923,23 @@ void TestForkAtTurnAndLineage() {
   CHECK(rewhole.record->state.messages.size() == 5);
   CHECK(rewhole.record->metadata.title == "Fork of parent title");
   CHECK(rewhole.record->metadata.forked_at_turn == 2);
+  // Live agents retain fork lineage across save/load generations instead
+  // of zeroing it on the next save.
+  Api api(RuntimeConfig{});
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  Agent agent(api, tools, processes, usage,
+              [](const Tool&, const json&) { return false; });
+  std::string error;
+  CHECK(agent.Load(child, CanonicalCwd(), error));
+  const std::string resaved = (workspace.workspace / "reloaded.json").string();
+  CHECK(agent.Save(resaved, error));
+  auto relived = SessionStore::Inspect(resaved);
+  CHECK(relived.record.has_value());
+  CHECK(relived.record->metadata.parent_session_id == "parent-1");
+  CHECK(relived.record->metadata.forked_at_turn == 2);
+  CHECK(!relived.record->metadata.forked_at_time.empty());
 }
 
 // P2: in-place rewind keeps identity and title while stamping a
@@ -944,20 +961,19 @@ void TestRewindAndShare() {
       {{"role", "user"},
        {"content",
         json::array({{{"type", "text"}, {"text", "see this"}},
-                     {{"type", "attachment"},
-                      {"path", "/tmp/a.png"}}})}},
+                     {{"type", "attachment"}, {"path", "/tmp/a.png"}}})}},
       {{"role", "assistant"}, {"content", "looks good"}},
-      {{"role", "tool"},
-       {"content", "file bytes"},
-       {"name", "read_path"}},
+      {{"role", "tool"}, {"content", "file bytes"}, {"name", "read_path"}},
       {{"role", "user"}, {"content", "three"}},
       {{"role", "assistant"}, {"content", "tres"}},
       {{"role", "user"}, {"content", "[note]"}},
   });
   record.state.message_kinds = {
-      MessageKind::kSystem,    MessageKind::kUser,       MessageKind::kAssistant,
-      MessageKind::kAttachment, MessageKind::kAssistant, MessageKind::kToolResult,
-      MessageKind::kUser,      MessageKind::kAssistant,  MessageKind::kInternal};
+      MessageKind::kSystem,    MessageKind::kUser,
+      MessageKind::kAssistant, MessageKind::kAttachment,
+      MessageKind::kAssistant, MessageKind::kToolResult,
+      MessageKind::kUser,      MessageKind::kAssistant,
+      MessageKind::kInternal};
   // The share view numbers the three user turns, keeps tool output under a
   // named fence, and drops the internal note and the system prompt.
   const std::string markdown = SessionStore::ShareMarkdown(record);
@@ -987,7 +1003,7 @@ void TestRewindAndShare() {
   CHECK(reloaded.record->metadata.title == "live title");
   CHECK(reloaded.record->metadata.parent_session_id.empty());
   CHECK(JsonValue(reloaded.record->state.display["facts"]["reset-boundary"],
-                   "turn", int64_t{0}) == 3);
+                  "turn", int64_t{0}) == 3);
   // Attachments count as user turns: rewinding to 2 keeps the prefix
   // before it, including turn 1's assistant reply.
   CHECK(!SessionStore::Rewind(source, 2).contains("error"));
@@ -995,7 +1011,7 @@ void TestRewindAndShare() {
   CHECK(prefix.record->state.messages.size() == 3);
   CHECK(prefix.record->metadata.turns == 1);
   CHECK(JsonValue(prefix.record->state.display["facts"]["reset-boundary"],
-                   "turn", int64_t{0}) == 2);
+                  "turn", int64_t{0}) == 2);
   // Out of range and non-positive turns stay errors, never truncations.
   CHECK(SessionStore::Rewind(source, 9).contains("error"));
   CHECK(SessionStore::Rewind(source, 0).contains("error"));
@@ -1026,10 +1042,9 @@ void TestSessionPrefixMatch() {
     record.metadata.session_id = file;
     record.metadata.turns = 1;
     record.metadata.title = title;
-    record.state.messages = json::array({{{"role", "system"},
-                                          {"content", "sys"}},
-                                         {{"role", "user"},
-                                          {"content", "hi"}}});
+    record.state.messages =
+        json::array({{{"role", "system"}, {"content", "sys"}},
+                     {{"role", "user"}, {"content", "hi"}}});
     record.state.message_kinds = {MessageKind::kSystem, MessageKind::kUser};
     CHECK(SessionStore::Save(dir + "/" + file, record).Ok());
   };

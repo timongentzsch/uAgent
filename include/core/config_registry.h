@@ -373,9 +373,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
     registry::Str("UAGENT_SUBAGENT_MODEL", {}, "",
                   ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
                   "delegation", "default model route for delegated children"),
-    registry::Str("UAGENT_TITLE_MODEL", {}, "",
-                  ReloadPolicy::kRestartRequired, Sensitivity::kPublic,
-                  "session",
+    registry::Str("UAGENT_TITLE_MODEL", {}, "", ReloadPolicy::kRestartRequired,
+                  Sensitivity::kPublic, "session",
                   "model route for background session titles; empty "
                   "uses the shared default route"),
     registry::Str("UAGENT_TOOLSET", {}, "", ReloadPolicy::kRestartRequired,

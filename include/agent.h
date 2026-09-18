@@ -363,6 +363,11 @@ class Agent {
   mutable FileLease writer_;
   std::string session_title_;
   bool custom_title_ = false;
+  // Fork lineage, restored on load and preserved on save so branches keep
+  // their parent link across worker generations.
+  std::string parent_session_id_;
+  int64_t forked_at_turn_ = 0;
+  std::string forked_at_time_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

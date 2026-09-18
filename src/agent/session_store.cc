@@ -16,11 +16,11 @@
 
 #include "include/agent/conversation.h"
 #include "include/agent/file_services.h"
+#include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
 #include "include/core/limits.h"
-#include "include/core/debug.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 
@@ -351,8 +351,8 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   // Message-exclusive like OpenCode's slice(0, target).
   if (fork_turn > 0) {
     if (!conversation.TruncateBeforeUserTurn(fork_turn)) {
-      return {{"error", "session has fewer than " +
-                           std::to_string(fork_turn) + " turns"}};
+      return {{"error", "session has fewer than " + std::to_string(fork_turn) +
+                            " turns"}};
     }
     // Orphaned tool displays are tolerated like any other Erase caller:
     // they are keyed lookups, bounded, and never render without a message.
@@ -476,13 +476,12 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   if (!title.empty()) {
     record.metadata.title = title;
   } else if (fork_turn > 0) {
-    record.metadata.title = Utf8Prefix(
-        "Fork of " + record.metadata.title + " @ turn " +
-            std::to_string(fork_turn),
-        256);
-  } else {
     record.metadata.title =
-        Utf8Prefix("Fork of " + record.metadata.title, 256);
+        Utf8Prefix("Fork of " + record.metadata.title + " @ turn " +
+                       std::to_string(fork_turn),
+                   256);
+  } else {
+    record.metadata.title = Utf8Prefix("Fork of " + record.metadata.title, 256);
   }
   record.metadata.custom_title = true;
   auto result =
@@ -519,8 +518,8 @@ json SessionStore::Rewind(const std::string& path, int64_t turn) {
     return {{"error", "session conversation state is invalid"}};
   }
   if (!conversation.TruncateBeforeUserTurn(turn)) {
-    return {{"error", "session has fewer than " + std::to_string(turn) +
-                         " turns"}};
+    return {
+        {"error", "session has fewer than " + std::to_string(turn) + " turns"}};
   }
   record.state.messages = conversation.Messages();
   record.state.message_kinds = conversation.Kinds();
@@ -573,8 +572,8 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
          " user turns";
   if (!record.metadata.model.empty()) out += " · " + record.metadata.model;
   if (!record.metadata.parent_session_id.empty()) {
-    out += " · forked from " + record.metadata.parent_session_id +
-           " at turn " + std::to_string(record.metadata.forked_at_turn);
+    out += " · forked from " + record.metadata.parent_session_id + " at turn " +
+           std::to_string(record.metadata.forked_at_turn);
   }
   out += "_\n";
   int64_t user_n = 0;

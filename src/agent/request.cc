@@ -306,8 +306,8 @@ std::string Agent::AnalyzeImageContent(const json& content,
   error.clear();
   const std::string image_model = EffectiveImageModel();
   ProviderCatalog catalog = SessionProviderCatalog();
-  SideRoute route = ResolveSideRoute(api_, catalog.models, catalog.providers,
-                                     image_model);
+  SideRoute route =
+      ResolveSideRoute(api_, catalog.models, catalog.providers, image_model);
   Api vision(api_.config);
   ApplySideRoute(vision, route);
   // The route decides where the request goes; these three facts are true of
@@ -361,7 +361,8 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
       std::string type = JsonValue(part, "type", "");
       if (type == "text" || type == "image_url") input.push_back(part);
     }
-    const std::string key = EffectiveImageModel() + ":" + HashHex(JsonDump(input));
+    const std::string key =
+        EffectiveImageModel() + ":" + HashHex(JsonDump(input));
     std::string analysis = JsonValue(image_analyses_, key.c_str(), ""), error;
     if (analysis.empty() && analyze) {
       analysis = AnalyzeImageContent(input, error);

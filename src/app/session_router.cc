@@ -66,9 +66,9 @@ SessionCommandResult SessionHost::ExecuteCommand(
       result.error = "session catalogue limit reached";
     } else {
       lock.unlock();
-      json fork = SessionStore::Fork(
-          session->path, JsonValue(command, "title", ""), false,
-          JsonValue(command, "turn", int64_t{0}));
+      json fork =
+          SessionStore::Fork(session->path, JsonValue(command, "title", ""),
+                             false, JsonValue(command, "turn", int64_t{0}));
       if (RefreshCatalogue(true)) changed_.notify_all();
       lock.lock();
       result.outcome["result"] = fork;

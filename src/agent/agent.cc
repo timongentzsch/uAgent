@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
+#include "include/agent/memory_store.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
@@ -23,14 +25,12 @@
 #include "include/core/debug.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/output_buffer.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/providers.h"
 #include "include/media/attachments.h"
-#include "include/agent/jobs.h"
-#include "include/agent/memory_store.h"
-#include "include/core/output_buffer.h"
+#include "include/providers.h"
 
 namespace uagent {
 
@@ -221,7 +221,10 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .session_id = session_id_,
                      .turns = UserTurns(),
                      .title = Utf8Prefix(FirstUserText(), 256),
-                     .custom_title = custom_title_};
+                     .custom_title = custom_title_,
+                     .parent_session_id = parent_session_id_,
+                     .forked_at_turn = forked_at_turn_,
+                     .forked_at_time = forked_at_time_};
   record.state = {
       .messages = conversation_.Messages(),
       .message_kinds = conversation_.Kinds(),
@@ -301,6 +304,9 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   turn_id_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
+  parent_session_id_ = std::move(record.metadata.parent_session_id);
+  forked_at_turn_ = record.metadata.forked_at_turn;
+  forked_at_time_ = std::move(record.metadata.forked_at_time);
   logged_msgs_ = 0;
   logged_schemas_.clear();
   turn_search_trace_.Reset();
@@ -331,8 +337,8 @@ bool Agent::RewindToTurn(int64_t turn, std::string& error) {
   total_user_turns_ = turn - 1;
   turn_id_ = turn - 1;
   logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
-  conversation_.RecordDisplay("reset-boundary", {{"turn", turn},
-                                                   {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
+  conversation_.RecordDisplay(
+      "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;
   return true;
 }

@@ -37,8 +37,7 @@ namespace uagent {
 inline std::string MatchSessionPrefix(const std::string& prefix) {
   const std::string arg = AsciiLower(Trim(prefix));
   if (arg.empty()) return "";
-  const std::vector<SessionInfo> sessions =
-      ListSessions(SessionScope::kAll);
+  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
   for (const SessionInfo& session : sessions) {
     if (session.path == prefix) return session.path;
   }

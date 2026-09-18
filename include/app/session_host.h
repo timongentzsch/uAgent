@@ -163,6 +163,10 @@ class SessionHost {
   static std::string RunResultFor(const std::string& outcome);
   std::chrono::steady_clock::time_point NextScheduleDeadline() const;
   bool RecoverSchedules(std::vector<std::shared_ptr<HostSession>>& activate);
+  // Stamp-checked re-read of the schedule store. External writers (CLI,
+  // other hosts) change the file under us; the tick must see their runs.
+  // Callers hold mutex_.
+  bool RefreshScheduleCacheLocked();
   ScheduleTick TickSchedules();
   std::vector<std::string> InvalidationPaths(
       const std::vector<std::string>& projects) const;

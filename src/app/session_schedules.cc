@@ -99,6 +99,15 @@ bool SessionHost::RecoverSchedules(
   return true;
 }
 
+bool SessionHost::RefreshScheduleCacheLocked() {
+  const FileStamp schedule = SnapshotFile(SchedulePath());
+  if (schedule == schedule_stamp_) return false;
+  schedule_stamp_ = schedule;
+  schedule_state_ = ReadSchedules();
+  scheduled_view_ = ScheduleControl({{"action", "list"}});
+  return true;
+}
+
 ScheduleTick SessionHost::TickSchedules() {
   ScheduleTick tick;
   auto pending_updates = std::exchange(run_updates_, {});
@@ -205,6 +214,15 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
     std::unique_lock lock(mutex_);
     std::vector<std::shared_ptr<HostSession>> recovery;
     if (!recovered) recovered = RecoverSchedules(recovery);
+    // External writers (CLI schedule save/run) change the store under us:
+    // refresh before the tick so their runs are claimed this iteration,
+    // and announce the change like the invalidation path does.
+    if (RefreshScheduleCacheLocked()) {
+      replay_.Publish(
+          epoch_, "", "",
+          json{{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}},
+          false);
+    }
     if (recovered) tick = TickSchedules();
     auto activate = [&](const std::shared_ptr<HostSession>& session,
                         bool create, const std::string& failed) {
@@ -238,6 +256,12 @@ HostWaitState SessionHost::RunSchedules(bool& recovered) {
   {
     std::lock_guard lock(mutex_);
     for (json event : RefreshInvalidations(projects)) {
+      if (JsonValue(event, "kind", "") == "scheduled.changed") {
+        // A write landed during the tick above: re-loop immediately so the
+        // fresh cache is claimed instead of sleeping through it.
+        wait.deadline =
+            std::min(wait.deadline, std::chrono::steady_clock::now());
+      }
       replay_.Publish(epoch_, "", "", std::move(event), false);
     }
   }

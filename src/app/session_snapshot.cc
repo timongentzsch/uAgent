@@ -60,11 +60,7 @@ std::vector<json> SessionHost::RefreshInvalidations(
     library_stamp_ = library;
     events.push_back({{"kind", "management.changed"}});
   }
-  const FileStamp schedule = SnapshotFile(SchedulePath());
-  if (schedule != schedule_stamp_) {
-    schedule_stamp_ = schedule;
-    schedule_state_ = ReadSchedules();
-    scheduled_view_ = ScheduleControl({{"action", "list"}});
+  if (RefreshScheduleCacheLocked()) {
     events.push_back(
         {{"kind", "scheduled.changed"}, {"scheduled", scheduled_view_}});
   }

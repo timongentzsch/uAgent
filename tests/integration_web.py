@@ -563,9 +563,11 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             status, body, headers = client.request(
                 f"/api/sessions/{session['id']}/assets/{generic['id']}"
             )
+            # Vectors serve under their sniffed mime (re-verified at read
+            # time); script execution is contained by the asset CSP.
             assert_true(
                 body == b"<svg onload='alert(1)'></svg>"
-                and headers["Content-Type"] == "application/octet-stream",
+                and headers["Content-Type"] == "image/svg+xml",
                 headers,
             )
             status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})

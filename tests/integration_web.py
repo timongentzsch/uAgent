@@ -1534,9 +1534,13 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 )
                 child = snapshot["state"]["activities"][0]
                 count = len(provider.requests)
-                live = client.command("activity", session, operation="inspect", activity_id=child["id"])
+                live = client.command(
+                    "activity", session, operation="inspect", activity_id=child["id"]
+                )
                 blocks = live["result"]["conversation"]["blocks"]
-                assert_true(any("WEB_CHILD_SEED" in block.get("text", "") for block in blocks), blocks)
+                assert_true(
+                    any("WEB_CHILD_SEED" in block.get("text", "") for block in blocks), blocks
+                )
                 assert_true(len(provider.requests) == count, "inspection called the model")
                 for operation in ("inspect", "message"):
                     denied = client.json(
@@ -1856,7 +1860,9 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                 child = snapshot["state"]["collaborators"][0]
                 live = web.command("activity", session, operation="inspect", agent_id=child["id"])
                 blocks = live["result"]["conversation"]["blocks"]
-                assert_true(any("retained worker" in block.get("text", "") for block in blocks), blocks)
+                assert_true(
+                    any("retained worker" in block.get("text", "") for block in blocks), blocks
+                )
                 paths = [
                     path
                     for path in runtime_directory(home).glob("*.sock")

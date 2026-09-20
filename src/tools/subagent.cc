@@ -267,11 +267,10 @@ ToolResult MessageCollaborator(const ProcessSupervisor& processes,
   // receipt, so a crash between accept and drain repeats instead of losing.
   ToolResult saved = WriteCollaboratorMail(id, text, sender, hops);
   if (!saved.Ok()) return saved;
-  const std::string event =
-      JsonDump({{"from", sender},
-                {"to", id},
-                {"text", Utf8Trunc(text, 4096)},
-                {"time", UtcStamp()}});
+  const std::string event = JsonDump({{"from", sender},
+                                      {"to", id},
+                                      {"text", Utf8Trunc(text, 4096)},
+                                      {"time", UtcStamp()}});
   std::string journal_error;
   (void)AppendPrivateLine(CollaboratorCommunicationPath(id), event,
                           journal_error);
@@ -330,15 +329,15 @@ json InspectCollaborator(const ProcessSupervisor& processes,
                     : ConversationDetail(conversation, message, offset);
     return body.contains("error") ? body : json{{"body", std::move(body)}};
   }
-  detail.update({{"conversation",
-                  !live_view.empty() &&
-                          !JsonValue(request, "before", uint64_t{0})
-                      ? std::move(live_view)
-                      : ConversationView(conversation,
-                                         JsonValue(request, "before", uint64_t{0}))},
-                 {"turns", record.metadata.turns},
-                 {"statistics", conversation.Statistics()},
-                 {"usage", UsageJson(record.state.usage)}});
+  detail.update(
+      {{"conversation",
+        !live_view.empty() && !JsonValue(request, "before", uint64_t{0})
+            ? std::move(live_view)
+            : ConversationView(conversation,
+                               JsonValue(request, "before", uint64_t{0}))},
+       {"turns", record.metadata.turns},
+       {"statistics", conversation.Statistics()},
+       {"usage", UsageJson(record.state.usage)}});
   if (!record.state.last_sent_prompt.empty()) {
     detail["system_prompt"] = record.state.last_sent_prompt;
   }

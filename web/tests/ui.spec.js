@@ -530,8 +530,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       14;
     return {
       left: bounds.left - appBounds.left - parseFloat(appStyle.paddingLeft),
-      right:
-        appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
+      right: appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
       inset,
     };
   });

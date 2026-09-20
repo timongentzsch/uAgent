@@ -119,6 +119,14 @@ void SessionHost::Received(HostSession* session, json frame) {
   }
   const std::string kind = JsonValue(frame, "kind", "");
   if (kind == "outcome") {
+    // A fork receipt must not become visible until its new conversation is
+    // in the catalogue; clients can inspect it immediately after the receipt.
+    if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
+                  false)) {
+      lock.unlock();
+      RefreshCatalogue(true);
+      lock.lock();
+    }
     if (!outcomes_.ResolveOutcome(*session, frame)) {
       if (!session->run_id.empty() && !JsonValue(frame, "accepted", false)) {
         session->error =
@@ -126,12 +134,6 @@ void SessionHost::Received(HostSession* session, json frame) {
         session->run_result = "failed";
       }
       return;
-    }
-    if (JsonValue(JsonValue(frame, "result", json::object()), "forked",
-                  false)) {
-      lock.unlock();
-      RefreshCatalogue(true);
-      lock.lock();
     }
   } else {
     ApplyRuntimeFrame(*session, frame);

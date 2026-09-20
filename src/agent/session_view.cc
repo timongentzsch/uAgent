@@ -196,12 +196,31 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
         return JsonValue(block, "response_id", "") == response_id;
       });
       if (found != blocks.end()) {
-        const char* field =
-            type == "response.answer.delta" ? "text" : "reasoning";
-        const char* bytes =
-            type == "response.answer.delta" ? "text_bytes" : "reasoning_bytes";
-        (*found)[field] =
-            JsonValue(*found, field, "") + JsonValue(data, "text", "");
+        const bool answer = type == "response.answer.delta";
+        if (JsonValue(*found,
+                      answer ? "content_complete" : "reasoning_complete",
+                      false)) {
+          return true;
+        }
+        const char* field = answer ? "text" : "reasoning";
+        const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
+        const std::string current = JsonValue(*found, field, "");
+        const std::string delta = JsonValue(data, "text", "");
+        if (data.contains("offset")) {
+          const size_t offset = JsonValue(data, "offset", size_t{0});
+          // A checkpoint may already contain this delta. Only append the
+          // still-missing suffix when its overlapping bytes agree; a gap or
+          // conflicting revision waits for the next complete block.
+          if (offset > current.size()) return true;
+          const size_t overlap =
+              std::min(delta.size(), current.size() - offset);
+          if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
+            return true;
+          }
+          (*found)[field] = current + delta.substr(current.size() - offset);
+        } else {
+          (*found)[field] = current + delta;
+        }
         (*found)[bytes] = JsonValue(*found, field, "").size();
       }
     }

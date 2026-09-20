@@ -1,7 +1,7 @@
 {
   "name": "superseded_reads",
   "description": "Repeated changed reads compare step-boundary pruning with control. The old result must be archived and the latest evidence retained.",
-  "tier": "capability",
+  "tier": "regression",
   "variants": [
     "control",
     "pruned"

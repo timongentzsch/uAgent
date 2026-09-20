@@ -1,7 +1,7 @@
 {
   "name": "read_volume",
   "description": "Compare 250/500/1000-line defaults including continuation rounds. Scripted mode validates accounting; live mode measures the model's reading strategy.",
-  "tier": "capability",
+  "tier": "regression",
   "variants": [
     "250",
     "500",

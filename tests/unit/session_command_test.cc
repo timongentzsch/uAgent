@@ -150,8 +150,9 @@ void TestReceiptLogBackpressure() {
   // Fill the log with pending commands: no completed receipt to evict.
   for (int i = 0; i < 256; ++i) {
     json command = CommandEnvelope("submit");
-    const std::string id =
-        "abcdef012345678" + std::to_string(i % 10) + std::to_string(i / 10);
+    std::string id = "abcdef012345678";
+    id += std::to_string(i % 10);
+    id += std::to_string(i / 10);
     command["request_id"] = id;
     json previous;
     REQUIRE(log.Check(command, id, previous) == session::ReceiptVerdict::kNew);

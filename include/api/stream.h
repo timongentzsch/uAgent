@@ -65,6 +65,7 @@ struct StreamCtx {
   void OutputText(const std::string& value) {
     json data = event_context;
     data["text"] = value;
+    data["offset"] = res->content.size() - value.size();
     Event event{EventId::kAnswerDelta, std::move(data)};
     event.text = value;
     Emit(std::move(event));
@@ -73,6 +74,7 @@ struct StreamCtx {
   void OutputReasoning(const std::string& value) {
     json data = event_context;
     data["text"] = value;
+    data["offset"] = res->reasoning.size() - value.size();
     Event event{EventId::kReasoningDelta, std::move(data)};
     event.text = value;
     Emit(std::move(event));

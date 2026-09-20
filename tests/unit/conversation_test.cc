@@ -570,6 +570,34 @@ void TestCompactionKeepsDisplayIdentity() {
   CHECK(ApplySessionEvent(live, "response.reasoning.delta",
                           {{"text", "thinking"}}));
   CHECK(JsonValue(live["view"]["blocks"][0], "reasoning", "") == "");
+
+  // Replayed deltas can arrive after a checkpoint containing the same bytes.
+  // Their offsets make the projection idempotent without suppressing a
+  // legitimate repeated chunk at the next offset.
+  json replayed = {{"view", {{"blocks", json::array()}}}};
+  const json started = {{"response_id", "r-replayed"}};
+  CHECK(ApplySessionEvent(replayed, "response.started", started));
+  CHECK(ApplySessionEvent(
+      replayed, "response.answer.delta",
+      {{"response_id", "r-replayed"}, {"offset", 0}, {"text", "ha"}}));
+  CHECK(ApplySessionEvent(
+      replayed, "response.answer.delta",
+      {{"response_id", "r-replayed"}, {"offset", 0}, {"text", "ha"}}));
+  CHECK(ApplySessionEvent(
+      replayed, "response.answer.delta",
+      {{"response_id", "r-replayed"}, {"offset", 2}, {"text", "ha"}}));
+  CHECK(replayed["view"]["blocks"][0]["text"] == "haha");
+  MergeDisplayBlock(replayed["view"], {{"id", "m-replayed"},
+                                       {"response_id", "r-replayed"},
+                                       {"kind", "assistant"},
+                                       {"text", "haha"},
+                                       {"text_bytes", 4},
+                                       {"content_revision", 1},
+                                       {"content_complete", true}});
+  CHECK(ApplySessionEvent(
+      replayed, "response.answer.delta",
+      {{"response_id", "r-replayed"}, {"offset", 4}, {"text", "stale"}}));
+  CHECK(replayed["view"]["blocks"][0]["text"] == "haha");
 }
 
 void TestLateRetainedBlockInsertsInSequenceOrder() {

@@ -69,7 +69,12 @@ std::vector<json> SessionHost::RefreshInvalidations(
 
 std::vector<std::string> SessionHost::InvalidationPaths(
     const std::vector<std::string>& projects) const {
-  std::vector<std::string> paths{SchedulePath(), LibraryChangePath()};
+  const std::string schedule = SchedulePath();
+  // External schedule writers replace the file atomically. Watch its parent
+  // too so a rename cannot strand the scheduler on the replaced inode.
+  std::vector<std::string> paths{
+      schedule, std::filesystem::path(schedule).parent_path().string(),
+      LibraryChangePath()};
   for (const std::string& path : PromptPaths(projects)) {
     paths.push_back(path);
   }

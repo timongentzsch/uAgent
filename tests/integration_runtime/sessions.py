@@ -172,7 +172,7 @@ def test_session_journal_records_digests_not_argument_values(root, home, *, bina
         code, output = run_pty(
             root,
             base_env(home, server.url),
-            [(b"inspect\n", b"journal-ok"), b"", b"/q\n"],
+            [(b"inspect\n", b"journal-ok", b"Ready", None), b"/q\n"],
             binary=binary,
         )
         assert_true(code == 0, output)

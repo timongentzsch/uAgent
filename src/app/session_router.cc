@@ -111,11 +111,13 @@ SessionCommandResult SessionHost::ExecuteCommand(
     }
     if (!stored.Ok()) result.error = stored.message;
     asset_lock.unlock();
+    if (result.error.empty() && kind == HostCommandKind::kDelete) {
+      assets_.Invalidate();
+    }
     lock.lock();
     session->status = prior_status;
     if (result.error.empty() && kind == HostCommandKind::kDelete) {
       sessions_.erase(session->id);
-      assets_.Invalidate();
       replay_.Publish(epoch_, session->id, "", {{"kind", "deleted"}},
                       !session->run_id.empty());
     } else if (result.error.empty()) {
@@ -176,7 +178,8 @@ SessionCommandResult SessionHost::ExecuteCommand(
           [&] {
             std::lock_guard guard(mutex_);
             if (!sessions_.contains(session->id) ||
-                sessions_.at(session->id) != session || session->exited) {
+                sessions_.at(session->id) != session || session->exited ||
+                session->status == "deleting") {
               return std::string(
                   "session changed while claiming attachments; refresh");
             }

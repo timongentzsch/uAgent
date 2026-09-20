@@ -97,7 +97,8 @@ Application::Application(AppContext& context)
       context_.observability.Subscribe([this](const AppEvent& event) {
         if (event.type != "message.changed") return;
         std::string kind = JsonValue(event.data["block"], "kind", "");
-        if ((kind == "user" || kind == "attachment") &&
+        if ((!CollaboratorSessionFile().empty() || kind == "user" ||
+             kind == "attachment") &&
             (persist_ || !session_file_.empty())) {
           SaveSession(true);
         }

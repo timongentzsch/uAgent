@@ -110,6 +110,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
       if (!written.Ok()) result.error = "cannot save conversation title";
     }
     if (!stored.Ok()) result.error = stored.message;
+    asset_lock.unlock();
     lock.lock();
     session->status = prior_status;
     if (result.error.empty() && kind == HostCommandKind::kDelete) {

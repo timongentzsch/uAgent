@@ -1,13 +1,21 @@
 /* Background activity: inline panel under the composer status line plus the
    Activity / Subagent / Memory modal. One spacing owner per surface. */
 
+.activities,
+.activity-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .activity-panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: calc(4rem / 14);
 }
 
 /* Inline list owns its scroll; the toggle below it never scrolls. */
 .activity-list {
+  min-width: 0;
   list-style: none;
   margin: calc(4rem / 14) 0 0;
   padding: 0;
@@ -22,6 +30,7 @@
 
 .activity-row {
   display: flex;
+  min-width: 0;
   align-items: center;
   border-bottom: 1px solid var(--line);
 }
@@ -64,20 +73,25 @@
 /* Subagent/activity modal carries a full thread: widen toward the chat
    measure so rows wrap like the transcript instead of a narrow card. */
 .activity-view {
-  width: min(880px, calc(var(--content-width) - 16px));
+  width: min(880px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  height: min(780px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
 }
 
 .activity-view .dialog-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
+  overflow: hidden;
 }
 
 .activity-detail {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--gap);
   min-width: 0;
-  align-content: start;
+  min-height: 0;
+  flex: 1;
 }
 
 .activity-detail > p,
@@ -92,6 +106,49 @@
 .activity-detail > section {
   display: grid;
   gap: calc(4rem / 14);
+}
+
+.activity-info {
+  flex: none;
+  max-height: min(32vh, 240px);
+  overflow: auto;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: calc(4rem / 14);
+}
+
+.activity-info > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.activity-info > section {
+  margin: var(--gap) 0;
+}
+
+.activity-detail > section[aria-label="Thread"],
+.activity-detail > section[aria-label="Output"],
+.activity-detail > section[aria-label="Memory"] {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.activity-detail > section[aria-label="Thread"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-detail > section[aria-label="Output"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-detail > section[aria-label="Output"] > pre {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
 }
 
 .activity-detail h3 {
@@ -144,11 +201,54 @@
    surface (no inset frame) and follow the live edge with the same
    stick; the cap keeps the guidance form reachable on long runs. */
 .child-thread {
-  max-height: min(50vh, 520px);
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+}
+
+.thread-progress {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: var(--gap) 0;
+}
+
+.activity-detail > details:not(.activity-info) {
+  flex: none;
+  max-height: 5rem;
+  overflow: auto;
+}
+
+.communication ol {
+  list-style: none;
+  padding: 0;
+  margin: var(--gap) 0 0;
+}
+
+.communication li {
+  border-top: 1px solid var(--line);
+  padding: var(--gap) 0;
+}
+
+.communication-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4rem / 14);
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+
+.communication-meta time {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.communication p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: calc(4rem / 14) 0 0;
 }
 
 .child-thread .history-button {
@@ -158,6 +258,9 @@
 .guidance-form {
   display: grid;
   gap: var(--gap);
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding-top: var(--gap);
 }
 
 .guidance-form textarea {

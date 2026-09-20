@@ -1,4 +1,3 @@
-import "./pairing.css";
 import { useState } from "preact/hooks";
 import { api } from "../../state/api.ts";
 import { Mark } from "../../shared/ui.tsx";

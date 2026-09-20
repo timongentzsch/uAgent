@@ -1,6 +1,6 @@
 import "../composer/attachments.css";
 import { TurnFooter } from "./turn-footer.tsx";
-import Markdown from "../../shared/markdown-view.tsx";
+import Markdown, { prepareMarkdown } from "../../shared/markdown-view.tsx";
 import "./message.css";
 import { bytes, count } from "../../shared/quantities.ts";
 import { Component, type ComponentProps } from "preact";
@@ -166,6 +166,7 @@ function MessageView({
         title="Context compacted"
         time={block.time}
         icon={<Minimize2 />}
+        messageId={block.key || block.id}
       >
         <p>
           {block.compaction.messages_before} → {block.compaction.messages_after}{" "}
@@ -192,6 +193,7 @@ function MessageView({
             : block.status
         }
         icon={block.memory ? <Brain /> : <ActivityIcon />}
+        messageId={block.key || block.id}
         onToggle={(event) => setExpanded(event.currentTarget.open)}
       >
         {expanding && <Skeleton label="Loading event details…" />}
@@ -484,6 +486,26 @@ export class Message extends Component<MessageProps> {
 export type MessageRowsProps = Omit<ComponentProps<typeof Message>, "block"> & {
   blocks: Block[];
 };
+
+// Prepare only the bounded completed page about to be mounted. The same
+// parser cache is read synchronously by Markdown on its first render.
+export async function prepareHistoryBlocks(blocks: Block[]) {
+  const texts = new Set<string>();
+  for (const block of presentMessages(blocks)) {
+    if (block.streaming || block.kind === "compaction" || block.summary)
+      continue;
+    if (block.kind === "activity") {
+      if (block.text) texts.add(cleanText(block.text));
+      continue;
+    }
+    if (block.kind === "tool_result") continue;
+    const text = stripAttachedTrailer(block.text || "", block.files) || "";
+    for (const part of splitMentionTokens(text)) {
+      if ("text" in part && part.text) texts.add(part.text);
+    }
+  }
+  await Promise.all([...texts].map((text) => prepareMarkdown(text)));
+}
 
 // Flat list with stable keys: one row per message, tool call or attachment.
 // presentMessages is memoized per blocks array; per-row shouldComponentUpdate

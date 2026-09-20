@@ -1,35 +1,8 @@
-.raw-view > .dialog-body {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  overflow: hidden;
-}
-.raw-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: var(--gap);
-}
-.raw-controls {
-  flex-shrink: 0;
-  overflow-wrap: anywhere;
-}
 .raw-controls p {
   margin: 0 0 var(--gap);
 }
 .raw-controls .field {
   margin-bottom: var(--gap);
-}
-.raw-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  border: 1px solid var(--line);
-  background: var(--surface);
-}
-.raw-body > .skeleton {
-  padding: var(--pad);
 }
 .raw-body pre {
   border: 0;
@@ -43,7 +16,4 @@
 }
 .raw-body summary {
   cursor: pointer;
-}
-.raw-content footer {
-  flex-shrink: 0;
 }

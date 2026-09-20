@@ -14,13 +14,7 @@ import type {
 import { failure } from "../shared/types.ts";
 import type { JSX } from "preact";
 import { render } from "preact";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
 import { api, command, requestId } from "../state/api.ts";
 import { Mark, Modal, Deferred, Skeleton, IconButton } from "../shared/ui.tsx";
@@ -45,7 +39,8 @@ import {
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
 import { dedupeName } from "../features/composer/mention.ts";
-import { useStickToBottom } from "../state/use-stick-to-bottom.ts";
+import { useTranscriptHistory } from "../state/use-transcript-history.ts";
+import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
 import {
   chat,
@@ -170,9 +165,9 @@ function App() {
     attachScroller,
     attachContent,
     jumpToLatest,
-    stopFollowing,
+    preserveWhile,
     unseen,
-  } = useStickToBottom(
+  } = useTranscriptHistory(
     setFollowing,
     page === "chat" ? `${page}:${selected}` : `page:${page}`,
     blocks.length,
@@ -190,9 +185,7 @@ function App() {
       String(Math.min(200, Math.max(50, zoom || 100)) / 100),
     );
   }, [zoom]);
-  // Note: session-switch scroll is owned by the transcript stick
-  // (restore-or-pin in use-stick-to-bottom); nothing pins here so a
-  // returning conversation keeps its position.
+  // The shared transcript controller restores a returning conversation.
   useEffect(() => {
     // The core renderer chunk is needed for every assistant message, so
     // fetch it immediately at boot (not idle: on mobile the idle callback
@@ -201,23 +194,6 @@ function App() {
     // fights the bottom pin). Marker-based chunks warm per text below.
     markdownView().then((view) => view.prefetchMarkdown());
   }, []);
-  const scanned = useRef("");
-  useEffect(() => {
-    // Retained blocks hydrate right after mount. Prefetch the heavy chunks
-    // their markers need (math/highlight/mermaid) once per conversation so
-    // hydration lands as one early wave instead of staggered late ones.
-    const key = `${selected}:${snapshot?.state?.view?.before ?? ""}:${snapshot?.state?.view?.blocks?.length ?? 0}`;
-    if (!snapshot?.state?.view?.blocks?.length || scanned.current === key)
-      return;
-    scanned.current = key;
-    const sample = snapshot.state.view.blocks
-      .slice(0, 64)
-      .map((block) =>
-        `${block.text || ""}\n${block.reasoning || ""}`.slice(0, 4000),
-      )
-      .join("\n");
-    markdownView().then((view) => view.prefetchHeavy(sample));
-  }, [selected, snapshot]);
   useEffect(() => {
     let viewport: (() => void) | undefined;
     let compact: (() => void) | undefined;
@@ -590,15 +566,20 @@ function App() {
     },
     [selected],
   );
-  // Prepend anchoring lives in chat.tsx (single owner): this only grows
-  // the window newest-last and caps at 256, never touching scroll.
+  // The shared transcript controller retains the visible block through
+  // this bounded page update; this loader only owns data and cursors.
   async function older() {
     if (!view?.more || !transcript.current) return;
     const before = view.before;
     const id = selected;
     const value = await api<Snapshot>(`/api/sessions/${id}?before=${before}`);
+    await chat().then((view) =>
+      view.prepareHistoryBlocks(value.state?.view?.blocks || []),
+    );
     updateView(id, (current) => {
       if (
+        !value.state?.view ||
+        !current.state?.view ||
         current.epoch !== value.epoch ||
         current.metadata.generation !== value.metadata.generation ||
         current.state?.view?.before !== before
@@ -608,19 +589,7 @@ function App() {
         ...current,
         state: {
           ...current.state,
-          view: {
-            ...value.state?.view,
-            blocks: [
-              ...(value.state?.view?.blocks || []),
-              ...(current.state?.view?.blocks || []),
-              // History window slides toward older content: the reader is
-              // at the TOP, so overflow drops off the TAIL (newest, far
-              // from the viewport). slice(-256) here dropped the just-
-              // fetched older page off the front and wedged the window:
-              // the visible front never advanced while `before` marched
-              // backwards. Jump-to-latest refetches the newest window.
-            ].slice(0, 256),
-          },
+          view: prependHistoryPage(value.state.view, current.state.view),
         },
       };
     });
@@ -769,11 +738,15 @@ function App() {
           fallback={<PairingSkeleton />}
         />
       ) : authenticated === null ? (
-        <main class="shell loading-shell">
-          {!compact && <SidebarSkeleton />}
+        <main class="shell">
+          {!compact && (
+            <aside class="sidebar">
+              <SidebarSkeleton />
+            </aside>
+          )}
           <div class="conversation">
             <header class="conversation-head">
-              <Skeleton rows={1} className="title-skeleton" />
+              <Skeleton decorative rows={1} className="title-skeleton" />
             </header>
             <div class="transcript">
               <HistorySkeleton />
@@ -839,7 +812,7 @@ function App() {
                 unread={unread}
                 choose={choose}
                 refresh={refresh}
-                fallback={<ManagementSkeleton />}
+                fallback={<ManagementSkeleton kind={page} />}
               />
             ) : session ? (
               <>
@@ -861,7 +834,7 @@ function App() {
                   content={transcriptContent}
                   attachScroller={attachScroller}
                   attachContent={attachContent}
-                  stopFollowing={stopFollowing}
+                  preserveWhile={preserveWhile}
                   selected={selected}
                   snapshot={snapshot}
                   loadError={loadErrors[selected]}
@@ -949,7 +922,12 @@ function App() {
           {modal.type === "statistics" ? (
             <Deferred
               load={statisticsDialog}
-              fallback={<StatsSkeleton />}
+              fallback={
+                <StatsSkeleton
+                  turn={!!modal.block_id}
+                  controls={!!modal.block_id}
+                />
+              }
               modal={modal}
               loadSnapshot={load}
             />

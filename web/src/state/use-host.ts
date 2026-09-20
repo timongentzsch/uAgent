@@ -695,8 +695,8 @@ export function useHost(
     setSelected: (id: string) => {
       selection.current = id;
       writeSelection(id);
-      // Following is owned solely by the transcript scroll stick
-      // (use-stick-to-bottom): a switch resumes the saved position
+      // Following is owned solely by the transcript history controller:
+      // a switch resumes the saved position
       // (or pins a fresh surface), which notifies through onFollow.
       // Clearing it here diverged React state (false) from the stick
       // ref (still true), so the pin became a no-op notification

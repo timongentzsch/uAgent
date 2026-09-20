@@ -1,6 +1,5 @@
 import { duration } from "../../shared/duration.ts";
 import { count } from "../../shared/quantities.ts";
-import "./statistics.css";
 import type { Usage, StatisticsModal, Snapshot } from "../../shared/types.ts";
 import { useEffect, useState } from "preact/hooks";
 import { LoadError } from "../../shared/ui.tsx";
@@ -163,7 +162,7 @@ export default function Statistics({
         error ? (
           <LoadError error={error} retry={() => setAttempt(attempt + 1)} />
         ) : (
-          <StatsSkeleton />
+          <StatsSkeleton turn={scope === "turn"} />
         )
       ) : (
         <>

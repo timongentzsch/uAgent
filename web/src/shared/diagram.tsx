@@ -117,36 +117,31 @@ export default function Diagram({ source }: { source: string }) {
   }, [source, dark]);
   return (
     <div class="diagram">
-      {url && (
-        <button
-          class="quiet diagram-open"
-          aria-label="Expand diagram"
-          onClick={() => setExpanded(true)}
-        >
-          <img
-            src={url}
-            alt="Mermaid diagram"
-            width={size.width || undefined}
-            height={size.height || undefined}
-          />
-        </button>
-      )}
-      {error && (
-        <p class="muted small" role="status">
-          {error}
-        </p>
-      )}
+      <div class="diagram-preview">
+        {url ? (
+          <button
+            class="quiet diagram-open"
+            aria-label="Expand diagram"
+            onClick={() => setExpanded(true)}
+          >
+            <img
+              src={url}
+              alt="Mermaid diagram"
+              width={size.width || undefined}
+              height={size.height || undefined}
+            />
+          </button>
+        ) : (
+          <p class="muted small" role="status">
+            {error || "Rendering diagram…"}
+          </p>
+        )}
+      </div>
       {/* Never flip open on resolve: closing the disclosure at the same
           commit the image lands shrinks the box it just grew, another
           phantom-gesture pair. Source stays one click away either way. */}
       <details>
-        <summary>
-          {url
-            ? "Show source"
-            : error
-              ? "Diagram source"
-              : "Rendering diagram…"}
-        </summary>
+        <summary>Show source</summary>
         <div class="code-block">
           <pre>
             <code>{source}</code>

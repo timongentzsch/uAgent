@@ -207,6 +207,8 @@ export interface Collaborator {
   persistent?: boolean;
 }
 export interface ActivityDetail extends Activity {
+  olderWindow?: boolean;
+  communication?: { from: string; to: string; text: string; time: string }[];
   body?: BodyPage;
   command?: string;
   memory?: Block["memory"];

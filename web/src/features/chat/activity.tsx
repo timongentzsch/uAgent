@@ -17,7 +17,8 @@ import {
 } from "preact/hooks";
 import { Bot, Terminal, Square, ArrowDown } from "lucide-preact";
 import { command, readPages } from "../../state/api.ts";
-import { useStickToBottom } from "../../state/use-stick-to-bottom.ts";
+import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
+import { prependHistoryPage } from "../../state/history-page.ts";
 import {
   cleanText,
   Deferred,
@@ -32,7 +33,7 @@ import { RawSkeleton } from "../../shared/loading.tsx";
 import { active } from "./activity-status.tsx";
 import { manage } from "../settings/management.tsx";
 import Markdown from "../../shared/markdown-view.tsx";
-import { MessageRows } from "./message.tsx";
+import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
 function key(item: Activity): string {
   return String(item.id ?? item.agent_id ?? item.label);
@@ -73,18 +74,17 @@ async function fetchActivityDetail(
   });
   if (response.pending)
     throw new Error("Activity is still loading. Try again shortly.");
+  await prepareHistoryBlocks(response.result.conversation?.blocks || []);
   return {
     ...item,
     ...response.result,
-    ...(before && prior?.conversation
+    olderWindow: !!before,
+    ...(before && prior?.conversation && response.result.conversation
       ? {
-          conversation: {
-            ...response.result.conversation,
-            blocks: [
-              ...(response.result.conversation?.blocks || []),
-              ...prior.conversation.blocks,
-            ].slice(0, 256),
-          },
+          conversation: prependHistoryPage(
+            response.result.conversation,
+            prior.conversation,
+          ),
         }
       : {}),
   };
@@ -144,7 +144,11 @@ export default function Activities({
     return () => clearInterval(timer);
   }, [live]); // Display clock only; runtime updates arrive through SSE.
 
-  async function inspect(item: ActivityDetail, before?: number) {
+  async function inspect(
+    item: ActivityDetail,
+    before?: number,
+    refresh = false,
+  ) {
     const version = ++inspection.current;
     if (!before)
       setDetail((prior) =>
@@ -152,16 +156,18 @@ export default function Activities({
           ? prior
           : item,
       );
-    setLoading(true);
-    setError(null);
+    if (!refresh) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const next = await loadDetail(item, before, before ? detail : undefined);
       if (version !== inspection.current) return;
       setDetail(next);
     } catch (failure) {
-      if (version === inspection.current) setError(failure);
+      if (version === inspection.current && !refresh) setError(failure);
     } finally {
-      if (version === inspection.current) setLoading(false);
+      if (version === inspection.current && !refresh) setLoading(false);
     }
   }
 
@@ -193,22 +199,43 @@ export default function Activities({
     clearTarget();
   }, [target]);
 
-  // Coalesce output events while the detail is open; no status polling.
-  // Finished records are immutable: re-inspecting them on every list
-  // change churns the open popup (and can flash errors over settled
-  // output). Live rows keep coalesced refreshes while they run.
+  // The parent stream reports child status, while a running child's own
+  // transcript lives in its worker. Inspect the open thread until it settles.
   useEffect(() => {
-    if (!detail) return;
+    if (!detail || loading || detail.olderWindow) return;
     const item = rows.find((item) =>
       detail.agent_id
         ? item.agent_id === detail.agent_id
         : item.id === detail.id,
     );
     if (!item) return;
-    if (!active(item)) return;
-    const timer = setTimeout(() => inspect(item).catch(report), 150);
-    return () => clearTimeout(timer);
-  }, [items, collaborators, detail?.id, detail?.agent_id]);
+    if (!active(item)) {
+      if (active(detail)) inspect(item, undefined, true).catch(report);
+      return;
+    }
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        await inspect(item, undefined, true);
+      } catch (failure) {
+        report(failure);
+      }
+      if (!stopped) timer = setTimeout(refresh, 1200);
+    };
+    timer = setTimeout(refresh, 1200);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [
+    items,
+    collaborators,
+    detail?.id,
+    detail?.agent_id,
+    detail?.olderWindow,
+    loading,
+  ]);
 
   // Stop-only: guidance/follow-up submit lives in the modal (per-level
   // text and receipts), so this never touches message state.
@@ -386,9 +413,10 @@ function ActivityModal({
   // hook, keyed by agent): growth pins while sticky, any upward move
   // breaks, and the jump button below re-pins.
   const [following, setFollowing] = useState(true);
-  const thread = useStickToBottom(
+  const historyKey = `agent:${detail.agent_id || detail.id || "detail"}`;
+  const thread = useTranscriptHistory(
     setFollowing,
-    `agent:${detail.agent_id || detail.id || "detail"}`,
+    historyKey,
     detail.conversation?.blocks.length || 0,
   );
   // Guidance submit lives here (not the panel) so every nesting level
@@ -406,6 +434,7 @@ function ActivityModal({
     null,
   );
   const [child, setChild] = useState<ActivityDetail | null>(null);
+  const [childLoading, setChildLoading] = useState(false);
   const childVersion = useRef(0);
   // Key scope and the default block reader follow the CHILD
   // conversation: stable child ids must never inherit parent row state.
@@ -470,21 +499,43 @@ function ActivityModal({
   const inspectChild = useCallback(
     async (item: ActivityDetail, before?: number) => {
       const version = ++childVersion.current;
-      const full = await loadDetail(item, before, before ? child : undefined);
-      if (version === childVersion.current) setChild(full);
+      if (before) setChildLoading(true);
+      try {
+        const full = await loadDetail(item, before, before ? child : undefined);
+        if (version === childVersion.current) setChild(full);
+      } finally {
+        if (before && version === childVersion.current) setChildLoading(false);
+      }
     },
     [loadDetail, child],
   );
-  // Live nested rows refresh like the top level (panel owns the top).
+  // Nested dialogs use the same live refresh and transcript view.
   useEffect(() => {
-    if (!child) return;
+    if (!child || childLoading || child.olderWindow) return;
     const item = rows.find((row) =>
       child.agent_id ? row.agent_id === child.agent_id : row.id === child.id,
     );
-    if (!item || !active(item)) return;
-    const timer = setTimeout(() => inspectChild(child).catch(report), 150);
-    return () => clearTimeout(timer);
-  }, [rows, child?.id, child?.agent_id]);
+    if (!item) return;
+    if (!active(item)) {
+      if (active(child)) inspectChild(item).catch(report);
+      return;
+    }
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = async () => {
+      try {
+        await inspectChild(item);
+      } catch (failure) {
+        report(failure);
+      }
+      if (!stopped) timer = setTimeout(refresh, 1200);
+    };
+    timer = setTimeout(refresh, 1200);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [rows, child?.id, child?.agent_id, child?.olderWindow, childLoading]);
   const meta = [
     current.status,
     detail.model,
@@ -504,29 +555,61 @@ function ActivityModal({
         )}
         {meta.length > 0 && <p class="detail-meta">{meta.join(" · ")}</p>}
 
-        {isAgent && detail.description && (
-          <section aria-label="About">
-            <p class="muted">{cleanText(detail.description)}</p>
-          </section>
-        )}
-
-        {(detail.directive || detail.statistics) && (
-          <section aria-label="Run details">
-            {detail.directive && (
-              <>
-                <h3>Persistent directive</h3>
-                <Markdown text={detail.directive} />
-              </>
+        {isAgent && (
+          <details class="activity-info">
+            <summary>
+              Task and run details
+              {!!detail.communication?.length &&
+                ` · ${count(detail.communication.length)} messages`}
+            </summary>
+            {detail.description && (
+              <section aria-label="About">
+                <p class="muted">{cleanText(detail.description)}</p>
+              </section>
             )}
-            {detail.statistics && (
-              <p class="muted">
-                {count(detail.turns)} turns ·{" "}
-                {count(detail.statistics.model_calls)} model calls ·{" "}
-                {count(detail.statistics.tool_calls)} tool calls ·{" "}
-                {count(detail.usage?.output)} output tokens
-              </p>
+            {(detail.directive || detail.statistics) && (
+              <section aria-label="Run details">
+                {detail.directive && (
+                  <>
+                    <h3>Persistent directive</h3>
+                    <Markdown text={detail.directive} />
+                  </>
+                )}
+                {detail.statistics && (
+                  <p class="muted">
+                    {count(detail.turns)} turns ·{" "}
+                    {count(detail.statistics.model_calls)} model calls ·{" "}
+                    {count(detail.statistics.tool_calls)} tool calls ·{" "}
+                    {count(detail.usage?.output)} output tokens
+                  </p>
+                )}
+              </section>
             )}
-          </section>
+            {!!detail.communication?.length && (
+              <section aria-label="Agent communication" class="communication">
+                <h3>Agent communication</h3>
+                <ol>
+                  {detail.communication.map((message, index) => (
+                    <li key={`${message.time}-${index}`}>
+                      <div class="communication-meta">
+                        <strong>
+                          {rows.find((row) => row.agent_id === message.from)
+                            ?.name || message.from}
+                        </strong>
+                        <span aria-hidden="true">→</span>
+                        <strong>
+                          {rows.find((row) => row.agent_id === message.to)
+                            ?.name || message.to}
+                        </strong>
+                        <time dateTime={message.time}>{message.time}</time>
+                      </div>
+                      <p>{cleanText(message.text)}</p>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+          </details>
         )}
 
         {!detail.conversation &&
@@ -540,34 +623,47 @@ function ActivityModal({
             detail.label && <p class="detail-label">{detail.label}</p>
           ))}
 
-        {!detail.conversation && detail.task && (
+        {!isAgent && !detail.conversation && detail.task && (
           <p class="detail-task">{detail.task}</p>
         )}
 
-        {detail.conversation && (
+        {(isAgent || detail.conversation) && (
           <section aria-label="Thread">
             <div
               class="child-thread"
+              data-history-key={historyKey}
               ref={thread.attachScroller}
               aria-label="Subagent task"
             >
               <div ref={thread.attachContent}>
-                <MessageRows
-                  blocks={detail.conversation.blocks}
-                  read={readDetail}
-                  online={online}
-                  session={childSession}
-                  report={report}
-                  inspect={openRaw}
-                  activity={openNested}
-                />
+                {detail.conversation ? (
+                  <MessageRows
+                    blocks={detail.conversation.blocks}
+                    read={readDetail}
+                    online={online}
+                    session={childSession}
+                    report={report}
+                    inspect={openRaw}
+                    activity={openNested}
+                  />
+                ) : (
+                  <p class="muted">Waiting for the subagent transcript…</p>
+                )}
+                {isAgent && isLive && (
+                  <p class="thread-progress" role="status">
+                    {cleanText(current.progress || "Subagent working…")}
+                  </p>
+                )}
               </div>
             </div>
             {!following && (
               <button
                 type="button"
                 class="jump quiet with-icon"
-                onClick={() => thread.jumpToLatest()}
+                onClick={() => {
+                  thread.jumpToLatest();
+                  inspect(detail).catch(report);
+                }}
               >
                 Jump to latest{" "}
                 {thread.unseen > 0 && (
@@ -576,14 +672,18 @@ function ActivityModal({
                 <ArrowDown aria-hidden="true" />
               </button>
             )}
-            {detail.conversation.more && (
+            {detail.conversation?.more && (
               <button
                 type="button"
                 class="quiet history-button"
                 disabled={!online || loading}
                 aria-busy={loading || undefined}
                 onClick={() =>
-                  inspect(detail, detail.conversation?.before).catch(report)
+                  thread
+                    .preserveWhile(() =>
+                      inspect(detail, detail.conversation?.before),
+                    )
+                    .catch(report)
                 }
               >
                 {loading ? "Loading older messages…" : "Load older messages"}
@@ -601,6 +701,7 @@ function ActivityModal({
             <Markdown text={detail.output || ""} />
           </section>
         ) : (
+          !isAgent &&
           !detail.conversation && (
             <section aria-label="Output">
               {detail.output ? (
@@ -699,7 +800,7 @@ function ActivityModal({
           online={online}
           session={session}
           cwd={cwd}
-          loading={false}
+          loading={childLoading}
           error={null}
           inspect={inspectChild}
           report={report}

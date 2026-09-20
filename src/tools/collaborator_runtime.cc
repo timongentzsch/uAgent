@@ -84,7 +84,8 @@ bool NextFrame(int fd, std::string& input, Clock::time_point deadline,
 json Command(const std::string& path, const std::string& generation,
              session::Connection& connection, std::string kind,
              std::string text, Clock::time_point deadline, bool checkpoint,
-             bool* submitted = nullptr, const json& budget = json::object()) {
+             bool* submitted = nullptr, const json& budget = json::object(),
+             bool observe_busy = false) {
   const std::string request = session::RandomToken(16);
   json command = {{"v", session::kProtocol},  {"session_id", HashHex(path)},
                   {"generation", generation}, {"kind", std::move(kind)},
@@ -99,7 +100,8 @@ json Command(const std::string& path, const std::string& generation,
   std::string input;
   json latest = json::object();
   bool accepted = false;
-  const bool wait_idle = JsonValue(command, "kind", "") == "refresh";
+  const bool wait_idle =
+      JsonValue(command, "kind", "") == "refresh" && !observe_busy;
   for (;;) {
     json frame;
     if (!NextFrame(connection.socket.Get(), input, deadline, frame,
@@ -528,6 +530,26 @@ json CollaboratorRuntime::Snapshot(const std::string& id) const {
   const std::string prompt = JsonValue(slot->latest, "system_prompt", "");
   if (!prompt.empty()) result["system_prompt"] = prompt;
   return result;
+}
+
+json CollaboratorRuntime::LiveView(const std::string& id) const {
+  std::string path, generation;
+  {
+    const State& state = *state_;
+    std::lock_guard lock(state.mutex);
+    auto it = state.slots.find(id);
+    if (it == state.slots.end() || !it->second.active) return json::object();
+    path = it->second.path;
+    generation = it->second.generation;
+  }
+  auto connection = session::Connect(path);
+  if (!connection.socket || connection.generation != generation)
+    return json::object();
+  json state = Command(path, generation, connection, "refresh", "",
+                       Clock::now() + std::chrono::seconds(2), false,
+                       nullptr, json::object(), true);
+  return state.contains("command_error") ? json::object()
+                                         : JsonValue(state, "view", json::object());
 }
 
 bool CollaboratorRuntime::Active(const std::string& id) const {

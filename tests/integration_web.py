@@ -1534,7 +1534,9 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 )
                 child = snapshot["state"]["activities"][0]
                 count = len(provider.requests)
-                client.command("activity", session, operation="inspect", activity_id=child["id"])
+                live = client.command("activity", session, operation="inspect", activity_id=child["id"])
+                blocks = live["result"]["conversation"]["blocks"]
+                assert_true(any("WEB_CHILD_SEED" in block.get("text", "") for block in blocks), blocks)
                 assert_true(len(provider.requests) == count, "inspection called the model")
                 for operation in ("inspect", "message"):
                     denied = client.json(
@@ -1852,6 +1854,9 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                     raise AssertionError(web.snapshot(session))
                 snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
                 child = snapshot["state"]["collaborators"][0]
+                live = web.command("activity", session, operation="inspect", agent_id=child["id"])
+                blocks = live["result"]["conversation"]["blocks"]
+                assert_true(any("retained worker" in block.get("text", "") for block in blocks), blocks)
                 paths = [
                     path
                     for path in runtime_directory(home).glob("*.sock")
@@ -1879,9 +1884,28 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                     agent_id=child["id"],
                     text="overflow guidance",
                 )
+                if result.get("pending"):
+                    request_id = result["request_id"]
+                    wait_until(
+                        lambda: not web.json(f"/api/receipts/{request_id}")[1].get("pending"),
+                        "collaborator message receipt did not complete",
+                    )
+                    result = web.json(f"/api/receipts/{request_id}")[1]
                 assert_true("queued message" in result["result"]["output"], result)
+                communication = web.command(
+                    "activity", session, operation="inspect", agent_id=child["id"]
+                )["result"]["communication"]
+                assert_true(
+                    communication[-1]["from"] == "parent"
+                    and communication[-1]["to"] == child["id"]
+                    and communication[-1]["text"] == "overflow guidance",
+                    communication,
+                )
                 mail = list((home / ".uagent/collaborators").glob("*.mail-*.json"))
-                assert_true(len(mail) == 1 and "overflow guidance" in mail[0].read_text(), mail)
+                assert_true(
+                    not mail or (len(mail) == 1 and "overflow guidance" in mail[0].read_text()),
+                    mail,
+                )
             finally:
                 release.set()
             web.until(session, lambda value: value["metadata"]["status"] == "idle")

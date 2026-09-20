@@ -5,7 +5,7 @@ import type {
 } from "../../shared/types.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import { command } from "../../state/api.ts";
-import { Field, Select, Skeleton } from "../../shared/ui.tsx";
+import { Field, Select } from "../../shared/ui.tsx";
 import "./management.css";
 
 export async function manage<K extends CommandKind>(
@@ -106,23 +106,6 @@ export function ScopeField({
         <option value="global">Global</option>
       </Select>
     </Field>
-  );
-}
-export function ManagementSkeleton() {
-  return (
-    <div
-      class="management-body"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading scheduled tasks…"
-    >
-      <div class="management-list">
-        <Skeleton rows={8} label="Loading tasks…" />
-      </div>
-      <div class="management-editor">
-        <Skeleton rows={12} decorative />
-      </div>
-    </div>
   );
 }
 export const taskActive = (state: string) =>

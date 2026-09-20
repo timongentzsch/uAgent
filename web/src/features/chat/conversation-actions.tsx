@@ -25,11 +25,9 @@ export default function ConversationActions({
         try {
           if (modal.type === "delete" && modal.session.generation) {
             // Live sessions close first: close aborts a running turn
-            // gracefully, then delete removes the record. Close resolves
-            // once the worker exits, but deactivation (which clears the
-            // generation server-side) can land a beat later, so delete
-            // follows with a cleared generation and retries a racing
-            // rejection bounded instead of surfacing it.
+            // gracefully, then delete removes the record. A closing worker
+            // can retire while deactivation propagates, so delete retries
+            // until the generation clears server-side.
             try {
               await command("close", modal.session);
             } catch (failure) {
@@ -43,7 +41,7 @@ export default function ConversationActions({
             let lastError: unknown = null;
             for (let attempt = 0; attempt < 4; attempt++) {
               try {
-                await command("delete", closed, {});
+                await command("delete", closed);
                 lastError = null;
                 break;
               } catch (failure) {

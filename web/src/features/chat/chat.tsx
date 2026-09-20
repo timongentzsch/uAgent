@@ -6,11 +6,12 @@ import type {
   Snapshot,
 } from "../../shared/types.ts";
 import type { RefObject } from "preact";
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import { LoadError, Mark } from "../../shared/ui.tsx";
 import { HistorySkeleton } from "../../shared/loading.tsx";
-import { MessageRows } from "./message.tsx";
-import { setAnchorMode } from "../../state/use-stick-to-bottom.ts";
+import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
+
+export { prepareHistoryBlocks } from "./message.tsx";
 
 export default function Chat({
   scroller,
@@ -31,7 +32,7 @@ export default function Chat({
   http,
   activity,
   statistics,
-  stopFollowing,
+  preserveWhile,
 }: {
   scroller: RefObject<HTMLDivElement>;
   content: RefObject<HTMLDivElement>;
@@ -45,7 +46,7 @@ export default function Chat({
   online: boolean;
   loadSnapshot: (id: string) => Promise<Snapshot>;
   older: () => Promise<void>;
-  stopFollowing: () => void;
+  preserveWhile: (load: () => Promise<void>) => Promise<void>;
   report: Report;
   recall: (block: Block) => void;
   inspect: (id: string) => void;
@@ -70,81 +71,28 @@ export default function Chat({
     [content, attachContent],
   );
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [preparedKey, setPreparedKey] = useState("");
+  const prepared = !!snapshot && preparedKey === selected;
+  useEffect(() => {
+    if (!snapshot) return;
+    let active = true;
+    prepareHistoryBlocks(snapshot.state?.view?.blocks || [])
+      .catch(() => {}) // The message renderer shows its own retryable error.
+      .finally(() => {
+        if (active) setPreparedKey(selected);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, !!snapshot]);
   async function loadOlder() {
     if (loadingOlder) return;
-    const box = scroller.current;
-    const column = content.current;
-    // The reader explicitly went to history: stop following first so the
-    // prepend never yanks to the bottom. Anchor with viewport-relative
-    // rects (not offsetTop, which depends on offsetParent and breaks with
-    // content-visibility): the first visible row stays under the reader
-    // across the prepend, whether it is an ARTICLE message or a DETAILS
-    // tool row. Falls back to a height delta when the anchor is
-    // gone (window cap trimmed it).
-    stopFollowing();
-    let anchor: HTMLElement | null = null;
-    let anchorTop = 0;
-    let boxTop = 0;
-    let heightBefore = 0;
-    let topBefore = 0;
-    // Manual restore owns this prepend: suppress native overflow-anchoring
-    // for the duration, otherwise the button label swap plus the prepend
-    // each shift scroll and the manual correction double-applies.
-    // The anchor lock forces real row heights (no content-visibility
-    // estimates) so the math below is exact on the first frame instead
-    // of chasing intrinsic sizes while rows resolve.
-    const boxAnchor = box?.style.overflowAnchor;
-    setAnchorMode(box, false);
-    column?.classList.add("anchor-lock");
-    if (box && column) {
-      heightBefore = box.scrollHeight;
-      topBefore = box.scrollTop;
-      boxTop = box.getBoundingClientRect().top;
-      for (const child of column.children) {
-        const element = child as HTMLElement;
-        if (!(element instanceof HTMLElement)) continue;
-        if (!element.hasAttribute("data-message-id")) continue;
-        const rect = element.getBoundingClientRect();
-        if (rect.bottom <= boxTop + 1) continue;
-        anchor = element;
-        anchorTop = rect.top;
-        break;
-      }
-    }
     setLoadingOlder(true);
     try {
-      await older();
+      await preserveWhile(older);
     } finally {
       setLoadingOlder(false);
     }
-    // Restore after paint with one exact correction under lock (real
-    // row heights, native anchoring suppressed), then release. Two
-    // frames let the prepended render land before measuring.
-    const target = anchorTop - boxTop;
-    const read = () =>
-      anchor?.isConnected && box
-        ? anchor.getBoundingClientRect().top - box.getBoundingClientRect().top
-        : NaN;
-    const finish = () => {
-      column?.classList.remove("anchor-lock");
-      if (box) box.style.overflowAnchor = boxAnchor || "auto";
-    };
-    if (!anchor?.isConnected) {
-      if (box && heightBefore > 0)
-        box.scrollTop = topBefore + (box.scrollHeight - heightBefore);
-      finish();
-      return;
-    }
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (box && anchor?.isConnected) {
-          const correction = read() - target;
-          if (Number.isFinite(correction) && Math.abs(correction) >= 1)
-            box.scrollTop += correction;
-        }
-        finish();
-      }),
-    );
   }
   const view = snapshot?.state?.view;
   const retry = () => loadSnapshot(selected).catch(() => {});
@@ -152,7 +100,10 @@ export default function Chat({
     <div
       class="transcript"
       data-session={selected}
-      aria-busy={(!snapshot && !loadError) || undefined}
+      data-history-key={`chat:${selected}`}
+      aria-busy={
+        (!snapshot && !loadError) || (snapshot && !prepared) || undefined
+      }
       ref={attachBox}
     >
       <div class="transcript-content" ref={attachColumn}>
@@ -187,7 +138,8 @@ export default function Chat({
             <HistorySkeleton />
           ))}
         {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-        {snapshot && blocks.length === 0 && (
+        {snapshot && !prepared && <HistorySkeleton />}
+        {snapshot && prepared && blocks.length === 0 && (
           <div class="empty">
             <Mark className="cursor-mark" />
             <h2>What are we working on?</h2>
@@ -196,7 +148,7 @@ export default function Chat({
             </p>
           </div>
         )}
-        {snapshot && (
+        {snapshot && prepared && (
           <MessageRows
             blocks={blocks}
             online={online}

@@ -33,6 +33,7 @@
     var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
   );
   --surface-inset: calc(8rem / 14);
+  --dialog-gutter: var(--surface-inset);
   /* Touch-target floor never shrinks below 28px (WCAG 2.5.8: 24px min). */
   --control: max(28px, 2.2rem);
   /* Spacing scales with zoom via rem, exactly like type. The N/14
@@ -418,6 +419,13 @@ pre code {
   padding: calc(8rem / 14);
   min-height: 0;
   min-width: 0;
+}
+.sidebar-skeleton {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
 }
 .sidebar-head {
   display: flex;
@@ -877,8 +885,8 @@ dialog {
   color: var(--text);
   border: 1px solid var(--line);
   padding: 0;
-  width: min(560px, calc(var(--content-width) - 16px));
-  max-height: max(0px, calc(var(--content-height) - 2 * var(--surface-inset)));
+  width: min(560px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  max-height: max(0px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
   overflow: hidden;
 }
 dialog[open] {
@@ -921,12 +929,189 @@ dialog section {
   margin: var(--pad) 0;
 }
 .settings-view {
-  width: min(700px, calc(var(--content-width) - 16px));
+  width: min(700px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+}
+.settings-fields {
+  display: grid;
+  gap: var(--pad);
+}
+.settings-fields > button {
+  text-align: start;
+}
+.settings-section {
+  border-top: 1px solid var(--line);
+  margin-top: var(--pad);
+  padding-top: calc(4rem / 14);
+}
+.settings-section > summary {
+  cursor: pointer;
+  padding: calc(6rem / 14) 0;
+}
+.statistics-view {
+  height: min(680px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+}
+.stats {
+  margin: 0;
+}
+.stats > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--pad);
+  padding: calc(6rem / 14) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+.stats dt {
+  color: var(--muted);
+}
+.stats dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 .raw-view,
 .prompt-view {
-  width: min(1100px, calc(var(--content-width) - 16px));
-  height: min(900px, calc(var(--viewport-height) - 16px));
+  width: min(1100px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  height: min(900px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+}
+.raw-view > .dialog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.raw-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
+}
+.raw-controls {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.raw-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.raw-body > .raw-body-loader {
+  padding: var(--pad);
+}
+.raw-content footer {
+  flex-shrink: 0;
+}
+/* Shared shells exist before their lazy feature CSS arrives. */
+.management {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.management-toolbar {
+  display: flex;
+  align-items: end;
+  gap: var(--gap);
+  padding: var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.management-toolbar > .field {
+  flex: 1;
+  max-width: 34rem;
+}
+.management-toolbar > p {
+  flex: 1;
+  margin: 0;
+}
+.management-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.management-list {
+  flex: 0 0 15rem;
+  padding: var(--gap);
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+.management-list > input,
+.management-list > .select {
+  margin-bottom: var(--gap);
+  width: 100%;
+}
+.library-row {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  gap: calc(2rem / 14);
+  border: 0;
+  background: none;
+  padding: calc(6rem / 14) var(--gap);
+  overflow-wrap: anywhere;
+}
+.management-editor {
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--pad);
+  min-height: 0;
+  scroll-padding-block: var(--pad);
+  min-width: 0;
+  overflow: auto;
+  flex: 1;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.editor-head > button {
+  display: none;
+}
+.run-history {
+  border-top: 1px solid var(--line);
+  padding-top: var(--pad);
+}
+.run-history h2 {
+  font-size: 1em;
+}
+.prompt-editor,
+.prompt-content-skeleton {
+  display: grid;
+  gap: var(--gap);
+}
+.prompt-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.prompt-controls > * {
+  flex: 1;
+  min-width: min(12rem, 100%);
+}
+.prompt-columns {
+  display: grid;
+  gap: var(--pad);
+}
+.prompt-columns section {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.prompt-tabs {
+  display: flex;
+}
+.prompt-columns.instructions > section:last-child,
+.prompt-columns.effective > section:first-child {
+  display: none;
 }
 .pairing {
   max-width: 560px;
@@ -934,6 +1119,24 @@ dialog section {
   padding: var(--pad);
   min-height: 0;
   overflow: auto;
+}
+.pairing .wordmark {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--gap);
+}
+.pairing h1 {
+  font-size: 1.3rem;
+}
+.pairing p {
+  color: var(--muted);
+  margin: var(--pad) 0;
+}
+.pairing form {
+  margin: var(--pad) 0;
+}
+.pairing form button {
+  justify-self: start;
 }
 .skeleton {
   padding: calc(12rem / 14) 0;
@@ -1004,6 +1207,18 @@ dialog section {
   height: 32px;
   width: 32px;
 }
+.wordmark-skeleton {
+  width: 48px;
+  padding: 0;
+  margin-bottom: var(--gap);
+}
+.wordmark-skeleton span {
+  width: 48px;
+  height: 48px;
+}
+.pairing-copy {
+  margin: var(--pad) 0;
+}
 .session-mirror {
   min-height: var(--control);
   padding: calc(4rem / 14) calc(8rem / 14);
@@ -1040,16 +1255,6 @@ dialog section {
 .composer .status-line > .skeleton {
   padding: calc(6rem / 14) 0;
 }
-.history-skeleton {
-  padding: calc(24rem / 14);
-}
-.history-skeleton > div {
-  gap: calc(24rem / 14);
-}
-.history-skeleton span:nth-child(4n + 1) {
-  height: 48px;
-  width: 100%;
-}
 
 @media (pointer: coarse) {
   :root {
@@ -1082,7 +1287,7 @@ dialog section {
     margin: 0;
     height: var(--content-height);
     max-height: var(--content-height);
-    width: min(320px, calc(var(--content-width) - 24px));
+    width: min(320px, calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }
   .drawer > .dialog-body {
@@ -1144,8 +1349,54 @@ dialog section {
   }
   .raw-view,
   .prompt-view {
-    width: calc(var(--content-width) - 2 * var(--surface-inset));
-    height: calc(var(--content-height) - 2 * var(--surface-inset));
+    width: calc(var(--content-width) - 2 * var(--dialog-gutter));
+    height: calc(var(--content-height) - 2 * var(--dialog-gutter));
+  }
+}
+@media (max-width: 900px) {
+  .management-toolbar {
+    flex-wrap: wrap;
+  }
+  .management-toolbar .field {
+    order: 3;
+    min-width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .management-toolbar > button {
+    margin-left: auto;
+  }
+  .management-list {
+    flex: 1;
+    border-right: 0;
+  }
+  .management-editor {
+    display: none;
+  }
+  .editor-head > button {
+    display: flex;
+  }
+  .management:has(.has-selection) .management-toolbar > :not(.field),
+  .management:has(.has-selection .schedule-editor) .management-toolbar {
+    display: none;
+  }
+  .management-body.has-selection .management-list {
+    display: none;
+  }
+  .management-body.has-selection .management-editor {
+    display: flex;
+  }
+  .management-body:not(.has-selection) .schedule-editor {
+    display: flex;
+    overflow: visible;
+    flex: none;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) .management-list {
+    flex: none;
   }
 }
 @container app (max-height: 500px) {

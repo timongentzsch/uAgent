@@ -201,9 +201,7 @@ export default function Composer({
       // clamps to the box and a shrink is unobservable (the box grew on
       // wrap but never shrank back on send or delete). Both writes land
       // in one synchronous block, so observers only ever see the net
-      // size; restoring an identical height fires no resize (the guard
-      // below keeps the transcript box observer quiet while
-      // content-visibility re-estimates rows above).
+      // size; restoring an identical height fires no resize.
       element.style.height = "0px";
       const final = `${element.scrollHeight}px`;
       element.style.height = final === prev ? prev : final;
@@ -245,7 +243,7 @@ export default function Composer({
           act={act}
           online={online}
           report={report}
-          fallback={<DecisionSkeleton />}
+          fallback={<DecisionSkeleton editor={pending.kind === "editor"} />}
         />
       ) : online && !session.generation ? (
         <button

@@ -3,8 +3,6 @@
   width: 100%;
   min-width: 0;
   container-type: inline-size;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 200px;
   text-align: left;
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
@@ -110,40 +108,6 @@
 }
 .message .action-menu {
   flex-shrink: 0;
-}
-/* Off-screen rows skip layout and paint; intrinsic size (remembered
-   after first render) keeps the scrollbar stable. This is what makes
-   the first seconds of a long retrieval cheap: only the viewport pays
-   full layout. */
-article.message {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 240px;
-}
-/* Load-older measurement bypass: while the anchor lock holds, every row
-   lays out at its real height so prepend math is exact instead of chasing
-   intrinsic estimates across frames. Removed when the settle finishes, at
-   which point all rows have remembered real sizes. */
-.transcript-content.anchor-lock .message {
-  content-visibility: visible;
-}
-/* Engines without native scroll anchoring (WebKit before Safari 27 —
-   see use-stick-to-bottom.ts) cannot absorb estimate swings: a row
-   resolving from its 240px intrinsic size to its real height yanks
-   every reader below it. Lay those rows out at real sizes instead —
-   full layout cost upfront, zero later shifts. Self-removing:
-   @supports stops matching once anchoring ships. */
-@supports not (overflow-anchor: auto) {
-  .message {
-    content-visibility: visible;
-  }
-}
-/* Live edge: while following, the last rows lay out at real sizes so the
-   bottom pin measures exact heights instead of chasing content-visibility
-   estimates while typing or streaming (the pin-then-settle chase read as
-   the transcript glitching up and down, and as a small upward jump after
-   scrolling to the bottom). History rows keep virtualization. */
-.transcript.is-following .transcript-content > :nth-last-child(-n + 3) {
-  content-visibility: visible;
 }
 .tool-row-head {
   display: grid;

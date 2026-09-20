@@ -86,23 +86,21 @@ test("scrolled-up reader is never yanked down by streaming", async ({
     await page.waitForTimeout(50);
   }
   await expect(jump).toBeVisible();
-  // Across the rest of the stream the reader must never move down.
-  const tops = [];
+  // Across the rest of the stream the reader stays away from the live edge.
+  const gaps = [];
   for (let index = 0; index < 20; ++index) {
-    tops.push(
+    gaps.push(
       await page
         .locator(".transcript")
-        .evaluate((element) => element.scrollTop),
+        .evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        ),
     );
     await page.waitForTimeout(150);
   }
-  const settled = await page
-    .locator(".transcript")
-    .evaluate((element) => element.scrollTop);
-  // Any sticky pin would jump thousands of px to the end; native
-  // overflow-anchoring plus content-visibility re-estimates above the
-  // viewport may legitimately drift the position within the band.
-  expect(Math.max(...tops)).toBeLessThanOrEqual(settled + 100);
+  expect(Math.min(...gaps)).toBeGreaterThan(100);
+  await expect(jump).toBeVisible();
   await expect(page.locator(".composer .status-led.running")).toBeHidden({
     timeout: 60000,
   });

@@ -365,6 +365,9 @@ class WorkerChannel final : public ApplicationChannel {
     switch (kind) {
       case SessionCommandKind::kClose: {
         lock.unlock();
+        // A close request must acknowledge before the worker shuts down;
+        // otherwise the browser waits for a receipt from a dead socket.
+        CompleteControl(request, {{"operation", "close"}});
         Close();
         return true;
       }

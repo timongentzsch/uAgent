@@ -357,35 +357,11 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       metrics[name].composer.y + metrics[name].composer.height,
     ).toBeLessThanOrEqual(metrics[name].viewport.height + 1);
     if (await page.locator(".message.user").count()) {
-      // Off-screen rows keep content-visibility remembered boxes across
-      // viewport/zoom changes (e.g. landscape width measured at 390px
-      // width), so force real row layout while measuring, exactly like
-      // the prepend anchor lock does. A reload follows these measures,
-      // so no scroll state survives the bypass.
-      await page.evaluate(() =>
-        document
-          .querySelector(".transcript-content")
-          ?.classList.add("anchor-lock"),
-      );
-      // Flipping skipped rows to real layout settles asynchronously:
-      // a synchronous read right after the flip can still report the
-      // remembered box. Two frames cover style recalc plus layout.
-      await page.evaluate(
-        () =>
-          new Promise((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(resolve)),
-          ),
-      );
       const user = await page.locator(".message.user").first().boundingBox();
       const response = await page
         .locator(".message.response")
         .first()
         .boundingBox();
-      await page.evaluate(() =>
-        document
-          .querySelector(".transcript-content")
-          ?.classList.remove("anchor-lock"),
-      );
       expect(Math.abs(user.x - response.x)).toBeLessThan(2);
       expect(Math.abs(user.width - response.width)).toBeLessThan(2);
       await expect(page.locator(".message.user").first()).toHaveCSS(
@@ -537,6 +513,31 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await page.keyboard.press("Escape");
   await settingsButton.click();
   await settings.getByLabel("Zoom", { exact: true }).fill("200");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize),
+      ),
+    )
+    .toBeGreaterThan(27);
+  const dialogGutter = await settings.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const app = document.getElementById("app");
+    const appBounds = app.getBoundingClientRect();
+    const appStyle = getComputedStyle(app);
+    const inset =
+      (parseFloat(getComputedStyle(document.documentElement).fontSize) * 8) /
+      14;
+    return {
+      left: bounds.left - appBounds.left - parseFloat(appStyle.paddingLeft),
+      right:
+        appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
+      inset,
+    };
+  });
+  expect(dialogGutter.left).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
+  expect(dialogGutter.right).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
+  expect(Math.abs(dialogGutter.left - dialogGutter.right)).toBeLessThan(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -710,6 +711,12 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     await rawGate;
     await route.continue();
   });
+  let releaseRawBody;
+  const bodyGate = new Promise((resolve) => (releaseRawBody = resolve));
+  await page.route("**/api/sessions/*?http=*", async (route) => {
+    await bodyGate;
+    await route.continue();
+  });
   await rawAction.click();
   const raw = page.getByRole("dialog", {
     name: "HTTP request/response",
@@ -722,6 +729,10 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
   await expect(raw.locator(".raw-body .code-skeleton")).toBeVisible();
   const rawLoadingBox = await raw.boundingBox();
   releaseRaw();
+  await expect(raw.locator(".raw-body-loader")).toBeVisible();
+  await expect(raw.locator(".raw-content")).toHaveCount(1);
+  await expect(raw.locator(".raw-body")).toHaveCount(1);
+  releaseRawBody();
   await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
     '\n  "',
   );
@@ -1638,8 +1649,14 @@ test.describe("mobile navigation and commands", () => {
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
       .tap();
-    await prompt.fill("/new");
-    await prompt.press("Enter");
+    await page.getByRole("button", { name: "Open sessions" }).click();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    const newConversation = page.getByRole("dialog", {
+      name: "New conversation",
+    });
+    await newConversation
+      .getByRole("button", { name: "Start conversation" })
+      .click();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(page.locator(".message.user")).toHaveCount(0);
     await prompt.fill("/q");
@@ -1721,14 +1738,12 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   ).toBeVisible();
   await expect
     .poll(() =>
-      page
-        .locator(".transcript")
-        .evaluate(
-          (element) =>
-            element.scrollHeight - element.scrollTop - element.clientHeight,
-        ),
+      page.locator(".transcript").evaluate((element) => element.scrollTop),
     )
     .toBeLessThan(2);
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
+  ).toBeVisible();
   await prompt.fill("Keep this draft across rotation");
   const fontSize = await prompt.evaluate(
     (element) => getComputedStyle(element).fontSize,
@@ -1979,6 +1994,14 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   ).toBeVisible();
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const list = page.locator(".activity-panel");
+  expect(
+    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await page.setViewportSize({ width: 2048, height: 844 });
+  expect(
+    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
   await list.getByRole("button", { name: /Show .*completed/ }).click();
   await list
     .getByRole("button")
@@ -2039,6 +2062,7 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
     0,
   );
+  await detail.getByText("Task and run details").click();
   await expect(
     detail.locator('section[aria-label="Run details"]'),
   ).toBeVisible();

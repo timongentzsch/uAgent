@@ -52,6 +52,34 @@ std::string CollaboratorSessionPath(const std::string& id) {
   return UagentDir("collaborators") + "/" + id + ".session.json";
 }
 
+std::string CollaboratorCommunicationPath(const std::string& id) {
+  return UagentDir("collaborators") + "/" + id + ".comms.jsonl";
+}
+
+json CollaboratorCommunication(const std::string& id) {
+  std::ifstream input(CollaboratorCommunicationPath(id), std::ios::binary);
+  if (!input) return json::array();
+  input.seekg(0, std::ios::end);
+  const auto bytes = input.tellg();
+  constexpr std::streamoff kTailBytes = 64 * 1024;
+  if (bytes > kTailBytes) {
+    input.seekg(bytes - kTailBytes);
+    std::string partial;
+    std::getline(input, partial);
+  } else {
+    input.seekg(0);
+  }
+  json messages = json::array();
+  std::string line;
+  while (std::getline(input, line)) {
+    json event = json::parse(line, nullptr, false);
+    if (!event.is_object()) continue;
+    messages.push_back(std::move(event));
+    if (messages.size() > 100) messages.erase(messages.begin());
+  }
+  return messages;
+}
+
 // Short because the id is quoted back in every spawn, followup, message and
 // list result -- a recurring token cost for something no human types. The
 // digest is the same FNV-1a construction session ids use, truncated to eight
@@ -170,7 +198,8 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes,
     // name keeps a talkative parent from crowding out the records below.
     if (!it->is_regular_file(error) || !name.ends_with(".json") ||
         name.ends_with(".session.json") ||
-        name.find(".mail-") != std::string::npos) {
+        name.find(".mail-") != std::string::npos ||
+        name.ends_with(".comms.jsonl")) {
       continue;
     }
     std::ifstream input(it->path());
@@ -238,6 +267,18 @@ ToolResult MessageCollaborator(const ProcessSupervisor& processes,
   // receipt, so a crash between accept and drain repeats instead of losing.
   ToolResult saved = WriteCollaboratorMail(id, text, sender, hops);
   if (!saved.Ok()) return saved;
+  const std::string event =
+      JsonDump({{"from", sender},
+                {"to", id},
+                {"text", Utf8Trunc(text, 4096)},
+                {"time", UtcStamp()}});
+  std::string journal_error;
+  (void)AppendPrivateLine(CollaboratorCommunicationPath(id), event,
+                          journal_error);
+  if (sender != "parent" && sender != id) {
+    (void)AppendPrivateLine(CollaboratorCommunicationPath(sender), event,
+                            journal_error);
+  }
   if (runtime && JsonValue(record, "persistent", false)) {
     (void)runtime->Message(id, "");
   }
@@ -262,12 +303,17 @@ json InspectCollaborator(const ProcessSupervisor& processes,
                  {"task", JsonValue(state, "task", "")},
                  {"directive", JsonValue(state, "directive", "")},
                  {"persistent", JsonValue(state, "persistent", false)},
-                 {"route", JsonValue(state, "route", "")}};
+                 {"route", JsonValue(state, "route", "")},
+                 {"communication", CollaboratorCommunication(id)}};
   if (runtime) {
     json retained = runtime->Snapshot(id);
     if (!retained.empty()) detail.update(retained);
   }
-  if (!loaded.record) return detail;
+  json live_view = runtime ? runtime->LiveView(id) : json::object();
+  if (!loaded.record) {
+    if (!live_view.empty()) detail["conversation"] = std::move(live_view);
+    return detail;
+  }
   const auto& record = *loaded.record;
   Conversation conversation;
   if (!conversation.Restore(record.state.messages, record.state.message_kinds,
@@ -285,8 +331,11 @@ json InspectCollaborator(const ProcessSupervisor& processes,
     return body.contains("error") ? body : json{{"body", std::move(body)}};
   }
   detail.update({{"conversation",
-                  ConversationView(conversation,
-                                   JsonValue(request, "before", uint64_t{0}))},
+                  !live_view.empty() &&
+                          !JsonValue(request, "before", uint64_t{0})
+                      ? std::move(live_view)
+                      : ConversationView(conversation,
+                                         JsonValue(request, "before", uint64_t{0}))},
                  {"turns", record.metadata.turns},
                  {"statistics", conversation.Statistics()},
                  {"usage", UsageJson(record.state.usage)}});

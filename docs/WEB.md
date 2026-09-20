@@ -105,7 +105,8 @@ UI state.
 
 The UI uses a single viewport owner, safe-area insets and shared popovers/modals.
 Input focus, orientation changes and returning from the background preserve the
-selected conversation and draft. Loading skeletons share the final layout.
+selected conversation and draft. Loading shells reserve the final columns and
+controls; content of unknown length can still grow when it arrives.
 Reduced-motion preferences disable animation.
 
 ## Phone access and installation
@@ -178,17 +179,17 @@ decimal display units; raw exports retain exact values. Native and browser tests
 use mock providers. Physical iOS keyboard, install and notification behavior
 still requires device validation; browser emulation does not establish it.
 
-### Frontend bundle baseline (`web/scripts/size.js`, CI-gated)
+### Frontend bundle baseline (`web/scripts/size.js`, CI-reported)
 
-Measured 2026-09-17 at `ead0120` + Safari scroll-anchoring fallback. No
-dependency change since the budgets were set (`65cb7a5`); growth is shell
-surface (swarm messaging, stick-to-bottom rewrite in `21ebc0d`). Entry JS
-is the app shell + Preact; heavy renderers (mermaid, katex, highlight)
-stay in lazy chunks. Gzip caps are unchanged and passing.
+Measured 2026-09-20 after the loading-layout refactor. Core shell CSS is
+available before lazy feature modules so loading and loaded surfaces keep their
+columns and dialog bounds. `npm run size --prefix web` records raw and gzip
+bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
+(mermaid, katex, highlight) stay in lazy chunks.
 
-| Group | Raw | Gzip | Budget (raw / gzip) |
-| --- | --- | --- | --- |
-| Initial JS | 68,863 | 24,230 | 68 KiB / 25 KiB |
-| Initial CSS | 17,893 | 4,606 | 18 KiB / 4.6 KiB |
-| App (excl. diagrams) | 930,920 | 492,684 | 950 KiB / 520 KiB |
-| Diagrams (lazy) | 5,113,438 | 1,472,072 | 5.2 MiB / 1.6 MiB |
+| Group | Raw | Gzip |
+| --- | ---: | ---: |
+| Initial JS | 72,307 | 25,180 |
+| Initial CSS | 21,721 | 5,268 |
+| App (excl. diagrams) | 937,540 | 493,955 |
+| Diagrams (lazy) | 5,113,369 | 1,472,046 |

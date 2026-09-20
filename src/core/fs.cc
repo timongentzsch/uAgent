@@ -296,9 +296,12 @@ void PruneCollaboratorTree(const std::string& dir, int64_t max_age_days,
     chmod(entry.path().c_str(), kPrivateFileMode);
     std::string name = entry.path().filename().string();
     constexpr std::string_view kSessionSuffix = ".session.json";
+    constexpr std::string_view kCommsSuffix = ".comms.jsonl";
     constexpr std::string_view kRecordSuffix = ".json";
     size_t suffix =
-        name.ends_with(kSessionSuffix)
+        name.ends_with(kCommsSuffix)
+            ? kCommsSuffix.size()
+            : name.ends_with(kSessionSuffix)
             ? kSessionSuffix.size()
             : (name.ends_with(kRecordSuffix) ? kRecordSuffix.size() : 0);
     if (suffix == 0) return;

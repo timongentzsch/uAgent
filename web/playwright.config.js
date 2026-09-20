@@ -16,7 +16,7 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     {
       name: "webkit",
-      testMatch: "**/ui.spec.js",
+      testMatch: "**/{ui,history-anchor,scroll-restore,scroll-stick}.spec.js",
       use: { ...devices["Desktop Safari"] },
     },
   ],

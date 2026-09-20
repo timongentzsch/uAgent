@@ -3,7 +3,7 @@ import type { RawOptions, Exchange, JSONValue } from "../../shared/types.ts";
 import { useEffect, useId, useMemo, useState } from "preact/hooks";
 import { Download } from "lucide-preact";
 import { Field, Select, LoadError } from "../../shared/ui.tsx";
-import { RawSkeleton } from "../../shared/loading.tsx";
+import { RawBodySkeleton } from "../../shared/loading.tsx";
 import { readPages, command } from "../../state/api.ts";
 import { formatBody } from "../../shared/format.ts";
 import { formatEventStream } from "../../state/event-stream.ts";
@@ -187,7 +187,7 @@ export default function Raw({
         {error ? (
           <LoadError error={error} retry={() => setRetry(retry + 1)} />
         ) : body === undefined ? (
-          <RawSkeleton http={http} />
+          <RawBodySkeleton />
         ) : !text.trim() ? (
           <p class="muted">No content recorded.</p>
         ) : (

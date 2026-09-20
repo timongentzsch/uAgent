@@ -182,6 +182,7 @@ export function EventRow({
   time,
   status,
   icon,
+  messageId,
   children,
   onToggle,
 }: {
@@ -189,6 +190,7 @@ export function EventRow({
   time?: string;
   status?: string;
   icon: ComponentChildren;
+  messageId?: string;
   children: ComponentChildren;
   onToggle?: JSX.GenericEventHandler<HTMLDetailsElement>;
 }) {
@@ -199,6 +201,7 @@ export function EventRow({
       status={status}
       time={time}
       icon={icon}
+      messageId={messageId}
       onToggle={onToggle}
     >
       <div class="event-body">{children}</div>

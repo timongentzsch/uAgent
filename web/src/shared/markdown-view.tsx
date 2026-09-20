@@ -5,6 +5,30 @@ import type { MarkdownBlock } from "./markdown.ts";
 import { CodeCopy, LoadError } from "./ui.tsx";
 
 let renderer: Promise<typeof import("./markdown.ts")> | undefined;
+const prepared = new Map<string, MarkdownBlock[]>();
+let preparedChars = 0;
+const MAX_PREPARED_CHARS = 4_000_000;
+
+// Completed pages are parsed before they become visible. Keep the same
+// bounded result for the message component's first render; streaming text
+// never enters this cache.
+export async function prepareMarkdown(text: string): Promise<MarkdownBlock[]> {
+  const cached = prepared.get(text);
+  if (cached) return cached;
+  renderer ??= import("./markdown.ts");
+  const blocks = await (await renderer).renderMarkdownBlocks(text);
+  if (text.length <= MAX_PREPARED_CHARS) {
+    prepared.set(text, blocks);
+    preparedChars += text.length;
+    while (preparedChars > MAX_PREPARED_CHARS) {
+      const oldest = prepared.keys().next().value;
+      if (oldest === undefined) break;
+      preparedChars -= oldest.length;
+      prepared.delete(oldest);
+    }
+  }
+  return blocks;
+}
 
 // Warm the renderer chunk outside the critical path. Called while a turn
 // streams (and once at boot), so the plain-to-markdown switch at
@@ -13,15 +37,6 @@ export function prefetchMarkdown(text = "") {
   renderer ??= import("./markdown.ts");
   if (/\$|\\[([]/.test(text)) void import("./math.ts");
   if (/```|~~~/.test(text)) void import("./highlight.ts");
-}
-
-// Retained history hydrates from plain text to full markdown right after
-// mount; every late chunk (mermaid especially) is another height wave
-// that fights the bottom pin. Scan a text sample once the snapshot
-// arrives so all waves start together, early.
-export function prefetchHeavy(text: string) {
-  prefetchMarkdown(text);
-  if (/```\s*mermaid/i.test(text)) void import("./diagram.tsx");
 }
 
 function closedFence(source: string) {
@@ -72,6 +87,18 @@ function streamingHead(source: string): string {
   return "";
 }
 
+function plainSegments(tail: string, startLine: number) {
+  const parts = tail.split(/(\n[ \t]*\n)/);
+  const segments: { line: number; text: string }[] = [];
+  let line = startLine;
+  for (let index = 0; index < parts.length; index += 2) {
+    const value = parts[index] + (parts[index + 1] || "");
+    if (value) segments.push({ line, text: value });
+    line += (value.match(/\n/g) || []).length;
+  }
+  return segments;
+}
+
 function escapeHTML(value: string) {
   return value.replace(
     /[&<>]/g,
@@ -106,10 +133,18 @@ function DiagramLeaf({ source }: { source: string }) {
   return Diagram ? (
     <Diagram source={source} />
   ) : (
-    <CodeBlock
-      source={source}
-      html={`<pre><code>${escapeHTML(source)}</code></pre>`}
-    />
+    <div class="diagram">
+      <div class="diagram-preview" role="status">
+        Rendering diagram…
+      </div>
+      <details>
+        <summary>Show source</summary>
+        <CodeBlock
+          source={source}
+          html={`<pre><code>${escapeHTML(source)}</code></pre>`}
+        />
+      </details>
+    </div>
   );
 }
 
@@ -151,7 +186,10 @@ export default function Markdown({
   // renderer work for content the user may never see.
   progressive?: boolean;
 }) {
-  const [blocks, setBlocks] = useState<MarkdownBlock[]>([]);
+  const [rendered, setRendered] = useState<{
+    text: string;
+    blocks: MarkdownBlock[];
+  }>(() => ({ text, blocks: prepared.get(text) || [] }));
   const [error, setError] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   const [streamBlocks, setStreamBlocks] = useState<MarkdownBlock[]>([]);
@@ -184,6 +222,7 @@ export default function Markdown({
       // keystroke would jank the turn it decorates.
       setStreamBlocks([]);
       setStreamTail(text);
+      state.rendered = 0;
       return;
     }
     if (state.timer) return; // trailing pass already scheduled
@@ -245,10 +284,9 @@ export default function Markdown({
     const paint = async () => {
       try {
         const value = state.text;
-        renderer ??= import("./markdown.ts");
-        const output = await (await renderer).renderMarkdownBlocks(value);
+        const output = await prepareMarkdown(value);
         if (!state.active) return;
-        setBlocks(output);
+        setRendered({ text: value, blocks: output });
         setError(null);
         if (value !== state.text) paint();
         else state.running = false;
@@ -269,6 +307,8 @@ export default function Markdown({
     [],
   );
   if (streaming) {
+    const startLine =
+      text.slice(0, stream.current.rendered).split("\n").length - 1;
     // NOTE: deliberately not `.markdown`. Completion-timing contracts
     // (asserted in ui.spec.js) observe `.message.response > .markdown`
     // appearing at block completion with stable nodes; publishing the
@@ -279,16 +319,30 @@ export default function Markdown({
     return (
       <div class="markdown-stream">
         {streamBlocks.map((block) => (
-          <RenderedBlock key={block.key} block={block} streaming />
+          <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
+            <RenderedBlock block={block} streaming />
+          </div>
         ))}
-        {streamTail && <div class="plain">{streamTail}</div>}
+        {plainSegments(streamTail, startLine).map((segment) => (
+          <div
+            key={`plain-${segment.line}`}
+            data-anchor-id={String(segment.line)}
+            class="plain"
+          >
+            {segment.text}
+          </div>
+        ))}
       </div>
     );
   }
+  const blocks =
+    prepared.get(text) || (rendered.text === text ? rendered.blocks : []);
   return blocks.length || error ? (
     <div class="markdown">
       {blocks.map((block) => (
-        <RenderedBlock key={block.key} block={block} streaming={streaming} />
+        <div key={block.key} data-anchor-id={block.key.split(":")[0]}>
+          <RenderedBlock block={block} streaming={streaming} />
+        </div>
       ))}
       {error && (
         <div class="renderer-fallback">

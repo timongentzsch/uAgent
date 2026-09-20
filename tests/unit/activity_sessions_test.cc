@@ -1157,8 +1157,7 @@ void TestSessionMail() {
   CHECK(WriteSessionMail("sess-aaa", "second", "sess-bbb", 0).Ok());
   CHECK(WriteSessionMail("sess-ccc", "other", "sess-bbb", 0).Ok());
   std::vector<SessionMail> taken = TakeSessionMail("sess-aaa");
-  CHECK(texts(std::move(taken)) ==
-        std::vector<std::string>({"first", "second"}));
+  CHECK(texts(taken) == std::vector<std::string>({"first", "second"}));
   // Sender survives the round trip; the take consumed only the addressee's.
   taken = TakeSessionMail("sess-aaa");
   CHECK(taken.empty());

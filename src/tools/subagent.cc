@@ -61,7 +61,7 @@ json CollaboratorCommunication(const std::string& id) {
   if (!input) return json::array();
   input.seekg(0, std::ios::end);
   const auto bytes = input.tellg();
-  constexpr std::streamoff kTailBytes = 64 * 1024;
+  constexpr std::streamoff kTailBytes = 64L * 1024;
   if (bytes > kTailBytes) {
     input.seekg(bytes - kTailBytes);
     std::string partial;

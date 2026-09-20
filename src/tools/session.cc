@@ -68,7 +68,7 @@ json ReadLink(const std::string& name) {
   return link;
 }
 
-ToolResult WriteLink(const std::string& name, json members) {
+ToolResult WriteLink(const std::string& name, const json& members) {
   if (!ValidLinkName(name)) {
     return ToolFailure(ToolErrorCode::kInvalidArguments,
                        "error: bad link name");
@@ -150,7 +150,7 @@ ToolResult EnsureSessionAutoLink() {
                        "error: auto-link is full (32 sessions)");
   }
   members.push_back(std::move(me));
-  ToolResult saved = WriteLink(name, std::move(members));
+  ToolResult saved = WriteLink(name, members);
   return saved.Ok() ? ToolSuccess({}) : saved;
 }
 
@@ -168,7 +168,7 @@ ToolResult CreateSessionLink(std::string& token) {
   }
   json members = json::array();
   members.push_back(std::move(me));
-  ToolResult saved = WriteLink(token, std::move(members));
+  ToolResult saved = WriteLink(token, members);
   if (!saved.Ok()) return saved;
   return ToolSuccess(token);
 }
@@ -196,7 +196,7 @@ ToolResult JoinSessionLink(const std::string& token) {
                          "error: link is full (32 sessions)");
     }
     members.push_back(std::move(me));
-    ToolResult saved = WriteLink(token, std::move(members));
+    ToolResult saved = WriteLink(token, members);
     if (!saved.Ok()) return saved;
   }
   return ToolSuccess(token);
@@ -246,8 +246,9 @@ std::vector<json> SessionSummaries() {
     const std::string id = JsonValue(member, "id", "");
     std::string path = JsonValue(member, "path", "");
     std::string kind = "session";
-    if (path.find("/collaborators/") != std::string::npos)
+    if (path.find("/collaborators/") != std::string::npos) {
       kind = "collaborator";
+    }
     push(id, MemberTitle(id, path), kind, true);
   }
   // Then linkable workspace sessions.

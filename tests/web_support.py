@@ -118,6 +118,10 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             )
             client = WebClient(port)
             yield client, code, process, env
+        except (ConnectionError, http.client.HTTPException) as error:
+            raise AssertionError(
+                f"web host connection failed (exit={process.poll()}):\n" + log.read_text()[-8000:]
+            ) from error
         finally:
             stop_sessions(home)
             if process.poll() is None:

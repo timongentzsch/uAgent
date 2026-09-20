@@ -543,8 +543,9 @@ json CollaboratorRuntime::LiveView(const std::string& id) const {
     generation = it->second.generation;
   }
   auto connection = session::Connect(path);
-  if (!connection.socket || connection.generation != generation)
+  if (!connection.socket || connection.generation != generation) {
     return json::object();
+  }
   json state = Command(path, generation, connection, "refresh", "",
                        Clock::now() + std::chrono::seconds(2), false, nullptr,
                        json::object(), true);

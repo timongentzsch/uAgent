@@ -1702,11 +1702,12 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await expect(table).toHaveCSS("display", "table");
   const cell = table.locator("td").first();
   await expect(cell).toBeVisible();
-  const cellSize = await cell.boundingBox();
-  const cellFontSize = await cell.evaluate((element) =>
-    parseFloat(getComputedStyle(element).fontSize),
+  const cellRatio = await cell.evaluate(
+    (element) =>
+      element.getBoundingClientRect().height /
+      parseFloat(getComputedStyle(element).fontSize),
   );
-  expect(cellSize.height).toBeLessThan(cellFontSize * 4);
+  expect(cellRatio).toBeLessThan(4);
   const title = page.locator(".tool-disclosure .disclosure-label").first();
   await title.evaluate((element) => {
     element.textContent = "long-command-".repeat(200);
@@ -1728,6 +1729,9 @@ test("tool rows and memory receipts survive reload and mobile rotation", async (
   await page.locator(".transcript").evaluate((element) => {
     element.scrollTop = 0;
   });
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
+  ).toBeVisible();
   await page.reload();
   await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
   await expect(

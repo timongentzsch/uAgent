@@ -379,7 +379,6 @@ void Conversation::RecordDisplay(const std::string& key, json facts) {
     if (victim == display_facts_.end()) break;
     if (victim_bytes <= kTinyFactBytes && display_bytes_ <= kDisplayBytes) {
       victim = display_facts_.begin();
-      victim_bytes = 0;
       if (const auto sized = fact_bytes_.find(victim.key());
           sized != fact_bytes_.end()) {
         victim_bytes = sized->second;

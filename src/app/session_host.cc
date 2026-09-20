@@ -85,7 +85,10 @@ std::vector<HostNotice> SessionHost::WaitForNotices() {
 }
 
 void SessionHost::Stop() {
-  stopping_ = true;
+  {
+    std::lock_guard lock(mutex_);
+    stopping_ = true;
+  }
   changed_.notify_all();
 }
 

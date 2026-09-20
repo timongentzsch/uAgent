@@ -39,6 +39,7 @@
 #include "include/app/schedule.h"
 #include "include/app/self_description.h"
 #include "include/app/session_host.h"
+#include "include/browser/browser.h"
 #include "include/core/capture.h"
 #include "include/core/child_env.h"
 #include "include/core/effective_config.h"
@@ -51,6 +52,7 @@
 #include "include/core/time.h"
 #include "include/tools/files.h"
 #include "include/web/assets.h"
+#include "include/web/browser_viewer.h"
 #include "include/web/protocol.h"
 #include "include/web/push.h"
 
@@ -152,6 +154,7 @@ class Master {
       }
     }
     authority_ = origin_.substr(origin_.find("://") + 3);
+    if (!browser::StartService(executable_, browser_process_, error)) return false;
     LoadDevices();
     push_ = std::make_unique<PushSender>(directory_, options_.push_contact);
     host_.LoadDrafts();
@@ -173,7 +176,7 @@ class Master {
          {"Cache-Control", "no-store"},
          {"Content-Security-Policy",
           "default-src 'none'; script-src 'self'; style-src 'self' "
-          "'unsafe-inline'; font-src 'self'; img-src 'self' blob:; connect-src "
+          "'unsafe-inline'; font-src 'self'; img-src 'self' blob: data:; connect-src "
           "'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; "
           "form-action 'self'; frame-ancestors 'none'"}});
     server_.set_pre_routing_handler(
@@ -243,6 +246,39 @@ class Master {
                  [this](const Request& request, Response& response) {
                    Command(request, response);
                  });
+    if (!browser::DataDirectory().empty()) {
+      server_.Get("/api/browser/status", [this](const Request& request,
+                                                Response& response) {
+        json status = browser::Request({{"op", "status"}});
+        std::lock_guard lock(mutex_);
+        status["controller"] =
+            JsonValue(status, "viewer", "") == DeviceId(request);
+        status["leased"] = !JsonValue(status, "viewer", "").empty();
+        status.erase("viewer");
+        Reply(response, status);
+      });
+      server_.WebSocket("/api/browser/viewer",
+                        [this](const Request& request,
+                               httplib::ws::WebSocket& socket) {
+        std::string device;
+        {
+          std::lock_guard lock(mutex_);
+          if (request.get_header_value("Host") == authority_ &&
+              request.get_header_value("Origin") == origin_)
+            device = DeviceId(request);
+        }
+        if (device.empty() || viewer_active_.exchange(true)) {
+          socket.close(httplib::ws::CloseStatus::PolicyViolation);
+          return;
+        }
+        uint64_t generation = RelayBrowserViewer(socket, device);
+        if (generation)
+          browser::Request({{"op", "viewer_disconnected"},
+                            {"device", device},
+                            {"generation", generation}});
+        viewer_active_ = false;
+      });
+    }
     server_.Get(R"(/api/receipts/([a-f0-9]{16,64}))",
                 [this](const Request& request, Response& response) {
                   std::lock_guard lock(mutex_);
@@ -325,7 +361,7 @@ class Master {
       }
       Error(response, "not found", 404);
     });
-    if (!server_.bind_to_port("127.0.0.1", options_.port)) {
+    if (!server_.bind_to_port(options_.bind, options_.port)) {
       error = "web port is unavailable; no alternate server was started";
       return false;
     }
@@ -411,6 +447,7 @@ class Master {
     shutdown_fd = -1;
     // Browser service shutdown detaches; sessions belong to their runtimes.
     host_.Shutdown();
+    browser_process_.owner.Reset();
     return served ? 0 : 1;
   }
 
@@ -566,6 +603,8 @@ class Master {
   std::deque<std::string> request_order_;
   std::atomic<bool> stopping_{false};
   std::unique_ptr<PushSender> push_;
+  browser::ServiceProcess browser_process_;
+  std::atomic<bool> viewer_active_{false};
 };
 
 void Master::Snapshot(const Request& request, Response& response) {
@@ -680,6 +719,58 @@ void Master::Command(const Request& request, Response& response) {
       error = "select a session before testing notifications";
     } else if (!push_->Notify(epoch_ + ":" + request_id, session_id, device)) {
       error = "push is unavailable or queue is full";
+    }
+  } else if (kind == "browser" && !browser::DataDirectory().empty()) {
+    const std::string action = JsonValue(command, "action", "");
+    const std::string interaction = JsonValue(command, "interaction_id", "");
+    json browser_command = {{"op", action == "done" ? "prepare_done" : action},
+                            {"device", device},
+                            {"interaction_id", interaction}};
+    if (action != "takeover" && action != "done" && action != "stop") {
+      error = "unsupported browser control";
+    } else {
+      lock.unlock();
+      json result = browser::Request(browser_command, 30000);
+      std::string control_error = JsonValue(result, "error", "");
+      if (control_error.empty() && action == "done") {
+        const std::string session_id = JsonValue(result, "session_id", "");
+        if (!interaction.empty() && session_id.empty()) {
+          control_error = "browser conversation is missing";
+        } else if (!interaction.empty()) {
+          json reply = {{"kind", "reply"},
+                        {"v", kProtocol},
+                        {"session_id", session_id},
+                        {"generation", JsonValue(command, "generation", "")},
+                        {"interaction_id", interaction},
+                        {"text", "done"},
+                        {"request_id", request_id}};
+          auto executed = host_.ExecuteCommand(reply, device, request_id);
+          control_error = executed.error;
+          if (control_error.empty()) {
+            if (executed.wake) host_wake_.Wake();
+          }
+        }
+        if (control_error.empty()) {
+          result = browser::Request({{"op", "done"},
+                                     {"device", device},
+                                     {"interaction_id", interaction}});
+          control_error = JsonValue(result, "error", "");
+          if (control_error == "browser service timed out or disconnected") {
+            json current = browser::Request({{"op", "status"}}, 1000);
+            if (current.value("ok", false) &&
+                JsonValue(current, "mode", "") != "human" &&
+                JsonValue(current, "interaction_id", "").empty() &&
+                JsonValue(current, "session_id", "") == session_id) {
+              result = std::move(current);
+              control_error.clear();
+            }
+          }
+        }
+      }
+      lock.lock();
+      if (DeviceId(request) != device) control_error = "device revoked";
+      error = std::move(control_error);
+      outcome["result"] = result;
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
              kind == "models" ||

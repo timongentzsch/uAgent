@@ -21,6 +21,7 @@ enum class OptionsAction {
 
 struct Options {
   bool web = false;
+  bool browser_session = false;  // internal launch context from web host
   bool show_system_prompt = false;
   bool yolo = false;
   bool trust_project = false;

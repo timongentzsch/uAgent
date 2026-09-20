@@ -160,6 +160,8 @@ target_link_libraries(uagent_agent PUBLIC uagent_toolcore)
 
 add_library(
   uagent_tools
+  src/browser/browser.cc
+  src/browser/runtime.cc
   src/mcp/discover.cc
   src/mcp/invoke.cc
   src/mcp/register.cc
@@ -167,10 +169,12 @@ add_library(
   src/mcp/rpc.cc
   src/mcp/server.cc
   src/tools/adapt_system.cc
+  src/tools/browser.cc
   src/tools/activity_completion.cc
   src/tools/activity_log.cc
   src/tools/collaborator_runtime.cc
   src/tools/files.cc
+  src/tools/image_result.cc
   src/tools/memory.cc
   src/tools/memory_pipeline.cc
   src/tools/policy.cc
@@ -241,7 +245,7 @@ option(UAGENT_WEB "Embed the native web master and PWA" ON)
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/push.cc
+  add_library(uagent_web src/web/master.cc src/web/browser_viewer.cc src/web/push.cc
                           "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
@@ -297,6 +301,7 @@ include(CTest)
 if(BUILD_TESTING)
   add_executable(
     uagent_tests
+    tests/unit/browser_test.cc
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc

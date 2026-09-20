@@ -480,6 +480,7 @@ export interface ToolCatalogue {
   tools: ToolCatalogueItem[];
 }
 export interface CommandResults {
+  browser: { running?: boolean; mode?: string };
   prompt: PromptResult;
   memory: LibraryResult;
   skills: LibraryResult;
@@ -573,6 +574,7 @@ export interface RawOptions {
   prepare?: SessionRef;
 }
 export type AppModal =
+  | { type: "browser" }
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)

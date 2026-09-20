@@ -1,0 +1,1 @@
+`seccomp-chrome.json` is adapted from the [Playwright Docker seccomp profile](https://github.com/microsoft/playwright/blob/main/utils/docker/seccomp_profile.json). It retains Docker's syscall allowlist and adds `clone`, `setns`, and `unshare` so Chrome can create its own user namespace. The source is licensed under Apache 2.0; the license text is in `APACHE-2.0.txt`.

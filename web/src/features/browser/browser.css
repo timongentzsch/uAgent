@@ -1,0 +1,32 @@
+.browser-view {
+  width: min(1350px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  max-width: none;
+}
+.browser-panel {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+.browser-panel > p {
+  max-width: 72ch;
+}
+.browser-location {
+  overflow-wrap: anywhere;
+}
+.browser-screen {
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  max-height: min(75vh, 800px);
+  overflow: hidden;
+  background: #171717;
+  touch-action: none;
+}
+.browser-screen canvas {
+  display: block;
+}
+.browser-view-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}

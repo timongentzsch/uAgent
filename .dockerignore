@@ -1,0 +1,17 @@
+.git
+.venv
+.uagent
+.playwright-cli
+.pytest_cache
+.ruff_cache
+build
+build-*
+cmake-build-*
+test-results
+web/node_modules
+web/dist
+web/test-results
+web/playwright-report
+*.log
+.env
+.env.*

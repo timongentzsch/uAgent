@@ -5,6 +5,75 @@ Another invocation reuses the running server and prints a fresh code. The sideba
 lists this OS user's conversations grouped by project directory. Browsing saved
 history does not start a model or execute a command.
 
+## Docker browser appliance
+
+The optional [Compose stack](../deploy/compose.yaml) builds the frontend and native web host, a
+persistent Google Chrome Stable and TigerVNC in one image. The browser service
+starts with the web host but leaves Chrome and Xvnc stopped until first use.
+It uses a private Chrome profile under `/data/browser`; all agent history,
+pairing state and settings live under `/data/agent`. Mount `/workspaces`
+separately so the persistent data volume does not silently absorb project files.
+On a Linux host, give UID 10001 read/write access to the mounted workspace
+directory before creating conversations there.
+
+```sh
+mkdir -p workspaces
+docker compose -f deploy/compose.yaml up --build -d
+docker compose -f deploy/compose.yaml logs uagent
+```
+
+Open `http://127.0.0.1:8080` and pair with the printed code. Compose publishes
+only the host loopback address; the web host binds `0.0.0.0` inside the
+container. Use Docker Engine 28 or newer: [older engines can expose a
+localhost-published port to nearby hosts](https://docs.docker.com/engine/network/port-publishing/).
+For a phone, put an HTTPS reverse proxy on the host and set
+`UAGENT_WEB_ORIGIN=https://your-host.example` in `.env.appliance` before
+starting Compose. Proxy WebSocket upgrades on `/api/browser/viewer` as well as
+ordinary requests and SSE. The exact origin must match the browser address.
+Provider keys can also go in `.env.appliance`; keep that file private.
+
+The web-only `browser` tool uses the same visible tab as the viewer. Navigate,
+observe, click, type and scroll use native CDP over Chrome's inherited pipes.
+When the agent calls `request_human`, the conversation shows **Open browser**.
+Take control, complete sign-in and MFA in Chrome, then choose **Done**. Only
+that paired device can finish the matching pending interaction. Closing the
+viewer or losing its connection keeps the agent paused. A second device can
+take control after the first finishes; the browser profile and login survive a
+web-host restart. Stop browser from the viewer when idle to release resources.
+On a phone, **Actual size** shows Chrome at native resolution and dragging pans
+the clipped view; **Fit screen** restores the full display.
+The service exposes neither a CDP TCP port nor a VNC TCP port.
+Chrome's sandbox requires a narrow [seccomp profile](../deploy/NOTICE.md)
+that permits user namespace creation. The Compose stack applies it without
+privileged mode or disabling Chrome's sandbox. If the host disables
+unprivileged user namespaces, takeover fails and the browser remains stopped.
+
+The image runs the web host, agent workers and browser service under one
+nonroot Unix UID. It is designed for one human using multiple paired devices.
+The same UID can read the browser profile and private service socket, including
+through an approved shell command. Pairing protects the web routes; it is not
+an operating-system boundary between agent workers and Chrome. Use an
+isolated Docker host and back up the `/data` volume when the profile matters.
+
+The viewer and persistent profile permit interactive login, but Google login
+and MFA require a manual check with the account owner on the target host. A
+successful container build or page screenshot does not establish that a
+particular provider accepted that sign-in. Chrome Sync is not required for
+profile persistence and is not guaranteed in the container. CLI Playwright
+automation remains separate from this image.
+
+Run `deploy/footprint.sh` before opening Chrome, during a viewer session, and
+after **Stop browser** to compare image size, packages, process inventory and
+container memory/CPU on the same host. `UAGENT_SHM_SIZE` and
+`UAGENT_TMPFS_SIZE` adjust the Compose capacities if the measured workload
+needs more space.
+
+On an ARM64 Docker Desktop host (2026-09-21), the built image measured 378 MB
+in Docker and 375 MB as a gzip-compressed image archive. The stopped browser
+used 15 MiB of container memory; Chrome showing a page used 828 MiB. The lazy
+viewer bundle was 190 KB raw / 57 KB gzip. These are comparison points, not
+size ceilings; measure again on the deployment host.
+
 ## Execution and persistence
 
 A conversation has one runtime, regardless of which interface started it. The

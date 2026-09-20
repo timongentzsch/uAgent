@@ -23,6 +23,7 @@
 #include "include/app/bootstrap.h"
 #include "include/app/session.h"
 #include "include/app/session_command.h"
+#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -82,12 +83,13 @@ json AttachmentsToJson(const std::vector<Attachment>& attachments) {
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
-                std::string title, bool delegated)
+                std::string title, bool delegated, bool browser_session)
       : path_(std::move(path)),
         id_(std::move(id)),
         generation_(std::move(generation)),
         title_(std::move(title)),
-        delegated_(delegated) {}
+        delegated_(delegated),
+        browser_session_(browser_session) {}
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
@@ -161,6 +163,8 @@ class WorkerChannel final : public ApplicationChannel {
       phase = "searching";
     } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
       phase = "finishing";
+      if (browser_session_)
+        browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
     }
     if (!phase.empty()) {
       std::string activity = phase == "waiting"      ? "Waiting for model"
@@ -696,6 +700,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::mutex mutex_, control_mutex_;
   bool closed_ = false, busy_ = true;
   bool turn_active_ = false;
+  bool browser_session_ = false;
   bool reply_cancelled_ = false;
   bool ready_ = false;
   json notices_ = json::array();
@@ -720,6 +725,7 @@ int WorkerMain(int argc, char** argv) {
   json launch = json::parse(bytes, nullptr, false);
   if (!launch.is_object()) return 2;
   Options options;
+  options.browser_session = JsonValue(launch, "browser_session", false);
   options.yolo = JsonValue(launch, "yolo", false);
   options.debug = JsonValue(launch, "debug", false);
   options.debug_path = JsonValue(launch, "debug_path", "");
@@ -733,7 +739,7 @@ int WorkerMain(int argc, char** argv) {
   }
   Fd owner(JsonValue(launch, "owner_fd", -1));
   WorkerChannel channel(argv[3], argv[4], RandomToken(16), argv[5],
-                        static_cast<bool>(owner));
+                        static_cast<bool>(owner), options.browser_session);
   if (!channel.Start()) return 2;
   if (chdir(argv[2]) != 0) {
     channel.Send({{"kind", "error"}, {"error", "workspace is unavailable"}});

@@ -7,13 +7,21 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#000000" />
+    <script>
+      // Opt out of browser scroll restoration before any module runs:
+      // on reload the browser would otherwise restore the stale
+      // pre-reload position onto the fresh transcript node after our
+      // mount pin (the mobile reload jump). Module scope is too late.
+      try {
+        history.scrollRestoration = "manual";
+      } catch (error) {}
+    </script>
     <script src="/theme.js"></script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>µAgent</title>
-    <script type="module" crossorigin src="/assets/index-BcqiPgCO.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/ui-DBUUClrW.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BSumamMW.css">
+    <script type="module" crossorigin src="/assets/index-D1yUeX3x.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Q_ZA3zWS.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
     <div id="app"></div>

@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -14,8 +15,6 @@ namespace uagent {
 
 enum class MessageKind {
   kSystem,
-  kProjectInstructions,
-  kMemory,
   kUser,
   kAssistant,
   kToolResult,
@@ -48,7 +47,13 @@ class Conversation {
   void AddStatistics(const json& delta);
   const std::vector<uint64_t>& DisplayIds() const { return display_ids_; }
   const json& DisplayFacts() const { return display_facts_; }
-  void RecordDisplay(std::string key, json facts);
+  void RecordDisplay(const std::string& key, json facts);
+  // Delivery receipts already announced as terminal notices. Display facts
+  // are evictable, so they cannot dedupe the per-request receipt: this small
+  // map (display id -> last announced deliveries array) survives fact
+  // eviction and session restore, and only the request path writes it.
+  json AnnouncedDeliveries(const std::string& id) const;
+  void RecordAnnouncedDeliveries(std::string id, json values);
   json RecordEntry(json facts);
   std::string LastDisplayId() const;
 
@@ -83,6 +88,11 @@ class Conversation {
   void UpsertTail(json message, MessageKind kind);
   void Set(size_t index, json message, MessageKind kind);
   void Erase(size_t begin, size_t end);
+  // Drops the Nth user turn and everything after it (message-exclusive, so
+  // the dropped turn can be retried fresh). Attachment messages read as
+  // user turns, matching NormalizeRole. False when out of range, leaving
+  // the conversation untouched.
+  bool TruncateBeforeUserTurn(int64_t turn);
 
   std::string LastAssistantText() const;
   std::string LastText(MessageKind kind) const;
@@ -123,6 +133,12 @@ class Conversation {
   json tool_displays_ = json::object();
   std::vector<uint64_t> display_ids_;
   json display_facts_ = json::object();
+  // Serialized sizes of display_facts_ entries, kept in lockstep so fact
+  // eviction can drop the largest entry without re-serializing the store.
+  std::map<std::string, size_t> fact_bytes_;
+  // Last announced attachment deliveries per display id. Tiny (a few rows
+  // of name/delivery/path), bounded below, never evicted for space.
+  json announced_deliveries_ = json::object();
   json statistics_ = {{"complete", true}};
   uint64_t next_display_id_ = 1;
   size_t display_bytes_ = 0;

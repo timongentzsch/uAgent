@@ -16,6 +16,7 @@
 #include "include/agent/session_view.h"
 #include "include/app/session.h"
 #include "include/core/signals.h"
+#include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/md.h"
 #include "include/ui/editor.h"
@@ -216,22 +217,101 @@ class Terminal {
       }
       std::string text = Trim(input.text);
       if (text == "/q" || text == "/quit") break;
-      if (text == "/sessions" || text == "/reset") {
+      if (text == "/clear" || text.starts_with("/clear ")) {
+        // Screen only: the session keeps running underneath.
+        if (raw_) {
+          output_.Write("\033[H\033[2J");
+        } else {
+          printf("\033[H\033[2J");
+          fflush(stdout);
+        }
+        continue;
+      }
+      if (text == "/reset" || text == "/new" || text == "/sessions" ||
+          text.starts_with("/sessions ") || text == "/resume" ||
+          text.starts_with("/resume ")) {
+        // Guarded switch: never abandon a running turn by accident.
+        {
+          std::lock_guard lock(mutex_);
+          if (!waiting_.empty() || running_) {
+            WriteTerminalRecord(
+                "· turn active; interrupt it before switching sessions\n");
+            continue;
+          }
+        }
+        std::string target = "/reset";
+        if (text != "/reset" && text != "/new") {
+          std::string arg;
+          if (text.starts_with("/sessions ")) {
+            arg = Trim(text.substr(10));
+          } else if (text.starts_with("/resume ")) {
+            arg = Trim(text.substr(8));
+          }
+          std::string matched = arg.empty() ? "" : MatchSessionPrefix(arg);
+          if (!arg.empty() && matched.empty()) {
+            WriteTerminalRecord("· no unique session matches \"" +
+                                TerminalSafe(arg) + "\"\n");
+            continue;
+          }
+          if (matched.empty()) {
+            matched = PickSession();
+            if (matched.empty()) continue;
+          }
+          target = matched;
+        }
         std::lock_guard lock(mutex_);
-        next_ = text;
+        next_ = target;
         break;
       }
       if (!decision.empty()) {
         Send({{"kind", "reply"}, {"interaction_id", decision}, {"text", text}});
       } else if (text.starts_with("/attach ")) {
-        std::string file = Trim(text.substr(8));
+        // Terminals quote dropped paths containing spaces; strip one
+        // surrounding pair so a drop Just Works.
+        std::string file = Unquote(Trim(text.substr(8)));
         if (file == "clear") {
           files.clear();
         } else {
           files.push_back(CanonicalAccessPath(file).string());
         }
       } else if (text == "/fork" || text.starts_with("/fork ")) {
-        Send({{"kind", "fork"}, {"title", Trim(text.substr(5))}});
+        // Optional trailing @N forks at user turn N (message-exclusive,
+        // so the dropped turn can be retried fresh); otherwise the whole
+        // session. A bare number alone is a turn, never a title.
+        std::string rest = Trim(text.substr(5));
+        std::string title = rest;
+        int64_t turn = 0;
+        size_t at = rest.rfind(" @");
+        if (at == std::string::npos && !rest.empty() && rest[0] == '@') at = 0;
+        if (at != std::string::npos) {
+          std::string tail = Trim(rest.substr(at + (at == 0 ? 1 : 2)));
+          if (!tail.empty() && tail.size() <= 9 &&
+              std::all_of(tail.begin(), tail.end(), ::isdigit)) {
+            turn = std::stoll(tail);
+            title = Trim(rest.substr(0, at));
+          }
+        } else if (!rest.empty() && rest.size() <= 9 &&
+                   std::all_of(rest.begin(), rest.end(), ::isdigit)) {
+          title.clear();
+          turn = std::stoll(rest);
+        }
+        Send({{"kind", "fork"}, {"title", title}, {"turn", turn}});
+      } else if (text == "/rewind" || text.starts_with("/rewind ")) {
+        // Same [@]N grammar as /fork's turn suffix, title aside: rewind
+        // truncates this session in place instead of branching it.
+        std::string rest = Trim(text.substr(7));
+        if (rest.starts_with("@")) rest = Trim(rest.substr(1));
+        int64_t turn = 0;
+        if (!rest.empty() && rest.size() <= 9 &&
+            std::all_of(rest.begin(), rest.end(), ::isdigit)) {
+          turn = std::stoll(rest);
+        }
+        Send({{"kind", "rewind"}, {"turn", turn}});
+      } else if (text == "/share") {
+        Send({{"kind", "share"}});
+      } else if (text.starts_with("/share ")) {
+        WriteTerminalRecord("· usage: /share\n");
+        continue;
       } else if (!text.empty() || !files.empty()) {
         json command = {{"kind", "submit"}, {"text", text}};
         if (!files.empty()) command["attachments"] = files;
@@ -240,6 +320,19 @@ class Terminal {
       }
     }
     detaching_ = true;
+    if (!files.empty()) {
+      // Staged via /attach but never submitted (EOF/quit/compose-cancel):
+      // say so instead of dropping them silently.
+      std::string dropped = "· " + std::to_string(files.size()) +
+                            " staged attachment" +
+                            (files.size() == 1 ? "" : "s") +
+                            " discarded: nothing was submitted\n";
+      if (raw_) {
+        output_.Write("\r" + TerminalSafe(dropped));
+      } else {
+        fputs(TerminalSafe(dropped).c_str(), stdout);
+      }
+    }
     stop_.Wake();
     if (reader_.joinable()) {
       // Drain output while the presenter finishes; joining with a full pipe
@@ -278,7 +371,9 @@ class Terminal {
       std::lock_guard state_lock(mutex_);
       own_requests_.insert(command["request_id"]);
       if (JsonValue(command, "kind", "") == "submit" ||
-          JsonValue(command, "kind", "") == "fork") {
+          JsonValue(command, "kind", "") == "fork" ||
+          JsonValue(command, "kind", "") == "rewind" ||
+          JsonValue(command, "kind", "") == "share") {
         if (raw_ && JsonValue(command, "kind", "") == "submit" &&
             !JsonValue(command, "text", "").starts_with('/')) {
           echoed_.insert(command["request_id"]);
@@ -387,6 +482,10 @@ class Terminal {
         navigate_ = true;
         wake_.Wake();
       }
+      if (JsonValue(result, "rewound", false)) {
+        // Same worker, truncated transcript: resync the view in place.
+        Send({{"kind", "refresh"}});
+      }
     } else if (kind == "error") {
       failed_ = true;
       WriteTerminalRecord(TerminalSafe(JsonValue(frame, "error", "")) + "\n");
@@ -424,7 +523,9 @@ class Terminal {
     if (JsonValue(state, "turn_active", false) &&
         !CurrentTerminalActivity().empty()) {
       status = RenderCurrentTerminalActivity(TerminalWidth(14)) + " · " +
-               JsonValue(state, "route", "");
+               JsonValue(state, "route", "") + " · " +
+               ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
+                              JsonValue(state, "context_window", int64_t{0}));
     } else {
       status += " · " +
                 ContextSummary(JsonValue(state, "context_tokens", int64_t{0}),
@@ -512,9 +613,6 @@ int TerminalMain(Options options) {
     if (result || terminal.Next().empty()) return result;
     if (terminal.Next() == "/reset") {
       path.clear();
-    } else if (terminal.Next() == "/sessions") {
-      std::string selected = PickSession();
-      if (!selected.empty()) path = std::move(selected);
     } else {
       path = terminal.Next();
     }

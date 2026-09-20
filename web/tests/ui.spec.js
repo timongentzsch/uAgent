@@ -286,9 +286,6 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   page,
   host: fixture,
 }, testInfo) => {
-  await page.addInitScript(() =>
-    localStorage.setItem("uagent-offline-enabled", "false"),
-  );
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   // A valid empty worker keeps cold lazy-module tests independent of precaching.
@@ -314,6 +311,20 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     exact: true,
   });
   await expect(model).toBeVisible();
+  const metricButtons = page.locator(".metrics > button");
+  await expect(metricButtons).toHaveCount(2);
+  const metricBoxes = await metricButtons.evaluateAll((buttons) =>
+    buttons.map((button) => {
+      const box = button.getBoundingClientRect();
+      const style = getComputedStyle(button);
+      return {
+        height: box.height,
+        paddingLeft: style.paddingLeft,
+        paddingRight: style.paddingRight,
+      };
+    }),
+  );
+  expect(metricBoxes[0]).toEqual(metricBoxes[1]);
   const metrics = {};
   const measure = async (name) => {
     await expect
@@ -375,10 +386,22 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     picker.getByRole("combobox", { name: "Model", exact: true }),
   ).toBeFocused();
-  const anchor = await model.boundingBox(),
-    panel = await picker.boundingBox();
-  expect(Math.abs(anchor.x - panel.x)).toBeLessThan(2);
-  expect(Math.abs(anchor.y - panel.y - panel.height - 8)).toBeLessThan(2);
+  // The panel docks after its content lands: place() runs on open for
+  // the shell, then re-places on the content resize, so pin the docked
+  // geometry once it settles instead of sampling mid-growth. The exact
+  // tolerances are unchanged.
+  await expect
+    .poll(async () => {
+      const anchorBox = await model.boundingBox();
+      const panelBox = await picker.boundingBox();
+      if (!anchorBox || !panelBox) return Number.POSITIVE_INFINITY;
+      const delta = Math.max(
+        Math.abs(anchorBox.x - panelBox.x),
+        Math.abs(anchorBox.y - panelBox.y - panelBox.height - 8),
+      );
+      return delta;
+    })
+    .toBeLessThan(2);
   await page.keyboard.press("Escape");
   await expect(picker).toHaveCount(0);
   await expect(model).toBeFocused();
@@ -408,16 +431,36 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await expect(
     settings.getByRole("button", { name: "Close settings" }),
   ).toBeFocused();
+  // The skeleton can report a mid-growth box on the opening frames
+  // (identical DOM measures 394 then settles at 572), so snapshot it
+  // once two consecutive frames agree instead of sampling one frame.
+  let skeletonLast = -1;
+  await expect
+    .poll(async () => {
+      const height = (await settings.boundingBox())?.height ?? -1;
+      const settled =
+        skeletonLast >= 0 && Math.abs(height - skeletonLast) < 0.5;
+      skeletonLast = height;
+      return settled ? height : -1;
+    })
+    .toBeGreaterThan(0);
   const settingsLoadingBox = await settings.boundingBox();
   releaseSettings();
   await expect(settings.getByLabel("Appearance")).toBeVisible();
   await expect(settings.getByLabel("Default permissions")).toBeVisible();
-  expect(
-    Math.abs((await settings.boundingBox()).height - settingsLoadingBox.height),
-  ).toBeLessThan(6);
+  // The loaded form fills in over staged renders (chunk, then config
+  // data), so pin parity once the settled height matches instead of
+  // sampling a mid-render frame. The invariant is unchanged.
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await settings.boundingBox()).height - settingsLoadingBox.height,
+      ),
+    )
+    .toBeLessThan(6);
   const appearance = await settings.getByLabel("Appearance").boundingBox();
   const displayField = await settings
-    .getByLabel("Interface size", { exact: true })
+    .getByLabel("Zoom", { exact: true })
     .locator("..")
     .boundingBox();
   expect(
@@ -430,7 +473,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   await model.click();
   await picker
     .getByRole("combobox", { name: "Model", exact: true })
-    .selectOption({ label: "mock/model-b" });
+    .selectOption("mock/model-b");
   await picker.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(picker).toHaveCount(0);
   await expect(model).toContainText("mock/model-b");
@@ -469,10 +512,31 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(mobilePanel.x + mobilePanel.width).toBeLessThanOrEqual(390);
   await page.keyboard.press("Escape");
   await settingsButton.click();
-  await settings.getByLabel("Interface size", { exact: true }).fill("200");
-  await settings
-    .getByLabel("Conversation text size", { exact: true })
-    .fill("300");
+  await settings.getByLabel("Zoom", { exact: true }).fill("200");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        parseFloat(getComputedStyle(document.documentElement).fontSize),
+      ),
+    )
+    .toBeGreaterThan(27);
+  const dialogGutter = await settings.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const app = document.getElementById("app");
+    const appBounds = app.getBoundingClientRect();
+    const appStyle = getComputedStyle(app);
+    const inset =
+      (parseFloat(getComputedStyle(document.documentElement).fontSize) * 8) /
+      14;
+    return {
+      left: bounds.left - appBounds.left - parseFloat(appStyle.paddingLeft),
+      right: appBounds.right - parseFloat(appStyle.paddingRight) - bounds.right,
+      inset,
+    };
+  });
+  expect(dialogGutter.left).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
+  expect(dialogGutter.right).toBeGreaterThanOrEqual(dialogGutter.inset - 1);
+  expect(Math.abs(dialogGutter.left - dialogGutter.right)).toBeLessThan(1);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -483,8 +547,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   expect(
     await prompt.evaluate((element) => {
       const style = getComputedStyle(element);
+      // +1px: integer scrollHeight autosize can undershoot fractional
+      // line/padding sums by a sub-pixel at scaled zooms.
       return (
-        element.clientHeight >=
+        element.clientHeight + 1 >=
         parseFloat(style.lineHeight) +
           parseFloat(style.paddingTop) +
           parseFloat(style.paddingBottom)
@@ -493,7 +559,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
   ).toBe(true);
   await settingsButton.click();
   await settings
-    .getByRole("button", { name: "Reset sizes", exact: true })
+    .getByRole("button", { name: "Reset zoom", exact: true })
     .click();
   await settings.getByRole("button", { name: "Close settings" }).click();
   await page.setViewportSize({ width: 844, height: 390 });
@@ -521,7 +587,7 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
     await route.fulfill({
       status: 503,
       contentType: "application/json",
-      body: JSON.stringify({ v: 1, error: "History temporarily unavailable" }),
+      body: JSON.stringify({ v: 2, error: "History temporarily unavailable" }),
     });
   });
   // WebKit does not intercept requests from a service-worker-controlled page.
@@ -530,7 +596,10 @@ test("compact surfaces stay anchored, accessible and usable while loading", asyn
       await registration.unregister();
   });
   await page.reload();
-  await expect(page.locator(".transcript .skeleton")).toBeVisible();
+  // While history is held the transcript shows the announced loading
+  // mirror (many decorative shimmer bars share .skeleton, so pin the
+  // singular status region instead of the strict-violating class).
+  await expect(page.locator(".transcript [role='status']")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "What are we working on?" }),
   ).toHaveCount(0);
@@ -641,17 +710,28 @@ test("code blocks, thinking and HTTP dialogs preserve content and loading geomet
     await rawGate;
     await route.continue();
   });
+  let releaseRawBody;
+  const bodyGate = new Promise((resolve) => (releaseRawBody = resolve));
+  await page.route("**/api/sessions/*?http=*", async (route) => {
+    await bodyGate;
+    await route.continue();
+  });
   await rawAction.click();
   const raw = page.getByRole("dialog", {
     name: "HTTP request/response",
     exact: true,
   });
   await expect(raw.getByRole("status")).toHaveAttribute("aria-busy", "true");
-  await expect(
-    raw.getByRole("button", { name: "Download", exact: true }),
-  ).toBeDisabled();
+  // The loading shell is structural shimmer by design (never buttons),
+  // so assert its geometry while the chunk is gated instead of a
+  // disabled Download: the shell must already have final shape.
+  await expect(raw.locator(".raw-body .code-skeleton")).toBeVisible();
   const rawLoadingBox = await raw.boundingBox();
   releaseRaw();
+  await expect(raw.locator(".raw-body-loader")).toBeVisible();
+  await expect(raw.locator(".raw-content")).toHaveCount(1);
+  await expect(raw.locator(".raw-body")).toHaveCount(1);
+  releaseRawBody();
   await expect(raw.getByRole("tabpanel").locator("pre").last()).toContainText(
     '\n  "',
   );
@@ -779,6 +859,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       detail_id: "t-fixture",
       arguments: { query: "a test query" },
       text: "short preview",
+      reasoning: "Closed rich reasoning: $$x^2 + y^2$$",
       status: "success",
       truncated: true,
       time: new Date().toISOString(),
@@ -790,7 +871,6 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
       },
     },
   ];
-  snapshot.live = [];
   snapshot.state.context_tokens = 4600;
   snapshot.state.context_window = 1300000;
   await page.route(`**/api/sessions/${session.id}`, (route) =>
@@ -837,20 +917,67 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await page.goto(`/#session=${session.id}`);
   const tool = page.locator(".message.tool");
   await expect(tool).toBeVisible();
+  // Tool rows are headerless by design (attribution lives on response
+  // rows); the disclosure summary is the row's top edge, and it carries
+  // no mark (the inline-icon removal).
+  await expect(tool.locator(":scope > header")).toHaveCount(0);
+  await expect(tool.locator(".tool-disclosure > summary .mark")).toHaveCount(0);
+  // Atomic read: the stream can shift rows between two boundingBox
+  // calls (skeleton swaps), inverting a split comparison.
+  const edges = await tool.evaluate((element) => {
+    const summary = element.querySelector(".tool-disclosure > summary");
+    const row = element.getBoundingClientRect();
+    const head = summary?.getBoundingClientRect();
+    return { toolY: row.y, summaryY: head?.y ?? row.y };
+  });
+  expect(edges.summaryY).toBeGreaterThanOrEqual(edges.toolY);
   // However long the label grows, it takes the ellipsis and the status
   // metadata stays on one line.
-  const toggle = tool.locator(".tool-toggle");
-  await expect(toggle.locator("strong")).toHaveCSS("text-overflow", "ellipsis");
-  await expect(toggle.locator(".muted")).toHaveCSS("white-space", "nowrap");
+  const toggle = tool.locator(".tool-disclosure > summary");
+  await expect(toggle.locator(".disclosure-label")).toHaveCSS(
+    "text-overflow",
+    "ellipsis",
+  );
+  await expect(toggle.locator("small")).toHaveCSS("white-space", "nowrap");
   expect(
     await toggle
-      .locator(".muted")
+      .locator("small")
       .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
   ).toBe(true);
+  expect(
+    await page.locator(".transcript").evaluate(async (element) => {
+      const children = [...element.children];
+      for (const child of children) child.style.display = "none";
+      const spacer = document.createElement("div");
+      spacer.style.height = "240px";
+      spacer.style.flex = "none";
+      element.append(spacer);
+      element.style.flex = "none";
+      element.style.height = "200px";
+      element.scrollTop = element.scrollHeight;
+      element.dispatchEvent(new Event("scroll"));
+      await new Promise(requestAnimationFrame);
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll"));
+      element.style.height = "199px";
+      await new Promise(requestAnimationFrame);
+      element.style.height = "200px";
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const top = element.scrollTop;
+      spacer.remove();
+      element.style.flex = "";
+      element.style.height = "";
+      for (const child of children) child.style.display = "";
+      return top;
+    }),
+  ).toBe(0);
   await expect(
     page.getByRole("button", { name: "Show full tool output", exact: true }),
   ).toHaveCount(0);
   await expect(tool.locator(".tool-body")).toHaveCount(0);
+  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  await expect(tool.locator(".katex")).toHaveCount(0);
   expect(requests).toBe(0);
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
@@ -886,7 +1013,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
     (el) => getComputedStyle(el).backgroundColor,
   );
   expect(hoverColor).not.toBe("rgba(0, 0, 0, 0)");
-  await tool.locator(".tool-toggle").click();
+  await toggle.click();
   await expect(tool.getByRole("status")).toContainText(
     "Loading full tool output",
   );
@@ -898,9 +1025,11 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   await tool.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
-  await tool.locator(".tool-toggle").click();
-  await expect(tool.locator(".tool-body")).toHaveCount(0);
-  await tool.locator(".tool-toggle").click();
+  await expect(tool.locator(".thinking .markdown")).toHaveCount(0);
+  await expect(tool.locator(".katex")).toHaveCount(0);
+  await toggle.click();
+  await expect(tool.locator(".tool-body")).toBeHidden();
+  await toggle.click();
   await expect(tool.locator(".tool-body")).toContainText("END OF FULL RESULT");
   expect(requests).toBe(3);
   await page
@@ -958,7 +1087,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     incoming: 0,
   }));
   const snapshot = (metadata, context = 1000, cursor = 10) => ({
-    v: 1,
+    v: 2,
     epoch,
     cursor,
     metadata,
@@ -1004,7 +1133,7 @@ test("late snapshots and retired streams cannot replace current session state", 
     if (path === "/api/sessions")
       return route.fulfill({
         json: {
-          v: 1,
+          v: 2,
           epoch,
           cursor: 10,
           sessions,
@@ -1027,6 +1156,20 @@ test("late snapshots and retired streams cannot replace current session state", 
     return route.fulfill({ json: snapshot(session) });
   });
   await page.goto(`/#session=${sessions[0].id}`);
+  await expect
+    .poll(() => page.evaluate(() => globalThis.testStreams.length))
+    .toBe(1);
+  const ready = (index, cursor) =>
+    page.evaluate(
+      ({ index, epoch, cursor }) =>
+        globalThis.testStreams[index].dispatchEvent(
+          new MessageEvent("ready", {
+            data: JSON.stringify({ epoch, cursor }),
+          }),
+        ),
+      { index, epoch, cursor },
+    );
+  await ready(0, 10);
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await page
     .getByRole("button", { name: "Show full message", exact: true })
@@ -1043,7 +1186,7 @@ test("late snapshots and retired streams cannot replace current session state", 
       {
         index,
         event: {
-          v: 1,
+          v: 2,
           epoch,
           sequence,
           session_id: metadata.id,
@@ -1090,6 +1233,7 @@ test("late snapshots and retired streams cannot replace current session state", 
   await expect
     .poll(() => page.evaluate(() => globalThis.testStreams.length))
     .toBe(2);
+  await ready(1, 12);
   await send(1, sessions[1], 12000, 13);
   await expect(context).toContainText("ctx 12k/");
   await send(0, sessions[1], 800000, 99);
@@ -1172,11 +1316,35 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await page.goto(`${fixture.origin}/#session=${session.id}`);
     const prompt = page.getByLabel("Message or guidance");
     await expect(prompt).toBeVisible();
+    await page
+      .locator("html")
+      .evaluate((element) =>
+        element.style.setProperty("--safe-bottom-resting", "34px"),
+      );
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
     expect((await page.locator(".composer").boundingBox()).height).toBeLessThan(
       150,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
     await input(prompt, draft);
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
+    expect(
+      await page.evaluate(() => {
+        const app = document.getElementById("app").getBoundingClientRect();
+        const composer = document
+          .querySelector(".composer")
+          .getBoundingClientRect();
+        return app.bottom - composer.bottom;
+      }),
+    ).toBeLessThan(2);
+    await prompt.blur();
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
+    await viewport(844);
+    await expect(page.locator("html[data-keyboard]")).toHaveCount(0);
+    await expect(page.locator("#app")).toHaveCSS("padding-bottom", "34px");
+    await prompt.focus();
     for (const [height, top] of [
       [330, 110],
       [460, 30],
@@ -1222,18 +1390,15 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       name: "Settings",
       exact: true,
     });
-    await settings.getByLabel("Interface size", { exact: true }).fill("50");
-    await settings
-      .getByLabel("Conversation text size", { exact: true })
-      .fill("50");
+    await settings.getByLabel("Zoom", { exact: true }).fill("50");
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
     await input(settings.getByLabel("Find a setting"), "web");
     await contained(settings, 390, 70);
-    await settings.getByRole("button", { name: "← Back", exact: true }).tap();
+    await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings
-      .getByRole("button", { name: "Reset sizes", exact: true })
+      .getByRole("button", { name: "Reset zoom", exact: true })
       .tap();
     await settings
       .getByRole("button", { name: "Close settings", exact: true })
@@ -1288,17 +1453,6 @@ test.describe("mobile navigation and commands", () => {
     context,
     host: fixture,
   }, testInfo) => {
-    await page.addInitScript(() => {
-      // Emulate browser scroll restoration after the URL changes but before
-      // the app replaces the departing transcript.
-      addEventListener("popstate", () => {
-        const element = document.querySelector(".transcript");
-        if (element) {
-          element.scrollTop = 0;
-          element.dispatchEvent(new Event("scroll"));
-        }
-      });
-    });
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
     await expect(page.getByText("Connected", { exact: true })).toBeVisible();
@@ -1307,7 +1461,7 @@ test.describe("mobile navigation and commands", () => {
       const response = await page.request.post("/api/command", {
         headers: { Origin: fixture.origin },
         data: {
-          v: 1,
+          v: 2,
           request_id: crypto.randomUUID().replaceAll("-", ""),
           kind,
           ...(session
@@ -1391,10 +1545,18 @@ test.describe("mobile navigation and commands", () => {
     ).toBeVisible();
     await prompt.fill("Draft A");
     await choose(secondTitle);
+    await expect(page).toHaveURL(new RegExp(second));
+    await expect(
+      page.getByRole("heading", { name: secondTitle, exact: true }),
+    ).toBeVisible();
     await expect(prompt).toBeVisible();
     await prompt.fill("Draft B");
     const retiredTranscript = await page.locator(".transcript").elementHandle();
     await choose(firstTitle);
+    await expect(page).toHaveURL(new RegExp(first));
+    await expect(
+      page.getByRole("heading", { name: firstTitle, exact: true }),
+    ).toBeVisible();
     await expect(prompt).toHaveValue("Draft A");
     // A queued scroll from the previous surface cannot rewrite this session.
     await retiredTranscript.evaluate((element) => {
@@ -1486,8 +1648,14 @@ test.describe("mobile navigation and commands", () => {
     await page
       .getByRole("button", { name: "Close sessions", exact: true })
       .tap();
-    await prompt.fill("/new");
-    await prompt.press("Enter");
+    await page.getByRole("button", { name: "Open sessions" }).click();
+    await page.getByRole("button", { name: "New conversation" }).click();
+    const newConversation = page.getByRole("dialog", {
+      name: "New conversation",
+    });
+    await newConversation
+      .getByRole("button", { name: "Start conversation" })
+      .click();
     await expect(page.locator(".composer .status-led.active")).toBeVisible();
     await expect(page.locator(".message.user")).toHaveCount(0);
     await prompt.fill("/q");
@@ -1503,7 +1671,7 @@ test.describe("mobile navigation and commands", () => {
   });
 });
 
-test("native exploration and memory receipts survive reload and mobile rotation", async ({
+test("tool rows and memory receipts survive reload and mobile rotation", async ({
   page,
   session,
   command,
@@ -1524,10 +1692,7 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   const prompt = page.getByLabel("Message or guidance");
   await prompt.fill("Exploration probe");
   await prompt.press("Enter");
-  const explored = page.locator(".exploration > summary");
-  await expect(explored).toHaveText("Explored · 2 calls");
-  await explored.click();
-  await expect(page.locator(".exploration .tool-toggle")).toHaveCount(2);
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(2);
   await expect(
     page.getByRole("heading", { name: "Verified response" }),
   ).toBeVisible();
@@ -1537,12 +1702,13 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   await expect(table).toHaveCSS("display", "table");
   const cell = table.locator("td").first();
   await expect(cell).toBeVisible();
-  const cellSize = await cell.boundingBox();
-  const cellFontSize = await cell.evaluate((element) =>
-    parseFloat(getComputedStyle(element).fontSize),
+  const cellRatio = await cell.evaluate(
+    (element) =>
+      element.getBoundingClientRect().height /
+      parseFloat(getComputedStyle(element).fontSize),
   );
-  expect(cellSize.height).toBeLessThan(cellFontSize * 4);
-  const title = page.locator(".tool-toggle strong").first();
+  expect(cellRatio).toBeLessThan(4);
+  const title = page.locator(".tool-disclosure .disclosure-label").first();
   await title.evaluate((element) => {
     element.textContent = "long-command-".repeat(200);
   });
@@ -1556,16 +1722,30 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   await prompt.press("Enter");
   await expect(
     page
-      .locator(".tool-toggle")
+      .locator(".tool-disclosure")
       .filter({ hasText: "◆ memory created · project/browser-proof" }),
   ).toBeVisible();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
+  ).toBeVisible();
   await page.reload();
-  await expect(explored).toHaveText("Explored · 2 calls");
+  await expect(page.locator(".transcript .tool-disclosure")).toHaveCount(3);
   await expect(
     page
-      .locator(".tool-toggle")
+      .locator(".tool-disclosure")
       .filter({ hasText: "◆ memory created · project/browser-proof" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator(".transcript").evaluate((element) => element.scrollTop),
+    )
+    .toBeLessThan(2);
+  await expect(
+    page.getByRole("button", { name: "Jump to latest" }),
   ).toBeVisible();
   await prompt.fill("Keep this draft across rotation");
   const fontSize = await prompt.evaluate(
@@ -1592,6 +1772,199 @@ test("native exploration and memory receipts survive reload and mobile rotation"
   await expect(prompt).toHaveValue("Keep this draft across rotation");
   await expect(prompt).toHaveCSS("font-size", fontSize);
   await page.screenshot({ path: testInfo.outputPath("portrait-activity.png") });
+});
+
+test("stream completion preserves disclosure, markdown nodes, selection and copy state", async ({
+  page,
+  host: fixture,
+  session,
+  command,
+  request,
+}, testInfo) => {
+  test.setTimeout(45_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async () => {} },
+    });
+  });
+  await page.goto(fixture.origin);
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await command("model", {
+    session_id: session.id,
+    generation: session.generation,
+    operation: "select",
+    model: "mock/model-b",
+  });
+  await page.goto(`/#session=${session.id}`);
+  await expect(page).toHaveURL(new RegExp(session.id));
+  await expect(page.locator(".conversation-head h1")).toBeVisible();
+  const prompt = page.getByLabel("Message or guidance");
+  await expect(prompt).toBeVisible();
+  await prompt.fill("Long continuity probe");
+  await prompt.press("Enter");
+  await expect(page.locator(".composer .status-led.running")).toBeVisible();
+
+  const thinking = page.locator(".thinking");
+  await expect(thinking).toBeVisible();
+  // A never-opened disclosure has no Markdown tree or optional renderer work.
+  await expect(thinking.locator(".markdown")).toHaveCount(0);
+  await thinking.locator("summary").click();
+  await expect(thinking.locator(".markdown")).toBeVisible();
+
+  const opening = page
+    .locator(".message.response > .markdown p")
+    .filter({ hasText: "Stable opening paragraph" });
+  await expect(opening).toBeVisible();
+  const completedBlock = opening.locator("..");
+  await completedBlock.evaluate((node) => {
+    window.__completedMarkdownBlock = node;
+  });
+
+  const copy = page.getByRole("button", { name: "Copy code" }).first();
+  await expect(copy).toBeVisible();
+  const stableTable = page.locator(".message.response table");
+  await expect(stableTable).toBeVisible();
+  await copy.evaluate((node) => {
+    window.__stableCopyControl = node;
+  });
+  await stableTable.evaluate((node) => {
+    window.__stableMarkdownTable = node;
+    window.__stableRemovalCount = 0;
+    window.__maximumAnswerLength = 0;
+    window.__stableRemovalObserver = new MutationObserver((records) => {
+      window.__maximumAnswerLength = Math.max(
+        window.__maximumAnswerLength,
+        document.querySelector(".message.response > .markdown")?.textContent
+          ?.length || 0,
+      );
+      for (const record of records)
+        for (const removed of record.removedNodes)
+          if (
+            removed === window.__completedMarkdownBlock ||
+            removed === window.__stableMarkdownTable ||
+            removed === window.__stableCopyControl ||
+            (removed instanceof Element &&
+              (removed.contains(window.__completedMarkdownBlock) ||
+                removed.contains(window.__stableMarkdownTable) ||
+                removed.contains(window.__stableCopyControl)))
+          )
+            window.__stableRemovalCount++;
+    });
+    window.__stableRemovalObserver.observe(
+      document.querySelector(".message.response > .markdown"),
+      { childList: true, subtree: true },
+    );
+    window.__maximumAnswerLength = document.querySelector(
+      ".message.response > .markdown",
+    ).textContent.length;
+  });
+
+  await opening.evaluate((node) => {
+    const selection = getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  });
+  const selected = await page.evaluate(() => getSelection().toString());
+
+  const answer = page.locator(".message.response > .markdown");
+  await copy.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        connected: window.__stableCopyControl.isConnected,
+        copied:
+          window.__stableCopyControl.getAttribute("aria-label") === "Copied!",
+        same:
+          window.__stableCopyControl ===
+          document.querySelector('.message.response [aria-label*="Cop"]'),
+      })),
+    )
+    .toEqual({ connected: true, copied: true, same: true });
+  await expect(page.locator(".composer .status-led.running")).toHaveCount(0, {
+    timeout: 30_000,
+  });
+  await expect(page.locator(".composer .status-led.active")).toBeVisible();
+  const maximumLength = await page.evaluate(() => window.__maximumAnswerLength);
+  const finalSnapshot = await (
+    await request.get(`/api/sessions/${session.id}`)
+  ).json();
+  const finalBlock = finalSnapshot.state.view.blocks.find(
+    (block) => block.kind === "assistant",
+  );
+  await testInfo.attach("continuity-metadata.json", {
+    body: JSON.stringify(
+      {
+        id: finalBlock?.id,
+        response_id: finalBlock?.response_id,
+        content_revision: finalBlock?.content_revision,
+        content_complete: finalBlock?.content_complete,
+        text_bytes: finalBlock?.text_bytes,
+        retained_text_bytes: finalBlock?.retained_text_bytes,
+        snapshot_text_length: finalBlock?.text?.length,
+        maximum_dom_length: maximumLength,
+      },
+      null,
+      2,
+    ),
+    contentType: "application/json",
+  });
+  expect(
+    maximumLength,
+    JSON.stringify({
+      id: finalBlock?.id,
+      response_id: finalBlock?.response_id,
+      content_revision: finalBlock?.content_revision,
+      content_complete: finalBlock?.content_complete,
+      text_bytes: finalBlock?.text_bytes,
+      retained_text_bytes: finalBlock?.retained_text_bytes,
+      snapshot_text_length: finalBlock?.text?.length,
+      maximum_dom_length: maximumLength,
+    }),
+  ).toBeGreaterThan(8000);
+  await command("permissions", {
+    session_id: session.id,
+    generation: session.generation,
+    mode: "ask",
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        same:
+          window.__completedMarkdownBlock ===
+          [
+            ...document.querySelectorAll(".message.response > .markdown p"),
+          ].find((node) =>
+            node.textContent?.includes("Stable opening paragraph"),
+          )?.parentElement,
+        selected: getSelection().toString(),
+        thinking: document.querySelector(".thinking")?.open,
+        copy:
+          window.__stableCopyControl ===
+          document.querySelector('.message.response [aria-label*="Cop"]'),
+        table:
+          window.__stableMarkdownTable ===
+          document.querySelector(".message.response table"),
+        length: document.querySelector(".message.response > .markdown")
+          ?.textContent?.length,
+        removals: window.__stableRemovalCount,
+      })),
+    )
+    .toEqual({
+      same: true,
+      selected,
+      thinking: true,
+      copy: true,
+      table: true,
+      length: maximumLength,
+      removals: 0,
+    });
+  await page.evaluate(() => window.__stableRemovalObserver.disconnect());
+  await page.screenshot({
+    path: testInfo.outputPath("stream-continuity.png"),
+  });
 });
 
 test("subagent tasks are readable and compaction never opens an unsolicited viewer", async ({
@@ -1624,12 +1997,61 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   ).toBeVisible();
   await page.getByRole("button", { name: "Activity", exact: true }).click();
   const list = page.locator(".activity-panel");
+  expect(
+    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await page.setViewportSize({ width: 2048, height: 844 });
+  expect(
+    await list.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
   await list.getByRole("button", { name: /Show .*completed/ }).click();
   await list
     .getByRole("button")
     .filter({ hasText: "Review the full task." })
     .click();
   const detail = page.getByRole("dialog", { name: "Subagent", exact: true });
+  await expect(detail.locator(".detail-label, .detail-task")).toHaveCount(0);
+  const followUp = detail.getByRole("textbox", { name: "Follow-up" });
+  await expect(followUp).toHaveCSS("border-top-style", "solid");
+  const followUpNode = await followUp.elementHandle();
+  await followUp.fill("Retained follow-up");
+  await followUp.focus();
+  await page.waitForTimeout(1100);
+  expect(await followUpNode?.evaluate((element) => element.isConnected)).toBe(
+    true,
+  );
+  await expect(followUp).toHaveValue("Retained follow-up");
+  await expect(followUp).toBeFocused();
+  // Popup threads carry the same rows and viewers as chat history.
+  const thread = detail.locator('[aria-label="Subagent task"]');
+  await expect(thread.locator(".message")).not.toHaveCount(0);
+  await expect(thread.locator(".tool-disclosure")).not.toHaveCount(0);
+  const toolRow = thread.locator(".tool-disclosure").first();
+  await toolRow.locator("summary").click();
+  await toolRow
+    .getByRole("button", { name: "Tool input/output", exact: true })
+    .click();
+  const toolView = page.getByRole("dialog", {
+    name: "Tool input/output",
+    exact: true,
+  });
+  await expect(toolView).toBeVisible();
+  // Stacked, not swapped: the subagent dialog stays open underneath.
+  await expect(
+    page.getByRole("dialog", { name: "Subagent", exact: true }),
+  ).toBeVisible();
+  await toolView
+    .getByRole("button", { name: "Close tool input/output", exact: true })
+    .click();
+  await expect(toolView).toHaveCount(0);
+  // Follow-up sends from the popup and receipts like the composer.
+  await detail
+    .getByRole("button", { name: "Start follow-up", exact: true })
+    .click();
+  await expect(detail.getByText("Follow-up started.")).toBeVisible({
+    timeout: 20000,
+  });
   await detail
     .getByRole("button", { name: "Show full message", exact: true })
     .click();
@@ -1639,10 +2061,14 @@ test("subagent tasks are readable and compaction never opens an unsolicited view
   expect(
     (await detail.locator('[aria-label="Subagent task"]').textContent()).length,
   ).toBeGreaterThan(16000);
-  await detail.getByText("System prompt", { exact: true }).click();
-  await expect(detail.locator(".prompt-disclosure pre")).toContainText(
-    "You are a coding agent",
+  // No System prompt disclosure anymore; run details render open at the top.
+  await expect(detail.getByText("System prompt", { exact: true })).toHaveCount(
+    0,
   );
+  await detail.getByText("Task and run details").click();
+  await expect(
+    detail.locator('section[aria-label="Run details"]'),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("subagent-task-phone.png"),
   });

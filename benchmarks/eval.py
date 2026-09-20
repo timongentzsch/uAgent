@@ -864,6 +864,46 @@ def deterministic_jobs(jobs: list[tuple[Any, ...]], seed: int, trial: int) -> li
 
 
 def eval_self_test() -> int:
+    browser = trace_metrics(
+        [
+            {
+                "event": "tool_call",
+                "data": {
+                    "occurrence_id": "response-1:first",
+                    "name": "run",
+                    "arguments": {"command": "playwright-cli first"},
+                },
+            },
+            {
+                "event": "tool_result",
+                "data": {
+                    "occurrence_id": "response-1:first",
+                    "name": "run",
+                    "status": "error",
+                    "result_chars": 7,
+                },
+            },
+            {
+                "event": "tool_call",
+                "data": {
+                    "occurrence_id": "response-2:retry",
+                    "name": "run",
+                    "arguments": {"command": "playwright-cli recover"},
+                },
+            },
+            {
+                "event": "tool_result",
+                "data": {
+                    "occurrence_id": "response-2:retry",
+                    "name": "run",
+                    "status": "success",
+                    "result_chars": 11,
+                },
+            },
+        ]
+    )
+    if browser["browser_commands"] != 2 or browser["browser_snapshot_chars"] != 18:
+        raise AssertionError("browser calls are not correlated by occurrence identity")
     for invalid in (
         {"tool_result": 999},
         {"no_tools": 1},

@@ -1,0 +1,100 @@
+.library-row small,
+.run-row small {
+  color: var(--muted);
+}
+.library-row.selected {
+  background: var(--raised);
+}
+.library-group + .library-group {
+  margin-top: 0.6rem;
+}
+.library-group h2 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+.library-group h2 > .folder-label,
+.library-group h2 > button {
+  padding: var(--gap);
+}
+.library-group h2 > button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  gap: var(--gap);
+}
+.library-group .folder-label {
+  min-width: 0;
+  flex: 1;
+}
+.library-group button[aria-expanded="false"] > svg {
+  transform: rotate(-90deg);
+}
+.editor-head > strong {
+  flex: 1;
+}
+.document-toolbar small {
+  margin-left: auto;
+  color: var(--muted);
+}
+.document-input {
+  flex: 1;
+  min-height: min(14rem, calc(var(--viewport-height) * 0.3));
+  flex-shrink: 0;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.document-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--gap);
+}
+.document-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem 1rem;
+  font-size: 0.85em;
+}
+.document-details dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.editor-actions > small {
+  margin-right: auto;
+}
+.schedule-editor .field-row {
+  align-items: start;
+}
+.schedule-editor > .field,
+.schedule-editor .field-row {
+  flex: none;
+}
+.run-row {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.run-row > button:first-child {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.7rem 0.3rem;
+  text-align: left;
+  background: none;
+  border: 0;
+}
+@media (max-width: 900px) {
+  .editor-actions > small {
+    flex-basis: 100%;
+  }
+}

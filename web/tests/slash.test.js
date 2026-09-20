@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slashMatches, slashCompletion, parseSlash } from "../src/slash.ts";
+import {
+  slashMatches,
+  slashCompletion,
+  parseSlash,
+} from "../src/features/composer/slash.ts";
 const commands = [
   { command: "/help", aliases: ["/commands"], argument: "" },
   { command: "/model", aliases: [], argument: "NAME" },

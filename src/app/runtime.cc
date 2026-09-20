@@ -6,7 +6,7 @@
 
 #include <utility>
 
-#include "include/tools/jobs.h"
+#include "include/agent/jobs.h"
 
 namespace uagent {
 

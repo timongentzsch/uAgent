@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -37,6 +38,9 @@ constexpr std::pair<const char*, const char*> kTypes[] = {
     {".jpeg", "image/jpeg"},
     {".webp", "image/webp"},
     {".gif", "image/gif"},
+    {".heic", "image/heic"},
+    {".heif", "image/heif"},
+    {".svg", "image/svg+xml"},
     {".pdf", "application/pdf"},
     {".txt", "text/plain"},
     {".md", "text/markdown"},
@@ -58,6 +62,21 @@ constexpr std::pair<const char*, const char*> kTypes[] = {
     {".xls", "application/vnd.ms-excel"},
     {".xlsx",
      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    {".mp3", "audio/mpeg"},
+    {".wav", "audio/wav"},
+    {".ogg", "audio/ogg"},
+    {".oga", "audio/ogg"},
+    {".flac", "audio/flac"},
+    {".m4a", "audio/mp4"},
+    {".opus", "audio/opus"},
+    {".aac", "audio/aac"},
+    {".aiff", "audio/aiff"},
+    {".aif", "audio/aiff"},
+    {".mp4", "video/mp4"},
+    {".mov", "video/quicktime"},
+    {".webm", "video/webm"},
+    {".mpeg", "video/mpeg"},
+    {".mpg", "video/mpeg"},
 };
 
 }  // namespace
@@ -90,7 +109,136 @@ std::string RasterMime(std::string_view bytes) {
       bytes.substr(8, 4) == "WEBP") {
     return "image/webp";
   }
+  // HEIC/HEIF stills share the ISO BMFF `ftyp` header with MP4 video, so
+  // the brand allowlist is the whole check: still-photo brands in, video
+  // brands (isom, mp41, avc1, ...) out. The brand sits at offset 8.
+  if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
+    const std::string_view brand = bytes.substr(8, 4);
+    for (std::string_view still : {"heic", "heix", "hevc", "hevx", "heim",
+                                   "heis", "hevm", "hevs", "mif1", "msf1"}) {
+      if (brand == still) return "image/heic";
+    }
+  }
   return {};
+}
+
+// Video twin of the still check above: the same ftyp box with a video
+// brand means a video container. Extension-declared videos with unlisted
+// brands still pass below on the declared type; only image magic wins over
+// a video claim, never the reverse.
+std::string VideoMime(std::string_view bytes) {
+  if (bytes.size() >= 12 && bytes.substr(4, 4) == "ftyp") {
+    const std::string_view brand = bytes.substr(8, 4);
+    for (std::string_view video :
+         {"isom", "iso2", "mp41", "mp42", "avc1", "mmp4", "mp71"}) {
+      if (brand == video) return "video/mp4";
+    }
+  }
+  return {};
+}
+
+// Speech containers have real magic too: ID3 tags, RIFF/WAVE, FLAC, OggS.
+// Anything else rides on the declared extension, same as documents.
+std::string AudioMime(std::string_view bytes) {
+  if (bytes.size() >= 3 && bytes.starts_with("ID3")) return "audio/mpeg";
+  if (bytes.size() >= 12 && bytes.starts_with("RIFF") &&
+      bytes.substr(8, 4) == "WAVE") {
+    return "audio/wav";
+  }
+  if (bytes.size() >= 4 && bytes.starts_with("fLaC")) return "audio/flac";
+  if (bytes.size() >= 4 && bytes.starts_with("OggS")) return "audio/ogg";
+  return {};
+}
+
+// SVG has no magic number: scan the prolog (BOM, whitespace, <?...?>,
+// <!--...-->, <!DOCTYPE...>) for the <svg root element, at most ScanBytes
+// in. Anything else -- including bare <?xml without svg, HTML, or plain
+// text -- is not an SVG document.
+std::string SvgMime(std::string_view bytes) {
+  constexpr size_t kScanBytes = size_t{64} * 1024;
+  const size_t end = std::min(bytes.size(), kScanBytes);
+  size_t pos = 0;
+  if (end - pos >= 3 && bytes.substr(pos, 3) == "\xEF\xBB\xBF") pos += 3;
+  auto skip_blank = [&] {
+    while (pos < end && (bytes[pos] == ' ' || bytes[pos] == '\t' ||
+                         bytes[pos] == '\r' || bytes[pos] == '\n')) {
+      ++pos;
+    }
+  };
+  auto skip_to = [&](std::string_view mark) {
+    const size_t found = bytes.find(mark, pos);
+    if (found == std::string_view::npos || found > end) return false;
+    pos = found + mark.size();
+    return true;
+  };
+  for (;;) {
+    skip_blank();
+    if (pos >= end) return "";
+    if (bytes[pos] != '<') return "";
+    if (bytes.substr(pos, 4) == "<!--") {
+      pos += 4;
+      if (!skip_to("-->")) return "";
+      continue;
+    }
+    if (bytes.substr(pos, 2) == "<?") {
+      pos += 2;
+      if (!skip_to("?>")) return "";
+      continue;
+    }
+    if (bytes.substr(pos, 9) == "<!DOCTYPE" ||
+        bytes.substr(pos, 9) == "<!doctype") {
+      // A doctype can hide '>' inside an internal [...] subset.
+      size_t depth = 0;
+      while (pos < end) {
+        if (bytes[pos] == '[') ++depth;
+        if (bytes[pos] == ']') depth -= depth > 0 ? 1 : 0;
+        ++pos;
+        if (depth == 0 && bytes[pos - 1] == '>') break;
+      }
+      if (pos > end) return "";
+      continue;
+    }
+    break;
+  }
+  // The document element itself must be svg (case-insensitive for
+  // hand-written files), followed by a tag delimiter.
+  auto lower = [](char ch) {
+    return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch - 'A' + 'a') : ch;
+  };
+  constexpr std::string_view kTag = "<svg";
+  if (pos + kTag.size() > end) return "";
+  for (size_t i = 0; i < kTag.size(); ++i) {
+    if (lower(bytes[pos + i]) != kTag[i]) return "";
+  }
+  pos += kTag.size();
+  if (pos >= end) return "";
+  const char next = bytes[pos];
+  if (next != ' ' && next != '\t' && next != '\r' && next != '\n' &&
+      next != '>' && next != '/') {
+    return "";
+  }
+  return "image/svg+xml";
+}
+
+bool IsRasterMime(const std::string& mime) {
+  return mime == "image/png" || mime == "image/jpeg" || mime == "image/gif" ||
+         mime == "image/webp";
+}
+
+bool IsAudioMime(const std::string& mime) { return mime.starts_with("audio/"); }
+
+bool IsVideoMime(const std::string& mime) { return mime.starts_with("video/"); }
+
+std::string AudioFormat(const std::string& mime) {
+  if (mime == "audio/wav") return "wav";
+  if (mime == "audio/mpeg") return "mp3";
+  if (mime == "audio/flac") return "flac";
+  if (mime == "audio/ogg") return "ogg";
+  if (mime == "audio/mp4") return "mp3";
+  if (mime == "audio/opus") return "opus";
+  if (mime == "audio/aac") return "aac";
+  if (mime == "audio/aiff") return "aiff";
+  return "wav";
 }
 
 std::string ImageDetail() {
@@ -124,15 +272,25 @@ bool InspectAttachment(std::string path, Attachment& out, std::string& error) {
     return false;
   }
   std::string prefix, error_read;
-  if (!ReadRegularFile(path, 32, prefix, error_read, true)) {
+  // One head read covers the raster/HEIC signatures as well as the SVG
+  // prolog scan below; vector documents may legitimately start with
+  // kilobytes of XML declarations before <svg.
+  if (!ReadRegularFile(path, size_t{64} * 1024, prefix, error_read, true)) {
     error = error_read;
     return false;
   }
   std::string mime = RasterMime(prefix);
+  if (mime.empty()) mime = SvgMime(prefix);
+  if (mime.empty()) mime = AudioMime(prefix);
+  if (mime.empty()) mime = VideoMime(prefix);
   if (mime.empty()) {
     mime = AttachmentMime(path);
-    if (mime.starts_with("image/")) {
+    if (IsRasterMime(mime)) {
       error = "invalid image signature: " + path;
+      return false;
+    }
+    if (mime == "image/svg+xml") {
+      error = "not an SVG document: " + path;
       return false;
     }
   }
@@ -158,6 +316,18 @@ const char* ModelImageInputInstruction(bool image_input_available,
                                        bool image_fallback_available) {
   if (image_input_available || image_fallback_available) return "";
   return " Image input unavailable; image attachments are provided only as "
+         "file paths.";
+}
+
+const char* ModelAudioInputInstruction(bool audio_input_available) {
+  if (audio_input_available) return "";
+  return " Audio input unavailable; audio attachments are provided only as "
+         "file paths.";
+}
+
+const char* ModelVideoInputInstruction(bool video_input_available) {
+  if (video_input_available) return "";
+  return " Video input unavailable; video attachments are provided only as "
          "file paths.";
 }
 
@@ -321,10 +491,66 @@ json AttachmentContent(const std::string& prompt,
   return content;
 }
 
+Attachment AttachmentFromJson(const json& item) {
+  Attachment attachment;
+  attachment.path = JsonValue(item, "path", "");
+  attachment.name = JsonValue(item, "name", "attachment");
+  attachment.mime = JsonValue(item, "mime", "application/octet-stream");
+  attachment.image = JsonValue(item, "image", false);
+  attachment.asset_id = JsonValue(item, "id", "");
+  return attachment;
+}
+
+std::pair<json, bool> ComposeSteeredContent(const std::string& input,
+                                            const json& attachments,
+                                            std::string& error) {
+  std::vector<Attachment> files;
+  if (attachments.is_array()) {
+    for (const json& item : attachments) {
+      Attachment file = AttachmentFromJson(item);
+      if (!file.path.empty()) files.push_back(std::move(file));
+    }
+  }
+  if (files.empty()) return {json(input), false};
+  json content = AttachmentContent(input, files, error);
+  if (!error.empty()) return {json(input), false};
+  return {std::move(content), true};
+}
+
 namespace {
 bool TextMime(const std::string& mime) {
   return mime.starts_with("text/") || mime == "application/json" ||
          mime == "application/xml";
+}
+
+// SVG has no wire-safe bytes: rasterize once to PNG, then run the normal
+// inspect/resize/encode flow on the raster. ImageMagick first on both
+// platforms (its built-in renderer needs no daemon); QuickLook covers
+// stock macOS when ImageMagick is missing or its SVG coder is locked
+// down. Providers never see raw SVG.
+bool RasterizeVector(const std::string& path, const std::string& out,
+                     std::string& error) {
+  auto raster = CaptureProcess({"magick", "-limit", "memory", "128MiB",
+                                "-limit", "map", "256MiB", "-density", "192",
+                                "-background", "none", path + "[0]", "-resize",
+                                "2048x2048>", "-strip", "png:" + out});
+  if (raster.Ok()) return true;
+#ifdef __APPLE__
+  const std::string dir = std::filesystem::path(out).parent_path().string();
+  auto thumb = CaptureProcess(
+      {"/usr/bin/qlmanage", "-t", "-s", "2048", "-o", dir, path});
+  const std::string rendered =
+      dir + "/" + std::filesystem::path(path).filename().string() + ".png";
+  std::error_code ec;
+  if (thumb.Ok() && rendered != out) {
+    std::filesystem::rename(rendered, out, ec);
+    if (!ec) return true;
+  }
+#endif
+  error =
+      "cannot prepare SVG image; install ImageMagick (brew install "
+      "imagemagick) or attach a PNG instead";
+  return false;
 }
 std::string PreparedImage(const Attachment& attachment, std::string& mime,
                           std::string& error) {
@@ -352,9 +578,31 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
   }
   // Platform helpers keep image decoders out of the harness binary. No shell,
   // bounded lifetime, original retained. Linux uses ImageMagick when installed.
+  // Vector originals rasterize first: neither inspector below reads SVG,
+  // and the raster re-enters the normal inspect/resize/encode flow.
+  std::string path = attachment.path;
+  // Scratch files live exactly as long as this function: every early return
+  // below used to unlink them by hand.
+  ScopedTempFile raster_file(
+      (std::filesystem::temp_directory_path() / "uagent-svg-XXXXXX").string());
+  ScopedTempFile temporary_file(
+      (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
+          .string());
+  mime = attachment.mime;
+  if (mime == "image/svg+xml") {
+    if (!raster_file) {
+      error = "cannot prepare image";
+      return "";
+    }
+    if (!RasterizeVector(attachment.path, raster_file.Path(), error)) {
+      return "";
+    }
+    path = raster_file.Path();
+    mime = "image/png";
+  }
 #ifdef __APPLE__
-  auto inspected = CaptureProcess({"/usr/bin/sips", "-g", "pixelWidth", "-g",
-                                   "pixelHeight", attachment.path});
+  auto inspected = CaptureProcess(
+      {"/usr/bin/sips", "-g", "pixelWidth", "-g", "pixelHeight", path});
   int width = 0, height = 0;
   std::istringstream lines(inspected.output);
   std::string line;
@@ -368,8 +616,8 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     }
   }
 #else
-  auto inspected = CaptureProcess({"magick", "identify", "-ping", "-format",
-                                   "%w %h", attachment.path + "[0]"});
+  auto inspected = CaptureProcess(
+      {"magick", "identify", "-ping", "-format", "%w %h", path + "[0]"});
   int width = 0, height = 0;
   std::istringstream(inspected.output) >> width >> height;
 #endif
@@ -378,53 +626,73 @@ std::string PreparedImage(const Attachment& attachment, std::string& mime,
     error = "image could not be decoded";
     return "";
   }
-  std::string path = attachment.path, temporary;
-  mime = attachment.mime;
-  if (width > 2048 || height > 2048 || attachment.bytes > kImageBytes) {
-    const std::string format = mime == "image/jpeg" ? "jpeg" : "png";
-    Fd output(CreateTempFile(
-        (std::filesystem::temp_directory_path() / "uagent-image-XXXXXX")
-            .string(),
-        temporary));
-    if (!output) {
+  // HEIC/HEIF data URIs are rejected by most vision endpoints, so they
+  // always normalize through the converter below instead of passing
+  // through like small PNGs do. A missing converter then fails loudly
+  // here instead of degrading the whole route on a provider rejection.
+  const bool normalize = mime == "image/heic" || mime == "image/heif";
+  if (width > kMaxImageDimension || height > kMaxImageDimension ||
+      attachment.bytes > kImageBytes || normalize) {
+    const std::string format =
+        (mime == "image/jpeg" || mime == "image/heic" || mime == "image/heif")
+            ? "jpeg"
+            : "png";
+    if (!temporary_file) {
       error = "cannot prepare image";
       return "";
     }
 #ifdef __APPLE__
-    auto resized =
-        CaptureProcess({"/usr/bin/sips", "-Z", "2048", "-s", "format", format,
-                        "-s", "formatOptions", "85", path, "--out", temporary});
+    auto resized = CaptureProcess({"/usr/bin/sips", "-Z",
+                                   std::to_string(kMaxImageDimension), "-s",
+                                   "format", format, "-s", "formatOptions",
+                                   "85", path, "--out", temporary_file.Path()});
 #else
-    auto resized = CaptureProcess({"magick", "-limit", "memory", "128MiB",
-                                   "-limit", "map", "256MiB", path + "[0]",
-                                   "-auto-orient", "-resize", "2048x2048>",
-                                   "-quality", "85", format + ":" + temporary});
+    const std::string geometry = std::to_string(kMaxImageDimension) + "x" +
+                                 std::to_string(kMaxImageDimension) + ">";
+    auto resized = CaptureProcess(
+        {"magick", "-limit", "memory", "128MiB", "-limit", "map", "256MiB",
+         path + "[0]", "-auto-orient", "-resize", geometry, "-quality", "85",
+         format + ":" + temporary_file.Path()});
 #endif
     if (!resized.Ok()) {
-      unlink(temporary.c_str());
       error =
           "image resizing failed; install ImageMagick on Linux or attach a "
           "smaller image";
       return "";
     }
-    path = temporary;
+    path = temporary_file.Path();
     mime = "image/" + format;
   }
   Attachment prepared = attachment;
   prepared.path = path;
   std::string encoded =
       Base64File(prepared, kImageBytes, error, "data:" + mime + ";base64,");
-  if (!temporary.empty()) unlink(temporary.c_str());
   if (!error.empty()) return "";
   std::lock_guard lock(mutex);
   cache[key] = {mime, encoded};
   size_t total = 0;
   for (const auto& item : cache) total += item.second.second.size();
-  while (total > size_t{16} * 1024 * 1024 && !cache.empty()) {
+  while (total > kImageCacheBytes && !cache.empty()) {
     total -= cache.begin()->second.second.size();
     cache.erase(cache.begin());
   }
   return encoded;
+}
+}  // namespace
+
+namespace {
+// Identity for within-request dedup: same bytes on disk. Size and mtime
+// catch edits; an unreadable mtime disables dedup for the part.
+std::string AttachmentFingerprint(const Attachment& attachment) {
+  if (attachment.path.empty()) return "";
+  std::error_code ec;
+  auto mtime = std::filesystem::last_write_time(attachment.path, ec);
+  if (ec) return "";
+  const int64_t nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            mtime.time_since_epoch())
+                            .count();
+  return attachment.path + "|" + std::to_string(attachment.bytes) + "|" +
+         std::to_string(nanos);
 }
 }  // namespace
 
@@ -436,6 +704,13 @@ bool PrepareAttachments(json& messages,
   uintmax_t remaining =
       static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024;
   if (deliveries) *deliveries = json::array();
+  // Fingerprints of parts already prepared in this request. Re-reading an
+  // unchanged file (the model re-reading an attached screenshot, the same
+  // path queued twice in one step) must reference the first copy instead
+  // of duplicating payload and re-rendering the attachment row on every
+  // agent step. Path, size and mtime catch edits; a changed file prepares
+  // normally with its own delivery row.
+  std::map<std::string, std::string> delivered;
   for (size_t index = 0; index < messages.size(); ++index) {
     json& message = messages[index];
     if (!message.contains("content") || !message["content"].is_array()) {
@@ -467,6 +742,13 @@ bool PrepareAttachments(json& messages,
       const bool processed =
           JsonValue(part, "processed_route", "") == route && !route.empty();
       if (!processed && InspectAttachment(path, attachment, detail)) {
+        const std::string fingerprint = AttachmentFingerprint(attachment);
+        if (!fingerprint.empty() && delivered.contains(fingerprint)) {
+          prepared.push_back(
+              {{"type", "text"},
+               {"text", "[File reference: " + path + "; earlier attachment]"}});
+          continue;
+        }
         if (attachment.bytes > remaining) {
           detail = "request attachment budget exceeded";
         } else {
@@ -521,6 +803,32 @@ bool PrepareAttachments(json& messages,
           } else {
             detail = "invalid PDF signature";
           }
+        } else if (IsAudioMime(attachment.mime) && capabilities.audio_input) {
+          // OpenRouter takes raw base64 plus a format word, never a data
+          // URI, and no audio URLs at all.
+          std::string data = Base64File(
+              attachment,
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
+              "");
+          if (detail.empty()) {
+            prepared.push_back({{"type", "input_audio"},
+                                {"input_audio",
+                                 {{"data", std::move(data)},
+                                  {"format", AudioFormat(attachment.mime)}}}});
+            delivery = "Audio";
+          }
+        } else if (IsVideoMime(attachment.mime) && capabilities.video_input) {
+          // Local files ride as base64 data URLs, mirroring image_url;
+          // remote URLs stay provider-specific and are out of scope.
+          std::string data = Base64File(
+              attachment,
+              static_cast<uintmax_t>(AttachmentLimitMb()) * 1024 * 1024, detail,
+              "data:" + attachment.mime + ";base64,");
+          if (detail.empty()) {
+            prepared.push_back({{"type", "video_url"},
+                                {"video_url", {{"url", std::move(data)}}}});
+            delivery = "Video";
+          }
         }
       }
       if (!detail.empty()) {
@@ -534,6 +842,11 @@ bool PrepareAttachments(json& messages,
                           (processed ? "; earlier attachment"
                                      : "; contents not included") +
                           "]"}});
+      } else if (detail.empty()) {
+        // Successful first delivery: later identical parts in this request
+        // reference it (see above) instead of duplicating payload.
+        const std::string fingerprint = AttachmentFingerprint(attachment);
+        if (!fingerprint.empty()) delivered[fingerprint] = name;
       }
       if (deliveries && !processed) {
         deliveries->push_back({{"message_index", index},

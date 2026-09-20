@@ -2,6 +2,88 @@ import { test, expect } from "./fixtures.js";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
+for (const surface of [
+  { name: "Library", chunk: "library", status: "Loading library…" },
+  { name: "Scheduled", chunk: "scheduled", status: "Loading scheduled tasks…" },
+]) {
+  for (const viewport of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    test(`${surface.name} shell keeps its geometry while loading at ${viewport.width}px`, async ({
+      page,
+      session,
+    }) => {
+      await page.setViewportSize(viewport);
+      let release;
+      const gate = new Promise((resolve) => (release = resolve));
+      await page.route(`**/assets/${surface.chunk}-*.js`, async (route) => {
+        await gate;
+        await route.continue();
+      });
+      await page.goto(`/#session=${session.id}`);
+      if (viewport.width < 900)
+        await page.getByRole("button", { name: "Open sessions" }).click();
+      const nav =
+        viewport.width < 900
+          ? page.getByRole("dialog", { name: "Sessions" })
+          : page.getByRole("complementary");
+      await nav
+        .getByRole("button", { name: surface.name, exact: true })
+        .click();
+      const measure = () =>
+        page.evaluate(() => {
+          const box = (selector) => {
+            const rect = document
+              .querySelector(selector)
+              .getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            };
+          };
+          return {
+            toolbar: box(".management-toolbar"),
+            list: box(".management-list"),
+            overflow: document.documentElement.scrollWidth - innerWidth,
+          };
+        });
+      let loading;
+      try {
+        await expect(
+          page.getByRole("status", { name: surface.status }),
+        ).toBeVisible();
+        loading = await measure();
+      } finally {
+        release();
+      }
+      if (surface.name === "Library")
+        await expect(page.getByLabel("Library type")).toBeVisible();
+      else
+        await expect(
+          page.getByRole("heading", { name: "All runs" }),
+        ).toBeVisible();
+      const loaded = await measure();
+      for (const part of ["toolbar", "list"])
+        for (const edge of ["x", "y", "width", "height"])
+          if (
+            part !== "list" ||
+            surface.name === "Library" ||
+            viewport.width > 900 ||
+            edge !== "height"
+          )
+            expect(
+              Math.abs(loaded[part][edge] - loading[part][edge]),
+              `${part}.${edge}`,
+            ).toBeLessThan(3);
+      expect(loading.overflow).toBe(0);
+      expect(loaded.overflow).toBe(0);
+    });
+  }
+}
+
 test("library drafts, shared controls and scheduled results", async ({
   page,
   host: fixture,
@@ -66,7 +148,7 @@ test("library drafts, shared controls and scheduled results", async ({
     name: fixture.project,
     exact: true,
   });
-  await expect(projectGroup.locator(".library-row")).toContainText(
+  await expect(projectGroup.locator("button.library-row")).toContainText(
     "browser-lesson",
   );
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -95,7 +177,12 @@ test("library drafts, shared controls and scheduled results", async ({
   });
   try {
     await expect(secondGroup.getByRole("status")).toBeVisible();
-    await expect(secondGroup.locator(".library-row")).toHaveCount(0);
+    // Faithful loading skeleton mirrors the row shell: placeholders only
+    // (aria-hidden), never stale entries from the previous project.
+    await expect(
+      secondGroup.locator('.library-row:not([aria-hidden="true"])'),
+    ).toHaveCount(0);
+    await expect(secondGroup.getByText("browser-lesson")).toHaveCount(0);
   } finally {
     releaseList();
   }
@@ -108,7 +195,7 @@ test("library drafts, shared controls and scheduled results", async ({
   await page.getByLabel("Name", { exact: true }).fill("browser-lesson");
   await editor.fill("This belongs only to the second project.");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(secondGroup.locator(".library-row")).toContainText(
+  await expect(secondGroup.locator("button.library-row")).toContainText(
     "browser-lesson",
   );
   const filter = page.getByLabel("Filter library");
@@ -134,22 +221,22 @@ test("library drafts, shared controls and scheduled results", async ({
   await expect(projectGroup).toHaveCount(0);
   await filter.selectOption("all");
   await secondGroup.getByRole("button", { expanded: false }).click();
-  await secondGroup.locator(".library-row").click();
+  await secondGroup.locator("button.library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );
   await projectGroup.getByRole("button", { expanded: false }).click();
-  await projectGroup.locator(".library-row").click();
+  await projectGroup.locator("button.library-row").click();
   await expect(
     page.getByRole("heading", { name: "Durable lesson" }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await filter.selectOption(`project:${secondProject}`);
-  await expect(secondGroup.locator(".library-row")).toBeVisible();
+  await expect(secondGroup.locator("button.library-row")).toBeVisible();
   await expect(secondGroup.getByRole("status")).toHaveCount(0);
   await expect(projectGroup).toHaveCount(0);
-  await secondGroup.locator(".library-row").click();
+  await secondGroup.locator("button.library-row").click();
   await expect(page.locator(".document-preview")).toHaveText(
     "This belongs only to the second project.",
   );

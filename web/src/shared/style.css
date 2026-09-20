@@ -1,0 +1,1459 @@
+:root {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: dark;
+  --bg: #000;
+  --surface: #0a0a0a;
+  --raised: #171717;
+  --placeholder: #414141;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --line: #404040;
+  --accent: #fff;
+  --live: #22a35a;
+  --added: #3fb950;
+  --added-bg: rgba(63, 185, 80, 0.12);
+  --removed: #f85149;
+  --removed-bg: rgba(248, 81, 73, 0.12);
+  --on-accent: #000;
+  --viewport-height: 100dvh;
+  --viewport-width: 100%;
+  --viewport-top: 0px;
+  --viewport-left: 0px;
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --content-width: calc(
+    var(--viewport-width) - var(--safe-left) - var(--safe-right)
+  );
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom-resting: env(safe-area-inset-bottom, 0px);
+  --safe-bottom: var(--safe-bottom-resting);
+  --content-height: calc(
+    var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
+  );
+  --surface-inset: calc(8rem / 14);
+  --dialog-gutter: var(--surface-inset);
+  /* Touch-target floor never shrinks below 28px (WCAG 2.5.8: 24px min). */
+  --control: max(28px, 2.2rem);
+  /* Spacing scales with zoom via rem, exactly like type. The N/14
+     fractional form keeps 100% pixel-exact with the px design base
+     (root is 14px): use calc(Nrem / 14) for fixed design px, never
+     rounded decimals (they drift sub-pixels and break geometry). */
+  --gap: calc(8rem / 14);
+  --pad: calc(12rem / 14);
+  background: var(--bg);
+  color: var(--text);
+  /* % of the user's browser font size (never px) so their preference is
+     respected; 87.5% of the 16px default keeps the 14px design base. */
+  font-size: calc(87.5% * var(--zoom, 1));
+  line-height: 1.5;
+}
+:root[data-keyboard] {
+  --safe-bottom: 0px;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fff;
+  --surface: #fafafa;
+  --raised: #eee;
+  --placeholder: #ccc;
+  --text: #111;
+  --muted: #666;
+  --line: #ccc;
+  --accent: #000;
+  --added: #1a7f37;
+  --added-bg: rgba(26, 127, 55, 0.1);
+  --removed: #d1242f;
+  --removed-bg: rgba(209, 36, 47, 0.1);
+  --on-accent: #fff;
+}
+* {
+  box-sizing: border-box;
+  border-radius: 0;
+}
+html,
+body {
+  background: var(--bg);
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  position: fixed;
+  inset: 0;
+}
+#app {
+  background: var(--bg);
+  position: fixed;
+  top: var(--viewport-top);
+  left: var(--viewport-left);
+  width: var(--viewport-width);
+  height: var(--viewport-height);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+  container: app / size;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+button,
+a,
+input,
+select,
+summary,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+input,
+select,
+textarea {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: calc(2rem / 14) 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap);
+  cursor: pointer;
+}
+.toggle-row > span,
+.toggle-row small {
+  display: block;
+  min-width: 0;
+}
+.toggle-row strong {
+  font-weight: 500;
+}
+button,
+.file-button {
+  min-height: var(--control);
+  padding: calc(4rem / 14) calc(8rem / 14);
+  cursor: pointer;
+  line-height: 1.3;
+}
+button:hover,
+.file-button:hover {
+  background: var(--raised);
+}
+button:disabled,
+select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+.primary:hover {
+  background: var(--accent);
+  filter: brightness(0.92);
+}
+.quiet {
+  border-color: transparent;
+  background: transparent;
+}
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control);
+  min-width: var(--control);
+  padding: 0;
+  flex-shrink: 0;
+}
+.lucide {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  vertical-align: -3px;
+  stroke-width: 1.75;
+}
+.with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(6rem / 14);
+}
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+input,
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--control);
+  padding: calc(4rem / 14) calc(8rem / 14);
+}
+input[type="range"] {
+  min-height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+.select {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.select select {
+  appearance: none;
+  padding-inline-end: calc(34rem / 14);
+}
+.select > .lucide {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+label,
+.field {
+  display: grid;
+  gap: calc(4rem / 14);
+  min-width: 0;
+}
+.field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--pad);
+}
+.field-label output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.field-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+form {
+  display: grid;
+  gap: var(--gap);
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1 {
+  font-size: 1.1rem;
+  line-height: 1.4;
+  letter-spacing: -0.025em;
+}
+h2,
+h3 {
+  font-size: 1rem;
+}
+p {
+  margin: 0.65em 0;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  max-width: 100%;
+  font: inherit;
+  font-size: 0.92em;
+  line-height: 1.55;
+  padding: calc(12rem / 14);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin: calc(8rem / 14) 0;
+}
+code {
+  font-family: inherit;
+  background: var(--surface);
+}
+pre code {
+  background: none;
+  white-space: pre;
+  overflow-wrap: normal;
+  display: block;
+}
+.diff {
+  white-space: pre;
+  overflow-wrap: normal;
+  padding: 0;
+}
+.diff > span {
+  display: block;
+  padding: 0 var(--pad);
+}
+.diff-head {
+  font-weight: 600;
+}
+.diff-add {
+  color: var(--added);
+  background: var(--added-bg);
+}
+.diff-del {
+  color: var(--removed);
+  background: var(--removed-bg);
+}
+.diff-hunk {
+  color: var(--muted);
+}
+.diff-cut {
+  color: var(--muted);
+}
+.diff-ctx {
+  color: var(--muted);
+}
+.muted,
+.small,
+.metrics {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.8rem;
+}
+.plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.error-banner {
+  flex-shrink: 0;
+  padding: calc(6rem / 14) calc(12rem / 14);
+  border-bottom: 1px solid var(--line);
+  background: var(--raised);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  font-size: 0.85rem;
+  max-height: 25vh;
+  overflow: auto;
+}
+.update-banner {
+  flex-shrink: 0;
+  padding: calc(6rem / 14) calc(12rem / 14);
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--live);
+  background: var(--raised);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  font-size: 0.85rem;
+}
+.load-error {
+  padding: calc(8rem / 14) 0;
+  overflow-wrap: anywhere;
+}
+.load-error p {
+  margin-top: 0;
+}
+.mark {
+  width: 24px;
+  height: 24px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.brand {
+  text-decoration: none;
+}
+.brand .mark {
+  width: 32px;
+  height: 32px;
+}
+
+/* The shell has one header per column; only the transcript owns chat scrolling. */
+.shell {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: min(30vw, 260px) minmax(0, 1fr);
+  overflow: hidden;
+}
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: calc(8rem / 14);
+  min-height: 0;
+  min-width: 0;
+}
+.sidebar-skeleton {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
+}
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  min-height: 40px;
+}
+.sidebar-head button {
+  font-size: 0.8rem;
+  padding-inline: calc(6rem / 14);
+}
+.search input {
+  font-size: 0.8rem;
+}
+.sidebar nav {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.sidebar nav section + section {
+  margin-top: calc(8rem / 14);
+}
+.sidebar h2 {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  padding: calc(8rem / 14);
+}
+.folder-label {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.folder-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  border-left: 2px solid transparent;
+}
+.session-row:hover,
+.session-row:focus-within,
+.session-row:has(.selected) {
+  background: var(--raised);
+}
+.session-row:has(.selected) {
+  border-left-color: var(--accent);
+}
+.session-row > .session:hover {
+  background: none;
+}
+.session {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: calc(6rem / 14) calc(8rem / 14);
+}
+.session > span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.85rem;
+}
+.session small {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: calc(2rem / 14);
+  /* Single line, always: activity labels stream in while a turn runs
+     and a wrap would change the row height (sidebar ticking). The
+     time keeps its title tooltip; overflow ellipsizes like the title. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session small .activity-status {
+  margin-right: calc(6rem / 14);
+}
+.status-led {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+}
+.status-led.active,
+.status-led.running {
+  background: var(--live);
+  border-color: var(--live);
+}
+.status-led.running {
+  animation: led-breathe 1.6s ease-in-out infinite;
+}
+@keyframes led-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+.sidebar footer {
+  display: flex;
+  align-items: center;
+  gap: calc(4rem / 14);
+  border-top: 1px solid var(--line);
+  padding-top: calc(8rem / 14);
+}
+.connection {
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.connection .status-led {
+  margin-right: calc(6rem / 14);
+}
+.conversation {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.conversation-head {
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: calc(4rem / 14) var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.conversation-head > div:first-of-type {
+  flex: 1;
+  min-width: 0;
+}
+.conversation-head h1 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.transcript {
+  /* Sticky is the default state and the hook owns the bottom
+     uncontested; native anchoring only engages while reading history
+     (the hook toggles it inline). Starting at auto lets the browser
+     fight the first mount pin on reload. */
+  overflow-anchor: none;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  padding: var(--gap) max(var(--pad), calc((100% - 1040px) / 2));
+  overscroll-behavior: contain;
+}
+/* Single spacing mechanism for the whole column: uniform gap, zero
+   child margins. Flex gaps never collapse, so doubles are impossible. */
+.transcript-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 100%;
+}
+.transcript-content > p,
+.transcript-content > details {
+  margin-block: 0;
+}
+.retention {
+  font-size: 0.8rem;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  padding: calc(8rem / 14);
+}
+.empty {
+  margin: auto;
+  text-align: center;
+  max-width: 520px;
+  padding: var(--pad);
+}
+.transcript .empty {
+  padding-top: min(48px, calc(var(--viewport-height) * 0.06));
+}
+.empty h1,
+.empty h2 {
+  margin: calc(12rem / 14) 0;
+}
+.empty p {
+  color: var(--muted);
+}
+.mark.cursor-mark {
+  width: 56px;
+  height: 56px;
+}
+.history-button {
+  display: block;
+  margin-inline: auto;
+  /* Stable height across the Loading swap so the anchor math below it
+     never shifts by the label change. Never a scroll anchor itself. */
+  min-height: var(--control);
+  overflow-anchor: none;
+}
+.retention {
+  overflow-anchor: none;
+}
+
+/* Draft, controls and status share a compact footer. */
+.composer {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+  margin: 0 max(var(--pad), calc((100% - 1040px) / 2));
+  padding: calc(4rem / 14) 0;
+  background: var(--bg);
+  max-height: calc(var(--viewport-height) - 100px);
+  overflow: visible;
+}
+.composer > form {
+  gap: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.composer > form > textarea {
+  display: block;
+  border: 0;
+  resize: none;
+  min-height: max(40px, calc(1.5em + 12px));
+  max-height: min(160px, calc(var(--viewport-height) * 0.25));
+  background: transparent;
+  padding: calc(6rem / 14) calc(8rem / 14);
+  outline-offset: -2px;
+  overflow: auto;
+  font-size: calc(16rem / 14);
+}
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(4rem / 14);
+  padding: calc(2rem / 14) calc(4rem / 14) calc(4rem / 14);
+  min-width: 0;
+}
+.composer-actions > .primary {
+  margin-left: auto;
+}
+.model-control {
+  flex: 1;
+  min-width: var(--control);
+}
+.model-selector {
+  min-width: 0;
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  font-size: 0.8rem;
+  padding-inline: calc(6rem / 14);
+}
+.model-selector > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-selector > .lucide:last-child {
+  margin-left: auto;
+}
+.permission-control {
+  flex-shrink: 0;
+}
+.permission-control > button {
+  font-size: 0.8rem;
+  padding-inline: calc(6rem / 14);
+}
+.file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+}
+.file-button:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.jump {
+  position: absolute;
+  bottom: calc(100% + calc(4rem / 14));
+  right: 0;
+  background: var(--raised);
+  font-size: 0.75rem;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  min-width: 0;
+  padding-top: calc(4rem / 14);
+}
+.activity-toggle {
+  display: flex;
+  align-items: center;
+  gap: calc(6rem / 14);
+  text-align: left;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 calc(2rem / 14);
+  font-size: 0.75rem;
+}
+.activity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  min-width: 0;
+}
+.metrics {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+}
+.metrics > button {
+  font-size: inherit;
+  min-height: 24px;
+  padding: 0 calc(6rem / 14);
+  white-space: nowrap;
+}
+.unread-dot {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: currentColor;
+  margin-left: 0.65em;
+  vertical-align: middle;
+}
+.decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  border: 1px solid var(--accent);
+  padding: calc(12rem / 14);
+  max-height: min(
+    calc(var(--viewport-height) * 0.65),
+    calc(var(--viewport-height) - 100px)
+  );
+}
+.decision-preview {
+  min-height: 0;
+  overflow: auto;
+  font-size: 0.85rem;
+}
+.decision-preview pre {
+  margin-top: calc(6rem / 14);
+}
+.decision form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  border: 0;
+  flex-shrink: 0;
+  background: none;
+}
+.decision label {
+  flex: 1;
+  min-width: 100px;
+  font-size: 0.85rem;
+}
+.decision h2 {
+  flex-shrink: 0;
+}
+
+/* Native top-layer popovers share placement and keyboard handling. */
+.popover-control {
+  position: relative;
+}
+.popover-panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: var(--pad);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  overflow: auto;
+  box-shadow: 0 6px 24px #0003;
+}
+.menu-panel {
+  min-width: 180px;
+  padding: calc(4rem / 14);
+}
+.menu-panel button {
+  display: block;
+  width: 100%;
+  border: 0;
+  text-align: left;
+  font-size: 0.85rem;
+}
+.model-panel {
+  width: 420px;
+}
+.model-form {
+  display: grid;
+  gap: var(--gap);
+}
+.permission-panel {
+  width: 260px;
+}
+.dialog-actions,
+.editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+.segmented,
+.raw-tabs,
+.document-toolbar,
+.weekdays {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+.segmented button[aria-pressed="true"],
+.raw-tabs [aria-selected="true"],
+.raw-tabs [aria-pressed="true"],
+.weekdays button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* Modal header and close button stay outside the scrolling body. */
+dialog {
+  position: fixed;
+  inset: auto;
+  top: calc(var(--viewport-top) + var(--safe-top) + var(--content-height) / 2);
+  left: calc(
+    var(--viewport-left) + var(--safe-left) + var(--content-width) / 2
+  );
+  transform: translate(-50%, -50%);
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  padding: 0;
+  width: min(560px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  max-height: max(0px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+  overflow: hidden;
+}
+dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+/* Paint gate (ui.tsx Modal): the dialog opens invisibly and fades in
+   once mount work has committed paint, so open never flashes. */
+dialog {
+  opacity: 0;
+}
+dialog[data-ready] {
+  opacity: 1;
+  transition: opacity 120ms ease-out;
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+  border-top: var(--safe-top) solid var(--bg);
+}
+dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pad);
+  border-bottom: 1px solid var(--line);
+  padding: var(--surface-inset);
+  flex-shrink: 0;
+}
+.dialog-body {
+  padding: var(--surface-inset);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: var(--pad);
+  min-height: 0;
+}
+dialog p {
+  color: var(--muted);
+}
+dialog section {
+  margin: var(--pad) 0;
+}
+.settings-view {
+  width: min(700px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+}
+.settings-fields {
+  display: grid;
+  gap: var(--pad);
+}
+.settings-fields > button {
+  text-align: start;
+}
+.settings-section {
+  border-top: 1px solid var(--line);
+  margin-top: var(--pad);
+  padding-top: calc(4rem / 14);
+}
+.settings-section > summary {
+  cursor: pointer;
+  padding: calc(6rem / 14) 0;
+}
+.statistics-view {
+  height: min(680px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+}
+.stats {
+  margin: 0;
+}
+.stats > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: var(--pad);
+  padding: calc(6rem / 14) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+}
+.stats dt {
+  color: var(--muted);
+}
+.stats dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.raw-view,
+.prompt-view {
+  width: min(1100px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  height: min(900px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+}
+.raw-view > .dialog-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+.raw-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--gap);
+}
+.raw-controls {
+  flex-shrink: 0;
+  overflow-wrap: anywhere;
+}
+.raw-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.raw-body > .raw-body-loader {
+  padding: var(--pad);
+}
+.raw-content footer {
+  flex-shrink: 0;
+}
+/* Shared shells exist before their lazy feature CSS arrives. */
+.management {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.management-toolbar {
+  display: flex;
+  align-items: end;
+  gap: var(--gap);
+  padding: var(--pad);
+  border-bottom: 1px solid var(--line);
+}
+.management-toolbar > .field {
+  flex: 1;
+  max-width: 34rem;
+}
+.management-toolbar > p {
+  flex: 1;
+  margin: 0;
+}
+.management-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+.management-list {
+  flex: 0 0 15rem;
+  padding: var(--gap);
+  overflow: auto;
+  border-right: 1px solid var(--line);
+}
+.management-list > input,
+.management-list > .select {
+  margin-bottom: var(--gap);
+  width: 100%;
+}
+.library-row {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  width: 100%;
+  gap: calc(2rem / 14);
+  border: 0;
+  background: none;
+  padding: calc(6rem / 14) var(--gap);
+  overflow-wrap: anywhere;
+}
+.management-editor {
+  margin: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--pad);
+  min-height: 0;
+  scroll-padding-block: var(--pad);
+  min-width: 0;
+  overflow: auto;
+  flex: 1;
+}
+.editor-head {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.editor-head > button {
+  display: none;
+}
+.run-history {
+  border-top: 1px solid var(--line);
+  padding-top: var(--pad);
+}
+.run-history h2 {
+  font-size: 1em;
+}
+.prompt-editor,
+.prompt-content-skeleton {
+  display: grid;
+  gap: var(--gap);
+}
+.prompt-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.prompt-controls > * {
+  flex: 1;
+  min-width: min(12rem, 100%);
+}
+.prompt-columns {
+  display: grid;
+  gap: var(--pad);
+}
+.prompt-columns section {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.prompt-tabs {
+  display: flex;
+}
+.prompt-columns.instructions > section:last-child,
+.prompt-columns.effective > section:first-child {
+  display: none;
+}
+.pairing {
+  max-width: 560px;
+  margin: auto;
+  padding: var(--pad);
+  min-height: 0;
+  overflow: auto;
+}
+.pairing .wordmark {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--gap);
+}
+.pairing h1 {
+  font-size: 1.3rem;
+}
+.pairing p {
+  color: var(--muted);
+  margin: var(--pad) 0;
+}
+.pairing form {
+  margin: var(--pad) 0;
+}
+.pairing form button {
+  justify-self: start;
+}
+.skeleton {
+  padding: calc(12rem / 14) 0;
+  width: 100%;
+}
+.loading-label {
+  display: block;
+  color: var(--muted);
+  margin-bottom: var(--gap);
+}
+.skeleton > div {
+  display: grid;
+  gap: var(--gap);
+  animation: skeleton-pulse 1.6s ease-in-out infinite alternate;
+}
+@keyframes skeleton-pulse {
+  to {
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton > div {
+    animation: none;
+  }
+}
+.skeleton span {
+  display: block;
+  height: 0.85em;
+  background: var(--placeholder);
+}
+.skeleton span:nth-child(3n + 2) {
+  width: 85%;
+}
+.skeleton span:nth-child(3n) {
+  width: 62%;
+}
+
+.control-skeleton {
+  padding: 0;
+}
+.form-skeleton span,
+.control-skeleton span {
+  height: var(--control);
+  width: 100%;
+}
+/* Inert structural mirrors (loading.tsx): same shells as the live
+   surfaces, shimmer blocks only. Widths defeat the nth-child variation
+   below because single bars never match 3n+2/3n. */
+.title-skeleton,
+.meta-skeleton,
+.brand-skeleton,
+.icon-skeleton,
+.composer-input-skeleton {
+  padding: 0;
+}
+.title-skeleton span {
+  height: 1em;
+  width: 42%;
+}
+.meta-skeleton span {
+  height: 0.75em;
+  width: 68%;
+}
+.brand-skeleton {
+  width: 32px;
+}
+.brand-skeleton span {
+  height: 32px;
+  width: 32px;
+}
+.wordmark-skeleton {
+  width: 48px;
+  padding: 0;
+  margin-bottom: var(--gap);
+}
+.wordmark-skeleton span {
+  width: 48px;
+  height: 48px;
+}
+.pairing-copy {
+  margin: var(--pad) 0;
+}
+.session-mirror {
+  min-height: var(--control);
+  padding: calc(4rem / 14) calc(8rem / 14);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(2rem / 14);
+}
+.icon-skeleton {
+  width: var(--control);
+}
+.icon-skeleton span {
+  height: var(--control);
+  width: 100%;
+}
+.composer-actions > .send-skeleton {
+  margin-left: auto;
+}
+.composer-input-skeleton span {
+  min-height: max(40px, calc(1.5em + 12px));
+  width: 100%;
+}
+.action-skeleton {
+  width: auto;
+  padding: 0;
+}
+.action-skeleton span {
+  height: var(--control);
+  width: 96px;
+}
+.stats .skeleton {
+  padding: calc(4rem / 14) 0;
+}
+.composer .status-line > .skeleton {
+  padding: calc(6rem / 14) 0;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control: max(44px, 2.4rem);
+  }
+  :root input,
+  :root select,
+  :root textarea {
+    font-size: max(16px, 1rem);
+  }
+  :root .composer > form > textarea {
+    font-size: max(16px, calc(16rem / 14));
+  }
+  .activity-toggle,
+  .metrics > button {
+    min-height: 32px;
+  }
+}
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversation-head {
+    padding-inline: var(--surface-inset);
+  }
+  dialog.sidebar.drawer[open] {
+    top: calc(var(--viewport-top) + var(--safe-top));
+    left: calc(var(--viewport-left) + var(--safe-left));
+    transform: none;
+    margin: 0;
+    height: var(--content-height);
+    max-height: var(--content-height);
+    width: min(320px, calc(var(--content-width) - 2 * var(--pad)));
+    gap: 0;
+  }
+  .drawer > .dialog-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: var(--gap);
+    padding: calc(8rem / 14);
+  }
+  .drawer .sidebar-head .brand {
+    display: none;
+  }
+  .loading-shell > .sidebar {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  :root {
+    --pad: calc(8rem / 14);
+    --gap: calc(6rem / 14);
+  }
+  .conversation-head h1 {
+    font-size: 0.95rem;
+  }
+  .transcript {
+    /* Outer scroll-area inset is page layout; rem keeps it on zoom. */
+    padding: calc(8rem / 14);
+    scrollbar-gutter: auto;
+  }
+  .composer {
+    margin: 0 calc(8rem / 14);
+    padding-top: calc(4rem / 14);
+  }
+  .composer-actions {
+    gap: calc(2rem / 14);
+    padding-inline: calc(4rem / 14);
+  }
+  .model-selector {
+    font-size: 0.72rem;
+    gap: calc(4rem / 14);
+    padding-inline: calc(2rem / 14);
+  }
+  .model-selector > .lucide:first-child {
+    display: none;
+  }
+  .permission-control > button {
+    min-width: var(--control);
+    padding-inline: calc(4rem / 14);
+    font-size: 0.75rem;
+    gap: calc(4rem / 14);
+  }
+  .status-line {
+    flex-wrap: wrap;
+    gap: 0 var(--gap);
+  }
+  .metrics {
+    font-size: 0.65rem;
+    margin-left: auto;
+  }
+  .raw-view,
+  .prompt-view {
+    width: calc(var(--content-width) - 2 * var(--dialog-gutter));
+    height: calc(var(--content-height) - 2 * var(--dialog-gutter));
+  }
+}
+@media (max-width: 900px) {
+  .management-toolbar {
+    flex-wrap: wrap;
+  }
+  .management-toolbar .field {
+    order: 3;
+    min-width: 100%;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .management-toolbar > button {
+    margin-left: auto;
+  }
+  .management-list {
+    flex: 1;
+    border-right: 0;
+  }
+  .management-editor {
+    display: none;
+  }
+  .editor-head > button {
+    display: flex;
+  }
+  .management:has(.has-selection) .management-toolbar > :not(.field),
+  .management:has(.has-selection .schedule-editor) .management-toolbar {
+    display: none;
+  }
+  .management-body.has-selection .management-list {
+    display: none;
+  }
+  .management-body.has-selection .management-editor {
+    display: flex;
+  }
+  .management-body:not(.has-selection) .schedule-editor {
+    display: flex;
+    overflow: visible;
+    flex: none;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) {
+    flex-direction: column;
+    overflow: auto;
+  }
+  .management-body:not(.has-selection):has(.schedule-editor) .management-list {
+    flex: none;
+  }
+}
+@container app (max-height: 500px) {
+  .conversation-head {
+    min-height: 40px;
+  }
+  .composer > form > textarea {
+    min-height: max(38px, calc(1.5em + 12px));
+    max-height: calc(var(--viewport-height) * 0.2);
+    padding-block: calc(6rem / 14);
+  }
+  .transcript {
+    padding-block: calc(4rem / 14);
+  }
+  .decision {
+    max-height: calc(var(--viewport-height) - 100px);
+    padding: calc(8rem / 14);
+  }
+  .decision-preview pre {
+    max-height: calc(var(--viewport-height) * 0.22);
+  }
+  .activity-list {
+    max-height: calc(var(--viewport-height) * 0.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.sidebar-sections {
+  display: flex;
+  gap: var(--gap);
+  padding: 0;
+}
+.sidebar-sections button {
+  flex: 1;
+  font-size: 0.9em;
+}
+.sidebar-sections button[aria-current="page"] {
+  background: var(--raised);
+}
+
+/* Every dialog shares the same optical and interactive close-button geometry. */
+dialog > header h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+dialog > header .icon-button {
+  width: var(--control);
+  height: var(--control);
+}

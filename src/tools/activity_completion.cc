@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
 #include "include/core/env.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
@@ -21,8 +23,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/time.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/jobs.h"
 
 namespace uagent {
 namespace {

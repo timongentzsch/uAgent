@@ -2,7 +2,9 @@
 
 #ifndef UAGENT_INCLUDE_AGENT_TRACE_H_
 #define UAGENT_INCLUDE_AGENT_TRACE_H_
-// Shared state and terminal rendering for live, resumed, and archived traces.
+// Shared state and data for live, resumed, and archived traces. Terminal
+// rendering of this data lives in ui/conversation.h; the agent only
+// supplies facts.
 
 #include <algorithm>
 #include <cstdint>
@@ -17,7 +19,6 @@
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/tools/tool.h"
-#include "include/ui/presentation.h"
 
 namespace uagent {
 
@@ -68,18 +69,8 @@ inline json ParsedToolCallArguments(const json& function) {
   return arguments.is_discarded() ? json(std::move(raw)) : std::move(arguments);
 }
 
-std::string PrintToolCallSummary(const json& call,
-                                 const std::vector<Tool>& tools);
-
 // conversation messages + their kinds -> the call/result trace array
 json ToolTraceMessages(const json& messages, const json& kinds);
-
-void PrintTraceToolCall(const json& call, const std::vector<Tool>& tools,
-                        const std::string& ordinal);
-
-void PrintTraceToolResult(const json& call, const std::string& ordinal);
-
-void PrintLatestTrace(const json& archive, const std::vector<Tool>& tools);
 
 inline const json* LatestTraceSegment(const json& archive) {
   auto segment =

@@ -57,6 +57,15 @@ inline json HarnessMessage(std::string content) {
   return {{"role", "system"}, {"content", std::move(content)}};
 }
 
+// Stable tool-call identities shared by request construction and view
+// projection. Widths come from limits.h so the two sites cannot drift:
+// occurrence is `<response_id>:<hash16>`, detail is `t-<hash24>`.
+// Empty response_id falls back to the bare call id (`t-<id>` for detail).
+std::string OccurrenceId(const std::string& response_id,
+                         const std::string& call_id);
+std::string DetailId(const std::string& response_id,
+                     const std::string& call_id);
+
 }  // namespace uagent
 
 #endif  // UAGENT_INCLUDE_AGENT_PROTOCOL_H_

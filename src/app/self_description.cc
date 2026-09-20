@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/process.h"
 #include "include/agent/prompt.h"
 #include "include/api.h"
 #include "include/app/config_proposal.h"
@@ -21,7 +22,6 @@
 #include "include/core/strings.h"
 #include "include/providers.h"
 #include "include/tools/configure.h"
-#include "include/tools/process.h"
 #include "include/tools/registry.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"

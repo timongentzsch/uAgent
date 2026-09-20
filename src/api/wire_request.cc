@@ -1,11 +1,13 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <algorithm>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "include/api.h"
 #include "include/api/wire.h"
 #include "include/core/strings.h"
 
@@ -95,6 +97,24 @@ json ResponsesContent(const json& content, bool assistant) {
         block["file_data"] = (*file)["file_data"];
       }
       if (block.size() > 1) blocks.push_back(std::move(block));
+    } else if (type == "input_audio") {
+      const json* audio = JsonObject(part, "input_audio");
+      if (!audio) continue;
+      json payload;
+      if (audio->contains("data")) payload["data"] = (*audio)["data"];
+      if (audio->contains("format")) payload["format"] = (*audio)["format"];
+      if (!payload.empty()) {
+        blocks.push_back(
+            {{"type", "input_audio"}, {"input_audio", std::move(payload)}});
+      }
+    } else if (type == "video_url") {
+      const json* video = JsonObject(part, "video_url");
+      if (!video) continue;
+      const std::string url = JsonValue(*video, "url", "");
+      if (!url.empty()) {
+        blocks.push_back(
+            {{"type", "video_url"}, {"video_url", {{"url", url}}}});
+      }
     }
   }
   return blocks;
@@ -485,6 +505,101 @@ std::string WireRequestCache::Serialize(const json& body) const {
     }
   }
   return payload;
+}
+
+// Whether any message carries a content part of `type`.
+bool HasContentPart(const json& messages, std::string_view type) {
+  if (!messages.is_array()) return false;
+  for (const json& message : messages) {
+    if (!message.is_object() || !message.contains("content") ||
+        !message["content"].is_array()) {
+      continue;
+    }
+    for (const json& part : message["content"]) {
+      if (JsonValue(part, "type", "") == type) return true;
+    }
+  }
+  return false;
+}
+
+bool Api::NativeHostedTool(HostedTool tool) const {
+  return config.web_search_backend == "auto" && capabilities.Supports(tool) &&
+         WireSupportsHostedTool(capabilities.wire_api, tool);
+}
+
+json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
+                           const std::string& session_id, bool* web_available,
+                           WireRequestCache* cache) const {
+  bool native_web = NativeHostedTool(HostedTool::kWebSearch);
+  bool allow_function_web = config.web_search_backend != "off";
+  bool function_web = false;
+  if (allow_function_web && capabilities.native_tools &&
+      tool_schemas.is_array()) {
+    for (const json& tool : tool_schemas) {
+      const json* function = JsonObject(tool, "function");
+      function_web =
+          function_web ||
+          (function && JsonValue(*function, "name", "") == "web_search");
+    }
+  }
+  if (web_available) *web_available = native_web || function_web;
+
+  WireRequest request{RequestModel(),
+                      messages,
+                      tool_schemas,
+                      reasoning_effort,
+                      MaxOutputTokens(),
+                      capabilities.native_tools,
+                      capabilities.parallel_tools,
+                      capabilities.stream_usage_option,
+                      native_web,
+                      allow_function_web,
+                      capabilities.web_search_sources};
+  json body = cache ? cache->Encode(capabilities.wire_api, request)
+                    : EncodeWireRequest(capabilities.wire_api, request);
+  if (capabilities.wire_api != WireApi::kChatCompletions) {
+    // OpenAI already caches matching prefixes automatically. A stable,
+    // session-scoped routing key improves the chance that later turns reach
+    // the same cache without exposing the session identifier itself.
+    if (capabilities.wire_api == WireApi::kResponses && OpenaiUrl(base_url) &&
+        !session_id.empty()) {
+      body["prompt_cache_key"] = HashHex(session_id);
+    }
+    return body;
+  }
+
+  if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
+      HasContentPart(messages, "file")) {
+    body["plugins"] = json::array(
+        {{{"id", "file-parser"}, {"pdf", {{"engine", config.pdf_engine}}}}});
+  }
+  int64_t max_tokens = MaxOutputTokens();
+  if (max_tokens > 0) {
+    body[capabilities.max_completion_tokens ? "max_completion_tokens"
+                                            : "max_tokens"] = max_tokens;
+  }
+  if (!reasoning_effort.empty()) {
+    if (capabilities.reasoning_object) {
+      body["reasoning"] = {{"effort", reasoning_effort}};
+    } else {
+      body["reasoning_effort"] = reasoning_effort;
+    }
+  }
+  if (capabilities.session_passthrough && !session_id.empty()) {
+    body["session_id"] = session_id;
+  }
+  if (capabilities.provider_routing && !config.openrouter_provider.empty()) {
+    body["provider"] = {{"order", json::array({config.openrouter_provider})},
+                        {"allow_fallbacks", config.openrouter_fallbacks}};
+  }
+  return body;
+}
+
+std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
+                             const std::string& session_id,
+                             bool* web_available) {
+  return wire_cache_.Serialize(BuildRequestBody(
+      messages, tool_schemas, session_id, web_available, &wire_cache_));
 }
 
 }  // namespace uagent

@@ -10,7 +10,9 @@
 | `/compact` | summarize conversation to prevent hitting the context limit |
 | `/context` | show current model request |
 | `/config [user|project KEY=VALUE|unset KEY]` | inspect or change configuration |
-| `/fork [NAME]` | fork the completed conversation |
+| `/fork [TITLE] [@TURN]` | branch this conversation, optionally at user turn N |
+| `/rewind [@TURN]` | rewind this conversation to user turn N |
+| `/share` | export transcript as markdown |
 | `/permissions [default|ask|yolo]` | show or change permission mode |
 | `/prompt [show|edit|set|reset] [--scope global|project|conversation] [--mode overlay|replace] [--file PATH]` | inspect or edit the system prompt |
 | `/http [INDEX [request|response]]` | inspect captured HTTP attempts (latest by default) |
@@ -20,17 +22,22 @@
 | `/effort LEVEL` | choose how much reasoning effort to use |
 | `/help` | show this help |
 | `/init` | create an AGENTS.md file with instructions for µAgent |
+| `/link [TOKEN]` | create a session link or join one with its token |
 | `/memory [list|get KEY|set KEY @FILE|forget KEY|rename KEY TARGET|copy KEY TARGET]` | manage project and global memories |
 | `/skills [list|get ID|set KEY @FILE|forget ID|enable ID|disable ID]` | inspect and manage installed skills |
 | `/schedule [list|JSON]` | manage scheduled tasks and runs |
 | `/model NAME` | choose what model to use |
 | `/models [QUERY]` | search and select across providers |
 | `/ps [ID [output|stop]]` | inspect or stop background work |
-| `/quit` | exit µAgent |
+| `/peers` | list linked and linkable sessions |
+| `/quit` | exit uagent |
 | `/reset` | start a new chat |
+| `/new` | start a new chat |
+| `/clear` | clear the screen |
 | `/review [TARGET]` | review my current changes and find issues |
-| `/sessions` | resume a saved chat |
+| `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |
 | `/status` | show current session configuration and token usage |
+| `/tell ID TEXT` | message a linked session |
 | `/tools` | show tools available right now |
 | `/trace [CALL_ID]` | show latest trace or full tool request/response |
 | `/variant MODE` | set OpenRouter provider routing |

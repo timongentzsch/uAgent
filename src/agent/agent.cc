@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
+#include "include/agent/memory_store.h"
 #include "include/agent/protocol.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
@@ -21,14 +23,14 @@
 #include "include/api/exchange.h"
 #include "include/core/checked.h"
 #include "include/core/debug.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/output_buffer.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/core/time.h"
 #include "include/media/attachments.h"
-#include "include/tools/jobs.h"
-#include "include/tools/memory.h"
-#include "include/tools/output_buffer.h"
-#include "include/ui/conversation.h"
+#include "include/providers.h"
 
 namespace uagent {
 
@@ -64,14 +66,6 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
          {"project_instructions_truncated", project_instructions_.truncated}});
   }
   Reset();
-}
-
-void Agent::PrintTrace() const {
-  PrintLatestTrace(conversation_.Archive(), tools_);
-}
-
-void Agent::PrintHistory() const {
-  PrintConversationHistory(conversation_, tools_);
 }
 
 json Agent::DisplaySnapshot() const { return ConversationView(conversation_); }
@@ -205,14 +199,12 @@ json Agent::ModelRequest() {
   json messages = conversation_.Messages();
   std::string error;
   const bool fallback =
-      !api_.capabilities.image_input && !api_.config.image_model.empty();
+      !api_.capabilities.image_input && !EffectiveImageModel().empty();
   PrepareAttachments(messages, api_.capabilities, fallback, ActiveRoute(),
                      error);
   if (fallback) ApplyImageAnalysisFallback(messages, false);
   return api_.BuildRequestBody(messages, schemas_, session_id_);
 }
-
-void Agent::PrintContext() { PrintModelContext(ModelRequest()); }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
   CreatePrivateDirectories(std::filesystem::path(path).parent_path());
@@ -229,7 +221,10 @@ bool Agent::Save(const std::string& path, std::string& error) const {
                      .session_id = session_id_,
                      .turns = UserTurns(),
                      .title = Utf8Prefix(FirstUserText(), 256),
-                     .custom_title = custom_title_};
+                     .custom_title = custom_title_,
+                     .parent_session_id = parent_session_id_,
+                     .forked_at_turn = forked_at_turn_,
+                     .forked_at_time = forked_at_time_};
   record.state = {
       .messages = conversation_.Messages(),
       .message_kinds = conversation_.Kinds(),
@@ -303,11 +298,47 @@ bool Agent::Load(const std::string& path, const std::string& expected_cwd,
   session_id_ = std::move(record.metadata.session_id);
   if (session_id_.empty()) session_id_ = MakeSessionId();
   total_user_turns_ = record.metadata.turns;
+  // turn_id_ feeds response ids ("r-<turn>-<request>-<attempt>"), which live
+  // views match on across worker generations. A resumed runtime must continue
+  // the persisted numbering or its live blocks collide with earlier turns'.
+  turn_id_ = record.metadata.turns;
   session_title_ = std::move(record.metadata.title);
   custom_title_ = record.metadata.custom_title;
+  parent_session_id_ = std::move(record.metadata.parent_session_id);
+  forked_at_turn_ = record.metadata.forked_at_turn;
+  forked_at_time_ = std::move(record.metadata.forked_at_time);
   logged_msgs_ = 0;
   logged_schemas_.clear();
   turn_search_trace_.Reset();
+  ++revision_;
+  return true;
+}
+
+bool Agent::RewindToTurn(int64_t turn, std::string& error) {
+  if (turn <= 0) {
+    error = "rewind turn must be positive";
+    return false;
+  }
+  int64_t live = 0;
+  for (MessageKind kind : conversation_.Kinds()) {
+    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) ++live;
+  }
+  if (turn > live) {
+    error = "session holds fewer than " + std::to_string(turn) +
+            " user turns (older turns may be compacted)";
+    return false;
+  }
+  if (!conversation_.TruncateBeforeUserTurn(turn)) {
+    error = "session holds fewer than " + std::to_string(turn) + " user turns";
+    return false;
+  }
+  // Numbering restarts at the cut like a fork at the same turn, so the
+  // retried turn reuses its number instead of colliding with dropped ids.
+  total_user_turns_ = turn - 1;
+  turn_id_ = turn - 1;
+  logged_msgs_ = std::min(logged_msgs_, conversation_.Size());
+  conversation_.RecordDisplay(
+      "reset-boundary", {{"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}});
   ++revision_;
   return true;
 }
@@ -770,6 +801,10 @@ void Agent::DeliverActivityCompletions(
     json block = conversation_.RecordEntry(
         {{"text", std::move(text)},
          {"activity_id", completion.activity_id},
+         // The full command travels with the record (bounded): rows and
+         // titles abbreviate, but the popup and history must not lose it
+         // when the supervisor no longer retains the job.
+         {"command", Utf8Trunc(completion.command, 8192)},
          {"activity", completion_activity},
          {"agent_id", completion.source_id},
          {"status", succeeded ? "completed" : "failed"}});
@@ -778,6 +813,7 @@ void Agent::DeliverActivityCompletions(
         EventId::kActivityCompleted,
         {{"id", completion.activity_id},
          {"kind", ActivityKindName(completion.kind)},
+         {"command", Utf8Trunc(completion.command, 8192)},
          {"status",
           WIFEXITED(completion.status) ? WEXITSTATUS(completion.status) : -1},
          {"output_chars", completion.output.size()}}};

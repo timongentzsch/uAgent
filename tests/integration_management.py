@@ -224,7 +224,11 @@ def test_scheduled_runtime_survives_web_restart(root, home, *, binary):
             )["result"]["item"]
             run = control(binary, root, env, "schedule", action="run", key=task["id"])["run"]
             try:
-                assert entered.wait(10), "scheduled model request never started"
+                if not entered.wait(10):
+                    raise AssertionError(
+                        "scheduled model request never started: "
+                        + json.dumps(client.command("schedule", action="list")["result"])
+                    )
                 before = client.snapshot(dict(id=run["session_id"]))
                 host.send_signal(signal.SIGTERM)
                 host.wait(timeout=10)

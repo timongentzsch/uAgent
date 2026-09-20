@@ -92,7 +92,7 @@ export const test = base.extend({
       const response = await request.post("/api/command", {
         headers: { Origin: host.origin },
         data: {
-          v: 1,
+          v: 2,
           kind,
           request_id: crypto.randomUUID().replaceAll("-", ""),
           ...fields,

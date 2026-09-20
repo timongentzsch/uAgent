@@ -22,6 +22,7 @@
 #include "include/core/style.h"
 #include "include/core/term.h"
 #include "include/md.h"
+#include "include/ui/conversation.h"
 #include "include/ui/interactive.h"
 
 namespace uagent {
@@ -65,39 +66,6 @@ void PrintCitationSources(const json& annotations) {
 
 namespace {
 
-struct PollAnchor {
-  std::chrono::steady_clock::time_point started;
-  std::chrono::steady_clock::time_point seen;
-};
-
-// An activity can also vanish without a final poll, by completing in the
-// background or being stopped, so anchors expire instead of relying on every
-// such path to announce itself.
-constexpr std::chrono::hours kPollAnchorTtl{1};
-
-std::unordered_map<int64_t, PollAnchor>& PollAnchors() {
-  static std::unordered_map<int64_t, PollAnchor> anchors;
-  return anchors;
-}
-
-}  // namespace
-
-std::chrono::steady_clock::duration PollElapsed(int64_t activity_id) {
-  auto now = std::chrono::steady_clock::now();
-  auto& anchors = PollAnchors();
-  auto [it, inserted] = anchors.try_emplace(activity_id, PollAnchor{now, now});
-  it->second.seen = now;
-  auto elapsed = now - it->second.started;
-  if (inserted) {
-    std::erase_if(anchors, [now](const auto& entry) {
-      return entry.second.seen + kPollAnchorTtl < now;
-    });
-  }
-  return elapsed;
-}
-
-namespace {
-
 // Shared by the poll and plain tool-result ladders. The notice ladder above
 // maps kWarned instead of kCancelled and stays separate on purpose.
 const char* ResultStyle(PresentationStatus status) {
@@ -107,8 +75,6 @@ const char* ResultStyle(PresentationStatus status) {
 }
 
 }  // namespace
-
-void ClearPollAnchor(int64_t activity_id) { PollAnchors().erase(activity_id); }
 
 std::string StripDisplayMarkdown(const std::string& text) {
   std::string safe = TerminalSafe(text);
@@ -186,7 +152,10 @@ constexpr const char* kSearchingActivity = "searching the web";
 
 void PrintMessageHeader() {
   if (!g_tty) return;
-  printf("%s%s%s\n", BOLD(), g_unicode ? "µ" : "u", RST());
+  // Assistant header is the binary name in ASCII, identical on live turns
+  // and --resume replay. Never the bare unicode mark: it renders as a
+  // random glyph on dumb PTYs and mismatches the spinner labels.
+  printf("%suagent%s\n", BOLD(), RST());
 }
 
 struct TerminalPresenter::State {
@@ -261,7 +230,7 @@ struct TerminalPresenter::State {
       // renderer applies it, so that whole-buffer pass runs once per drawn
       // frame instead of once per streamed token — an order of magnitude
       // apart — while the ticker still shows the newest text.
-      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
+      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
       return;
     }
 
@@ -275,7 +244,7 @@ struct TerminalPresenter::State {
       if (content_started && line_open) markdown.FeedPlain("\n");
       markdown.Control(RST());
       markdown.Control(DIM());
-      markdown.FeedPlain("· thinking\n");
+      markdown.FeedPlain("· Thinking\n");
       line_open = false;
       in_reasoning = true;
     }
@@ -302,7 +271,7 @@ struct TerminalPresenter::State {
     if (!active_searches.empty()) {
       spinner->SetLabel(kSearchingActivity);
     } else if (!reasoning_tail.empty()) {
-      spinner->SetRolling("thinking · ", reasoning_tail, StripDisplayMarkdown);
+      spinner->SetRolling("Thinking · ", reasoning_tail, StripDisplayMarkdown);
     } else {
       spinner->SetLabel(base_label);
     }
@@ -462,10 +431,46 @@ void TerminalPresenter::Block(const json& block) {
   const std::string kind = JsonValue(block, "kind", "");
   const std::string text = TerminalSafe(JsonValue(block, "text", ""));
   if (kind == "user" || kind == "attachment") {
-    WriteTerminalRecord(UserEchoRow(InputPrompt(), text) + "\n");
+    // Stored text keeps the "Attached:" path trailer for the model
+    // payload; live rows render the delivery gallery instead, like history
+    // replay and the web client do.
+    const json deliveries = JsonValue(block, "deliveries", json::array());
+    const json files = JsonValue(block, "files", json::array());
+    const bool attached =
+        !deliveries.empty() || (files.is_array() && !files.empty());
+    const std::string echo =
+        attached
+            ? TerminalSafe(StripAttachedTrailer(JsonValue(block, "text", "")))
+            : text;
+    WriteTerminalRecord(UserEchoRow(InputPrompt(), echo) + "\n" +
+                        AttachmentDeliveryRows(deliveries));
   } else if (kind == "assistant") {
-    PrintMessageHeader();
-    MdPrint(text);
+    // Mirror the stored-transcript printer and the live presenter: the mark
+    // only prints with text (tool-only turns show rows, never a bare mark),
+    // the answer is line-terminated, and tool rows replay the exact live
+    // record from facts instead of being dropped.
+    if (!JsonValue(block, "text", "").empty()) {
+      PrintMessageHeader();
+      MdPrint(text);
+      WriteTerminalRecord("\n");
+    }
+    if (const json* tools = JsonArray(block, "tools")) {
+      for (const json& tool : *tools) {
+        const json* replay = JsonObject(tool, "replay");
+        if (!replay) continue;
+        PresentationRecord record;
+        record.kind = PresentationKind::kToolCall;
+        record.id = JsonValue(tool, "call_id", "");
+        record.activity = JsonValue(tool, "activity", json::object());
+        record.title = JsonValue(*replay, "title", "");
+        record.summary = JsonValue(*replay, "summary", "");
+        record.detail = JsonValue(*replay, "detail", "");
+        record.multiline = JsonValue(*replay, "multiline", false);
+        record.skill = JsonValue(tool, "name", "") == "skill";
+        record.poll = JsonValue(*replay, "poll", false);
+        PrintPresentation(record);
+      }
+    }
   } else if (kind == "turn_summary") {
     WriteTerminalRecord(
         TurnStatsLine(JsonValue(block, "summary", json::object())) + "\n");
@@ -474,6 +479,26 @@ void TerminalPresenter::Block(const json& block) {
   } else if (kind == "activity") {
     WriteTerminalRecord("· " + text + "\n");
   } else if (kind == "tool_result") {
+    if (const json* replay = JsonObject(block, "replay")) {
+      // Same row the live printer drew: recorded title/summary plus the
+      // block's activity (groups), change (diffs) and final status.
+      PresentationRecord record;
+      record.kind = PresentationKind::kToolResult;
+      record.id = JsonValue(block, "call_id", "");
+      record.activity = JsonValue(block, "activity", json::object());
+      record.title =
+          JsonValue(*replay, "title", JsonValue(block, "name", "tool"));
+      record.summary = JsonValue(*replay, "summary", "");
+      record.change = JsonValue(block, "change", "");
+      const std::string status = JsonValue(block, "status", "");
+      record.status = status == "success"     ? PresentationStatus::kSucceeded
+                      : status == "cancelled" ? PresentationStatus::kCancelled
+                      : status == "failed" || status == "timed_out"
+                          ? PresentationStatus::kFailed
+                          : PresentationStatus::kNeutral;
+      PrintPresentation(record);
+      return;
+    }
     json activity = JsonValue(block, "activity", json::object());
     WriteTerminalRecord(
         TerminalSafe(JsonValue(activity, "label",

@@ -125,6 +125,7 @@ std::string TerminalSummary(const std::string& text,
 std::string SpinnerLabel(const std::string& label);
 
 inline constexpr uint64_t kFnv1aOffsetBasis = 1469598103934665603ULL;
+inline constexpr uint64_t kFnv1aPrime = 1099511628211ULL;
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size);
 
 std::string Hex64(uint64_t value);
@@ -149,6 +150,20 @@ std::string RouteKey(const std::string& base_url, const std::string& provider,
 bool OpenrouterUrl(std::string url);
 
 bool OpenaiUrl(std::string url);
+
+// Stable short digest helper: FNV-1a hex truncated to `chars`.
+// Centralizes the `HashHex(...).substr(0, N)` idiom so fingerprint widths
+// are chosen once, not re-typed at every call site.
+std::string TruncatedHash(std::string_view data, size_t chars);
+
+// Delimiter splits without allocating or disagreeing on npos handling.
+// BeforeFirst("project/name", '/') -> "project"; no delimiter -> whole.
+// AfterFirst("key=value", '=') -> "value"; no delimiter -> empty.
+std::string_view BeforeFirst(std::string_view s, char delim) noexcept;
+std::string_view AfterFirst(std::string_view s, char delim) noexcept;
+// Scope prefix of a `scope/name` key ("project" in "project/foo").
+// No '/' -> whole input; empty input -> empty.
+std::string_view ScopePrefix(std::string_view key) noexcept;
 
 // The lines two sequences share at each end, and therefore the span that
 // actually changed. Not a minimal (LCS) diff: every receipt in this codebase

@@ -85,7 +85,7 @@ class Api {
   ChatResult PerformChat(const std::string& payload, bool web_available,
                          int64_t timeout_s, const std::string& session_id,
                          bool render_output, bool full_reasoning,
-                         HttpExchange* exchange);
+                         HttpExchange* exchange, json response_context);
   bool WaitForRetry(std::chrono::milliseconds delay, bool render_output) const;
   JsonResponse Fetch(const std::string& path, const std::string* payload,
                      int64_t timeout_s, bool abortable);

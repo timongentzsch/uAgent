@@ -8,12 +8,12 @@
 #include <cstdio>
 #include <string>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/tool_presentation.h"
 #include "include/app/options.h"
 #include "include/core/term.h"
-#include "include/tools/child_agent.h"
 #include "include/tools/registry.h"
 #include "include/ui/display.h"
-#include "include/ui/tool_output.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
@@ -265,6 +265,77 @@ void TestPollCollapse() {
   }
 
   ClearPollAnchor(4242);
+}
+
+// --resume replays view blocks through the presenter: tool rows must read
+// exactly like the live event printer drew them, while blocks saved before
+// replay facts keep the legacy synthesis.
+void TestReplayBlocksMirrorLiveRows() {
+  TerminalPresenter presenter;
+  const json call_replay = {
+      {"title", "[1] read_path"}, {"summary", "a.txt"}, {"poll", false}};
+  const json tools =
+      json::array({{{"call_id", "call-0"},
+                    {"name", "read_path"},
+                    {"activity", json::object({{"category", "explore"}})},
+                    {"replay", call_replay}}});
+  std::string drawn = CaptureStdout([&] {
+    presenter.Block(
+        {{"kind", "assistant"}, {"text", "all three read"}, {"tools", tools}});
+  });
+  CHECK(drawn.find("all three read\n") != std::string::npos);
+  CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
+  CHECK(drawn.find("Exploring") != std::string::npos);
+  // Tool-only assistant blocks print rows with no bare mark line, like live.
+  drawn = CaptureStdout([&] {
+    presenter.Block({{"kind", "assistant"}, {"text", ""}, {"tools", tools}});
+  });
+  CHECK(drawn.find("[1] read_path(a.txt)") != std::string::npos);
+  // Poll rows the live turn suppressed stay suppressed in replay.
+  json polled = call_replay;
+  polled["poll"] = true;
+  json polled_tools = tools;
+  polled_tools[0]["replay"] = polled;
+  drawn = CaptureStdout([&] {
+    presenter.Block(
+        {{"kind", "assistant"}, {"text", ""}, {"tools", polled_tools}});
+  });
+  CHECK(drawn.find("read_path") == std::string::npos);
+
+  const json result_replay = {{"title", "[1] read_path"},
+                              {"summary", "[/a.txt entries 1-3 of 3]"},
+                              {"poll", false}};
+  drawn = CaptureStdout([&] {
+    presenter.Block({{"kind", "tool_result"},
+                     {"call_id", "call-0"},
+                     {"name", "read_path"},
+                     {"status", "success"},
+                     {"activity", json::object()},
+                     {"replay", result_replay}});
+  });
+  CHECK(drawn.find("[1] read_path: [/a.txt entries") != std::string::npos);
+  // The grouped result whose id opens the group draws the group label.
+  drawn = CaptureStdout([&] {
+    presenter.Block(
+        {{"kind", "tool_result"},
+         {"call_id", "call-0"},
+         {"name", "read_path"},
+         {"status", "success"},
+         {"activity",
+          json::object(
+              {{"group",
+                json::object({{"id", "call-0"},
+                              {"label", "Explored \u00b7 3 calls"}})}})},
+         {"replay", result_replay}});
+  });
+  CHECK(drawn.find("Explored") != std::string::npos);
+  // Legacy blocks without replay facts keep the old synthesis.
+  drawn = CaptureStdout([&] {
+    presenter.Block({{"kind", "tool_result"},
+                     {"name", "read_path"},
+                     {"status", "success"}});
+  });
+  CHECK(drawn.find("read_path \u00b7 success") != std::string::npos);
 }
 
 void TestDiffLineColoring() {

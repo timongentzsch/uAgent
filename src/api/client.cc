@@ -45,21 +45,6 @@ std::string HttpStatusError(int64_t status) {
   return "HTTP " + std::to_string(status);
 }
 
-// Whether any message carries a content part of `type`.
-bool HasContentPart(const json& messages, std::string_view type) {
-  if (!messages.is_array()) return false;
-  for (const json& message : messages) {
-    if (!message.is_object() || !message.contains("content") ||
-        !message["content"].is_array()) {
-      continue;
-    }
-    for (const json& part : message["content"]) {
-      if (JsonValue(part, "type", "") == type) return true;
-    }
-  }
-  return false;
-}
-
 struct Ipv4Network {
   uint32_t address;
   uint32_t mask;
@@ -378,86 +363,6 @@ std::string Api::RequestModel() const {
   return base + ":" + config.openrouter_variant;
 }
 
-bool Api::NativeHostedTool(HostedTool tool) const {
-  return config.web_search_backend == "auto" && capabilities.Supports(tool) &&
-         WireSupportsHostedTool(capabilities.wire_api, tool);
-}
-
-json Api::BuildRequestBody(const json& messages, const json& tool_schemas,
-                           const std::string& session_id, bool* web_available,
-                           WireRequestCache* cache) const {
-  bool native_web = NativeHostedTool(HostedTool::kWebSearch);
-  bool allow_function_web = config.web_search_backend != "off";
-  bool function_web = false;
-  if (allow_function_web && capabilities.native_tools &&
-      tool_schemas.is_array()) {
-    for (const json& tool : tool_schemas) {
-      const json* function = JsonObject(tool, "function");
-      function_web =
-          function_web ||
-          (function && JsonValue(*function, "name", "") == "web_search");
-    }
-  }
-  if (web_available) *web_available = native_web || function_web;
-
-  WireRequest request{RequestModel(),
-                      messages,
-                      tool_schemas,
-                      reasoning_effort,
-                      MaxOutputTokens(),
-                      capabilities.native_tools,
-                      capabilities.parallel_tools,
-                      capabilities.stream_usage_option,
-                      native_web,
-                      allow_function_web,
-                      capabilities.web_search_sources};
-  json body = cache ? cache->Encode(capabilities.wire_api, request)
-                    : EncodeWireRequest(capabilities.wire_api, request);
-  if (capabilities.wire_api != WireApi::kChatCompletions) {
-    // OpenAI already caches matching prefixes automatically. A stable,
-    // session-scoped routing key improves the chance that later turns reach
-    // the same cache without exposing the session identifier itself.
-    if (capabilities.wire_api == WireApi::kResponses && OpenaiUrl(base_url) &&
-        !session_id.empty()) {
-      body["prompt_cache_key"] = HashHex(session_id);
-    }
-    return body;
-  }
-
-  if (capabilities.OpenRouter() && !config.pdf_engine.empty() &&
-      HasContentPart(messages, "file")) {
-    body["plugins"] = json::array(
-        {{{"id", "file-parser"}, {"pdf", {{"engine", config.pdf_engine}}}}});
-  }
-  int64_t max_tokens = MaxOutputTokens();
-  if (max_tokens > 0) {
-    body[capabilities.max_completion_tokens ? "max_completion_tokens"
-                                            : "max_tokens"] = max_tokens;
-  }
-  if (!reasoning_effort.empty()) {
-    if (capabilities.reasoning_object) {
-      body["reasoning"] = {{"effort", reasoning_effort}};
-    } else {
-      body["reasoning_effort"] = reasoning_effort;
-    }
-  }
-  if (capabilities.session_passthrough && !session_id.empty()) {
-    body["session_id"] = session_id;
-  }
-  if (capabilities.provider_routing && !config.openrouter_provider.empty()) {
-    body["provider"] = {{"order", json::array({config.openrouter_provider})},
-                        {"allow_fallbacks", config.openrouter_fallbacks}};
-  }
-  return body;
-}
-
-std::string Api::ChatPayload(const json& messages, const json& tool_schemas,
-                             const std::string& session_id,
-                             bool* web_available) {
-  return wire_cache_.Serialize(BuildRequestBody(
-      messages, tool_schemas, session_id, web_available, &wire_cache_));
-}
-
 ChatResult Api::Chat(const json& messages, const json& tool_schemas,
                      int64_t timeout_s, const std::string& session_id,
                      bool render_output, size_t estimated_bytes,
@@ -531,8 +436,15 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
          {"attempt", attempt},
          {"model", RequestModel()}});
     HttpExchange exchange(capture_http, payload, std::move(metadata));
+    json response_context = exchange_context;
+    response_context["attempt"] = attempt;
+    response_context["response_id"] =
+        JsonValue(exchange_context, "response_base", "r") + "-" +
+        std::to_string(attempt);
+    response_context.erase("response_base");
     res = PerformChat(payload, web_available, attempt_timeout, session_id,
-                      render_output, full_reasoning, &exchange);
+                      render_output, full_reasoning, &exchange,
+                      std::move(response_context));
     json recorded =
         exchange.Finish(res.http_status, res.interrupted, res.error);
     if (!recorded.is_null()) http_exchanges.push_back(std::move(recorded));
@@ -672,8 +584,10 @@ WebResponse Api::GetUrl(const std::string& url, int64_t timeout_s, size_t cap) {
 ChatResult Api::PerformChat(const std::string& payload, bool web_available,
                             int64_t timeout_s, const std::string& session_id,
                             bool render_output, bool full_reasoning,
-                            HttpExchange* exchange) {
+                            HttpExchange* exchange, json response_context) {
   ChatResult res;
+  res.response_id = JsonValue(response_context, "response_id", "");
+  res.attempt = JsonValue(response_context, "attempt", int64_t{0});
   CURL* h =
       Prepare(base_url + std::string(WireEndpoint(capabilities.wire_api)));
   if (!h) {
@@ -681,6 +595,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
     return res;
   }
   StreamCtx ctx;
+  ctx.event_context = response_context;
   ctx.observe_progress = observe_progress;
   ctx.handle = h;
   ctx.res = &res;
@@ -742,7 +657,8 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       web_available ? std::string(kWaitingActivity) + " · web available"
                     : std::string(kWaitingActivity);
   ResponseObservation observation(render_stream && render_output,
-                                  full_reasoning, activity, turn_started);
+                                  full_reasoning, activity, turn_started,
+                                  std::move(response_context));
 
   CURLcode rc = CURLE_OK;
   bool cancelled =

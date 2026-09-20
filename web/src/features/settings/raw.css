@@ -1,0 +1,19 @@
+.raw-controls p {
+  margin: 0 0 var(--gap);
+}
+.raw-controls .field {
+  margin-bottom: var(--gap);
+}
+.raw-body pre {
+  border: 0;
+  margin: 0;
+  overflow: visible;
+}
+.raw-body details {
+  padding: var(--gap) var(--pad);
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8rem;
+}
+.raw-body summary {
+  cursor: pointer;
+}

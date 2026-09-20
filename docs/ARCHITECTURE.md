@@ -8,20 +8,41 @@ no application server language runtime or dynamically loaded plugin layer.
 
 | Domain | Responsibility |
 | --- | --- |
-| `src/app/` | Bootstrap, commands, configuration, session transport and lifecycle |
-| `src/agent/` | Turn execution, canonical conversation, context preparation and persistence |
-| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures |
-| `src/tools/` | Tool implementations and supervised processes |
+| `src/app/` | Bootstrap, session transport and lifecycle |
+| `src/app/session_*.cc` | Session-host facets: routing, schedules, supervision, snapshots (facade: `session_host.h`; event log: `replay_log`, attachments: `asset_store`, receipts: `outcome_store`) |
+| `src/tools/registry_*.cc` | Tool registration by family (files, exec, activity, memory); `registry.cc` only orders the families |
+| `src/app/commands_*.cc` | Slash-command dispatcher (commands.cc) plus model, session and control handlers |
+| `src/cli/` | Terminal entry surface: flag parsing, interactive reads, `--emit-reference` |
+| `src/api/` | Provider dialects, streaming, capabilities, usage and HTTP captures: transport in client.cc, request-body construction in wire_request.cc |
+| `src/agent/` | Turn execution, canonical conversation, context preparation, persistence, supervision services (process/jobs/child_agent), memory store and observation records |
+| `src/providers/` | Route catalog, model selection grammar and route policy |
+| `src/media/` | Attachment encoding and display projections |
+| `src/transport/` | SSE framing for event delivery |
+| `src/tools/` | Tool surface and adapters over agent services; no session or supervision ownership |
 | `src/core/` | Shared policy, events, limits, filesystem, signals and platform primitives |
 | `src/ui/` | Terminal input and presentation |
 | `src/web/` | Authenticated HTTP/SSE adapter, assets and optional push |
-| `web/src/` | Browser event projection and presentation |
+| `web/src/` | Browser event projection and presentation (`app/` shell, `state/` host-data layer, `features/<name>/` self-contained UI, `shared/` cross-feature rendering and formatting) |
 | `src/mcp/` | Bounded stdio JSON-RPC integration |
 | `tests/`, `benchmarks/` | Behavioral contracts and measurement |
 
 The registry owns tool contracts, configuration descriptors own settings, route
 capabilities own provider behavior, and the runtime owns conversation state.
 Clients do not interpret shell text to infer permission or mutation authority.
+
+## Build layers
+
+CMake mirrors the dependency DAG: `uagent_core_base` (core/transport/media,
+leaf) <- `uagent_api` <- `uagent_toolcore` (tool vocabulary + provider
+catalog: no agent, tool, or app dependency) <- `uagent_agent` (turn loop,
+session persistence, supervision services, memory store, observation
+records) <- `uagent_tools` (tool surface + mcp adapters, consuming agent
+services) <- `uagent_app` (app/ui/cli).
+`uagent_core` is an INTERFACE umbrella so tests, benches, fuzzers and the web
+lib keep one link name. Public headers live under `include/` (top-level
+facades plus `include/<module>/`); only module-private shared declarations
+stay in `src/<module>/*_internal.h`. The web bundle embeds `web/dist` or
+fails with instructions (`npm run build` in `web/`, or `-DUAGENT_WEB=OFF`).
 
 ## Session runtime and clients
 
@@ -47,15 +68,19 @@ reply wins and a second client cannot answer a stale approval.
 One poll thread owns client sockets and bounded fanout queues. Publishing does
 not wait for a slow terminal or browser. A joining client receives a checkpoint
 and its ordered event suffix. Gaps require refresh, not command replay. The web
-adapter adds its host epoch and SSE cursor so stale connections cannot overwrite
-newer state. A changed runtime generation invalidates pending commands; recovery
-never automatically repeats tools or an uncertain submission.
+adapter uses the native `SessionHost` sequence and bounded replay log to add its
+host epoch and SSE cursor. After replay it sends an unsequenced `ready` watermark;
+this means transport catch-up, not that the engine is idle. Stale connections
+cannot overwrite newer state. A changed runtime generation invalidates pending
+commands; recovery never automatically repeats tools or an uncertain submission.
 
 Closing a client detaches it. Closing the runtime cancels work, saves state and
 reaps session-owned children. An internal writer lease prevents two runtimes
 from owning one file; clients do not acquire that lease. Runtime discovery uses
-private sockets and bounded catalogue scans, not live JSON sidecars, inbox files
-or terminal-specific mirroring. Independent conversations may share a project
+private sockets, a bounded startup scan and native directory notifications, not
+live JSON sidecars, inbox files or terminal-specific mirroring. Schedule,
+prompt and library invalidation uses the native multi-path watcher and wakes at
+the next actual schedule deadline. Independent conversations may share a project
 folder; edits to shared project files still require coordination.
 
 A normal collaborator follow-up starts a bounded child process from its saved
@@ -86,6 +111,15 @@ provider accounting, `activities.changed` reports supervised work,
 events carry correlated decisions. Final checkpoints reconcile complete state.
 Terminal Markdown/ANSI and browser DOM state are projections, never alternate
 writers.
+
+A model attempt receives a runtime response identity before its first delta.
+That identity reaches the saved assistant display record, while provider tool
+call IDs remain raw provider facts. Tool occurrences are scoped to the response
+and have a separate retained-detail identity. Content revision and completeness
+are independent: a bounded checkpoint preview at the same revision cannot
+replace a fuller body already held by a client. The runtime also publishes its
+canonical execution phase and pending decision; transport connection health
+remains client-owned.
 
 Provider-reported partial usage is combined with the confirmed session total for
 live display. Final usage replaces that provisional view through the normal

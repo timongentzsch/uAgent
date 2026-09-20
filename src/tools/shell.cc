@@ -28,6 +28,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/core/env.h"
 #include "include/core/fd.h"
 #include "include/core/fs.h"
@@ -38,7 +39,6 @@
 #include "include/core/strings.h"
 #include "include/core/time.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
 
 namespace uagent {
 namespace {
@@ -279,30 +279,29 @@ ShellCommandResult StartDetachedShell(ProcessSupervisor& supervisor,
                         "; verify readiness with activity output")};
   }
   int64_t max_jobs = MaxBackgroundJobs();
-  std::string log;
-  Fd lfd(CreateTempFile(UagentDir(kTerminalLogsDir) + "/pending-" +
-                            std::to_string(getpid()) + "-XXXXXX",
-                        log));
-  if (!lfd) {
+  ScopedTempFile pending(UagentDir(kTerminalLogsDir) + "/pending-" +
+                         std::to_string(getpid()) + "-XXXXXX");
+  std::string log = pending.Path();
+  if (!pending) {
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create log file " + log)};
   }
-  fchmod(lfd.Get(), kPrivateFileMode);
+  fchmod(pending.Get(), kPrivateFileMode);
   std::string bounded_cmd =
       "set -o pipefail; (" + cmd + ") 2>&1 | " + ShellQuote(ExecutablePath()) +
       " --log-pump " + ShellQuote(log) + " " + std::to_string(BashLogBytes());
   pid_t pid = -1;
   ChildEnvironment child_environment(spec.environment, spec.environment_policy);
   int spawn_error =
-      SpawnLoggedShell(spec.shell, bounded_cmd, wrapper, lfd.Get(),
+      SpawnLoggedShell(spec.shell, bounded_cmd, wrapper, pending.Get(),
                        /*detach=*/true, child_environment.Data(), pid);
-  lfd.Reset();
+  pending.Close();
   if (spawn_error != 0) {
-    unlink(log.c_str());
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
         "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
   }
+  log = pending.Release();
   // Past the spawn this call owns a live child: no failure may leave it
   // running without a record to find it by.
   auto fail_and_reap = [&](ToolResult error) {
@@ -369,15 +368,14 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   int64_t window =
       spec.immediate ? 0 : context.RemainingSeconds(int64_t{1} << 30);
-  std::string log;
-  Fd lfd(CreateTempFile(
-      UagentDir(kBgDir) + "/pending-" + std::to_string(getpid()) + "-XXXXXX",
-      log));
-  if (!lfd) {
+  ScopedTempFile pending(UagentDir(kBgDir) + "/pending-" +
+                         std::to_string(getpid()) + "-XXXXXX");
+  std::string log = pending.Path();
+  if (!pending) {
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create log file " + log)};
   }
-  fchmod(lfd.Get(), kPrivateFileMode);
+  fchmod(pending.Get(), kPrivateFileMode);
   int64_t log_bytes = BashLogBytes();
   int64_t interaction_cap = ActivityOutputCap(spec.max_output_chars);
   std::string bounded_cmd = cmd;
@@ -386,7 +384,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   int pipe_fds[2] = {-1, -1};
   bool tty = spec.tty;
   if (!tty && pipe(pipe_fds) != 0) {
-    unlink(log.c_str());
     return {ToolFailure(ToolErrorCode::kInternal,
                         "error: cannot create process output pipe")};
   }
@@ -404,7 +401,6 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   pipe_write.Reset();
   Fd master(master_fd);
   if (spawn_error != 0) {
-    unlink(log.c_str());
     return {ToolFailure(
         ToolErrorCode::kUnavailable,
         "error: cannot spawn shell: " + std::string(strerror(spawn_error)))};
@@ -415,9 +411,13 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   // and a child agent shares this directory with its parent.
   std::string named = UagentDir(kBgDir) + "/" + std::to_string(getpid()) + "-" +
                       std::to_string(reservation->Id()) + ".log";
-  if (rename(log.c_str(), named.c_str()) == 0) {
+  if (rename(pending.Path().c_str(), named.c_str()) == 0) {
     log = named;  // child's fd stays valid
   }
+  // The supervisor owns the log from here; `log` already holds whichever
+  // path won above. ReleaseFd keeps the file and hands over the descriptor;
+  // Release would close it while the supervisor still needs to tail it.
+  int log_fd = pending.ReleaseFd();
 
   Fd input(tty ? dup(master.Get()) : -1);
   if (tty && !input) {
@@ -448,8 +448,7 @@ ShellCommandResult RunShellCommand(ProcessSupervisor& supervisor,
   }
   int64_t activity_id = *registered;
   int output_fd = tty ? master.Release() : pipe_read.Release();
-  supervisor.RegisterIo(session, output_fd, input.Release(), lfd.Release(),
-                        log_bytes);
+  supervisor.RegisterIo(session, output_fd, input.Release(), log_fd, log_bytes);
 
   TrackPid(g_child_pgids, kFgMax, pid, true);
   bool cancelled = false;

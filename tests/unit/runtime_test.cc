@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "include/agent.h"
+#include "include/agent/child_agent.h"
+#include "include/agent/delegation.h"
 #include "include/api/retry.h"
 #include "include/app/self_description.h"
 #include "include/core/child_env.h"
@@ -22,9 +24,7 @@
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/providers.h"
-#include "include/tools/child_agent.h"
 #include "include/tools/files.h"
-#include "include/tools/subagent.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
@@ -412,6 +412,12 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "This model does not support image input";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kImageInput);
+  rejected.error = "This model does not support audio input";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kAudioInput);
+  rejected.error = "This model does not support video input";
+  CHECK(RejectedRouteCapability(rejected, generic) ==
+        RejectedCapability::kVideoInput);
   rejected.error = "Invalid image input: size exceeds limit";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
@@ -427,6 +433,26 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "This model does not support tool calling";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
+}
+
+// Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model
+// wins, a vision-capable main route is inherited, otherwise the shared
+// flash default backs the analysis side call.
+void TestEffectiveImageModel() {
+  Api api(RuntimeConfig{});
+  std::vector<Tool> tools;
+  ProcessSupervisor processes;
+  UsageAccumulator usage;
+  Agent agent(api, tools, processes, usage,
+              [](const Tool&, const json&) { return false; });
+  api.config.image_model = "custom/vision";
+  api.capabilities.image_input = false;
+  CHECK(agent.EffectiveImageModel() == "custom/vision");
+  api.config.image_model.clear();
+  api.capabilities.image_input = true;
+  CHECK(agent.EffectiveImageModel().empty());
+  api.capabilities.image_input = false;
+  CHECK(agent.EffectiveImageModel() == kDefaultModelRoute);
 }
 
 void TestAgentConfigAllowlist() {

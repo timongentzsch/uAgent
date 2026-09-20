@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace uagent {
 
@@ -29,6 +30,13 @@ std::string DocumentRevision(const std::string& path, const std::string& body);
 FileWaitResult WaitForFileChange(
     const std::string& path, const FileStamp& observed,
     std::chrono::steady_clock::time_point deadline);
+
+// Host coordination waits on several files/directories and its own shutdown
+// pipe. Native targets use one kqueue/inotify instance; other POSIX targets use
+// the same bounded fallback as the single-file API.
+FileWaitResult WaitForAnyFileChange(
+    const std::vector<std::string>& paths,
+    std::chrono::steady_clock::time_point deadline, int wake_fd = -1);
 
 }  // namespace uagent
 

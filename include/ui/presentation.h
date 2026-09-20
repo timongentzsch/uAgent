@@ -4,7 +4,6 @@
 #define UAGENT_INCLUDE_UI_PRESENTATION_H_
 // Terminal-only rendering of provider-independent observation records.
 
-#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -48,10 +47,6 @@ void PrintMessageHeader();
 std::string TurnStatsLine(const json& summary);
 
 void PrintPresentation(const PresentationRecord& record) noexcept;
-
-// Elapsed time since the first no-change poll of this activity id.
-std::chrono::steady_clock::duration PollElapsed(int64_t activity_id);
-void ClearPollAnchor(int64_t activity_id);
 
 }  // namespace uagent
 

@@ -15,6 +15,7 @@
 #include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
+#include "include/providers.h"
 
 namespace uagent {
 
@@ -96,12 +97,22 @@ std::string SubagentModel() {
   return StringSetting(Cfg("UAGENT_SUBAGENT_MODEL"));
 }
 
+std::string TitleModel() {
+  std::string model = StringSetting(Cfg("UAGENT_TITLE_MODEL"));
+  return model.empty() ? kDefaultModelRoute : model;
+}
+
 int64_t SubagentTimeoutSeconds() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_TIMEOUT"));
 }
 
 int64_t SubagentCallsPerTurn() {
   return LongSetting(Cfg("UAGENT_SUBAGENT_CALLS_PER_TURN"));
+}
+
+int64_t PersistentMax() {
+  int64_t max = LongSetting(Cfg("UAGENT_PERSISTENT_MAX"));
+  return max < 1 ? 1 : (max > 8 ? 8 : max);
 }
 
 // -1 omits the cap so the provider applies its own maximum; a fixed cap would

@@ -151,7 +151,10 @@ def test_terminal_and_web_share_runtime_across_client_restarts(root, home, *, bi
                             ),
                         )
                         assert replay["metadata"]["generation"] == generation
-                        assert replay["state"]["view"] == final["state"]["view"]
+                        assert_true(
+                            replay["state"]["view"] == final["state"]["view"],
+                            (replay["state"]["view"], final["state"]["view"]),
+                        )
                     assert len(provider.requests) == 3, provider.requests
                 finally:
                     if terminal.poll() is None:
@@ -223,7 +226,10 @@ def test_clients_share_one_runtime_and_reconnect(root, home, *, binary):
                 second.close()
                 second = SessionClient(path)
                 replay = second.until(ready)
-                assert replay["state"]["view"] == completed["state"]["view"]
+                assert_true(
+                    replay["state"]["view"] == completed["state"]["view"],
+                    (replay["state"]["view"], completed["state"]["view"]),
+                )
                 assert replay["generation"] == first.hello["generation"]
             finally:
                 model_continue.set()
@@ -446,7 +452,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
             client.command("submit", session, text="Inspect this session")
             request_id = f"{client.sequence:032x}"
             payload = dict(
-                v=1,
+                v=2,
                 kind="submit",
                 request_id=request_id,
                 session_id=session["id"],
@@ -487,7 +493,7 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
             status, denied, _ = client.json(
                 "/api/command",
                 {
-                    "v": 1,
+                    "v": 2,
                     "request_id": "d" * 32,
                     "kind": "submit",
                     "session_id": session["id"],
@@ -518,6 +524,13 @@ def test_web_singleton_auth_persistence(root, home, *, binary):
                 "thinking lost on reopen",
             )
             catalogue = client.json("/api/sessions?refresh=1")[1]
+            scheduled = catalogue["scheduled"]
+            assert_true(
+                isinstance(scheduled, dict)
+                and scheduled["tasks"] == []
+                and scheduled["runs"] == [],
+                catalogue,
+            )
             assert_true(
                 any(item["title"] == "Inspect this session" for item in catalogue["sessions"]),
                 catalogue,
@@ -541,17 +554,40 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
                 raw=b"<svg onload='alert(1)'></svg>",
                 headers={"Content-Type": "image/png"},
             )
-            assert_true(status == 200 and not generic["image"], generic)
+            # SVG sniffs as an image (providers only ever see its raster);
+            # the claimed Content-Type is distrusted either way.
+            assert_true(
+                status == 200 and generic["image"] and generic["mime"] == "image/svg+xml",
+                generic,
+            )
             status, body, headers = client.request(
                 f"/api/sessions/{session['id']}/assets/{generic['id']}"
             )
+            # Vectors serve under their sniffed mime (re-verified at read
+            # time); script execution is contained by the asset CSP.
             assert_true(
                 body == b"<svg onload='alert(1)'></svg>"
-                and headers["Content-Type"] == "application/octet-stream",
+                and headers["Content-Type"] == "image/svg+xml",
                 headers,
             )
             status, image, _ = client.json(endpoint, raw=PNG, headers={"Content-Type": "image/png"})
             assert_true(status == 200, image)
+            status, rejected, _ = client.json(
+                "/api/command",
+                {
+                    "v": 2,
+                    "request_id": "a" * 32,
+                    "kind": "submit",
+                    "session_id": session["id"],
+                    "generation": session["generation"],
+                    "attachment_ids": [image["id"], "f" * 32],
+                    "text": "Reject the incomplete attachment batch",
+                },
+            )
+            assert_true(status == 409 and "unavailable" in rejected["error"], rejected)
+            record = json.loads((home / f".uagent/web/drafts/{session['id']}.json").read_text())
+            metadata = Path(record["path"] + f".assets/{image['id']}.json")
+            assert_true(not json.loads(metadata.read_text())["committed"], metadata.read_text())
             client.command("submit", session, text="", attachment_ids=[image["id"]])
             value = client.until(
                 session,
@@ -574,7 +610,7 @@ def test_web_atomic_images_and_session_isolation(root, home, *, binary):
             status, denied, _ = client.json(
                 "/api/command",
                 {
-                    "v": 1,
+                    "v": 2,
                     "request_id": "b" * 32,
                     "kind": "submit",
                     "session_id": peer["id"],
@@ -827,7 +863,7 @@ def test_web_recall_queued_guidance(root, home, *, binary):
             status, result, _ = client.json(
                 "/api/command",
                 {
-                    "v": 1,
+                    "v": 2,
                     "kind": "recall",
                     "request_id": f"{client.sequence + 100:032x}",
                     "session_id": session["id"],
@@ -908,7 +944,7 @@ def test_web_concurrent_retry_and_resync(root, home, *, binary):
             client.pair(code)
             session = client.create(project)
             payload = {
-                "v": 1,
+                "v": 2,
                 "kind": "submit",
                 "request_id": "a" * 32,
                 "session_id": session["id"],
@@ -1028,7 +1064,7 @@ def test_web_slow_upload_does_not_block_controls(root, home, *, binary):
                         client.json(
                             "/api/command",
                             {
-                                "v": 1,
+                                "v": 2,
                                 "request_id": "c" * 32,
                                 "kind": "submit",
                                 "session_id": session["id"],
@@ -1157,7 +1193,7 @@ def test_web_conversation_management_and_statistics(root, home, *, binary):
                 return client.json(
                     "/api/command",
                     {
-                        "v": 1,
+                        "v": 2,
                         "request_id": f"{client.sequence:032x}",
                         "kind": kind,
                         "session_id": target["id"],
@@ -1294,8 +1330,15 @@ def test_web_immediate_message_model_control_and_receipts(root, home, *, binary)
                 snapshot = client.snapshot(session)
                 assert_true(snapshot["state"]["efforts"] == ["default", *efforts], snapshot)
                 rows = snapshot["state"]["view"]["blocks"]
-                assert_true(len(rows) == 1 and rows[0]["kind"] == "user", rows)
-                assert_true(rows[0]["request_id"] == request_id, rows)
+                users = [row for row in rows if row["kind"] == "user"]
+                attempts = [row for row in rows if row["kind"] == "assistant"]
+                assert_true(len(users) == 1 and users[0]["request_id"] == request_id, rows)
+                assert_true(
+                    len(attempts) == 1
+                    and attempts[0]["response_id"]
+                    and attempts[0]["content_complete"] is False,
+                    rows,
+                )
                 saved = session_files(home)
                 assert_true(len(saved) == 1 and "Visible before" in saved[0].read_text(), saved)
                 receipt = client.json(f"/api/receipts/{request_id}")[1]
@@ -1418,11 +1461,24 @@ def test_web_background_inspection_and_full_exchange(root, home, *, binary):
             assert_true(
                 len([block for block in blocks if block["kind"] == "activity"]) == 1, blocks
             )
+            detail_id = next(
+                candidate
+                for block in blocks
+                for candidate in [
+                    block.get("detail_id") if block.get("call_id") == "full-read" else None,
+                    *[
+                        tool["detail_id"]
+                        for tool in block.get("tools", [])
+                        if tool.get("call_id") == "full-read"
+                    ],
+                ]
+                if candidate
+            )
             raw = ""
             offset = 0
             while True:
                 status, page, _ = client.json(
-                    f"/api/sessions/{session['id']}?detail=t-full-read&raw=1&offset={offset}"
+                    f"/api/sessions/{session['id']}?detail={detail_id}&raw=1&offset={offset}"
                 )
                 assert_true(status == 200, page)
                 raw += page["text"]
@@ -1478,13 +1534,19 @@ def test_web_child_controls_and_conversation_ownership(root, home, *, binary):
                 )
                 child = snapshot["state"]["activities"][0]
                 count = len(provider.requests)
-                client.command("activity", session, operation="inspect", activity_id=child["id"])
+                live = client.command(
+                    "activity", session, operation="inspect", activity_id=child["id"]
+                )
+                blocks = live["result"]["conversation"]["blocks"]
+                assert_true(
+                    any("WEB_CHILD_SEED" in block.get("text", "") for block in blocks), blocks
+                )
                 assert_true(len(provider.requests) == count, "inspection called the model")
                 for operation in ("inspect", "message"):
                     denied = client.json(
                         "/api/command",
                         {
-                            "v": 1,
+                            "v": 2,
                             "request_id": ("e" if operation == "inspect" else "f") * 32,
                             "kind": "activity",
                             "operation": operation,
@@ -1796,6 +1858,11 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                     raise AssertionError(web.snapshot(session))
                 snapshot = web.until(session, lambda value: value["state"].get("collaborators"))
                 child = snapshot["state"]["collaborators"][0]
+                live = web.command("activity", session, operation="inspect", agent_id=child["id"])
+                blocks = live["result"]["conversation"]["blocks"]
+                assert_true(
+                    any("retained worker" in block.get("text", "") for block in blocks), blocks
+                )
                 paths = [
                     path
                     for path in runtime_directory(home).glob("*.sock")
@@ -1823,9 +1890,28 @@ def test_persistent_guidance_requires_its_command_receipt(root, home, *, binary)
                     agent_id=child["id"],
                     text="overflow guidance",
                 )
+                if result.get("pending"):
+                    request_id = result["request_id"]
+                    wait_until(
+                        lambda: not web.json(f"/api/receipts/{request_id}")[1].get("pending"),
+                        "collaborator message receipt did not complete",
+                    )
+                    result = web.json(f"/api/receipts/{request_id}")[1]
                 assert_true("queued message" in result["result"]["output"], result)
+                communication = web.command(
+                    "activity", session, operation="inspect", agent_id=child["id"]
+                )["result"]["communication"]
+                assert_true(
+                    communication[-1]["from"] == "parent"
+                    and communication[-1]["to"] == child["id"]
+                    and communication[-1]["text"] == "overflow guidance",
+                    communication,
+                )
                 mail = list((home / ".uagent/collaborators").glob("*.mail-*.json"))
-                assert_true(len(mail) == 1 and "overflow guidance" in mail[0].read_text(), mail)
+                assert_true(
+                    not mail or (len(mail) == 1 and "overflow guidance" in mail[0].read_text()),
+                    mail,
+                )
             finally:
                 release.set()
             web.until(session, lambda value: value["metadata"]["status"] == "idle")

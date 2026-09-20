@@ -12,11 +12,14 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
+#include "include/agent/child_agent.h"
 #include "include/agent/session_store.h"
 #include "include/agent/session_view.h"
 #include "include/app/bootstrap.h"
 #include "include/app/session.h"
+#include "include/app/session_command.h"
 #include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
@@ -25,6 +28,54 @@
 
 namespace uagent::session {
 namespace {
+// Host-claimed command["attachments"] entries ({path,id,name,mime,image})
+// become worker Attachment records plus transcript display images (path
+// omitted: display facts reach the client). Submit and steer share it.
+bool ResolveCommandAttachments(const json& command,
+                               std::vector<Attachment>& attachments,
+                               json& images, std::string& error) {
+  const json* paths = JsonArray(command, "attachments");
+  if (!paths) return true;
+  if (paths->size() > kUploadCount) {
+    error = "too many attachments";
+    return false;
+  }
+  for (const json& path : *paths) {
+    Attachment attachment;
+    std::string file = path.is_string() ? path.get<std::string>()
+                                        : JsonValue(path, "path", "");
+    if (!InspectAttachment(file, attachment, error)) return false;
+    attachment.asset_id =
+        std::filesystem::path(attachment.path).stem().string();
+    if (path.is_object()) {
+      attachment.asset_id = JsonValue(path, "id", "");
+      attachment.name = JsonValue(path, "name", attachment.name);
+      attachment.mime = JsonValue(path, "mime", attachment.mime);
+      attachment.image = JsonValue(path, "image", false);
+    }
+    images.push_back({{"id", attachment.asset_id},
+                      {"name", attachment.name},
+                      {"mime", attachment.mime},
+                      {"bytes", attachment.bytes},
+                      {"image", attachment.image}});
+    attachments.push_back(std::move(attachment));
+  }
+  return true;
+}
+
+json AttachmentsToJson(const std::vector<Attachment>& attachments) {
+  json out = json::array();
+  for (const Attachment& attachment : attachments) {
+    out.push_back({{"path", attachment.path},
+                   {"name", attachment.name},
+                   {"mime", attachment.mime},
+                   {"bytes", attachment.bytes},
+                   {"image", attachment.image},
+                   {"id", attachment.asset_id}});
+  }
+  return out;
+}
+
 class WorkerChannel final : public ApplicationChannel {
  public:
   WorkerChannel(std::string path, std::string id, std::string generation,
@@ -63,28 +114,39 @@ class WorkerChannel final : public ApplicationChannel {
     }
     std::string phase;
     if (event.type == "turn.started") {
-      phase = "Working";
+      phase = "working";
     } else if (event.type == "response.started") {
-      phase = "Waiting for model";
+      phase = "waiting";
     } else if (event.type == "response.reasoning.delta") {
-      phase = "Thinking";
+      phase = "thinking";
     } else if (event.type == "response.answer.delta") {
-      phase = "Responding";
+      phase = "responding";
     } else if (event.type == "tool.call") {
-      phase = "Running " + JsonValue(data, "name", "tool");
+      phase = "tool";
     } else if (event.type == "tool.result") {
-      phase = "Working";
+      phase = "working";
     } else if (event.type == "response.hosted_tool") {
-      phase = "Searching";
+      phase = "searching";
     } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
-      phase = "Finishing";
+      phase = "finishing";
     }
     if (!phase.empty()) {
+      std::string activity = phase == "waiting"      ? "Waiting for model"
+                             : phase == "thinking"   ? "Thinking"
+                             : phase == "responding" ? "Responding"
+                             : phase == "tool"
+                                 ? "Running " + JsonValue(data, "name", "tool")
+                             : phase == "searching" ? "Searching"
+                             : phase == "finishing" ? "Finishing"
+                                                    : "Working";
       std::lock_guard lock(mutex_);
-      if (JsonValue(state_, "activity", "") != phase) {
-        state_["activity"] = phase;
+      if (JsonValue(state_, "phase", "") != phase ||
+          JsonValue(state_, "activity", "") != activity) {
+        state_["phase"] = phase;
+        state_["activity"] = activity;
         Send({{"kind", "activity"},
-              {"activity", phase},
+              {"activity", activity},
+              {"phase", phase},
               {"busy", turn_active_}});
       }
     }
@@ -95,11 +157,7 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
   void Send(json frame) {
-    if (JsonValue(frame, "kind", "") == "outcome") {
-      std::lock_guard lock(receipts_mutex_);
-      auto found = receipts_.find(JsonValue(frame, "request_id", ""));
-      if (found != receipts_.end()) found->second.second = frame;
-    }
+    receipts_.Record(frame);
     frame["v"] = kProtocol;
     frame["session_id"] = id_;
     frame["generation"] = generation_;
@@ -151,6 +209,7 @@ class WorkerChannel final : public ApplicationChannel {
     if (JsonValue(approval_, "id", "") == request.id) {
       decision_["approval"] = approval_;
     }
+    state_["phase"] = "decision";
     SendState();
     while (!closed_ && !reply_ && !AbortRequested()) {
       lock.unlock();
@@ -166,6 +225,7 @@ class WorkerChannel final : public ApplicationChannel {
     reply_cancelled_ = false;
     pending_.clear();
     decision_ = nullptr;
+    state_["phase"] = turn_active_ ? "working" : "idle";
     SendState();
     return answer;
   }
@@ -176,9 +236,11 @@ class WorkerChannel final : public ApplicationChannel {
   void PublishState(const json& state, bool checkpoint) override {
     std::lock_guard lock(mutex_);
     std::string activity = JsonValue(state_, "activity", "Ready");
+    std::string phase = JsonValue(state_, "phase", "idle");
     state_ = state;
     state_["notices"] = notices_;
     state_["activity"] = activity;
+    state_["phase"] = phase;
     if (!checkpoint) {
       // Live accounting only: the turn keeps running, so its phase, busy
       // state and queued guidance stay untouched.
@@ -192,6 +254,7 @@ class WorkerChannel final : public ApplicationChannel {
       // application checkpoint makes the turn idle and accepts another input.
       turn_active_ = false;
       state_["activity"] = "Ready";
+      state_["phase"] = "idle";
       ClearAbort();
       NormalizeAbortWake();
       auto queued = SteeringState().TakeAutoStartMessages();
@@ -199,10 +262,14 @@ class WorkerChannel final : public ApplicationChannel {
         input_ = ApplicationInput{
             .text = std::move(queued.front().text),
             .request_id = std::move(queued.front().request_id)};
+        for (const json& item : queued.front().attachments) {
+          input_->attachments.push_back(AttachmentFromJson(item));
+        }
         for (size_t i = 1; i < queued.size(); ++i) {
-          SteeringState().Queue(std::move(queued[i].text),
-                                std::move(queued[i].request_id),
-                                queued[i].auto_start);
+          SteeringState().Queue(
+              std::move(queued[i].text), std::move(queued[i].request_id),
+              queued[i].auto_start, std::move(queued[i].attachments),
+              std::move(queued[i].images));
         }
         busy_ = turn_active_ = true;
         BeginTurn();
@@ -241,6 +308,7 @@ class WorkerChannel final : public ApplicationChannel {
     state_["error"] = "";
     state_.erase("stop");
     state_["activity"] = "Working";
+    state_["phase"] = "working";
   }
   void SendState(bool checkpoint = false) {
     Send({{"kind", "state"},
@@ -248,189 +316,219 @@ class WorkerChannel final : public ApplicationChannel {
           {"busy", turn_active_},
           {"command_busy", busy_},
           {"pending", decision_},
+          {"pending_decision", decision_},
+          {"phase", JsonValue(state_, "phase", "idle")},
           {"guidance", SteeringState().QueuedCount()},
           {"completed_request_id",
            checkpoint ? std::exchange(active_command_, "") : ""},
           {"checkpoint", checkpoint}});
   }
-  bool Command(const json& command) {
-    if (JsonValue(command, "session_id", "") != id_ ||
-        JsonValue(command, "generation", "") != generation_) {
+  // Reuse the one-slot queue while a preceding non-turn control finishes.
+  // True when the control was queued; otherwise reports into error. The
+  // caller holds mutex_.
+  bool QueueIdleControl(const std::string& request, const json& control,
+                        std::string& error) {
+    if (turn_active_ || input_) {
+      error = "this control requires an idle session";
       return false;
     }
-    std::string kind = JsonValue(command, "kind", "");
-    std::string request = JsonValue(command, "request_id", "");
+    input_ = ApplicationInput{.request_id = request, .control = control};
+    input_command_ = request;
+    busy_ = true;
+    wake_.Wake();
+    SendState();
+    return true;  // Completion carries the catalog or validated selection.
+  }
+  bool Command(const json& command) {
+    SessionCommand parsed;
     std::string error;
-    if (!OpaqueId(request)) return false;
+    if (!ParseSessionCommand(command, id_, generation_, parsed, error)) {
+      return false;
+    }
+    const std::string& request = parsed.request_id;
     json previous;
-    {
-      std::lock_guard lock(receipts_mutex_);
-      auto found = receipts_.find(request);
-      if (found != receipts_.end()) {
-        if (found->second.first != command) return false;
-        previous = found->second.second;
-      } else {
-        if (receipts_.size() >= 256) {
-          auto completed = std::find_if(
-              receipts_.begin(), receipts_.end(), [](const auto& item) {
-                return !JsonValue(item.second.second, "pending", false);
-              });
-          if (completed == receipts_.end()) return false;
-          receipts_.erase(completed);
-        }
-        receipts_[request] = {command,
-                              {{"kind", "outcome"},
-                               {"request_id", request},
-                               {"accepted", true},
-                               {"pending", true}}};
-      }
+    switch (receipts_.Check(command, request, previous)) {
+      case ReceiptVerdict::kReplay:
+        Send(std::move(previous));
+        return true;
+      case ReceiptVerdict::kReject:
+        return false;
+      case ReceiptVerdict::kNew:
+        break;
     }
-    if (!previous.is_null()) {
-      Send(std::move(previous));
-      return true;
-    }
+    SessionCommandKind kind = parsed.kind;
     std::unique_lock lock(mutex_);
-    if (kind == "steer" && !turn_active_) kind = "submit";
-    if (closed_) return false;
-    if (kind == "close") {
-      lock.unlock();
-      Close();
-      return true;
+    if (kind == SessionCommandKind::kSteer && !turn_active_) {
+      kind = SessionCommandKind::kSubmit;
     }
-    if (kind == "interrupt") {
-      RequestAbort();
-      wake_.Wake();
-    } else if (kind == "reply") {
-      if (pending_.empty() ||
-          JsonValue(command, "interaction_id", "") != pending_ || reply_) {
-        error = "decision is stale or already answered";
-      } else {
-        reply_ = JsonValue(command, "text", "");
-        reply_cancelled_ = JsonValue(command, "cancelled", false);
+    if (closed_) return false;
+    switch (kind) {
+      case SessionCommandKind::kClose: {
+        lock.unlock();
+        // A close request must acknowledge before the worker shuts down;
+        // otherwise the browser waits for a receipt from a dead socket.
+        CompleteControl(request, {{"operation", "close"}});
+        Close();
+        return true;
+      }
+      case SessionCommandKind::kInterrupt: {
+        RequestAbort();
         wake_.Wake();
+        break;
       }
-    } else if (kind == "steer" || kind == "guide") {
-      std::string text = JsonValue(command, "text", "");
-      if (!turn_active_ || text.empty() || SteeringState().QueuedCount() >= 8) {
-        error = "guidance requires an active turn and space in its queue";
-      } else {
-        // Guidance only: the turn reads it at its next steering check and
-        // passive waits yield on the queued message. Requesting a foreground
-        // abort here would report every steer as an interruption.
-        SteeringState().Queue(std::move(text),
-                              JsonValue(command, "client_request_id", ""),
-                              kind != "guide");
-      }
-    } else if (kind == "recall") {
-      // Pre-delivery only: the queue owns recallability, the turn owns
-      // delivery. No match means the turn already took it.
-      if (!SteeringState().Recall(
-              JsonValue(command, "client_request_id", ""))) {
-        error = "already delivered";
-      }
-    } else if (kind == "rename") {
-      std::string title = JsonValue(command, "title", "");
-      if (input_ || !ValidSessionTitle(title)) {
-        error = "rename requires a valid title and an empty input queue";
-      } else {
-        input_ = ApplicationInput{.title = std::move(title)};
-        busy_ = true;
-        wake_.Wake();
-        SendState();
-      }
-    } else if (kind == "refresh") {
-      SendState();
-    } else if (kind == "permissions" ||
-               (kind == "activity" &&
-                JsonValue(command, "operation", "") != "followup")) {
-      lock.unlock();
-      std::lock_guard control(control_mutex_);
-      CompleteControl(request, activity_control_
-                                   ? activity_control_(command)
-                                   : json{{"error", "session not ready"}});
-      return true;
-    } else if (kind == "model" || kind == "activity" || kind == "config" ||
-               kind == "context" || kind == "fork" || kind == "prompt") {
-      // Reuse the one-slot queue while a preceding non-turn control finishes.
-      if (turn_active_ || input_) {
-        error = "this control requires an idle session";
-      } else {
-        input_ = ApplicationInput{.request_id = request, .control = command};
-        input_command_ = request;
-        busy_ = true;
-        wake_.Wake();
-        SendState();
-        return true;  // Completion carries the catalog or validated selection.
-      }
-    } else if (kind == "submit" && turn_active_ &&
-               !JsonValue(command, "text", "").empty() &&
-               !JsonValue(command, "text", "").starts_with("/") &&
-               !command.contains("attachments")) {
-      if (SteeringState().QueuedCount() >= 8) {
-        error = "guidance queue is full";
-      } else {
-        SteeringState().Queue(JsonValue(command, "text", ""),
-                              JsonValue(command, "client_request_id", request));
-      }
-      SendState();
-    } else if (kind == "submit") {
-      // Reuse the one-slot queue while a non-turn control finishes. The
-      // application consumes it after publishing that control's checkpoint.
-      if (turn_active_ || input_) {
-        error = "session is busy";
-      } else {
-        ApplicationInput input;
-        if (delegated_) {
-          input.budget = JsonValue(command, "budget", json{});
+      case SessionCommandKind::kReply: {
+        if (pending_.empty() || parsed.interaction_id != pending_ || reply_) {
+          error = "decision is stale or already answered";
+        } else {
+          reply_ = parsed.text;
+          reply_cancelled_ = parsed.cancelled;
+          wake_.Wake();
         }
-        input.request_id = JsonValue(command, "client_request_id", "");
-        input.text = JsonValue(command, "text", "");
-        const json* paths = JsonArray(command, "attachments");
-        if (paths && paths->size() <= kUploadCount) {
-          for (const json& path : *paths) {
-            Attachment attachment;
-            std::string file = path.is_string() ? path.get<std::string>()
-                                                : JsonValue(path, "path", "");
-            if (!InspectAttachment(file, attachment, error)) {
-              break;
-            }
-            attachment.asset_id =
-                std::filesystem::path(attachment.path).stem().string();
-            if (path.is_object()) {
-              attachment.asset_id = JsonValue(path, "id", "");
-              attachment.name = JsonValue(path, "name", attachment.name);
-              attachment.mime = JsonValue(path, "mime", attachment.mime);
-              attachment.image = JsonValue(path, "image", false);
-            }
-            input.attachments.push_back(std::move(attachment));
+        break;
+      }
+      case SessionCommandKind::kSteer:
+      case SessionCommandKind::kGuide: {
+        const bool guide = kind == SessionCommandKind::kGuide;
+        if (guide && parsed.text.empty()) {
+          // Mail-first ping: payload is on disk, just drain it into the queue.
+          // Best-effort from the worker thread; PrepareStep drains again
+          // anyway.
+          lock.unlock();
+          DrainCollaboratorMailIntoSteering();
+          wake_.Wake();
+          return true;
+        }
+        if (!turn_active_ || parsed.text.empty() ||
+            SteeringState().QueuedCount() >= 8) {
+          error = "guidance requires an active turn and space in its queue";
+        } else {
+          // Guidance only: the turn reads it at its next steering check and
+          // passive waits yield on the queued message. Requesting a foreground
+          // abort here would report every steer as an interruption.
+          // Files ride the same queue: the turn composes them into the
+          // steered user message, so steering sees what the composer showed.
+          std::vector<Attachment> attachments;
+          json images = json::array();
+          if (ResolveCommandAttachments(parsed.raw, attachments, images,
+                                        error)) {
+            SteeringState().Queue(
+                std::string(parsed.text), parsed.client_request_id, !guide,
+                AttachmentsToJson(attachments), std::move(images));
           }
-        } else if (paths) {
-          error = "too many attachments";
         }
-        if (input.text.empty() && input.attachments.empty()) {
-          error = "empty message";
+        break;
+      }
+      case SessionCommandKind::kRecall: {
+        // Pre-delivery only: the queue owns recallability, the turn owns
+        // delivery. No match means the turn already took it.
+        if (!SteeringState().Recall(parsed.client_request_id)) {
+          error = "already delivered";
         }
-        ParsedSlashCommand slash = ParseSlashCommand(input.text);
-        if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
-                           slash.spec->id == SlashCommandId::kFork ||
-                           slash.spec->id == SlashCommandId::kSessions ||
-                           slash.spec->id == SlashCommandId::kQuit)) {
-          error = "use conversation controls to navigate, fork, or close";
-        }
-        if (error.empty()) {
-          ClearAbort();
+        break;
+      }
+      case SessionCommandKind::kRename: {
+        if (input_ || !ValidSessionTitle(parsed.title)) {
+          error = "rename requires a valid title and an empty input queue";
+        } else {
+          input_ = ApplicationInput{.title = std::string(parsed.title)};
           busy_ = true;
-          turn_active_ = !input.text.starts_with("/") ||
-                         !SlashCommandPrompt(slash).empty();
-          if (turn_active_) BeginTurn();
-          input_ = std::move(input);
-          input_command_ = request;
           wake_.Wake();
           SendState();
         }
+        break;
       }
-    } else {
-      error = "unsupported command";
+      case SessionCommandKind::kRefresh: {
+        SendState();
+        break;
+      }
+      case SessionCommandKind::kPermissions:
+      case SessionCommandKind::kActivity: {
+        if (kind == SessionCommandKind::kPermissions ||
+            parsed.operation != "followup") {
+          lock.unlock();
+          std::lock_guard control(control_mutex_);
+          CompleteControl(request, activity_control_
+                                       ? activity_control_(parsed.raw)
+                                       : json{{"error", "session not ready"}});
+          return true;
+        }
+        if (QueueIdleControl(request, parsed.raw, error)) return true;
+        break;
+      }
+      case SessionCommandKind::kModel:
+      case SessionCommandKind::kConfig:
+      case SessionCommandKind::kContext:
+      case SessionCommandKind::kFork:
+      case SessionCommandKind::kRewind:
+      case SessionCommandKind::kShare:
+      case SessionCommandKind::kPrompt: {
+        if (QueueIdleControl(request, parsed.raw, error)) return true;
+        break;
+      }
+      case SessionCommandKind::kSubmit: {
+        if (turn_active_ && !parsed.text.empty() &&
+            !parsed.text.starts_with("/") && !parsed.has_attachments) {
+          if (SteeringState().QueuedCount() >= 8) {
+            error = "guidance queue is full";
+          } else {
+            SteeringState().Queue(
+                std::string(parsed.text),
+                JsonValue(parsed.raw, "client_request_id", request));
+          }
+          SendState();
+          break;
+        }
+        // Reuse the one-slot queue while a non-turn control finishes. The
+        // application consumes it after publishing that control's checkpoint.
+        if (turn_active_ || input_) {
+          error = "session is busy";
+        } else {
+          ApplicationInput input;
+          if (delegated_) {
+            input.budget = parsed.budget;
+          }
+          input.request_id = parsed.client_request_id;
+          input.text = parsed.text;
+          json images = json::array();
+          if (!ResolveCommandAttachments(parsed.raw, input.attachments, images,
+                                         error)) {
+            Send({{"kind", "outcome"},
+                  {"request_id", request},
+                  {"accepted", false},
+                  {"error", error}});
+            return true;
+          }
+          if (input.text.empty() && input.attachments.empty()) {
+            error = "empty message";
+          }
+          ParsedSlashCommand slash = ParseSlashCommand(input.text);
+          if (slash.spec && (slash.spec->id == SlashCommandId::kReset ||
+                             slash.spec->id == SlashCommandId::kClear ||
+                             slash.spec->id == SlashCommandId::kFork ||
+                             slash.spec->id == SlashCommandId::kRewind ||
+                             slash.spec->id == SlashCommandId::kShare ||
+                             slash.spec->id == SlashCommandId::kSessions ||
+                             slash.spec->id == SlashCommandId::kQuit)) {
+            error = "use conversation controls to navigate, branch, or close";
+          }
+          if (error.empty()) {
+            ClearAbort();
+            busy_ = true;
+            turn_active_ = !input.text.starts_with("/") ||
+                           !SlashCommandPrompt(slash).empty();
+            if (turn_active_) BeginTurn();
+            input_ = std::move(input);
+            input_command_ = request;
+            wake_.Wake();
+            SendState();
+          }
+        }
+        break;
+      }
+      case SessionCommandKind::kUnknown: {
+        error = "unsupported command";
+        break;
+      }
     }
     Send({{"kind", "outcome"},
           {"request_id", request},
@@ -455,8 +553,7 @@ class WorkerChannel final : public ApplicationChannel {
   std::string pending_, input_command_, active_command_;
   json decision_ = nullptr, state_ = json::object(), approval_ = nullptr;
   // Destroy the transport first, while all callback state is still alive.
-  std::mutex receipts_mutex_;
-  std::map<std::string, std::pair<json, json>> receipts_;
+  ReceiptLog receipts_;
   Server server_;
 };
 }  // namespace

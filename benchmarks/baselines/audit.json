@@ -1,32 +1,32 @@
 {
   "schema": "uagent.audit.v2",
   "token": {
-    "system_chars": 2712,
-    "schema_chars": 9407,
+    "system_chars": 2586,
+    "schema_chars": 11364,
     "advertised_tools": 11,
-    "always_on_schema_bytes": 5401,
+    "always_on_schema_bytes": 4578,
     "largest_schemas": {
-      "subagent": 2122,
-      "run": 1153,
-      "uagent_info": 1033,
-      "scratch": 899,
-      "read_path": 663
+      "subagent": 3018,
+      "scratch": 1296,
+      "session": 1150,
+      "run": 1092,
+      "uagent": 678
     }
   },
   "capability": {
-    "surface_tools": 18,
-    "scenarios": 12,
-    "checks": 73,
+    "surface_tools": 15,
+    "scenarios": 14,
+    "checks": 81,
     "tiers": {
-      "regression": 10,
+      "regression": 12,
       "capability": 2
     },
     "tool_calls": {
-      "read_path": 23,
+      "read_path": 29,
       "run": 4,
       "activity": 1,
-      "edit_file": 1,
-      "grep": 2
+      "edit_file": 2,
+      "grep": 3
     }
   }
 }

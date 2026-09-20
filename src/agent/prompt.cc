@@ -12,6 +12,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -103,7 +104,7 @@ json PromptOverlay(std::string* digest) {
   if (!input) return json::object();
   std::string body;
   ReadBounded(input, kPromptOverlayBytes, body);
-  if (digest) *digest = HashHex(body).substr(0, 12);
+  if (digest) *digest = TruncatedHash(body, kDigestChars);
   json parsed = json::parse(body, nullptr, false);
   return parsed.is_object() ? parsed : json::object();
 }

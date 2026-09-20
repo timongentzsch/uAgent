@@ -1,0 +1,269 @@
+/* Background activity: inline panel under the composer status line plus the
+   Activity / Subagent / Memory modal. One spacing owner per surface. */
+
+.activities,
+.activity-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.activity-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(4rem / 14);
+}
+
+/* Inline list owns its scroll; the toggle below it never scrolls. */
+.activity-list {
+  min-width: 0;
+  list-style: none;
+  margin: calc(4rem / 14) 0 0;
+  padding: 0;
+  max-height: min(160px, calc(var(--viewport-height) * 0.2));
+  overflow: auto;
+  border-top: 1px solid var(--line);
+}
+
+.activity-empty {
+  padding: calc(8rem / 14) calc(2rem / 14);
+}
+
+.activity-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+
+.activity-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  text-align: left;
+}
+
+.activity-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-text strong,
+.activity-text small {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.activity-text small,
+.activity-row time {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.activity-past-toggle {
+  justify-self: start;
+  font-size: 0.8rem;
+  min-height: 32px;
+}
+
+/* Modal: single grid, zero child margins, sections carry the labels. */
+/* Subagent/activity modal carries a full thread: widen toward the chat
+   measure so rows wrap like the transcript instead of a narrow card. */
+.activity-view {
+  width: min(880px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  height: min(780px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+}
+
+.activity-view .dialog-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.activity-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.activity-detail > p,
+.activity-detail > pre,
+.activity-detail > section,
+.activity-detail > details,
+.activity-detail > form {
+  margin-block: 0;
+  min-width: 0;
+}
+
+.activity-detail > section {
+  display: grid;
+  gap: calc(4rem / 14);
+}
+
+.activity-info {
+  flex: none;
+  max-height: min(32vh, 240px);
+  overflow: auto;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: calc(4rem / 14);
+}
+
+.activity-info > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.activity-info > section {
+  margin: var(--gap) 0;
+}
+
+.activity-detail > section[aria-label="Thread"],
+.activity-detail > section[aria-label="Output"],
+.activity-detail > section[aria-label="Memory"] {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.activity-detail > section[aria-label="Thread"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-detail > section[aria-label="Output"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-detail > section[aria-label="Output"] > pre {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.activity-detail h3 {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin: 0;
+}
+
+.detail-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.detail-label {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.detail-task {
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* Pathological prompts stay reachable: short tasks render unchanged,
+     long ones scroll in place instead of burying the thread and form. */
+  max-height: min(24rem, calc(var(--viewport-height) * 0.4));
+  overflow: auto;
+}
+
+/* Full command, scrollable in place instead of abbreviated. */
+.detail-command {
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow: auto;
+  max-width: 100%;
+  max-height: 16rem;
+}
+
+/* Plain output obeys the same bound so one huge dump cannot bury the
+   guidance form; the modal body remains the outer scroll. */
+.activity-detail > section > pre:not(.detail-command) {
+  max-height: min(24rem, calc(var(--viewport-height) * 0.4));
+}
+
+.activity-detail .markdown {
+  overflow-wrap: anywhere;
+}
+
+/* The thread reads as the transcript: rows sit directly on the modal
+   surface (no inset frame) and follow the live edge with the same
+   stick; the cap keeps the guidance form reachable on long runs. */
+.child-thread {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.thread-progress {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: var(--gap) 0;
+}
+
+.activity-detail > details:not(.activity-info) {
+  flex: none;
+  max-height: 5rem;
+  overflow: auto;
+}
+
+.communication ol {
+  list-style: none;
+  padding: 0;
+  margin: var(--gap) 0 0;
+}
+
+.communication li {
+  border-top: 1px solid var(--line);
+  padding: var(--gap) 0;
+}
+
+.communication-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4rem / 14);
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+
+.communication-meta time {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.communication p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: calc(4rem / 14) 0 0;
+}
+
+.child-thread .history-button {
+  justify-self: center;
+}
+
+.guidance-form {
+  display: grid;
+  gap: var(--gap);
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding-top: var(--gap);
+}
+
+.guidance-form textarea {
+  resize: vertical;
+  min-height: calc(var(--control) * 2);
+}

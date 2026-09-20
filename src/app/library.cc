@@ -13,6 +13,7 @@
 #include "include/core/fs.h"
 #include "include/core/lease.h"
 #include "include/core/skills.h"
+#include "include/core/strings.h"
 #include "include/tools/memory.h"
 
 namespace uagent {
@@ -165,7 +166,7 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
     }
   } else {
     const auto slash = key.find('/');
-    std::string scope = key.substr(0, slash);
+    std::string scope{ScopePrefix(key)};
     if (action != "set" || slash == std::string::npos ||
         (scope != "project" && scope != "global") ||
         !LibraryName(key.substr(slash + 1))) {

@@ -48,7 +48,7 @@ class WebClient:
 
     def command(self, kind, session=None, **values):
         self.sequence += 1
-        payload = {"v": 1, "kind": kind, "request_id": f"{self.sequence:032x}"}
+        payload = {"v": 2, "kind": kind, "request_id": f"{self.sequence:032x}"}
         if session:
             payload.update(session_id=session["id"], generation=session.get("generation", ""))
         payload.update(values)
@@ -118,6 +118,10 @@ def web_host(binary, root, home, provider, port=None, extra_env=None):
             )
             client = WebClient(port)
             yield client, code, process, env
+        except (ConnectionError, http.client.HTTPException) as error:
+            raise AssertionError(
+                f"web host connection failed (exit={process.poll()}):\n" + log.read_text()[-30000:]
+            ) from error
         finally:
             stop_sessions(home)
             if process.poll() is None:

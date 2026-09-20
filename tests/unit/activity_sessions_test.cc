@@ -18,16 +18,18 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/child_agent.h"
+#include "include/agent/jobs.h"
+#include "include/app/session_host.h"
 #include "include/core/config.h"
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
+#include "include/core/output_buffer.h"
 #include "include/core/platform.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
-#include "include/tools/child_agent.h"
-#include "include/tools/jobs.h"
-#include "include/tools/output_buffer.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/shell.h"
 #include "tests/unit/test_support.h"
 
@@ -141,6 +143,86 @@ void TestSignalAndFileWatch() {
     close(watched_fd);
     unlink(watched_path);
   }
+
+  // A catalogue change wakes the host so it can register a newly introduced
+  // project path; the following external prompt edit is then notification
+  // driven even though the file did not exist during the first wait.
+  char project_root[] = "/tmp/uagent-watch-project-XXXXXX";
+  REQUIRE(mkdtemp(project_root) != nullptr);
+  int catalogue_wake[2] = {-1, -1};
+  REQUIRE(pipe(catalogue_wake) == 0);
+  const std::string prompt =
+      std::string(project_root) + "/.uagent/system-prompt.json";
+  FileWaitResult catalogue_changed = FileWaitResult::kTimedOut;
+  std::thread catalogue_watcher([&] {
+    catalogue_changed = WaitForAnyFileChange(
+        {prompt}, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  CHECK(write(catalogue_wake[1], "x", 1) == 1);
+  catalogue_watcher.join();
+  CHECK(catalogue_changed == FileWaitResult::kInterrupted);
+  char byte = 0;
+  CHECK(read(catalogue_wake[0], &byte, 1) == 1);
+
+  FileWaitResult prompt_changed = FileWaitResult::kTimedOut;
+  std::thread prompt_watcher([&] {
+    prompt_changed = WaitForAnyFileChange(
+        {prompt}, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  CreatePrivateDirectories(std::filesystem::path(prompt).parent_path());
+  std::ofstream(prompt) << R"({"prompt":"changed externally"})";
+  prompt_watcher.join();
+  CHECK(prompt_changed == FileWaitResult::kChanged);
+
+  std::vector<std::string> converging(512);
+  for (size_t i = 0; i < converging.size(); ++i) {
+    converging[i] = std::string(project_root) + "/missing/" +
+                    std::to_string(i) + "/prompt.json";
+  }
+  FileWaitResult duplicate_changed = FileWaitResult::kTimedOut;
+  std::thread duplicate_watcher([&] {
+    duplicate_changed = WaitForAnyFileChange(
+        converging, std::chrono::steady_clock::now() + std::chrono::seconds(2),
+        catalogue_wake[0]);
+  });
+  CHECK(write(catalogue_wake[1], "x", 1) == 1);
+  duplicate_watcher.join();
+  CHECK(duplicate_changed == FileWaitResult::kInterrupted);
+  CHECK(read(catalogue_wake[0], &byte, 1) == 1);
+
+  char host_home[] = "/tmp/uagent-watch-host-XXXXXX";
+  REQUIRE(mkdtemp(host_home) != nullptr);
+  {
+    ScopedEnv home("HOME", host_home);
+    const std::string project = std::string(host_home) + "/project";
+    const std::string web = std::string(host_home) + "/.uagent/web";
+    const std::string parent =
+        UagentDir(kHistoryDir) + "/" + WorkspaceId(project);
+    CreatePrivateDirectories(web + "/drafts");
+    CreatePrivateDirectories(parent);
+    REQUIRE(PathExists(web + "/drafts"));
+    REQUIRE(PathExists(parent));
+    for (size_t i = 0; i < 300; ++i) {
+      const std::string path = parent + "/web-" + std::to_string(i) + ".json";
+      const std::string id = HashHex(path);
+      std::ofstream(web + "/drafts/" + id + ".json")
+          << JsonDump({{"id", id}, {"path", path}, {"cwd", project}});
+    }
+    session::SessionHost host("test", 4096, {}, web);
+    host.LoadDrafts();
+    const auto paths = host.PresencePaths();
+    CHECK(paths.size() == 2);
+    CHECK(std::count(paths.begin(), paths.end(), parent) == 1);
+  }
+  std::error_code host_remove_error;
+  std::filesystem::remove_all(host_home, host_remove_error);
+  close(catalogue_wake[0]);
+  close(catalogue_wake[1]);
+  std::error_code remove_error;
+  std::filesystem::remove_all(project_root, remove_error);
 }
 
 void TestActivityBufferAndAdmission() {
@@ -207,6 +289,7 @@ void TestActivityBufferAndAdmission() {
   const int64_t delegated_id = views[0].id;
   const json first_inspection = delegating.InspectActivity(delegated_id);
   CHECK(first_inspection == delegating.InspectActivity(delegated_id));
+  CHECK(first_inspection["command"] == "child");
   CHECK(JsonValue(first_inspection, "output", "").find("done") !=
         std::string::npos);
   {
@@ -302,6 +385,18 @@ void TestActivityStateGraph() {
   CHECK(supervisor.Find(id).has_value());
   CHECK(supervisor.ActivityViews()[0]["status"] == "stopped");
   CHECK(BgTakeCompleted(supervisor).empty());
+  // Rows carry the full command (bounded) beside the 160-char label, so the
+  // activity popup never degrades to the abbreviated label once inspect can
+  // no longer reach a finished job.
+  const std::string long_command(300, 'x');
+  CHECK(
+      supervisor.TryAdd({899991, "", long_command, false, "", 0, stopped}, 4));
+  json long_row;
+  for (const json& row : supervisor.ActivityViews()) {
+    if (row.value("command", "") == long_command) long_row = row;
+  }
+  CHECK(!long_row.is_null());
+  CHECK(long_row.value("label", "").size() < long_command.size());
 }
 
 void TestActivitySessions() {
@@ -997,18 +1092,25 @@ void TestCollaboratorMail() {
   namespace fs = std::filesystem;
   TestWorkspace workspace("collaborator-mail");
   const fs::path dir = fs::path(UagentDir("collaborators"));
+  auto texts = [](const std::vector<CollaboratorMail>& mails) {
+    std::vector<std::string> out;
+    out.reserve(mails.size());
+    for (auto& mail : mails) out.push_back(mail.text);
+    return out;
+  };
 
   // Order is the contract: guidance read out of sequence is guidance the
   // coordinator did not give.
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "first").Ok());
   CHECK(WriteCollaboratorMail("agent-aaaa1111", "second").Ok());
   CHECK(WriteCollaboratorMail("agent-bbbb2222", "other").Ok());
-  std::vector<std::string> taken = TakeCollaboratorMail("agent-aaaa1111");
+  std::vector<std::string> taken =
+      texts(TakeCollaboratorMail("agent-aaaa1111"));
   CHECK(taken == std::vector<std::string>({"first", "second"}));
   // Consumed on read, and only the addressee's: a second take returns nothing
   // while the other collaborator's message is still waiting.
   CHECK(TakeCollaboratorMail("agent-aaaa1111").empty());
-  CHECK(TakeCollaboratorMail("agent-bbbb2222") ==
+  CHECK(texts(TakeCollaboratorMail("agent-bbbb2222")) ==
         std::vector<std::string>({"other"}));
 
   // Unreadable mail is dropped rather than retried: left in place it would be
@@ -1036,9 +1138,89 @@ void TestCollaboratorMail() {
   CHECK(WriteCollaboratorMail("agent-dddd4444", "still waiting").Ok());
   MaintainArtifacts();
   CHECK(fs::exists(record));
-  CHECK(TakeCollaboratorMail("agent-dddd4444") ==
+  CHECK(texts(TakeCollaboratorMail("agent-dddd4444")) ==
         std::vector<std::string>({"still waiting"}));
   CHECK(!fs::exists(forgotten));
+}
+
+void TestSessionMail() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("session-mail");
+  auto texts = [](const std::vector<SessionMail>& mails) {
+    std::vector<std::string> out;
+    out.reserve(mails.size());
+    for (auto& mail : mails) out.push_back(mail.text);
+    return out;
+  };
+
+  CHECK(WriteSessionMail("sess-aaa", "first", "sess-bbb", 0).Ok());
+  CHECK(WriteSessionMail("sess-aaa", "second", "sess-bbb", 0).Ok());
+  CHECK(WriteSessionMail("sess-ccc", "other", "sess-bbb", 0).Ok());
+  std::vector<SessionMail> taken = TakeSessionMail("sess-aaa");
+  CHECK(texts(taken) == std::vector<std::string>({"first", "second"}));
+  // Sender survives the round trip; the take consumed only the addressee's.
+  taken = TakeSessionMail("sess-aaa");
+  CHECK(taken.empty());
+  taken = TakeSessionMail("sess-ccc");
+  CHECK(taken.size() == 1 && taken[0].from == "sess-bbb");
+
+  // Corrupt mail is dropped, traversal ids are silence.
+  const fs::path corrupt = fs::path(UagentDir("sessions")) / "inbox" /
+                           "sess-ddd.smail-19700101T000000Z-1-0000.json";
+  fs::create_directories(corrupt.parent_path());
+  std::ofstream(corrupt) << "{not json";
+  CHECK(TakeSessionMail("sess-ddd").empty());
+  CHECK(!fs::exists(corrupt));
+  CHECK(TakeSessionMail("../escape").empty());
+  CHECK(!WriteSessionMail("../escape", "x", "y", 0).Ok());
+}
+
+void TestSessionLinks() {
+  namespace fs = std::filesystem;
+  TestWorkspace workspace("session-links");
+  // Members are (id, path) pairs and prune drops paths that are gone, so
+  // the fixtures are real files.
+  const fs::path fa = workspace.workspace / "aaa.json";
+  const fs::path fb = workspace.workspace / "bbb.json";
+  {
+    std::ofstream(fa) << "{}\n";
+  }
+  {
+    std::ofstream(fb) << "{}\n";
+  }
+  ScopedEnv self("UAGENT_INTERNAL_SESSION_PATH", fa.string());
+  CHECK(!SharesLink("aaa", "bbb"));
+  std::string token;
+  CHECK(CreateSessionLink(token).Ok());
+  CHECK(!token.empty());
+  CHECK(SharesLink("aaa", "aaa"));
+  CHECK(!SharesLink("aaa", "bbb"));
+  {
+    ScopedEnv peer("UAGENT_INTERNAL_SESSION_PATH", fb.string());
+    CHECK(JoinSessionLink(token).Ok());
+    CHECK(JoinSessionLink("no-such-token").error == ToolErrorCode::kNotFound);
+    // Gated delivery: linked peers pass, strangers are rejected, and the
+    // hop clamp drops instead of queueing.
+    CHECK(MessageSession("aaa", "hello a", "bbb", 0).Ok());
+    CHECK(MessageSession("zzz", "hello z", "bbb", 0).error ==
+          ToolErrorCode::kPermissionDenied);
+    CHECK(MessageSession("aaa", "loop", "bbb", 8).Ok());
+  }
+  CHECK(SharesLink("aaa", "bbb"));
+  std::vector<SessionMail> taken = TakeSessionMail("aaa");
+  CHECK(taken.size() == 1);
+  CHECK(taken[0].text == "hello a");
+  CHECK(taken[0].from == "bbb");
+  // The clamped message never reached the inbox.
+  CHECK(TakeSessionMail("aaa").empty());
+  // Summaries show the linked peer.
+  bool saw_bbb = false;
+  for (const json& row : SessionSummaries()) {
+    if (JsonValue(row, "id", "") == "bbb") {
+      saw_bbb = JsonValue(row, "linked", false);
+    }
+  }
+  CHECK(saw_bbb);
 }
 
 }  // namespace uagent

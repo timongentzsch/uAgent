@@ -42,6 +42,7 @@
 #include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
+#include "include/tools/session.h"
 #include "include/tools/skill.h"
 #include "include/tools/subagent.h"
 #include "include/tools/web_fetch.h"
@@ -246,6 +247,9 @@ std::vector<Tool> BuildTools(AppContext& context,
                                  context.provider.providers,
                                  context.options.debug, &runtime.collaborator));
   }
+  // Peer sessions are text-only and isolation-gated by links, so the session
+  // tool is safe in every toolset, lean included.
+  tools.push_back(SessionTool());
   if (toolset == "lean") {
     KeepLeanTools(tools);
   }

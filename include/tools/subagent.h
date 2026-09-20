@@ -8,20 +8,20 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/process.h"
 #include "include/api.h"
 #include "include/core/json.h"
 #include "include/providers.h"
-#include "include/tools/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
 class CollaboratorRuntime;
 
-std::string DefaultSubagentModel(const Api& api);
-// The workspace's collaborator records, one object each: id, model, mode,
-// status, and the activity id when the child is still running. Shared with the
-// TUI so `/agents` and the tool's `list` operation cannot drift apart.
+// The workspace's collaborator records, one object each: id, name,
+// description, model, mode, status, and the activity id when the child is
+// still running. Shared with the TUI so `/agents` and the tool's `list`
+// operation cannot drift apart.
 std::vector<json> CollaboratorSummaries(
     const ProcessSupervisor& processes,
     const CollaboratorRuntime* runtime = nullptr);
@@ -31,8 +31,8 @@ json InspectCollaborator(const ProcessSupervisor& processes,
                          const CollaboratorRuntime* runtime = nullptr);
 ToolResult MessageCollaborator(const ProcessSupervisor& processes,
                                CollaboratorRuntime* runtime,
-                               const std::string& id, const std::string& text);
-std::string DelegationRuntimeContext(const Api& api);
+                               const std::string& id, const std::string& text,
+                               const std::string& from = "", int hops = 0);
 
 Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                   const std::vector<ModelRoute>& routes,

@@ -28,6 +28,10 @@ Commands carry stable request IDs and a runtime generation. Repeated delivery of
 the same command returns its receipt; conflicting reuse is rejected. A changed
 generation requires a fresh snapshot. The bounded event suffix supports clients
 joining during a turn; the saved conversation remains durable replay authority.
+Opening the stream establishes transport only. A `ready` watermark follows
+ordered replay, and browser mutations stay disabled until that watermark and the
+selected snapshot are applied. Healthy foreground transitions retain their
+stream; disconnected and bfcache-restored pages share one recovery path.
 See [Architecture](ARCHITECTURE.md) and [Persistence](PERSISTENCE.md).
 
 Submitted messages have an immediate pending row, reconciled with the runtime's
@@ -41,7 +45,7 @@ show the reported route, tokens, timing and tool counts.
 One status indicator is used in the sidebar and composer: hollow without a live
 runtime, filled when connected, breathing while work runs. A pending decision has
 a steady indicator and a “Needs your input” label. A separate dot marks unread
-responses. Offline views stop animation and disable commands.
+responses. Disconnected views stop animation and disable commands.
 
 ## Conversation controls
 
@@ -61,7 +65,8 @@ responses. Offline views stop animation and disable commands.
   details reuse the main conversation renderer and include the full task,
   effective system prompt and child conversation. Compaction leaves the
   conversation in place without opening a dialog.
-- Settings contain appearance, interface scale, text size, default permissions
+- Settings contain appearance, zoom (the entire interface, conversation
+  included), default permissions
   and registered configuration. Memory, skills, schedules and system prompts
   have dedicated editors; see [Management](MANAGEMENT.md) and
   [System prompts](SYSTEM_PROMPTS.md).
@@ -91,16 +96,17 @@ and [Operations](OPERATIONS.md) for extraction and fallback limits.
 
 ## Offline conversations
 
-IndexedDB caches bounded transcript pages by authenticated host and conversation.
-The service worker caches the public app shell separately. Previously loaded
-history remains readable offline; older uncached pages and original attachments
-require the host. Reconnect refreshes authoritative state before enabling writes.
-The cache is an optional replica: storage failure cannot prevent online use, and
-cached events never execute commands. Signing out removes the device's cache.
+There is no offline conversation storage: transcripts, drafts and history
+require a live host connection, and disconnecting disables commands until
+reconnect refreshes authoritative state. The service worker precaches the
+shell and core conversation assets. Build-derived optional renderer assets
+enter a bounded runtime cache after first use. Signing out clears local
+UI state.
 
 The UI uses a single viewport owner, safe-area insets and shared popovers/modals.
 Input focus, orientation changes and returning from the background preserve the
-selected conversation and draft. Loading skeletons share the final layout.
+selected conversation and draft. Loading shells reserve the final columns and
+controls; content of unknown length can still grow when it arrives.
 Reduced-motion preferences disable animation.
 
 ## Phone access and installation
@@ -121,7 +127,7 @@ For browser testing without installation, an explicit HTTP origin with a literal
 IPv4 address in the tailnet range `100.64.0.0/10` is also accepted:
 
 ```sh
-uagent --web --web-port 18080 --web-origin http://100.64.0.9:18080
+uagent --web --web-port 18080 --web-origin http://100.64.0.10:18080
 tailscale serve --bg --tcp=18080 tcp://127.0.0.1:18080
 ```
 
@@ -172,3 +178,18 @@ layout changes centralized. `quantities.ts` and native quantity helpers use
 decimal display units; raw exports retain exact values. Native and browser tests
 use mock providers. Physical iOS keyboard, install and notification behavior
 still requires device validation; browser emulation does not establish it.
+
+### Frontend bundle baseline (`web/scripts/size.js`, CI-reported)
+
+Measured 2026-09-20 after the loading-layout refactor. Core shell CSS is
+available before lazy feature modules so loading and loaded surfaces keep their
+columns and dialog bounds. `npm run size --prefix web` records raw and gzip
+bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
+(mermaid, katex, highlight) stay in lazy chunks.
+
+| Group | Raw | Gzip |
+| --- | ---: | ---: |
+| Initial JS | 72,307 | 25,180 |
+| Initial CSS | 21,721 | 5,268 |
+| App (excl. diagrams) | 937,540 | 493,955 |
+| Diagrams (lazy) | 5,113,369 | 1,472,046 |

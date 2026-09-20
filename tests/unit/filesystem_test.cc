@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/jobs.h"
+#include "include/agent/path_policy.h"
 #include "include/app/options.h"
 #include "include/core/config.h"
 #include "include/core/fs.h"
@@ -12,8 +14,6 @@
 #include "include/core/signals.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
-#include "include/tools/path_policy.h"
 #include "include/tools/registry.h"
 #include "tests/unit/test_support.h"
 

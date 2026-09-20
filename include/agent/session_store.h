@@ -24,6 +24,11 @@ inline constexpr const char* kSessionHeaderModel = "model";
 inline constexpr const char* kSessionHeaderSessionId = "session_id";
 inline constexpr const char* kSessionHeaderTurns = "turns";
 inline constexpr const char* kSessionHeaderTitle = "title";
+inline constexpr const char* kSessionHeaderParent = "parent_session_id";
+inline constexpr const char* kSessionHeaderForkTurn = "forked_at_turn";
+inline constexpr const char* kSessionHeaderForkTime = "forked_at_time";
+// Optional lineage: empty/zero when this session was never forked. Unknown
+// to older readers, which ignore extra header fields.
 inline constexpr int64_t kSessionFormat = 3;
 inline constexpr size_t kSessionHeaderBytes = size_t{16} * 1024;
 inline constexpr size_t kSessionReadBytes = size_t{64} * 1024 * 1024;
@@ -60,6 +65,9 @@ struct SessionMetadata {
   int64_t turns = 0;
   std::string title;
   bool custom_title = false;
+  std::string parent_session_id;
+  int64_t forked_at_turn = 0;
+  std::string forked_at_time;
 };
 
 struct SessionState {
@@ -107,7 +115,18 @@ class SessionStore {
                                 const std::string& expected_cwd);
   static SessionLoadResult Inspect(const std::string& path);
   static json Fork(const std::string& path, const std::string& title = "",
-                   bool source_owned = false);
+                   bool source_owned = false, int64_t fork_turn = 0);
+  // Truncates the saved session before its Nth user turn, keeping the same
+  // identity and title. Records a reset-boundary display fact so the cut
+  // stays visible after the dropped messages are gone.
+  static json Rewind(const std::string& path, int64_t turn);
+  // Renders the saved session as markdown for /share. Pure transcript view:
+  // user and assistant text plus truncated tool results; system, internal
+  // and runtime-context messages never leave the session file.
+  static std::string ShareMarkdown(const SessionRecord& record);
+  // Writes ShareMarkdown next to the session file and returns the sibling
+  // path ({{"shared", true}, {"path", ...}}) or {{"error", ...}}.
+  static json Share(const std::string& path);
   static SessionStoreStatus Rename(const std::string& path,
                                    const std::string& title);
   static SessionStoreStatus Remove(const std::string& path,

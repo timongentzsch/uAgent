@@ -36,7 +36,9 @@ class CollaboratorRuntime {
   ToolResult Interrupt(const std::string& id);
   ToolResult Stop(const std::string& id);
   json Snapshot(const std::string& id = "") const;
+  json LiveView(const std::string& id) const;
   bool Active(const std::string& id) const;
+  size_t Count() const;
   void Shutdown();
 
  private:

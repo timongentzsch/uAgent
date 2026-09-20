@@ -1,0 +1,68 @@
+.attachments {
+  display: flex;
+  gap: calc(6rem / 14);
+  flex-wrap: wrap;
+  padding: calc(6rem / 14) 0;
+  max-height: calc(var(--viewport-height) * 0.16);
+  overflow: auto;
+}
+.composer .attachments {
+  padding: calc(4rem / 14) calc(8rem / 14);
+}
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: calc(4rem / 14) calc(6rem / 14);
+  border: 1px solid var(--line);
+  max-width: 100%;
+  min-width: 0;
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+.file-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-chip small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.file-chip img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+}
+/* Rename control: reads as the file name until focused. */
+.chip-name {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+.chip-name:disabled {
+  cursor: default;
+}
+.file-chip input[aria-label^="Rename"] {
+  width: 12ch;
+  max-width: 100%;
+  font: inherit;
+}
+/* Inline @-mention references inside message text. */
+.mention-image {
+  display: block;
+  max-width: min(100%, 320px);
+  max-height: 180px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  margin: calc(4rem / 14) 0;
+}
+.mention-chip {
+  vertical-align: baseline;
+}

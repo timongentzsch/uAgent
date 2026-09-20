@@ -58,6 +58,14 @@ def answer(handler, body):
             },
             finish="tool_calls",
         )
+    if "Review the full task." in prompt and not any(
+        message.get("tool_call_id") == "review-read" for message in body["messages"]
+    ):
+        return tool_call(
+            "read_path",
+            {"path": "."},
+            call_id="review-read",
+        )
     if "Memory receipt probe" in prompt and not any(
         message.get("tool_call_id") == "memory-receipt" for message in body["messages"]
     ):
@@ -83,6 +91,16 @@ def answer(handler, body):
             call_id="browser-write",
         )
     content = "# Verified response\n\nA **streamed** answer with a table.\n\n| Check | Result |\n| --- | --- |\n| Native worker | Ready |\n\nInline $x^2 + y^2 = z^2$ and \\(a+b\\).\n\n$$\\int_0^1 x \\, dx = \\frac{1}{2}$$\n\n```python\nprint('hello')\n```\n\nPrices $5 and $10. `<script>bad()</script>`\n\n![blocked](https://example.com/tracker.png)\n\n[unsafe](javascript:alert(1))\n"
+    if "Long continuity probe" in prompt:
+        content = (
+            "Stable opening paragraph for selection and node identity.\n\n"
+            "```python\nprint('stable copy control')\n```\n\n"
+            "| Stable | Table |\n| --- | --- |\n| early | row |\n\n"
+            + "Long retained body sentence. " * 360
+            + "\n\n[late reference][continuity]\n\n"
+            + "```text\nunfinished-looking content retained safely\n```\n\n"
+            + "[continuity]: https://example.com/continuity\n"
+        )
     if "Diagram probe" in prompt:
         content += "\n```mermaid\nflowchart LR\n  A[Request] --> B[Response]\n```\n"
     write_sse_sequence(
@@ -102,7 +120,7 @@ def answer(handler, body):
                 for index in range(0, len(content), 80)
             ],
         ],
-        delay=0.08,
+        delay=0.02 if "Long continuity probe" in prompt else 0.08,
     )
     return None
 

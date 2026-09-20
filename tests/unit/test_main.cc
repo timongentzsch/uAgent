@@ -60,7 +60,15 @@ int RunTests(int argc, char** argv) {
     return 0;
   }
 
-  std::setlocale(LC_CTYPE, "");
+  // Display-width tests assert UTF-8 semantics (CJK wide, · narrow): they
+  // need a UTF-8 CTYPE locale to be meaningful. Prefer explicit UTF-8
+  // names (hermetic under a bare C ambient, as on dev machines); fall
+  // back to the ambient locale, mirroring production's contract.
+  if (!std::setlocale(LC_CTYPE, "C.UTF-8")) {
+    if (!std::setlocale(LC_CTYPE, "en_US.UTF-8")) {
+      std::setlocale(LC_CTYPE, "");
+    }
+  }
   curl_global_init(CURL_GLOBAL_DEFAULT);
   size_t selected = 0;
   for (const TestCase& test : Tests()) {

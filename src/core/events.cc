@@ -125,8 +125,9 @@ json PublicProjection(const Event& event) {
   if (event.id != EventId::kToolCall) return event.data;
 
   json data = json::object();
-  for (const char* field : {"turn", "step", "id", "name", "arguments_digest",
-                            "issue_code", "issue_field"}) {
+  for (const char* field :
+       {"turn", "step", "call_id", "response_id", "occurrence_id", "detail_id",
+        "name", "arguments_digest", "issue_code", "issue_field"}) {
     if (event.data.contains(field)) data[field] = event.data[field];
   }
 
@@ -280,7 +281,7 @@ json JournalProjection(const Event& event) {
     case EventId::kToolCall:
       copy("turn");
       copy("step");
-      copy("id");
+      copy("occurrence_id");
       copy("name");
       copy("arguments_digest");
       copy("issue_code");
@@ -289,7 +290,7 @@ json JournalProjection(const Event& event) {
     case EventId::kToolResult:
       copy("turn");
       copy("step");
-      copy("id");
+      copy("occurrence_id");
       copy("name");
       copy("status");
       copy("completion_status");
@@ -309,6 +310,7 @@ json JournalProjection(const Event& event) {
     case EventId::kActivityCompleted:
       copy("id");
       copy("kind");
+      copy("command");
       copy("status");
       copy("output_chars");
       break;
@@ -594,8 +596,9 @@ void Emit(Event event) noexcept {
 
 ResponseObservation::ResponseObservation(
     bool render, bool verbose, const std::string& label,
-    std::chrono::steady_clock::time_point anchor) {
-  Event event{EventId::kResponseStarted};
+    std::chrono::steady_clock::time_point anchor, json context)
+    : context_(std::move(context)) {
+  Event event{EventId::kResponseStarted, context_};
   event.render = render;
   event.verbose = verbose;
   event.text = label;
@@ -604,7 +607,7 @@ ResponseObservation::ResponseObservation(
 }
 
 ResponseObservation::~ResponseObservation() {
-  Emit(Event{EventId::kResponseFinished});
+  Emit(Event{EventId::kResponseFinished, std::move(context_)});
 }
 
 }  // namespace uagent

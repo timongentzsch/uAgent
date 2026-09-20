@@ -44,6 +44,9 @@ struct ModelInfo {
   std::vector<std::string> efforts;
   int64_t context = 0;
   json input_modalities = nullptr;
+  // Display name from the catalog (`name`); empty when the provider sends
+  // none. Never used as an id — search and selection stay id-based.
+  std::string name = "";
 };
 
 struct ModelCandidate {
@@ -55,6 +58,8 @@ struct ModelCandidate {
 struct ModelSearch {
   std::vector<ModelCandidate> matches;
   std::vector<std::string> unavailable;
+  // Live catalogs queried (routes always count as available).
+  size_t queried = 0;
 };
 
 json ModelCatalogue(Api& api, const std::vector<ModelRoute>& routes,
@@ -126,6 +131,13 @@ SideRoute ResolveSideRoute(const Api& api,
 
 std::string NormalizeModelId(std::string model);
 const ProviderTemplate* FindProviderTemplateForUrl(const std::string& url);
+// The built-in default template (OpenRouter) for unattributed endpoints.
+const ProviderTemplate& DefaultProviderTemplate();
+// Default model route when nothing is configured: DeepSeek flash through
+// OpenRouter auto-routing. One constant so the template, the search fallback
+// and future side-model defaults cannot drift apart.
+inline constexpr const char* kDefaultModelRoute =
+    "~deepseek/deepseek-flash-latest";
 bool ApplyProviderTemplate(Api& api, const ProviderTemplate& provider);
 std::string ModelPreferencePath();
 bool PersistableSelection(const std::string& selection);
@@ -156,6 +168,18 @@ std::string RouteSelection(const Api& api,
                            const std::vector<NamedProvider>& providers);
 std::string RouteSelection(const SideRoute& route,
                            const std::vector<NamedProvider>& providers);
+// Selection formatting shared by preference storage and route
+// serialization: identity for dedupe, scope for display, composition for
+// persistence.
+std::string RouteIdentity(const std::string& base_url, const std::string& model,
+                          ProviderProtocol protocol, WireApi wire_api,
+                          bool hosted_web_search);
+std::string ProviderScope(const std::string& base_url,
+                          const std::vector<NamedProvider>& providers);
+std::string ComposeSelection(const std::string& scope, const std::string& model,
+                             const std::string& variant,
+                             const std::string& effort);
+void ApplySelectionPolicy(Api& api, const ModelSelection& selection);
 void ApplyRoute(Api& api, const ModelRoute& route);
 // The in-process counterpart for side models: same fields as ApplyRoute
 // plus the routing variant the selection asked for.
@@ -173,6 +197,10 @@ std::optional<std::vector<ModelInfo>> ParseModels(const json& response);
 std::optional<std::vector<ModelInfo>> QueryModels(Api& api,
                                                   bool abortable = false);
 std::string NormalizeModelQuery(std::string query);
+// Display-name aware match: exact substring first, then a fallback that
+// unifies spaces, underscores and hyphens ("Muse Spark" finds
+// "muse-spark"). Selection stays id-based; only matching is lenient.
+bool MatchesModelQuery(const std::string& haystack, const std::string& query);
 ModelSearch SearchModels(const Api& api, const std::vector<ModelRoute>& routes,
                          const std::vector<NamedProvider>& providers,
                          std::string query);

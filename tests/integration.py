@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import importlib
 import os
 import pathlib
+import pkgutil
 import sys
 import tempfile
 import time
@@ -27,20 +29,29 @@ TEST_MODULES = (
     ("web", integration_web),
     ("management", integration_management),
 )
-ALL_TESTS = {
-    name: test
-    for _, module in TEST_MODULES
-    for name, test in vars(module).items()
-    if name.startswith("test_")
-    and callable(test)
-    and getattr(test, "__module__", None) == module.__name__
-}
-TEST_GROUPS = {
-    name: group
-    for group, module in TEST_MODULES
-    for name, test in ALL_TESTS.items()
-    if test.__module__ == module.__name__
-}
+
+
+def iter_group_modules(module):
+    yield module
+    if hasattr(module, "__path__"):
+        for info in pkgutil.iter_modules(module.__path__):
+            if info.name.startswith("_"):
+                continue
+            yield importlib.import_module(f"{module.__name__}.{info.name}")
+
+
+ALL_TESTS = {}
+TEST_GROUPS = {}
+for _group, _top in TEST_MODULES:
+    for _mod in iter_group_modules(_top):
+        for _name, _test in vars(_mod).items():
+            if (
+                _name.startswith("test_")
+                and callable(_test)
+                and getattr(_test, "__module__", None) == _mod.__name__
+            ):
+                ALL_TESTS[_name] = _test
+                TEST_GROUPS[_name] = _group
 ORDERED_TESTS = tuple(ALL_TESTS)
 
 

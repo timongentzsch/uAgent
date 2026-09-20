@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/file_watch.h"
@@ -30,7 +31,6 @@
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
 
 namespace uagent {
 
@@ -130,17 +130,15 @@ void RemoveLog(const std::string& path) {
 }
 
 ToolArtifact PromoteLogArtifact(const std::string& path, uint64_t bytes) {
-  std::string target;
-  Fd fd(CreateTempFile(UagentDir(kArtifactsDir) + "/output-XXXXXX", target));
-  if (fd) {
-    fchmod(fd.Get(), kPrivateFileMode);
-    fd.Reset();
-    if (rename(path.c_str(), target.c_str()) == 0) {
-      chmod(target.c_str(), kPrivateFileMode);
-      return {target, bytes};
+  ScopedTempFile target(UagentDir(kArtifactsDir) + "/output-XXXXXX");
+  if (target) {
+    fchmod(target.Get(), kPrivateFileMode);
+    target.Close();
+    if (rename(path.c_str(), target.Path().c_str()) == 0) {
+      chmod(target.Path().c_str(), kPrivateFileMode);
+      return {target.Release(), bytes};
     }
     int rename_error = errno;
-    unlink(target.c_str());
     if (Debug().Enabled()) {
       Debug().Write("artifact_promotion_failed",
                     {{"path", path}, {"error", strerror(rename_error)}});

@@ -1,8 +1,75 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+const optionalAssets = new Set();
+const rendererManifest = () => ({
+  name: "renderer-assets",
+  generateBundle(_options, bundle) {
+    const chunks = Object.values(bundle).filter(
+      (item) => item.type === "chunk",
+    );
+    const byFile = new Map(chunks.map((chunk) => [chunk.fileName, chunk]));
+    const roots = new Set(
+      chunks
+        .filter((chunk) =>
+          [...chunk.moduleIds].some((id) =>
+            /\/(?:diagram\.tsx|math\.ts|highlight\.ts)$/.test(id),
+          ),
+        )
+        .map((chunk) => chunk.fileName),
+    );
+    const pending = [...roots];
+    while (pending.length) {
+      const file = pending.pop();
+      if (!file || optionalAssets.has(file)) continue;
+      optionalAssets.add(file);
+      const chunk = byFile.get(file);
+      for (const dependency of [
+        ...(chunk?.imports || []),
+        ...(chunk?.dynamicImports || []),
+      ])
+        pending.push(dependency);
+      for (const asset of chunk?.viteMetadata?.importedAssets || [])
+        optionalAssets.add(asset);
+      for (const css of chunk?.viteMetadata?.importedCss || [])
+        optionalAssets.add(css);
+    }
+    // Shared shell/conversation dependencies remain core. Traverse every
+    // entry dependency while treating renderer roots as lazy boundaries.
+    const core = new Set();
+    const corePending = chunks
+      .filter((chunk) => chunk.isEntry)
+      .map((chunk) => chunk.fileName);
+    while (corePending.length) {
+      const file = corePending.pop();
+      if (
+        !file ||
+        core.has(file) ||
+        (roots.has(file) && !byFile.get(file)?.isEntry)
+      )
+        continue;
+      core.add(file);
+      const chunk = byFile.get(file);
+      for (const dependency of [
+        ...(chunk?.imports || []),
+        ...(chunk?.dynamicImports || []),
+      ])
+        corePending.push(dependency);
+      for (const asset of chunk?.viteMetadata?.importedAssets || [])
+        core.add(asset);
+      for (const css of chunk?.viteMetadata?.importedCss || []) core.add(css);
+    }
+    for (const file of core) optionalAssets.delete(file);
+    this.emitFile({
+      type: "asset",
+      fileName: "renderer-assets.json",
+      source: JSON.stringify([...optionalAssets].map((path) => `/${path}`)),
+    });
+  },
+});
 export default defineConfig({
   esbuild: { jsx: "automatic", jsxImportSource: "preact" },
   plugins: [
+    rendererManifest(),
     {
       name: "modern-math-fonts",
       enforce: "pre",
@@ -48,8 +115,15 @@ export default defineConfig({
         ],
       },
       injectManifest: {
-        globPatterns: ["**/*.{html,js,css,woff2,png,webmanifest}"],
+        globPatterns: ["**/*.{html,json,js,css,woff2,png,webmanifest}"],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+        manifestTransforms: [
+          async (entries) => ({
+            manifest: entries.filter(
+              (entry) => !optionalAssets.has(entry.url.replace(/^\//, "")),
+            ),
+          }),
+        ],
       },
     }),
   ],

@@ -4,12 +4,12 @@
 #define UAGENT_INCLUDE_APP_RUNTIME_H_
 
 #include "include/agent/adaptive_system.h"
+#include "include/agent/process.h"
 #include "include/api.h"
 #include "include/core/env.h"
 #include "include/core/usage.h"
 #include "include/mcp/server.h"
 #include "include/tools/collaborator_runtime.h"
-#include "include/tools/process.h"
 
 namespace uagent {
 

@@ -455,7 +455,7 @@ std::string SpinnerLabel(const std::string& label) {
 uint64_t Fnv1aUpdate(uint64_t hash, const char* data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     hash ^= static_cast<unsigned char>(data[i]);
-    hash *= 1099511628211ULL;
+    hash *= kFnv1aPrime;
   }
   return hash;
 }
@@ -527,6 +527,26 @@ bool OpenrouterUrl(std::string url) {
 
 bool OpenaiUrl(std::string url) {
   return UrlHost(std::move(url)) == "api.openai.com";
+}
+
+std::string_view BeforeFirst(std::string_view s, char delim) noexcept {
+  size_t pos = s.find(delim);
+  return pos == std::string_view::npos ? s : s.substr(0, pos);
+}
+
+std::string_view AfterFirst(std::string_view s, char delim) noexcept {
+  size_t pos = s.find(delim);
+  return pos == std::string_view::npos ? std::string_view{} : s.substr(pos + 1);
+}
+
+std::string_view ScopePrefix(std::string_view key) noexcept {
+  return BeforeFirst(key, '/');
+}
+
+std::string TruncatedHash(std::string_view data, size_t chars) {
+  std::string digest = HashHex(std::string(data));
+  if (digest.size() > chars) digest.resize(chars);
+  return digest;
 }
 
 std::string RouteKey(const std::string& base_url, const std::string& provider,

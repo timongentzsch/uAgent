@@ -75,32 +75,24 @@ uagent --yolo
 ## Highlights
 
 - Native streamed answers and reasoning across OpenAI-compatible
-  `reasoning`, `reasoning_details`, and `reasoning_content` fields; compact
-  mode keeps a clean latest-line preview in the transient status row without a
-  leading ellipsis, while `/verbose` preserves the labelled full stream.
-- Persistent editable composer with queued steering, Escape interruption, and
-  Ctrl+B foreground-command handoff.
-- Parallel safe tools, durable resumable collaborators, automatic compaction,
+  `reasoning`, `reasoning_details`, and `reasoning_content` fields, with
+  compact mode and `/verbose` for the full stream.
+- Persistent editable composer with queued steering, interruption, and
+  foreground-command handoff; parallel safe tools, resumable collaborators,
   and resumable workspace sessions.
-- Supervised process activities with opaque IDs, incremental output, optional
-  PTYs, writable input, resize, wait, stop, and persistent log-only detach.
+- Supervised process activities with opaque IDs, incremental output,
+  optional PTYs, writable input, resize, wait, stop, and log-only detach.
 - Repository tools, document/image input, web search, skills, memory,
   Playwright automation, and dynamically discovered MCP tools. MCP stdio
   requires the stateless `2026-07-28` protocol; there is no legacy downgrade.
-- One typed application event spine with terminal, stable JSONL, sensitive
-  debug, bounded session-journal, and in-process subscriber consumers, plus a
-  shared input channel used by terminal and web clients.
-- Centralized route capabilities, provider-independent tool presentation, and
-  explicit Chat Completions, Responses, and Anthropic Messages adapters.
-- Native hosted web search when the active route declares it, otherwise an
-  explicitly configured OpenRouter search route; model names never imply
-  support.
-- Redacted effective configuration and provenance in `/context`, with validated
-  request/turn settings reloaded only between turns.
-- Semantic context-overflow recovery: one bounded compaction and at most one
-  safe retry. Command completion stays in UI/retained activity state; bounded
-  subagent completion joins the next naturally occurring model call without
-  starting one.
+- One typed application event spine consumed by terminal, browser, JSONL,
+  and debug-trace projections over a shared input channel.
+- Centralized route capabilities with explicit Chat Completions, Responses,
+  and Anthropic Messages adapters; native hosted web search when the route
+  declares it, otherwise an explicitly configured search route.
+- Redacted effective configuration and provenance in `/context`, validated
+  settings reloaded only between turns, and bounded context-overflow
+  recovery (one compaction, at most one safe retry).
 - Explicit limits for time, output, processes, context, persistence, and
   provider-reported spend.
 
@@ -119,9 +111,7 @@ The core registry includes:
 | conditional | `web_search`, `subagent`, `skill`, `adapt_system`, MCP tools |
 
 Policy, lean mode, route capabilities, runtime state, and configuration filter
-the active schemas; see [the tool reference](docs/TOOLS.md). Compact reasoning
-updates only the transient activity row, while `/verbose` restores full muted
-reasoning and expanded bounded tool output.
+the active schemas; see [the tool reference](docs/TOOLS.md).
 
 ## Interactive controls
 

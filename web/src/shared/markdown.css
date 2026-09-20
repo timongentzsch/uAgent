@@ -1,0 +1,156 @@
+.markdown,
+.markdown-stream {
+  line-height: 1.55;
+  min-width: 0;
+}
+.markdown p:first-child,
+.markdown-stream p:first-child {
+  margin-top: 0;
+}
+.markdown p:last-child,
+.markdown-stream p:last-child {
+  margin-bottom: 0;
+}
+.markdown h1,
+.markdown-stream h1 {
+  font-size: 1.4em;
+}
+.markdown h2,
+.markdown-stream h2 {
+  font-size: 1.2em;
+}
+.markdown h3,
+.markdown-stream h3 {
+  font-size: 1.1em;
+}
+.markdown ul,
+.markdown ol,
+.markdown-stream ul,
+.markdown-stream ol {
+  padding-left: calc(24rem / 14);
+}
+.table-scroll {
+  min-width: 0;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.markdown table,
+.markdown-stream table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.markdown th,
+.markdown td,
+.markdown-stream th,
+.markdown-stream td {
+  border: 1px solid var(--line);
+  padding: calc(4rem / 14) calc(8rem / 14);
+  /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.markdown blockquote,
+.markdown-stream blockquote {
+  border-left: 2px solid var(--accent);
+  padding-left: calc(12rem / 14);
+  margin-left: 0;
+  color: var(--muted);
+}
+.markdown img,
+.markdown-stream img {
+  max-width: 100%;
+}
+.katex-display,
+.katex-block {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: var(--accent);
+  font-weight: 600;
+}
+.hljs-string,
+.hljs-addition {
+  color: var(--accent);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--muted);
+}
+.hljs-deletion {
+  text-decoration: line-through;
+}
+
+.code-block {
+  position: relative;
+  margin: calc(8rem / 14) 0;
+}
+.code-block pre {
+  margin: 0;
+  min-height: calc(var(--control) + 12px);
+  padding-right: calc(var(--control) + 16px);
+}
+.code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.code-copy button {
+  background: var(--surface);
+}
+@media (hover: hover) and (pointer: fine) {
+  .code-copy {
+    opacity: 0;
+  }
+  .code-block:hover .code-copy,
+  .code-block:focus-within .code-copy {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .code-block {
+    --control: max(44px, 2.4rem);
+  }
+}
+
+.diagram {
+  margin: 0.5rem 0;
+}
+.diagram-preview {
+  height: clamp(140px, 25vh, 240px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.diagram-preview > p {
+  margin: 0;
+}
+.diagram-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.diagram img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: auto;
+}
+.diagram summary {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.diagram-expanded {
+  width: min(1200px, calc(var(--content-width) - 16px));
+}
+.diagram-expanded img {
+  display: block;
+  max-width: none;
+  margin: auto;
+}

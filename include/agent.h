@@ -18,6 +18,7 @@
 
 #include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/process.h"
 #include "include/agent/trace.h"
 #include "include/api.h"
 #include "include/core/json.h"
@@ -26,7 +27,6 @@
 #include "include/core/skills.h"
 #include "include/core/usage.h"
 #include "include/media/attachments.h"
-#include "include/tools/process.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
@@ -61,11 +61,10 @@ class Agent {
   const json& LastStop() const { return last_stop_; }
   const std::string& SessionId() const { return session_id_; }
   uint64_t Revision() const { return revision_; }
-  // Show the most recent completed turn's archived tool traffic. Server search
-  // can expose sources and snippets, but not necessarily the provider-internal
-  // query.
-  void PrintTrace() const;
-
+  // The most recent completed turn's archived tool traffic as data. Server
+  // search can expose sources and snippets, but not necessarily the
+  // provider-internal query. Consumer interfaces render it; the agent never
+  // prints.
   json LatestToolTrace() const;
 
   // final assistant prose — the whole result of a headless (-p) run
@@ -83,16 +82,22 @@ class Agent {
 
   std::string ActiveRoute() const;
 
+  // Vision route for the analysis side call: the configured model wins;
+  // otherwise the main route reads images when it can, else the shared
+  // flash default (vision-capable) backs it. Empty means inherit main.
+  std::string EffectiveImageModel() const;
+
   // Session picker's one-line title.
   std::string FirstUserText() const;
 
   // Real user prompts are tracked out of band from model-readable text.
   int64_t UserTurns() const;
 
-  // Replay the conversation to the terminal, in the live REPL's visual
-  // language (user prompts, rendered assistant prose, dim tool traffic), so a
-  // resumed session shows the context it is picking up from.
-  void PrintHistory() const;
+  // Data views for consumer interfaces (terminal, web, headless). Rendering
+  // lives in ui/; the agent only supplies facts.
+  const Conversation& History() const { return conversation_; }
+  const std::vector<Tool>& Tools() const { return tools_; }
+  const json& TraceArchive() const { return conversation_.Archive(); }
   json DisplaySnapshot() const;
   json RawExchange(const std::string& id, size_t offset = 0) const;
   void RetainExchanges(bool enabled) {
@@ -112,12 +117,16 @@ class Agent {
   }
 
   json ModelRequest();
-  void PrintContext();
 
   bool Save(const std::string& path, std::string& error) const;
 
   bool Load(const std::string& path, const std::string& expected_cwd,
             std::string& error);
+
+  // Drops the Nth live user turn and everything after it, mirroring
+  // SessionStore::Rewind on the running conversation. Numbering restarts
+  // at the cut; the caller persists with Save.
+  bool RewindToTurn(int64_t turn, std::string& error);
 
   // Estimated tokens in the request currently represented by the conversation.
   // Provider usage belongs to billing and may be cumulative or stale.
@@ -311,6 +320,10 @@ class Agent {
   void AppendToolResult(const ToolCall& call, const std::string& result,
                         const ToolResult& original, double duration_ms);
 
+  // Pushes a tool_result message together with the ids the retained view
+  // and the UI join on. No push path may skip the metadata half.
+  void PushToolResultMessage(const ToolCall& call, json message);
+
   // returns true if the user interrupted the batch
   bool RunCalls(const std::vector<ToolCall>& calls, int64_t& tool_count,
                 std::unordered_map<std::string, int64_t>& tool_counts,
@@ -350,6 +363,11 @@ class Agent {
   mutable FileLease writer_;
   std::string session_title_;
   bool custom_title_ = false;
+  // Fork lineage, restored on load and preserved on save so branches keep
+  // their parent link across worker generations.
+  std::string parent_session_id_;
+  int64_t forked_at_turn_ = 0;
+  std::string forked_at_time_;
   int64_t total_user_turns_ = 0;
   size_t logged_msgs_ = 0;      // messages already written to the debug trace
   std::string logged_schemas_;  // last exact per-request schema snapshot

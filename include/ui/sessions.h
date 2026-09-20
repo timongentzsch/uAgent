@@ -19,14 +19,41 @@
 #include "include/agent.h"
 #include "include/agent/session_store.h"
 #include "include/cli.h"
+#include "include/core/events.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
+#include "include/ui/conversation.h"
 #include "include/ui/display.h"
 
 namespace uagent {
+
+// Unique prefix match over saved sessions: an exact path wins, otherwise the
+// single session whose file name or title contains the argument
+// (case-insensitive). Empty when absent or ambiguous, so callers fall back
+// to the picker instead of guessing.
+inline std::string MatchSessionPrefix(const std::string& prefix) {
+  const std::string arg = AsciiLower(Trim(prefix));
+  if (arg.empty()) return "";
+  const std::vector<SessionInfo> sessions = ListSessions(SessionScope::kAll);
+  for (const SessionInfo& session : sessions) {
+    if (session.path == prefix) return session.path;
+  }
+  std::string match;
+  for (const SessionInfo& session : sessions) {
+    const std::string name =
+        std::filesystem::path(session.path).filename().string();
+    if (AsciiLower(name).find(arg) == std::string::npos &&
+        AsciiLower(session.title).find(arg) == std::string::npos) {
+      continue;
+    }
+    if (!match.empty()) return "";  // Ambiguous: let the picker decide.
+    match = session.path;
+  }
+  return match;
+}
 
 // print a numbered list and read a choice; returns the chosen path or "".
 inline std::string PickSession(bool render = true) {
@@ -92,7 +119,7 @@ inline bool ResumeInto(Agent& agent, const std::string& path,
   if (render) {
     printf("%s· resumed — %zu messages%s\n", DIM(), agent.MessageCount() - 1,
            RST());
-    agent.PrintHistory();
+    PrintConversationHistory(agent.History(), agent.Tools());
     printf("%s· end of history, continuing%s\n", DIM(), RST());
   }
   return true;

@@ -7,6 +7,15 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#000000" />
+    <script>
+      // Opt out of browser scroll restoration before any module runs:
+      // on reload the browser would otherwise restore the stale
+      // pre-reload position onto the fresh transcript node after our
+      // mount pin (the mobile reload jump). Module scope is too late.
+      try {
+        history.scrollRestoration = "manual";
+      } catch (error) {}
+    </script>
     <script src="/theme.js"></script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -14,6 +23,6 @@
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/app.tsx"></script>
+    <script type="module" src="/src/app/app.tsx"></script>
   </body>
 </html>

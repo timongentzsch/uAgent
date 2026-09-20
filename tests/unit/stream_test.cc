@@ -8,15 +8,15 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/jobs.h"
+#include "include/agent/process.h"
+#include "include/agent/tool_presentation.h"
 #include "include/api/openai_stream.h"
 #include "include/api/retry.h"
 #include "include/core/term.h"
 #include "include/tools/files.h"
-#include "include/tools/jobs.h"
-#include "include/tools/process.h"
 #include "include/tools/registry.h"
 #include "include/ui/presentation.h"
-#include "include/ui/tool_output.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {

@@ -38,12 +38,13 @@ bool Steering::Take() {
   return value;
 }
 
-void Steering::Queue(std::string input, std::string request_id,
-                     bool auto_start) {
+void Steering::Queue(std::string input, std::string request_id, bool auto_start,
+                     json attachments, json images) {
   size_t queued = 0;
   {
     std::lock_guard<std::mutex> lock(queue_mutex_);
-    queued_.push_back({std::move(input), std::move(request_id), auto_start});
+    queued_.push_back({std::move(input), std::move(request_id), auto_start,
+                       std::move(attachments), std::move(images)});
     queued = queued_.size();
   }
   NotifySteeringWake();

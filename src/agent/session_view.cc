@@ -12,7 +12,9 @@
 #include <utility>
 #include <vector>
 
+#include "include/agent/protocol.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -85,14 +87,60 @@ std::string Text(const json& message) {
 void MergeDisplayBlock(json& view, const json& block) {
   json& blocks = view["blocks"];
   if (!blocks.is_array()) blocks = json::array();
+  const std::string response_id = JsonValue(block, "response_id", "");
+  const std::string occurrence_id = JsonValue(block, "occurrence_id", "");
+  const std::string kind = JsonValue(block, "kind", "");
   auto found =
       std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
-        return JsonValue(item, "id", "") == JsonValue(block, "id", "");
+        if (JsonValue(item, "id", "") == JsonValue(block, "id", "")) {
+          return true;
+        }
+        if (!occurrence_id.empty() &&
+            JsonValue(item, "occurrence_id", "") == occurrence_id) {
+          return true;
+        }
+        return kind == "assistant" &&
+               JsonValue(item, "kind", "") == "assistant" &&
+               !response_id.empty() &&
+               JsonValue(item, "response_id", "") == response_id;
       });
   if (found == blocks.end()) {
-    blocks.push_back(block);
+    // Retained rows carry their sequence: insert in position so a late
+    // arrival (replay, pre-facts emit) can never strand older content
+    // after newer rows. Sequence-less rows keep their relative order.
+    auto at = blocks.end();
+    if (block.contains("sequence") && block["sequence"].is_number()) {
+      const auto sequence = block["sequence"].get<uint64_t>();
+      at = std::find_if(blocks.begin(), blocks.end(), [&](const json& item) {
+        return item.contains("sequence") && item["sequence"].is_number() &&
+               item["sequence"].get<uint64_t>() > sequence;
+      });
+    }
+    blocks.insert(at, block);
   } else {
-    *found = block;
+    json merged = block;
+    const uint64_t old_revision =
+        JsonValue(*found, "content_revision", uint64_t{0});
+    const uint64_t new_revision =
+        JsonValue(block, "content_revision", uint64_t{0});
+    if (old_revision == new_revision &&
+        JsonValue(*found, "text_bytes", size_t{0}) >
+            JsonValue(block, "text_bytes", size_t{0})) {
+      merged["text"] = JsonValue(*found, "text", "");
+      merged["text_bytes"] = (*found)["text_bytes"];
+      merged["truncated"] = JsonValue(*found, "truncated", false);
+      merged["content_complete"] = JsonValue(*found, "content_complete", false);
+    }
+    if (JsonValue(*found, "reasoning_revision", uint64_t{0}) ==
+            JsonValue(block, "reasoning_revision", uint64_t{0}) &&
+        JsonValue(*found, "reasoning_bytes", size_t{0}) >
+            JsonValue(block, "reasoning_bytes", size_t{0})) {
+      merged["reasoning"] = JsonValue(*found, "reasoning", "");
+      merged["reasoning_bytes"] = (*found)["reasoning_bytes"];
+      merged["reasoning_complete"] =
+          JsonValue(*found, "reasoning_complete", false);
+    }
+    *found = std::move(merged);
   }
   size_t bytes = JsonEstimatedBytes(blocks);
   while (!blocks.empty() &&
@@ -113,6 +161,69 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
       state["context_tokens"] = data["context_tokens"];
     }
     if (data.contains("statistics")) state["statistics"] = data["statistics"];
+  } else if (type == "response.started") {
+    const std::string response_id = JsonValue(data, "response_id", "");
+    if (!response_id.empty()) {
+      MergeDisplayBlock(state["view"],
+                        {{"id", response_id},
+                         {"row_id", response_id},
+                         {"response_id", response_id},
+                         {"kind", "assistant"},
+                         {"turn", JsonValue(data, "turn", int64_t{0})},
+                         {"request", JsonValue(data, "request", int64_t{0})},
+                         {"attempt", JsonValue(data, "attempt", int64_t{0})},
+                         {"text", ""},
+                         {"text_bytes", 0},
+                         {"content_revision", 1},
+                         {"content_complete", false},
+                         {"reasoning", ""},
+                         {"reasoning_bytes", 0},
+                         {"reasoning_revision", 1},
+                         {"reasoning_complete", false}});
+    }
+  } else if (type == "response.answer.delta" ||
+             type == "response.reasoning.delta") {
+    const std::string response_id = JsonValue(data, "response_id", "");
+    // Deltas without a response id have no started block to extend (the
+    // started branch above requires one). Matching them against any block
+    // whose id is also absent would append one turn's streamed text onto an
+    // earlier turn's completed block. The full block still arrives via
+    // message.changed, so skipping here loses nothing.
+    if (response_id.empty()) return true;
+    json& blocks = state["view"]["blocks"];
+    if (blocks.is_array()) {
+      auto found = std::find_if(blocks.begin(), blocks.end(), [&](json& block) {
+        return JsonValue(block, "response_id", "") == response_id;
+      });
+      if (found != blocks.end()) {
+        const bool answer = type == "response.answer.delta";
+        if (JsonValue(*found,
+                      answer ? "content_complete" : "reasoning_complete",
+                      false)) {
+          return true;
+        }
+        const char* field = answer ? "text" : "reasoning";
+        const char* bytes = answer ? "text_bytes" : "reasoning_bytes";
+        const std::string current = JsonValue(*found, field, "");
+        const std::string delta = JsonValue(data, "text", "");
+        if (data.contains("offset")) {
+          const size_t offset = JsonValue(data, "offset", size_t{0});
+          // A checkpoint may already contain this delta. Only append the
+          // still-missing suffix when its overlapping bytes agree; a gap or
+          // conflicting revision waits for the next complete block.
+          if (offset > current.size()) return true;
+          const size_t overlap =
+              std::min(delta.size(), current.size() - offset);
+          if (current.compare(offset, overlap, delta, 0, overlap) != 0) {
+            return true;
+          }
+          (*found)[field] = current + delta.substr(current.size() - offset);
+        } else {
+          (*found)[field] = current + delta;
+        }
+        (*found)[bytes] = JsonValue(*found, field, "").size();
+      }
+    }
   } else if (type == "message.changed") {
     MergeDisplayBlock(state["view"], data["block"]);
   } else if (type == "activities.changed") {
@@ -146,6 +257,28 @@ bool ApplySessionEvent(json& state, const std::string& type, const json& data) {
 }
 
 namespace {
+// Receipt facts live under the call's detail id. A message whose id
+// metadata was never recorded still carries the call id, so scan by it
+// before admitting the receipt is gone. Message-metadata entries carry
+// call ids too but never a receipt name, so they cannot self-match.
+const json* FindToolFacts(const json& facts, const std::string& detail_id,
+                          const std::string& call_id,
+                          std::string* resolved_id) {
+  const auto direct = facts.find(detail_id);
+  if (direct != facts.end() && direct->is_object() && !direct->empty()) {
+    if (resolved_id) *resolved_id = detail_id;
+    return &*direct;
+  }
+  for (auto it = facts.begin(); it != facts.end(); ++it) {
+    if (!call_id.empty() && it->is_object() &&
+        JsonValue(*it, "call_id", "") == call_id && it->contains("name")) {
+      if (resolved_id) *resolved_id = it.key();
+      return &*it;
+    }
+  }
+  return nullptr;
+}
+
 json DisplayBlock(const Conversation& conversation, uint64_t sequence,
                   const Entry& entry) {
   const json& facts = conversation.DisplayFacts();
@@ -155,42 +288,95 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   json block = {{"id", id},
                 {"sequence", sequence},
                 {"kind", entry.kind},
-                {"text", Utf8Trunc(text, 4096)},
-                {"truncated", text.size() > 4096}};
+                {"text", Utf8Trunc(text, kPreviewChars - 3)},
+                {"truncated", text.size() > kPreviewChars}};
   json metadata = JsonValue(facts, id.c_str(), json::object());
-  for (const char* key :
-       {"time",      "incoming",        "activity_id",    "agent_id",
-        "status",    "request_id",      "route",          "duration_ms",
-        "ttft_ms",   "usage",           "usage_reported", "tokens_per_second",
-        "turn_root", "reply_to",        "reply_excerpt",  "http",
-        "files",     "summary",         "deliveries",     "activity",
-        "origin",    "source_call_ids", "compaction",     "memory"}) {
+  for (const char* key : {"time",
+                          "incoming",
+                          "activity_id",
+                          "agent_id",
+                          "command",
+                          "status",
+                          "request_id",
+                          "route",
+                          "duration_ms",
+                          "ttft_ms",
+                          "usage",
+                          "usage_reported",
+                          "tokens_per_second",
+                          "turn_root",
+                          "reply_to",
+                          "reply_excerpt",
+                          "http",
+                          "files",
+                          "summary",
+                          "deliveries",
+                          "activity",
+                          "origin",
+                          "source_call_ids",
+                          "compaction",
+                          "memory",
+                          "response_id",
+                          "content_revision",
+                          "content_complete",
+                          "text_bytes",
+                          "reasoning_revision",
+                          "reasoning_complete",
+                          "reasoning_bytes",
+                          "call_id",
+                          "occurrence_id",
+                          "detail_id"}) {
     if (metadata.contains(key)) block[key] = metadata[key];
   }
+  block["retained_text_bytes"] = text.size();
+  block["text_bytes"] = JsonValue(block, "text", "").size();
+  block["content_complete"] = !JsonValue(block, "truncated", false);
   if (entry.kind == "assistant") {
+    const std::string response_id = JsonValue(metadata, "response_id", "");
+    if (!response_id.empty()) block["row_id"] = response_id;
+    if (!block.contains("content_revision")) block["content_revision"] = 1;
+    if (!block.contains("content_complete")) {
+      block["content_complete"] = text.size() <= 4096;
+    }
+    if (!block.contains("text_bytes")) block["text_bytes"] = text.size();
     std::string reasoning = JsonValue(metadata, "reasoning", "");
     if (reasoning.empty()) {
       reasoning = JsonValue(message, "reasoning_content",
                             JsonValue(message, "reasoning", ""));
     }
-    block["reasoning"] = Utf8Trunc(reasoning, 4096);
+    block["reasoning"] = Utf8Trunc(reasoning, kPreviewChars - 3);
     block["reasoning_available"] = !reasoning.empty();
+    if (!block.contains("reasoning_revision")) block["reasoning_revision"] = 1;
+    block["retained_reasoning_bytes"] = reasoning.size();
+    block["reasoning_bytes"] = JsonValue(block, "reasoning", "").size();
+    block["reasoning_complete"] = reasoning.size() <= kPreviewChars;
     if (const json* calls = JsonArray(message, "tool_calls")) {
       block["tools"] = json::array();
       for (const json& call : *calls) {
         std::string call_id = JsonValue(call, "id", "");
+        std::string occurrence_id = OccurrenceId(response_id, call_id);
+        std::string detail_id = DetailId(response_id, call_id);
+        const json* found =
+            FindToolFacts(facts, detail_id, call_id, &detail_id);
+        const json detail = found ? *found : json::object();
         json function = JsonValue(call, "function", json::object());
-        json tool = {
-            {"id", call_id},
-            {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
-            {"arguments",
-             Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
-            {"status", JsonValue(JsonValue(facts, ("t-" + call_id).c_str(),
-                                           json::object()),
-                                 "status", "not recorded")}};
-        tool["activity"] = JsonValue(
-            JsonValue(facts, ("t-" + call_id).c_str(), json::object()),
-            "activity", json::object());
+        json tool = {{"call_id", call_id},
+                     {"response_id", response_id},
+                     {"occurrence_id", occurrence_id},
+                     {"detail_id", detail_id},
+                     {"name", Utf8Trunc(JsonValue(function, "name", ""), 128)},
+                     {"arguments",
+                      Utf8Trunc(JsonValue(function, "arguments", ""), 1024)},
+                     {"status", JsonValue(detail, "status", "running")}};
+        tool["activity"] = JsonValue(detail, "activity", json::object());
+        // Kept receipts replay the exact live row; sessions saved before
+        // replay facts fall back to the legacy synthesis in the presenter.
+        if (detail.contains("call_replay")) {
+          tool["replay"] = detail["call_replay"];
+        }
+        if (detail.contains("exchange_path")) {
+          tool["exchange_path"] = detail["exchange_path"];
+        }
         block["tools"].push_back(std::move(tool));
         if (block["tools"].size() >= 32) {
           break;
@@ -200,17 +386,28 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
   }
   if (entry.kind == "tool_result") {
     std::string call_id = JsonValue(message, "tool_call_id", "");
-    json detail = JsonValue(facts, ("t-" + call_id).c_str(), json::object());
+    std::string detail_id = JsonValue(metadata, "detail_id", "t-" + call_id);
+    const json* found = FindToolFacts(facts, detail_id, call_id, &detail_id);
+    const json detail = found ? *found : json::object();
+    // Retained rows finished by definition: a missing receipt is a gap in
+    // history, never live activity (live rows stream separately). Say so
+    // explicitly instead of counterfeiting a "running" state.
+    const bool receipt_missing = found == nullptr;
     block["call_id"] = call_id;
     block["activity"] = JsonValue(detail, "activity", json::object());
     block["name"] = JsonValue(detail, "name", "tool");
-    block["status"] = JsonValue(detail, "status", "not recorded");
+    block["status"] =
+        JsonValue(detail, "status", receipt_missing ? "complete" : "running");
+    if (receipt_missing) block["receipt_missing"] = true;
     if (detail.contains("duration_ms")) {
       block["duration_ms"] = detail["duration_ms"];
     }
-    block["detail_id"] = "t-" + call_id;
-    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), 4096);
+    block["detail_id"] = detail_id;
+    block["change"] = Utf8Trunc(JsonValue(detail, "change", ""), kPreviewChars);
     block["artifact"] = detail.contains("artifact");
+    if (detail.contains("result_replay")) {
+      block["replay"] = detail["result_replay"];
+    }
     if (detail.contains("exchange_path")) {
       block["exchange_path"] = detail["exchange_path"];
     }

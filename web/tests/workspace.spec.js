@@ -23,36 +23,31 @@ test("appearance and configuration remain usable at large scales", async ({
     (element) => getComputedStyle(element).fontSize,
   );
   await expect(
-    page.getByText("Scales menus, buttons and interface labels."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Scales messages, tool output and the text you type."),
+    page.getByText("Scales the entire interface, conversation included"),
   ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("settings-mobile.png") });
-  await page.getByLabel("Interface size", { exact: true }).fill("110");
-  await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
-  await expect(composer).toHaveCSS("font-size", originalText);
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);
-  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
-  await expect(composer).toHaveCSS("font-size", "20px");
-  await expect(page.locator(".conversation-head h1")).toHaveCSS(
+  await page.getByLabel("Zoom", { exact: true }).fill("110");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "1.1");
+  // One dial moves type and spacing together: conversation and chrome
+  // type both grow, unlike the composer staying put before.
+  await expect(composer).not.toHaveCSS("font-size", originalText);
+  await expect(page.locator(".conversation-head h1")).not.toHaveCSS(
     "font-size",
     interfaceText,
   );
-  await expect(page.locator("html")).toHaveCSS("--display-scale", "1.1");
-  await expect(page.locator("html")).toHaveCSS("--text-scale", "1.25");
-  await page.getByLabel("Conversation text size", { exact: true }).fill("300");
-  await expect(page.locator("html")).toHaveCSS("--text-scale", "3");
-  await page.getByLabel("Interface size", { exact: true }).fill("200");
+  await page.getByLabel("Zoom", { exact: true }).fill("200");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "2");
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("Interface size", { exact: true }).fill("110");
-  await page.getByLabel("Conversation text size", { exact: true }).fill("125");
+  await page.getByLabel("Zoom", { exact: true }).fill("100");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "1");
+  await expect(composer).toHaveCSS("font-size", originalText);
   await page
     .getByRole("button", { name: "Advanced configuration", exact: true })
     .click();
@@ -65,7 +60,7 @@ test("appearance and configuration remain usable at large scales", async ({
   await expect(page.locator(".configuration")).toContainText(
     "active at the next user turn",
   );
-  await page.getByRole("button", { name: "← Back", exact: true }).click();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
   await page.getByLabel("Appearance").selectOption("light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
@@ -115,9 +110,7 @@ test("unread completions, background activity and conversation lifecycle", async
     .click();
   await expect(page.locator(".composer .status-led.active")).toBeVisible();
   await model.click();
-  await page
-    .getByLabel("Model", { exact: true })
-    .selectOption({ label: "mock/model-b" });
+  await page.getByLabel("Model", { exact: true }).selectOption("mock/model-b");
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(model).toHaveText(/mock\/model-b/);
   const secondHash = await page.evaluate(() => location.hash);
@@ -180,8 +173,8 @@ test("unread completions, background activity and conversation lifecycle", async
     .locator(".activity-row")
     .filter({ hasText: "BROWSER_ACTIVITY" });
   await activity.locator("button").first().click();
-  await expect(page.getByRole("dialog").locator("pre")).toContainText(
-    "BROWSER_ACTIVITY",
+  await expect(page.getByRole("dialog").locator(".detail-command")).toHaveText(
+    "printf BROWSER_ACTIVITY; sleep 10",
   );
   await page
     .getByRole("dialog")
@@ -228,27 +221,27 @@ test("unread completions, background activity and conversation lifecycle", async
     "UI refactor proof",
   );
   await conversationMenu.click();
+  // Live sessions delete directly now: the dialog closes the worker first.
   await expect(
     page
       .locator(".conversation-head")
       .getByRole("menuitem", { name: "Delete", exact: true }),
-  ).toBeDisabled();
-  await page
-    .locator(".conversation-head")
-    .getByRole("menuitem", { name: "Close session", exact: true })
-    .click();
-  await expect(page.locator(".composer .status-line")).toContainText("Saved");
-  await conversationMenu.click();
+  ).toBeEnabled();
   await page
     .locator(".conversation-head")
     .getByRole("menuitem", { name: "Delete", exact: true })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Delete conversation" }),
-  ).toContainText("UI refactor proof");
+  const deleter = page.getByRole("dialog", { name: "Delete conversation" });
+  await expect(deleter).toContainText("UI refactor proof");
+  await expect(deleter).toContainText("closes first");
   await page
     .getByRole("button", { name: "Delete permanently", exact: true })
     .click();
+  // Close-then-delete chains a worker shutdown: the dialog stays up
+  // until the worker exits and the record is gone.
+  await expect(
+    page.getByRole("dialog", { name: "Delete conversation" }),
+  ).toBeHidden({ timeout: 20000 });
   await expect(page.locator(".conversation-head h1")).toHaveText(
     "Your workspace",
   );
@@ -369,4 +362,128 @@ test("retained history stays bounded and merges overlapping pages once", async (
   await expect(page.locator(".message").last()).toContainText(
     "Retained message 1999.",
   );
+});
+
+test("load-older holds position, spins, and keeps the newest tail", async ({
+  page,
+  host: fixture,
+}) => {
+  await page.goto("/");
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible();
+  await mkdir(`${fixture.home}/.uagent/history`, { recursive: true });
+  const messages = Array.from({ length: 300 }, (_, index) => ({
+    role: index % 2 ? "assistant" : "user",
+    content: `Retained message ${index}. ` + "History anchor. ".repeat(20),
+  }));
+  await writeFile(
+    `${fixture.home}/.uagent/history/large.json`,
+    JSON.stringify({
+      format: 3,
+      cwd: fixture.project,
+      model: "test",
+      session_id: "anchor-history",
+      title: "Anchor history",
+      turns: 150,
+    }) +
+      "\n" +
+      JSON.stringify({
+        messages,
+        message_kinds: messages.map((item) => item.role),
+        archive: [],
+        archive_dropped_segments: 0,
+        context_tokens: 0,
+        usage: {},
+        tool_displays: {},
+      }),
+    { mode: 0o600 },
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Anchor history/ }).click();
+  const older = page.getByRole("button", {
+    name: "Load older retained messages",
+    exact: true,
+  });
+  await expect(older).toBeVisible();
+  await page.locator(".transcript").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const newest = await page
+    .locator(".message")
+    .last()
+    .getAttribute("data-message-id");
+  const first = await page.locator(".transcript").evaluate((element) => {
+    const top = element.scrollTop;
+    const rows = [...element.querySelectorAll("article.message")];
+    const row = rows.find((item) => item.offsetTop + item.offsetHeight > top);
+    return row
+      ? {
+          id: row.getAttribute("data-message-id"),
+          offset: row.offsetTop - top,
+        }
+      : null;
+  });
+  const firstId = first?.id;
+  const firstOffset = first?.offset || 0;
+  // Gate the older page: the button must go stateful while loading.
+  let releasePage;
+  const pageGate = new Promise((resolve) => (releasePage = resolve));
+  const olderRoute = async (route) => {
+    const response = await route.fetch();
+    await pageGate;
+    await route.fulfill({ response });
+  };
+  await page.route("**/api/sessions/*?before=*", olderRoute);
+  await older.click();
+  const loading = page.getByRole("button", {
+    name: "Loading older messages…",
+  });
+  await expect(loading).toBeVisible();
+  await expect(loading).toBeDisabled();
+  releasePage();
+  await expect
+    .poll(
+      () =>
+        page
+          .locator(".transcript")
+          .evaluate(
+            (element) =>
+              element.scrollHeight - element.scrollTop - element.clientHeight,
+          ),
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(100);
+  // Still reading history: not pinned to the bottom, the same first
+  // message stays under the reader, and the newest tail survived.
+  const gap = await page
+    .locator(".transcript")
+    .evaluate(
+      (element) =>
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+    );
+  expect(gap).toBeGreaterThan(100);
+  const held = await page
+    .locator(".transcript")
+    .evaluate((element, anchorId) => {
+      const top = element.scrollTop;
+      const anchor = [...element.querySelectorAll("article.message")].find(
+        (row) => row.getAttribute("data-message-id") === anchorId,
+      );
+      return anchor
+        ? {
+            id: anchor.getAttribute("data-message-id"),
+            drift: anchor.offsetTop - top,
+          }
+        : null;
+    }, firstId);
+  expect(held?.id).toBe(firstId);
+  // The prepended page lands above the anchor: the previously first row
+  // (plus part of its older neighbour) is visible, so "first visible"
+  // cannot stay identical. What must hold is the anchor row itself staying
+  // at the same offset under the reader.
+  expect(Math.abs((held?.drift || 0) - firstOffset)).toBeLessThan(4);
+  await expect(page.locator(".message").last()).toHaveAttribute(
+    "data-message-id",
+    newest || "",
+  );
+  await page.unroute("**/api/sessions/*?before=*", olderRoute);
 });

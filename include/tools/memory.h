@@ -8,42 +8,13 @@
 #include <string>
 #include <vector>
 
+#include "include/agent/memory_store.h"
 #include "include/tools/tool.h"
 
 namespace uagent {
 
 class Api;
 class ProcessSupervisor;
-
-struct MemoryEntry {
-  std::string key;
-  std::string path;
-};
-
-struct MemoryEvent {
-  std::string action;
-  std::string key;
-  std::string preview;
-  // What an overwrite replaced. A set on an existing key is the one path that
-  // destroys memory without a forget, so the audit record keeps a preview.
-  std::string previous;
-  std::string source_session;
-  std::string workspace;
-  std::string timestamp;
-  bool automatic = false;
-};
-
-struct MemoryIndex {
-  std::string text;
-  std::vector<std::string> sources;
-  bool truncated = false;
-};
-
-std::vector<MemoryEvent> LoadMemoryEvents(size_t limit = 128);
-bool ReadMemoryReceipt(const std::string& path, MemoryEvent& event,
-                       std::string& error);
-bool WriteMemoryEvent(const MemoryEvent& event, const std::string& receipt_path,
-                      std::string& error);
 
 ToolResult ToolMemoryAction(const std::string& action, const std::string& key,
                             const std::optional<std::string>& content);
@@ -58,8 +29,6 @@ MemoryIndex LoadMemoryIndex(const std::filesystem::path& cwd, size_t max_bytes);
 // Behavioral always-on slice: full content of global-scope memories, capped.
 MemoryIndex LoadAlwaysOnMemory(const std::filesystem::path& cwd,
                                size_t max_bytes);
-// Deterministic last line of defense for explicit writes.
-std::string RedactMemorySecrets(std::string text);
 
 // One bounded idle-session extraction job; the child reads only the source and
 // receives only the memory tool.

@@ -14,13 +14,15 @@
 #include <utility>
 #include <vector>
 
-#include "include/agent/adaptive_system.h"
 #include "include/agent/conversation.h"
+#include "include/agent/file_services.h"
+#include "include/core/debug.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
-#include "include/tools/files.h"
+#include "include/core/time.h"
 
 namespace uagent {
 namespace {
@@ -96,7 +98,10 @@ json HeaderJson(const SessionMetadata& metadata) {
           {kSessionHeaderSessionId, metadata.session_id},
           {kSessionHeaderTurns, metadata.turns},
           {kSessionHeaderTitle, metadata.title},
-          {"custom_title", metadata.custom_title}};
+          {"custom_title", metadata.custom_title},
+          {kSessionHeaderParent, metadata.parent_session_id},
+          {kSessionHeaderForkTurn, metadata.forked_at_turn},
+          {kSessionHeaderForkTime, metadata.forked_at_time}};
 }
 
 json StateJson(const SessionState& state) {
@@ -214,6 +219,12 @@ SessionLoadResult SessionStore::Inspect(const std::string& path) {
   record.metadata.turns = header[kSessionHeaderTurns].get<int64_t>();
   record.metadata.title = header[kSessionHeaderTitle].get<std::string>();
   record.metadata.custom_title = JsonValue(header, "custom_title", false);
+  record.metadata.parent_session_id =
+      JsonValue(header, kSessionHeaderParent, "");
+  record.metadata.forked_at_turn =
+      JsonValue(header, kSessionHeaderForkTurn, int64_t{0});
+  record.metadata.forked_at_time =
+      JsonValue(header, kSessionHeaderForkTime, "");
   record.state.messages = std::move(state["messages"]);
   record.state.message_kinds = std::move(message_kinds);
   record.state.archive = std::move(state["archive"]);
@@ -309,7 +320,7 @@ bool ValidSessionTitle(const std::string& title) {
 }
 
 json SessionStore::Fork(const std::string& source, const std::string& title,
-                        bool source_owned) {
+                        bool source_owned, int64_t fork_turn) {
   FileLease writer;
   std::string error;
   if (!source_owned &&
@@ -321,13 +332,34 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   if (!title.empty() && !ValidSessionTitle(title)) {
     return {{"error", "invalid fork name"}};
   }
+  if (fork_turn < 0) {
+    return {{"error", "fork turn must be positive"}};
+  }
   auto record = std::move(*loaded.record);
+  // Captured before the move below overwrites identity and turns.
+  const std::string parent_session_id = record.metadata.session_id;
+  const int64_t parent_turns = record.metadata.turns;
   Conversation conversation;
   if (!conversation.Restore(record.state.messages, record.state.message_kinds,
                             record.state.archive,
                             record.state.archive_dropped_segments,
                             record.state.tool_displays, record.state.display)) {
     return {{"error", "session conversation state is invalid"}};
+  }
+  // Fork-at-turn keeps the prefix before the Nth user turn (exclusive, so
+  // the dropped turn can be retried fresh); 0 forks the whole session.
+  // Message-exclusive like OpenCode's slice(0, target).
+  if (fork_turn > 0) {
+    if (!conversation.TruncateBeforeUserTurn(fork_turn)) {
+      return {{"error", "session has fewer than " + std::to_string(fork_turn) +
+                            " turns"}};
+    }
+    // Orphaned tool displays are tolerated like any other Erase caller:
+    // they are keyed lookups, bounded, and never render without a message.
+    record.state.messages = conversation.Messages();
+    record.state.message_kinds = conversation.Kinds();
+    record.state.tool_displays = conversation.ToolDisplays();
+    record.metadata.turns = fork_turn - 1;
   }
   // Older format-3 sessions have no display metadata. Normalize it before
   // recording fork facts so the fork can be restored like any conversation.
@@ -374,12 +406,11 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           CanonicalAccessPath(file.parent_path()) == artifacts) {
         auto [it, added] = copies.try_emplace(text);
         if (added) {
-          Fd copy(CreateTempFile(
+          ScopedTempFile copy(
               (artifacts / (file.filename().string().starts_with("http-")
                                 ? "http-XXXXXX"
                                 : "exchange-XXXXXX"))
-                  .string(),
-              it->second));
+                  .string());
           if (!copy) {
             ec = std::make_error_code(std::errc::io_error);
             return;
@@ -391,7 +422,6 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
               !S_ISREG(info.st_mode) || info.st_uid != getuid() ||
               info.st_size < 0 ||
               static_cast<uint64_t>(info.st_size) > kSessionReadBytes) {
-            unlink(it->second.c_str());
             it->second.clear();
           } else {
             char buffer[16384];
@@ -410,6 +440,9 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
               }
               copied += static_cast<size_t>(count);
             }
+            // Kept even when partial: the previous hand-rolled cleanup
+            // removed only rejected inputs, not short copies.
+            it->second = copy.Release();
           }
         }
         value = it->second;
@@ -437,9 +470,19 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
   record.state.route_usage.clear();
   record.state.display["statistics"] = {{"incoming", 0}, {"complete", true}};
   record.metadata.session_id = identity;
-  record.metadata.title =
-      title.empty() ? Utf8Prefix("Fork of " + record.metadata.title, 256)
-                    : title;
+  record.metadata.parent_session_id = parent_session_id;
+  record.metadata.forked_at_turn = fork_turn > 0 ? fork_turn : parent_turns;
+  record.metadata.forked_at_time = UtcStamp("%Y%m%dT%H%M%SZ");
+  if (!title.empty()) {
+    record.metadata.title = title;
+  } else if (fork_turn > 0) {
+    record.metadata.title =
+        Utf8Prefix("Fork of " + record.metadata.title + " @ turn " +
+                       std::to_string(fork_turn),
+                   256);
+  } else {
+    record.metadata.title = Utf8Prefix("Fork of " + record.metadata.title, 256);
+  }
   record.metadata.custom_title = true;
   auto result =
       ec ? Error(SessionStoreError::kIo, ec.message()) : Save(path, record);
@@ -455,6 +498,127 @@ json SessionStore::Fork(const std::string& source, const std::string& title,
           {"path", path},
           {"cwd", record.metadata.cwd},
           {"title", record.metadata.title}};
+}
+
+json SessionStore::Rewind(const std::string& path, int64_t turn) {
+  if (turn <= 0) return {{"error", "rewind turn must be positive"}};
+  FileLease writer;
+  std::string error;
+  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+    return {{"error", error}};
+  }
+  auto loaded = Inspect(path);
+  if (!loaded.record) return {{"error", loaded.status.message}};
+  auto record = std::move(*loaded.record);
+  Conversation conversation;
+  if (!conversation.Restore(record.state.messages, record.state.message_kinds,
+                            record.state.archive,
+                            record.state.archive_dropped_segments,
+                            record.state.tool_displays, record.state.display)) {
+    return {{"error", "session conversation state is invalid"}};
+  }
+  if (!conversation.TruncateBeforeUserTurn(turn)) {
+    return {
+        {"error", "session has fewer than " + std::to_string(turn) + " turns"}};
+  }
+  record.state.messages = conversation.Messages();
+  record.state.message_kinds = conversation.Kinds();
+  record.state.tool_displays = conversation.ToolDisplays();
+  record.state.display = conversation.DisplayMetadata();
+  record.metadata.turns = turn - 1;
+  // The dropped messages are gone; the boundary fact keeps the cut visible.
+  record.state.display["facts"]["reset-boundary"] = {
+      {"turn", turn}, {"time", UtcStamp("%Y%m%dT%H%M%SZ")}};
+  auto result = Save(path, record);
+  if (!result.Ok()) return {{"error", result.message}};
+  return {{"rewound", true}, {"turns", record.metadata.turns}, {"path", path}};
+}
+
+namespace {
+// Transcript text for /share: plain strings pass through, content arrays
+// contribute their text parts and file placeholders for the rest.
+std::string ShareText(const json& message) {
+  if (!message.is_object()) return "";
+  auto content = message.find("content");
+  if (content == message.end()) return "";
+  if (content->is_string()) return content->get<std::string>();
+  if (!content->is_array()) return "";
+  std::string out;
+  for (const json& part : *content) {
+    if (!part.is_object()) continue;
+    const std::string type = JsonValue(part, "type", "");
+    if (type == "text") {
+      const std::string text = JsonValue(part, "text", "");
+      if (!text.empty()) {
+        if (!out.empty()) out += "\n";
+        out += text;
+      }
+    } else if (type == "attachment" || type == "image" || type == "file") {
+      const std::string ref =
+          JsonValue(part, "path", JsonValue(part, "name", ""));
+      if (!out.empty()) out += "\n";
+      out += "[file: " + (ref.empty() ? type : ref) + "]";
+    }
+  }
+  return out;
+}
+}  // namespace
+
+std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
+  const std::string title = Trim(record.metadata.title);
+  std::string out =
+      "# " + (title.empty() ? "(untitled session)" : title) + "\n\n";
+  out += "_" + std::to_string(std::max<int64_t>(0, record.metadata.turns)) +
+         " user turns";
+  if (!record.metadata.model.empty()) out += " · " + record.metadata.model;
+  if (!record.metadata.parent_session_id.empty()) {
+    out += " · forked from " + record.metadata.parent_session_id + " at turn " +
+           std::to_string(record.metadata.forked_at_turn);
+  }
+  out += "_\n";
+  int64_t user_n = 0;
+  for (size_t index = 0; index < record.state.messages.size() &&
+                         index < record.state.message_kinds.size();
+       ++index) {
+    const MessageKind kind = record.state.message_kinds[index];
+    const json& message = record.state.messages[index];
+    if (kind == MessageKind::kUser || kind == MessageKind::kAttachment) {
+      out += "\n## User " + std::to_string(++user_n) + "\n\n" +
+             ShareText(message) + "\n";
+    } else if (kind == MessageKind::kAssistant) {
+      const std::string text = ShareText(message);
+      if (text.empty()) continue;  // Tool-call-only message.
+      out += "\n## Assistant\n\n" + text + "\n";
+    } else if (kind == MessageKind::kToolResult) {
+      std::string text = ShareText(message);
+      if (text.empty()) continue;
+      if (text.size() > 2000) text = text.substr(0, 2000) + "\n...[truncated]";
+      const std::string name = JsonValue(message, "name", "");
+      out += "\n### tool" + (name.empty() ? "" : " `" + name + "`") +
+             "\n\n```\n" + text + "\n```\n";
+    }
+  }
+  return out;
+}
+
+json SessionStore::Share(const std::string& path) {
+  FileLease writer;
+  std::string error;
+  if (!writer.Acquire(CanonicalAccessPath(path).string() + ".lock", error)) {
+    return {{"error", error}};
+  }
+  auto loaded = Inspect(path);
+  if (!loaded.record) return {{"error", loaded.status.message}};
+  std::string sibling = path;
+  const std::string suffix = ".json";
+  if (sibling.size() > suffix.size() && sibling.ends_with(suffix)) {
+    sibling.resize(sibling.size() - suffix.size());
+  }
+  sibling += ".share.md";
+  ToolResult written =
+      ToolWritePrivateFile(sibling, ShareMarkdown(*loaded.record));
+  if (!written.Ok()) return {{"error", written.output}};
+  return {{"shared", true}, {"path", sibling}};
 }
 
 SessionStoreStatus SessionStore::Rename(const std::string& path,

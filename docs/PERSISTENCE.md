@@ -123,6 +123,13 @@ deduplicated before the next model request.
 Session journals share snapshot retention, do not count independently against
 the history file ceiling, and are removed when their owning snapshot expires.
 
+The browser's optional IndexedDB replica is scoped to the authenticated device
+and keeps bounded conversation windows, drafts, and catalogue metadata. A body
+at the same content revision can gain completeness but cannot be replaced by a
+shorter preview; a new revision invalidates the older body. Session writes are
+coalesced and remain ordered with deletion, revocation, and cache clearing. The
+replica is never command or replay authority.
+
 Delete the corresponding files to remove local state. Rotate any credential
 that appeared in a prompt, attachment, tool result, or debug trace. Sharing the
 state directory can disclose repository content even though file permissions

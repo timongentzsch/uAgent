@@ -11,6 +11,7 @@
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
 #include "include/agent/prompt.h"
+#include "include/agent/tool_presentation.h"
 #include "include/api/citations.h"
 #include "include/api/retry.h"
 #include "include/app/options.h"
@@ -24,7 +25,6 @@
 #include "include/tools/subagent.h"
 #include "include/ui/display.h"
 #include "include/ui/interactive.h"
-#include "include/ui/tool_output.h"
 #include "tests/unit/terminal_test_support.h"
 
 namespace uagent {
@@ -579,6 +579,7 @@ void TestModelCatalogParsing() {
   CHECK(models && models->size() == 2);
   if (models && models->size() == 2) {
     CHECK((*models)[0].id == "vendor/beta");
+    CHECK((*models)[0].name.empty());
     CHECK((*models)[1].id == "vendor/alpha");
     CHECK((*models)[1].context == 131072);
     CHECK((*models)[1].input_modalities == json::array({"text", "image"}));
@@ -597,10 +598,35 @@ void TestModelCatalogParsing() {
     CHECK((*models)[0].efforts.size() == 5);
     CHECK((*models)[0].default_effort == "medium");
   }
+  models = ParseModels({{"data", json::array({{{"id", "meta/muse-spark-1.3"},
+                                               {"name",
+                                                "Meta: Muse Spark 1.3 "
+                                                "Contributor"}}})}});
+  CHECK(models && models->size() == 1);
+  if (models && !models->empty()) {
+    // The display name survives parsing so /models can match it; the id
+    // stays the only selection key.
+    CHECK((*models)[0].id == "meta/muse-spark-1.3");
+    CHECK((*models)[0].name == "Meta: Muse Spark 1.3 Contributor");
+  }
   CHECK(CatalogContextLength({{"max_model_len", 8192}}) == 8192);
   CHECK(CatalogContextLength({{"meta", {{"n_ctx_train", 4096}}}}) == 4096);
   CHECK(CatalogContextLength(
             {{"context_length", 2048}, {"max_model_len", 8192}}) == 2048);
+}
+
+void TestModelQueryMatching() {
+  const std::string haystack =
+      "openrouter/meta/muse-spark-1.3-contributor Meta: Muse Spark 1.3 "
+      "Contributor";
+  // Display-name spelling with spaces finds the hyphenated id.
+  CHECK(MatchesModelQuery(haystack, "Muse Spark"));
+  CHECK(MatchesModelQuery(haystack, "Meta: Muse Spark 1.3 Contributor"));
+  CHECK(MatchesModelQuery(haystack, "muse_spark"));
+  // Exact id-style queries still match, and unrelated queries do not.
+  CHECK(MatchesModelQuery(haystack, "muse-spark-1.3-contributor"));
+  CHECK(!MatchesModelQuery(haystack, "glimmer"));
+  CHECK(MatchesModelQuery(haystack, ""));
 }
 
 void TestOptions() {
@@ -621,6 +647,13 @@ void TestOptions() {
   CHECK(parsed.options.yolo);
   CHECK(parsed.options.prompt == "hello");
   CHECK(parsed.options.attach_paths == std::vector<std::string>({"image.png"}));
+  // --image is the Codex-style alias for --attach.
+  char image_flag[] = "--image";
+  char picture[] = "pic.png";
+  char* image_arguments[] = {executable, image_flag, picture};
+  ParsedOptions imaged = ParseOptions(3, image_arguments);
+  CHECK(imaged.Ok());
+  CHECK(imaged.options.attach_paths == std::vector<std::string>({"pic.png"}));
   CHECK(parsed.options.debug);
   CHECK(parsed.options.debug_path == "trace.jsonl");
   CHECK(parsed.options.json);

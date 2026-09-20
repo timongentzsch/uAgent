@@ -13,14 +13,15 @@
 
 #include "include/agent.h"
 #include "include/agent/dispatch.h"
+#include "include/agent/tool_presentation.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/core/tool_activity.h"
-#include "include/ui/tool_output.h"
 
 namespace uagent {
 namespace {
@@ -47,6 +48,15 @@ std::string NormalizedOperation(const json& arguments) {
 
 }  // namespace
 
+void Agent::PushToolResultMessage(const ToolCall& call, json message) {
+  conversation_.Push(std::move(message), MessageKind::kToolResult);
+  conversation_.RecordDisplay(conversation_.LastDisplayId(),
+                              {{"call_id", call.id},
+                               {"response_id", call.response_id},
+                               {"occurrence_id", call.occurrence_id},
+                               {"detail_id", call.detail_id}});
+}
+
 void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
                              const ToolResult& original, double duration_ms) {
   conversation_.RecordToolDisplay(call.id,
@@ -55,9 +65,9 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   json facts = {{"name", call.name},
                 {"status", CompletionStatusName(original.status)},
                 {"duration_ms", duration_ms},
-                {"output", Utf8Trunc(original.output, 4096)},
-                {"truncated", original.output.size() > 4096},
-                {"change", Utf8Trunc(original.display, size_t{16} * 1024)}};
+                {"output", Utf8Trunc(original.output, kPreviewChars)},
+                {"truncated", original.output.size() > kPreviewChars},
+                {"change", Utf8Trunc(original.display, kChangePreviewChars)}};
   if (retain_exchanges_) {
     json exchange = {
         {"request", {{"name", call.name}, {"arguments", call.args}}},
@@ -66,25 +76,25 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
         {"complete", true}};
     std::string body = JsonDump(exchange);
     CreatePrivateDirectories(UagentDir(kArtifactsDir));
-    std::string path;
-    Fd file(
-        CreateTempFile(UagentDir(kArtifactsDir) + "/exchange-XXXXXX", path));
+    ScopedTempFile file(UagentDir(kArtifactsDir) + "/exchange-XXXXXX");
     if (file && WriteFully(file.Get(), body)) {
-      facts["exchange_path"] = path;
-    } else if (file) {
-      unlink(path.c_str());
+      facts["exchange_path"] = file.Release();
     }
   }
   if (original.artifact) facts["artifact"] = original.artifact->path;
-  conversation_.RecordDisplay("t-" + call.id, std::move(facts));
+  facts["call_id"] = call.id;
+  facts["response_id"] = call.response_id;
+  facts["occurrence_id"] = call.occurrence_id;
+  facts["detail_id"] = call.detail_id;
+  conversation_.RecordDisplay(call.detail_id, std::move(facts));
   const Tool* tool = FindTool(tools_, call.name);
   if (tool && tool->dedupe_output && result.size() >= 256 &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
     constexpr char kDuplicate[] =
         "[unchanged duplicate; prior read result remains in recent context]";
-    conversation_.Push(
-        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}},
-        MessageKind::kToolResult);
+    PushToolResultMessage(
+        call,
+        {{"role", "tool"}, {"tool_call_id", call.id}, {"content", kDuplicate}});
     PublishMessage();
     DebugLog("tool_result_deduplicated",
              {{"turn", turn_id_},
@@ -99,7 +109,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
     const ReadRange& range = *original.read_range;
     message[kReadRangeField] = {range.path, range.first, range.last};
   }
-  conversation_.Push(std::move(message), MessageKind::kToolResult);
+  PushToolResultMessage(call, std::move(message));
   PublishMessage();
 }
 
@@ -207,7 +217,11 @@ bool Agent::RunCalls(
                            (required == ApprovalClass::kYoloEligibleMutation &&
                             ApprovalIsAutomatic())) &&
                           call.name != "skill"}};
-    conversation_.RecordDisplay("t-" + call.id, {{"activity", task.activity}});
+    task.activity["response_id"] = call.response_id;
+    task.activity["call_id"] = call.id;
+    task.activity["occurrence_id"] = call.occurrence_id;
+    task.activity["detail_id"] = call.detail_id;
+    conversation_.RecordDisplay(call.detail_id, {{"activity", task.activity}});
     Event call_event{EventId::kToolCall, ToolCallData(call, turn_id_, step)};
     call_event.data["activity"] = task.activity;
     if (task.issue) {
@@ -219,6 +233,13 @@ bool Agent::RunCalls(
         api_.render_stream &&
         (verbose_ || JsonValue(task.activity, "category", "") != "explore" ||
          !JsonValue(task.activity, "groupable", false));
+    if (call_event.presentation) {
+      // --resume replays the row from facts: same title/summary/flags the
+      // live printer saw, so history matches execution exactly.
+      conversation_.RecordDisplay(
+          call.detail_id,
+          {{"call_replay", ToolReplayJson(*call_event.presentation)}});
+    }
     Emit(std::move(call_event));
     if (valid) {
       if (required == ApprovalClass::kNone || approve_(*tool, arguments)) {
@@ -323,7 +344,7 @@ bool Agent::RunCalls(
   GroupToolActivities(activities);
   for (size_t index = 0; index < tasks.size(); ++index) {
     tasks[index].activity = std::move(activities[index]);
-    conversation_.RecordDisplay("t-" + calls[index].id,
+    conversation_.RecordDisplay(calls[index].detail_id,
                                 {{"activity", tasks[index].activity}});
     {
       Event result_event{EventId::kPresentation};
@@ -331,6 +352,11 @@ bool Agent::RunCalls(
           tasks[index], calls[index], model_results[index], verbose_);
       if (verbose_) result_event.presentation->activity.erase("group");
       result_event.render = api_.render_stream;
+      if (result_event.presentation) {
+        conversation_.RecordDisplay(
+            calls[index].detail_id,
+            {{"result_replay", ToolReplayJson(*result_event.presentation)}});
+      }
       Emit(std::move(result_event));
     }
   }

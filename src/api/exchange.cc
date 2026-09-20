@@ -25,10 +25,8 @@ std::string CaptureUrl(std::string url) {
 }
 std::string PrivateBody(std::string_view body) {
   CreatePrivateDirectories(UagentDir(kArtifactsDir));
-  std::string path;
-  Fd file(CreateTempFile(UagentDir(kArtifactsDir) + "/http-XXXXXX", path));
-  if (file && WriteFully(file.Get(), body)) return path;
-  if (file) unlink(path.c_str());
+  ScopedTempFile file(UagentDir(kArtifactsDir) + "/http-XXXXXX");
+  if (file && WriteFully(file.Get(), body)) return file.Release();
   return {};
 }
 }  // namespace

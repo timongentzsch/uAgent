@@ -11,7 +11,10 @@
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <utility>
+#include <vector>
 
 #if defined(__APPLE__)
 #include <sys/event.h>
@@ -20,6 +23,7 @@
 #endif
 
 #include "include/core/fd.h"
+#include "include/core/fs.h"
 #include "include/core/signals.h"
 #include "include/core/steering.h"
 #include "include/core/strings.h"
@@ -58,6 +62,38 @@ FileWaitResult WaitFallback(std::chrono::steady_clock::time_point deadline) {
   return std::chrono::steady_clock::now() >= deadline
              ? FileWaitResult::kTimedOut
              : FileWaitResult::kChanged;
+}
+
+FileWaitResult WaitHostFallback(std::chrono::steady_clock::time_point deadline,
+                                int wake_fd) {
+  pollfd wake{wake_fd, POLLIN, 0};
+  const int timeout_ms = std::min(5000, PollTimeoutMs(deadline));
+  int ready;
+  do {
+    ready =
+        poll(wake_fd >= 0 ? &wake : nullptr, wake_fd >= 0 ? 1 : 0, timeout_ms);
+  } while (ready < 0 && errno == EINTR);
+  if (ready > 0 && (wake.revents & POLLIN)) {
+    return FileWaitResult::kInterrupted;
+  }
+  return std::chrono::steady_clock::now() >= deadline
+             ? FileWaitResult::kTimedOut
+             : FileWaitResult::kChanged;
+}
+
+std::vector<std::string> WatchTargets(const std::vector<std::string>& paths) {
+  std::vector<std::string> targets;
+  targets.reserve(paths.size());
+  for (const std::string& path : paths) {
+    std::filesystem::path target(path);
+    while (!target.empty() && !PathExists(target.string())) {
+      target = target.parent_path();
+    }
+    if (!target.empty()) targets.push_back(target.string());
+  }
+  std::sort(targets.begin(), targets.end());
+  targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+  return targets;
 }
 
 #if defined(__APPLE__)
@@ -141,6 +177,102 @@ FileWaitResult WaitNative(const std::string& path, const FileStamp& observed,
 #endif
 
 }  // namespace
+
+FileWaitResult WaitForAnyFileChange(
+    const std::vector<std::string>& paths,
+    std::chrono::steady_clock::time_point deadline, int wake_fd) {
+  if (std::chrono::steady_clock::now() >= deadline) {
+    return FileWaitResult::kTimedOut;
+  }
+  std::vector<FileStamp> observed;
+  observed.reserve(paths.size());
+  for (const std::string& path : paths) observed.push_back(SnapshotFile(path));
+  const std::vector<std::string> targets = WatchTargets(paths);
+  // Preserve enough descriptors for the HTTP/runtime paths under conservative
+  // process limits. The fallback still observes the host wake and rechecks.
+  if (targets.empty()
+#if defined(__APPLE__)
+      || targets.size() > 64
+#endif
+  ) {
+    return WaitHostFallback(deadline, wake_fd);
+  }
+#if defined(__APPLE__)
+  Fd queue(kqueue());
+  if (!queue) return WaitHostFallback(deadline, wake_fd);
+  fcntl(queue.Get(), F_SETFD, FD_CLOEXEC);
+  std::vector<Fd> files;
+  std::vector<struct kevent> changes;
+  bool complete = true;
+  for (const std::string& target : targets) {
+    Fd file(open(target.c_str(), O_EVTONLY | O_CLOEXEC));
+    if (!file) {
+      complete = false;
+      break;
+    }
+    struct kevent change;
+    EV_SET(&change, file.Get(), EVFILT_VNODE, EV_ADD | EV_CLEAR,
+           NOTE_WRITE | NOTE_DELETE | NOTE_RENAME | NOTE_ATTRIB | NOTE_EXTEND,
+           0, nullptr);
+    changes.push_back(change);
+    files.push_back(std::move(file));
+  }
+  if (wake_fd >= 0) {
+    struct kevent change;
+    EV_SET(&change, wake_fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, nullptr);
+    changes.push_back(change);
+  }
+  if (!complete || changes.empty() ||
+      kevent(queue.Get(), changes.data(), static_cast<int>(changes.size()),
+             nullptr, 0, nullptr) < 0) {
+    files.clear();
+    queue.Reset();
+    return WaitHostFallback(deadline, wake_fd);
+  }
+  for (size_t i = 0; i < paths.size(); ++i) {
+    if (SnapshotFile(paths[i]) != observed[i]) return FileWaitResult::kChanged;
+  }
+  int timeout_ms = PollTimeoutMs(deadline);
+  timespec timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000000L};
+  struct kevent event{};
+  int ready;
+  do {
+    ready = kevent(queue.Get(), nullptr, 0, &event, 1, &timeout);
+  } while (ready < 0 && errno == EINTR);
+  if (ready <= 0) return FileWaitResult::kTimedOut;
+  return event.ident == static_cast<uintptr_t>(wake_fd)
+             ? FileWaitResult::kInterrupted
+             : FileWaitResult::kChanged;
+#elif defined(__linux__)
+  Fd watcher(inotify_init1(IN_NONBLOCK | IN_CLOEXEC));
+  if (!watcher) return WaitHostFallback(deadline, wake_fd);
+  size_t watched = 0;
+  for (const std::string& target : targets) {
+    if (inotify_add_watch(watcher.Get(), target.c_str(),
+                          IN_MODIFY | IN_CLOSE_WRITE | IN_CREATE | IN_DELETE |
+                              IN_MOVED_FROM | IN_MOVED_TO | IN_DELETE_SELF |
+                              IN_MOVE_SELF | IN_ATTRIB) >= 0) {
+      ++watched;
+    }
+  }
+  if (!watched) return WaitHostFallback(deadline, wake_fd);
+  for (size_t i = 0; i < paths.size(); ++i) {
+    if (SnapshotFile(paths[i]) != observed[i]) return FileWaitResult::kChanged;
+  }
+  pollfd events[2] = {{watcher.Get(), POLLIN, 0}, {wake_fd, POLLIN, 0}};
+  nfds_t count = wake_fd >= 0 ? 2 : 1;
+  int ready;
+  do {
+    ready = poll(events, count, PollTimeoutMs(deadline));
+  } while (ready < 0 && errno == EINTR);
+  if (ready <= 0) return FileWaitResult::kTimedOut;
+  return wake_fd >= 0 && (events[1].revents & POLLIN)
+             ? FileWaitResult::kInterrupted
+             : FileWaitResult::kChanged;
+#else
+  return WaitHostFallback(deadline, wake_fd);
+#endif
+}
 
 FileStamp SnapshotFile(const std::string& path) {
   struct stat state{};

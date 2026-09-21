@@ -2,6 +2,10 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
 const optionalAssets = new Set();
+const outDir = process.env.UAGENT_WEB_OUT_DIR || "dist";
+// Mermaid's ELK renderer is deliberately lazy. Raising the warning boundary
+// to its measured upper bound keeps the build warning focused on eager chunks.
+const lazyRendererWarningKilobytes = 1600;
 const rendererManifest = () => ({
   name: "renderer-assets",
   generateBundle(_options, bundle) {
@@ -116,6 +120,7 @@ export default defineConfig({
         ],
       },
       injectManifest: {
+        rollupFormat: "iife",
         globPatterns: ["**/*.{html,json,js,css,woff2,png,webmanifest}"],
         maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
         manifestTransforms: [
@@ -129,7 +134,9 @@ export default defineConfig({
     }),
   ],
   build: {
+    outDir,
     manifest: true,
+    chunkSizeWarningLimit: lazyRendererWarningKilobytes,
     target: "es2022",
     cssCodeSplit: true,
     assetsInlineLimit: 0,

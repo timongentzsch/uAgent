@@ -11,6 +11,7 @@
 #include <string_view>
 
 #include "include/api/types.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -18,6 +19,11 @@ namespace uagent {
 inline constexpr int kChatAttempts = 3;
 // Non-streaming side requests reuse the conversation's attempt budget.
 inline constexpr int kSideAttempts = 3;
+inline constexpr int64_t kRetryInitialMs = 500;
+inline constexpr int64_t kRetryMaximumMs = 8'000;
+inline constexpr int64_t kRetryJitterMinimumPerMille = 750;
+inline constexpr int64_t kRetryJitterRangePerMille = 251;
+inline constexpr int64_t kRetryAfterJitterMs = 250;
 
 inline bool RetryableHttpStatus(int64_t status) {
   return status == 408 || status == 409 || status == 429 || status >= 500;
@@ -251,14 +257,27 @@ inline uint64_t JitterSeed() {
 }
 
 inline std::chrono::milliseconds RetryDelay(int failed_attempt,
-                                            uint64_t jitter_seed = 0) {
-  constexpr int64_t kInitialMs = 500;
-  constexpr int64_t kMaximumMs = 8'000;
+                                            uint64_t jitter_seed = 0,
+                                            int64_t retry_after_s = 0) {
   int shift = failed_attempt > 0 ? failed_attempt - 1 : 0;
   shift = shift > 4 ? 4 : shift;
-  int64_t base = std::min(kMaximumMs, kInitialMs * (int64_t{1} << shift));
-  int64_t jitter_per_mille = 750 + static_cast<int64_t>(jitter_seed % 251);
-  return std::chrono::milliseconds(base * jitter_per_mille / 1'000);
+  int64_t base =
+      std::min(kRetryMaximumMs, kRetryInitialMs * (int64_t{1} << shift));
+  int64_t jitter_per_mille =
+      kRetryJitterMinimumPerMille +
+      static_cast<int64_t>(jitter_seed % kRetryJitterRangePerMille);
+  auto fallback = std::chrono::milliseconds(base * jitter_per_mille / 1'000);
+  if (retry_after_s <= 0) return fallback;
+  constexpr int64_t kMaxMs = std::chrono::milliseconds::max().count();
+  if (retry_after_s > (kMaxMs - kRetryAfterJitterMs) / kMillisecondsPerSecond) {
+    return std::chrono::milliseconds::max();
+  }
+  const auto server = std::chrono::seconds(retry_after_s);
+  const auto jitter = std::chrono::milliseconds(
+      static_cast<int64_t>(jitter_seed % (kRetryAfterJitterMs + 1)));
+  return std::max(
+      fallback,
+      std::chrono::duration_cast<std::chrono::milliseconds>(server) + jitter);
 }
 
 }  // namespace uagent

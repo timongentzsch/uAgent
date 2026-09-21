@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -94,6 +95,7 @@ struct ToolContext {
       std::chrono::steady_clock::time_point::max();
   int64_t timeout_s = 0;
   std::string call_id;
+  int64_t turn_id = 0;
 
   bool Expired() const;
 
@@ -142,6 +144,8 @@ struct Tool {
   using Preview = std::function<std::string(const json&)>;
 
   std::string name;
+  std::string title;     // short human label, derived from name by default
+  std::string category;  // workspace, execute, web, collaborate, memory, mcp
   std::string description;
   json parameters;               // JSON-schema for the args
   bool mutating = false;         // gated behind user approval
@@ -185,6 +189,26 @@ struct Tool {
     kDetachedTerminal,
   };
   Visibility visibility = Visibility::kAlways;
+};
+
+// A session-local soft filter over the registry. Hard policy still decides
+// which Tool objects exist; selection only removes allowed tools from the
+// model surface. Explicit overrides are kept separately from the profile so a
+// future profile update does not silently rewrite the user's choices.
+class ToolSelection {
+ public:
+  bool Enabled(const Tool& tool) const;
+  bool Configure(const json& request, const std::vector<Tool>& tools,
+                 std::string& error);
+  void Restore(const json& value);
+  json Save() const;
+  json Catalogue(const std::vector<Tool>& tools) const;
+
+  const std::string& Profile() const { return profile_; }
+
+ private:
+  std::string profile_ = "default";
+  std::unordered_map<std::string, bool> overrides_;
 };
 
 struct ToolAvailability {
@@ -231,6 +255,9 @@ std::string ToolSummary(const Tool& t, const json& args);
 
 const Tool* FindTool(const std::vector<Tool>& tools, const std::string& name);
 
+std::string ToolCategory(const Tool& tool);
+std::string ToolTitle(const Tool& tool);
+
 // Structured argument validation against a tool's JSON schema.
 std::optional<ToolArgumentIssue> FindToolArgumentIssue(const Tool& tool,
                                                        const json& args);
@@ -269,7 +296,8 @@ class ToolSchemaCache {
   // unit including this header does not compile it again.
   const json& Get(const std::vector<Tool>& tools, const json& schemas,
                   const std::unordered_map<std::string, int64_t>& counts,
-                  ToolAvailability availability = {});
+                  ToolAvailability availability = {},
+                  const ToolSelection* selection = nullptr);
 
   size_t Bytes() const { return bytes_; }
   const json& Schemas() const { return available_; }

@@ -118,6 +118,10 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
         "tool call limit reached (" + std::to_string(max_tool_calls) + ")");
     return false;
   }
+  // Valid repetition is recoverable: ExecuteToolCalls inserts staged advice
+  // after successful results. This high ceiling only catches a model that
+  // ignores both instructions; deterministic schema/policy rejections use a
+  // separate lower bound because the same request cannot start succeeding.
   bool repeated = false;
   for (const ToolCall& call : calls) {
     const Tool* tool = FindTool(tools_, call.name);
@@ -134,11 +138,13 @@ bool Agent::ToolCallsWithinLimits(const std::vector<ToolCall>& calls,
     std::string signature = call.name + "\n" + normalized;
     repeated_calls = signature == last_call ? repeated_calls + 1 : 1;
     last_call = std::move(signature);
-    repeated = repeated || repeated_calls > 3;
+    repeated = repeated || repeated_calls >= kRepeatedCallStopAfter;
   }
   if (!repeated) return true;
   FailBudget(state, TurnStopReason::kRepeatedCalls,
-             "model repeated the same tool call more than 3 times");
+             "model repeated the same tool call " +
+                 std::to_string(kRepeatedCallStopAfter) +
+                 " times after two recovery instructions");
   return false;
 }
 
@@ -153,7 +159,7 @@ void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
   loop.same_tool_rounds =
       calls[0].name == loop.last_single_tool ? loop.same_tool_rounds + 1 : 1;
   loop.last_single_tool = calls[0].name;
-  if (loop.same_tool_rounds == 8) {
+  if (loop.same_tool_rounds == kRepeatedToolRoundTraceAfter) {
     DebugLog("repeated_tool_rounds", {{"turn", turn_id_},
                                       {"step", loop.step},
                                       {"tool", calls[0].name},
@@ -164,17 +170,17 @@ void Agent::RecordToolRoundRepetition(const std::vector<ToolCall>& calls,
 bool Agent::StopForRepeatedRejections(
     const std::vector<ToolRejection>& rejections, TurnExecution& state,
     StepState& loop) {
-  constexpr int64_t kRejectedRoundLimit = 3;
   std::unordered_set<std::string> seen_this_round;
   for (const ToolRejection& rejection : rejections) {
     std::string key = rejection.tool + "\n" + rejection.issue_code + "\n" +
                       rejection.issue_field + "\n" + rejection.operation;
     if (!seen_this_round.insert(key).second) continue;
     int64_t rounds = ++loop.rejection_rounds[key];
-    if (rounds < kRejectedRoundLimit) continue;
+    if (rounds < kRejectedCallStopAfter) continue;
 
     std::string message = "model repeated an equivalent rejected " +
-                          rejection.tool + " call 3 times (" +
+                          rejection.tool + " call " +
+                          std::to_string(kRejectedCallStopAfter) + " times (" +
                           rejection.issue_code;
     if (!rejection.issue_field.empty()) {
       message += ": " + rejection.issue_field;

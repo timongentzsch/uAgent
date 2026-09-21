@@ -18,6 +18,7 @@ struct CollaboratorLaunch {
   Options options;
   double remaining_cost = 0;
   int64_t remaining_tokens = 0;
+  int64_t parent_turn = 0;
 };
 
 // One retained child runtime owned by one parent conversation. Model work still

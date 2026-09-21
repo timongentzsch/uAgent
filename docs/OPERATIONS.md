@@ -52,10 +52,20 @@ resume. Zero disables either session ceiling. Providers that omit usage or cost
 produce an explicit warning because the corresponding limit cannot be enforced.
 Canonical overload,
 rate-limit, resource-exhaustion, timeout, and unavailable type/code variants
-share the transient retry path. Context overflow never does: a clean preflight
+share one three-attempt transient retry path. It honors a valid `Retry-After`
+as a minimum and otherwise uses capped exponential backoff with jitter. The
+remaining turn deadline bounds chat retries; side retries remain bounded by
+their owning tool deadline. A stream is replayed only before visible text, tool
+calls, annotations or reported usage arrive.
+Context overflow never uses this path: a clean preflight
 failure gets one 256 KiB projected compaction and one original-request retry;
 HTTP 413 follows the same policy. If compaction is also rejected, the turn
 stops; background completion remains observational.
+Three consecutive identical valid tool calls now produce a strategy advisory;
+six produce a direct instruction to change course or use a bounded wait. Only
+twelve ignored repetitions stop the turn. Equivalent calls rejected by schema
+or policy still stop after three because retrying unchanged invalid input cannot
+succeed.
 Set `UAGENT_TOOL_TRACE_PRUNE_MIN_CHARS=0` to disable incremental pruning;
 `UAGENT_TOOL_TRACE_PROTECT_CHARS` controls the recent-output budget.
 `UAGENT_PRUNE_SUPERSEDED_READS=1` additionally experiments with pruning at

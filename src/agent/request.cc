@@ -20,12 +20,19 @@
 #include "include/core/env.h"
 #include "include/core/events.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/term.h"
 #include "include/media/attachments.h"
 #include "include/providers.h"
 
 namespace uagent {
+namespace {
+// With no explicit output cap, reserve one quarter of the advertised window
+// for the response. This is a compaction policy, not a token measurement.
+constexpr int64_t kDefaultResponseReserveDivisor = 4;
+}  // namespace
+
 ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                        bool render_output, const json* request_messages) {
   if (api_.config.session_budget > 0 &&
@@ -125,7 +132,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         {"session_id", session_id_},
         {"total_messages", conversation_.Size()},
         {"tool_schemas", schemas.size()},
-        {"schema_chars", schema_bytes},
+        {"schema_bytes", schema_bytes},
         {"native_tools", api_.capabilities.native_tools},
         {"parallel_tools", api_.capabilities.parallel_tools},
         {"include_usage", api_.capabilities.stream_usage_option},
@@ -137,18 +144,18 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     if (!overlay_digest.empty()) record["prompt_overlay"] = overlay_digest;
     if (request_messages || !projected.is_null()) {
       record["messages"] = messages;
-      record["message_chars"] = message_bytes;
+      record["message_bytes"] = message_bytes;
       record["projected_context"] = true;
     } else if (step <= 0 || logged_msgs_ == 0 ||
                logged_msgs_ > conversation_.Size()) {
       record["messages"] = conversation_.Messages();
-      record["message_chars"] = message_bytes;
+      record["message_bytes"] = message_bytes;
     } else {
       json added = json::array();
       for (size_t i = logged_msgs_; i < conversation_.Size(); ++i) {
         added.push_back(conversation_.At(i));
       }
-      record["new_message_chars"] = JsonEstimatedBytes(added);
+      record["new_message_bytes"] = JsonEstimatedBytes(added);
       record["new_messages"] = std::move(added);
     }
     if (!request_messages) logged_msgs_ = conversation_.Size();
@@ -182,8 +189,14 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
                            {"step", step},
                            {"purpose", purpose}};
   std::string started_at = UtcStamp();
-  api_.observe_progress = [this, estimated_bytes](const json& reported,
-                                                  size_t response_bytes) {
+  auto last_progress = std::chrono::steady_clock::now() -
+                       std::chrono::milliseconds(kUsageProgressIntervalMs);
+  json pending_progress = json::object();
+  json published_usage = json::object();
+  size_t pending_response_bytes = 0;
+  bool progress_pending = false;
+  auto emit_progress = [this, estimated_bytes, &published_usage](
+                           const json& reported, size_t response_bytes) {
     Usage provisional = session_usage_, current;
     current.Add(reported);
     provisional.Merge(current);
@@ -195,11 +208,31 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     Emit(Event{
         EventId::kUsageUpdated,
         {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
+    published_usage = reported;
+  };
+  api_.observe_progress = [&](const json& reported, size_t response_bytes) {
+    const auto now = std::chrono::steady_clock::now();
+    pending_progress = reported;
+    pending_response_bytes = response_bytes;
+    progress_pending = true;
+    const bool provider_usage_changed =
+        !reported.empty() && reported != published_usage;
+    if (!provider_usage_changed && response_bytes > 0 &&
+        now - last_progress <
+            std::chrono::milliseconds(kUsageProgressIntervalMs)) {
+      return;
+    }
+    emit_progress(pending_progress, pending_response_bytes);
+    progress_pending = false;
+    last_progress = now;
   };
   api_.observe_progress(json::object(), 0);
   ChatResult result = api_.Chat(messages, schemas, turn_budget, session_id_,
                                 render_output, estimated_bytes, verbose_);
   api_.observe_progress = {};
+  if (progress_pending) {
+    emit_progress(pending_progress, pending_response_bytes);
+  }
   result.started_at = std::move(started_at);
   for (ToolCall& call : result.tool_calls) {
     call.response_id = result.response_id;
@@ -330,7 +363,10 @@ std::string Agent::AnalyzeImageContent(const json& content,
   usage.Add(result.usage);
   side_usage_.Add(RouteKey(vision.base_url, "image_analysis",
                            vision.RequestModel(), vision.reasoning_effort),
-                  usage);
+                  usage, turn_id_,
+                  {{"model_calls", 1},
+                   {"model_ms", result.duration_ms},
+                   {"usage_samples", result.usage.empty() ? 0 : 1}});
   if (result.interrupted) {
     error = "image analysis was interrupted";
   } else if (!result.error.empty()) {
@@ -367,7 +403,7 @@ std::string Agent::ApplyImageAnalysisFallback(json& messages, bool analyze,
       analysis = AnalyzeImageContent(input, error);
       if (!analysis.empty()) {
         image_analyses_[key] = analysis;
-        while (image_analyses_.size() > 8) {
+        while (image_analyses_.size() > kImageAnalysisCacheEntries) {
           image_analyses_.erase(image_analyses_.begin());
         }
       }
@@ -403,7 +439,7 @@ int64_t Agent::ContextPressurePct(size_t pending_bytes, size_t schema_bytes,
   int64_t pending = EstimatedTokens(pending_bytes);
   if (api_.ctx_window > 0) {
     // An uncapped response can still only be budgeted by the ceiling.
-    int64_t ceiling = api_.ctx_window / 4;
+    int64_t ceiling = api_.ctx_window / kDefaultResponseReserveDivisor;
     int64_t configured = MaxOutputTokens();
     int64_t reserve = configured > 0 ? std::min(configured, ceiling) : ceiling;
     int64_t tokens = used + pending + reserve;
@@ -546,12 +582,13 @@ bool Agent::DegradeAndRetry(const ChatResult& result) {
 std::string Agent::PromptBase() const {
   return ApplyPromptOverlay(SystemPromptBase(), PromptOverlay(nullptr),
                             nullptr) +
-         CapabilityPrompt(tools_);
+         CapabilityPrompt(tools_, &tool_selection_);
 }
 
 json Agent::PromptContext() const {
   json context = json::array(
-      {{{"scope", "runtime"}, {"text", Trim(HostCapabilityPrompt(tools_))}}});
+      {{{"scope", "runtime"},
+        {"text", Trim(HostCapabilityPrompt(tools_, &tool_selection_))}}});
   if (!project_instructions_.text.empty()) {
     context.push_back(
         {{"scope", "repository"}, {"text", ProjectInstructionText()}});
@@ -623,8 +660,9 @@ std::string Agent::RuntimeContextText() const {
                                  !EffectiveImageModel().empty()) +
       ModelAudioInputInstruction(api_.capabilities.audio_input) +
       ModelVideoInputInstruction(api_.capabilities.video_input);
-  if (std::any_of(tools_.begin(), tools_.end(),
-                  [](const Tool& tool) { return tool.delegates; })) {
+  if (std::any_of(tools_.begin(), tools_.end(), [&](const Tool& tool) {
+        return tool.delegates && tool_selection_.Enabled(tool);
+      })) {
     content += DelegationRuntimeContext(api_);
   }
   if (!CollaboratorSessionFile().empty()) {

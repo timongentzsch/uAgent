@@ -18,6 +18,7 @@
 #include "include/core/env.h"
 #include "include/core/fs.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 #include "include/core/time.h"
 
@@ -27,6 +28,7 @@ namespace {
 constexpr int kSessionLinkFormat = 1;
 constexpr size_t kSessionLinkMembers = 32;
 constexpr size_t kSessionLinkFiles = 256;
+constexpr size_t kSessionLinkNameChars = 64;
 constexpr int kSessionMailMaxHops = 8;
 
 std::string AutoLinkName() { return "auto-" + HashHex(CanonicalCwd()); }
@@ -36,7 +38,7 @@ std::string LinkPath(const std::string& name) {
 }
 
 bool ValidLinkName(const std::string& name) {
-  if (name.empty() || name.size() > 64) return false;
+  if (name.empty() || name.size() > kSessionLinkNameChars) return false;
   return SafeFileComponent(name) == name;
 }
 

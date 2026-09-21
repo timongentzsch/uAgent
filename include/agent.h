@@ -107,6 +107,10 @@ class Agent {
   json HttpExchanges() const;
   json SessionSettings() const;
   void SessionSettings(const json& settings);
+  json ToolCatalogue() const;
+  json ConfigureTools(const json& request);
+  json ToolSelectionSettings() const { return tool_selection_.Save(); }
+  void RestoreToolSelection(const json& settings);
   json PreviewContext();
   void PublishMessage(const std::string& request_id = "");
   const json& Statistics() const { return conversation_.Statistics(); }
@@ -144,6 +148,11 @@ class Agent {
   void DrainSubagentUsage();
 
   void MergeSideUsage(Usage& turn_usage);
+
+  // Account side work that completed outside an active parent turn. Tagged
+  // delegated work updates its originating turn; untagged side work remains
+  // visible in the session total without being assigned to the wrong turn.
+  void AccountSideUsage();
 
   void MergeSessionUsage(const Usage& usage);
 
@@ -214,6 +223,9 @@ class Agent {
                              TurnExecution& state, int64_t max_tool_calls,
                              std::string& last_call, int64_t& repeated_calls);
   void FinishTurn(TurnExecution& state, int64_t step);
+  void ApplySideUsage(AccumulatedUsage batch, Usage* current_turn);
+  void UpdateTurnSideUsage(int64_t turn, const Usage& usage,
+                           const json& statistics);
 
   // One step of the turn, in the order the loop runs them. Each phase reports
   // what the loop should do next.
@@ -342,8 +354,9 @@ class Agent {
   ProcessSupervisor& processes_;
   UsageAccumulator& side_usage_;
   json schemas_;  // request-shaped tool schemas, rebuilt after MCP changes
+  ToolSelection tool_selection_;
   ToolSchemaCache available_schemas_;
-  size_t schema_chars_ = 0;
+  size_t schema_bytes_ = 0;
   Approver approve_;
   ToolRefresher refresh_tools_;
   ProjectInstructions project_instructions_;
@@ -381,6 +394,7 @@ class Agent {
       std::chrono::steady_clock::time_point::max();
   std::string last_error_;
   json last_stop_;
+  json turn_side_statistics_ = json::object();
 };
 
 }  // namespace uagent

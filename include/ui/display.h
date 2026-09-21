@@ -40,7 +40,7 @@ inline std::string ContextLeftSummary(int64_t used, int64_t window) {
 }
 
 inline std::string ContextSummary(int64_t used, int64_t window = 0) {
-  std::string context = "ctx " + FmtCount(used);
+  std::string context = "est. ctx " + FmtCount(used);
   if (window > 0) context += "/" + FmtCount(window);
   return context;
 }

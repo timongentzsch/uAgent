@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 #ifndef UAGENT_INCLUDE_APP_SESSION_H_
 #define UAGENT_INCLUDE_APP_SESSION_H_
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <string>
@@ -8,15 +9,32 @@
 #include "include/app/options.h"
 #include "include/core/fd.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 namespace uagent::session {
 inline constexpr int kProtocol = 2;
-inline constexpr size_t kFrameBytes = size_t{1024} * 1024;
-inline constexpr size_t kCommandBytes = size_t{512} * 1024;
-inline constexpr size_t kQueueBytes = size_t{4} * 1024 * 1024;
-inline constexpr size_t kUploadBytes = size_t{8} * 1024 * 1024;
+inline constexpr size_t kFrameBytes = MiB(1);
+inline constexpr size_t kCommandBytes = KiB(512);
+inline constexpr size_t kQueueBytes = MiB(4);
+inline constexpr size_t kUploadBytes = MiB(8);
 inline constexpr size_t kUploadCount = 8;
-inline constexpr size_t kSessionAssetBytes = size_t{64} * 1024 * 1024;
-inline constexpr size_t kGlobalAssetBytes = size_t{512} * 1024 * 1024;
+inline constexpr size_t kSessionAssetBytes = MiB(64);
+inline constexpr size_t kGlobalAssetBytes = MiB(512);
+inline constexpr size_t kReceiptEntries = 256;
+inline constexpr size_t kMaxClients = 16;
+inline constexpr size_t kMaxSessions = kMaxCatalogueEntries;
+inline constexpr size_t kHelloBytes = KiB(1);
+inline constexpr size_t kOutputCompactBytes = KiB(64);
+inline constexpr size_t kBufferedNotices = 16;
+inline constexpr size_t kIoBufferBytes = KiB(8);
+inline constexpr size_t kWorkerIdentityBytes = 256;
+inline constexpr int kSocketBacklog = 16;
+inline constexpr auto kConnectTimeout = std::chrono::seconds(2);
+inline constexpr auto kConnectPollInterval = std::chrono::milliseconds(100);
+inline constexpr auto kWorkerShutdownTimeout = std::chrono::seconds(5);
+inline constexpr auto kStreamBatchInterval =
+    std::chrono::milliseconds(kStreamBatchIntervalMs);
+inline constexpr auto kUsagePublishInterval =
+    std::chrono::milliseconds(kUsageProgressIntervalMs);
 
 // OS randomness for credentials and opaque identities. Empty on failure.
 std::string RandomToken(size_t bytes = 24);

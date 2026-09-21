@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "preact/hooks";
+import { maxTranscriptBookmarks } from "../shared/limits.ts";
 
 type Bookmark = {
   follow: boolean;
@@ -22,7 +23,7 @@ const bookmarks = new Map<string, Bookmark>();
 try {
   for (const [key, value] of Object.entries(
     JSON.parse(sessionStorage.getItem(BOOKMARKS_KEY) || "{}"),
-  ).slice(-20)) {
+  ).slice(-maxTranscriptBookmarks)) {
     if (typeof (value as Bookmark)?.follow === "boolean")
       bookmarks.set(key, value as Bookmark);
   }
@@ -33,7 +34,8 @@ try {
 function storeBookmark(key: string, value: Bookmark) {
   bookmarks.delete(key);
   bookmarks.set(key, value);
-  while (bookmarks.size > 20) bookmarks.delete(bookmarks.keys().next().value!);
+  while (bookmarks.size > maxTranscriptBookmarks)
+    bookmarks.delete(bookmarks.keys().next().value!);
   try {
     sessionStorage.setItem(
       BOOKMARKS_KEY,

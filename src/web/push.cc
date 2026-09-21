@@ -31,8 +31,12 @@
 #endif
 
 namespace uagent::web {
+namespace {
+constexpr size_t kPushEndpointChars = KiB(4);
+}  // namespace
+
 std::string PushServiceOrigin(const std::string& endpoint) {
-  if (endpoint.size() > 4096 ||
+  if (endpoint.size() > kPushEndpointChars ||
       endpoint.find_first_of("@#\\\r\n\t ") != std::string::npos) {
     return {};
   }
@@ -107,6 +111,19 @@ bool PublicPushAddress(const sockaddr* address) {
 
 #ifdef UAGENT_WEB_PUSH
 namespace {
+constexpr size_t kPushResponseBytes = KiB(64);
+constexpr size_t kPushStoreBytes = KiB(128);
+constexpr size_t kPushContactChars = 200;
+constexpr size_t kPushEventChars = 150;
+constexpr size_t kPushQueueEntries = 64;
+constexpr size_t kPushSeenEntries = 256;
+constexpr auto kPushConnectTimeoutMs = 2000L;
+constexpr auto kPushRequestTimeoutMs = 5000L;
+constexpr int kPushDeliveryAttempts = 2;
+constexpr auto kPushAttentionLifetime = std::chrono::seconds(60);
+constexpr auto kPushRetryInterval = std::chrono::seconds(1);
+constexpr auto kVapidLifetime = std::chrono::hours(1);
+
 curl_socket_t OpenSocket(void*, curlsocktype purpose, curl_sockaddr* address) {
   if (purpose != CURLSOCKTYPE_IPCXN || !PublicPushAddress(&address->addr)) {
     return CURL_SOCKET_BAD;
@@ -160,7 +177,7 @@ struct PushSender::Impl {
   bool Valid(const Subscription& subscription) const {
     return OpaqueId(subscription.device) &&
            !PushServiceOrigin(subscription.endpoint).empty() &&
-           Unbase64Url(subscription.auth).size() == 16 &&
+           Unbase64Url(subscription.auth).size() == kPushAuthBytes &&
            ImportPushKey(Unbase64Url(subscription.public_key)) != nullptr;
   }
   int64_t Deliver(const std::string& endpoint, const std::string& authorization,
@@ -191,8 +208,9 @@ struct PushSender::Impl {
     curl_easy_setopt(request.get(), CURLOPT_PROTOCOLS_STR, "https");
     curl_easy_setopt(request.get(), CURLOPT_FOLLOWLOCATION, 0L);
     curl_easy_setopt(request.get(), CURLOPT_PROXY, "");
-    curl_easy_setopt(request.get(), CURLOPT_CONNECTTIMEOUT_MS, 2000L);
-    curl_easy_setopt(request.get(), CURLOPT_TIMEOUT_MS, 5000L);
+    curl_easy_setopt(request.get(), CURLOPT_CONNECTTIMEOUT_MS,
+                     kPushConnectTimeoutMs);
+    curl_easy_setopt(request.get(), CURLOPT_TIMEOUT_MS, kPushRequestTimeoutMs);
     curl_easy_setopt(request.get(), CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(request.get(), CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(request.get(), CURLOPT_XFERINFODATA, this);
@@ -207,7 +225,8 @@ struct PushSender::Impl {
         request.get(), CURLOPT_WRITEFUNCTION,
         +[](char*, size_t size, size_t count, void* opaque) -> size_t {
           auto& total = *static_cast<size_t*>(opaque);
-          if (size > 65536 || count > 65536 || size * count > 65536 - total) {
+          if (size > kPushResponseBytes || count > kPushResponseBytes ||
+              size * count > kPushResponseBytes - total) {
             return 0;
           }
           total += size * count;
@@ -243,7 +262,7 @@ struct PushSender::Impl {
           continue;
         }
         if (std::chrono::steady_clock::now() - attention.created >
-            std::chrono::seconds(60)) {
+            kPushAttentionLifetime) {
           break;
         }
         {
@@ -256,7 +275,7 @@ struct PushSender::Impl {
             continue;
           }
         }
-        std::string salt(16, '\0');
+        std::string salt(kPushSaltBytes, '\0');
         PushKey ephemeral = GeneratePushKey();
         if (RAND_bytes(reinterpret_cast<unsigned char*>(salt.data()),
                        static_cast<int>(salt.size())) != 1) {
@@ -272,11 +291,13 @@ struct PushSender::Impl {
             std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch())
                     .count() +
-                3600);
+                std::chrono::duration_cast<std::chrono::seconds>(kVapidLifetime)
+                    .count());
         if (body.empty() || authorization.empty()) {
           continue;
         }
-        for (int attempt = 0; attempt < 2 && !stopping; ++attempt) {
+        for (int attempt = 0; attempt < kPushDeliveryAttempts && !stopping;
+             ++attempt) {
           int64_t status = Deliver(subscription.endpoint, authorization, body);
           if (status == 404 || status == 410) {
             std::lock_guard lock(mutex);
@@ -291,7 +312,7 @@ struct PushSender::Impl {
             break;
           }
           std::unique_lock lock(mutex);
-          if (changed.wait_for(lock, std::chrono::seconds(1),
+          if (changed.wait_for(lock, kPushRetryInterval,
                                [&] { return stopping.load(); })) {
             return;
           }
@@ -309,7 +330,7 @@ PushSender::PushSender(const std::string& directory, const std::string& contact,
   impl_->directory = directory;
   impl_->contact = contact;
   impl_->transport = transport;
-  bool valid_contact = contact.size() <= 200 &&
+  bool valid_contact = contact.size() <= kPushContactChars &&
                        contact.find_first_of("\r\n\t ") == std::string::npos &&
                        ((contact.starts_with("mailto:") &&
                          contact.find('@') != std::string::npos) ||
@@ -331,10 +352,10 @@ PushSender::PushSender(const std::string& directory, const std::string& contact,
     return;
   }
   std::string bytes, error;
-  if (ReadRegularFile(directory + "/push-subscriptions.json",
-                      size_t{128} * 1024, bytes, error)) {
+  if (ReadRegularFile(directory + "/push-subscriptions.json", kPushStoreBytes,
+                      bytes, error)) {
     json entries = json::parse(bytes, nullptr, false);
-    if (entries.is_array() && entries.size() <= 16) {
+    if (entries.is_array() && entries.size() <= kWebDeviceLimit) {
       for (const json& entry : entries) {
         Impl::Subscription subscription{
             JsonValue(entry, "device", ""), JsonValue(entry, "endpoint", ""),
@@ -398,7 +419,7 @@ bool PushSender::Subscribe(const std::string& device, const json& subscription,
   auto previous = impl_->subscriptions;
   std::erase_if(impl_->subscriptions,
                 [&](const auto& current) { return current.device == device; });
-  if (impl_->subscriptions.size() >= 16) {
+  if (impl_->subscriptions.size() >= kWebDeviceLimit) {
     impl_->subscriptions = std::move(previous);
     error = "push device limit reached";
     return false;
@@ -434,17 +455,18 @@ bool PushSender::Revoke(const std::string& device) {
 bool PushSender::Notify(const std::string& event, const std::string& session,
                         const std::string& device) {
 #ifdef UAGENT_WEB_PUSH
-  if (!impl_->reason.empty() || event.size() > 150 || !OpaqueId(session)) {
+  if (!impl_->reason.empty() || event.size() > kPushEventChars ||
+      !OpaqueId(session)) {
     return false;
   }
   std::lock_guard lock(impl_->mutex);
-  if (impl_->queue.size() >= 64 ||
+  if (impl_->queue.size() >= kPushQueueEntries ||
       std::find(impl_->seen.begin(), impl_->seen.end(), event + ":" + device) !=
           impl_->seen.end()) {
     return false;
   }
   impl_->seen.push_back(event + ":" + device);
-  if (impl_->seen.size() > 256) {
+  if (impl_->seen.size() > kPushSeenEntries) {
     impl_->seen.pop_front();
   }
   impl_->queue.push_back(

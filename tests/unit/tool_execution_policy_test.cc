@@ -197,6 +197,39 @@ void TestToolExecutionPolicy() {
   CHECK(available.size() == 1);
   CHECK(available[0]["function"]["name"] == "unbounded");
 
+  ToolSelection selection;
+  std::string selection_error;
+  CHECK(selection.Configure({{"operation", "profile"}, {"profile", "minimal"}},
+                            policies, selection_error));
+  CHECK(!selection.Enabled(bounded_tool));
+  CHECK(!selection.Configure(
+      {{"operation", "set"}, {"name", "missing"}, {"active", true}}, policies,
+      selection_error));
+  CHECK(selection.Configure(
+      {{"operation", "set"}, {"name", "bounded"}, {"active", true}}, policies,
+      selection_error));
+  CHECK(selection.Enabled(bounded_tool));
+  json saved_selection = selection.Save();
+  ToolSelection restored_selection;
+  restored_selection.Restore(saved_selection);
+  CHECK(restored_selection.Enabled(bounded_tool));
+  CHECK(!restored_selection.Enabled(unbounded));
+  ToolSelection delayed_selection;
+  delayed_selection.Restore(
+      {{"profile", "minimal"}, {"overrides", {{"late_mcp_tool", true}}}});
+  Tool late_tool = unbounded;
+  late_tool.name = "late_mcp_tool";
+  CHECK(delayed_selection.Enabled(late_tool));
+  CHECK(delayed_selection.Save()["overrides"]["late_mcp_tool"] == true);
+  json catalogue = restored_selection.Catalogue(policies);
+  CHECK(catalogue["profile"] == "custom");
+  CHECK(catalogue["active"] == 1);
+  CHECK(catalogue["schema_bytes"] < catalogue["full_schema_bytes"]);
+  schema_cache.Reset();
+  available = schema_cache.Get(policies, schemas, {}, {}, &restored_selection);
+  CHECK(available.size() == 1);
+  CHECK(available[0]["function"]["name"] == "bounded");
+
   Tool inspect = unbounded;
   inspect.name = "inspect";
   inspect.capabilities = Capability(ToolCapability::kInspect);

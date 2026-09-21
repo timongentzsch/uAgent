@@ -25,7 +25,7 @@ import {
   Spinner,
   preloadDeferred,
 } from "../shared/ui.tsx";
-import { Menu, Settings } from "lucide-preact";
+import { Menu, Settings, Wrench } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -57,6 +57,7 @@ import {
   rawDialog,
   scheduledModule,
   settingsDialog,
+  toolsDialog,
   sidebarModule,
   statisticsDialog,
 } from "./dialogs.ts";
@@ -678,6 +679,7 @@ function App() {
       menu={conversationMenu}
       refresh={refresh}
       settings={() => open({ type: "settings" })}
+      tools={() => open({ type: "tools" })}
       create={() => {
         setFolder(session?.cwd || "");
         open({ type: "new" });
@@ -800,12 +802,22 @@ function App() {
                 </h1>
               </div>
               {compact && (
-                <IconButton
-                  label="Settings"
-                  onClick={() => open({ type: "settings" })}
-                >
-                  <Settings aria-hidden="true" />
-                </IconButton>
+                <div class="conversation-head-actions">
+                  {session && (
+                    <IconButton
+                      label="Tools"
+                      onClick={() => open({ type: "tools" })}
+                    >
+                      <Wrench aria-hidden="true" />
+                    </IconButton>
+                  )}
+                  <IconButton
+                    label="Settings"
+                    onClick={() => open({ type: "settings" })}
+                  >
+                    <Settings aria-hidden="true" />
+                  </IconButton>
+                </div>
               )}
               {page === "chat" && session && conversationMenu(session)}
             </header>
@@ -1067,6 +1079,26 @@ function App() {
             logout={logout}
             prompt={() => setModal({ type: "prompt" })}
           />
+        </Modal>
+      )}
+      {modal?.type === "tools" && (
+        <Modal
+          title="Tools"
+          className="tools-view"
+          close={() => setModal(null)}
+        >
+          {session ? (
+            <Deferred
+              load={toolsDialog}
+              fallback={<Spinner label="Loading tools…" surface />}
+              session={session}
+              online={online}
+              busy={!!session.turn_active || !!snapshot?.pending}
+              changed={() => load(selected)}
+            />
+          ) : (
+            <p class="muted">Open a conversation to choose its tools.</p>
+          )}
         </Modal>
       )}
     </>

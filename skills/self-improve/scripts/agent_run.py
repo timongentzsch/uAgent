@@ -94,7 +94,7 @@ def trace_metrics(
     events: collections.Counter[str] = collections.Counter()
     batches: list[int] = []
     calls: list[dict[str, Any]] = []
-    request_chars: list[int] = []
+    context_bytes: list[int] = []
     result_chars_by_tool: collections.Counter[str] = collections.Counter()
     issue_codes: collections.Counter[str] = collections.Counter()
     current_messages = 0
@@ -124,15 +124,15 @@ def trace_metrics(
             first = first or data
             batches.append(0)
             if data.get("projected_context"):
-                message_chars = int(data.get("message_chars") or 0)
-            elif "message_chars" in data:
-                current_messages = int(data.get("message_chars") or 0)
-                message_chars = current_messages
+                message_bytes = int(data.get("message_bytes") or 0)
+            elif "message_bytes" in data:
+                current_messages = int(data.get("message_bytes") or 0)
+                message_bytes = current_messages
             else:
-                current_messages += int(data.get("new_message_chars") or 0)
-                message_chars = current_messages
-            schema_chars = int(data.get("schema_chars") or 0) if data.get("native_tools") else 0
-            request_chars.append(message_chars + schema_chars)
+                current_messages += int(data.get("new_message_bytes") or 0)
+                message_bytes = current_messages
+            schema_bytes = int(data.get("schema_bytes") or 0) if data.get("native_tools") else 0
+            context_bytes.append(message_bytes + schema_bytes)
         elif name == "model_response":
             model_duration_ms += float(data.get("end_to_end_ms") or data.get("duration_ms") or 0)
             request_preparation_ms += float(data.get("request_preparation_ms") or 0)
@@ -193,7 +193,7 @@ def trace_metrics(
         elif name == "compact_end" and data.get("outcome") == "ok":
             compactions += 1
     no_action = max(len([count for count in batches[:-1] if count == 0]), 0)
-    cumulative_request_chars = sum(request_chars)
+    cumulative_context_bytes = sum(context_bytes)
     return {
         "model_requests": len(batches),
         "tool_calls": len(calls),
@@ -202,11 +202,10 @@ def trace_metrics(
         "no_action_rounds": no_action,
         "compactions": compactions,
         "events": events,
-        "estimated_request_chars": cumulative_request_chars,
-        "cumulative_estimated_request_chars": cumulative_request_chars,
-        "estimated_request_chars_progression": request_chars,
-        "max_estimated_request_chars": max(request_chars, default=0),
-        "initial_schema_chars": int(first.get("schema_chars") or 0),
+        "cumulative_estimated_context_bytes": cumulative_context_bytes,
+        "estimated_context_bytes_progression": context_bytes,
+        "max_estimated_context_bytes": max(context_bytes, default=0),
+        "initial_schema_bytes": int(first.get("schema_bytes") or 0),
         "tool_result_chars": tool_result_chars,
         "tool_result_text": "\n".join(tool_result_texts),
         "tool_result_chars_by_tool": result_chars_by_tool,

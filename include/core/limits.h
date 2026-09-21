@@ -41,6 +41,58 @@ inline constexpr size_t kRecordTitleReserveChars = 6;
 // byte budgets above: raising retention must not raise preview windows.
 inline constexpr size_t kMaxCatalogueEntries = 4096;
 
+// Bounded collections retained in session metadata or exposed through UI
+// catalogues. These are memory and payload policies, not inferred capacities.
+inline constexpr size_t kMaxSkillFiles = 128;
+inline constexpr int kMaxSkillFileDepth = 4;
+inline constexpr size_t kLibraryNameChars = 100;
+inline constexpr size_t kMaxSessionAssets = 64;
+inline constexpr size_t kMaxCollaboratorRecords = 100;
+inline constexpr size_t kMaxToolDisplays = 128;
+inline constexpr size_t kMaxToolsPerMessage = 32;
+inline constexpr size_t kMaxActiveExchanges = 32;
+inline constexpr size_t kMaxPendingSessionCommands = 32;
+inline constexpr size_t kMaxAdaptiveProposals = 16;
+// Tool overrides survive optional MCP registries being absent during startup,
+// so bound both their persisted count and key size before retaining unknown
+// names for a later registry refresh.
+inline constexpr size_t kMaxToolSelectionOverrides = 256;
+inline constexpr size_t kToolNameChars = 128;
+
+// Fixed policies with one owner. They are named because changing them alters
+// observable behavior, even though they do not need runtime configuration.
+inline constexpr size_t kToolDedupeMinChars = 256;
+inline constexpr size_t kGenericTitleReplacementMinChars = 12;
+// Upload and subsequent claim validation must accept the same display names.
+inline constexpr size_t kAssetNameChars = 128;
+inline constexpr size_t kImageAnalysisCacheEntries = 8;
+inline constexpr size_t kModelPickerMatches = 256;
+inline constexpr size_t kConfigurationChangeLimit = 64;
+inline constexpr size_t kSharedToolResultChars = 2000;
+inline constexpr size_t kRetainedArtifactPathChars = 4096;
+inline constexpr size_t kKqueueWatchTargets = 64;
+inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
+
+// Live event pacing. Model callbacks and browser publication use the same
+// usage cadence so one layer cannot silently undo the other's coalescing.
+inline constexpr int64_t kUsageProgressIntervalMs = 100;
+inline constexpr int64_t kStreamBatchIntervalMs = 12;
+inline constexpr size_t kStreamBatchBytes = KiB(8);
+
+// Turn-loop recovery stages. A valid repeated call gets two model-facing
+// corrections before the high ceiling prevents an unbounded paid loop.
+// Deterministically rejected calls stop sooner because rerunning them cannot
+// produce new evidence without changing the request.
+inline constexpr int64_t kRepeatedCallAdviseAfter = 3;
+inline constexpr int64_t kRepeatedCallDirectAfter = 6;
+inline constexpr int64_t kRepeatedCallStopAfter = 12;
+inline constexpr int64_t kRejectedCallStopAfter = 3;
+inline constexpr int64_t kFailedToolAdviseAfter = 3;
+inline constexpr int64_t kRepeatedToolRoundTraceAfter = 8;
+inline constexpr int64_t kActivityPollAdviseAfter = 2;
+inline constexpr int64_t kActivityPollDirectAfter = 4;
+inline constexpr int64_t kActivityPollStopAfter = 12;
+
 // Time-unit sentinels shared by schedule validation, cache headers and
 // display formatters. A year here is 365 days (31536000s), matching the
 // HTTP `max-age` convention, not a leap-corrected calendar year.
@@ -48,6 +100,7 @@ inline constexpr int64_t kSecondsPerMinute = 60;
 inline constexpr int64_t kSecondsPerHour = 3600;
 inline constexpr int64_t kSecondsPerDay = 86400;
 inline constexpr int64_t kSecondsPerYear = 31536000;
+inline constexpr int64_t kMillisecondsPerSecond = 1000;
 // Latest epoch accepted by schedule validation (2100-01-01T00:00:00Z).
 // Named so the three schedule.cc checks and any future caller agree.
 inline constexpr int64_t kMaxScheduleEpoch = 4102444800LL;

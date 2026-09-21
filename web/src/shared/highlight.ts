@@ -6,6 +6,7 @@ import cpp from "highlight.js/lib/languages/cpp";
 import bash from "highlight.js/lib/languages/bash";
 import json from "highlight.js/lib/languages/json";
 import diff from "highlight.js/lib/languages/diff";
+import { maxHighlightChars } from "./limits.ts";
 for (const [name, grammar] of Object.entries({
   javascript,
   python,
@@ -17,7 +18,7 @@ for (const [name, grammar] of Object.entries({
   hljs.registerLanguage(name, grammar);
 export function install(markdown: InstanceType<typeof MarkdownIt>) {
   markdown.options.highlight = (text, language) =>
-    hljs.getLanguage(language) && text.length <= 32 * 1024
+    hljs.getLanguage(language) && text.length <= maxHighlightChars
       ? hljs.highlight(text, { language, ignoreIllegals: true }).value
       : "";
 }

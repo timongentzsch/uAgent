@@ -202,6 +202,22 @@ void CollectCurlTimings(CURL* handle, ChatResult& result) {
   result.start_transfer_ms = CurlTimingMs(handle, CURLINFO_STARTTRANSFER_TIME);
 }
 
+int64_t CurlRetryAfterSeconds(CURL* handle) {
+#if LIBCURL_VERSION_NUM >= 0x074200
+  curl_off_t seconds = 0;
+  if (curl_easy_getinfo(handle, CURLINFO_RETRY_AFTER, &seconds) != CURLE_OK ||
+      seconds <= 0) {
+    return 0;
+  }
+  return seconds > std::numeric_limits<int64_t>::max()
+             ? std::numeric_limits<int64_t>::max()
+             : static_cast<int64_t>(seconds);
+#else
+  (void)handle;
+  return 0;
+#endif
+}
+
 bool StreamDeadlineExpired(StreamCtx* context) {
   if (!context) return false;
   auto now = std::chrono::steady_clock::now();
@@ -463,7 +479,8 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     res.end_to_end_ms = ElapsedMs(overall_started);
     if (attempt == kChatAttempts || !SafeToRetry(res)) return res;
 
-    std::chrono::milliseconds delay = RetryDelay(attempt, JitterSeed());
+    std::chrono::milliseconds delay =
+        RetryDelay(attempt, JitterSeed(), res.retry_after_s);
     if (request_timeout > 0 &&
         std::chrono::steady_clock::now() + delay >= deadline) {
       res.end_to_end_ms = ElapsedMs(overall_started);
@@ -472,6 +489,7 @@ ChatResult Api::Chat(const json& messages, const json& tool_schemas,
     DebugLog("api_retry", {{"attempt", attempt},
                            {"max_attempts", kChatAttempts},
                            {"delay_ms", delay.count()},
+                           {"retry_after_s", res.retry_after_s},
                            {"http_status", res.http_status},
                            {"remote_error_type", res.remote_error_type},
                            {"remote_error_code", res.remote_error_code}});
@@ -507,11 +525,13 @@ JsonResponse Api::Post(const std::string& path, const json& body,
     if (attempt == attempts || AbortRequested() || !SafeToRetry(response)) {
       return response;
     }
-    std::chrono::milliseconds delay = RetryDelay(attempt, JitterSeed());
+    std::chrono::milliseconds delay =
+        RetryDelay(attempt, JitterSeed(), response.retry_after_s);
     DebugLog("side_retry", {{"path", path},
                             {"attempt", attempt},
                             {"max_attempts", attempts},
                             {"delay_ms", delay.count()},
+                            {"retry_after_s", response.retry_after_s},
                             {"http_status", response.http_status},
                             {"error", response.error}});
     // A silent backoff reads as a stalled turn. The notice is durable, so the
@@ -632,9 +652,10 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
       h, CURLOPT_DEBUGFUNCTION,
       +[](CURL*, curl_infotype type, char* data, size_t length,
           void* user) -> int {
-        if (type == CURLINFO_HEADER_IN || type == CURLINFO_HEADER_OUT)
+        if (type == CURLINFO_HEADER_IN || type == CURLINFO_HEADER_OUT) {
           static_cast<HttpExchange*>(user)->Headers(
               std::string_view(data, length), type == CURLINFO_HEADER_OUT);
+        }
         return 0;
       });
   curl_easy_setopt(h, CURLOPT_DEBUGDATA, exchange);
@@ -667,6 +688,7 @@ ChatResult Api::PerformChat(const std::string& payload, bool web_available,
   curl_easy_setopt(h, CURLOPT_DEBUGFUNCTION, nullptr);
   curl_easy_setopt(h, CURLOPT_DEBUGDATA, nullptr);
   curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &res.http_status);
+  res.retry_after_s = CurlRetryAfterSeconds(h);
   CollectCurlTimings(h, res);
   if (cancelled) ClearAbort();
   ctx.Finish();
@@ -755,6 +777,7 @@ JsonResponse Api::Fetch(const std::string& path, const std::string* payload,
   if (abortable) SetAbortable(h);
   CURLcode rc = RunTransfer(multi_, h, headers.Get(), out, timeout_s, abortable,
                             result.http_status);
+  result.retry_after_s = CurlRetryAfterSeconds(h);
   if (out.exceeded) {
     result.error = "response exceeds configured byte limit";
     return result;

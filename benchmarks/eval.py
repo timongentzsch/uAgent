@@ -444,11 +444,10 @@ def run_case(
             # when the scenario does not script them.
             "tools_used": sorted({call["name"] for call in metrics["calls"]}),
             "compactions": metrics["compactions"],
-            "estimated_request_chars": metrics["estimated_request_chars"],
-            "cumulative_estimated_request_chars": metrics["cumulative_estimated_request_chars"],
-            "estimated_request_chars_progression": metrics["estimated_request_chars_progression"],
-            "max_estimated_request_chars": metrics["max_estimated_request_chars"],
-            "initial_schema_chars": metrics["initial_schema_chars"],
+            "cumulative_estimated_context_bytes": metrics["cumulative_estimated_context_bytes"],
+            "estimated_context_bytes_progression": metrics["estimated_context_bytes_progression"],
+            "max_estimated_context_bytes": metrics["max_estimated_context_bytes"],
+            "initial_schema_bytes": metrics["initial_schema_bytes"],
             "tool_result_chars": metrics["tool_result_chars"],
             "model_duration_ms": round(metrics["model_duration_ms"], 3),
             "request_preparation_ms": round(metrics["request_preparation_ms"], 3),
@@ -467,8 +466,8 @@ def run_case(
             # The failure-category vector says what broke, which a pass rate
             # alone never does.
             "failures": [name for name, ok in checks.items() if not ok],
-            "chars_per_check": round(
-                metrics["estimated_request_chars"]
+            "bytes_per_check": round(
+                metrics["cumulative_estimated_context_bytes"]
                 / max(sum(1 for value in checks.values() if value), 1)
             ),
             "answer": answer,
@@ -488,7 +487,7 @@ def run_case(
                 "round_adjusted_score": round(
                     (min(1.0, target_rounds / rounds) if outcome else 0.0), 4
                 ),
-                "cumulative_context_chars": metrics["cumulative_estimated_request_chars"],
+                "cumulative_context_bytes": metrics["cumulative_estimated_context_bytes"],
                 "snapshot_chars": metrics["browser_snapshot_chars"],
                 "recovered_failures": metrics["failed_call_recoveries"],
             }
@@ -548,8 +547,8 @@ def evaluate(scenario, variant, *, answer, metrics, unchanged, returncode, bodie
             checks[name] = metrics["tool_calls"] <= int(value)
         elif name == "min_batch":
             checks[name] = metrics["max_batch"] >= int(value)
-        elif name == "min_cumulative_request_chars":
-            checks[name] = metrics["cumulative_estimated_request_chars"] >= int(value)
+        elif name == "min_cumulative_context_bytes":
+            checks[name] = metrics["cumulative_estimated_context_bytes"] >= int(value)
         elif name == "min_tool_result_chars":
             checks[name] = metrics["tool_result_chars"] >= int(value)
         elif name == "min_recovered_failures":
@@ -618,7 +617,10 @@ def baseline_key(result: dict[str, Any]) -> str:
 def load_baseline() -> dict[str, Any]:
     if not BASELINE_PATH.exists():
         return {"scenarios": {}}
-    return json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+    if baseline.get("schema") != "uagent.eval.baseline.v2":
+        raise ValueError("missing or unsupported evaluation baseline schema")
+    return baseline
 
 
 def compare(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dict[str, Any]]:
@@ -644,11 +646,11 @@ def compare(results: list[dict[str, Any]], baseline: dict[str, Any]) -> list[dic
                 regressions.append(f"{field} {base[field]} → {result[field]}")
         if result["max_batch"] < base["max_batch"]:
             regressions.append(f"max_batch {base['max_batch']} → {result['max_batch']}")
-        ceiling = int(base["max_estimated_request_chars"] * 1.05) + 512
-        if result["max_estimated_request_chars"] > ceiling:
+        ceiling = int(base["max_estimated_context_bytes"] * 1.05) + 512
+        if result["max_estimated_context_bytes"] > ceiling:
             regressions.append(
-                f"request chars {base['max_estimated_request_chars']} → "
-                f"{result['max_estimated_request_chars']} (>5%)"
+                f"context bytes {base['max_estimated_context_bytes']} → "
+                f"{result['max_estimated_context_bytes']} (>5%)"
             )
         comparisons.append(
             {
@@ -694,7 +696,7 @@ def variant_comparisons(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def write_baseline(results: list[dict[str, Any]]) -> None:
     payload = {
-        "schema": "uagent.eval.baseline.v1",
+        "schema": "uagent.eval.baseline.v2",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
         "scenarios": {
@@ -706,10 +708,10 @@ def write_baseline(results: list[dict[str, Any]]) -> None:
                 "max_batch": result["max_batch"],
                 "no_action_rounds": result["no_action_rounds"],
                 "compactions": result["compactions"],
-                "max_estimated_request_chars": result["max_estimated_request_chars"],
-                "cumulative_estimated_request_chars": result["cumulative_estimated_request_chars"],
+                "max_estimated_context_bytes": result["max_estimated_context_bytes"],
+                "cumulative_estimated_context_bytes": result["cumulative_estimated_context_bytes"],
                 "tool_result_chars": result["tool_result_chars"],
-                "initial_schema_chars": result["initial_schema_chars"],
+                "initial_schema_bytes": result["initial_schema_bytes"],
             }
             for result in sorted(results, key=baseline_key)
         },
@@ -794,9 +796,9 @@ def trial_summaries(results: list[dict[str, Any]], requested_k: int) -> list[dic
                     sum(int(result.get("model_requests") or 0) for result in trials) / len(trials),
                     3,
                 ),
-                "mean_cumulative_context_chars": round(
+                "mean_cumulative_context_bytes": round(
                     sum(
-                        int(result.get("cumulative_estimated_request_chars") or 0)
+                        int(result.get("cumulative_estimated_context_bytes") or 0)
                         for result in trials
                     )
                     / len(trials)
@@ -1044,8 +1046,8 @@ def print_results(results, comparisons, summaries):
             f"{result['score']}/{result['checks_total']:<5} "
             f"{result['model_requests']:>4} {result['no_action_rounds']:>5} "
             f"{result['tool_calls']:>6} "
-            f"{result['max_batch']:>5} {result['max_estimated_request_chars']:>7} "
-            f"{result['cumulative_estimated_request_chars']:>8} "
+            f"{result['max_batch']:>5} {result['max_estimated_context_bytes']:>7} "
+            f"{result['cumulative_estimated_context_bytes']:>8} "
             f"{result['tool_result_chars']:>8} {result['elapsed_seconds']:>6.1f}s"
         )
         if result["failures"]:

@@ -192,7 +192,7 @@ FileWaitResult WaitForAnyFileChange(
   // process limits. The fallback still observes the host wake and rechecks.
   if (targets.empty()
 #if defined(__APPLE__)
-      || targets.size() > 64
+      || targets.size() > kKqueueWatchTargets
 #endif
   ) {
     return WaitHostFallback(deadline, wake_fd);

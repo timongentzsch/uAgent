@@ -12,6 +12,7 @@
 #include "include/core/file_watch.h"
 #include "include/core/fs.h"
 #include "include/core/lease.h"
+#include "include/core/limits.h"
 #include "include/core/skills.h"
 #include "include/core/strings.h"
 #include "include/tools/memory.h"
@@ -24,8 +25,8 @@ void LibraryChanged() {
                   error);
 }
 bool LibraryName(const std::string& name) {
-  return !name.empty() && name.size() <= 100 && name != "." && name != ".." &&
-         SafeFileComponent(name) == name &&
+  return !name.empty() && name.size() <= kLibraryNameChars && name != "." &&
+         name != ".." && SafeFileComponent(name) == name &&
          name.find_first_of("/\\") == std::string::npos;
 }
 bool LibraryPath(const std::filesystem::path& root,
@@ -98,8 +99,9 @@ json SkillControl(const json& request, const std::filesystem::path& cwd) {
       fs::recursive_directory_iterator it(
           skill.dir, fs::directory_options::skip_permission_denied, ec),
           end;
-      for (; it != end && !ec && item["files"].size() < 128; it.increment(ec)) {
-        if (it.depth() >= 4) it.disable_recursion_pending();
+      for (; it != end && !ec && item["files"].size() < kMaxSkillFiles;
+           it.increment(ec)) {
+        if (it.depth() >= kMaxSkillFileDepth) it.disable_recursion_pending();
         if (fs::is_regular_file(it->symlink_status(ec))) {
           item["files"].push_back(
               it->path().lexically_relative(skill.dir).string());

@@ -70,14 +70,14 @@ bool WriteFrame(int fd, std::string line) {
     return false;
   }
   line += '\n';
-  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
   size_t offset = 0;
   while (offset < line.size()) {
     if (std::chrono::steady_clock::now() >= deadline) {
       return false;
     }
     pollfd wait{fd, POLLOUT, 0};
-    int ready = poll(&wait, 1, 100);
+    int ready = poll(&wait, 1, static_cast<int>(kConnectPollInterval.count()));
     if (ready < 0 && errno == EINTR) {
       continue;
     }
@@ -102,7 +102,7 @@ bool WriteFrame(int fd, std::string line) {
 void ReadFrames(int fd, int stop_fd, size_t limit,
                 const std::function<bool(json)>& receive) {
   std::string pending;
-  char buffer[8192];
+  char buffer[kIoBufferBytes];
   for (;;) {
     pollfd waits[] = {{fd, POLLIN, 0}, {stop_fd, POLLIN, 0}};
     int ready = poll(waits, 2, -1);

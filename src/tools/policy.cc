@@ -399,10 +399,11 @@ void ApplyToolPolicy(std::vector<Tool>& tools, const ToolPolicy& policy) {
 const json& ToolSchemaCache::Get(
     const std::vector<Tool>& tools, const json& schemas,
     const std::unordered_map<std::string, int64_t>& counts,
-    ToolAvailability availability) {
+    ToolAvailability availability, const ToolSelection* selection) {
   std::vector<size_t> selected;
   for (size_t i = 0; i < tools.size() && i < schemas.size(); ++i) {
     const Tool& tool = tools[i];
+    if (selection && !selection->Enabled(tool)) continue;
     if (tool.visibility == Tool::Visibility::kDetachedTerminal &&
         !availability.detached_terminal) {
       continue;

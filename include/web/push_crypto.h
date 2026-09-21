@@ -9,6 +9,8 @@
 #include <string_view>
 
 namespace uagent::web {
+inline constexpr size_t kPushAuthBytes = 16;
+inline constexpr size_t kPushSaltBytes = 16;
 struct PushKeyDeleter {
   void operator()(EVP_PKEY* key) const { EVP_PKEY_free(key); }
 };

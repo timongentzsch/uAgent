@@ -16,8 +16,12 @@
 
 namespace uagent {
 namespace {
-constexpr size_t kStoreBytes = size_t{4} * 1024 * 1024;
+constexpr size_t kStoreBytes = MiB(4);
 constexpr size_t kTasks = 64, kRuns = 128;
+constexpr size_t kScheduleNameChars = 256;
+constexpr size_t kSchedulePromptChars = KiB(8);
+constexpr size_t kTimezoneNameChars = 100;
+constexpr int kUpcomingScheduleTimes = 3;
 json Empty() {
   return {{"v", 1},
           {"revision", ""},
@@ -161,11 +165,13 @@ json ScheduleCalendar(const json& request) {
     int64_t next = start > after
                        ? start
                        : start + ((after - start) / interval + 1) * interval;
-    for (int i = 0; i < 3; ++i) times.push_back(next + i * interval);
+    for (int i = 0; i < kUpcomingScheduleTimes; ++i) {
+      times.push_back(next + i * interval);
+    }
   } else if (type == "weekly") {
     const auto zone = JsonValue(schedule, "timezone", "");
-    if (zone.empty() || zone.size() > 100 || zone.front() == '/' ||
-        zone.find("..") != std::string::npos ||
+    if (zone.empty() || zone.size() > kTimezoneNameChars ||
+        zone.front() == '/' || zone.find("..") != std::string::npos ||
         !std::all_of(zone.begin(), zone.end(),
                      [](unsigned char c) {
                        return std::isalnum(c) || c == '/' || c == '_' ||
@@ -290,8 +296,8 @@ json ScheduleControl(const json& request) {
       const std::string prompt = Trim(JsonValue(task, "prompt", ""));
       const auto environment = JsonValue(task, "environment", "worktree");
       const auto permissions = JsonValue(task, "permissions", "prompt");
-      if (name.empty() || name.size() > 256 || prompt.empty() ||
-          prompt.size() > 8192 ||
+      if (name.empty() || name.size() > kScheduleNameChars || prompt.empty() ||
+          prompt.size() > kSchedulePromptChars ||
           (environment != "local" && environment != "worktree") ||
           (permissions != "prompt" && permissions != "yolo")) {
         return {{"error",

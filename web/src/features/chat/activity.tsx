@@ -15,7 +15,7 @@ import {
   useRef,
   useState,
 } from "preact/hooks";
-import { Bot, Terminal, Square, ArrowDown } from "lucide-preact";
+import { Bot, Terminal, Square, ArrowDown, ArrowLeft } from "lucide-preact";
 import { command, readPages } from "../../state/api.ts";
 import { useTranscriptHistory } from "../../state/use-transcript-history.ts";
 import { prependHistoryPage } from "../../state/history-page.ts";
@@ -199,8 +199,20 @@ export default function Activities({
     clearTarget();
   }, [target]);
 
-  // The parent stream reports child status, while a running child's own
-  // transcript lives in its worker. Inspect the open thread until it settles.
+  // The parent stream already reports collaborator and activity progress.
+  // Refresh an open child only when that authoritative state changes instead
+  // of running a second polling clock beside SSE.
+  const rowsVersion = rows
+    .map((item) =>
+      [
+        item.id,
+        item.agent_id,
+        item.status,
+        item.progress,
+        item.duration_ms,
+      ].join(":"),
+    )
+    .join("|");
   useEffect(() => {
     if (!detail || loading || detail.olderWindow) return;
     const item = rows.find((item) =>
@@ -208,34 +220,9 @@ export default function Activities({
         ? item.agent_id === detail.agent_id
         : item.id === detail.id,
     );
-    if (!item) return;
-    if (!active(item)) {
-      if (active(detail)) inspect(item, undefined, true).catch(report);
-      return;
-    }
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
-      try {
-        await inspect(item, undefined, true);
-      } catch (failure) {
-        report(failure);
-      }
-      if (!stopped) timer = setTimeout(refresh, 1200);
-    };
-    timer = setTimeout(refresh, 1200);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [
-    items,
-    collaborators,
-    detail?.id,
-    detail?.agent_id,
-    detail?.olderWindow,
-    loading,
-  ]);
+    const source = item || detail;
+    inspect(source, undefined, true).catch(report);
+  }, [rowsVersion, detail?.id, detail?.agent_id, detail?.olderWindow, loading]);
 
   // Stop-only: guidance/follow-up submit lives in the modal (per-level
   // text and receipts), so this never touches message state.
@@ -351,12 +338,12 @@ export default function Activities({
           running={running}
           online={online}
           session={session}
-          cwd={cwd}
           loading={loading}
           error={error}
           inspect={inspect}
           report={report}
           close={close}
+          navigate={setDetail}
           loadDetail={loadDetail}
         />
       )}
@@ -370,12 +357,12 @@ function ActivityModal({
   running,
   online,
   session,
-  cwd,
   loading,
   error,
   inspect,
   report,
   close,
+  navigate,
   loadDetail,
 }: {
   detail: ActivityDetail;
@@ -383,12 +370,12 @@ function ActivityModal({
   running?: boolean;
   online: boolean;
   session: ActivityProps["session"];
-  cwd: string;
   loading: boolean;
   error: unknown;
   inspect: (item: ActivityDetail, before?: number) => Promise<void>;
   report: ActivityProps["report"];
   close: () => void;
+  navigate: (detail: ActivityDetail) => void;
   loadDetail: (
     item: ActivityDetail,
     before?: number,
@@ -428,14 +415,13 @@ function ActivityModal({
     setText("");
     setNotice("");
   }, [detail.agent_id]);
-  // Nested tool viewer + nested subagent: own dialogs stacked on this
-  // one, so the parent thread keeps its state underneath.
+  // One route stack keeps the thread in one stable surface. Nested agents use
+  // the same history/rendering path and a Back action instead of recursive
+  // dialogs with separate scroll and loading state.
   const [raw, setRaw] = useState<{ title: string; value: JSONValue } | null>(
     null,
   );
-  const [child, setChild] = useState<ActivityDetail | null>(null);
-  const [childLoading, setChildLoading] = useState(false);
-  const childVersion = useRef(0);
+  const [ancestors, setAncestors] = useState<ActivityDetail[]>([]);
   // Key scope and the default block reader follow the CHILD
   // conversation: stable child ids must never inherit parent row state.
   const childSession = useMemo(
@@ -479,7 +465,6 @@ function ActivityModal({
   );
   const openNested = useCallback(
     async (block: Block) => {
-      const version = ++childVersion.current;
       try {
         const full = await loadDetail({
           activity_id: block.activity_id,
@@ -489,53 +474,14 @@ function ActivityModal({
           command: (block as unknown as { command?: string }).command,
           output: block.text,
         });
-        if (version === childVersion.current) setChild(full);
-      } catch (failure) {
-        if (version === childVersion.current) report(failure);
-      }
-    },
-    [loadDetail, report],
-  );
-  const inspectChild = useCallback(
-    async (item: ActivityDetail, before?: number) => {
-      const version = ++childVersion.current;
-      if (before) setChildLoading(true);
-      try {
-        const full = await loadDetail(item, before, before ? child : undefined);
-        if (version === childVersion.current) setChild(full);
-      } finally {
-        if (before && version === childVersion.current) setChildLoading(false);
-      }
-    },
-    [loadDetail, child],
-  );
-  // Nested dialogs use the same live refresh and transcript view.
-  useEffect(() => {
-    if (!child || childLoading || child.olderWindow) return;
-    const item = rows.find((row) =>
-      child.agent_id ? row.agent_id === child.agent_id : row.id === child.id,
-    );
-    if (!item) return;
-    if (!active(item)) {
-      if (active(child)) inspectChild(item).catch(report);
-      return;
-    }
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
-      try {
-        await inspectChild(item);
+        setAncestors((prior) => [...prior, detail]);
+        navigate(full);
       } catch (failure) {
         report(failure);
       }
-      if (!stopped) timer = setTimeout(refresh, 1200);
-    };
-    timer = setTimeout(refresh, 1200);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [rows, child?.id, child?.agent_id, child?.olderWindow, childLoading]);
+    },
+    [detail, loadDetail, navigate, report],
+  );
   const meta = [
     current.status,
     detail.model,
@@ -549,6 +495,21 @@ function ActivityModal({
   return (
     <Modal title={title} className="activity-view" close={close}>
       <div class="activity-detail">
+        {ancestors.length > 0 && (
+          <button
+            type="button"
+            class="quiet with-icon activity-back"
+            onClick={() => {
+              const parent = ancestors.at(-1);
+              if (!parent) return;
+              setAncestors((prior) => prior.slice(0, -1));
+              navigate(parent);
+            }}
+          >
+            <ArrowLeft aria-hidden="true" />
+            Back to {ancestors.at(-1)?.name || "parent agent"}
+          </button>
+        )}
         {error && <LoadError error={error} retry={() => inspect(detail)} />}
         {loading && bare && !error && (
           <Skeleton label={`Loading ${title.toLowerCase()}…`} />
@@ -791,22 +752,6 @@ function ActivityModal({
             value={raw.value}
           />
         </Modal>
-      )}
-      {child && (
-        <ActivityModal
-          detail={child}
-          rows={rows}
-          running={running}
-          online={online}
-          session={session}
-          cwd={cwd}
-          loading={childLoading}
-          error={null}
-          inspect={inspectChild}
-          report={report}
-          close={() => setChild(null)}
-          loadDetail={loadDetail}
-        />
       )}
     </Modal>
   );

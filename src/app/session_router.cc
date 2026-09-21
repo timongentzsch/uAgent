@@ -167,7 +167,7 @@ SessionCommandResult SessionHost::ExecuteCommand(
   } else if (ForwardsToWorker(kind)) {
     command["attachments"] = json::array();
     AssetClaim claim;
-    if (outcomes_.PendingCommands(*session) >= 32) {
+    if (outcomes_.PendingCommands(*session) >= kMaxPendingSessionCommands) {
       result.error = "too many unacknowledged worker commands";
     }
     if (const json* ids = JsonArray(command, "attachment_ids");

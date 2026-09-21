@@ -75,7 +75,8 @@ json CollaboratorCommunication(const std::string& id) {
     json event = json::parse(line, nullptr, false);
     if (!event.is_object()) continue;
     messages.push_back(std::move(event));
-    if (messages.size() > 100) messages.erase(messages.begin());
+    if (messages.size() > kMaxCollaboratorRecords)
+      messages.erase(messages.begin());
   }
   return messages;
 }
@@ -192,7 +193,8 @@ std::vector<json> CollaboratorSummaries(const ProcessSupervisor& processes,
   std::error_code error;
   std::vector<json> records;
   for (fs::directory_iterator it(UagentDir("collaborators"), error), end;
-       !error && it != end && records.size() < 100; it.increment(error)) {
+       !error && it != end && records.size() < kMaxCollaboratorRecords;
+       it.increment(error)) {
     const std::string name = it->path().filename().string();
     // Undelivered mail is a sibling file, not a collaborator: skipping it by
     // name keeps a talkative parent from crowding out the records below.
@@ -784,6 +786,7 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
             {{"UAGENT_MAX_STEPS", std::to_string(steps)},
              {"UAGENT_MAX_TOOL_CALLS", std::to_string(tool_calls)},
              {"UAGENT_TOOLSET", mode},
+             {"UAGENT_INTERNAL_PARENT_TURN", std::to_string(context.turn_id)},
              {"UAGENT_MEMORY", child_memory ? "1" : "0"},
              {"UAGENT_INTERNAL_SESSION_FILE",
               JsonValue(collaborator, "session_file", "")},
@@ -881,7 +884,8 @@ Tool SubagentTool(const Api& api, ProcessSupervisor& processes,
                .route = route_label,
                .options = std::move(options),
                .remaining_cost = child_budget,
-               .remaining_tokens = remaining_token_budget},
+               .remaining_tokens = remaining_token_budget,
+               .parent_turn = context.turn_id},
               prompt, child_context, &submitted);
           // Submission transfers queued guidance to the retained conversation.
           // A later model or transport failure must not replay it.

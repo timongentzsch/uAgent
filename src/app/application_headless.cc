@@ -98,16 +98,21 @@ int Application::RunHeadless() {
     if (!agent_.DrainBackground()) {
       runtime_.processes.WaitForChange(generation);
     }
+    agent_.AccountSideUsage();
     SaveSession();
   }
+  agent_.AccountSideUsage();
   context_.output.Restore();
 
   std::string ledger = EnvStr("UAGENT_USAGE_FILE");
   if (!ledger.empty()) {
     std::string error;
-    json entry = {{"route", agent_.ActiveRoute()},
-                  {"routes", agent_.RouteUsageJson()},
-                  {"usage", UsageJson(agent_.SessionUsage())}};
+    json entry = {
+        {"route", agent_.ActiveRoute()},
+        {"routes", agent_.RouteUsageJson()},
+        {"usage", UsageJson(agent_.SessionUsage())},
+        {"statistics", agent_.Statistics()},
+        {"parent_turn", EnvLong("UAGENT_INTERNAL_PARENT_TURN", int64_t{0})}};
     if (!AppendPrivateLine(ledger, JsonDump(entry), error)) {
       fprintf(stderr, "cannot write usage ledger: %s\n", error.c_str());
     }

@@ -51,6 +51,34 @@ def test_first_event_timeout(root, home, *, binary):
         assert_true(3.0 < elapsed < budget(6.5), elapsed)
 
 
+def test_provider_retry_after_is_a_minimum_delay(root, home, *, binary):
+    def overloaded(handler, _):
+        data = json.dumps(
+            {
+                "error": {
+                    "message": "temporarily overloaded",
+                    "type": "service_unavailable_error",
+                    "code": "server_is_overloaded",
+                }
+            }
+        ).encode()
+        handler.send_response(503)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(data)))
+        handler.send_header("Retry-After", "1")
+        handler.end_headers()
+        handler.wfile.write(data)
+
+    with Server([overloaded, event({"content": "retry-after-ok"})]) as server:
+        started = time.monotonic()
+        result = run(root, base_env(home, server.url), "-p", "reply", binary=binary)
+        elapsed = time.monotonic() - started
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip() == "retry-after-ok", result.stdout)
+        assert_true(len(server.requests) == 2, server.requests)
+        assert_true(elapsed >= 1.0, elapsed)
+
+
 def test_midturn_compaction_preserves_progress_and_usage(root, home, *, binary):
     trace = root / "midturn-compact.jsonl"
     source = root / "midturn-source.txt"
@@ -255,6 +283,35 @@ def test_activity_progress_polls_do_not_trip_identical_call_guard(root, home, *,
         assert_true(result.returncode == 0, result.stderr)
         assert_true(result.stdout.strip().endswith("progress-polls-ok"), result.stdout)
         assert_true(len(server.requests) == 6, len(server.requests))
+
+
+def test_valid_repeated_calls_are_nudged_before_the_high_loop_ceiling(root, home, *, binary):
+    state = {"requests": 0}
+    source = root / "repeated-read.txt"
+    source.write_text("stable evidence\n", encoding="utf-8")
+
+    def route(_, body):
+        state["requests"] += 1
+        if state["requests"] <= 3:
+            return tool_call("read_path", {"path": str(source)})
+        combined = "\n".join(str(message.get("content", "")) for message in body["messages"])
+        assert_true("[repeated tool advisory]" in combined, combined)
+        assert_true("run 3 consecutive times" in combined, combined)
+        return event({"content": "repetition-recovered"})
+
+    with Server([route]) as server:
+        result = run(
+            root,
+            base_env(home, server.url),
+            "--yolo",
+            "-p",
+            "inspect repeatedly",
+            timeout=8,
+            binary=binary,
+        )
+        assert_true(result.returncode == 0, result.stderr)
+        assert_true(result.stdout.strip().endswith("repetition-recovered"), result.stdout)
+        assert_true(len(server.requests) == 4, len(server.requests))
 
 
 def test_activity_no_change_polls_are_steered_then_stopped(root, home, *, binary):

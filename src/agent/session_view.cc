@@ -378,7 +378,7 @@ json DisplayBlock(const Conversation& conversation, uint64_t sequence,
           tool["exchange_path"] = detail["exchange_path"];
         }
         block["tools"].push_back(std::move(tool));
-        if (block["tools"].size() >= 32) {
+        if (block["tools"].size() >= kMaxToolsPerMessage) {
           break;
         }
       }

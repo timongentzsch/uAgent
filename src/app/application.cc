@@ -212,6 +212,9 @@ void Application::LogSessionEnd(const char* reason) const {
 
 void Application::Teardown(const char* reason) {
   runtime_.Shutdown();
+  agent_.DrainBackground();
+  agent_.AccountSideUsage();
+  SaveSession(true);
   LogSessionEnd(reason);
   std::remove(UsageLedger().c_str());
   if (!session_file_.empty()) {

@@ -1,8 +1,8 @@
 {
-  "schema": "uagent.audit.v2",
+  "schema": "uagent.audit.v3",
   "token": {
     "system_chars": 2586,
-    "schema_chars": 11364,
+    "schema_bytes": 11364,
     "advertised_tools": 11,
     "always_on_schema_bytes": 4578,
     "largest_schemas": {

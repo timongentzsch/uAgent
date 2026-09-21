@@ -32,7 +32,7 @@ std::string SessionHost::RunResultFor(const std::string& outcome) {
 std::shared_ptr<HostSession> SessionHost::CreateSession(
     const std::string& cwd, const std::string& path, const std::string& title,
     std::string& error) {
-  if (sessions_.size() >= 4096) {
+  if (sessions_.size() >= kMaxSessions) {
     error = "session catalogue limit reached";
     return {};
   }
@@ -160,7 +160,7 @@ bool SessionHost::RecycleStaleWorkerLocked(
   // on the next touch).
   DebugLog("worker_binary_recycle", {{"session", session->id}});
   session->Send({{"kind", "close"}, {"request_id", RandomToken(16)}});
-  changed_.wait_for(lock, std::chrono::seconds(5),
+  changed_.wait_for(lock, kWorkerShutdownTimeout,
                     [&] { return session->exited.load(); });
   if (!session->exited) return false;
   session->pid = -1;
@@ -348,7 +348,7 @@ void SessionHost::ApplyRuntimeFrame(HostSession& session, json& frame) {
     const json data = JsonValue(frame, "data", json::object());
     const std::string detail = JsonValue(data, "detail_id", "");
     if (!detail.empty()) {
-      if (session.active_exchanges.size() >= 32) {
+      if (session.active_exchanges.size() >= kMaxActiveExchanges) {
         session.active_exchanges.erase(session.active_exchanges.begin());
       }
       session.active_exchanges[detail] = {

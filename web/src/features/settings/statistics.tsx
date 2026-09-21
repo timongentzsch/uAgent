@@ -82,13 +82,23 @@ export default function Statistics({
   const state = snapshot?.state;
   const stats = state?.statistics;
   const summary = block?.summary;
+  const side = summary?.background_statistics;
   const fork = state?.view?.fork;
+  const toolScope =
+    summary?.direct_tool_calls === undefined ? "recorded parent" : "all agents";
+  const modelScope =
+    summary?.direct_model_calls === undefined
+      ? "recorded parent"
+      : "all agents";
   const rows: [string, string][] = summary
     ? [
         ["Outcome", summary.outcome],
         ["Model at completion", summary.route || "Not recorded"],
-        ["Model steps", count(summary.steps)],
-        ["Tool calls", count(summary.tool_calls)],
+        ["Model steps (parent)", count(summary.steps)],
+        [`Model calls (${modelScope})`, count(summary.model_calls)],
+        [`Tool calls (${toolScope})`, count(summary.tool_calls)],
+        ["Side model calls", count(side?.model_calls)],
+        ["Side tool calls", count(side?.tool_calls)],
         ["Duration", duration(summary.duration_ms)],
         ["TTFT", duration(summary.ttt_ms)],
         ["Throughput", rate(summary.tokens_per_second)],
@@ -108,23 +118,37 @@ export default function Statistics({
         ]
       : [
           [
-            fork ? "Turns in fork" : "Turns",
+            fork ? "Turns in fork (all agents)" : "Turns (all agents)",
             count(
-              stats?.recorded_turns ??
-                (state?.turns === undefined
+              stats?.recorded_turns === undefined
+                ? state?.turns === undefined
                   ? undefined
-                  : state.turns - (fork?.turns || 0)),
+                  : state.turns - (fork?.turns || 0)
+                : stats.recorded_turns + (stats.side_recorded_turns || 0),
             ),
           ],
           [
-            "Tool calls",
-            count(stats?.tool_calls ?? (stats?.complete ? 0 : undefined)),
+            "Tool calls (all agents)",
+            count(
+              stats?.tool_calls === undefined
+                ? stats?.complete
+                  ? 0
+                  : undefined
+                : stats.tool_calls + (stats.side_tool_calls || 0),
+            ),
           ],
           [
-            "Model calls",
-            count(stats?.model_calls ?? (stats?.complete ? 0 : undefined)),
+            "Model calls (all agents)",
+            count(
+              stats?.model_calls === undefined
+                ? stats?.complete
+                  ? 0
+                  : undefined
+                : stats.model_calls + (stats.side_model_calls || 0),
+            ),
           ],
-          ["Turn time", duration(stats?.duration_ms)],
+          ["Parent turn time", duration(stats?.duration_ms)],
+          ["Side agent time (summed)", duration(stats?.side_duration_ms)],
           ["Model time", duration(stats?.model_ms)],
           ["Tool time (summed)", duration(stats?.tool_ms)],
           [
@@ -189,7 +213,10 @@ export default function Statistics({
               : ""}
             TTFT includes retries. Throughput uses total generation tokens
             divided by measured request time. Totals come from native counters
-            and survive compaction. Missing provider data stays unreported.
+            and survive compaction. All-agent counts include background and
+            delegated work where labeled; parent and side durations stay
+            separate because concurrent times cannot be added into wall time.
+            Missing provider data stays unreported.
           </p>
         </>
       )}

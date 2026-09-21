@@ -83,6 +83,9 @@ std::string DisplayWindow(const std::string& text, size_t start,
 // input/output where DisplayTrunc (ellipsis truncation) is not wanted.
 std::vector<std::string> WrapLines(const std::string& s, size_t columns);
 
+// Pre-request context estimate. Tokenizers vary by model; this converts an
+// approximate serialized byte count with the explicitly named 4-byte rule.
+inline constexpr size_t kEstimatedBytesPerToken = 4;
 int64_t EstimatedTokens(size_t bytes);
 
 std::string StripTrailingSlashes(std::string s);

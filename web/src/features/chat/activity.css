@@ -100,6 +100,10 @@
   flex: 1;
 }
 
+.activity-back {
+  justify-self: start;
+}
+
 .activity-detail > p,
 .activity-detail > pre,
 .activity-detail > section,

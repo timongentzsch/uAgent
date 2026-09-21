@@ -10,6 +10,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <string_view>
 
 #include "include/core/checked.h"
 #include "include/core/json.h"
@@ -193,6 +194,126 @@ inline Usage UsageFromJson(const json& value) {
 
 using RouteUsage = std::map<std::string, Usage>;
 
+inline bool HasUsage(const Usage& usage) {
+  return usage.input || usage.output || usage.cache_read || usage.cache_write ||
+         usage.reasoning || usage.web_searches || usage.cost_reported;
+}
+
+// Statistics are additive nonnegative counters and durations. These helpers
+// are shared by parent, child and persistent-collaborator accounting so nested
+// work cannot gain a different merge or delta rule at each process boundary.
+inline int64_t NonnegativeJsonInteger(const json& value) {
+  if (value.is_number_unsigned()) {
+    const uint64_t parsed = value.get<uint64_t>();
+    const uint64_t maximum =
+        static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    return parsed > maximum ? std::numeric_limits<int64_t>::max()
+                            : static_cast<int64_t>(parsed);
+  }
+  return value.is_number_integer() ? Nonnegative(value.get<int64_t>()) : 0;
+}
+
+inline int64_t NumericStatistic(const json& object, std::string_view key) {
+  if (!object.is_object()) return 0;
+  const auto found = object.find(key);
+  return found == object.end() ? 0 : NonnegativeJsonInteger(*found);
+}
+
+inline void MergeNumericStatistics(json& total, const json& delta) {
+  if (!total.is_object()) total = json::object();
+  if (!delta.is_object()) return;
+  for (const auto& [key, value] : delta.items()) {
+    if (!value.is_number() || !std::isfinite(value.get<double>()) ||
+        value.get<double>() < 0 || key == "complete") {
+      continue;
+    }
+    if (value.is_number_integer() || value.is_number_unsigned()) {
+      total[key] = SaturatingNonnegativeAdd(NumericStatistic(total, key),
+                                            NonnegativeJsonInteger(value));
+    } else {
+      total[key] =
+          std::min(std::numeric_limits<double>::max(),
+                   JsonValue(total, key.c_str(), 0.0) + value.get<double>());
+    }
+  }
+}
+
+inline json PrefixNumericStatistics(const json& statistics,
+                                    std::string_view prefix) {
+  json result = json::object();
+  if (!statistics.is_object()) return result;
+  for (const auto& [key, value] : statistics.items()) {
+    if (!value.is_number() || key == "complete") continue;
+    const std::string target =
+        key.starts_with(prefix) ? key : std::string(prefix) + key;
+    MergeNumericStatistics(result, {{target, value}});
+  }
+  return result;
+}
+
+inline json FlattenNumericStatistics(const json& statistics,
+                                     std::string_view prefix) {
+  json result = json::object();
+  if (!statistics.is_object()) return result;
+  for (const auto& [key, value] : statistics.items()) {
+    if (!value.is_number() || key == "complete") continue;
+    const std::string target =
+        key.starts_with(prefix) ? key.substr(prefix.size()) : key;
+    MergeNumericStatistics(result, {{target, value}});
+  }
+  return result;
+}
+
+inline Usage UsageDifference(const Usage& current, const Usage& prior) {
+  const auto difference = [](int64_t now, int64_t before) {
+    now = Nonnegative(now);
+    before = Nonnegative(before);
+    return now > before ? now - before : int64_t{0};
+  };
+  Usage result;
+  result.input = difference(current.input, prior.input);
+  result.output = difference(current.output, prior.output);
+  result.cache_read = difference(current.cache_read, prior.cache_read);
+  result.cache_write = difference(current.cache_write, prior.cache_write);
+  result.reasoning = difference(current.reasoning, prior.reasoning);
+  result.web_searches = difference(current.web_searches, prior.web_searches);
+  const double now =
+      std::isfinite(current.cost) && current.cost > 0 ? current.cost : 0.0;
+  const double before =
+      std::isfinite(prior.cost) && prior.cost > 0 ? prior.cost : 0.0;
+  result.cost = now > before ? now - before : 0.0;
+  result.cost_reported = current.cost_reported;
+  return result;
+}
+
+inline json NumericStatisticsDifference(const json& current,
+                                        const json& prior) {
+  json result = json::object();
+  if (!current.is_object()) return result;
+  for (const auto& [key, value] : current.items()) {
+    if (key == "complete" || !value.is_number() ||
+        !std::isfinite(value.get<double>()) || value.get<double>() < 0) {
+      continue;
+    }
+    if (value.is_number_integer() || value.is_number_unsigned()) {
+      const int64_t now = NonnegativeJsonInteger(value);
+      const int64_t before = NumericStatistic(prior, key);
+      result[key] = now > before ? now - before : int64_t{0};
+    } else {
+      result[key] = std::max(
+          0.0, value.get<double>() - JsonValue(prior, key.c_str(), 0.0));
+    }
+  }
+  return result;
+}
+
+struct AccumulatedUsage {
+  Usage unassigned;
+  RouteUsage routes;
+  std::map<int64_t, Usage> turns;
+  std::map<int64_t, json> turn_statistics;
+};
+
 inline json RouteUsageJson(const RouteUsage& routes) {
   json out = json::object();
   for (const auto& [route, usage] : routes) out[route] = UsageJson(usage);
@@ -212,24 +333,33 @@ class UsageAccumulator {
  public:
   void Add(const json& usage) {
     std::lock_guard<std::mutex> lock(mutex_);
-    usage_.Add(usage);
+    unassigned_.Add(usage);
   }
 
   void Add(const Usage& usage) {
     std::lock_guard<std::mutex> lock(mutex_);
-    usage_.Merge(usage);
+    unassigned_.Merge(usage);
   }
 
-  void Add(const std::string& route, const Usage& usage) {
+  void Add(const std::string& route, const Usage& usage, int64_t turn = 0,
+           const json& statistics = json::object()) {
     std::lock_guard<std::mutex> lock(mutex_);
-    usage_.Merge(usage);
+    if (turn > 0) {
+      turns_[turn].Merge(usage);
+      MergeNumericStatistics(turn_statistics_[turn], statistics);
+    } else {
+      unassigned_.Merge(usage);
+    }
     routes_[route].Merge(usage);
   }
 
   Usage Take() {
     std::lock_guard<std::mutex> lock(mutex_);
-    Usage usage = usage_;
-    usage_ = {};
+    Usage usage = unassigned_;
+    for (const auto& [_, attributed] : turns_) usage.Merge(attributed);
+    unassigned_ = {};
+    turns_.clear();
+    turn_statistics_.clear();
     return usage;
   }
 
@@ -240,10 +370,26 @@ class UsageAccumulator {
     return routes;
   }
 
+  // Usage, route attribution, parent-turn attribution and child statistics
+  // are one accounting record. Taking them under one lock prevents a producer
+  // from landing between separate drains and losing its route or turn.
+  AccumulatedUsage TakeAll() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    AccumulatedUsage result;
+    result.unassigned = unassigned_;
+    result.routes.swap(routes_);
+    result.turns.swap(turns_);
+    result.turn_statistics.swap(turn_statistics_);
+    unassigned_ = {};
+    return result;
+  }
+
  private:
   std::mutex mutex_;
-  Usage usage_;
+  Usage unassigned_;
   RouteUsage routes_;
+  std::map<int64_t, Usage> turns_;
+  std::map<int64_t, json> turn_statistics_;
 };
 
 }  // namespace uagent

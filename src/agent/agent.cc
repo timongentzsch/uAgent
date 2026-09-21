@@ -33,7 +33,6 @@
 #include "include/providers.h"
 
 namespace uagent {
-
 Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
              UsageAccumulator& side_usage, Approver approve,
              ToolRefresher refresh_tools,
@@ -49,7 +48,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
       project_instructions_(std::move(project_instructions)),
       skills_(std::move(skills)),
       adaptive_system_(adaptive_system) {
-  schema_chars_ = JsonDump(schemas_).size();
+  schema_bytes_ = JsonDump(schemas_).size();
   if (Debug().Enabled()) {
     json names = json::array();
     for (const Tool& tool : tools_) names.push_back(tool.name);
@@ -57,7 +56,7 @@ Agent::Agent(Api& api, std::vector<Tool>& tools, ProcessSupervisor& processes,
         "agent_init",
         {{"tools", std::move(names)},
          {"schemas", schemas_},
-         {"schema_chars", schema_chars_},
+         {"schema_bytes", schema_bytes_},
          {"project_instruction_sources", project_instructions_.sources},
          {"project_instruction_chars", project_instructions_.text.size()},
          {"memory_sources", project_instructions_.memory_sources},
@@ -178,6 +177,33 @@ void Agent::SessionSettings(const json& settings) {
   conversation_.RecordDisplay("session-settings", settings);
   ++revision_;
 }
+json Agent::ToolCatalogue() const { return tool_selection_.Catalogue(tools_); }
+
+json Agent::ConfigureTools(const json& request) {
+  const json before = tool_selection_.Save();
+  std::string error;
+  if (!tool_selection_.Configure(request, tools_, error)) {
+    return {{"error", std::move(error)}};
+  }
+  if (tool_selection_.Save() != before) {
+    available_schemas_.Reset();
+    schema_bytes_ = static_cast<size_t>(JsonValue(
+        tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
+    logged_schemas_.clear();
+    RefreshSystemMessage(true);
+    ++revision_;
+  }
+  return ToolCatalogue();
+}
+
+void Agent::RestoreToolSelection(const json& settings) {
+  tool_selection_.Restore(settings);
+  available_schemas_.Reset();
+  schema_bytes_ = static_cast<size_t>(
+      JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
+  logged_schemas_.clear();
+  RefreshSystemMessage(true);
+}
 json Agent::HttpExchanges() const {
   return JsonValue(
       JsonValue(conversation_.DisplayFacts(), "http-latest", json::object()),
@@ -203,7 +229,11 @@ json Agent::ModelRequest() {
   PrepareAttachments(messages, api_.capabilities, fallback, ActiveRoute(),
                      error);
   if (fallback) ApplyImageAnalysisFallback(messages, false);
-  return api_.BuildRequestBody(messages, schemas_, session_id_);
+  json selected = json::array();
+  for (size_t i = 0; i < tools_.size() && i < schemas_.size(); ++i) {
+    if (tool_selection_.Enabled(tools_[i])) selected.push_back(schemas_[i]);
+  }
+  return api_.BuildRequestBody(messages, selected, session_id_);
 }
 
 bool Agent::Save(const std::string& path, std::string& error) const {
@@ -358,7 +388,7 @@ int64_t Agent::SnapshotContext(size_t schema_bytes) const {
   return used;
 }
 
-int64_t Agent::ContextUsed() const { return SnapshotContext(schema_chars_); }
+int64_t Agent::ContextUsed() const { return SnapshotContext(schema_bytes_); }
 
 json Agent::CompactionMessages() const {
   size_t transcript_bytes = size_t{256} * 1024;
@@ -612,36 +642,110 @@ void Agent::DrainSubagentUsage() {
     DebugLog("usage_ledger_error", {{"error", error}});
     return;
   }
-  Usage spent;
   std::istringstream input(data);
   for (std::string line; std::getline(input, line);) {
     json entry = json::parse(line, nullptr, false);
     if (entry.is_object() && entry.contains("usage")) {
       Usage child = UsageFromJson(entry["usage"]);
-      spent.Merge(child);
+      const int64_t parent_turn = JsonValue(entry, "parent_turn", int64_t{0});
+      const json statistics = FlattenNumericStatistics(
+          JsonValue(entry, "statistics", json::object()), "side_");
       if (entry.contains("routes") && entry["routes"].is_object()) {
+        bool first = true;
         for (const auto& [route, value] : entry["routes"].items()) {
-          route_usage_[route].Merge(UsageFromJson(value));
+          // Statistics describe the whole child and therefore belong on one
+          // record, even when its usage spans several provider routes.
+          side_usage_.Add(route, UsageFromJson(value), parent_turn,
+                          first ? statistics : json::object());
+          first = false;
+        }
+        if (first) {
+          side_usage_.Add(JsonValue(entry, "route", "delegated/unknown"), child,
+                          parent_turn, statistics);
         }
       } else {
         std::string route = JsonValue(entry, "route", "delegated/unknown");
-        route_usage_[route].Merge(child);
+        side_usage_.Add(route, child, parent_turn, statistics);
       }
     } else {
-      spent.Merge(UsageFromJson(entry));
+      side_usage_.Add(UsageFromJson(entry));
     }
   }
-  side_usage_.Add(spent);
 }
 
 void Agent::MergeSideUsage(Usage& turn_usage) {
   DrainSubagentUsage();
-  Usage spent = side_usage_.Take();
-  for (const auto& [route, route_spent] : side_usage_.TakeRoutes()) {
+  ApplySideUsage(side_usage_.TakeAll(), &turn_usage);
+}
+
+void Agent::AccountSideUsage() {
+  DrainSubagentUsage();
+  ApplySideUsage(side_usage_.TakeAll(), nullptr);
+}
+
+void Agent::ApplySideUsage(AccumulatedUsage batch, Usage* current_turn) {
+  Usage total = batch.unassigned;
+  for (const auto& [route, route_spent] : batch.routes) {
     route_usage_[route].Merge(route_spent);
   }
-  turn_usage.Merge(spent);
-  MergeSessionUsage(spent);
+  for (const auto& [turn, attributed] : batch.turns) {
+    total.Merge(attributed);
+    const auto found = batch.turn_statistics.find(turn);
+    const json statistics =
+        found == batch.turn_statistics.end() ? json::object() : found->second;
+    conversation_.AddStatistics(PrefixNumericStatistics(statistics, "side_"));
+    if (current_turn && turn == turn_id_) {
+      current_turn->Merge(attributed);
+      MergeNumericStatistics(turn_side_statistics_, statistics);
+    }
+  }
+  if (HasUsage(total) || !batch.turn_statistics.empty()) {
+    MergeSessionUsage(total);
+  }
+  for (const auto& [turn, attributed] : batch.turns) {
+    if (current_turn && turn == turn_id_) continue;
+    const auto found = batch.turn_statistics.find(turn);
+    UpdateTurnSideUsage(
+        turn, attributed,
+        found == batch.turn_statistics.end() ? json::object() : found->second);
+  }
+}
+
+void Agent::UpdateTurnSideUsage(int64_t turn, const Usage& usage,
+                                const json& statistics) {
+  if (turn <= 0) return;
+  for (const auto& [key, value] : conversation_.DisplayFacts().items()) {
+    if (!value.is_object() || JsonValue(value, "kind", "") != "turn_summary") {
+      continue;
+    }
+    json summary = JsonValue(value, "summary", json::object());
+    if (JsonValue(summary, "turn", int64_t{0}) != turn) continue;
+    Usage updated = UsageFromJson(JsonValue(summary, "usage", json::object()));
+    updated.Merge(usage);
+    json side = JsonValue(summary, "background_statistics", json::object());
+    MergeNumericStatistics(side, statistics);
+    const int64_t direct_tools =
+        JsonValue(summary, "direct_tool_calls",
+                  JsonValue(summary, "tool_calls", int64_t{0}));
+    const int64_t direct_models =
+        JsonValue(summary, "direct_model_calls",
+                  JsonValue(summary, "model_calls", int64_t{0}));
+    summary["usage"] = UsageJson(updated);
+    summary["usage_reported"] =
+        JsonValue(summary, "usage_reported", false) || HasUsage(usage);
+    summary["session_usage"] = UsageJson(session_usage_);
+    summary["background_statistics"] = side;
+    summary["tool_calls"] =
+        direct_tools + JsonValue(side, "tool_calls", int64_t{0});
+    summary["model_calls"] =
+        direct_models + JsonValue(side, "model_calls", int64_t{0});
+    json block = value;
+    block["summary"] = std::move(summary);
+    conversation_.RecordDisplay(key, block);
+    ++revision_;
+    Emit(Event{EventId::kMessageChanged, {{"block", std::move(block)}}});
+    return;
+  }
 }
 
 void Agent::MergeSessionUsage(const Usage& usage) {
@@ -938,11 +1042,12 @@ void Agent::ArchiveAll(const char* reason) {
 void Agent::RebuildToolSchemas() {
   available_schemas_.Reset();
   schemas_ = ToolSchemas(tools_);
-  schema_chars_ = JsonDump(schemas_).size();
+  schema_bytes_ = static_cast<size_t>(
+      JsonValue(tool_selection_.Catalogue(tools_), "schema_bytes", int64_t{0}));
   logged_schemas_.clear();
   RefreshSystemMessage();
   DebugLog("tool_registry_refreshed",
-           {{"tools", tools_.size()}, {"schema_chars", schema_chars_}});
+           {{"tools", tools_.size()}, {"schema_bytes", schema_bytes_}});
 }
 
 }  // namespace uagent

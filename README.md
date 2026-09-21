@@ -145,6 +145,7 @@ the denial to the model as steering.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Operations and limits](docs/OPERATIONS.md)
+- [Measurements and estimates](docs/MEASUREMENTS.md)
 - [Tools](docs/TOOLS.md)
 - [Persistence](docs/PERSISTENCE.md)
 - [Web interface](docs/WEB.md)

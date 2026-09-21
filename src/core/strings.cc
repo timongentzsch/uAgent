@@ -248,7 +248,8 @@ std::string DisplayTrunc(std::string s, size_t columns) {
 }
 
 int64_t EstimatedTokens(size_t bytes) {
-  size_t tokens = bytes / 4;
+  size_t tokens = SaturatingAdd(bytes, kEstimatedBytesPerToken - 1) /
+                  kEstimatedBytesPerToken;
   size_t cap = static_cast<size_t>(std::numeric_limits<int64_t>::max());
   return tokens > cap ? std::numeric_limits<int64_t>::max()
                       : static_cast<int64_t>(tokens);

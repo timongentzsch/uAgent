@@ -3,11 +3,14 @@
 #include "include/tools/tool.h"
 
 #include <algorithm>
+#include <cctype>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/time.h"
 
 namespace uagent {
@@ -117,6 +120,174 @@ Tool MakeTool(std::string name, std::string description, json parameters,
   tool.parameters = std::move(parameters);
   tool.run = std::move(run);
   return tool;
+}
+
+std::string ToolTitle(const Tool& tool) {
+  if (!tool.title.empty()) return tool.title;
+  std::string title = tool.name;
+  bool capitalize = true;
+  for (char& ch : title) {
+    if (ch == '_' || ch == '-') {
+      ch = ' ';
+      capitalize = true;
+    } else if (capitalize) {
+      ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+      capitalize = false;
+    }
+  }
+  return title;
+}
+
+std::string ToolCategory(const Tool& tool) {
+  if (!tool.category.empty()) return tool.category;
+  if (tool.provider.starts_with("mcp:")) return "mcp";
+  if (tool.name == "web_search" || tool.name == "web_fetch") return "web";
+  if (tool.name == "subagent") return "collaborate";
+  if (tool.name == "memory" || tool.name == "skill") return "memory";
+  if (tool.name == "run" || tool.name == "scratch" || tool.name == "activity") {
+    return "execute";
+  }
+  if (tool.name == "uagent" || tool.name == "session" ||
+      tool.name == "adapt_system") {
+    return "system";
+  }
+  return "workspace";
+}
+
+namespace {
+
+bool ValidProfile(std::string_view profile) {
+  return profile == "default" || profile == "coding" || profile == "research" ||
+         profile == "minimal";
+}
+
+bool ProfileEnabled(std::string_view profile, const Tool& tool) {
+  if (profile == "default") return true;
+  const std::string category = ToolCategory(tool);
+  if (profile == "coding") {
+    return category != "web" && category != "collaborate";
+  }
+  if (profile == "research") {
+    return category == "workspace" || category == "web" ||
+           category == "collaborate" || category == "memory" ||
+           tool.name == "activity" || tool.name == "uagent" ||
+           tool.name == "session";
+  }
+  static const std::unordered_set<std::string> minimal = {
+      "read_path", "grep", "run", "activity", "uagent", "session"};
+  return minimal.contains(tool.name);
+}
+
+bool KnownTool(const std::vector<Tool>& tools, std::string_view name) {
+  return std::any_of(tools.begin(), tools.end(),
+                     [&](const Tool& tool) { return tool.name == name; });
+}
+
+}  // namespace
+
+bool ToolSelection::Enabled(const Tool& tool) const {
+  auto override = overrides_.find(tool.name);
+  return override == overrides_.end() ? ProfileEnabled(profile_, tool)
+                                      : override->second;
+}
+
+bool ToolSelection::Configure(const json& request,
+                              const std::vector<Tool>& tools,
+                              std::string& error) {
+  const std::string operation = JsonValue(request, "operation", "catalog");
+  if (operation == "catalog") return true;
+  if (operation == "reset") {
+    profile_ = "default";
+    overrides_.clear();
+    return true;
+  }
+  if (operation == "profile") {
+    const std::string profile = JsonValue(request, "profile", "");
+    if (!ValidProfile(profile)) {
+      error = "unknown tool profile";
+      return false;
+    }
+    profile_ = profile;
+    overrides_.clear();
+    return true;
+  }
+  if (operation == "set") {
+    const std::string name = JsonValue(request, "name", "");
+    if (!KnownTool(tools, name)) {
+      error = "unknown or unavailable tool";
+      return false;
+    }
+    auto found = request.find("active");
+    if (found == request.end() || !found->is_boolean()) {
+      error = "tool active state must be boolean";
+      return false;
+    }
+    const Tool* tool = FindTool(tools, name);
+    const bool active = found->get<bool>();
+    if (tool && active == ProfileEnabled(profile_, *tool)) {
+      overrides_.erase(name);
+    } else {
+      overrides_[name] = active;
+    }
+    return true;
+  }
+  error = "unknown tool operation";
+  return false;
+}
+
+void ToolSelection::Restore(const json& value) {
+  profile_ = JsonValue(value, "profile", "default");
+  if (!ValidProfile(profile_)) profile_ = "default";
+  overrides_.clear();
+  const json overrides = JsonValue(value, "overrides", json::object());
+  if (!overrides.is_object()) return;
+  for (const auto& [name, active] : overrides.items()) {
+    if (overrides_.size() >= kMaxToolSelectionOverrides) break;
+    if (!name.empty() && name.size() <= kToolNameChars && active.is_boolean())
+      overrides_[name] = active.get<bool>();
+  }
+}
+
+json ToolSelection::Save() const {
+  json overrides = json::object();
+  for (const auto& [name, active] : overrides_) overrides[name] = active;
+  return {{"profile", profile_}, {"overrides", std::move(overrides)}};
+}
+
+json ToolSelection::Catalogue(const std::vector<Tool>& tools) const {
+  json rows = json::array();
+  json active_schemas = json::array();
+  json full_schemas = json::array();
+  int64_t active_count = 0;
+  for (const Tool& tool : tools) {
+    json schema = ToolSchema(tool);
+    const size_t bytes = JsonDump(schema).size();
+    const bool active = Enabled(tool);
+    full_schemas.push_back(schema);
+    if (active) {
+      ++active_count;
+      active_schemas.push_back(std::move(schema));
+    }
+    rows.push_back(
+        {{"name", tool.name},
+         {"title", ToolTitle(tool)},
+         {"description", tool.description},
+         {"category", ToolCategory(tool)},
+         {"provider", tool.provider.empty() ? "builtin" : tool.provider},
+         {"active", active},
+         {"available", true},
+         {"schema_bytes", bytes}});
+  }
+  return {
+      {"profile", overrides_.empty() ? profile_ : "custom"},
+      {"base_profile", profile_},
+      {"profiles", json::array({"default", "coding", "research", "minimal"})},
+      {"active", active_count},
+      {"available", static_cast<int64_t>(tools.size())},
+      {"schema_bytes", static_cast<int64_t>(JsonDump(active_schemas).size())},
+      {"full_schema_bytes",
+       static_cast<int64_t>(JsonDump(full_schemas).size())},
+      {"tools", std::move(rows)}};
 }
 
 Tool& AddTool(std::vector<Tool>& tools, Tool tool) {

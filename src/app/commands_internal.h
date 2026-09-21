@@ -27,7 +27,7 @@ void HandleCost(const AppSession& session);
 void HandleContext(AppSession& session);
 void HandleStatus(const AppSession& session);
 void HandleDebugConfig(const AppSession& session, const std::string& argument);
-void HandleTools(const AppSession& session);
+void HandleTools(AppSession& session, const std::string& argument);
 json AgentsJson(const AppSession& session);
 SelfDescriptionInputs DescriptionInputs(const AppSession& session);
 json CommandResult(const AppSession& session,

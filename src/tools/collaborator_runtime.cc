@@ -30,22 +30,6 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
-Usage Difference(const Usage& current, const Usage& prior) {
-  Usage result;
-  result.input = std::max(int64_t{0}, current.input - prior.input);
-  result.output = std::max(int64_t{0}, current.output - prior.output);
-  result.cache_read =
-      std::max(int64_t{0}, current.cache_read - prior.cache_read);
-  result.cache_write =
-      std::max(int64_t{0}, current.cache_write - prior.cache_write);
-  result.reasoning = std::max(int64_t{0}, current.reasoning - prior.reasoning);
-  result.web_searches =
-      std::max(int64_t{0}, current.web_searches - prior.web_searches);
-  result.cost = std::max(0.0, current.cost - prior.cost);
-  result.cost_reported = current.cost_reported;
-  return result;
-}
-
 bool NextFrame(int fd, std::string& input, Clock::time_point deadline,
                json& frame, bool interruptible) {
   for (;;) {
@@ -189,6 +173,8 @@ struct CollaboratorRuntime::State {
     bool active = false;
     Usage accounted;
     RouteUsage accounted_routes;
+    json accounted_statistics = json::object();
+    int64_t parent_turn = 0;
     json latest = json::object();
   };
 
@@ -198,19 +184,31 @@ struct CollaboratorRuntime::State {
     const Usage current = UsageFromJson(JsonValue(snapshot, "usage", json{}));
     const RouteUsage current_routes =
         RouteUsageFromJson(JsonValue(snapshot, "route_usage", json{}));
+    const json current_statistics =
+        JsonValue(snapshot, "statistics", json::object());
+    const json statistics = FlattenNumericStatistics(
+        NumericStatisticsDifference(current_statistics,
+                                    slot.accounted_statistics),
+        "side_");
     if (current_routes.empty()) {
-      usage.Add(Difference(current, slot.accounted));
+      usage.Add(slot.route.empty() ? "delegated/unknown" : slot.route,
+                UsageDifference(current, slot.accounted), slot.parent_turn,
+                statistics);
     } else {
+      bool first = true;
       for (const auto& [route_name, value] : current_routes) {
         auto prior = slot.accounted_routes.find(route_name);
         usage.Add(route_name,
-                  Difference(value, prior == slot.accounted_routes.end()
-                                        ? Usage{}
-                                        : prior->second));
+                  UsageDifference(value, prior == slot.accounted_routes.end()
+                                             ? Usage{}
+                                             : prior->second),
+                  slot.parent_turn, first ? statistics : json::object());
+        first = false;
       }
     }
     slot.accounted = current;
     slot.accounted_routes = current_routes;
+    slot.accounted_statistics = current_statistics;
   }
 
   UsageAccumulator& usage;
@@ -281,6 +279,8 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
         if (auto loaded = SessionStore::Inspect(launch.path); loaded.record) {
           slot.accounted = loaded.record->state.usage;
           slot.accounted_routes = loaded.record->state.route_usage;
+          slot.accounted_statistics = JsonValue(loaded.record->state.display,
+                                                "statistics", json::object());
         }
       }
       id = launch.id;
@@ -292,6 +292,7 @@ ToolResult CollaboratorRuntime::Handoff(CollaboratorLaunch launch,
       slot.label = std::move(launch.title);
       slot.model = std::move(launch.model);
       slot.route = std::move(launch.route);
+      slot.parent_turn = launch.parent_turn;
       slot.active = true;
       request_generation = session::RandomToken(16);
       slot.handoff = request_generation;

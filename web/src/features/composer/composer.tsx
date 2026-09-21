@@ -544,7 +544,7 @@ export default function Composer({
           <button
             class="quiet"
             aria-label="Raw context"
-            title={`${state?.context_tokens?.toLocaleString() || "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens · View raw context`}
+            title={`Estimated context: ${state?.context_tokens?.toLocaleString() || "—"}${state?.context_window ? ` / ${state.context_window.toLocaleString()}` : ""} tokens from serialized request bytes; provider billing usage is separate · View raw context`}
             disabled={!online}
             onClick={showContext}
           >

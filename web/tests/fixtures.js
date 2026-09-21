@@ -12,7 +12,7 @@ export const test = base.extend({
     const child = spawn("python3", [
       "../tests/web_host.py",
       "--binary",
-      process.env.UAGENT_TEST_BINARY || "../build/release/uagent",
+      process.env.UAGENT_TEST_BINARY || "../build/uagent",
       "--port",
       "0",
       "--fixture",

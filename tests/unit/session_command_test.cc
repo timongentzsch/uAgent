@@ -204,7 +204,7 @@ void TestHostCommandKinds() {
               session::SessionCommandKindName(worker))) == !non_forwarded);
     forwarded += !non_forwarded ? 1 : 0;
   }
-  CHECK(forwarded == 16);
+  CHECK(forwarded == 17);
   CHECK(!session::ForwardsToWorker(session::HostCommandKind::kCreate));
   CHECK(!session::ForwardsToWorker(session::HostCommandKind::kDelete));
   CHECK(!session::ForwardsToWorker(session::HostCommandKind::kActivate));

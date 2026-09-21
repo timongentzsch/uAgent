@@ -97,22 +97,23 @@ def probe_session(binary: Path, with_profile: bool = False) -> dict[str, Any]:
         not metrics["events"]["turn_end"]
         or not request.get("messages")
         or not request.get("schema_snapshot")
-        or not request.get("schema_chars")
+        or not request.get("schema_bytes")
     ):
         raise ValueError("audit probe is missing required request/schema telemetry")
     schemas = request["schema_snapshot"]
     per_tool = {}
     for entry in schemas:
         function = entry.get("function", entry)
-        per_tool[function.get("name", "?")] = len(json.dumps(entry, separators=(",", ":")))
+        serialized = json.dumps(entry, separators=(",", ":"), ensure_ascii=False)
+        per_tool[function.get("name", "?")] = len(serialized.encode("utf-8"))
     messages = request.get("messages") or []
     return {
         "peak_rss_bytes": peak_rss(process.stderr),
         "system_chars": len(str(messages[0].get("content", ""))) if messages else 0,
-        "schema_chars": int(request.get("schema_chars") or 0),
+        "schema_bytes": int(request.get("schema_bytes") or 0),
         "advertised_tools": len(schemas),
         "per_tool_bytes": dict(sorted(per_tool.items(), key=lambda item: -item[1])),
-        "cumulative_request_chars": metrics["cumulative_estimated_request_chars"],
+        "cumulative_context_bytes": metrics["cumulative_estimated_context_bytes"],
         "tool_result_chars": metrics["tool_result_chars"],
         "model_duration_ms": metrics["model_duration_ms"],
     }
@@ -194,12 +195,12 @@ def evaluation_resources() -> dict[str, Any]:
     values = list(scenarios.values())
     return {
         "cases": len(values),
-        "cumulative_request_chars": sum(
-            int(value.get("cumulative_estimated_request_chars") or 0) for value in values
+        "cumulative_context_bytes": sum(
+            int(value.get("cumulative_estimated_context_bytes") or 0) for value in values
         ),
         "tool_result_chars": sum(int(value.get("tool_result_chars") or 0) for value in values),
-        "max_request_chars": max(
-            (int(value.get("max_estimated_request_chars") or 0) for value in values),
+        "max_context_bytes": max(
+            (int(value.get("max_estimated_context_bytes") or 0) for value in values),
             default=0,
         ),
     }
@@ -248,7 +249,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         if count / total_real >= COVERAGE_FLOOR and name not in coverage["tool_calls"]
     ]
     return {
-        "schema": "uagent.audit.v2",
+        "schema": "uagent.audit.v3",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "hardware": {
             "binary_bytes": binary.stat().st_size,
@@ -256,7 +257,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         },
         "token": {
             "system_chars": session["system_chars"],
-            "schema_chars": session["schema_chars"],
+            "schema_bytes": session["schema_bytes"],
             "advertised_tools": session["advertised_tools"],
             "always_on_schema_bytes": always,
             "largest_schemas": dict(list(session["per_tool_bytes"].items())[:5]),
@@ -265,7 +266,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         # so a baseline built from it would fail on someone else's memories.
         "profile_token": {
             "system_chars": profile.get("system_chars", 0),
-            "schema_chars": profile.get("schema_chars", 0),
+            "schema_bytes": profile.get("schema_bytes", 0),
             "advertised_tools": profile.get("advertised_tools", 0),
             "only_with_profile": sorted(
                 set(profile.get("per_tool_bytes", {})) - set(session["per_tool_bytes"])
@@ -278,7 +279,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
         },
         "trajectory": {
             "probe": {
-                "cumulative_request_chars": session.get("cumulative_request_chars", 0),
+                "cumulative_context_bytes": session.get("cumulative_context_bytes", 0),
                 "tool_result_chars": session.get("tool_result_chars", 0),
                 "model_duration_ms": session.get("model_duration_ms", 0),
             },
@@ -297,7 +298,7 @@ def collect(binary: Path, arguments) -> dict[str, Any]:
 
 def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     """Only the axes that are machine-independent are allowed to fail a build."""
-    if baseline.get("schema") != "uagent.audit.v2":
+    if baseline.get("schema") != "uagent.audit.v3":
         raise ValueError("missing or unsupported audit baseline schema")
     for data in (current, baseline):
         if not isinstance(data.get("capability", {}).get("tool_calls"), dict):
@@ -305,7 +306,7 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> list[str]:
     regressions = []
     for axis, field, tolerance in (
         ("token", "system_chars", 1.05),
-        ("token", "schema_chars", 1.05),
+        ("token", "schema_bytes", 1.05),
         ("token", "always_on_schema_bytes", 1.05),
     ):
         before = baseline.get(axis, {}).get(field)
@@ -330,7 +331,8 @@ def render(report: dict[str, Any]) -> None:
         )
     )
     print(
-        f"token         system {token['system_chars']:,} + schemas {token['schema_chars']:,} chars "
+        f"token         system {token['system_chars']:,} chars + schemas "
+        f"{token['schema_bytes']:,} B "
         f"over {token['advertised_tools']} advertised tools "
         f"({token['always_on_schema_bytes']:,} B always-on)"
     )
@@ -339,7 +341,7 @@ def render(report: dict[str, Any]) -> None:
     if profile.get("system_chars"):
         print(
             f"              this machine's profile: system {profile['system_chars']:,} + "
-            f"schemas {profile['schema_chars']:,} chars over "
+            f"schemas {profile['schema_bytes']:,} B over "
             f"{profile['advertised_tools']} tools"
             + (f", added: {profile['only_with_profile']}" if profile["only_with_profile"] else "")
         )
@@ -357,8 +359,8 @@ def render(report: dict[str, Any]) -> None:
     probe_trajectory = trajectory.get("probe", {})
     if baseline_trajectory:
         print(
-            "trajectory    {cases} cases · cumulative request "
-            "{cumulative_request_chars:,} chars · tool results "
+            "trajectory    {cases} cases · cumulative context "
+            "{cumulative_context_bytes:,} B · tool results "
             "{tool_result_chars:,} chars · probe model "
             f"{probe_trajectory.get('model_duration_ms', 0):.0f}ms "
             "(descriptive, no global ceiling)".format(**baseline_trajectory)

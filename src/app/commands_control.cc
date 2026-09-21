@@ -123,6 +123,14 @@ json SessionControl(AppSession& session, const json& request) {
     return session.ActiveAgent().PromptConfiguration(request);
   }
   if (kind == "permissions") return PermissionControl(session.context, request);
+  if (kind == "tools") {
+    json result = session.ActiveAgent().ConfigureTools(request);
+    if (!result.contains("error") &&
+        JsonValue(request, "operation", "catalog") != "catalog") {
+      SaveSessionSettings(session);
+    }
+    return result;
+  }
   if (kind == "fork") {
     std::string error;
     if (session.session_file.empty()) {

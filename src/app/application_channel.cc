@@ -87,6 +87,7 @@ int Application::RunChannel() {
   PublishChannelState();
   while (std::optional<ApplicationInput> input = channel_->NextInput()) {
     agent_.DrainBackground();
+    agent_.AccountSideUsage();
     bool quit = false;
     request_id_ = input->request_id;
     if (input->title) {

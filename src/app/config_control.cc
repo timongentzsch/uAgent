@@ -8,6 +8,7 @@
 #include "include/core/config_registry.h"
 #include "include/core/effective_config.h"
 #include "include/core/env.h"
+#include "include/core/limits.h"
 
 namespace uagent {
 json ConfigurationControl(const json& request, const ConfigManager& manager,
@@ -21,7 +22,7 @@ json ConfigurationControl(const json& request, const ConfigManager& manager,
     }
     std::vector<ConfigChange> changes;
     if (const json* items = JsonArray(request, "changes")) {
-      if (items->size() > 64) {
+      if (items->size() > kConfigurationChangeLimit) {
         return {{"error", "too many configuration changes"}};
       }
       for (const json& item : *items) {

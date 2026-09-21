@@ -112,30 +112,35 @@ json PromptOverlay(std::string* digest) {
 // Only what the tool's own schema does not already say. A sentence that
 // appears in both is charged twice on every request and read where the tool
 // is not being chosen; the schema sits next to the call and wins.
-std::string CapabilityPrompt(const std::vector<Tool>& tools) {
+std::string CapabilityPrompt(const std::vector<Tool>& tools,
+                             const ToolSelection* selection) {
   std::string prompt;
   auto add = [&prompt](const char* text) {
     if (!prompt.empty()) prompt += " ";
     prompt += text;
   };
-  if (FindTool(tools, "activity")) {
+  auto offered = [&](const char* name) {
+    const Tool* tool = FindTool(tools, name);
+    return tool && (!selection || selection->Enabled(*tool));
+  };
+  if (offered("activity")) {
     add("Inspect activity output for progress; wait only when the next step "
         "needs the result. To wait on several, omit id and use mode=any/all "
         "in one call rather than polling each. Before starting a detached "
         "service, list activities and reuse a viable instance or stop a "
         "superseded one. A readiness timeout alone does not prove failure.");
   }
-  if (FindTool(tools, "web_search")) {
+  if (offered("web_search")) {
     add("Use web_search directly for current or external facts; do not scrape "
         "result pages with run. When it cannot confirm a specific page, "
         "escalate to an installed browser skill rather than reporting the "
         "fact as unverifiable.");
-    if (FindTool(tools, "subagent")) {
+    if (offered("subagent")) {
       add("Delegate research only for independent multi-step synthesis, not a "
           "single search.");
     }
   }
-  if (FindTool(tools, "adapt_system")) {
+  if (offered("adapt_system")) {
     add("adapt_system revises the mutable part of this message. Call it on a "
         "concrete observation not already reflected here, and clear it when "
         "the specialization stops earning its place.");
@@ -145,15 +150,20 @@ std::string CapabilityPrompt(const std::vector<Tool>& tools) {
   return prompt.empty() ? prompt : "\n\n## Capabilities\n" + prompt;
 }
 
-std::string HostCapabilityPrompt(const std::vector<Tool>& tools) {
+std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
+                                 const ToolSelection* selection) {
+  auto offered = [&](const char* name) {
+    const Tool* tool = FindTool(tools, name);
+    return tool && (!selection || selection->Enabled(*tool));
+  };
   std::string prompt =
       "\n\n[HOST CAPABILITIES]\nThe current registry is authoritative: "
       "web_search=";
-  prompt += FindTool(tools, "web_search") ? "available" : "unavailable";
+  prompt += offered("web_search") ? "available" : "unavailable";
   prompt += "; web_fetch=";
-  prompt += FindTool(tools, "web_fetch") ? "available" : "unavailable";
+  prompt += offered("web_fetch") ? "available" : "unavailable";
   prompt += "; subagent=";
-  prompt += FindTool(tools, "subagent") ? "available" : "unavailable";
+  prompt += offered("subagent") ? "available" : "unavailable";
   // Whether a mutation needs the user's consent changes how much a turn should
   // attempt on its own, so it is a host fact rather than an inferred one.
   prompt += "; approval=";

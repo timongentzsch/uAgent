@@ -4,13 +4,16 @@
 #include <poll.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -88,16 +91,45 @@ class WorkerChannel final : public ApplicationChannel {
   ~WorkerChannel() override { Close(); }
 
   bool Start() {
-    return wake_.Open() &&
-           server_.Start(path_, generation_,
-                         [this](const json& frame) { return Command(frame); });
+    if (!wake_.Open() ||
+        !server_.Start(path_, generation_,
+                       [this](const json& frame) { return Command(frame); })) {
+      return false;
+    }
+    transient_thread_ = std::thread([this] { FlushTransientLoop(); });
+    return true;
   }
 
   void Event(const AppEvent& event) {
+    std::lock_guard transient_lock(transient_mutex_);
+    if (event.type == "turn.started") {
+      FlushTransientEvents();
+      sent_delta_keys_.clear();
+      sent_usage_ = false;
+    }
+    if (event.type == "response.answer.delta" ||
+        event.type == "response.reasoning.delta") {
+      QueueDelta(event);
+      return;
+    }
+    if (event.type == "usage.updated") {
+      QueueUsage(event);
+      return;
+    }
+    FlushTransientEvents();
+    DeliverEvent(event);
+    if (event.type == "turn.completed" || event.type == "turn.stopped") {
+      sent_delta_keys_.clear();
+      sent_usage_ = false;
+    }
+  }
+
+  void DeliverEvent(const AppEvent& event) {
     {
       std::lock_guard lock(mutex_);
       ApplySessionEvent(state_, event.type, event.data);
-      if (event.type == "notice" && !ready_ && notices_.size() < 16) {
+      if (event.type == "notice" && !ready_ &&
+          notices_.size() < kBufferedNotices) {
         notices_.push_back(event.data);
       }
     }
@@ -294,6 +326,16 @@ class WorkerChannel final : public ApplicationChannel {
 
   void Close() {
     {
+      std::lock_guard transient_lock(transient_mutex_);
+      transient_stop_ = true;
+      transient_changed_.notify_all();
+    }
+    if (transient_thread_.joinable()) transient_thread_.join();
+    {
+      std::lock_guard transient_lock(transient_mutex_);
+      FlushTransientEvents();
+    }
+    {
       std::lock_guard lock(mutex_);
       closed_ = true;
       RequestAbort();
@@ -302,6 +344,104 @@ class WorkerChannel final : public ApplicationChannel {
   }
 
  private:
+  static std::string DeltaKey(const AppEvent& event) {
+    return event.type + "\n" + JsonValue(event.data, "response_id", "");
+  }
+
+  void QueueDelta(const AppEvent& event) {
+    const auto now = std::chrono::steady_clock::now();
+    const std::string key = DeltaKey(event);
+    if (!sent_delta_keys_.contains(key)) {
+      FlushTransientEvents();
+      sent_delta_keys_.insert(key);
+      DeliverEvent(event);
+      return;
+    }
+    if (pending_delta_ && DeltaKey(*pending_delta_) != key) FlushDelta();
+    if (!pending_delta_) {
+      pending_delta_ = event;
+      delta_started_ = now;
+    } else {
+      pending_delta_->data["text"] =
+          JsonValue(pending_delta_->data, "text", "") +
+          JsonValue(event.data, "text", "");
+      if (JsonValue(event.data, "preview_truncated", false)) {
+        pending_delta_->data["preview_truncated"] = true;
+      }
+      pending_delta_->sequence = event.sequence;
+      pending_delta_->time = event.time;
+    }
+    if (JsonValue(pending_delta_->data, "text", "").size() >=
+            kStreamBatchBytes ||
+        now - delta_started_ >= kStreamBatchInterval) {
+      FlushDelta();
+    } else {
+      transient_changed_.notify_one();
+    }
+  }
+
+  void QueueUsage(const AppEvent& event) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!sent_usage_) {
+      sent_usage_ = true;
+      usage_sent_ = now;
+      DeliverEvent(event);
+      return;
+    }
+    pending_usage_ = event;
+    if (now - usage_sent_ >= kUsagePublishInterval) {
+      FlushUsage();
+    } else {
+      transient_changed_.notify_one();
+    }
+  }
+
+  void FlushDelta() {
+    if (!pending_delta_) return;
+    AppEvent event = std::move(*pending_delta_);
+    pending_delta_.reset();
+    DeliverEvent(event);
+  }
+
+  void FlushUsage() {
+    if (!pending_usage_) return;
+    AppEvent event = std::move(*pending_usage_);
+    pending_usage_.reset();
+    usage_sent_ = std::chrono::steady_clock::now();
+    DeliverEvent(event);
+  }
+
+  void FlushTransientEvents() {
+    FlushDelta();
+    FlushUsage();
+  }
+
+  void FlushTransientLoop() {
+    std::unique_lock lock(transient_mutex_);
+    for (;;) {
+      transient_changed_.wait(lock, [this] {
+        return transient_stop_ || pending_delta_ || pending_usage_;
+      });
+      if (transient_stop_) return;
+      auto deadline = std::chrono::steady_clock::time_point::max();
+      if (pending_delta_) {
+        deadline = std::min(deadline, delta_started_ + kStreamBatchInterval);
+      }
+      if (pending_usage_) {
+        deadline = std::min(deadline, usage_sent_ + kUsagePublishInterval);
+      }
+      transient_changed_.wait_until(lock, deadline);
+      if (transient_stop_) return;
+      const auto now = std::chrono::steady_clock::now();
+      if (pending_delta_ && now - delta_started_ >= kStreamBatchInterval) {
+        FlushDelta();
+      }
+      if (pending_usage_ && now - usage_sent_ >= kUsagePublishInterval) {
+        FlushUsage();
+      }
+    }
+  }
+
   // A new user or background turn supersedes the preceding turn's stop/error.
   // Publish this transition immediately, before waiting for a model response.
   void BeginTurn() {
@@ -339,6 +479,17 @@ class WorkerChannel final : public ApplicationChannel {
     SendState();
     return true;  // Completion carries the catalog or validated selection.
   }
+
+  std::optional<AppEvent> pending_delta_;
+  std::optional<AppEvent> pending_usage_;
+  std::mutex transient_mutex_;
+  std::condition_variable transient_changed_;
+  std::thread transient_thread_;
+  std::unordered_set<std::string> sent_delta_keys_;
+  std::chrono::steady_clock::time_point delta_started_{};
+  std::chrono::steady_clock::time_point usage_sent_{};
+  bool sent_usage_ = false;
+  bool transient_stop_ = false;
   bool Command(const json& command) {
     SessionCommand parsed;
     std::string error;
@@ -456,6 +607,7 @@ class WorkerChannel final : public ApplicationChannel {
         break;
       }
       case SessionCommandKind::kModel:
+      case SessionCommandKind::kTools:
       case SessionCommandKind::kConfig:
       case SessionCommandKind::kContext:
       case SessionCommandKind::kFork:

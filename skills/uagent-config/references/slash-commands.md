@@ -38,7 +38,7 @@
 | `/sessions [PREFIX]` | resume a saved chat, optionally matching PREFIX |
 | `/status` | show current session configuration and token usage |
 | `/tell ID TEXT` | message a linked session |
-| `/tools` | show tools available right now |
+| `/tools [on|off NAME|profile NAME|reset]` | inspect or choose tools for this conversation |
 | `/trace [CALL_ID]` | show latest trace or full tool request/response |
 | `/variant MODE` | set OpenRouter provider routing |
 | `/verbose` | toggle full reasoning and expanded tool output |

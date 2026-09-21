@@ -583,7 +583,7 @@ void TestStatusBarDropsByPriority() {
     wide = StatusBar(api, usage, view);
   }
   CHECK(wide ==
-        "anthropic/claude-sonnet-4-5 · ctx 12k/1.3M · 99% left · "
+        "anthropic/claude-sonnet-4-5 · est. ctx 12k/1.3M · 99% left · "
         "12k in · 3.4k out · cache 33% · $0.4200 · bg:1 · 2 attached · "
         "verbose · /help for shortcuts · Ask");
 

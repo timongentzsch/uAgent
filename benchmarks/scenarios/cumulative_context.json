@@ -35,7 +35,7 @@
   "checks": {
     "workspace_unchanged": true,
     "answer_contains": ["CUMULATIVE-CONTEXT-FIXTURE", "397"],
-    "min_cumulative_request_chars": 90000,
+    "min_cumulative_context_bytes": 90000,
     "min_tool_result_chars": 20000,
     "no_repeated_calls": true,
     "max_requests": 5,

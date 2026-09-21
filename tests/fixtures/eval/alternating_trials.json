@@ -10,7 +10,7 @@
       "trial": 1,
       "passed": true,
       "model_requests": 2,
-      "cumulative_estimated_request_chars": 100,
+      "cumulative_estimated_context_bytes": 100,
       "tool_result_chars": 20
     },
     {
@@ -22,7 +22,7 @@
       "trial": 2,
       "passed": false,
       "model_requests": 4,
-      "cumulative_estimated_request_chars": 300,
+      "cumulative_estimated_context_bytes": 300,
       "tool_result_chars": 40
     },
     {
@@ -34,7 +34,7 @@
       "trial": 3,
       "passed": true,
       "model_requests": 3,
-      "cumulative_estimated_request_chars": 200,
+      "cumulative_estimated_context_bytes": 200,
       "tool_result_chars": 30
     },
     {
@@ -46,7 +46,7 @@
       "trial": 4,
       "passed": false,
       "model_requests": 3,
-      "cumulative_estimated_request_chars": 200,
+      "cumulative_estimated_context_bytes": 200,
       "tool_result_chars": 30
     }
   ],
@@ -59,7 +59,7 @@
     "pass^k": 0.166667,
     "pass@1_ci95": [0.150036, 0.849964],
     "mean_model_requests": 3.0,
-    "mean_cumulative_context_chars": 200,
+    "mean_cumulative_context_bytes": 200,
     "mean_tool_result_chars": 30
   },
   "blocked_cost_cases": [

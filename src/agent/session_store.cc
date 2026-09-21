@@ -592,7 +592,9 @@ std::string SessionStore::ShareMarkdown(const SessionRecord& record) {
     } else if (kind == MessageKind::kToolResult) {
       std::string text = ShareText(message);
       if (text.empty()) continue;
-      if (text.size() > 2000) text = text.substr(0, 2000) + "\n...[truncated]";
+      if (text.size() > kSharedToolResultChars) {
+        text = text.substr(0, kSharedToolResultChars) + "\n...[truncated]";
+      }
       const std::string name = JsonValue(message, "name", "");
       out += "\n### tool" + (name.empty() ? "" : " `" + name + "`") +
              "\n\n```\n" + text + "\n```\n";
@@ -664,7 +666,10 @@ SessionStoreStatus SessionStore::Remove(const std::string& path,
         for (const json& child : value) remove_artifacts(child);
       } else if (value.is_string()) {
         const auto& text = value.get_ref<const std::string&>();
-        if (text.size() >= 4096 || !text.starts_with("/")) return;
+        if (text.size() >= kRetainedArtifactPathChars ||
+            !text.starts_with("/")) {
+          return;
+        }
         const std::filesystem::path body(text);
         if ((body.filename().string().starts_with("exchange-") ||
              body.filename().string().starts_with("http-")) &&

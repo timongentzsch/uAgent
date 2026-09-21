@@ -1,5 +1,5 @@
 {
-  "schema": "uagent.eval.baseline.v1",
+  "schema": "uagent.eval.baseline.v2",
   "generated_at": "2026-09-20T02:27:44Z",
   "note": "Regenerate with `python3 benchmarks/eval.py BINARY --update` and review the diff.",
   "scenarios": {
@@ -11,10 +11,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15174,
-      "cumulative_estimated_request_chars": 44341,
+      "max_estimated_context_bytes": 15174,
+      "cumulative_estimated_context_bytes": 44341,
       "tool_result_chars": 101,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "background_activity/control": {
       "score": 7,
@@ -24,10 +24,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 16849,
-      "cumulative_estimated_request_chars": 47557,
+      "max_estimated_context_bytes": 16849,
+      "cumulative_estimated_context_bytes": 47557,
       "tool_result_chars": 384,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "browser_outcome_rounds/control": {
       "score": 6,
@@ -37,10 +37,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15492,
-      "cumulative_estimated_request_chars": 45265,
+      "max_estimated_context_bytes": 15492,
+      "cumulative_estimated_context_bytes": 45265,
       "tool_result_chars": 74,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "cache_hit_diagnosis/compacted": {
       "score": 10,
@@ -50,10 +50,10 @@
       "max_batch": 2,
       "no_action_rounds": 1,
       "compactions": 1,
-      "max_estimated_request_chars": 16028,
-      "cumulative_estimated_request_chars": 50608,
+      "max_estimated_context_bytes": 16028,
+      "cumulative_estimated_context_bytes": 50608,
       "tool_result_chars": 5070,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "cache_hit_diagnosis/control": {
       "score": 10,
@@ -63,10 +63,10 @@
       "max_batch": 2,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 20803,
-      "cumulative_estimated_request_chars": 55463,
+      "max_estimated_context_bytes": 20803,
+      "cumulative_estimated_context_bytes": 55463,
       "tool_result_chars": 5070,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "cumulative_context/control": {
       "score": 8,
@@ -76,10 +76,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 47977,
-      "cumulative_estimated_request_chars": 155988,
+      "max_estimated_context_bytes": 47977,
+      "cumulative_estimated_context_bytes": 155988,
       "tool_result_chars": 32052,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "edit_and_verify/control": {
       "score": 6,
@@ -89,10 +89,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15337,
-      "cumulative_estimated_request_chars": 44548,
+      "max_estimated_context_bytes": 15337,
+      "cumulative_estimated_context_bytes": 44548,
       "tool_result_chars": 237,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "failed_call_recovery/control": {
       "score": 7,
@@ -102,10 +102,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15085,
-      "cumulative_estimated_request_chars": 44040,
+      "max_estimated_context_bytes": 15085,
+      "cumulative_estimated_context_bytes": 44040,
       "tool_result_chars": 150,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "live_survey/control": {
       "score": 5,
@@ -115,10 +115,10 @@
       "max_batch": 4,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15616,
-      "cumulative_estimated_request_chars": 30020,
+      "max_estimated_context_bytes": 15616,
+      "cumulative_estimated_context_bytes": 30020,
       "tool_result_chars": 178,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "parallel_batch/control": {
       "score": 7,
@@ -128,10 +128,10 @@
       "max_batch": 3,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15296,
-      "cumulative_estimated_request_chars": 29681,
+      "max_estimated_context_bytes": 15296,
+      "cumulative_estimated_context_bytes": 29681,
       "tool_result_chars": 118,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "read_volume/1000": {
       "score": 5,
@@ -141,10 +141,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 34554,
-      "cumulative_estimated_request_chars": 48934,
+      "max_estimated_context_bytes": 34554,
+      "cumulative_estimated_context_bytes": 48934,
       "tool_result_chars": 19833,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "read_volume/250": {
       "score": 5,
@@ -154,10 +154,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 35772,
-      "cumulative_estimated_request_chars": 128659,
+      "max_estimated_context_bytes": 35772,
+      "cumulative_estimated_context_bytes": 128659,
       "tool_result_chars": 19965,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "read_volume/500": {
       "score": 5,
@@ -167,10 +167,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 34960,
-      "cumulative_estimated_request_chars": 75103,
+      "max_estimated_context_bytes": 34960,
+      "cumulative_estimated_context_bytes": 75103,
       "tool_result_chars": 19877,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "repeated_grep/control": {
       "score": 7,
@@ -180,10 +180,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 16478,
-      "cumulative_estimated_request_chars": 46976,
+      "max_estimated_context_bytes": 16478,
+      "cumulative_estimated_context_bytes": 46976,
       "tool_result_chars": 3114,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "repeated_read/control": {
       "score": 7,
@@ -193,10 +193,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 15934,
-      "cumulative_estimated_request_chars": 45891,
+      "max_estimated_context_bytes": 15934,
+      "cumulative_estimated_context_bytes": 45891,
       "tool_result_chars": 1836,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "shell_probe/control": {
       "score": 6,
@@ -206,10 +206,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 14871,
-      "cumulative_estimated_request_chars": 29210,
+      "max_estimated_context_bytes": 14871,
+      "cumulative_estimated_context_bytes": 29210,
       "tool_result_chars": 63,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "superseded_reads/control": {
       "score": 5,
@@ -219,10 +219,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 25603,
-      "cumulative_estimated_request_chars": 104935,
+      "max_estimated_context_bytes": 25603,
+      "cumulative_estimated_context_bytes": 104935,
       "tool_result_chars": 9949,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     },
     "superseded_reads/pruned": {
       "score": 5,
@@ -232,10 +232,10 @@
       "max_batch": 1,
       "no_action_rounds": 0,
       "compactions": 0,
-      "max_estimated_request_chars": 20752,
-      "cumulative_estimated_request_chars": 95233,
+      "max_estimated_context_bytes": 20752,
+      "cumulative_estimated_context_bytes": 95233,
       "tool_result_chars": 9949,
-      "initial_schema_chars": 11364
+      "initial_schema_bytes": 11364
     }
   }
 }

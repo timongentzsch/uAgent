@@ -40,7 +40,8 @@ Fd Socket(const std::string& path, bool listen) {
     unlink(path.c_str());  // caller holds the runtime lease
     if (bind(socket.Get(), reinterpret_cast<sockaddr*>(&address),
              sizeof(address)) ||
-        chmod(path.c_str(), 0600) || ::listen(socket.Get(), 16)) {
+        chmod(path.c_str(), kPrivateFileMode) ||
+        ::listen(socket.Get(), kSocketBacklog)) {
       return {};
     }
   } else if (connect(socket.Get(), reinterpret_cast<sockaddr*>(&address),
@@ -80,7 +81,10 @@ bool WriteWorkerBinary(const std::string& path, const std::string& identity) {
 
 std::string ReadWorkerBinary(const std::string& path) {
   std::string recorded, error;
-  if (!ReadRegularFile(WorkerBinaryPath(path), 256, recorded, error)) return "";
+  if (!ReadRegularFile(WorkerBinaryPath(path), kWorkerIdentityBytes, recorded,
+                       error)) {
+    return "";
+  }
   return recorded;
 }
 
@@ -105,10 +109,13 @@ Connection Connect(const std::string& path) {
   // The server's first frame is a small, newline-terminated handshake. Read
   // exactly through that newline, leaving snapshot/event frames on the socket.
   std::string line;
-  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-  while (line.size() < 1024 && std::chrono::steady_clock::now() < deadline) {
+  auto deadline = std::chrono::steady_clock::now() + kConnectTimeout;
+  while (line.size() < kHelloBytes &&
+         std::chrono::steady_clock::now() < deadline) {
     pollfd ready{result.socket.Get(), POLLIN, 0};
-    if (poll(&ready, 1, 100) <= 0) continue;
+    if (poll(&ready, 1, static_cast<int>(kConnectPollInterval.count())) <= 0) {
+      continue;
+    }
     char byte;
     if (read(result.socket.Get(), &byte, 1) != 1) break;
     if (byte == '\n') {
@@ -295,7 +302,7 @@ struct Server::State {
         const auto events = watches[i + 2].revents;
         if (events & (POLLERR | POLLNVAL)) client.fd.Reset();
         if (events & (POLLIN | POLLHUP)) {
-          char buffer[8192];
+          char buffer[kIoBufferBytes];
           ssize_t bytes = read(client.fd.Get(), buffer, sizeof buffer);
           if (bytes > 0) {
             client.input.append(buffer, static_cast<size_t>(bytes));
@@ -334,7 +341,7 @@ struct Server::State {
           if (client.sent == client.output.size()) {
             client.output.clear();
             client.sent = 0;
-          } else if (client.sent >= 65536) {
+          } else if (client.sent >= kOutputCompactBytes) {
             client.output.erase(0, client.sent);
             client.sent = 0;
           }
@@ -350,7 +357,7 @@ struct Server::State {
       }
       if (!stopped && (watches[0].revents & POLLIN)) {
         Fd fd(accept(listener.Get(), nullptr, nullptr));
-        if (fd && clients.size() < 16) {
+        if (fd && clients.size() < kMaxClients) {
           fcntl(fd.Get(), F_SETFL, O_NONBLOCK);
           fcntl(fd.Get(), F_SETFD, FD_CLOEXEC);
           Client client{std::move(fd),

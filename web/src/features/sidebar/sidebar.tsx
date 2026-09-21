@@ -10,6 +10,7 @@ import {
   Plus,
   RefreshCw,
   Settings,
+  Wrench,
   Library,
   CalendarClock,
 } from "lucide-preact";
@@ -121,6 +122,7 @@ export default function Sidebar({
   menu,
   refresh,
   settings,
+  tools,
   create,
   page,
   navigate,
@@ -138,6 +140,7 @@ export default function Sidebar({
   menu: (session: Session) => ComponentChildren;
   refresh: () => void;
   settings: () => void;
+  tools: () => void;
   create: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -264,6 +267,15 @@ export default function Sidebar({
           <StatusLed state={online ? "active" : "idle"} />{" "}
           {online ? "Connected" : connecting ? "Connecting…" : "Disconnected"}
         </span>
+        <button
+          class="quiet icon-button"
+          onClick={tools}
+          disabled={!selected || !online}
+          aria-label="Tools"
+          title="Tools"
+        >
+          <Wrench />
+        </button>
         <button
           class="quiet icon-button"
           onClick={refresh}

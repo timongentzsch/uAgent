@@ -83,6 +83,7 @@ inline const char* ResponseStopCauseName(ResponseStopCause cause) {
 struct JsonResponse {
   json body = json(json::value_t::discarded);
   int64_t http_status = 0;
+  int64_t retry_after_s = 0;
   std::string error;
 };
 
@@ -123,6 +124,7 @@ struct ChatResult {
   json replay = json::object();
   json usage;
   int64_t http_status = 0;
+  int64_t retry_after_s = 0;
   std::string started_at;
   double first_token_ms = -1;
   double first_event_ms = -1;

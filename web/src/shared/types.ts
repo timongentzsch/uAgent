@@ -48,6 +48,12 @@ export interface Statistics {
   generation_ms?: number;
   generated_tokens?: number;
   usage_samples?: number;
+  side_recorded_turns?: number;
+  side_tool_calls?: number;
+  side_model_calls?: number;
+  side_duration_ms?: number;
+  side_model_ms?: number;
+  side_tool_ms?: number;
 }
 export interface Exchange {
   id: string;
@@ -96,6 +102,10 @@ export interface TurnSummary {
   outcome: string;
   route?: string;
   tool_calls: number;
+  direct_tool_calls?: number;
+  model_calls?: number;
+  direct_model_calls?: number;
+  background_statistics?: Statistics;
   steps: number;
   duration_ms: number;
   ttt_ms: number;
@@ -448,6 +458,27 @@ export interface Configuration {
   project_trusted?: boolean;
   effects: { key: string; effect: string }[];
 }
+export interface ToolCatalogueItem {
+  name: string;
+  title: string;
+  description: string;
+  category: string;
+  provider: string;
+  active: boolean;
+  available: boolean;
+  schema_bytes: number;
+  reason?: string;
+}
+export interface ToolCatalogue {
+  profile: string;
+  base_profile: string;
+  profiles: string[];
+  active: number;
+  available: number;
+  schema_bytes: number;
+  full_schema_bytes: number;
+  tools: ToolCatalogueItem[];
+}
 export interface CommandResults {
   prompt: PromptResult;
   memory: LibraryResult;
@@ -456,6 +487,7 @@ export interface CommandResults {
   models: ModelCatalogue;
   model: ModelCatalogue;
   config: Configuration;
+  tools: ToolCatalogue;
   activity: ActivityDetail;
   context: { exchanges: Exchange[] };
   fork: { id: string };
@@ -494,6 +526,8 @@ export interface CommandFields {
   effort?: string;
   variant?: string;
   mode?: string;
+  profile?: string;
+  active?: boolean;
   name?: string;
   scope?: string;
   changes?: ConfigChange[];
@@ -542,7 +576,7 @@ export type AppModal =
   | { type: "prompt"; scope?: string; edit?: boolean }
   | StatisticsModal
   | ({ type: "raw" } & RawOptions)
-  | { type: "new" | "settings" };
+  | { type: "new" | "settings" | "tools" };
 
 export interface PromptDocument {
   scope: string;

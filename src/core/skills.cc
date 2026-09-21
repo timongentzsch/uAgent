@@ -13,10 +13,14 @@
 
 #include "include/core/env.h"
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/strings.h"
 
 namespace uagent {
+namespace {
+constexpr int kSkillDiscoveryDepth = 6;
+}  // namespace
 
 void ParseSkillFrontMatter(std::istream& input, std::string* description,
                            std::vector<std::string>* required_tools,
@@ -126,12 +130,12 @@ std::vector<Skill> DiscoverSkills(const std::filesystem::path& cwd) {
         base, fs::directory_options::skip_permission_denied, ec),
         end;
     for (; it != end && !ec; it.increment(ec)) {
-      if (it.depth() >= 6) it.disable_recursion_pending();
+      if (it.depth() >= kSkillDiscoveryDepth) it.disable_recursion_pending();
       if (!it->is_regular_file(ec) || it->path().filename() != "SKILL.md") {
         continue;
       }
       dirs.push_back(it->path().parent_path());
-      if (dirs.size() >= 4096) break;
+      if (dirs.size() >= kMaxCatalogueEntries) break;
     }
     std::sort(dirs.begin(), dirs.end());
     for (const fs::path& dir : dirs) {

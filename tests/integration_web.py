@@ -26,6 +26,7 @@ from web_support import WebClient, web_host
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5WQAAAAASUVORK5CYII="
 )
+ASSET_NAME_CHARS = 128
 
 
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
@@ -295,6 +296,104 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
             finally:
                 release.set()
                 finish.set()
+
+
+def test_worker_batches_fast_deltas_without_delaying_a_quiet_tail(root, home, *, binary):
+    import http.client
+
+    second_written = threading.Event()
+    release_final = threading.Event()
+    burst = 512
+
+    def stream_response(handler, _body):
+        handler.send_response(200)
+        handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header("Connection", "close")
+        handler.end_headers()
+        handler.close_connection = True
+        for text in ("A", "B"):
+            handler.wfile.write(
+                ("data: " + json.dumps(event({"content": text}, finish=None)) + "\n\n").encode()
+            )
+            handler.wfile.flush()
+        second_written.set()
+        assert release_final.wait(budget(5)), "quiet tail was never observed"
+        for _ in range(burst):
+            handler.wfile.write(
+                ("data: " + json.dumps(event({"content": "x"}, finish=None)) + "\n\n").encode()
+            )
+        handler.wfile.write(
+            (
+                "data: "
+                + json.dumps(event({"content": "Z"}, usage={"completion_tokens": burst + 3}))
+                + "\n\ndata: [DONE]\n\n"
+            ).encode()
+        )
+        handler.wfile.flush()
+
+    with Server([stream_response]) as provider:
+        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+            client.pair(code)
+            session = client.create(root)
+            listing = client.json("/api/sessions")[1]
+            connection = http.client.HTTPConnection("127.0.0.1", client.port, timeout=15)
+            connection.request(
+                "GET",
+                f"/api/events?cursor={listing['epoch']}:{listing['cursor']}",
+                headers={"Cookie": client.cookie},
+            )
+            response = connection.getresponse()
+            assert_true(response.status == 200, response.status)
+            deltas = []
+            observed_tail = threading.Event()
+            completed = threading.Event()
+
+            def read_events():
+                started = False
+                while line := response.readline():
+                    if not line.startswith(b"data: "):
+                        continue
+                    frame = json.loads(line[6:])
+                    if frame.get("session_id") != session["id"]:
+                        continue
+                    if frame.get("kind") == "state" and frame.get("busy"):
+                        started = True
+                    if frame.get("kind") == "event" and frame.get("type") == "turn.started":
+                        started = True
+                    if (
+                        frame.get("kind") == "event"
+                        and frame.get("type") == "response.answer.delta"
+                    ):
+                        deltas.append(frame.get("data", {}).get("text", ""))
+                        if "".join(deltas).startswith("AB"):
+                            observed_tail.set()
+                    if started and frame.get("kind") == "state" and not frame.get("busy"):
+                        completed.set()
+                        return
+
+            reader = threading.Thread(target=read_events, daemon=True)
+            reader.start()
+            try:
+                client.command("submit", session, text="Batch this stream")
+                assert_true(second_written.wait(budget(2)), "provider did not write quiet tail")
+                assert_true(
+                    observed_tail.wait(budget(2)),
+                    "a pending delta was not published at the batching deadline",
+                )
+                release_final.set()
+                assert_true(completed.wait(budget(10)), "turn did not publish its final checkpoint")
+                reader.join(timeout=budget(2))
+                snapshot = client.snapshot(session)
+                answer = next(
+                    block["text"]
+                    for block in reversed(snapshot["state"]["view"]["blocks"])
+                    if block["kind"] == "assistant"
+                )
+                assert_true(answer == "AB" + "x" * burst + "Z", len(answer))
+                assert_true(len(deltas) < burst // 4, len(deltas))
+            finally:
+                release_final.set()
+                connection.close()
 
 
 def test_web_compact_renders_single_footer_without_duplicates(root, home, *, binary):
@@ -1645,13 +1744,17 @@ def test_web_http_context_configuration_permissions_and_fork(root, home, *, bina
             prepared, _ = body_for(session, preview, "request")
             assert_true("tools" in json.loads(prepared), prepared[:100])
             data = b"\x00\xffarbitrary binary\x00"
+            uploaded_name = "x" * 200 + ".unknown"
             status, asset, _ = client.json(
-                f"/api/sessions/{session['id']}/attachments?name=sample.unknown",
+                f"/api/sessions/{session['id']}/attachments?name={uploaded_name}",
                 raw=data,
                 headers={"Content-Type": "application/octet-stream"},
             )
             assert_true(
-                status == 200 and asset["name"] == "sample.unknown" and not asset["image"], asset
+                status == 200
+                and asset["name"] == uploaded_name[:ASSET_NAME_CHARS]
+                and not asset["image"],
+                asset,
             )
             client.command(
                 "submit",

@@ -391,16 +391,17 @@ def test_invalid_tool_rejection_loop_stops_before_fourth_round(root, home, *, bi
 
 def test_detached_terminal_materialized_wait_does_not_bypass_repeat_guard(root, home, *, binary):
     call = {"operation": "list", "wait_ms": 1}
-    responses = [tool_call("activity", call) for _ in range(4)]
-    responses.append(event({"content": "fifth-round-should-not-run"}))
+    responses = [tool_call("activity", call) for _ in range(12)]
+    responses.append(event({"content": "thirteenth-round-should-not-run"}))
     with Server(responses) as server:
         result = run(root, base_env(home, server.url), "--yolo", "-p", "list", binary=binary)
         assert_true(result.returncode != 0, result.stdout)
         assert_true(
-            "model repeated the same tool call more than 3 times" in result.stderr,
+            "model repeated the same tool call 12 times after two recovery instructions"
+            in result.stderr,
             result.stderr,
         )
-        assert_true(len(server.requests) == 4, len(server.requests))
+        assert_true(len(server.requests) == 12, len(server.requests))
 
 
 def test_activity_wait_outlives_the_per_call_budget(root, home, *, binary):

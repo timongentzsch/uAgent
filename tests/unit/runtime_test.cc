@@ -7,6 +7,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <thread>
 #include <utility>
@@ -433,6 +434,78 @@ void TestRuntimeOwnershipHelpers() {
   rejected.error = "This model does not support tool calling";
   CHECK(RejectedRouteCapability(rejected, generic) ==
         RejectedCapability::kNone);
+}
+
+void TestAttributedUsageAccumulator() {
+  UsageAccumulator accumulator;
+  Usage direct;
+  direct.input = 3;
+  Usage child;
+  child.output = 5;
+  child.cost = 0.25;
+  child.cost_reported = true;
+  accumulator.Add(direct);
+  accumulator.Add("provider/model", child, 7,
+                  {{"model_calls", 2}, {"tool_calls", 4}});
+
+  AccumulatedUsage batch = accumulator.TakeAll();
+  CHECK(batch.unassigned.input == 3);
+  CHECK(batch.turns[7].output == 5);
+  CHECK(batch.turns[7].cost == 0.25);
+  CHECK(batch.routes["provider/model"].output == 5);
+  CHECK(batch.turn_statistics[7]["model_calls"] == 2);
+  CHECK(batch.turn_statistics[7]["tool_calls"] == 4);
+  CHECK(accumulator.TakeAll().routes.empty());
+
+  json total = {{"model_calls", 2}, {"duration_ms", 1.5}};
+  MergeNumericStatistics(
+      total, {{"model_calls", 3}, {"duration_ms", 2.5}, {"complete", true}});
+  CHECK(total["model_calls"] == 5);
+  CHECK(total["duration_ms"] == 4.0);
+  CHECK(!total.contains("complete"));
+
+  json prefixed = PrefixNumericStatistics(total, "side_");
+  CHECK(prefixed["side_model_calls"] == 5);
+  CHECK(prefixed["side_duration_ms"] == 4.0);
+  json flattened = FlattenNumericStatistics(prefixed, "side_");
+  CHECK(flattened == total);
+
+  Usage current;
+  current.input = 11;
+  current.output = 7;
+  current.cost = 0.4;
+  current.cost_reported = true;
+  Usage prior;
+  prior.input = 4;
+  prior.output = 9;
+  prior.cost = 0.15;
+  Usage usage_delta = UsageDifference(current, prior);
+  CHECK(usage_delta.input == 7);
+  CHECK(usage_delta.output == 0);
+  CHECK(usage_delta.cost == 0.25);
+  CHECK(usage_delta.cost_reported);
+
+  json statistics_delta = NumericStatisticsDifference(
+      {{"model_calls", 8}, {"duration_ms", 7.0}, {"complete", true}},
+      {{"model_calls", 3}, {"duration_ms", 8.0}});
+  CHECK(statistics_delta["model_calls"] == 5);
+  CHECK(statistics_delta["duration_ms"] == 0.0);
+  CHECK(!statistics_delta.contains("complete"));
+
+  Usage extreme_current;
+  extreme_current.input = std::numeric_limits<int64_t>::max();
+  Usage extreme_prior;
+  extreme_prior.input = -1;
+  CHECK(UsageDifference(extreme_current, extreme_prior).input ==
+        std::numeric_limits<int64_t>::max());
+  json extreme_statistics = {
+      {"calls", std::numeric_limits<int64_t>::max() - 1}};
+  MergeNumericStatistics(extreme_statistics,
+                         {{"calls", std::numeric_limits<uint64_t>::max()}});
+  CHECK(extreme_statistics["calls"] == std::numeric_limits<int64_t>::max());
+  statistics_delta = NumericStatisticsDifference(
+      {{"calls", std::numeric_limits<uint64_t>::max()}}, {{"calls", 1}});
+  CHECK(statistics_delta["calls"] == std::numeric_limits<int64_t>::max() - 1);
 }
 
 // Empty UAGENT_IMAGE_MODEL no longer disables vision: an explicit model

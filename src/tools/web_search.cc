@@ -226,7 +226,10 @@ Tool WebSearchTool(Api& api, UsageAccumulator& usage,
                                           : active.effort;
           usage.Add(
               RouteKey(active.base_url, "web_search", active.model, effort),
-              normalized);
+              normalized, context.turn_id,
+              {{"model_calls", 1},
+               {"model_ms", ElapsedMs(started)},
+               {"usage_samples", response.body.contains("usage") ? 1 : 0}});
         }
         if (!result.text.empty()) {
           std::string evidence = CitationEvidence(result.annotations);

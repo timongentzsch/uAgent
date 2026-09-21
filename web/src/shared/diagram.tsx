@@ -1,6 +1,12 @@
 import { useEffect, useState } from "preact/hooks";
 import mermaid from "mermaid";
 import { CodeCopy, Modal } from "./ui.tsx";
+import {
+  maxDiagramCacheEntries,
+  maxDiagramEdges,
+  maxDiagramSourceChars,
+  maxDiagramSvgChars,
+} from "./limits.ts";
 
 // Serialize Mermaid's global renderer and bound retained SVGs. SVG is displayed
 // as an image, so diagram content never creates active elements in the app DOM.
@@ -29,7 +35,7 @@ function diagramSize(svg: string): { width: number; height: number } {
   return { width: Math.round(width), height: Math.round(height) };
 }
 function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
-  if (source.length > 20000)
+  if (source.length > maxDiagramSourceChars)
     return Promise.reject(new Error("Diagram is too large"));
   const key = `${dark}:${source}`;
   if (cache.has(key)) return Promise.resolve(cache.get(key)!);
@@ -39,8 +45,8 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
       startOnLoad: false,
       securityLevel: "strict",
       htmlLabels: false,
-      maxTextSize: 20000,
-      maxEdges: 300,
+      maxTextSize: maxDiagramSourceChars,
+      maxEdges: maxDiagramEdges,
       suppressErrorRendering: true,
       theme: "base",
       themeVariables: {
@@ -57,9 +63,10 @@ function diagram(source: string, dark: boolean): Promise<RenderedDiagram> {
     });
     const { svg } = await mermaid.render(`diagram-${++sequence}`, source);
     const rendered = { svg, ...diagramSize(svg) };
-    if (svg.length < 512000) {
+    if (svg.length < maxDiagramSvgChars) {
       cache.set(key, rendered);
-      while (cache.size > 24) cache.delete(cache.keys().next().value!);
+      while (cache.size > maxDiagramCacheEntries)
+        cache.delete(cache.keys().next().value!);
     }
     return rendered;
   });

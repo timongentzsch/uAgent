@@ -10,6 +10,7 @@
 #include "include/agent/prompt.h"
 #include "include/core/debug.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
 
 namespace uagent {
@@ -122,7 +123,7 @@ Tool AdaptSystemTool(AdaptiveSystemState& state, PromptController control) {
     request["action"] = preview["item"]["mode"] == "inherit" ? "reset" : "set";
     request["mode"] = preview["item"]["mode"];
     request["text"] = preview["item"]["text"];
-    if (proposals->size() >= 16) proposals->clear();
+    if (proposals->size() >= kMaxAdaptiveProposals) proposals->clear();
     (*proposals)[HashHex(JsonDump(args))] = {
         args, request, HashHex(JsonDump(preview["sources"])),
         std::chrono::steady_clock::now() + std::chrono::minutes(5)};

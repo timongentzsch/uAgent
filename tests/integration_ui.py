@@ -184,7 +184,8 @@ def test_multiline_bracketed_paste(root, home, *, binary):
         )
         assert_true(code == 0, output)
         assert_true(b"multiline-paste-ok" in output, output)
-        assert_true(b"ctx " in output, output)
+        # The 24-column status truncates after the estimate label.
+        assert_true(b"est. ct" in output, output)
         assert_true(b"\x1b[?2004h" in output and b"\x1b[?2004l" in output, output)
         # The echoed turn is banded to the right edge on every row it spans,
         # and the band is always closed again.
@@ -357,7 +358,7 @@ def test_input_redraw_approval_does_not_pollute_history(root, home, *, binary):
                 (b"y\n", b"approval-done"),
                 # The idle status carries the route in schema form and the
                 # context window beside what is used.
-                (b"", b"Ready \xc2\xb7 test \xc2\xb7 ctx"),
+                (b"", b"Ready \xc2\xb7 test \xc2\xb7 est. ctx"),
                 (b"probe", b"probe"),  # input broker is accepting drafts
                 b"\x7f" * 5,
                 (b"\x1b[A", b"go"),

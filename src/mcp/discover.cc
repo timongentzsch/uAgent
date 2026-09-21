@@ -184,9 +184,9 @@ void McpReplaceServerTools(std::vector<Tool>& tools, McpServer& s,
             {{"notifications", {{"toolsListChanged", true}}}});
   }
   McpNote(s.name, std::to_string(replacement.size()) + " of " +
-                      std::to_string(listed.size()) + " tools (~" +
-                      FmtCount(static_cast<int64_t>(schema_bytes / 4)) +
-                      " schema tokens/request)");
+                      std::to_string(listed.size()) + " tools (" +
+                      FmtCount(static_cast<int64_t>(schema_bytes)) +
+                      " serialized schema bytes/request)");
 }
 
 bool McpLoadServerTools(std::vector<Tool>& tools, McpServer& server,

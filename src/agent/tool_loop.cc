@@ -88,7 +88,7 @@ void Agent::AppendToolResult(const ToolCall& call, const std::string& result,
   facts["detail_id"] = call.detail_id;
   conversation_.RecordDisplay(call.detail_id, std::move(facts));
   const Tool* tool = FindTool(tools_, call.name);
-  if (tool && tool->dedupe_output && result.size() >= 256 &&
+  if (tool && tool->dedupe_output && result.size() >= kToolDedupeMinChars &&
       conversation_.HasRecentToolResult(call.name, call.args, result)) {
     constexpr char kDuplicate[] =
         "[unchanged duplicate; prior read result remains in recent context]";
@@ -157,6 +157,12 @@ bool Agent::RunCalls(
           ArgumentIssue("tool.unknown", "unknown tool " + call.name);
       reject(task, ToolErrorCode::kNotFound, "error: unknown tool " + call.name,
              "unknown_tool", issue);
+    } else if (!tool_selection_.Enabled(*tool)) {
+      ToolArgumentIssue issue =
+          ArgumentIssue("tool.inactive", "inactive tool " + call.name);
+      reject(task, ToolErrorCode::kUnavailable,
+             "error: tool is inactive for this conversation: " + call.name,
+             "inactive_tool", issue);
     } else if (auto issue = FindToolArgumentIssue(*tool, arguments)) {
       std::string message = "error: invalid tool argument: " + issue->message;
       reject(task, ToolErrorCode::kInvalidArguments, std::move(message),
@@ -284,6 +290,7 @@ bool Agent::RunCalls(
   TerminalSpinner spinner(!runnable.empty(), SpinnerLabel(activity_label),
                           api_.turn_started);
   ToolContext context{deadline};
+  context.turn_id = turn_id_;
   for (size_t begin = 0; begin < runnable.size() && !AbortRequested();) {
     if (context.Expired()) break;
     size_t first = runnable[begin];

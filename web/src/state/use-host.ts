@@ -20,6 +20,7 @@ import {
 } from "./store.ts";
 import { api, protocol, receiveOutcome } from "./api.ts";
 import { selectedFromURL, writeSelection } from "../shared/navigation.ts";
+import { maxLocalRequests } from "../shared/limits.ts";
 
 // One SSE subscription owns host snapshots, command receipts and read state.
 export function useHost(
@@ -662,7 +663,7 @@ export function useHost(
   );
   const correlate = useCallback((requestId: string) => {
     localRequests.current.add(requestId);
-    if (localRequests.current.size > 256)
+    if (localRequests.current.size > maxLocalRequests)
       localRequests.current.delete(
         localRequests.current.values().next().value!,
       );

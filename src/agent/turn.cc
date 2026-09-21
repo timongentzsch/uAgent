@@ -24,6 +24,7 @@
 #include "include/core/debug.h"
 #include "include/core/env.h"
 #include "include/core/events.h"
+#include "include/core/limits.h"
 #include "include/core/signals.h"
 #include "include/core/skills.h"
 #include "include/core/steering.h"
@@ -147,8 +148,6 @@ bool Agent::ApplyQueuedSteering(StepState& loop) {
 
 // Everything that happens before the model call: steering, a refreshed system
 // message, the budget gates, and the schemas this step is allowed to offer.
-// Everything that happens before the model call: steering, a refreshed system
-// message, the budget gates, and the schemas this step is allowed to offer.
 Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
   // A collaborator's parent can speak to it mid-run; the guidance arrives as
   // steering and is applied by the very next statement, so nothing it queues
@@ -177,8 +176,8 @@ Agent::StepFlow Agent::PrepareStep(TurnExecution& state, StepState& loop) {
                            processes_.DetachedCount() > 0 ||
                            loop.detached_records_available,
   };
-  const json& schemas =
-      available_schemas_.Get(tools_, schemas_, loop.tool_counts, availability);
+  const json& schemas = available_schemas_.Get(
+      tools_, schemas_, loop.tool_counts, availability, &tool_selection_);
   if (loop.step > 0 && BoolSetting(Cfg("UAGENT_PRUNE_SUPERSEDED_READS"))) {
     PruneOldToolResults(ToolPruneMode::kSupersededReads);
   }
@@ -232,10 +231,7 @@ bool Agent::HandleActivityPollResults(
   // A slow activity answers "(no new output)" honestly, so quiet polls steer
   // rather than end the turn that owns the work. The ceiling still bounds a
   // model that ignores every escalation: UAGENT_MAX_STEPS defaults to off.
-  constexpr int64_t kAdviseAfter = 2;
-  constexpr int64_t kDirectAfter = 4;
-  constexpr int64_t kStopAfter = 12;
-  if (loop.quiet_activity_polls >= kStopAfter) {
+  if (loop.quiet_activity_polls >= kActivityPollStopAfter) {
     FailTurn(state, "activity " + std::to_string(poll.id) +
                         " is still running, "
                         "but the model polled it " +
@@ -247,9 +243,10 @@ bool Agent::HandleActivityPollResults(
                                     {"polls", loop.quiet_activity_polls}});
     return true;
   }
-  if (loop.quiet_activity_polls == kAdviseAfter ||
-      loop.quiet_activity_polls == kDirectAfter) {
-    const bool mandatory = loop.quiet_activity_polls == kDirectAfter;
+  if (loop.quiet_activity_polls == kActivityPollAdviseAfter ||
+      loop.quiet_activity_polls == kActivityPollDirectAfter) {
+    const bool mandatory =
+        loop.quiet_activity_polls == kActivityPollDirectAfter;
     std::string note = "[activity poll advisory] Activity " +
                        std::to_string(poll.id) +
                        " is still running and has "
@@ -300,14 +297,38 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   if (StopForRepeatedRejections(rejections, state, loop)) {
     return StepFlow::kEndTurn;
   }
-  if (!loop.failure_advisory_sent && loop.consecutive_failed_tools >= 3) {
+  if (rejections.empty() && loop.consecutive_failed_tools == 0 &&
+      (loop.repeated_calls == kRepeatedCallAdviseAfter ||
+       loop.repeated_calls == kRepeatedCallDirectAfter)) {
+    const bool direct = loop.repeated_calls == kRepeatedCallDirectAfter;
+    std::string note =
+        "[repeated tool advisory] The same tool and arguments have already "
+        "run " +
+        std::to_string(loop.repeated_calls) + " consecutive times. ";
+    note +=
+        direct ? "Do not issue that unchanged call again. Use its existing "
+                 "result, change the arguments or strategy, or use a bounded "
+                 "wait operation when you are observing ongoing work."
+               : "Reassess whether another identical result can add evidence. "
+                 "Use the current result, change the request, or use a bounded "
+                 "wait operation when you are observing ongoing work.";
+    conversation_.Push(HarnessMessage(note), MessageKind::kInternal);
+    loop.pending_note = conversation_.Size() - 1;
+    DebugLog("repeated_tool_advisory", {{"turn", turn_id_},
+                                        {"step", loop.step},
+                                        {"repetitions", loop.repeated_calls},
+                                        {"direct", direct}});
+  }
+  if (!loop.failure_advisory_sent &&
+      loop.consecutive_failed_tools >= kFailedToolAdviseAfter) {
     loop.failure_advisory_sent = true;
     conversation_.Push(
-        HarnessMessage("[tool failure advisory] Three consecutive tool "
-                       "calls failed. Reassess the shared premise or "
-                       "execution environment before trying another "
-                       "variant; use existing evidence or a different "
-                       "approach when possible."),
+        HarnessMessage("[tool failure advisory] " +
+                       std::to_string(kFailedToolAdviseAfter) +
+                       " consecutive tool calls failed. Reassess the shared "
+                       "premise or execution environment before trying "
+                       "another variant; use existing evidence or a "
+                       "different approach when possible."),
         MessageKind::kInternal);
     loop.pending_note = conversation_.Size() - 1;
     DebugLog("tool_failure_advisory",
@@ -318,7 +339,8 @@ Agent::StepFlow Agent::ExecuteToolCalls(const std::vector<ToolCall>& calls,
   // Do not start a network request with only curl's one-second granularity
   // left after tools. Report the owning turn budget instead of a misleading
   // transport timeout that cannot possibly be retried.
-  if (TurnDeadlineExceeded(state, std::chrono::seconds(1))) {
+  if (TurnDeadlineExceeded(
+          state, std::chrono::seconds(kModelRequestDeadlineReserveSeconds))) {
     return StepFlow::kEndTurn;
   }
   return StepFlow::kNextStep;
@@ -332,6 +354,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
   // previous turn's stop from a boundary publish before this one ends.
   last_stop_ = nullptr;
   ++turn_id_;
+  turn_side_statistics_ = json::object();
   turn_root_.clear();
   reply_to_.clear();
   reply_excerpt_.clear();
@@ -340,7 +363,8 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
   std::string title = FirstLine(user_input);
   if (session_title_.empty() ||
       (!custom_title_ && GenericSessionTitle(session_title_) &&
-       title.size() >= 12 && !GenericSessionTitle(title))) {
+       title.size() >= kGenericTitleReplacementMinChars &&
+       !GenericSessionTitle(title))) {
     session_title_ = std::move(title);
   }
   std::string local_time = LocalStamp();
@@ -366,7 +390,7 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
       skill_bytes);
   int64_t pressure = 0;
   int64_t projected_tokens = 0;
-  if (ContextNeedsCompaction(pending_bytes, schema_chars_, pressure,
+  if (ContextNeedsCompaction(pending_bytes, schema_bytes_, pressure,
                              projected_tokens)) {
     DebugLog("auto_compact", {{"turn", turn_id_},
                               {"projected_pct", pressure},
@@ -391,6 +415,8 @@ void Agent::Turn(const std::string& user_input, json user_content, json images,
   }
   EnsureRuntimeContext();
   TurnExecution state;
+  state.model_calls_before =
+      JsonValue(conversation_.Statistics(), "model_calls", int64_t{0});
   StepState loop;
   state.start = conversation_.Size();  // user message and prune_* start
   for (std::string& skill : explicit_skills) PushSkillContext(std::move(skill));
@@ -568,6 +594,14 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
           ? static_cast<double>(state.metrics.model_generated_tokens) * 1000.0 /
                 static_cast<double>(state.metrics.model_generation_ms)
           : 0;
+  const int64_t direct_model_calls = std::max(
+      int64_t{0},
+      JsonValue(conversation_.Statistics(), "model_calls", int64_t{0}) -
+          state.model_calls_before);
+  const int64_t background_model_calls =
+      JsonValue(turn_side_statistics_, "model_calls", int64_t{0});
+  const int64_t background_tool_calls =
+      JsonValue(turn_side_statistics_, "tool_calls", int64_t{0});
   conversation_.AddStatistics({{"recorded_turns", 1},
                                {"tool_calls", state.metrics.tool_count},
                                {"duration_ms", secs * 1000}});
@@ -577,14 +611,25 @@ void Agent::FinishTurn(TurnExecution& state, int64_t step) {
       {"route", RouteSelection(api_, LoadProviderCatalog().providers)},
       {"outcome", TurnOutcomeName(state.stop.outcome)},
       {"steps", steps_used},
-      {"tool_calls", state.metrics.tool_count},
+      {"tool_calls", state.metrics.tool_count + background_tool_calls},
+      {"direct_tool_calls", state.metrics.tool_count},
+      {"model_calls", direct_model_calls + background_model_calls},
+      {"direct_model_calls", direct_model_calls},
       {"duration_ms", secs * 1000},
       {"ttt_ms", state.metrics.ttt_ms},
       {"tokens_per_second", tokens_per_second},
       {"generation_ms", state.metrics.model_generation_ms},
       {"generated_tokens", state.metrics.model_generated_tokens},
-      {"usage_reported", state.metrics.usage_reported},
+      {"usage_reported",
+       state.metrics.usage_reported || state.metrics.usage.input ||
+           state.metrics.usage.output || state.metrics.usage.cache_read ||
+           state.metrics.usage.cache_write || state.metrics.usage.reasoning ||
+           state.metrics.usage.web_searches ||
+           state.metrics.usage.cost_reported},
       {"usage", UsageJson(state.metrics.usage)}};
+  if (!turn_side_statistics_.empty()) {
+    summary["background_statistics"] = turn_side_statistics_;
+  }
   // The stored block already carries the full summary: the footer the live
   // turn prints and the one --resume replays read identical inputs.
   summary.update({{"session_usage", UsageJson(session_usage_)},

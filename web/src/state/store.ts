@@ -4,6 +4,7 @@ import type {
   HostEvent,
   Snapshot,
 } from "../shared/types.ts";
+import { maxLivePreviewChars } from "../shared/limits.ts";
 export function readStored<T>(
   storage: Pick<Storage, "getItem">,
   key: string,
@@ -107,10 +108,10 @@ export function liveBlocks(events: HostEvent[], prior: Block[] = []): Block[] {
       const response = blocks[responseIndex];
       const text = (response[field] || "") + (data.text || "");
       update(responseIndex, {
-        [field]: text.slice(0, 64 * 1024),
+        [field]: text.slice(0, maxLivePreviewChars),
         truncated:
           response.truncated ||
-          text.length > 64 * 1024 ||
+          text.length > maxLivePreviewChars ||
           data.preview_truncated,
       });
     }

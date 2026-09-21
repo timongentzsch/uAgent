@@ -32,6 +32,8 @@ const char* SessionCommandKindName(SessionCommandKind kind) {
       return "permissions";
     case SessionCommandKind::kActivity:
       return "activity";
+    case SessionCommandKind::kTools:
+      return "tools";
     case SessionCommandKind::kModel:
       return "model";
     case SessionCommandKind::kConfig:
@@ -65,6 +67,7 @@ SessionCommandKind ParseSessionCommandKind(std::string_view kind) {
   if (kind == "refresh") return SessionCommandKind::kRefresh;
   if (kind == "permissions") return SessionCommandKind::kPermissions;
   if (kind == "activity") return SessionCommandKind::kActivity;
+  if (kind == "tools") return SessionCommandKind::kTools;
   if (kind == "model") return SessionCommandKind::kModel;
   if (kind == "config") return SessionCommandKind::kConfig;
   if (kind == "context") return SessionCommandKind::kContext;
@@ -110,7 +113,7 @@ ReceiptVerdict ReceiptLog::Check(const json& command,
     previous = found->second.second;
     return ReceiptVerdict::kReplay;
   }
-  if (receipts_.size() >= 256) {
+  if (receipts_.size() >= kReceiptEntries) {
     auto completed =
         std::find_if(receipts_.begin(), receipts_.end(), [](const auto& item) {
           return !JsonValue(item.second.second, "pending", false);
@@ -156,6 +159,8 @@ HostCommandKind ParseHostCommandKind(std::string_view kind) {
       return HostCommandKind::kPermissions;
     case SessionCommandKind::kActivity:
       return HostCommandKind::kActivity;
+    case SessionCommandKind::kTools:
+      return HostCommandKind::kTools;
     case SessionCommandKind::kModel:
       return HostCommandKind::kModel;
     case SessionCommandKind::kConfig:
@@ -192,6 +197,7 @@ bool ForwardsToWorker(HostCommandKind kind) {
     case HostCommandKind::kRename:
     case HostCommandKind::kModel:
     case HostCommandKind::kActivity:
+    case HostCommandKind::kTools:
     case HostCommandKind::kPermissions:
     case HostCommandKind::kConfig:
     case HostCommandKind::kContext:

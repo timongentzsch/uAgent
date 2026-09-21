@@ -419,11 +419,11 @@ test("durations scale consistently with the CLI", () => {
 });
 
 test("context headroom matches CLI rounding and handles unknown and exceeded limits", () => {
-  assert.equal(contextSummary(4600, 1300000), "ctx 4.6k/1.3M · 99% left");
-  assert.equal(contextSummary(20469, 0), "ctx 20.5k");
-  assert.equal(contextSummary(0, 1000), "ctx 0/1k · 100% left");
-  assert.equal(contextSummary(2000, 1000), "ctx 2k/1k · 0% left");
-  assert.equal(contextSummary(undefined, 1000), "ctx —");
+  assert.equal(contextSummary(4600, 1300000), "est. ctx 4.6k/1.3M · 99% left");
+  assert.equal(contextSummary(20469, 0), "est. ctx 20.5k");
+  assert.equal(contextSummary(0, 1000), "est. ctx 0/1k · 100% left");
+  assert.equal(contextSummary(2000, 1000), "est. ctx 2k/1k · 0% left");
+  assert.equal(contextSummary(undefined, 1000), "est. ctx —");
 });
 
 test("readable bodies decode text and nested JSON without losing lexical facts", () => {

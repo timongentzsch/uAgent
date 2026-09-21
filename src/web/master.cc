@@ -59,8 +59,29 @@ namespace {
 using Clock = std::chrono::steady_clock;
 using Request = httplib::Request;
 using Response = httplib::Response;
-constexpr size_t kDeviceLimit = 16;
-constexpr size_t kSseLimit = 4;
+// Browser-service policies live together here. They are operational limits,
+// not inferred model or billing data.
+constexpr size_t kOriginChars = 255;
+constexpr size_t kSubscriptionRequestBytes = KiB(8);
+constexpr size_t kAuthenticationRequestBytes = KiB(4);
+constexpr size_t kDeviceStoreBytes = KiB(64);
+constexpr size_t kRegularCommandBytes = KiB(64);
+constexpr size_t kAssetMetadataBytes = KiB(1);
+constexpr size_t kDiscoveryBytes = KiB(4);
+constexpr size_t kDeviceNameChars = 80;
+constexpr int kWorkerThreads = 12;
+constexpr int kWorkerQueue = 24;
+constexpr int kReadTimeoutSeconds = 5;
+constexpr int kWriteTimeoutSeconds = 2;
+constexpr int kKeepAliveRequests = 50;
+constexpr int kKeepAliveTimeoutSeconds = 2;
+constexpr int kAuthenticationAttempts = 12;
+constexpr int kStartupAttempts = 20;
+constexpr auto kPairingLifetime = std::chrono::minutes(5);
+constexpr auto kAuthenticationWindow = std::chrono::minutes(1);
+constexpr auto kDeviceLifetime = std::chrono::hours(24 * 30);
+constexpr auto kReplayWait = std::chrono::seconds(15);
+constexpr auto kStartupRetry = std::chrono::milliseconds(100);
 volatile sig_atomic_t shutdown_fd = -1;
 void StopSignal(int) { WakeDescriptor(shutdown_fd); }
 
@@ -114,7 +135,7 @@ class Master {
       bool tailnet = http && inet_pton(AF_INET, host.c_str(), &address) == 1 &&
                      (ntohl(address.s_addr) & 0xffc00000U) == 0x64400000U;
       if ((!origin_.starts_with("https://") && !tailnet) ||
-          origin_.size() <= prefix || origin_.size() > 255 ||
+          origin_.size() <= prefix || origin_.size() > kOriginChars ||
           origin_.substr(prefix).find_first_of("/@?#\\ \t\r\n") !=
               std::string::npos) {
         error =
@@ -136,11 +157,14 @@ class Master {
     host_.LoadDrafts();
     host_.RefreshCatalogue();
     host_.RefreshInvalidations({});
-    server_.new_task_queue = [] { return new httplib::ThreadPool(12, 12, 24); };
-    server_.set_read_timeout(5);
-    server_.set_write_timeout(2);
-    server_.set_keep_alive_max_count(50);
-    server_.set_keep_alive_timeout(2);
+    server_.new_task_queue = [] {
+      return new httplib::ThreadPool(kWorkerThreads, kWorkerThreads,
+                                     kWorkerQueue);
+    };
+    server_.set_read_timeout(kReadTimeoutSeconds);
+    server_.set_write_timeout(kWriteTimeoutSeconds);
+    server_.set_keep_alive_max_count(kKeepAliveRequests);
+    server_.set_keep_alive_timeout(kKeepAliveTimeoutSeconds);
     server_.set_payload_max_length(kUploadBytes);
     server_.set_default_headers(
         {{"X-Content-Type-Options", "nosniff"},
@@ -238,7 +262,7 @@ class Master {
                 });
     server_.Post("/api/push/subscriptions", [this](const Request& request,
                                                    Response& response) {
-      if (request.body.size() > 8192) {
+      if (request.body.size() > kSubscriptionRequestBytes) {
         Error(response, "subscription exceeds limit", 413);
         return;
       }
@@ -393,7 +417,7 @@ class Master {
  private:
   std::string Pair() {
     pair_ = RandomToken(12);
-    pair_deadline_ = Clock::now() + std::chrono::minutes(5);
+    pair_deadline_ = Clock::now() + kPairingLifetime;
     return pair_;
   }
   json PublicDevices() const {
@@ -405,12 +429,12 @@ class Master {
   }
   void LoadDevices() {
     std::string bytes, error;
-    if (!ReadRegularFile(directory_ + "/devices.json", size_t{64} * 1024, bytes,
+    if (!ReadRegularFile(directory_ + "/devices.json", kDeviceStoreBytes, bytes,
                          error)) {
       return;
     }
     json value = json::parse(bytes, nullptr, false);
-    if (!value.is_array() || value.size() > kDeviceLimit) {
+    if (!value.is_array() || value.size() > kWebDeviceLimit) {
       return;
     }
     for (const json& item : value) {
@@ -456,18 +480,18 @@ class Master {
     return {};
   }
   void Authenticate(const Request& request, Response& response) {
-    if (request.body.size() > 4096) {
+    if (request.body.size() > kAuthenticationRequestBytes) {
       Error(response, "authentication request too large", 413);
       return;
     }
     json input = json::parse(request.body, nullptr, false);
     std::lock_guard lock(mutex_);
     auto now = Clock::now();
-    if (now - auth_window_ > std::chrono::minutes(1)) {
+    if (now - auth_window_ > kAuthenticationWindow) {
       auth_window_ = now;
       auth_attempts_ = 0;
     }
-    if (++auth_attempts_ > 12) {
+    if (++auth_attempts_ > kAuthenticationAttempts) {
       Error(response, "pairing rate limit; retry in a minute", 429);
       return;
     }
@@ -479,13 +503,16 @@ class Master {
     std::erase_if(devices_, [](const Device& device) {
       return device.expires <= NowMillis();
     });
-    if (devices_.size() >= kDeviceLimit) {
+    if (devices_.size() >= kWebDeviceLimit) {
       Error(response, "device limit reached; revoke a device first", 409);
       return;
     }
-    Device device{RandomToken(16), RandomToken(32),
-                  Utf8Prefix(JsonValue(input, "name", "Browser"), 80),
-                  NowMillis() + int64_t{2592000000}};
+    Device device{
+        RandomToken(16), RandomToken(32),
+        Utf8Prefix(JsonValue(input, "name", "Browser"), kDeviceNameChars),
+        NowMillis() + std::chrono::duration_cast<std::chrono::milliseconds>(
+                          kDeviceLifetime)
+                          .count()};
     if (device.id.empty() || device.token.empty()) {
       Error(response, "randomness unavailable", 500);
       return;
@@ -500,7 +527,10 @@ class Master {
     response.set_header(
         "Set-Cookie",
         "uagent_device=" + device.token +
-            "; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000" +
+            "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" +
+            std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
+                               kDeviceLifetime)
+                               .count()) +
             (origin_.starts_with("https://") ? "; Secure" : ""));
     Reply(response, {{"v", kProtocol}, {"device", device.id}});
   }
@@ -561,7 +591,7 @@ void Master::Command(const Request& request, Response& response) {
   }
   json command = json::parse(request.body, nullptr, false);
   const auto category = JsonValue(command, "kind", "");
-  if (request.body.size() > size_t{64} * 1024 && category != "memory" &&
+  if (request.body.size() > kRegularCommandBytes && category != "memory" &&
       category != "skills" && category != "prompt") {
     Error(response, "command exceeds limit", 413);
     return;
@@ -594,7 +624,7 @@ void Master::Command(const Request& request, Response& response) {
     return;
   }
   // Evict only completed receipts; never forget an unacknowledged submission.
-  if (request_order_.size() >= 256) {
+  if (request_order_.size() >= kWebRequestReceipts) {
     auto completed =
         std::find_if(request_order_.begin(), request_order_.end(),
                      [&](const std::string& id) {
@@ -700,7 +730,7 @@ void Master::Command(const Request& request, Response& response) {
 
 void Master::Events(const Request& request, Response& response) {
   std::unique_lock lock(mutex_);
-  if (sse_count_ >= kSseLimit) {
+  if (sse_count_ >= kWebSseConnections) {
     Error(response, "event connection limit reached", 429);
     return;
   }
@@ -744,7 +774,7 @@ void Master::Events(const Request& request, Response& response) {
         }
         if (ready_sent) {
           guard.unlock();
-          host_.WaitForReplay(next, std::chrono::seconds(15));
+          host_.WaitForReplay(next, kReplayWait);
           guard.lock();
           if (stopping_ || !authorized()) return false;
         }
@@ -759,7 +789,7 @@ void Master::Events(const Request& request, Response& response) {
           batch += "id: " + epoch_ + ":" + std::to_string(event.sequence) +
                    "\nevent: update\ndata: " + event.frame + "\n\n";
           next = event.sequence;
-          if (batch.size() >= size_t{64} * 1024) {
+          if (batch.size() >= kWebEventBatchBytes) {
             break;
           }
         }
@@ -818,7 +848,7 @@ void Master::AssetRead(const Request& request, Response& response) {
     return;
   }
   std::string metadata, bytes, error;
-  if (!ReadRegularFile(stem + ".json", 1024, metadata, error)) {
+  if (!ReadRegularFile(stem + ".json", kAssetMetadataBytes, metadata, error)) {
     Error(response, "asset unavailable", 404);
     return;
   }
@@ -859,10 +889,10 @@ int MasterMain(const WebOptions& options, const char* executable) {
   if (!lease.Acquire(directory + "/master.lock", error, true)) {
     // The lock, not a PID/port/metadata file, is authority. A contender only
     // authenticates the recorded instance; it never binds an alternate port.
-    for (int attempt = 0; attempt < 20; ++attempt) {
+    for (int attempt = 0; attempt < kStartupAttempts; ++attempt) {
       std::string content, read_error;
-      if (ReadRegularFile(directory + "/discovery.json", 4096, content,
-                          read_error)) {
+      if (ReadRegularFile(directory + "/discovery.json", kDiscoveryBytes,
+                          content, read_error)) {
         json discovery = json::parse(content, nullptr, false);
         int port = JsonValue(discovery, "port", 0);
         std::string secret = JsonValue(discovery, "secret", "");
@@ -903,7 +933,7 @@ int MasterMain(const WebOptions& options, const char* executable) {
           }
         }
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(kStartupRetry);
     }
     fprintf(stderr,
             "master lock is held but authenticated discovery is unavailable; "

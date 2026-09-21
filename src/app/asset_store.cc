@@ -65,7 +65,7 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
       break;
     }
     usage.bytes += static_cast<size_t>(bytes);
-    if (++usage.count > 64) {
+    if (++usage.count > kMaxSessionAssets) {
       usage.valid = false;
       break;
     }
@@ -76,7 +76,7 @@ AssetUsage InspectAssets(const std::string& folder, bool cleanup) {
 // Attachment display names travel in frames and land on disk-adjacent
 // records: no path separators, no control bytes, bounded length.
 bool ValidAssetName(const std::string& name) {
-  if (name.size() > 128 || name.find('/') != std::string::npos ||
+  if (name.size() > kAssetNameChars || name.find('/') != std::string::npos ||
       name.find('\\') != std::string::npos) {
     return false;
   }
@@ -140,7 +140,7 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
     }
   }
   AssetUsage usage = InspectAssets(folder, true);
-  if (!usage.valid || usage.count >= 64 ||
+  if (!usage.valid || usage.count >= kMaxSessionAssets ||
       bytes.size() >
           kSessionAssetBytes - std::min(usage.bytes, kSessionAssetBytes) ||
       bytes.size() > kGlobalAssetBytes - std::min(bytes_, kGlobalAssetBytes)) {
@@ -149,7 +149,8 @@ AssetStoreResult AssetStore::Store(const std::string& session_path,
   std::string mime = RasterMime(bytes);
   if (mime.empty()) mime = SvgMime(bytes);
   const bool image = !mime.empty();
-  name = Utf8Prefix(std::filesystem::path(name).filename().string(), 240);
+  name = Utf8Prefix(std::filesystem::path(name).filename().string(),
+                    kAssetNameChars);
   if (name.empty()) {
     name = image ? "image" + ImageExtension(mime) : "attachment";
   }

@@ -1060,7 +1060,7 @@ test("polished skeletons, whole-row hover and folded tool output", async ({
   expect(requests).toBe(0);
   await expect(
     page.getByRole("button", { name: "Raw context", exact: true }),
-  ).toHaveText("ctx 4.6k/1.3M · 99% left");
+  ).toHaveText("est. ctx 4.6k/1.3M · 99% left");
   const row = page
     .locator(".session-row")
     .filter({ has: page.locator(".session.selected") });

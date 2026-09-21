@@ -65,6 +65,10 @@ void LoadSessionJournal(AppSession& session, const std::string& previous_path) {
     PermissionControl(session.context, json::object());
     session.ActiveAgent().ApprovalChanged();
   }
+  const json saved_tools = JsonValue(settings, "tools", json::object());
+  if (!saved_tools.empty()) {
+    session.ActiveAgent().RestoreToolSelection(saved_tools);
+  }
   if (session.session_file.empty() || session.session_file == previous_path) {
     return;
   }
@@ -283,8 +287,8 @@ bool RunSlashCommand(AppSession& session, const ParsedSlashCommand& command,
       }
       return false;
     case SlashCommandId::kTools:
-      HandleTools(session);
-      break;
+      HandleTools(session, command.argument);
+      return false;
     case SlashCommandId::kStatus:
       HandleStatus(session);
       break;

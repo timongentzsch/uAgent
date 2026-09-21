@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run typecheck && vite build",
+    "build": "npm run typecheck && UAGENT_WEB_OUT_DIR=dist.next vite build && node scripts/promote-dist.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "playwright test",
     "format": "prettier --write src tests scripts public/*.js *.js *.json *.html",

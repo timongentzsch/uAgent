@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "include/core/fs.h"
+#include "include/core/limits.h"
 #include "include/media/attachments.h"
 #include "include/tools/files.h"
 
@@ -27,6 +28,19 @@ struct Cleanup {
 template <typename T, auto Destroy>
 using Owned = std::unique_ptr<T, Cleanup<T, Destroy>>;
 using KeyContext = Owned<EVP_PKEY_CTX, EVP_PKEY_CTX_free>;
+constexpr size_t kBase64InputBytes = KiB(8);
+constexpr size_t kBase64EncodedChars = KiB(4);
+constexpr size_t kBase64DecodedBytes = KiB(3);
+constexpr size_t kP256PublicBytes = 65;
+constexpr size_t kP256PrivateBytes = 32;
+constexpr size_t kPushPlaintextBytes = KiB(2);
+constexpr size_t kSharedSecretBytes = 32;
+constexpr size_t kAesKeyBytes = 16;
+constexpr size_t kNonceBytes = 12;
+constexpr size_t kGcmTagBytes = 16;
+constexpr size_t kPushHeaderBytes = 5;
+constexpr size_t kMaxDerSignatureBytes = 128;
+constexpr size_t kRawSignatureBytes = 64;
 
 std::string Hkdf(std::string_view key, std::string_view salt,
                  std::string_view info, size_t length) {
@@ -59,7 +73,7 @@ std::string Hkdf(std::string_view key, std::string_view salt,
 }  // namespace
 
 std::string Base64Url(std::string_view bytes) {
-  if (bytes.size() > 8192) {
+  if (bytes.size() > kBase64InputBytes) {
     return {};
   }
   std::string result((bytes.size() + 2) / 3 * 4 + 1, '\0');
@@ -80,7 +94,7 @@ std::string Base64Url(std::string_view bytes) {
 }
 
 std::string Unbase64Url(std::string_view encoded) {
-  if (encoded.size() > 4096 ||
+  if (encoded.size() > kBase64EncodedChars ||
       encoded.find_first_not_of(
           "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_") !=
           std::string_view::npos) {
@@ -92,7 +106,8 @@ std::string Unbase64Url(std::string_view encoded) {
   while (input.size() % 4) {
     input += '=';
   }
-  return Base64Decode(input, result, 3072) ? result : std::string();
+  return Base64Decode(input, result, kBase64DecodedBytes) ? result
+                                                          : std::string();
 }
 
 PushKey GeneratePushKey() {
@@ -112,8 +127,9 @@ PushKey GeneratePushKey() {
 
 PushKey ImportPushKey(std::string_view public_bytes,
                       std::string_view private_bytes) {
-  if (public_bytes.size() != 65 || public_bytes.front() != '\x04' ||
-      (!private_bytes.empty() && private_bytes.size() != 32)) {
+  if (public_bytes.size() != kP256PublicBytes ||
+      public_bytes.front() != '\x04' ||
+      (!private_bytes.empty() && private_bytes.size() != kP256PrivateBytes)) {
     return {};
   }
   KeyContext context(EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr));
@@ -157,7 +173,7 @@ PushKey ImportPushKey(std::string_view public_bytes,
 }
 
 std::string PushPublicKey(EVP_PKEY* key) {
-  std::string result(65, '\0');
+  std::string result(kP256PublicBytes, '\0');
   size_t size = 0;
   if (!key ||
       EVP_PKEY_get_octet_string_param(
@@ -173,7 +189,7 @@ std::string PushPublicKey(EVP_PKEY* key) {
 PushKey LoadPushKey(const std::string& path) {
   std::string contents, error;
   if (PathExists(path)) {
-    if (!ReadRegularFile(path, 8192, contents, error)) {
+    if (!ReadRegularFile(path, kBase64InputBytes, contents, error)) {
       return {};
     }
     Owned<BIO, BIO_free> input(
@@ -181,7 +197,7 @@ PushKey LoadPushKey(const std::string& path) {
     PushKey key(
         input ? PEM_read_bio_PrivateKey(input.get(), nullptr, nullptr, nullptr)
               : nullptr);
-    if (!key || PushPublicKey(key.get()).size() != 65) {
+    if (!key || PushPublicKey(key.get()).size() != kP256PublicBytes) {
       return {};
     }
     return key;
@@ -206,13 +222,13 @@ PushKey LoadPushKey(const std::string& path) {
 std::string EncryptPush(EVP_PKEY* ephemeral, std::string_view receiver_public,
                         std::string_view auth, std::string_view salt,
                         std::string_view plaintext) {
-  if (!ephemeral || auth.size() != 16 || salt.size() != 16 ||
-      plaintext.size() > 2048) {
+  if (!ephemeral || auth.size() != kPushAuthBytes ||
+      salt.size() != kPushSaltBytes || plaintext.size() > kPushPlaintextBytes) {
     return {};
   }
   PushKey receiver = ImportPushKey(receiver_public);
   KeyContext exchange(EVP_PKEY_CTX_new(ephemeral, nullptr));
-  std::string shared(32, '\0');
+  std::string shared(kSharedSecretBytes, '\0');
   size_t size = shared.size();
   if (!receiver || !exchange || EVP_PKEY_derive_init(exchange.get()) != 1 ||
       EVP_PKEY_derive_set_peer(exchange.get(), receiver.get()) != 1 ||
@@ -229,23 +245,23 @@ std::string EncryptPush(EVP_PKEY* ephemeral, std::string_view receiver_public,
   std::string info("WebPush: info\0", 14);
   info += receiver_public;
   info += public_bytes;
-  std::string input = Hkdf(shared, auth, info, 32);
+  std::string input = Hkdf(shared, auth, info, kSharedSecretBytes);
   std::string key =
       Hkdf(input, salt,
            std::string_view("Content-Encoding: aes128gcm",
                             sizeof("Content-Encoding: aes128gcm")),
-           16);
+           kAesKeyBytes);
   std::string nonce = Hkdf(input, salt,
                            std::string_view("Content-Encoding: nonce",
                                             sizeof("Content-Encoding: nonce")),
-                           12);
+                           kNonceBytes);
   if (input.empty() || key.empty() || nonce.empty()) {
     return {};
   }
   Owned<EVP_CIPHER_CTX, EVP_CIPHER_CTX_free> cipher(EVP_CIPHER_CTX_new());
   std::string padded(plaintext);
   padded += '\x02';
-  std::string encrypted(padded.size() + 16, '\0');
+  std::string encrypted(padded.size() + kGcmTagBytes, '\0');
   int count = 0, tail = 0;
   if (!cipher ||
       EVP_EncryptInit_ex(
@@ -262,12 +278,12 @@ std::string EncryptPush(EVP_PKEY* ephemeral, std::string_view receiver_public,
           &tail) != 1 ||
       count < 0 || tail < 0 ||
       static_cast<size_t>(count) + static_cast<size_t>(tail) != padded.size() ||
-      EVP_CIPHER_CTX_ctrl(cipher.get(), EVP_CTRL_GCM_GET_TAG, 16,
+      EVP_CIPHER_CTX_ctrl(cipher.get(), EVP_CTRL_GCM_GET_TAG, kGcmTagBytes,
                           encrypted.data() + padded.size()) != 1) {
     return {};
   }
   std::string header(salt);
-  header.append("\x00\x00\x10\x00\x41", 5);
+  header.append("\x00\x00\x10\x00\x41", kPushHeaderBytes);
   header += public_bytes;
   return header + encrypted;
 }
@@ -286,7 +302,7 @@ std::string VapidAuthorization(EVP_PKEY* key, const std::string& audience,
       EVP_DigestSign(signer.get(), nullptr, &count,
                      reinterpret_cast<const unsigned char*>(token.data()),
                      token.size()) != 1 ||
-      count > 128) {
+      count > kMaxDerSignatureBytes) {
     return {};
   }
   std::string der(count, '\0');
@@ -301,13 +317,15 @@ std::string VapidAuthorization(EVP_PKEY* key, const std::string& audience,
   Owned<ECDSA_SIG, ECDSA_SIG_free> signature(d2i_ECDSA_SIG(
       nullptr, &bytes,
       static_cast<long>(count)));  // NOLINT: OpenSSL ABI requires long.
-  std::string raw(64, '\0');
+  std::string raw(kRawSignatureBytes, '\0');
   if (!signature ||
       BN_bn2binpad(ECDSA_SIG_get0_r(signature.get()),
-                   reinterpret_cast<unsigned char*>(raw.data()), 32) != 32 ||
-      BN_bn2binpad(ECDSA_SIG_get0_s(signature.get()),
-                   reinterpret_cast<unsigned char*>(raw.data()) + 32,
-                   32) != 32) {
+                   reinterpret_cast<unsigned char*>(raw.data()),
+                   kP256PrivateBytes) != kP256PrivateBytes ||
+      BN_bn2binpad(
+          ECDSA_SIG_get0_s(signature.get()),
+          reinterpret_cast<unsigned char*>(raw.data()) + kP256PrivateBytes,
+          kP256PrivateBytes) != kP256PrivateBytes) {
     return {};
   }
   return "vapid t=" + token + "." + Base64Url(raw) +

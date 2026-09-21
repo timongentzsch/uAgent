@@ -1,6 +1,7 @@
 // Copyright 2026 Timon Gentzsch
 
 #include <chrono>
+#include <cinttypes>
 #include <cstdio>
 #include <filesystem>
 #include <map>
@@ -43,7 +44,8 @@ void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(
       {{"route", RouteSelection(session.ApiClient(),
                                 session.context.provider.providers)},
-       {"permissions", session.context.permission_override.load()}});
+       {"permissions", session.context.permission_override.load()},
+       {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 
 StatusView SessionStatusView(const AppSession& session) {
@@ -247,11 +249,48 @@ void HandleDebugConfig(const AppSession& session, const std::string& argument) {
       DIM(), RST());
 }
 
-void HandleTools(const AppSession& session) {
-  const std::vector<Tool>& tools = session.context.tools;
-  printf("%s· %zu tools%s\n", DIM(), tools.size(), RST());
-  for (const Tool& tool : tools) {
-    printf("%s· %s%s\n", DIM(), TerminalSafe(tool.name).c_str(), RST());
+void HandleTools(AppSession& session, const std::string& argument) {
+  json request = {{"kind", "tools"}, {"operation", "catalog"}};
+  if (!argument.empty()) {
+    std::istringstream input(argument);
+    std::string operation, value, extra;
+    input >> operation >> value >> extra;
+    if (!extra.empty() ||
+        (operation != "reset" && operation != "profile" && operation != "on" &&
+         operation != "off") ||
+        ((operation == "reset") != value.empty())) {
+      printf("%serror: usage: /tools [on|off NAME|profile NAME|reset]%s\n",
+             RED(), RST());
+      return;
+    }
+    request["operation"] =
+        operation == "on" || operation == "off" ? "set" : operation;
+    if (operation == "profile") request["profile"] = value;
+    if (operation == "on" || operation == "off") {
+      request["name"] = value;
+      request["active"] = operation == "on";
+    }
+  }
+  json result = SessionControl(session, request);
+  if (result.contains("error")) {
+    printf("%serror: %s%s\n", RED(),
+           TerminalSafe(JsonValue(result, "error", "")).c_str(), RST());
+    return;
+  }
+  printf("%s· %" PRId64 "/%" PRId64 " tools · %s · %" PRId64
+         " serialized schema bytes%s\n",
+         DIM(), JsonValue(result, "active", int64_t{0}),
+         JsonValue(result, "available", int64_t{0}),
+         TerminalSafe(JsonValue(result, "profile", "default")).c_str(),
+         JsonValue(result, "schema_bytes", int64_t{0}), RST());
+  if (const json* tools = JsonArray(result, "tools")) {
+    for (const json& tool : *tools) {
+      printf("%s%s %-14s %s · %s%s\n", DIM(),
+             JsonValue(tool, "active", false) ? "●" : "○",
+             TerminalSafe(JsonValue(tool, "name", "")).c_str(),
+             TerminalSafe(JsonValue(tool, "category", "")).c_str(),
+             TerminalSafe(JsonValue(tool, "description", "")).c_str(), RST());
+    }
   }
 }
 

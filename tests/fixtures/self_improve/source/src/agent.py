@@ -44,7 +44,7 @@ def emit(trace, plan, options):
     usage = plan.get("usage") or {}
     records = [{"event": "session_ready", "data": {"route": options["model"]}}]
     for _ in range(int(plan.get("model_requests", 1))):
-        records.append({"event": "model_request", "data": {"message_chars": 400}})
+        records.append({"event": "model_request", "data": {"message_bytes": 400}})
     for index in range(int(plan.get("tool_calls", 0))):
         failed = index < int(plan.get("tool_failures", 0))
         identifier = f"call-{index}"

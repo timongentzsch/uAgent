@@ -205,11 +205,12 @@ void HandleModels(AppSession& session, const std::string& argument) {
       }
     }
   }
-  if (session.context.channel && search.matches.size() > 256) {
-    search.matches.resize(256);
+  if (session.context.channel && search.matches.size() > kModelPickerMatches) {
+    search.matches.resize(kModelPickerMatches);
     Emit(NoticeEvent(PresentationStatus::kWarned,
-                     "Showing the first 256 models; use /models QUERY to "
-                     "narrow the catalog."));
+                     "Showing the first " +
+                         std::to_string(kModelPickerMatches) +
+                         " models; use /models QUERY to narrow the catalog."));
   }
   std::optional<ModelCandidate> selected =
       PickModel(std::move(search), session.ApiClient(),

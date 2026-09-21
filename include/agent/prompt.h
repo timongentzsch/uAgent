@@ -41,11 +41,13 @@ json PromptOverlay(std::string* digest);
 
 // Optional workflow rules, kept out of the cacheable base unless the matching
 // tools are actually registered. Tool schemas still own argument-level detail.
-std::string CapabilityPrompt(const std::vector<Tool>& tools);
+std::string CapabilityPrompt(const std::vector<Tool>& tools,
+                             const ToolSelection* selection = nullptr);
 
 // Host facts the model may not infer from its own claims: which capabilities
 // the registry actually offers, and whether mutations need consent.
-std::string HostCapabilityPrompt(const std::vector<Tool>& tools);
+std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
+                                 const ToolSelection* selection = nullptr);
 
 // Scope documents are bounded and revisioned. Resolution retains source text
 // even when shadowed, so inspection and replacement previews tell the truth.

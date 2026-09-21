@@ -272,10 +272,16 @@ json DescribeSelf(SelfTopic topic, const std::string& name,
       break;
     }
     case SelfTopic::kTools: {
+      if (inputs.agent && name.empty()) {
+        out.update(inputs.agent->ToolCatalogue());
+        break;
+      }
       json tools = json::array();
       for (const Tool& tool : inputs.tools) {
         if (!name.empty() && tool.name != name) continue;
         tools.push_back({{"name", tool.name},
+                         {"title", ToolTitle(tool)},
+                         {"category", ToolCategory(tool)},
                          {"description", tool.description},
                          {"parameters", tool.parameters}});
       }

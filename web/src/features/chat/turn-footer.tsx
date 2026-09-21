@@ -26,8 +26,8 @@ export function TurnFooter({
         </span>
       )}
       <span>
-        {count(summary.steps)} model calls · {count(summary.tool_calls)} tools ·{" "}
-        {duration(summary.duration_ms)}
+        {count(summary.model_calls ?? summary.steps)} model calls ·{" "}
+        {count(summary.tool_calls)} tools · {duration(summary.duration_ms)}
       </span>
       {summary.outcome !== "complete" && summary.outcome !== "completed" && (
         <span> · {summary.outcome}</span>

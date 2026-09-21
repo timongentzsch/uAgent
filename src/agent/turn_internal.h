@@ -102,6 +102,7 @@ struct Agent::TurnExecution {
   TurnLimits limits;
   TurnMetrics metrics;
   TurnStop stop;
+  int64_t model_calls_before = 0;
   bool complete = false;
   bool line_open = false;
 };

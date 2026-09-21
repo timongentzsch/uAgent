@@ -1,4 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+// Playwright colors worker output by default. Preserve this repository's
+// plain test logs without passing Node the conflicting NO_COLOR/FORCE_COLOR
+// pair that emits one warning per worker.
+delete process.env.NO_COLOR;
+process.env.FORCE_COLOR = "0";
 export default defineConfig({
   testDir: "./tests",
   forbidOnly: !!process.env.CI,

@@ -3,10 +3,8 @@
 #include "include/agent/conversation.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -18,7 +16,9 @@
 #include "include/core/checked.h"
 #include "include/core/debug.h"
 #include "include/core/json.h"
+#include "include/core/limits.h"
 #include "include/core/strings.h"
+#include "include/core/usage.h"
 
 namespace uagent {
 
@@ -259,7 +259,8 @@ void Conversation::ResetHistory(json baseline, std::vector<MessageKind> kinds) {
 void Conversation::PruneToolDisplays() {
   json kept = json::object();
   for (auto message_it = messages_.rbegin();
-       message_it != messages_.rend() && kept.size() < 127; ++message_it) {
+       message_it != messages_.rend() && kept.size() < kMaxToolDisplays - 1;
+       ++message_it) {
     const json& message = *message_it;
     if (!message.is_object()) continue;
     auto id = message.find("tool_call_id");
@@ -275,7 +276,8 @@ void Conversation::RecordToolDisplay(const std::string& call_id,
                                      std::string display) {
   if (call_id.empty() || display.empty()) return;
   // Make space before insertion: the current call's result is appended later.
-  if (tool_displays_.size() >= 128 && !tool_displays_.contains(call_id)) {
+  if (tool_displays_.size() >= kMaxToolDisplays &&
+      !tool_displays_.contains(call_id)) {
     PruneToolDisplays();
   }
   tool_displays_[call_id] = std::move(display);
@@ -296,21 +298,7 @@ json Conversation::DisplayMetadata() const {
 }
 
 void Conversation::AddStatistics(const json& delta) {
-  for (auto it = delta.begin(); it != delta.end(); ++it) {
-    if (!it->is_number() || !std::isfinite(it->get<double>()) ||
-        it->get<double>() < 0) {
-      continue;
-    }
-    if (it->is_number_integer()) {
-      statistics_[it.key()] = SaturatingNonnegativeAdd(
-          JsonValue(statistics_, it.key().c_str(), int64_t{0}),
-          it->get<int64_t>());
-    } else {
-      statistics_[it.key()] = std::min(
-          std::numeric_limits<double>::max(),
-          JsonValue(statistics_, it.key().c_str(), 0.0) + it->get<double>());
-    }
-  }
+  MergeNumericStatistics(statistics_, delta);
 }
 
 std::string Conversation::LastDisplayId() const {

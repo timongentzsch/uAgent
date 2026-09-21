@@ -21,7 +21,7 @@
   overflow-wrap: anywhere;
 }
 .config-row small {
-  margin: calc(6rem / 14) 0;
+  margin: var(--space-3) 0;
 }
 .config-value {
   display: flex;
@@ -31,5 +31,5 @@
 .config-value input,
 .config-value .select {
   flex: 1;
-  min-width: 100px;
+  min-width: calc(100rem / 14);
 }

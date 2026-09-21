@@ -29,6 +29,28 @@ test("appearance and configuration remain usable at large scales", async ({
   const interfaceText = await page
     .locator(".conversation-head h1")
     .evaluate((element) => getComputedStyle(element).fontSize);
+  const resetZoom = page.getByRole("button", {
+    name: "Reset zoom",
+    exact: true,
+  });
+  const normalControl = await resetZoom.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: element.getBoundingClientRect().height,
+      padding: parseFloat(style.paddingInlineStart),
+    };
+  });
+  await page.getByLabel("Zoom", { exact: true }).fill("50");
+  await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
+  const smallControl = await resetZoom.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      height: element.getBoundingClientRect().height,
+      padding: parseFloat(style.paddingInlineStart),
+    };
+  });
+  expect(smallControl.height).toBeLessThan(normalControl.height * 0.7);
+  expect(smallControl.padding).toBeLessThan(normalControl.padding * 0.7);
   await page.getByLabel("Zoom", { exact: true }).fill("110");
   await expect(page.locator("html")).toHaveCSS("--zoom", "1.1");
   // One dial moves type and spacing together: conversation and chrome

@@ -6,7 +6,7 @@
   background: var(--raised);
 }
 .library-group + .library-group {
-  margin-top: 0.6rem;
+  margin-top: var(--gap);
 }
 .library-group h2 {
   margin: 0;
@@ -59,7 +59,7 @@
 .document-details {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.5rem 1rem;
+  gap: var(--gap) var(--pad);
   font-size: 0.85em;
 }
 .document-details dd {
@@ -87,8 +87,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.7rem 0.3rem;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2);
   text-align: left;
   background: none;
   border: 0;

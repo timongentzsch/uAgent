@@ -7,8 +7,7 @@ import type {
 } from "../../shared/types.ts";
 import type { RefObject } from "preact";
 import { useCallback, useEffect, useState } from "preact/hooks";
-import { LoadError, Mark } from "../../shared/ui.tsx";
-import { HistorySkeleton } from "../../shared/loading.tsx";
+import { LoadError, Mark, Spinner } from "../../shared/ui.tsx";
 import { MessageRows, prepareHistoryBlocks } from "./message.tsx";
 
 export { prepareHistoryBlocks } from "./message.tsx";
@@ -135,10 +134,12 @@ export default function Chat({
           (loadError ? (
             <LoadError error={loadError} retry={retry} />
           ) : (
-            <HistorySkeleton />
+            <Spinner label="Loading conversation…" surface />
           ))}
         {snapshot && loadError && <LoadError error={loadError} retry={retry} />}
-        {snapshot && !prepared && <HistorySkeleton />}
+        {snapshot && !prepared && (
+          <Spinner label="Loading conversation…" surface />
+        )}
         {snapshot && prepared && blocks.length === 0 && (
           <div class="empty">
             <Mark className="cursor-mark" />

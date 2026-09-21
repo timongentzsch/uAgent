@@ -18,7 +18,7 @@ import {
 import { useEffect, useRef, useState } from "preact/hooks";
 const configuration = () => import("./configuration.tsx");
 import { api, command } from "../../state/api.ts";
-import { ArrowLeft } from "lucide-preact";
+import { ArrowLeft, Palette } from "lucide-preact";
 import { applyUpdate } from "../../shared/pwa.ts";
 export default function Settings({
   theme,
@@ -197,6 +197,15 @@ export default function Settings({
             <button type="button" onClick={() => setAdvanced(true)}>
               Advanced configuration
             </button>
+            <a
+              class="button-link with-icon"
+              href="/ui.html"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Palette aria-hidden="true" />
+              UI showcase
+            </a>
           </div>
           <details class="settings-section">
             <summary>Install</summary>

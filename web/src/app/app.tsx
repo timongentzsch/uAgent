@@ -17,24 +17,28 @@ import { render } from "preact";
 import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { readStored, writeStored } from "../state/store.ts";
 import { api, command, requestId } from "../state/api.ts";
-import { Mark, Modal, Deferred, Skeleton, IconButton } from "../shared/ui.tsx";
+import {
+  Mark,
+  Modal,
+  Deferred,
+  IconButton,
+  Spinner,
+  preloadDeferred,
+} from "../shared/ui.tsx";
 import { Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
 const markdownView = () => import("../shared/markdown-view.tsx");
 import {
-  ComposerSkeleton,
   ConversationActionSkeleton,
-  HistorySkeleton,
   ManagementSkeleton,
-  PairingSkeleton,
   PromptSkeleton,
   RawSkeleton,
   SettingsSkeleton,
-  SidebarSkeleton,
   StatsSkeleton,
 } from "../shared/loading.tsx";
+import { applyZoom, normalizeZoom } from "../shared/size-controls.tsx";
 
 import { useHost } from "../state/use-host.ts";
 import { parseSlash } from "../features/composer/slash.ts";
@@ -112,7 +116,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [zoom, setZoom] = useState(() =>
-    readStored<number>(localStorage, "uagent-zoom", 100),
+    normalizeZoom(readStored<number>(localStorage, "uagent-zoom", 100)),
   );
   const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [update, setUpdate] = useState<ServiceWorker | null>(null);
@@ -177,13 +181,7 @@ function App() {
   }
   useEffect(() => {
     writeStored(localStorage, "uagent-zoom", zoom);
-    // Single zoom axis (VS Code / Slack / Discord model): one factor
-    // scales the whole UI proportionally via :root font-size, so text
-    // and spacing can never drift apart.
-    document.documentElement.style.setProperty(
-      "--zoom",
-      String(Math.min(200, Math.max(50, zoom || 100)) / 100),
-    );
+    applyZoom(zoom);
   }, [zoom]);
   // The shared transcript controller restores a returning conversation.
   useEffect(() => {
@@ -192,7 +190,12 @@ function App() {
     // can fire after the first snapshot already mounted, which spreads
     // the plain-to-markdown height wave across the first seconds and
     // fights the bottom pin). Marker-based chunks warm per text below.
-    markdownView().then((view) => view.prefetchMarkdown());
+    Promise.allSettled([
+      preloadDeferred(sidebarModule),
+      preloadDeferred(chat),
+      preloadDeferred(composer),
+      markdownView().then((view) => view.prefetchMarkdown()),
+    ]);
   }, []);
   useEffect(() => {
     let viewport: (() => void) | undefined;
@@ -651,7 +654,7 @@ function App() {
   const sidebar = (
     <Deferred
       load={sidebarModule}
-      fallback={<SidebarSkeleton />}
+      fallback={<Spinner label="Loading sessions…" surface />}
       page={page}
       navigate={(value) => {
         setPage(value);
@@ -735,23 +738,29 @@ function App() {
           load={pairing}
           paired={refresh}
           report={report}
-          fallback={<PairingSkeleton />}
+          fallback={<Spinner label="Loading connection form…" surface />}
         />
       ) : authenticated === null ? (
-        <main class="shell">
+        <main class="shell loading-shell">
           {!compact && (
-            <aside class="sidebar">
-              <SidebarSkeleton />
+            <aside class="sidebar" aria-hidden="true">
+              <div class="sidebar-head">
+                <Mark />
+              </div>
             </aside>
           )}
           <div class="conversation">
             <header class="conversation-head">
-              <Skeleton decorative rows={1} className="title-skeleton" />
+              <div>
+                <h1>Your workspace</h1>
+              </div>
             </header>
             <div class="transcript">
-              <HistorySkeleton />
+              <div class="transcript-content">
+                <Spinner label="Loading conversation…" surface />
+              </div>
             </div>
-            <ComposerSkeleton />
+            <div class="composer loading-composer" aria-hidden="true" />
           </div>
         </main>
       ) : (
@@ -826,7 +835,7 @@ function App() {
                   fallback={
                     <div className="transcript">
                       <div className="transcript-content">
-                        <HistorySkeleton />
+                        <Spinner label="Loading conversation…" surface />
                       </div>
                     </div>
                   }
@@ -852,7 +861,7 @@ function App() {
                 />
                 <Deferred
                   load={composer}
-                  fallback={<ComposerSkeleton />}
+                  fallback={null}
                   session={session}
                   commands={catalogue.commands || []}
                   snapshot={snapshot}

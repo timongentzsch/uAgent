@@ -159,6 +159,26 @@ export function Skeleton({
     </div>
   );
 }
+
+export function Spinner({
+  label = "Loading…",
+  surface = false,
+}: {
+  label?: string;
+  surface?: boolean;
+}) {
+  return (
+    <div
+      class={`loading-indicator${surface ? " loading-surface" : ""}`}
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <span class="spinner" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
 export function LoadError({
   error,
   retry,
@@ -357,6 +377,16 @@ export function Modal({
 
 const modules = new WeakMap<object, unknown>();
 
+export async function preloadDeferred<P extends object>(
+  load: () => Promise<{ default: ComponentType<P> }>,
+) {
+  const cached = modules.get(load) as ComponentType<P> | undefined;
+  if (cached) return cached;
+  const module = await load();
+  modules.set(load, module.default);
+  return module.default;
+}
+
 // The caller owns the surface, so lazy code and data use the same visible shell.
 export function Deferred<P extends object>({
   load,
@@ -374,10 +404,9 @@ export function Deferred<P extends object>({
   useEffect(() => {
     let active = true;
     setError(null);
-    load()
-      .then((module) => {
-        modules.set(load, module.default);
-        if (active) setComponent(() => module.default);
+    preloadDeferred(load)
+      .then((component) => {
+        if (active) setComponent(() => component);
       })
       .catch((failure) => {
         if (active) setError(failure);

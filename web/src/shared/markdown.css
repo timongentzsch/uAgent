@@ -27,7 +27,7 @@
 .markdown ol,
 .markdown-stream ul,
 .markdown-stream ol {
-  padding-left: calc(24rem / 14);
+  padding-left: var(--space-12);
 }
 .table-scroll {
   min-width: 0;
@@ -44,7 +44,7 @@
 .markdown-stream th,
 .markdown-stream td {
   border: 1px solid var(--line);
-  padding: calc(4rem / 14) calc(8rem / 14);
+  padding: var(--space-2) var(--space-4);
   /* Preserve intrinsic word widths; wide tables scroll in their wrapper. */
   overflow-wrap: normal;
   word-break: normal;
@@ -52,7 +52,7 @@
 .markdown blockquote,
 .markdown-stream blockquote {
   border-left: 2px solid var(--accent);
-  padding-left: calc(12rem / 14);
+  padding-left: var(--space-6);
   margin-left: 0;
   color: var(--muted);
 }
@@ -86,17 +86,17 @@
 
 .code-block {
   position: relative;
-  margin: calc(8rem / 14) 0;
+  margin: var(--space-4) 0;
 }
 .code-block pre {
   margin: 0;
-  min-height: calc(var(--control) + 12px);
-  padding-right: calc(var(--control) + 16px);
+  min-height: calc(var(--control) + var(--space-6));
+  padding-right: calc(var(--control) + 2 * var(--space-4));
 }
 .code-copy {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: var(--space-3);
+  right: var(--space-3);
 }
 .code-copy button {
   background: var(--surface);
@@ -112,15 +112,15 @@
 }
 @media (pointer: coarse) {
   .code-block {
-    --control: max(44px, 2.4rem);
+    --control: calc(44rem / 14);
   }
 }
 
 .diagram {
-  margin: 0.5rem 0;
+  margin: var(--gap) 0;
 }
 .diagram-preview {
-  height: clamp(140px, 25vh, 240px);
+  height: clamp(calc(140rem / 14), 25vh, calc(240rem / 14));
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -147,7 +147,10 @@
   font-size: 0.75rem;
 }
 .diagram-expanded {
-  width: min(1200px, calc(var(--content-width) - 16px));
+  width: min(
+    calc(1200rem / 14),
+    calc(var(--content-width) - 2 * var(--space-4))
+  );
 }
 .diagram-expanded img {
   display: block;

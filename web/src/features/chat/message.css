@@ -1,5 +1,5 @@
 .message {
-  --control: max(28px, 2rem);
+  --control: 2rem;
   width: 100%;
   min-width: 0;
   container-type: inline-size;
@@ -7,7 +7,7 @@
   /* break-word (not anywhere): long tokens still wrap, but flex and table
      children keep a sane intrinsic width instead of collapsing to a glyph. */
   overflow-wrap: break-word;
-  padding: calc(6rem / 14) calc(8rem / 14);
+  padding: var(--space-3) var(--space-4);
   /* No vertical margins anywhere in here: the transcript column owns all
      inter-message rhythm with one flex gap, so spacing cannot collapse or
      double up between header variants. */
@@ -37,14 +37,14 @@
 .message.turn-start {
   /* Additive over the column gap (never collapsing), so turn boundaries
      read wider by exactly this much. */
-  margin-top: calc(4rem / 14);
+  margin-top: var(--space-2);
 }
 .message > header {
   display: flex;
   align-items: center;
   gap: var(--gap);
   min-height: var(--control);
-  margin-bottom: calc(4rem / 14);
+  margin-bottom: var(--space-2);
   font-size: 0.75rem;
 }
 .message > header > span:first-child {
@@ -63,20 +63,20 @@
   color: var(--muted);
 }
 .message details {
-  margin: calc(6rem / 14) 0;
+  margin: var(--space-3) 0;
 }
 .message summary,
 .disclosure-row > summary {
   cursor: pointer;
   color: var(--muted);
-  min-height: 28px;
+  min-height: 2rem;
   padding: calc(3rem / 14) 0;
 }
 .disclosure-row > summary {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
   list-style: none;
   text-align: left;
 }
@@ -84,8 +84,8 @@
   display: none;
 }
 .disclosure-chevron {
-  width: 16px;
-  height: 16px;
+  width: calc(16rem / 14);
+  height: calc(16rem / 14);
   transition: transform 100ms ease;
 }
 .disclosure-row[open] > summary .disclosure-chevron {
@@ -103,8 +103,8 @@
 }
 .disclosure-body {
   border-left: 1px solid var(--line);
-  margin-left: 0.5rem;
-  padding-left: calc(12rem / 14);
+  margin-left: var(--gap);
+  padding-left: var(--space-6);
 }
 .message .action-menu {
   flex-shrink: 0;
@@ -113,7 +113,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
 }
 .tool-row-head > .tool-disclosure {
   min-width: 0;
@@ -125,31 +125,31 @@
   text-overflow: ellipsis;
 }
 .tool-body {
-  padding: calc(4rem / 14) 0;
+  padding: var(--space-2) 0;
 }
 @media (pointer: coarse) {
   .message {
-    --control: 32px;
+    --control: calc(32rem / 14);
   }
   .message summary,
   .disclosure-row > summary {
-    min-height: 44px;
+    min-height: calc(44rem / 14);
   }
 }
 @media (max-width: 600px) {
   .message {
-    padding: calc(4rem / 14) calc(6rem / 14);
+    padding: var(--space-2) var(--space-3);
   }
   .message > header,
   .tool-disclosure > summary {
-    gap: calc(4rem / 14);
+    gap: var(--space-2);
   }
 }
 
 @container (max-width: 500px) {
   .tool-disclosure > summary {
     grid-template-columns: auto auto minmax(0, 1fr) auto;
-    row-gap: calc(2rem / 14);
+    row-gap: var(--space-1);
   }
   .tool-disclosure > summary small {
     grid-column: 3;
@@ -178,8 +178,8 @@
 }
 .event-row > summary svg {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: calc(16rem / 14);
+  height: calc(16rem / 14);
 }
 .event-row > summary small,
 .event-row time {
@@ -207,7 +207,7 @@
   flex-wrap: wrap;
   gap: 0 0.3em;
   margin-inline: calc(-8rem / 14);
-  padding: calc(6rem / 14) calc(8rem / 14) calc(12rem / 14);
+  padding: var(--space-3) var(--space-4) var(--space-6);
   color: var(--muted);
   font-size: 0.75rem;
   text-align: left;

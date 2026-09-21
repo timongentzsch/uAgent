@@ -1,20 +1,21 @@
 .attachments {
   display: flex;
-  gap: calc(6rem / 14);
+  gap: var(--space-3);
   flex-wrap: wrap;
-  padding: calc(6rem / 14) 0;
+  padding: var(--space-3) 0;
   max-height: calc(var(--viewport-height) * 0.16);
   overflow: auto;
 }
 .composer .attachments {
-  padding: calc(4rem / 14) calc(8rem / 14);
+  padding: var(--space-2) var(--space-4);
 }
 .file-chip {
   display: inline-flex;
   align-items: center;
   gap: var(--gap);
-  padding: calc(4rem / 14) calc(6rem / 14);
-  border: 1px solid var(--line);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  background: var(--raised);
   max-width: 100%;
   min-width: 0;
   text-decoration: none;
@@ -32,8 +33,8 @@
   font-size: 0.7rem;
 }
 .file-chip img {
-  width: 36px;
-  height: 36px;
+  width: calc(36rem / 14);
+  height: calc(36rem / 14);
   object-fit: cover;
 }
 /* Rename control: reads as the file name until focused. */
@@ -57,11 +58,11 @@
 /* Inline @-mention references inside message text. */
 .mention-image {
   display: block;
-  max-width: min(100%, 320px);
-  max-height: 180px;
+  max-width: min(100%, calc(320rem / 14));
+  max-height: calc(180rem / 14);
   object-fit: contain;
   border: 1px solid var(--line);
-  margin: calc(4rem / 14) 0;
+  margin: var(--space-2) 0;
 }
 .mention-chip {
   vertical-align: baseline;

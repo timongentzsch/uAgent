@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath } from "node:url";
 const optionalAssets = new Set();
 const rendererManifest = () => ({
   name: "renderer-assets",
@@ -132,5 +133,11 @@ export default defineConfig({
     target: "es2022",
     cssCodeSplit: true,
     assetsInlineLimit: 0,
+    rollupOptions: {
+      input: {
+        index: fileURLToPath(new URL("index.html", import.meta.url)),
+        ui: fileURLToPath(new URL("ui.html", import.meta.url)),
+      },
+    },
   },
 });

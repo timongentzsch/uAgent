@@ -1,5 +1,22 @@
 import { Field } from "./ui.tsx";
 
+export const minimumZoom = 50;
+export const maximumZoom = 200;
+const conversationMeasure = 1040;
+
+export function normalizeZoom(value: number) {
+  return Math.min(maximumZoom, Math.max(minimumZoom, value || 100));
+}
+
+export function applyZoom(value: number) {
+  const zoom = normalizeZoom(value);
+  document.documentElement.style.setProperty("--zoom", String(zoom / 100));
+  document.documentElement.style.setProperty(
+    "--conversation-measure",
+    `${(conversationMeasure * 100) / zoom}px`,
+  );
+}
+
 export function SizeControls({
   zoom = 100,
   change,
@@ -18,8 +35,8 @@ export function SizeControls({
           type="range"
           aria-label="Zoom"
           aria-valuetext={`${zoom}%`}
-          min="50"
-          max="200"
+          min={minimumZoom}
+          max={maximumZoom}
           step="1"
           value={zoom}
           disabled={!change}

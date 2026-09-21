@@ -225,6 +225,9 @@ export function useHost(
           );
         }),
       );
+      // Catalogue access establishes authentication. Conversation data can
+      // fail or stall independently; expose the shell so another session and
+      // the retry action remain reachable while its snapshot loads.
       setAuthenticated(true);
       const id = selection.current;
       if (id && list.sessions.some((item) => item.id === id))

@@ -10,22 +10,22 @@
 .activity-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
 }
 
 /* Inline list owns its scroll; the toggle below it never scrolls. */
 .activity-list {
   min-width: 0;
   list-style: none;
-  margin: calc(4rem / 14) 0 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
-  max-height: min(160px, calc(var(--viewport-height) * 0.2));
+  max-height: min(calc(160rem / 14), calc(var(--viewport-height) * 0.2));
   overflow: auto;
   border-top: 1px solid var(--line);
 }
 
 .activity-empty {
-  padding: calc(8rem / 14) calc(2rem / 14);
+  padding: var(--space-4) var(--space-1);
 }
 
 .activity-row {
@@ -66,15 +66,21 @@
 .activity-past-toggle {
   justify-self: start;
   font-size: 0.8rem;
-  min-height: 32px;
+  min-height: calc(32rem / 14);
 }
 
 /* Modal: single grid, zero child margins, sections carry the labels. */
 /* Subagent/activity modal carries a full thread: widen toward the chat
    measure so rows wrap like the transcript instead of a narrow card. */
 .activity-view {
-  width: min(880px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
-  height: min(780px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+  width: min(
+    calc(880rem / 14),
+    calc(var(--content-width) - 2 * var(--dialog-gutter))
+  );
+  height: min(
+    calc(780rem / 14),
+    calc(var(--content-height) - 2 * var(--dialog-gutter))
+  );
 }
 
 .activity-view .dialog-body {
@@ -105,15 +111,15 @@
 
 .activity-detail > section {
   display: grid;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
 }
 
 .activity-info {
   flex: none;
-  max-height: min(32vh, 240px);
+  max-height: min(32vh, calc(240rem / 14));
   overflow: auto;
   border-bottom: 1px solid var(--line);
-  padding-bottom: calc(4rem / 14);
+  padding-bottom: var(--space-2);
 }
 
 .activity-info > summary {
@@ -235,7 +241,7 @@
 .communication-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
   align-items: baseline;
   font-size: 0.8rem;
 }
@@ -248,7 +254,7 @@
 .communication p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin: calc(4rem / 14) 0 0;
+  margin: var(--space-2) 0 0;
 }
 
 .child-thread .history-button {

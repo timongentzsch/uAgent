@@ -1,0 +1,134 @@
+html,
+body {
+  height: auto;
+  min-height: 100%;
+  overflow: auto;
+}
+
+body {
+  position: static;
+}
+
+#app {
+  container: none;
+  position: static;
+  width: auto;
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+}
+
+.showcase {
+  width: min(100%, var(--conversation-measure));
+  margin-inline: auto;
+  padding: calc(2 * var(--pad));
+}
+
+.showcase-head,
+.showcase-section-head,
+.showcase-title,
+.showcase-row,
+.status-sample {
+  display: flex;
+  align-items: center;
+}
+
+.showcase-head {
+  justify-content: space-between;
+  gap: var(--pad);
+  padding-bottom: calc(2 * var(--pad));
+  border-bottom: 1px solid var(--line);
+}
+
+.showcase-title {
+  gap: var(--gap);
+}
+
+.showcase-title .mark {
+  width: calc(32rem / 14);
+  height: calc(32rem / 14);
+}
+
+.showcase-head p,
+.showcase-section-head p {
+  color: var(--muted);
+  margin: var(--space-1) 0 0;
+}
+
+.showcase-section {
+  margin-block: calc(3 * var(--pad));
+}
+
+.showcase-section-head {
+  justify-content: space-between;
+  margin-bottom: var(--pad);
+}
+
+.showcase-grid {
+  display: grid;
+  gap: var(--gap);
+}
+
+.showcase-grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.showcase-card {
+  min-width: 0;
+  padding: var(--pad);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.showcase-row {
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+
+.token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--gap);
+  margin-top: var(--gap);
+}
+
+.token {
+  display: grid;
+  grid-template-columns: var(--control) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--gap);
+  color: var(--muted);
+}
+
+.token > span {
+  width: var(--control);
+  height: var(--control);
+  border: 1px solid var(--line);
+}
+
+.showcase textarea {
+  resize: vertical;
+}
+
+.showcase-banner {
+  border: 1px solid var(--line);
+}
+
+.status-sample {
+  gap: var(--gap);
+}
+
+@media (max-width: 600px) {
+  .showcase {
+    padding: var(--pad);
+  }
+
+  .showcase-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .showcase-grid-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

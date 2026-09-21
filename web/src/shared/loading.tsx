@@ -73,98 +73,6 @@ export function StatsSkeleton({
   );
 }
 
-const historyShapes = ["user", "response", "tool", "response"] as const;
-export function HistorySkeleton({ messages = 4 }: { messages?: number }) {
-  return (
-    <div {...busy} aria-label="Loading conversation…">
-      {Array.from({ length: messages }, (_, i) => {
-        const shape = historyShapes[i % historyShapes.length];
-        return (
-          <article key={i} className={`message ${shape}`} aria-hidden="true">
-            {shape === "tool" ? (
-              <div className="tool-row-head">
-                <Skeleton decorative rows={1} className="control-skeleton" />
-              </div>
-            ) : (
-              <>
-                <header>
-                  <Skeleton decorative rows={1} className="title-skeleton" />
-                </header>
-                <Bars count={shape === "user" ? 1 : 3} />
-              </>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-export function SidebarSkeleton() {
-  return (
-    <div className="sidebar-skeleton" {...busy} aria-label="Loading sessions…">
-      <div className="sidebar-head" aria-hidden="true">
-        <Skeleton decorative rows={1} className="brand-skeleton" />
-        <Skeleton decorative rows={1} className="action-skeleton" />
-      </div>
-      <div className="sidebar-sections" aria-hidden="true">
-        <Skeleton decorative rows={1} className="control-skeleton" />
-        <Skeleton decorative rows={1} className="control-skeleton" />
-      </div>
-      <div className="search" aria-hidden="true">
-        <Skeleton decorative rows={1} className="control-skeleton" />
-      </div>
-      <nav aria-hidden="true">
-        {[0, 1].map((group) => (
-          <section key={group}>
-            <h2>
-              <Skeleton decorative rows={1} className="title-skeleton" />
-            </h2>
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="session-row">
-                <div className="session session-mirror">
-                  <Skeleton decorative rows={1} className="title-skeleton" />
-                  <Skeleton decorative rows={1} className="meta-skeleton" />
-                </div>
-              </div>
-            ))}
-          </section>
-        ))}
-      </nav>
-      <footer aria-hidden="true">
-        <div className="connection">
-          <Skeleton decorative rows={1} className="title-skeleton" />
-        </div>
-        <Skeleton decorative rows={1} className="icon-skeleton" />
-        <Skeleton decorative rows={1} className="icon-skeleton" />
-      </footer>
-    </div>
-  );
-}
-
-export function ComposerSkeleton() {
-  return (
-    <section className="composer" {...busy} aria-label="Loading composer…">
-      {/* Real form element for identical shell styles; inert. */}
-      <form aria-hidden="true" onSubmit={(event) => event.preventDefault()}>
-        <Skeleton decorative rows={1} className="composer-input-skeleton" />
-        <div className="composer-actions">
-          <Skeleton decorative rows={1} className="icon-skeleton" />
-          <div className="model-control">
-            <Skeleton decorative rows={1} className="control-skeleton" />
-          </div>
-          <Skeleton decorative rows={1} className="icon-skeleton" />
-          <Skeleton
-            decorative
-            rows={1}
-            className="icon-skeleton send-skeleton"
-          />
-        </div>
-      </form>
-    </section>
-  );
-}
-
 export function SettingsSkeleton() {
   // Mirror the live settings form row for row: same Fields (labels,
   // values, help), real inert controls where the shape is textual
@@ -200,6 +108,9 @@ export function SettingsSkeleton() {
         </button>
         <button type="button" disabled>
           Advanced configuration
+        </button>
+        <button type="button" disabled>
+          UI showcase
         </button>
       </div>
       {["Install", "Notifications", "Paired devices"].map((name) => (
@@ -349,33 +260,6 @@ export function ManagementSkeleton({
       </div>
       <ManagementBodySkeleton kind={kind} />
     </div>
-  );
-}
-
-export function PairingSkeleton() {
-  return (
-    <main className="pairing" aria-busy="true">
-      <span className="sr-only" role="status">
-        Loading connection form…
-      </span>
-      <Skeleton decorative rows={1} className="wordmark-skeleton" />
-      <h1>Your local coding workspace.</h1>
-      <div className="pairing-copy" aria-hidden="true">
-        <Bars count={2} />
-      </div>
-      <form aria-hidden="true" onSubmit={(event) => event.preventDefault()}>
-        <label>
-          Single-use pairing code
-          <Control />
-        </label>
-        <button type="button" disabled>
-          Connect device
-        </button>
-      </form>
-      <div className="pairing-copy" aria-hidden="true">
-        <Bars count={2} />
-      </div>
-    </main>
   );
 }
 

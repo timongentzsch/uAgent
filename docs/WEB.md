@@ -66,9 +66,10 @@ responses. Disconnected views stop animation and disable commands.
   effective system prompt and child conversation. Compaction leaves the
   conversation in place without opening a dialog.
 - Settings contain appearance, zoom (the entire interface, conversation
-  included), default permissions
-  and registered configuration. Memory, skills, schedules and system prompts
-  have dedicated editors; see [Management](MANAGEMENT.md) and
+  included), default permissions and registered configuration. The UI showcase
+  opens the shared controls and loading states on a static page for focused
+  visual review. Memory, skills, schedules and system prompts have dedicated
+  editors; see [Management](MANAGEMENT.md) and
   [System prompts](SYSTEM_PROMPTS.md).
 
 Markdown supports code highlighting, math and fenced `mermaid` diagrams. Copy
@@ -105,9 +106,11 @@ UI state.
 
 The UI uses a single viewport owner, safe-area insets and shared popovers/modals.
 Input focus, orientation changes and returning from the background preserve the
-selected conversation and draft. Loading shells reserve the final columns and
-controls; content of unknown length can still grow when it arrives.
-Reduced-motion preferences disable animation.
+selected conversation and draft. Initial conversation loading uses one stable
+indeterminate spinner across authentication, module and snapshot preparation.
+Skeletons are reserved for lists and forms whose final geometry is known.
+Content of unknown length can still grow when it arrives. Reduced-motion
+preferences disable animation.
 
 ## Phone access and installation
 
@@ -173,23 +176,24 @@ npm run test:browser --prefix web
 ```
 
 `use-host.ts` owns connection/replay, `store.ts` the event projection, and feature
-modules render it. Shared controls, popovers, skeletons and spacing tokens keep
-layout changes centralized. `quantities.ts` and native quantity helpers use
-decimal display units; raw exports retain exact values. Native and browser tests
-use mock providers. Physical iOS keyboard, install and notification behavior
-still requires device validation; browser emulation does not establish it.
+modules render it. Shared controls, popovers, spinners, structural skeletons and
+spacing tokens keep layout changes centralized. `/ui.html` renders those real
+shared components without a host connection, so themes, scale and states can be
+reviewed in isolation. `quantities.ts` and native quantity helpers use decimal
+display units; raw exports retain exact values. Native and browser tests use mock
+providers. Physical iOS keyboard, install and notification behavior still
+requires device validation; browser emulation does not establish it.
 
 ### Frontend bundle baseline (`web/scripts/size.js`, CI-reported)
 
-Measured 2026-09-20 after the loading-layout refactor. Core shell CSS is
-available before lazy feature modules so loading and loaded surfaces keep their
-columns and dialog bounds. `npm run size --prefix web` records raw and gzip
-bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
-(mermaid, katex, highlight) stay in lazy chunks.
+Measured 2026-09-21 after the scale, loading and shared-control refactor. Core
+shell CSS is available before lazy feature modules. `npm run size --prefix web`
+records raw and gzip bytes in CI for review; it has no fixed byte ceiling. Heavy
+renderers (mermaid, katex, highlight) stay in lazy chunks.
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 72,307 | 25,180 |
-| Initial CSS | 21,721 | 5,268 |
-| App (excl. diagrams) | 937,540 | 493,955 |
-| Diagrams (lazy) | 5,113,369 | 1,472,046 |
+| Initial JS | 71,824 | 26,157 |
+| Initial CSS | 22,569 | 5,394 |
+| App (excl. diagrams) | 942,291 | 496,577 |
+| Diagrams (lazy) | 5,118,686 | 1,473,729 |

@@ -6,6 +6,7 @@
   --bg: #000;
   --surface: #0a0a0a;
   --raised: #171717;
+  --hover: #232323;
   --placeholder: #414141;
   --text: #f5f5f5;
   --muted: #a3a3a3;
@@ -32,16 +33,20 @@
   --content-height: calc(
     var(--viewport-height) - var(--safe-top) - var(--safe-bottom)
   );
-  --surface-inset: calc(8rem / 14);
+  --conversation-measure: 1040px;
+  --space-1: calc(2rem / 14);
+  --space-2: calc(4rem / 14);
+  --space-3: calc(6rem / 14);
+  --space-4: calc(8rem / 14);
+  --space-6: calc(12rem / 14);
+  --space-12: calc(24rem / 14);
+  --surface-inset: var(--space-4);
   --dialog-gutter: var(--surface-inset);
-  /* Touch-target floor never shrinks below 28px (WCAG 2.5.8: 24px min). */
-  --control: max(28px, 2.2rem);
-  /* Spacing scales with zoom via rem, exactly like type. The N/14
-     fractional form keeps 100% pixel-exact with the px design base
-     (root is 14px): use calc(Nrem / 14) for fixed design px, never
-     rounded decimals (they drift sub-pixels and break geometry). */
-  --gap: calc(8rem / 14);
-  --pad: calc(12rem / 14);
+  /* Controls and spacing use rem throughout so zoom also changes density.
+     Fixed pixel floors made the 50–75% range mostly cosmetic. */
+  --control: 2.2rem;
+  --gap: var(--space-4);
+  --pad: var(--space-6);
   background: var(--bg);
   color: var(--text);
   /* % of the user's browser font size (never px) so their preference is
@@ -57,6 +62,7 @@
   --bg: #fff;
   --surface: #fafafa;
   --raised: #eee;
+  --hover: #e2e2e2;
   --placeholder: #ccc;
   --text: #111;
   --muted: #666;
@@ -114,18 +120,23 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 button,
+.file-button,
+.button-link {
+  border: 1px solid transparent;
+  background: var(--raised);
+}
 input,
 select,
 textarea {
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: var(--raised);
 }
 input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  min-width: 18px;
-  min-height: 18px;
-  margin: calc(2rem / 14) 0 0;
+  width: calc(18rem / 14);
+  height: calc(18rem / 14);
+  min-width: calc(18rem / 14);
+  min-height: calc(18rem / 14);
+  margin: var(--space-1) 0 0;
   padding: 0;
   accent-color: var(--accent);
 }
@@ -144,15 +155,17 @@ input[type="checkbox"] {
   font-weight: 500;
 }
 button,
-.file-button {
+.file-button,
+.button-link {
   min-height: var(--control);
-  padding: calc(4rem / 14) calc(8rem / 14);
+  padding: var(--space-2) var(--space-4);
   cursor: pointer;
   line-height: 1.3;
 }
 button:hover,
-.file-button:hover {
-  background: var(--raised);
+.file-button:hover,
+.button-link:hover {
+  background: var(--hover);
 }
 button:disabled,
 select:disabled {
@@ -172,6 +185,17 @@ select:disabled {
   border-color: transparent;
   background: transparent;
 }
+.quiet:hover {
+  background: var(--raised);
+}
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  text-decoration: none;
+  width: fit-content;
+}
 .icon-button {
   display: inline-flex;
   align-items: center;
@@ -182,8 +206,8 @@ select:disabled {
   flex-shrink: 0;
 }
 .lucide {
-  width: 16px;
-  height: 16px;
+  width: calc(16rem / 14);
+  height: calc(16rem / 14);
   flex-shrink: 0;
   vertical-align: -3px;
   stroke-width: 1.75;
@@ -192,7 +216,7 @@ select:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: calc(6rem / 14);
+  gap: var(--space-3);
 }
 button:focus-visible,
 a:focus-visible,
@@ -214,10 +238,10 @@ textarea {
   width: 100%;
   min-width: 0;
   min-height: var(--control);
-  padding: calc(4rem / 14) calc(8rem / 14);
+  padding: var(--space-2) var(--space-4);
 }
 input[type="range"] {
-  min-height: 24px;
+  min-height: calc(24rem / 14);
   margin: 0;
   padding: 0;
   border: 0;
@@ -234,7 +258,7 @@ input[type="range"] {
 }
 .select > .lucide {
   position: absolute;
-  right: 12px;
+  right: var(--space-6);
   top: 50%;
   transform: translateY(-50%);
   pointer-events: none;
@@ -242,7 +266,7 @@ input[type="range"] {
 label,
 .field {
   display: grid;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
   min-width: 0;
 }
 .field-label {
@@ -290,10 +314,10 @@ pre {
   font: inherit;
   font-size: 0.92em;
   line-height: 1.55;
-  padding: calc(12rem / 14);
+  padding: var(--space-6);
   background: var(--surface);
   border: 1px solid var(--line);
-  margin: calc(8rem / 14) 0;
+  margin: var(--space-4) 0;
 }
 code {
   font-family: inherit;
@@ -357,7 +381,7 @@ pre code {
 }
 .error-banner {
   flex-shrink: 0;
-  padding: calc(6rem / 14) calc(12rem / 14);
+  padding: var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--line);
   background: var(--raised);
   display: flex;
@@ -370,7 +394,7 @@ pre code {
 }
 .update-banner {
   flex-shrink: 0;
-  padding: calc(6rem / 14) calc(12rem / 14);
+  padding: var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--line);
   border-left: 3px solid var(--live);
   background: var(--raised);
@@ -381,15 +405,42 @@ pre code {
   font-size: 0.85rem;
 }
 .load-error {
-  padding: calc(8rem / 14) 0;
+  padding: var(--space-4) 0;
   overflow-wrap: anywhere;
 }
 .load-error p {
   margin-top: 0;
 }
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--muted);
+  min-height: var(--control);
+  font-size: 0.8rem;
+}
+.loading-surface {
+  flex: 1;
+  width: 100%;
+  min-height: calc(4 * var(--control));
+}
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: max(1px, 0.12rem) solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .mark {
-  width: 24px;
-  height: 24px;
+  width: var(--space-12);
+  height: var(--space-12);
   display: inline-block;
   vertical-align: middle;
   flex-shrink: 0;
@@ -398,8 +449,8 @@ pre code {
   text-decoration: none;
 }
 .brand .mark {
-  width: 32px;
-  height: 32px;
+  width: calc(32rem / 14);
+  height: calc(32rem / 14);
 }
 
 /* The shell has one header per column; only the transcript owns chat scrolling. */
@@ -407,7 +458,7 @@ pre code {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: min(30vw, 260px) minmax(0, 1fr);
+  grid-template-columns: min(30vw, calc(260rem / 14)) minmax(0, 1fr);
   overflow: hidden;
 }
 .sidebar {
@@ -416,27 +467,20 @@ pre code {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
-  padding: calc(8rem / 14);
+  padding: var(--space-4);
   min-height: 0;
   min-width: 0;
-}
-.sidebar-skeleton {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: var(--gap);
 }
 .sidebar-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
-  min-height: 40px;
+  min-height: calc(40rem / 14);
 }
 .sidebar-head button {
   font-size: 0.8rem;
-  padding-inline: calc(6rem / 14);
+  padding-inline: var(--space-3);
 }
 .search input {
   font-size: 0.8rem;
@@ -447,13 +491,13 @@ pre code {
   min-height: 0;
 }
 .sidebar nav section + section {
-  margin-top: calc(8rem / 14);
+  margin-top: var(--space-4);
 }
 .sidebar h2 {
   font-size: 0.75rem;
   font-weight: 400;
   color: var(--muted);
-  padding: calc(8rem / 14);
+  padding: var(--space-4);
 }
 .folder-label {
   display: flex;
@@ -488,7 +532,7 @@ pre code {
   text-align: left;
   border: 0;
   background: none;
-  padding: calc(6rem / 14) calc(8rem / 14);
+  padding: var(--space-3) var(--space-4);
 }
 .session > span {
   display: block;
@@ -501,7 +545,7 @@ pre code {
   display: block;
   font-size: 0.7rem;
   color: var(--muted);
-  margin-top: calc(2rem / 14);
+  margin-top: var(--space-1);
   /* Single line, always: activity labels stream in while a turn runs
      and a wrap would change the row height (sidebar ticking). The
      time keeps its title tooltip; overflow ellipsizes like the title. */
@@ -510,13 +554,13 @@ pre code {
   text-overflow: ellipsis;
 }
 .session small .activity-status {
-  margin-right: calc(6rem / 14);
+  margin-right: var(--space-3);
 }
 .status-led {
   display: inline-block;
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: var(--space-4);
+  height: var(--space-4);
   border-radius: 50%;
   border: 1.5px solid currentColor;
   box-sizing: border-box;
@@ -537,9 +581,9 @@ pre code {
 .sidebar footer {
   display: flex;
   align-items: center;
-  gap: calc(4rem / 14);
+  gap: var(--space-2);
   border-top: 1px solid var(--line);
-  padding-top: calc(8rem / 14);
+  padding-top: var(--space-4);
 }
 .connection {
   flex: 1;
@@ -547,7 +591,7 @@ pre code {
   font-size: 0.7rem;
 }
 .connection .status-led {
-  margin-right: calc(6rem / 14);
+  margin-right: var(--space-3);
 }
 .conversation {
   min-width: 0;
@@ -562,8 +606,8 @@ pre code {
   align-items: center;
   gap: var(--gap);
   flex-shrink: 0;
-  min-height: 44px;
-  padding: calc(4rem / 14) var(--pad);
+  min-height: calc(44rem / 14);
+  padding: var(--space-2) var(--pad);
   border-bottom: 1px solid var(--line);
 }
 .conversation-head > div:first-of-type {
@@ -585,7 +629,8 @@ pre code {
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
-  padding: var(--gap) max(var(--pad), calc((100% - 1040px) / 2));
+  padding: var(--gap)
+    max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
   overscroll-behavior: contain;
 }
 /* Single spacing mechanism for the whole column: uniform gap, zero
@@ -604,27 +649,27 @@ pre code {
   font-size: 0.8rem;
   color: var(--muted);
   border: 1px dashed var(--line);
-  padding: calc(8rem / 14);
+  padding: var(--space-4);
 }
 .empty {
   margin: auto;
   text-align: center;
-  max-width: 520px;
+  max-width: calc(520rem / 14);
   padding: var(--pad);
 }
 .transcript .empty {
-  padding-top: min(48px, calc(var(--viewport-height) * 0.06));
+  padding-top: min(calc(48rem / 14), calc(var(--viewport-height) * 0.06));
 }
 .empty h1,
 .empty h2 {
-  margin: calc(12rem / 14) 0;
+  margin: var(--space-6) 0;
 }
 .empty p {
   color: var(--muted);
 }
 .mark.cursor-mark {
-  width: 56px;
-  height: 56px;
+  width: calc(56rem / 14);
+  height: calc(56rem / 14);
 }
 .history-button {
   display: block;
@@ -643,25 +688,28 @@ pre code {
   position: relative;
   flex-shrink: 0;
   min-width: 0;
-  margin: 0 max(var(--pad), calc((100% - 1040px) / 2));
-  padding: calc(4rem / 14) 0;
+  margin: 0 max(var(--pad), calc((100% - var(--conversation-measure)) / 2));
+  padding: var(--space-2) 0;
   background: var(--bg);
-  max-height: calc(var(--viewport-height) - 100px);
+  max-height: calc(var(--viewport-height) - calc(100rem / 14));
   overflow: visible;
+}
+.loading-composer {
+  min-height: calc(3.5 * var(--control));
 }
 .composer > form {
   gap: 0;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  border: 1px solid transparent;
+  background: var(--raised);
 }
 .composer > form > textarea {
   display: block;
   border: 0;
   resize: none;
-  min-height: max(40px, calc(1.5em + 12px));
-  max-height: min(160px, calc(var(--viewport-height) * 0.25));
+  min-height: max(calc(40rem / 14), calc(1.5em + var(--space-6)));
+  max-height: min(calc(160rem / 14), calc(var(--viewport-height) * 0.25));
   background: transparent;
-  padding: calc(6rem / 14) calc(8rem / 14);
+  padding: var(--space-3) var(--space-4);
   outline-offset: -2px;
   overflow: auto;
   font-size: calc(16rem / 14);
@@ -670,8 +718,8 @@ pre code {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(4rem / 14);
-  padding: calc(2rem / 14) calc(4rem / 14) calc(4rem / 14);
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2);
   min-width: 0;
 }
 .composer-actions > .primary {
@@ -687,7 +735,7 @@ pre code {
   text-align: left;
   justify-content: flex-start;
   font-size: 0.8rem;
-  padding-inline: calc(6rem / 14);
+  padding-inline: var(--space-3);
 }
 .model-selector > span {
   overflow: hidden;
@@ -702,7 +750,7 @@ pre code {
 }
 .permission-control > button {
   font-size: 0.8rem;
-  padding-inline: calc(6rem / 14);
+  padding-inline: var(--space-3);
 }
 .file-button {
   position: relative;
@@ -723,7 +771,7 @@ pre code {
 }
 .jump {
   position: absolute;
-  bottom: calc(100% + calc(4rem / 14));
+  bottom: calc(100% + var(--space-2));
   right: 0;
   background: var(--raised);
   font-size: 0.75rem;
@@ -734,16 +782,16 @@ pre code {
   justify-content: space-between;
   gap: var(--gap);
   min-width: 0;
-  padding-top: calc(4rem / 14);
+  padding-top: var(--space-2);
 }
 .activity-toggle {
   display: flex;
   align-items: center;
-  gap: calc(6rem / 14);
+  gap: var(--space-3);
   text-align: left;
   min-width: 0;
-  min-height: 24px;
-  padding: 0 calc(2rem / 14);
+  min-height: calc(24rem / 14);
+  padding: 0 var(--space-1);
   font-size: 0.75rem;
 }
 .activity-status {
@@ -760,8 +808,8 @@ pre code {
 }
 .metrics > button {
   font-size: inherit;
-  min-height: 24px;
-  padding: 0 calc(6rem / 14);
+  min-height: calc(24rem / 14);
+  padding: 0 var(--space-3);
   white-space: nowrap;
 }
 .unread-dot {
@@ -778,10 +826,10 @@ pre code {
   flex-direction: column;
   gap: var(--gap);
   border: 1px solid var(--accent);
-  padding: calc(12rem / 14);
+  padding: var(--space-6);
   max-height: min(
     calc(var(--viewport-height) * 0.65),
-    calc(var(--viewport-height) - 100px)
+    calc(var(--viewport-height) - calc(100rem / 14))
   );
 }
 .decision-preview {
@@ -790,7 +838,7 @@ pre code {
   font-size: 0.85rem;
 }
 .decision-preview pre {
-  margin-top: calc(6rem / 14);
+  margin-top: var(--space-3);
 }
 .decision form {
   display: flex;
@@ -803,7 +851,7 @@ pre code {
 }
 .decision label {
   flex: 1;
-  min-width: 100px;
+  min-width: calc(100rem / 14);
   font-size: 0.85rem;
 }
 .decision h2 {
@@ -823,11 +871,10 @@ pre code {
   background: var(--surface);
   color: var(--text);
   overflow: auto;
-  box-shadow: 0 6px 24px #0003;
 }
 .menu-panel {
-  min-width: 180px;
-  padding: calc(4rem / 14);
+  min-width: calc(180rem / 14);
+  padding: var(--space-2);
 }
 .menu-panel button {
   display: block;
@@ -837,14 +884,14 @@ pre code {
   font-size: 0.85rem;
 }
 .model-panel {
-  width: 420px;
+  width: calc(420rem / 14);
 }
 .model-form {
   display: grid;
   gap: var(--gap);
 }
 .permission-panel {
-  width: 260px;
+  width: calc(260rem / 14);
 }
 .dialog-actions,
 .editor-actions {
@@ -885,7 +932,10 @@ dialog {
   color: var(--text);
   border: 1px solid var(--line);
   padding: 0;
-  width: min(560px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  width: min(
+    calc(560rem / 14),
+    calc(var(--content-width) - 2 * var(--dialog-gutter))
+  );
   max-height: max(0px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
   overflow: hidden;
 }
@@ -929,7 +979,10 @@ dialog section {
   margin: var(--pad) 0;
 }
 .settings-view {
-  width: min(700px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
+  width: min(
+    calc(700rem / 14),
+    calc(var(--content-width) - 2 * var(--dialog-gutter))
+  );
 }
 .settings-fields {
   display: grid;
@@ -941,14 +994,17 @@ dialog section {
 .settings-section {
   border-top: 1px solid var(--line);
   margin-top: var(--pad);
-  padding-top: calc(4rem / 14);
+  padding-top: var(--space-2);
 }
 .settings-section > summary {
   cursor: pointer;
-  padding: calc(6rem / 14) 0;
+  padding: var(--space-3) 0;
 }
 .statistics-view {
-  height: min(680px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+  height: min(
+    calc(680rem / 14),
+    calc(var(--content-height) - 2 * var(--dialog-gutter))
+  );
 }
 .stats {
   margin: 0;
@@ -957,7 +1013,7 @@ dialog section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   gap: var(--pad);
-  padding: calc(6rem / 14) 0;
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);
   font-size: 0.85rem;
 }
@@ -971,8 +1027,14 @@ dialog section {
 }
 .raw-view,
 .prompt-view {
-  width: min(1100px, calc(var(--content-width) - 2 * var(--dialog-gutter)));
-  height: min(900px, calc(var(--content-height) - 2 * var(--dialog-gutter)));
+  width: min(
+    calc(1100rem / 14),
+    calc(var(--content-width) - 2 * var(--dialog-gutter))
+  );
+  height: min(
+    calc(900rem / 14),
+    calc(var(--content-height) - 2 * var(--dialog-gutter))
+  );
 }
 .raw-view > .dialog-body {
   display: flex;
@@ -1047,10 +1109,10 @@ dialog section {
   flex-direction: column;
   text-align: left;
   width: 100%;
-  gap: calc(2rem / 14);
+  gap: var(--space-1);
   border: 0;
   background: none;
-  padding: calc(6rem / 14) var(--gap);
+  padding: var(--space-3) var(--gap);
   overflow-wrap: anywhere;
 }
 .management-editor {
@@ -1114,15 +1176,15 @@ dialog section {
   display: none;
 }
 .pairing {
-  max-width: 560px;
+  max-width: calc(560rem / 14);
   margin: auto;
   padding: var(--pad);
   min-height: 0;
   overflow: auto;
 }
 .pairing .wordmark {
-  width: 48px;
-  height: 48px;
+  width: calc(48rem / 14);
+  height: calc(48rem / 14);
   margin-bottom: var(--gap);
 }
 .pairing h1 {
@@ -1139,7 +1201,7 @@ dialog section {
   justify-self: start;
 }
 .skeleton {
-  padding: calc(12rem / 14) 0;
+  padding: var(--space-6) 0;
   width: 100%;
 }
 .loading-label {
@@ -1182,14 +1244,10 @@ dialog section {
   height: var(--control);
   width: 100%;
 }
-/* Inert structural mirrors (loading.tsx): same shells as the live
-   surfaces, shimmer blocks only. Widths defeat the nth-child variation
-   below because single bars never match 3n+2/3n. */
+/* Structural mirrors use the live surface geometry and reserve only
+   data-dependent rows. */
 .title-skeleton,
-.meta-skeleton,
-.brand-skeleton,
-.icon-skeleton,
-.composer-input-skeleton {
+.meta-skeleton {
   padding: 0;
 }
 .title-skeleton span {
@@ -1200,65 +1258,24 @@ dialog section {
   height: 0.75em;
   width: 68%;
 }
-.brand-skeleton {
-  width: 32px;
-}
-.brand-skeleton span {
-  height: 32px;
-  width: 32px;
-}
-.wordmark-skeleton {
-  width: 48px;
-  padding: 0;
-  margin-bottom: var(--gap);
-}
-.wordmark-skeleton span {
-  width: 48px;
-  height: 48px;
-}
-.pairing-copy {
-  margin: var(--pad) 0;
-}
-.session-mirror {
-  min-height: var(--control);
-  padding: calc(4rem / 14) calc(8rem / 14);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: calc(2rem / 14);
-}
-.icon-skeleton {
-  width: var(--control);
-}
-.icon-skeleton span {
-  height: var(--control);
-  width: 100%;
-}
-.composer-actions > .send-skeleton {
-  margin-left: auto;
-}
-.composer-input-skeleton span {
-  min-height: max(40px, calc(1.5em + 12px));
-  width: 100%;
-}
 .action-skeleton {
   width: auto;
   padding: 0;
 }
 .action-skeleton span {
   height: var(--control);
-  width: 96px;
+  width: calc(96rem / 14);
 }
 .stats .skeleton {
-  padding: calc(4rem / 14) 0;
+  padding: var(--space-2) 0;
 }
 .composer .status-line > .skeleton {
-  padding: calc(6rem / 14) 0;
+  padding: var(--space-3) 0;
 }
 
 @media (pointer: coarse) {
   :root {
-    --control: max(44px, 2.4rem);
+    --control: calc(44rem / 14);
   }
   :root input,
   :root select,
@@ -1270,7 +1287,7 @@ dialog section {
   }
   .activity-toggle,
   .metrics > button {
-    min-height: 32px;
+    min-height: calc(32rem / 14);
   }
 }
 @media (max-width: 900px) {
@@ -1287,7 +1304,7 @@ dialog section {
     margin: 0;
     height: var(--content-height);
     max-height: var(--content-height);
-    width: min(320px, calc(var(--content-width) - 2 * var(--pad)));
+    width: min(calc(320rem / 14), calc(var(--content-width) - 2 * var(--pad)));
     gap: 0;
   }
   .drawer > .dialog-body {
@@ -1295,7 +1312,7 @@ dialog section {
     flex-direction: column;
     flex: 1;
     gap: var(--gap);
-    padding: calc(8rem / 14);
+    padding: var(--space-4);
   }
   .drawer .sidebar-head .brand {
     display: none;
@@ -1306,38 +1323,38 @@ dialog section {
 }
 @media (max-width: 600px) {
   :root {
-    --pad: calc(8rem / 14);
-    --gap: calc(6rem / 14);
+    --pad: var(--space-4);
+    --gap: var(--space-3);
   }
   .conversation-head h1 {
     font-size: 0.95rem;
   }
   .transcript {
     /* Outer scroll-area inset is page layout; rem keeps it on zoom. */
-    padding: calc(8rem / 14);
+    padding: var(--space-4);
     scrollbar-gutter: auto;
   }
   .composer {
-    margin: 0 calc(8rem / 14);
-    padding-top: calc(4rem / 14);
+    margin: 0 var(--space-4);
+    padding-top: var(--space-2);
   }
   .composer-actions {
-    gap: calc(2rem / 14);
-    padding-inline: calc(4rem / 14);
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
   }
   .model-selector {
     font-size: 0.72rem;
-    gap: calc(4rem / 14);
-    padding-inline: calc(2rem / 14);
+    gap: var(--space-2);
+    padding-inline: var(--space-1);
   }
   .model-selector > .lucide:first-child {
     display: none;
   }
   .permission-control > button {
     min-width: var(--control);
-    padding-inline: calc(4rem / 14);
+    padding-inline: var(--space-2);
     font-size: 0.75rem;
-    gap: calc(4rem / 14);
+    gap: var(--space-2);
   }
   .status-line {
     flex-wrap: wrap;
@@ -1401,19 +1418,19 @@ dialog section {
 }
 @container app (max-height: 500px) {
   .conversation-head {
-    min-height: 40px;
+    min-height: calc(40rem / 14);
   }
   .composer > form > textarea {
-    min-height: max(38px, calc(1.5em + 12px));
+    min-height: max(calc(38rem / 14), calc(1.5em + var(--space-6)));
     max-height: calc(var(--viewport-height) * 0.2);
-    padding-block: calc(6rem / 14);
+    padding-block: var(--space-3);
   }
   .transcript {
-    padding-block: calc(4rem / 14);
+    padding-block: var(--space-2);
   }
   .decision {
-    max-height: calc(var(--viewport-height) - 100px);
-    padding: calc(8rem / 14);
+    max-height: calc(var(--viewport-height) - calc(100rem / 14));
+    padding: var(--space-4);
   }
   .decision-preview pre {
     max-height: calc(var(--viewport-height) * 0.22);

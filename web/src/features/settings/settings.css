@@ -5,7 +5,7 @@
   position: sticky;
   top: calc(-1 * var(--pad));
   background: var(--bg);
-  padding: calc(8rem / 14) 0;
+  padding: var(--space-4) 0;
   z-index: 1;
 }
 .device {

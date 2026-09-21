@@ -1,12 +1,15 @@
 import { test, expect } from "./fixtures.js";
 import { readFile, writeFile } from "node:fs/promises";
 
-test("mobile chrome keeps an opaque safe area and applies the theme before app startup", async ({
+test("mobile chrome keeps an opaque safe area and applies appearance before app startup", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
-  await page.addInitScript(() => localStorage.setItem("uagent-theme", "light"));
+  await page.addInitScript(() => {
+    localStorage.setItem("uagent-theme", "light");
+    localStorage.setItem("uagent-zoom", "50");
+  });
   let release;
   const startup = new Promise((resolve) => (release = resolve));
   await page.route("**/assets/index-*.js", async (route) => {
@@ -16,6 +19,11 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
   try {
     await page.goto("/", { waitUntil: "commit" });
     await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("html")).toHaveCSS("--zoom", "0.5");
+    await expect(page.locator("html")).toHaveCSS(
+      "--conversation-measure",
+      "2080px",
+    );
     await expect(page.locator("body")).toHaveCSS(
       "background-color",
       "rgb(255, 255, 255)",
@@ -25,6 +33,14 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
       "content",
       "#ffffff",
     );
+    await page.evaluate(() => {
+      localStorage.setItem("uagent-zoom", "100");
+      document.documentElement.style.setProperty("--zoom", "1");
+      document.documentElement.style.setProperty(
+        "--conversation-measure",
+        "1040px",
+      );
+    });
   } finally {
     release();
   }
@@ -108,6 +124,69 @@ test("mobile chrome keeps an opaque safe area and applies the theme before app s
   expect(landscape.y + landscape.height).toBeLessThanOrEqual(390 - 21 - 8);
   expect(landscape.x).toBeGreaterThanOrEqual(47 + 8);
   expect(landscape.x + landscape.width).toBeLessThanOrEqual(844 - 47 - 8);
+});
+
+test("fresh conversation reload keeps one stable loading state", async ({
+  page,
+  session,
+}) => {
+  let releaseCatalogue;
+  let releaseSnapshot;
+  let releaseChat;
+  const catalogueGate = new Promise((resolve) => (releaseCatalogue = resolve));
+  const snapshotGate = new Promise((resolve) => (releaseSnapshot = resolve));
+  const chatGate = new Promise((resolve) => (releaseChat = resolve));
+  let catalogueRequested;
+  let snapshotRequested;
+  const sawCatalogue = new Promise((resolve) => (catalogueRequested = resolve));
+  const sawSnapshot = new Promise((resolve) => (snapshotRequested = resolve));
+
+  await page.route("**/api/sessions?refresh=1", async (route) => {
+    const response = await route.fetch();
+    catalogueRequested();
+    await catalogueGate;
+    await route.fulfill({ response });
+  });
+  await page.route(`**/api/sessions/${session.id}`, async (route) => {
+    const response = await route.fetch();
+    snapshotRequested();
+    await snapshotGate;
+    await route.fulfill({ response });
+  });
+  await page.route("**/assets/chat-*.js", async (route) => {
+    await chatGate;
+    await route.continue();
+  });
+
+  try {
+    await page.goto(`/#session=${session.id}`);
+    await sawCatalogue;
+    const loader = page.locator(".conversation .loading-indicator");
+    await expect(loader).toHaveText("Loading conversation…");
+    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+    const first = await loader.boundingBox();
+
+    releaseCatalogue();
+    await sawSnapshot;
+    await expect(loader).toHaveText("Loading conversation…");
+    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+
+    releaseSnapshot();
+    await expect(loader).toHaveText("Loading conversation…");
+    const second = await loader.boundingBox();
+    expect(Math.abs(first.x - second.x)).toBeLessThan(1);
+    expect(Math.abs(first.y - second.y)).toBeLessThan(1);
+    await expect(page.locator(".conversation .skeleton")).toHaveCount(0);
+
+    releaseChat();
+    await expect(
+      page.getByRole("heading", { name: "What are we working on?" }),
+    ).toBeVisible();
+  } finally {
+    releaseCatalogue();
+    releaseSnapshot();
+    releaseChat();
+  }
 });
 
 test("system prompt editing shares revisions, replacement and request previews", async ({

@@ -75,8 +75,9 @@ json CollaboratorCommunication(const std::string& id) {
     json event = json::parse(line, nullptr, false);
     if (!event.is_object()) continue;
     messages.push_back(std::move(event));
-    if (messages.size() > kMaxCollaboratorRecords)
+    if (messages.size() > kMaxCollaboratorRecords) {
       messages.erase(messages.begin());
+    }
   }
   return messages;
 }

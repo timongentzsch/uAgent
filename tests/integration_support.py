@@ -3,6 +3,7 @@ import base64
 import errno
 import fcntl
 import json
+import math
 import os
 import pathlib
 import pty
@@ -29,11 +30,19 @@ SMALL_PNG = base64.b64decode(
 # coin flip on a shared runner. Those jobs raise the multiplier instead of each
 # deadline being retuned by hand.
 TIMEOUT_SCALE = float(os.environ.get("UAGENT_TEST_TIMEOUT_SCALE", "1"))
+REQUEST_TIMEOUT_SECONDS = 5
+FIRST_EVENT_TIMEOUT_SECONDS = 2
+STREAM_IDLE_TIMEOUT_SECONDS = 5
 
 
 def budget(seconds):
     """Scale a test-side deadline for a slow build."""
     return seconds * TIMEOUT_SCALE
+
+
+def timeout_setting(seconds):
+    """Render an instrumentation-scaled whole-second runtime deadline."""
+    return str(max(1, math.ceil(budget(seconds))))
 
 
 def event(delta=None, finish="stop", usage=None):
@@ -208,9 +217,9 @@ def base_env(home, url):
             "UAGENT_BASE_URL": url,
             "UAGENT_MODEL": "test",
             "UAGENT_CONTEXT": "16384",
-            "UAGENT_REQUEST_TIMEOUT": "5",
-            "UAGENT_FIRST_EVENT_TIMEOUT": "2",
-            "UAGENT_STREAM_IDLE_TIMEOUT": "2",
+            "UAGENT_REQUEST_TIMEOUT": timeout_setting(REQUEST_TIMEOUT_SECONDS),
+            "UAGENT_FIRST_EVENT_TIMEOUT": timeout_setting(FIRST_EVENT_TIMEOUT_SECONDS),
+            "UAGENT_STREAM_IDLE_TIMEOUT": timeout_setting(STREAM_IDLE_TIMEOUT_SECONDS),
         }
     )
     return env

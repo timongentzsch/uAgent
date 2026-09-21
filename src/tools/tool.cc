@@ -173,9 +173,9 @@ bool ProfileEnabled(std::string_view profile, const Tool& tool) {
            tool.name == "activity" || tool.name == "uagent" ||
            tool.name == "session";
   }
-  static const std::unordered_set<std::string> minimal = {
+  static const std::unordered_set<std::string> kMinimal = {
       "read_path", "grep", "run", "activity", "uagent", "session"};
-  return minimal.contains(tool.name);
+  return kMinimal.contains(tool.name);
 }
 
 bool KnownTool(const std::vector<Tool>& tools, std::string_view name) {
@@ -243,8 +243,9 @@ void ToolSelection::Restore(const json& value) {
   if (!overrides.is_object()) return;
   for (const auto& [name, active] : overrides.items()) {
     if (overrides_.size() >= kMaxToolSelectionOverrides) break;
-    if (!name.empty() && name.size() <= kToolNameChars && active.is_boolean())
+    if (!name.empty() && name.size() <= kToolNameChars && active.is_boolean()) {
       overrides_[name] = active.get<bool>();
+    }
   }
 }
 

@@ -165,7 +165,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
      Sensitivity::kPublic,
      kScopeUser,
      "web",
-     "web listener address: loopback by default, all interfaces only when explicitly configured"},
+     "web listener address: loopback by default, all interfaces only when "
+     "explicitly configured"},
     {"UAGENT_BROWSER_DATA",
      {},
      ConfigType::kString,
@@ -176,7 +177,8 @@ inline constexpr ConfigDescriptor kConfigRegistry[] = {
      Sensitivity::kPublic,
      kScopeUser,
      "web",
-     "private browser profile and service directory; empty disables the browser appliance"},
+     "private browser profile and service directory; empty disables the "
+     "browser appliance"},
     {"UAGENT_WEB_PORT",
      {},
      ConfigType::kInt,

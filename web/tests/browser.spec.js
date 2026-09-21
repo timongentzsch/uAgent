@@ -11,7 +11,14 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await page.route("**/api/browser/status", (route) =>
       route.fulfill({
-        json: { ok: true, mode: "idle", running: false, leased: false },
+        json: {
+          ok: true,
+          mode: "idle",
+          running: false,
+          leased: false,
+          profile_id: "default",
+          profiles: [{ id: "default", name: "Default" }],
+        },
       }),
     );
     await page.goto(`/#session=${session.id}`);
@@ -51,6 +58,8 @@ test.describe("phone browser viewer", () => {
           leased: true,
           controller: true,
           generation: 1,
+          profile_id: "default",
+          profiles: [{ id: "default", name: "Default" }],
         },
       }),
     );
@@ -63,6 +72,7 @@ test.describe("phone browser viewer", () => {
     await expect(dialog.getByLabel("Browser trackpad")).toBeHidden();
     await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 600 });
+    await expect(page.locator("html")).toHaveCSS("--viewport-height", "600px");
     const done = await dialog
       .getByRole("button", { name: "Done" })
       .boundingBox();
@@ -80,4 +90,56 @@ test.describe("phone browser viewer", () => {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(390);
   });
+});
+
+test("creates and selects a persistent Chrome profile", async ({
+  page,
+  session,
+}) => {
+  const status = {
+    ok: true,
+    mode: "idle",
+    running: false,
+    leased: false,
+    profile_id: "default",
+    profiles: [{ id: "default", name: "Default" }],
+  };
+  const actions = [];
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({ json: status }),
+  );
+  await page.route("**/api/command", (route) => {
+    const command = route.request().postDataJSON();
+    actions.push(command.action);
+    if (command.action === "create_profile") {
+      status.profiles.push({
+        id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        name: command.name.trim(),
+      });
+      return route.fulfill({
+        json: {
+          accepted: true,
+          pending: false,
+          result: {
+            created_profile_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
+        },
+      });
+    }
+    if (command.action === "select_profile")
+      status.profile_id = command.profile_id;
+    return route.fulfill({
+      json: { accepted: true, pending: false, result: { ok: true } },
+    });
+  });
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser" });
+  await dialog.getByRole("button", { name: "New profile" }).click();
+  await dialog.getByLabel("New Chrome profile name").fill("Work");
+  await dialog.getByRole("button", { name: "Create and use" }).click();
+  await expect(
+    dialog.getByLabel("Chrome profile", { exact: true }),
+  ).toHaveValue("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  expect(actions).toEqual(["create_profile", "select_profile"]);
 });

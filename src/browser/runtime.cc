@@ -11,8 +11,10 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <cstring>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,12 +27,15 @@
 
 namespace uagent::browser {
 namespace {
+constexpr size_t kProfilesBytes = size_t{64} * 1024;
 
 pid_t Launch(const std::vector<std::string>& arguments,
              posix_spawn_file_actions_t* actions = nullptr) {
   std::vector<char*> argv;
-  for (const auto& argument : arguments)
+  argv.reserve(arguments.size() + 1);
+  for (const auto& argument : arguments) {
     argv.push_back(const_cast<char*>(argument.c_str()));
+  }
   argv.push_back(nullptr);
   pid_t pid = -1;
   return posix_spawnp(&pid, argv[0], actions, nullptr, argv.data(),
@@ -70,8 +75,9 @@ bool Coordinate(const json& command, const char* name, int& result) {
 }
 
 std::string CdError(const json& value) {
-  if (value.contains("error") && value["error"].is_string())
+  if (value.contains("error") && value["error"].is_string()) {
     return value["error"].get<std::string>();
+  }
   const json* object = JsonObject(value, "error");
   return object ? JsonValue(*object, "message", "Chrome rejected action") : "";
 }
@@ -80,6 +86,24 @@ bool CloseOnExec(int fd) {
   int flags = fcntl(fd, F_GETFD);
   return flags >= 0 && fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
 }
+
+std::string ProfileName(std::string name) {
+  auto space = [](char ch) {
+    return std::isspace(static_cast<unsigned char>(ch));
+  };
+  size_t first = 0, last = name.size();
+  while (first < last && space(name[first])) ++first;
+  while (last > first && space(name[last - 1])) --last;
+  if (last == first || last - first > 256) return {};
+  name = name.substr(first, last - first);
+  if (std::any_of(name.begin(), name.end(), [](char value) {
+        unsigned char ch = static_cast<unsigned char>(value);
+        return ch < 32 || ch == 127;
+      })) {
+    return {};
+  }
+  return name;
+}
 }  // namespace
 
 Runtime::~Runtime() { Stop(); }
@@ -87,6 +111,41 @@ void Runtime::Shutdown() { Stop(); }
 
 Runtime::Runtime() {
   std::string bytes, error;
+  const std::string profiles_path = DataDirectory() + "/profiles.json";
+  struct stat info{};
+  if (lstat(profiles_path.c_str(), &info) == 0) {
+    if (!ReadRegularFile(profiles_path, kProfilesBytes, bytes, error)) {
+      profile_error_ = "cannot read Chrome profiles";
+    } else {
+      json saved = json::parse(bytes, nullptr, false);
+      const json* entries = JsonArray(saved, "profiles");
+      std::string selected = JsonValue(saved, "selected", "");
+      std::vector<Profile> loaded;
+      std::set<std::string> ids;
+      bool valid = entries != nullptr;
+      if (entries) {
+        for (const auto& entry : *entries) {
+          std::string id = JsonValue(entry, "id", "");
+          std::string name = JsonValue(entry, "name", "");
+          if ((id != "default" && !session::OpaqueId(id)) ||
+              ProfileName(name) != name || !ids.insert(id).second) {
+            valid = false;
+            break;
+          }
+          loaded.push_back({id, name});
+        }
+      }
+      if (!valid || loaded.empty() || loaded.front().id != "default" ||
+          ids.count(selected) == 0) {
+        profile_error_ = "invalid Chrome profiles; restore profiles.json";
+      } else {
+        profiles_ = std::move(loaded);
+        selected_profile_ = std::move(selected);
+      }
+    }
+  } else if (errno != ENOENT) {
+    profile_error_ = "cannot inspect Chrome profiles";
+  }
   if (ReadRegularFile(DataDirectory() + "/handover.json", 4096, bytes, error)) {
     json saved = json::parse(bytes, nullptr, false);
     std::string session = JsonValue(saved, "session_id", "");
@@ -97,6 +156,24 @@ Runtime::Runtime() {
       mode_ = "human";
     }
   }
+}
+
+bool Runtime::SaveProfiles() const {
+  json entries = json::array();
+  for (const auto& profile : profiles_) {
+    entries.push_back({{"id", profile.id}, {"name", profile.name}});
+  }
+  std::string bytes =
+      JsonDump({{"selected", selected_profile_}, {"profiles", entries}});
+  return bytes.size() <= kProfilesBytes &&
+         ToolWritePrivateFile(DataDirectory() + "/profiles.json", bytes).Ok();
+}
+
+std::string Runtime::ProfilePath() const {
+  std::string base = DataDirectory();
+  return selected_profile_ == "default"
+             ? base + "/profile"
+             : base + "/profiles/" + selected_profile_;
 }
 
 bool Runtime::SaveHandover() const {
@@ -125,16 +202,22 @@ void Runtime::Stop(bool preserve_lease) {
   agent_session_ = std::move(session);
   interaction_ = std::move(interaction);
   viewer_.clear();
-  mode_ = !interaction_.empty() ? "human"
-          : !agent_session_.empty() ? "agent" : "idle";
+  mode_ = !interaction_.empty()     ? "human"
+          : !agent_session_.empty() ? "agent"
+                                    : "idle";
   ++generation_;
 }
 
 bool Runtime::Start(std::string& error) {
+  if (!profile_error_.empty()) {
+    error = profile_error_;
+    return false;
+  }
   if (Alive(chrome_pid_) && Alive(vnc_pid_)) return true;
   Stop(true);
   std::string base = DataDirectory();
-  if (!EnsureDataDirectory(base + "/profile")) {
+  std::string profile = ProfilePath();
+  if (!EnsureDataDirectory(profile)) {
     error = "cannot create persistent Chrome profile";
     return false;
   }
@@ -148,8 +231,10 @@ bool Runtime::Start(std::string& error) {
   // Docker recreates the container with a new hostname. Chrome's singleton
   // symlinks retain the old hostname and reject the otherwise valid profile.
   // Only the lock holder may clear them, after its own Chrome has exited.
-  for (const char* name : {"SingletonLock", "SingletonCookie", "SingletonSocket"})
-    unlink((base + "/profile/" + name).c_str());
+  for (const char* name :
+       {"SingletonLock", "SingletonCookie", "SingletonSocket"}) {
+    unlink((profile + "/" + name).c_str());
+  }
   std::string authority = base + "/Xauthority";
   std::string cookie = session::RandomToken(16);
   if (cookie.empty()) {
@@ -167,18 +252,37 @@ bool Runtime::Start(std::string& error) {
   setenv("DISPLAY", ":99", 1);
   setenv("XAUTHORITY", authority.c_str(), 1);
   unlink(RfbPath().c_str());
-  vnc_pid_ = Launch({"Xtigervnc", ":99", "-geometry", "1280x800", "-depth", "24",
-                     "-auth", authority, "-rfbunixpath", RfbPath(),
-                     "-rfbunixmode", "0600", "-rfbport", "-1",
-                     "-SecurityTypes", "None", "-FrameRate", "15",
-                     "-AcceptCutText=1", "-SendCutText=1", "-SendPrimary=0",
-                     "-nolisten", "tcp"});
+  vnc_pid_ = Launch({"Xtigervnc",
+                     ":99",
+                     "-geometry",
+                     "1280x800",
+                     "-depth",
+                     "24",
+                     "-auth",
+                     authority,
+                     "-rfbunixpath",
+                     RfbPath(),
+                     "-rfbunixmode",
+                     "0600",
+                     "-rfbport",
+                     "-1",
+                     "-SecurityTypes",
+                     "None",
+                     "-FrameRate",
+                     "15",
+                     "-AcceptCutText=1",
+                     "-SendCutText=1",
+                     "-SendPrimary=0",
+                     "-nolisten",
+                     "tcp"});
   if (vnc_pid_ < 0) {
     error = "cannot launch Xtigervnc";
     return false;
   }
-  for (int attempt = 0; attempt < 100 && access(RfbPath().c_str(), F_OK); ++attempt)
+  for (int attempt = 0; attempt < 100 && access(RfbPath().c_str(), F_OK);
+       ++attempt) {
     poll(nullptr, 0, 30);
+  }
   if (access(RfbPath().c_str(), F_OK)) {
     error = "Xtigervnc did not create its Unix display socket";
     Stop(true);
@@ -218,14 +322,17 @@ bool Runtime::Start(std::string& error) {
   posix_spawn_file_actions_adddup2(&actions, child_write.Get(), 4);
   posix_spawn_file_actions_addclose(&actions, child_read.Get());
   posix_spawn_file_actions_addclose(&actions, child_write.Get());
-  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-  posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
-  // Chrome's sandbox stays enabled. This is a private, non-default profile.
-  chrome_pid_ = Launch({"google-chrome-stable", "--remote-debugging-pipe",
-                         "--user-data-dir=" + base + "/profile", "--no-first-run",
-                         "--no-default-browser-check", "--window-size=1280,800",
-                         "--ozone-platform=x11", "--password-store=basic",
-                         "about:blank"}, &actions);
+  posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null",
+                                   O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null",
+                                   O_WRONLY, 0);
+  // Chrome's sandbox stays enabled. This is a private profile.
+  chrome_pid_ =
+      Launch({"google-chrome-stable", "--remote-debugging-pipe",
+              "--user-data-dir=" + profile, "--no-first-run",
+              "--no-default-browser-check", "--window-size=1280,800",
+              "--ozone-platform=x11", "--password-store=basic", "about:blank"},
+             &actions);
   posix_spawn_file_actions_destroy(&actions);
   chrome_read.Reset();
   chrome_write.Reset();
@@ -237,8 +344,10 @@ bool Runtime::Start(std::string& error) {
   cdp_in_ = std::move(parent_write);
   cdp_out_ = std::move(parent_read);
   if (!SelectPage(error)) {
-    if (!Alive(chrome_pid_))
-      error = "Chrome exited during startup; check its sandbox and container logs";
+    if (!Alive(chrome_pid_)) {
+      error =
+          "Chrome exited during startup; check its sandbox and container logs";
+    }
     Stop(true);
     return false;
   }
@@ -255,8 +364,11 @@ json Runtime::Call(const std::string& method, const json& parameters,
   packet.push_back('\0');
   for (size_t sent = 0; sent < packet.size();) {
     pollfd ready{cdp_in_.Get(), POLLOUT, 0};
-    if (poll(&ready, 1, 10000) <= 0) return {{"error", "Chrome write timed out"}};
-    ssize_t n = write(cdp_in_.Get(), packet.data() + sent, packet.size() - sent);
+    if (poll(&ready, 1, 10000) <= 0) {
+      return {{"error", "Chrome write timed out"}};
+    }
+    ssize_t n =
+        write(cdp_in_.Get(), packet.data() + sent, packet.size() - sent);
     if (n <= 0) return {{"error", "Chrome control pipe closed"}};
     sent += static_cast<size_t>(n);
   }
@@ -268,10 +380,13 @@ json Runtime::Call(const std::string& method, const json& parameters,
       if (JsonValue(response, "id", int64_t{-1}) == id) return response;
       continue;  // Unsolicited events have no reply id.
     }
-    if (cdp_buffer_.size() > 16 * 1024 * 1024)
+    if (cdp_buffer_.size() > size_t{16} * 1024 * 1024) {
       return {{"error", "Chrome response exceeded limit"}};
+    }
     pollfd ready{cdp_out_.Get(), POLLIN, 0};
-    if (poll(&ready, 1, 10000) <= 0) return {{"error", "Chrome read timed out"}};
+    if (poll(&ready, 1, 10000) <= 0) {
+      return {{"error", "Chrome read timed out"}};
+    }
     char bytes[16384];
     ssize_t n = read(cdp_out_.Get(), bytes, sizeof(bytes));
     if (n <= 0) return {{"error", "Chrome control pipe closed"}};
@@ -293,8 +408,9 @@ bool Runtime::SelectPage(std::string& error) {
   }
   if (target_.empty()) {
     json created = Call("Target.createTarget", {{"url", "about:blank"}});
-    if (const json* result = JsonObject(created, "result"))
+    if (const json* result = JsonObject(created, "result")) {
       target_ = JsonValue(*result, "targetId", "");
+    }
   }
   if (target_.empty()) {
     error = "Chrome did not expose a page";
@@ -304,17 +420,19 @@ bool Runtime::SelectPage(std::string& error) {
 }
 
 bool Runtime::AttachPage(const std::string& target, std::string& error) {
-  json attached = Call("Target.attachToTarget",
-                       {{"targetId", target}, {"flatten", true}});
+  json attached =
+      Call("Target.attachToTarget", {{"targetId", target}, {"flatten", true}});
   std::string attached_session;
-  if (const json* result = JsonObject(attached, "result"))
+  if (const json* result = JsonObject(attached, "result")) {
     attached_session = JsonValue(*result, "sessionId", "");
+  }
   if (attached_session.empty()) {
     error = CdError(attached).empty() ? "Chrome did not attach the page"
                                       : CdError(attached);
     return false;
   }
-  if (auto enabled = CdError(Call("Page.enable", json::object(), attached_session));
+  if (auto enabled =
+          CdError(Call("Page.enable", json::object(), attached_session));
       !enabled.empty()) {
     error = enabled;
     return false;
@@ -328,13 +446,20 @@ bool Runtime::AttachPage(const std::string& target, std::string& error) {
 
 json Runtime::Status(bool include_page) {
   bool running = Alive(chrome_pid_) && Alive(vnc_pid_);
+  json profiles = json::array();
+  for (const auto& profile : profiles_) {
+    profiles.push_back({{"id", profile.id}, {"name", profile.name}});
+  }
   json result = {{"ok", true},
-          {"running", running},
-          {"mode", mode_},
-          {"session_id", agent_session_},
-          {"interaction_id", interaction_},
-          {"viewer", viewer_},
-          {"generation", generation_}};
+                 {"running", running},
+                 {"mode", mode_},
+                 {"session_id", agent_session_},
+                 {"interaction_id", interaction_},
+                 {"viewer", viewer_},
+                 {"profile_id", selected_profile_},
+                 {"profiles", profiles},
+                 {"generation", generation_}};
+  if (!profile_error_.empty()) result["error"] = profile_error_;
   if (running && include_page) {
     json targets = Call("Target.getTargets");
     if (const json* response = JsonObject(targets, "result")) {
@@ -372,22 +497,116 @@ bool Runtime::Agent(const json& command, std::string& error) {
   return true;
 }
 
+json Runtime::SwitchProfile(const std::string& id) {
+  if (id == selected_profile_) return Status();
+  const std::string previous = selected_profile_;
+  const std::string controller = viewer_;
+  const bool restart = !controller.empty();
+  if (restart) Stop(true);
+  selected_profile_ = id;
+  if (!SaveProfiles()) {
+    selected_profile_ = previous;
+    if (restart) {
+      std::string restart_error;
+      if (Start(restart_error)) {
+        viewer_ = controller;
+        mode_ = "human";
+        ++generation_;
+      } else {
+        return {{"error",
+                 "cannot save Chrome profile selection; previous "
+                 "profile could not restart: " +
+                     restart_error}};
+      }
+    }
+    return {{"error", "cannot save Chrome profile selection"}};
+  }
+  std::string error;
+  if (restart && !Start(error)) {
+    selected_profile_ = previous;
+    bool selection_restored = SaveProfiles();
+    std::string rollback_error;
+    if (Start(rollback_error)) {
+      viewer_ = controller;
+      mode_ = "human";
+      ++generation_;
+    } else {
+      error += "; previous profile could not restart: " + rollback_error;
+    }
+    if (!selection_restored) {
+      error += "; previous profile selection could not be restored";
+    }
+    return {{"error", error}};
+  }
+  if (restart) {
+    viewer_ = controller;
+    mode_ = "human";
+    ++generation_;
+  }
+  return Status();
+}
+
 json Runtime::Execute(const json& command) {
   const std::string op = JsonValue(command, "op", "");
   if (op == "ping") return {{"ok", true}};
   if (op == "status") return Status();
+  if (op == "create_profile" || op == "select_profile") {
+    if (!profile_error_.empty()) return {{"error", profile_error_}};
+    std::string device = JsonValue(command, "device", "");
+    if (!session::OpaqueId(device)) return {{"error", "invalid device"}};
+    if (!(mode_ == "human" && viewer_ == device) &&
+        !(mode_ == "idle" && viewer_.empty() && chrome_pid_ <= 0 &&
+          vnc_pid_ <= 0)) {
+      return {{"error", "take control before changing Chrome profiles"}};
+    }
+    if (op == "create_profile") {
+      std::string name = ProfileName(JsonValue(command, "name", ""));
+      if (name.empty()) return {{"error", "invalid Chrome profile name"}};
+      for (const auto& profile : profiles_) {
+        if (profile.name == name) {
+          return {{"error", "Chrome profile name already exists"}};
+        }
+      }
+      std::string id = session::RandomToken(16);
+      if (id.empty()) return {{"error", "cannot create Chrome profile ID"}};
+      profiles_.push_back({id, name});
+      if (!SaveProfiles()) {
+        profiles_.pop_back();
+        return {{"error", "cannot save Chrome profile"}};
+      }
+      json result = Status();
+      result["created_profile_id"] = id;
+      return result;
+    }
+    std::string id = JsonValue(command, "profile_id", "");
+    if (std::none_of(
+            profiles_.begin(), profiles_.end(),
+            [&](const Profile& profile) { return profile.id == id; })) {
+      return {{"error", "Chrome profile does not exist"}};
+    }
+    return SwitchProfile(id);
+  }
+  if (!profile_error_.empty() && op != "stop") {
+    return {{"error", profile_error_}};
+  }
   if (op == "agent_status") {
     std::string session = JsonValue(command, "session_id", "");
     if (!session::OpaqueId(session)) return {{"error", "invalid session"}};
-    if (mode_ == "human")
+    if (mode_ == "human") {
       return {{"error", "human controls the browser; wait for Done"}};
-    if (!agent_session_.empty() && agent_session_ != session)
+    }
+    if (!agent_session_.empty() && agent_session_ != session) {
       return {{"error", "browser is leased to another conversation"}};
+    }
     return Status();
   }
   if (op == "stop") {
-    if (mode_ == "human" && !interaction_.empty())
+    if (mode_ == "human" && !interaction_.empty()) {
       return {{"error", "finish or cancel the browser interaction first"}};
+    }
+    if (!viewer_.empty() && viewer_ != JsonValue(command, "device", "")) {
+      return {{"error", "another device controls the browser"}};
+    }
     Stop();
     SaveHandover();
     return Status();
@@ -395,8 +614,9 @@ json Runtime::Execute(const json& command) {
   if (op == "takeover") {
     std::string device = JsonValue(command, "device", "");
     if (!session::OpaqueId(device)) return {{"error", "invalid device"}};
-    if (!viewer_.empty() && viewer_ != device)
+    if (!viewer_.empty() && viewer_ != device) {
       return {{"error", "another device controls the browser"}};
+    }
     std::string error;
     if (!Start(error)) return {{"error", error}};
     viewer_ = device;
@@ -406,8 +626,9 @@ json Runtime::Execute(const json& command) {
     return Status();
   }
   if (op == "viewer") {
-    if (mode_ != "human" || viewer_ != JsonValue(command, "device", ""))
+    if (mode_ != "human" || viewer_ != JsonValue(command, "device", "")) {
       return {{"error", "this device does not control the browser"}};
+    }
     return Status(false);
   }
   if (op == "viewer_disconnected") {
@@ -420,16 +641,19 @@ json Runtime::Execute(const json& command) {
   }
   if (op == "prepare_done") {
     if (mode_ != "human" || viewer_ != JsonValue(command, "device", "") ||
-        interaction_ != JsonValue(command, "interaction_id", ""))
+        interaction_ != JsonValue(command, "interaction_id", "")) {
       return {{"error", "browser interaction changed; refresh"}};
+    }
     return Status();
   }
   if (op == "done") {
-    if (mode_ != "human" || viewer_ != JsonValue(command, "device", ""))
+    if (mode_ != "human" || viewer_ != JsonValue(command, "device", "")) {
       return {{"error", "this device does not control the browser"}};
+    }
     std::string requested = JsonValue(command, "interaction_id", "");
-    if (requested != interaction_)
+    if (requested != interaction_) {
       return {{"error", "browser interaction changed; refresh"}};
+    }
     std::string previous_viewer = viewer_;
     std::string previous_interaction = interaction_;
     std::string previous_mode = mode_;
@@ -447,8 +671,9 @@ json Runtime::Execute(const json& command) {
     return Status();
   }
   if (op == "release") {
-    if (agent_session_ != JsonValue(command, "session_id", ""))
+    if (agent_session_ != JsonValue(command, "session_id", "")) {
       return {{"error", "browser lease belongs to another conversation"}};
+    }
     if (mode_ == "human") return {{"error", "human controls the browser"}};
     agent_session_.clear();
     mode_ = "idle";
@@ -458,8 +683,9 @@ json Runtime::Execute(const json& command) {
   if (op == "cancel_handover") {
     if (agent_session_ != JsonValue(command, "session_id", "") ||
         interaction_ != JsonValue(command, "interaction_id", "") ||
-        interaction_.empty())
+        interaction_.empty()) {
       return {{"error", "browser handover changed"}};
+    }
     std::string previous_interaction = interaction_;
     std::string previous_session = agent_session_;
     interaction_.clear();
@@ -478,8 +704,9 @@ json Runtime::Execute(const json& command) {
     std::string session = JsonValue(command, "session_id", "");
     std::string interaction = JsonValue(command, "interaction_id", "");
     if (!session::OpaqueId(session) || !session::OpaqueId(interaction) ||
-        (!agent_session_.empty() && agent_session_ != session))
+        (!agent_session_.empty() && agent_session_ != session)) {
       return {{"error", "browser handover belongs to another conversation"}};
+    }
     std::string previous_session = agent_session_;
     agent_session_ = session;
     interaction_ = interaction;
@@ -496,7 +723,9 @@ json Runtime::Execute(const json& command) {
   if (!Agent(command, error)) return {{"error", error}};
   if (op == "request_human") {
     std::string interaction = JsonValue(command, "interaction_id", "");
-    if (!session::OpaqueId(interaction)) return {{"error", "invalid interaction"}};
+    if (!session::OpaqueId(interaction)) {
+      return {{"error", "invalid interaction"}};
+    }
     interaction_ = interaction;
     std::string previous_viewer = viewer_;
     viewer_.clear();
@@ -513,8 +742,9 @@ json Runtime::Execute(const json& command) {
   }
   if (op == "tabs") {
     json targets = Call("Target.getTargets");
-    if (auto reason = CdError(targets); !reason.empty())
+    if (auto reason = CdError(targets); !reason.empty()) {
       return {{"error", reason}};
+    }
     json pages = json::array();
     if (const json* result = JsonObject(targets, "result")) {
       if (const json* infos = JsonArray(*result, "targetInfos")) {
@@ -523,24 +753,30 @@ json Runtime::Execute(const json& command) {
           std::string url = JsonValue(info, "url", "");
           if (JsonValue(info, "type", "") != "page" ||
               !(url.starts_with("https://") || url.starts_with("http://") ||
-                url == "about:blank")) continue;
-          pages.push_back({{"id", JsonValue(info, "targetId", "")},
-                           {"url", url.substr(0, url.find_first_of("?#"))},
-                           {"title", JsonValue(info, "title", "")},
-                           {"selected", JsonValue(info, "targetId", "") == target_}});
+                url == "about:blank")) {
+            continue;
+          }
+          pages.push_back(
+              {{"id", JsonValue(info, "targetId", "")},
+               {"url", url.substr(0, url.find_first_of("?#"))},
+               {"title", JsonValue(info, "title", "")},
+               {"selected", JsonValue(info, "targetId", "") == target_}});
         }
       }
     }
     std::string requested = JsonValue(command, "target_id", "");
     if (!requested.empty()) {
       bool found = false;
-      for (const auto& page : pages)
+      for (const auto& page : pages) {
         found |= JsonValue(page, "id", "") == requested;
+      }
       if (!found) return {{"error", "tab is unavailable"}};
       if (requested != target_) {
-        json activated = Call("Target.activateTarget", {{"targetId", requested}});
-        if (auto reason = CdError(activated); !reason.empty())
+        json activated =
+            Call("Target.activateTarget", {{"targetId", requested}});
+        if (auto reason = CdError(activated); !reason.empty()) {
           return {{"error", reason}};
+        }
         if (!AttachPage(requested, error)) return {{"error", error}};
       }
     }
@@ -550,27 +786,41 @@ json Runtime::Execute(const json& command) {
   if (op == "open") {
     std::string url = JsonValue(command, "url", "");
     if (!(url.starts_with("https://") || url.starts_with("http://")) ||
-        url.size() > 4096) return {{"error", "URL must be HTTP(S)"}};
+        url.size() > 4096) {
+      return {{"error", "URL must be HTTP(S)"}};
+    }
     observation_.clear();
     reply = Call("Page.navigate", {{"url", url}}, page_session_);
   } else if (op == "click") {
     if (observation_.empty() ||
-        observation_ != JsonValue(command, "view_id", ""))
+        observation_ != JsonValue(command, "view_id", "")) {
       return {{"error", "observe the current tab before clicking"}};
+    }
     int x, y;
-    if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y))
+    if (!Coordinate(command, "x", x) || !Coordinate(command, "y", y)) {
       return {{"error", "click requires x and y"}};
-    if (x >= view_width_ || y >= view_height_)
+    }
+    if (x >= view_width_ || y >= view_height_) {
       return {{"error", "coordinates exceed the observed viewport"}};
+    }
     observation_.clear();
     json pressed = Call("Input.dispatchMouseEvent",
-                        {{"type", "mousePressed"}, {"x", x}, {"y", y},
-                         {"button", "left"}, {"clickCount", 1}}, page_session_);
-    if (auto reason = CdError(pressed); !reason.empty())
+                        {{"type", "mousePressed"},
+                         {"x", x},
+                         {"y", y},
+                         {"button", "left"},
+                         {"clickCount", 1}},
+                        page_session_);
+    if (auto reason = CdError(pressed); !reason.empty()) {
       return {{"error", reason}};
+    }
     reply = Call("Input.dispatchMouseEvent",
-                 {{"type", "mouseReleased"}, {"x", x}, {"y", y},
-                  {"button", "left"}, {"clickCount", 1}}, page_session_);
+                 {{"type", "mouseReleased"},
+                  {"x", x},
+                  {"y", y},
+                  {"button", "left"},
+                  {"clickCount", 1}},
+                 page_session_);
   } else if (op == "type") {
     std::string value = JsonValue(command, "text", "");
     if (value.size() > 32768) return {{"error", "text exceeds limit"}};
@@ -579,47 +829,68 @@ json Runtime::Execute(const json& command) {
   } else if (op == "press") {
     std::string key = JsonValue(command, "key", "");
     if (key != "Enter" && key != "Tab" && key != "Escape" &&
-        key != "Backspace") return {{"error", "unsupported key"}};
+        key != "Backspace") {
+      return {{"error", "unsupported key"}};
+    }
     observation_.clear();
-    reply = Call("Input.dispatchKeyEvent",
-                 {{"type", "keyDown"}, {"key", key}}, page_session_);
-    if (CdError(reply).empty())
-      reply = Call("Input.dispatchKeyEvent",
-                   {{"type", "keyUp"}, {"key", key}}, page_session_);
+    reply = Call("Input.dispatchKeyEvent", {{"type", "keyDown"}, {"key", key}},
+                 page_session_);
+    if (CdError(reply).empty()) {
+      reply = Call("Input.dispatchKeyEvent", {{"type", "keyUp"}, {"key", key}},
+                   page_session_);
+    }
   } else if (op == "scroll") {
     if (observation_.empty() ||
-        observation_ != JsonValue(command, "view_id", ""))
+        observation_ != JsonValue(command, "view_id", "")) {
       return {{"error", "observe the current tab before scrolling"}};
+    }
     int x = JsonValue(command, "x", 640), y = JsonValue(command, "y", 400);
     int delta = JsonValue(command, "delta_y", 0);
-    if (delta < -3000 || delta > 3000) return {{"error", "invalid scroll amount"}};
-    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_)
+    if (delta < -3000 || delta > 3000) {
+      return {{"error", "invalid scroll amount"}};
+    }
+    if (x < 0 || y < 0 || x >= view_width_ || y >= view_height_) {
       return {{"error", "coordinates exceed the observed viewport"}};
+    }
     observation_.clear();
     reply = Call("Input.dispatchMouseEvent",
-                 {{"type", "mouseWheel"}, {"x", x}, {"y", y},
-                  {"deltaX", 0}, {"deltaY", delta}}, page_session_);
+                 {{"type", "mouseWheel"},
+                  {"x", x},
+                  {"y", y},
+                  {"deltaX", 0},
+                  {"deltaY", delta}},
+                 page_session_);
   } else if (op == "observe") {
     json metrics = Call("Page.getLayoutMetrics", json::object(), page_session_);
-    if (auto reason = CdError(metrics); !reason.empty())
+    if (auto reason = CdError(metrics); !reason.empty()) {
       return {{"error", reason}};
+    }
     const json* result = JsonObject(metrics, "result");
-    const json* viewport = result ? JsonObject(*result, "cssVisualViewport") : nullptr;
+    const json* viewport =
+        result ? JsonObject(*result, "cssVisualViewport") : nullptr;
     double width = viewport ? JsonValue(*viewport, "clientWidth", 0.0) : 0;
     double height = viewport ? JsonValue(*viewport, "clientHeight", 0.0) : 0;
-    if (width < 1 || width > 10000 || height < 1 || height > 10000)
+    if (width < 1 || width > 10000 || height < 1 || height > 10000) {
       return {{"error", "Chrome did not report its viewport"}};
-    json shot = Call("Page.captureScreenshot",
-                     {{"format", "jpeg"}, {"quality", 70},
-                      {"captureBeyondViewport", false}}, page_session_);
+    }
+    json shot = Call(
+        "Page.captureScreenshot",
+        {{"format", "jpeg"}, {"quality", 70}, {"captureBeyondViewport", false}},
+        page_session_);
     if (const json* image_result = JsonObject(shot, "result")) {
       json page = Call("Runtime.evaluate",
-                       {{"expression", "({url:location.href.split(/[?#]/)[0],title:document.title,text:(document.body?.innerText||'').slice(0,12000)})"},
-                        {"returnByValue", true}}, page_session_);
+                       {{"expression",
+                         "({url:location.href.split(/[?#]/"
+                         ")[0],title:document.title,text:(document.body?."
+                         "innerText||'').slice(0,12000)})"},
+                        {"returnByValue", true}},
+                       page_session_);
       json details = json::object();
       if (const json* response = JsonObject(page, "result")) {
         if (const json* remote = JsonObject(*response, "result")) {
-          if (const json* value = JsonObject(*remote, "value")) details = *value;
+          if (const json* value = JsonObject(*remote, "value")) {
+            details = *value;
+          }
         }
       }
       observation_ = session::RandomToken(12);
@@ -630,9 +901,11 @@ json Runtime::Execute(const json& command) {
               {"page", details},
               {"generation", generation_},
               {"view_id", observation_},
-              {"width", view_width_}, {"height", view_height_}};
+              {"width", view_width_},
+              {"height", view_height_}};
     }
-    return {{"error", CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
+    return {
+        {"error", CdError(shot).empty() ? "screenshot failed" : CdError(shot)}};
   } else {
     return {{"error", "unsupported browser action"}};
   }

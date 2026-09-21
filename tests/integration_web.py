@@ -37,9 +37,10 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
         offered.extend(tool["function"]["name"] for tool in body.get("tools", []))
         return event({"content": "browser tool offered"})
 
-    with tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as browser_data, Server(
-        [answer]
-    ) as provider:
+    with (
+        tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as browser_data,
+        Server([answer]) as provider,
+    ):
         with web_host(
             binary,
             root,
@@ -72,7 +73,9 @@ def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
                 },
             )
             assert_true(rejected == 409 and outcome["accepted"] is False, outcome)
-            assert_true(client.command("browser", action="stop")["result"]["mode"] == "idle", "stop")
+            assert_true(
+                client.command("browser", action="stop")["result"]["mode"] == "idle", "stop"
+            )
 
 
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):

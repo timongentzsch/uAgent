@@ -21,7 +21,6 @@ import {
   Mark,
   Modal,
   Deferred,
-  Skeleton,
   IconButton,
   Spinner,
   preloadDeferred,

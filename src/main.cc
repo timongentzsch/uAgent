@@ -25,8 +25,8 @@ extern char** environ;
 #include "include/app/options.h"
 #include "include/app/reference.h"
 #include "include/app/session.h"
-#include "include/cli.h"
 #include "include/browser/browser.h"
+#include "include/cli.h"
 #include "include/core/events.h"
 #include "include/core/json.h"
 #include "include/core/sandbox.h"
@@ -218,15 +218,16 @@ int Main(int argc, char** argv) {
       fprintf(stderr, "web port must be between 1024 and 65535\n");
       return 2;
     }
-    std::string bind = getenv("UAGENT_WEB_BIND") ? getenv("UAGENT_WEB_BIND")
-                                                  : "127.0.0.1";
+    const char* configured_bind = getenv("UAGENT_WEB_BIND");
+    std::string bind = configured_bind ? configured_bind : "127.0.0.1";
     if (bind != "127.0.0.1" && bind != "0.0.0.0") {
       fprintf(stderr, "web bind must be 127.0.0.1 or 0.0.0.0\n");
       return 2;
     }
     return web::MasterMain(
         {static_cast<int>(port), setting("UAGENT_WEB_ORIGIN"),
-         setting("UAGENT_WEB_PUSH_CONTACT"), bind}, argv[0]);
+         setting("UAGENT_WEB_PUSH_CONTACT"), bind},
+        argv[0]);
 #else
     fprintf(stderr, "this build has no web support (UAGENT_WEB=OFF)\n");
     return 2;

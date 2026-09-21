@@ -11,7 +11,7 @@
 
 namespace uagent::browser {
 
-// The appliance sets one private directory for its single browser profile.
+// The appliance sets one private directory for its browser profiles.
 // An empty value disables the browser feature in ordinary native installs.
 std::string DataDirectory();
 std::string SocketPath();

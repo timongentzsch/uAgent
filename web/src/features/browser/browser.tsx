@@ -16,6 +16,8 @@ interface BrowserStatus {
   generation?: number;
   url?: string;
   title?: string;
+  profile_id?: string;
+  profiles?: { id: string; name: string }[];
   error?: string;
 }
 
@@ -36,25 +38,42 @@ function Viewer({ report }: { report: Report }) {
   useEffect(() => {
     if (!target.current) return;
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const rfb = new RFB(
-      target.current,
-      `${scheme}//${location.host}/api/browser/viewer`,
-    );
-    rfb.scaleViewport = true;
-    rfb.resizeSession = false;
-    viewer.current = rfb;
-    rfb.addEventListener("connect", () => setConnection("Connected"));
-    rfb.addEventListener("disconnect", () => setConnection("Disconnected"));
-    rfb.addEventListener("clipboard", (event) => {
-      setRemoteText((event as CustomEvent<{ text: string }>).detail.text);
-    });
-    rfb.addEventListener("securityfailure", () =>
-      report(new Error("Browser viewer authentication failed")),
-    );
+    let active = true;
+    let retry: number | undefined;
+    const connect = () => {
+      if (!active || !target.current) return;
+      setConnection("Connecting…");
+      const rfb = new RFB(
+        target.current,
+        `${scheme}//${location.host}/api/browser/viewer`,
+      );
+      let denied = false;
+      rfb.scaleViewport = true;
+      rfb.resizeSession = false;
+      viewer.current = rfb;
+      rfb.addEventListener("connect", () => setConnection("Connected"));
+      rfb.addEventListener("disconnect", () => {
+        if (viewer.current === rfb) viewer.current = null;
+        if (active) {
+          setConnection("Disconnected");
+          if (!denied) retry = window.setTimeout(connect, 1000);
+        }
+      });
+      rfb.addEventListener("clipboard", (event) => {
+        setRemoteText((event as CustomEvent<{ text: string }>).detail.text);
+      });
+      rfb.addEventListener("securityfailure", () => {
+        denied = true;
+        report(new Error("Browser viewer authentication failed"));
+      });
+    };
+    connect();
     return () => {
+      active = false;
+      if (retry !== undefined) clearTimeout(retry);
       if (pasteTimer.current !== null) clearTimeout(pasteTimer.current);
+      viewer.current?.disconnect();
       viewer.current = null;
-      rfb.disconnect();
     };
   }, [report]);
   useEffect(() => {
@@ -363,6 +382,8 @@ export default function BrowserPanel({
 }) {
   const [status, setStatus] = useState<BrowserStatus>({});
   const [busy, setBusy] = useState(false);
+  const [addingProfile, setAddingProfile] = useState(false);
+  const [profileName, setProfileName] = useState("");
   const refresh = async () => {
     try {
       setStatus(await api<BrowserStatus>("/api/browser/status"));
@@ -375,14 +396,21 @@ export default function BrowserPanel({
     const timer = setInterval(() => void refresh(), 2000);
     return () => clearInterval(timer);
   }, []);
+  const send = async (
+    action: "takeover" | "done" | "stop" | "create_profile" | "select_profile",
+    fields: { name?: string; profile_id?: string } = {},
+  ) => {
+    const session = sessions.find((item) => item.id === status.session_id);
+    return command("browser", session, {
+      action,
+      interaction_id: status.interaction_id || "",
+      ...fields,
+    });
+  };
   const control = async (action: "takeover" | "done" | "stop") => {
     setBusy(true);
     try {
-      const session = sessions.find((item) => item.id === status.session_id);
-      await command("browser", session, {
-        action,
-        interaction_id: status.interaction_id || "",
-      });
+      await send(action);
       await refresh();
     } catch (error) {
       report(error);
@@ -390,6 +418,41 @@ export default function BrowserPanel({
       setBusy(false);
     }
   };
+  const selectProfile = async (id: string) => {
+    setBusy(true);
+    try {
+      await send("select_profile", { profile_id: id });
+      await refresh();
+    } catch (error) {
+      report(error);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const createProfile = async (event: Event) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const created = await send("create_profile", { name: profileName });
+      if ("result" in created && created.result.created_profile_id) {
+        await send("select_profile", {
+          profile_id: created.result.created_profile_id,
+        });
+        setProfileName("");
+        setAddingProfile(false);
+      }
+      await refresh();
+    } catch (error) {
+      report(error);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const canChangeProfile =
+    status.controller ||
+    (status.mode === "idle" && !status.running && !status.leased);
   return (
     <section class="browser-panel">
       {!status.controller && (
@@ -400,6 +463,58 @@ export default function BrowserPanel({
         </p>
       )}
       {status.error && <p role="alert">{status.error}</p>}
+      {status.profiles && (
+        <div class="browser-profile">
+          <label for="browser-profile-select">Chrome profile</label>
+          <div class="browser-profile-controls">
+            <select
+              id="browser-profile-select"
+              value={status.profile_id || "default"}
+              disabled={busy || !canChangeProfile}
+              onChange={(event) =>
+                void selectProfile(event.currentTarget.value)
+              }
+            >
+              {status.profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={busy || !canChangeProfile}
+              onClick={() => setAddingProfile(!addingProfile)}
+            >
+              New profile
+            </button>
+          </div>
+          {!canChangeProfile && !status.error && (
+            <small class="muted">Take control to switch profiles.</small>
+          )}
+          {addingProfile && (
+            <form class="browser-profile-create" onSubmit={createProfile}>
+              <input
+                aria-label="New Chrome profile name"
+                value={profileName}
+                onInput={(event) => setProfileName(event.currentTarget.value)}
+                placeholder="e.g. Work or Personal"
+                required
+              />
+              <button type="submit" disabled={busy || !profileName.trim()}>
+                Create and use
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAddingProfile(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+        </div>
+      )}
       {status.url && (
         <p class="browser-location" title={status.title}>
           {status.url}

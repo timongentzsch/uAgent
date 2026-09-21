@@ -1220,6 +1220,8 @@ test("late snapshots and retired streams cannot replace current session state", 
           devices: [],
         },
       });
+    if (path === "/api/browser/status")
+      return route.fulfill({ status: 404, json: { error: "Not found" } });
     const session = sessions.find(
       (item) => path === `/api/sessions/${item.id}`,
     );

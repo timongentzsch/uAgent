@@ -10,6 +10,22 @@
 .browser-panel > p {
   max-width: 72ch;
 }
+.browser-profile {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+.browser-profile-controls,
+.browser-profile-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.browser-profile-controls select,
+.browser-profile-create input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
 .browser-location {
   min-width: 0;
   overflow: hidden;

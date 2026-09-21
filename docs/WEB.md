@@ -10,7 +10,7 @@ history does not start a model or execute a command.
 The optional [Compose stack](../deploy/compose.yaml) builds the frontend and native web host, a
 persistent Google Chrome Stable and TigerVNC in one image. The browser service
 starts with the web host but leaves Chrome and Xvnc stopped until first use.
-It uses a private Chrome profile under `/data/browser`; all agent history,
+It uses private Chrome profiles under `/data/browser`; all agent history,
 pairing state and settings live under `/data/agent`. Mount `/workspaces`
 separately so the persistent data volume does not silently absorb project files.
 On a Linux host, give UID 10001 read/write access to the mounted workspace
@@ -40,6 +40,15 @@ that paired device can finish the matching pending interaction. Closing the
 viewer or losing its connection keeps the agent paused. A second device can
 take control after the first finishes; the browser profile and login survive a
 web-host restart. Stop browser from the viewer when idle to release resources.
+Use **Chrome profile** in the browser dialog to choose which login the agent
+and viewer share. **New profile** creates a separate persistent Chrome login
+and selects it. Switching while controlling the browser restarts Chrome in the
+chosen profile and reconnects the viewer; complete any unsaved page work first.
+When the browser is busy with the agent, take control before switching. The
+existing `/data/browser/profile` remains the **Default** profile, so upgrading
+does not move or clear a saved login. Named profiles live under
+`/data/browser/profiles`; `/data/browser/profiles.json` records their names and
+current selection. Back up the full `/data` volume to preserve every login.
 On a phone, **Fit screen** shows the full display with a touchpad below it:
 move one finger to aim, tap to click, use two fingers to scroll or right-click,
 or hold **Left** while moving to drag. **Actual size** shows Chrome at native
@@ -78,7 +87,7 @@ needs more space.
 On an ARM64 Docker Desktop host (2026-09-21), the built image measured 378 MB
 in Docker and 375 MB as a gzip-compressed image archive. The stopped browser
 used 15 MiB of container memory; Chrome showing a page used 828 MiB. The lazy
-viewer bundle with phone controls is 196 KB raw / 59 KB gzip. These are
+viewer bundle with phone controls is 198 KB raw / 60 KB gzip. These are
 comparison points, not size ceilings; measure again on the deployment host.
 
 ## Execution and persistence
@@ -270,7 +279,7 @@ bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 74,891 | 28,487 |
-| Initial CSS | 21,721 | 5,268 |
-| App (excl. diagrams) | 1,142,870 | 558,361 |
-| Diagrams (lazy) | 5,119,214 | 1,478,004 |
+| Initial JS | 75,174 | 29,387 |
+| Initial CSS | 22,569 | 5,394 |
+| App (excl. diagrams) | 1,162,600 | 566,853 |
+| Diagrams (lazy) | 5,124,554 | 1,479,761 |

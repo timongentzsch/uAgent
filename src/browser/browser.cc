@@ -1,10 +1,9 @@
 // Copyright 2026 Timon Gentzsch
 
 #include "include/browser/browser.h"
-#include "include/browser/runtime.h"
 
-#include <poll.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/socket.h>
@@ -13,23 +12,25 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cerrno>
 #include <chrono>
-#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include <mutex>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "include/app/session.h"
+#include "include/browser/runtime.h"
 
 namespace uagent::browser {
 namespace {
-constexpr size_t kMaxPacket = 12 * 1024 * 1024;
+constexpr size_t kMaxPacket = size_t{12} * 1024 * 1024;
 
 bool CloseOnExec(int fd) {
   int flags = fcntl(fd, F_GETFD);
@@ -38,7 +39,8 @@ bool CloseOnExec(int fd) {
 
 bool Transfer(int fd, char* bytes, size_t count, bool write, int timeout_ms) {
   while (count) {
-    pollfd wait{fd, static_cast<short>(write ? POLLOUT : POLLIN), 0};
+    pollfd wait{fd, 0, 0};
+    wait.events = static_cast<decltype(wait.events)>(write ? POLLOUT : POLLIN);
     if (poll(&wait, 1, timeout_ms) <= 0) return false;
     ssize_t n = write ? ::write(fd, bytes, count) : ::read(fd, bytes, count);
     if (n < 0 && errno == EINTR) continue;
@@ -60,11 +62,13 @@ bool Packet(int fd, json& value, bool write, int timeout_ms) {
                              static_cast<unsigned char>(length >> 16),
                              static_cast<unsigned char>(length >> 8),
                              static_cast<unsigned char>(length)};
-  if (!Transfer(fd, reinterpret_cast<char*>(header), 4, write, timeout_ms))
+  if (!Transfer(fd, reinterpret_cast<char*>(header), 4, write, timeout_ms)) {
     return false;
+  }
   if (!write) {
-    length = (uint32_t(header[0]) << 24) | (uint32_t(header[1]) << 16) |
-             (uint32_t(header[2]) << 8) | header[3];
+    length = (static_cast<uint32_t>(header[0]) << 24) |
+             (static_cast<uint32_t>(header[1]) << 16) |
+             (static_cast<uint32_t>(header[2]) << 8) | header[3];
     if (length > kMaxPacket) return false;
     body.resize(length);
   }
@@ -82,7 +86,9 @@ Fd Connect() {
   address.sun_family = AF_UNIX;
   memcpy(address.sun_path, path.c_str(), path.size() + 1);
   if (connect(fd.Get(), reinterpret_cast<sockaddr*>(&address),
-              sizeof(address)) != 0) return {};
+              sizeof(address)) != 0) {
+    return {};
+  }
   return fd;
 }
 }  // namespace
@@ -110,8 +116,9 @@ bool EnsureDataDirectory(const std::string& path) {
     struct stat info{};
     if (lstat(current.c_str(), &info) != 0) {
       if (errno != ENOENT || mkdir(current.c_str(), 0700) != 0 ||
-          lstat(current.c_str(), &info) != 0)
+          lstat(current.c_str(), &info) != 0) {
         return false;
+      }
     }
     if (!S_ISDIR(info.st_mode)) return false;
   }
@@ -136,8 +143,9 @@ json Request(const json& command, int timeout_ms) {
   if (!fd) return {{"error", "browser service unavailable"}};
   json copy = command, answer;
   if (!Packet(fd.Get(), copy, true, timeout_ms) ||
-      !Packet(fd.Get(), answer, false, timeout_ms))
+      !Packet(fd.Get(), answer, false, timeout_ms)) {
     return {{"error", "browser service timed out or disconnected"}};
+  }
   return answer;
 }
 
@@ -176,6 +184,7 @@ bool StartService(const std::string& executable, ServiceProcess& process,
       "HOME=" + DataDirectory(), "UAGENT_BROWSER_DATA=" + DataDirectory(),
       "LANG=C.UTF-8", "TMPDIR=/tmp"};
   std::vector<char*> envp;
+  envp.reserve(environment.size() + 1);
   for (auto& setting : environment) envp.push_back(setting.data());
   envp.push_back(nullptr);
   pid_t pid = -1;
@@ -201,7 +210,9 @@ bool StartService(const std::string& executable, ServiceProcess& process,
 int ServiceMain(int owner_fd) {
   const std::string path = SocketPath();
   if (path.empty() || path.size() >= sizeof(sockaddr_un::sun_path) ||
-      !EnsureDataDirectory(DataDirectory()) || !CloseOnExec(owner_fd)) return 2;
+      !EnsureDataDirectory(DataDirectory()) || !CloseOnExec(owner_fd)) {
+    return 2;
+  }
   Fd listener(socket(AF_UNIX, SOCK_STREAM, 0));
   if (!listener || !CloseOnExec(listener.Get())) return 2;
   unlink(path.c_str());

@@ -5,6 +5,7 @@ namespace uagent {
 // The suite in run order: declarations and dispatch expand from this list.
 #define UAGENT_TESTS(X)                          \
   X(TestBrowserHandoverRecovery)                 \
+  X(TestBrowserProfiles)                         \
   X(TestForeignToolMarkup)                       \
   X(TestToolResults)                             \
   X(TestRegistries)                              \

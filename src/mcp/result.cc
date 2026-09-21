@@ -1,7 +1,10 @@
 // Copyright 2026 Timon Gentzsch
 
 #include "include/mcp/result.h"
+
+#include <string>
 #include <utility>
+
 #include "include/core/fs.h"
 #include "include/tools/image_result.h"
 

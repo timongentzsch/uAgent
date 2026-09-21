@@ -11,5 +11,5 @@ namespace uagent {
 // Save a bounded base64 tool image and queue it for the next model request.
 ToolResult ToolImageResult(const json& content, std::string source_call_id,
                            const char* source, const char* directory);
-}
+}  // namespace uagent
 #endif

@@ -163,8 +163,9 @@ class WorkerChannel final : public ApplicationChannel {
       phase = "searching";
     } else if (event.type == "turn.completed" || event.type == "turn.stopped") {
       phase = "finishing";
-      if (browser_session_)
+      if (browser_session_) {
         browser::Request({{"op", "release"}, {"session_id", id_}}, 1000);
+      }
     }
     if (!phase.empty()) {
       std::string activity = phase == "waiting"      ? "Waiting for model"

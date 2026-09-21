@@ -2,10 +2,9 @@
 
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #define CPPHTTPLIB_NO_DEFAULT_USER_AGENT
-#include <httplib.h>
-
 #include "include/web/browser_viewer.h"
 
+#include <httplib.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -13,6 +12,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <string>
 #include <thread>
 
 #include "include/browser/browser.h"
@@ -29,7 +29,9 @@ Fd ConnectRfb() {
   address.sun_family = AF_UNIX;
   memcpy(address.sun_path, path.c_str(), path.size() + 1);
   if (connect(fd.Get(), reinterpret_cast<sockaddr*>(&address),
-              sizeof(address)) != 0) return {};
+              sizeof(address)) != 0) {
+    return {};
+  }
   return fd;
 }
 bool StillControls(const std::string& device, uint64_t generation) {
@@ -61,8 +63,8 @@ uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
       int result = poll(&ready, 1, 500);
       if (std::chrono::steady_clock::now() >= next_check) {
         if (!StillControls(device, generation)) break;
-        next_check = std::chrono::steady_clock::now() +
-                     std::chrono::milliseconds(500);
+        next_check =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
       }
       if (result < 0) break;
       if (result == 0) continue;
@@ -76,7 +78,9 @@ uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
   while (!stopped) {
     auto result = socket.read(data);
     if (result != httplib::ws::ReadResult::Binary || data.size() > 262144 ||
-        !StillControls(device, generation)) break;
+        !StillControls(device, generation)) {
+      break;
+    }
     size_t sent = 0;
     while (sent < data.size()) {
       pollfd ready{rfb.Get(), POLLOUT, 0};

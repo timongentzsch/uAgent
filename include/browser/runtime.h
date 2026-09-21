@@ -5,6 +5,7 @@
 #include <sys/types.h>
 
 #include <string>
+#include <vector>
 
 #include "include/core/fd.h"
 #include "include/core/json.h"
@@ -30,6 +31,14 @@ class Runtime {
   bool Agent(const json& command, std::string& error);
   json Status(bool include_page = true);
   bool SaveHandover() const;
+  bool SaveProfiles() const;
+  std::string ProfilePath() const;
+  json SwitchProfile(const std::string& id);
+
+  struct Profile {
+    std::string id;
+    std::string name;
+  };
 
   pid_t vnc_pid_ = -1;
   pid_t chrome_pid_ = -1;
@@ -39,6 +48,9 @@ class Runtime {
   std::string cdp_buffer_;
   std::string target_, page_session_, observation_;
   std::string agent_session_, interaction_, viewer_;
+  std::vector<Profile> profiles_{{"default", "Default"}};
+  std::string selected_profile_ = "default";
+  std::string profile_error_;
   std::string mode_ = "idle";
   uint64_t generation_ = 0;
 };

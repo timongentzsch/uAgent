@@ -480,7 +480,11 @@ export interface ToolCatalogue {
   tools: ToolCatalogueItem[];
 }
 export interface CommandResults {
-  browser: { running?: boolean; mode?: string };
+  browser: {
+    running?: boolean;
+    mode?: string;
+    created_profile_id?: string;
+  };
   prompt: PromptResult;
   memory: LibraryResult;
   skills: LibraryResult;
@@ -539,6 +543,7 @@ export interface CommandFields {
   device_id?: string;
   text?: string;
   interaction_id?: string;
+  profile_id?: string;
   attachment_ids?: (string | { id: string; name: string })[];
   activity_id?: number;
   agent_id?: string;

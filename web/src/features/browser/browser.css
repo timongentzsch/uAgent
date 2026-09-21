@@ -11,7 +11,18 @@
   max-width: 72ch;
 }
 .browser-location {
-  overflow-wrap: anywhere;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser-panel > .dialog-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--surface-inset));
+  z-index: 1;
+  padding-block: var(--gap);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
 }
 .browser-screen {
   width: 100%;
@@ -27,6 +38,81 @@
 .browser-view-controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--gap);
+}
+.browser-view-controls small {
+  margin-inline-end: auto;
+}
+.browser-trackpad {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.browser-trackpad-surface {
+  display: flex;
+  align-items: end;
+  height: clamp(90px, 16dvh, 150px);
+  padding: var(--gap);
+  border: 1px solid var(--line);
+  background: var(--raised);
+  touch-action: none;
+  cursor: crosshair;
+}
+.browser-trackpad-surface small {
+  color: var(--muted);
+  pointer-events: none;
+}
+.browser-trackpad-buttons,
+.browser-text-actions,
+.browser-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+}
+.browser-trackpad-buttons > button {
+  flex: 1;
+  touch-action: none;
+}
+.browser-trackpad-buttons > button.active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.browser-text-panel {
+  display: grid;
+  gap: var(--gap);
+  padding: var(--pad);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.browser-text-panel textarea {
+  width: 100%;
+  min-height: 90px;
+  max-height: 20dvh;
+  resize: vertical;
+}
+.browser-text-actions > button,
+.browser-key-actions > button {
+  flex: 1 1 auto;
+}
+.browser-trackpad-hint {
+  display: block;
+}
+@media (pointer: fine) {
+  .browser-touch-toggle {
+    display: none;
+  }
+}
+@media (max-width: 600px) {
+  .browser-view-controls > button {
+    flex: 1;
+  }
+  .browser-view-controls small {
+    flex-basis: 100%;
+  }
+  .browser-trackpad-hint {
+    display: none;
+  }
 }

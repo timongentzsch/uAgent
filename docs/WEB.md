@@ -40,8 +40,15 @@ that paired device can finish the matching pending interaction. Closing the
 viewer or losing its connection keeps the agent paused. A second device can
 take control after the first finishes; the browser profile and login survive a
 web-host restart. Stop browser from the viewer when idle to release resources.
-On a phone, **Actual size** shows Chrome at native resolution and dragging pans
-the clipped view; **Fit screen** restores the full display.
+On a phone, **Fit screen** shows the full display with a touchpad below it:
+move one finger to aim, tap to click, use two fingers to scroll or right-click,
+or hold **Left** while moving to drag. **Actual size** shows Chrome at native
+resolution and dragging pans the clipped view. **Text & keys** opens a phone
+text field, clipboard transfer and useful keys; **Address** focuses Chrome's
+URL field. Copy in Chrome before loading
+its clipboard into the field. Text moves only when you choose a transfer
+action; it is not synced automatically with the phone clipboard. Browser
+clipboard transfer uses the existing private VNC connection.
 The service exposes neither a CDP TCP port nor a VNC TCP port.
 Chrome's sandbox requires a narrow [seccomp profile](../deploy/NOTICE.md)
 that permits user namespace creation. The Compose stack applies it without
@@ -71,8 +78,8 @@ needs more space.
 On an ARM64 Docker Desktop host (2026-09-21), the built image measured 378 MB
 in Docker and 375 MB as a gzip-compressed image archive. The stopped browser
 used 15 MiB of container memory; Chrome showing a page used 828 MiB. The lazy
-viewer bundle was 190 KB raw / 57 KB gzip. These are comparison points, not
-size ceilings; measure again on the deployment host.
+viewer bundle with phone controls is 196 KB raw / 59 KB gzip. These are
+comparison points, not size ceilings; measure again on the deployment host.
 
 ## Execution and persistence
 
@@ -255,14 +262,15 @@ requires device validation; browser emulation does not establish it.
 
 ### Frontend bundle baseline (`web/scripts/size.js`, CI-reported)
 
-Measured 2026-09-21 after the scale, loading and shared-control refactor. Core
-shell CSS is available before lazy feature modules. `npm run size --prefix web`
-records raw and gzip bytes in CI for review; it has no fixed byte ceiling. Heavy
-renderers (mermaid, katex, highlight) stay in lazy chunks.
+Measured 2026-09-22 after the browser viewer and shared UI updates. Core shell CSS is
+available before lazy feature modules so loading and loaded surfaces keep their
+columns and dialog bounds. `npm run size --prefix web` records raw and gzip
+bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
+(mermaid, katex, highlight) stay in lazy chunks.
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 71,824 | 26,157 |
-| Initial CSS | 22,569 | 5,394 |
-| App (excl. diagrams) | 942,291 | 496,577 |
-| Diagrams (lazy) | 5,118,686 | 1,473,729 |
+| Initial JS | 74,891 | 28,487 |
+| Initial CSS | 21,721 | 5,268 |
+| App (excl. diagrams) | 1,142,870 | 558,361 |
+| Diagrams (lazy) | 5,119,214 | 1,478,004 |

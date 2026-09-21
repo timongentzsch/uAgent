@@ -171,7 +171,7 @@ bool Runtime::Start(std::string& error) {
                      "-auth", authority, "-rfbunixpath", RfbPath(),
                      "-rfbunixmode", "0600", "-rfbport", "-1",
                      "-SecurityTypes", "None", "-FrameRate", "15",
-                     "-AcceptCutText=0", "-SendCutText=0", "-SendPrimary=0",
+                     "-AcceptCutText=1", "-SendCutText=1", "-SendPrimary=0",
                      "-nolisten", "tcp"});
   if (vnc_pid_ < 0) {
     error = "cannot launch Xtigervnc";

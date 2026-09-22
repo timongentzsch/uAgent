@@ -758,7 +758,7 @@
     ]
   },
   "index.html": {
-    "file": "assets/index-_0bS9Woo.js",
+    "file": "assets/index--VOCZEDH.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -1772,7 +1772,7 @@
     "isDynamicEntry": true
   },
   "src/features/browser/browser.tsx": {
-    "file": "assets/browser-wOOKaleU.js",
+    "file": "assets/browser-B-dAndbt.js",
     "name": "browser",
     "src": "src/features/browser/browser.tsx",
     "isDynamicEntry": true,
@@ -1781,7 +1781,7 @@
       "_api-BJi7HnBw.js"
     ],
     "css": [
-      "assets/browser-CTEXxZDG.css"
+      "assets/browser-B39XzJV_.css"
     ]
   },
   "src/features/chat/activity.tsx": {

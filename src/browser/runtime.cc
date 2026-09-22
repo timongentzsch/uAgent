@@ -626,7 +626,15 @@ json Runtime::Execute(const json& command) {
     return Status();
   }
   if (op == "viewer") {
-    if (mode_ != "human" || viewer_ != JsonValue(command, "device", "")) {
+    const std::string role = JsonValue(command, "role", "control");
+    if (role == "observe") {
+      if (mode_ != "agent" || !Alive(chrome_pid_) || !Alive(vnc_pid_)) {
+        return {{"error", "the agent is not using the browser"}};
+      }
+      return Status(false);
+    }
+    if (role != "control" || mode_ != "human" ||
+        viewer_ != JsonValue(command, "device", "")) {
       return {{"error", "this device does not control the browser"}};
     }
     return Status(false);

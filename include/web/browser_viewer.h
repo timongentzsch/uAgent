@@ -8,6 +8,7 @@ class WebSocket;
 }
 namespace uagent::web {
 uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
-                            const std::string& device);
+                            const std::string& device,
+                            const std::string& role);
 }
 #endif

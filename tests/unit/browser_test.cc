@@ -8,9 +8,38 @@
 
 #include "include/browser/runtime.h"
 #include "include/core/json.h"
+#include "include/web/rfb_filter.h"
 #include "tests/unit/test_support.h"
 
 namespace uagent {
+
+void TestBrowserViewOnlyFilter() {
+  web::RfbViewOnlyFilter filter;
+  std::string output;
+  CHECK(filter.Push("RFB 003.", output));
+  CHECK(output == "RFB 003.");
+  CHECK(filter.Push(std::string("008\n\x01\x01", 6), output));
+  CHECK(output == std::string("008\n\x01\x01", 6));
+
+  const std::string update("\x03\x01\0\0\0\0\x05\0\x03\x20", 10);
+  const std::string key("\x04\x01\0\0\0\0\0\x61", 8);
+  const std::string pointer("\x05\x01\0\x10\0\x20", 6);
+  const std::string clipboard("\x06\0\0\0\0\0\0\x03" "abc", 11);
+  CHECK(filter.Push(update + key + pointer + clipboard + update, output));
+  CHECK(output == update + update);
+
+  const std::string encodings("\x02\0\0\x01\0\0\0\0", 8);
+  CHECK(filter.Push(encodings.substr(0, 3), output));
+  CHECK(output.empty());
+  CHECK(filter.Push(encodings.substr(3), output));
+  CHECK(output == encodings);
+
+  const std::string extended_clipboard(
+      "\x06\0\0\0\xff\xff\xff\xfc" "data", 12);
+  CHECK(filter.Push(extended_clipboard, output));
+  CHECK(output.empty());
+  CHECK(!filter.Push(std::string("\x07", 1), output));
+}
 
 void TestBrowserHandoverRecovery() {
   TestWorkspace workspace("browser-handover");

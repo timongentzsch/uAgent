@@ -34,6 +34,9 @@ Provider keys can also go in `.env.appliance`; keep that file private.
 
 The web-only `browser` tool uses the same visible tab as the viewer. Navigate,
 observe, click, type and scroll use native CDP over Chrome's inherited pipes.
+Opening the browser while the agent is working starts a read-only viewer, so
+the page remains visible without changing browser ownership. **Take control**
+is the explicit handoff that pauses agent input and enables local input.
 When the agent calls `request_human`, the conversation shows **Open browser**.
 Take control, complete sign-in and MFA in Chrome, then choose **Done**. Only
 that paired device can finish the matching pending interaction. Closing the
@@ -49,12 +52,11 @@ existing `/data/browser/profile` remains the **Default** profile, so upgrading
 does not move or clear a saved login. Named profiles live under
 `/data/browser/profiles`; `/data/browser/profiles.json` records their names and
 current selection. Back up the full `/data` volume to preserve every login.
-On a phone, **Fit screen** shows the full display with a touchpad below it:
-move one finger to aim, tap to click, use two fingers to scroll or right-click,
-or hold **Left** while moving to drag. **Actual size** shows Chrome at native
-resolution and dragging pans the clipped view. **Text & keys** opens a phone
-text field, clipboard transfer and useful keys; **Address** focuses Chrome's
-URL field. Copy in Chrome before loading
+On a phone the display itself is a relative trackpad: move one finger to aim,
+tap to click, long press to hold, pinch to zoom, and use two fingers to scroll
+at fit or pan while zoomed. The local cursor remains visible above the remote
+display. **Text & keys** opens a phone text field, clipboard transfer and useful
+keys; **Address** focuses Chrome's URL field. Copy in Chrome before loading
 its clipboard into the field. Text moves only when you choose a transfer
 action; it is not synced automatically with the phone clipboard. Browser
 clipboard transfer uses the existing private VNC connection.

@@ -69,7 +69,7 @@ test.describe("phone browser viewer", () => {
     await expect(dialog.getByLabel("Browser trackpad")).toBeVisible();
     await dialog.getByRole("button", { name: "Text & keys" }).click();
     await expect(dialog.getByLabel("Text for Chrome")).toBeVisible();
-    await expect(dialog.getByLabel("Browser trackpad")).toBeHidden();
+    await expect(dialog.getByLabel("Browser trackpad")).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Done" })).toBeVisible();
     await page.setViewportSize({ width: 390, height: 600 });
     await expect(page.locator("html")).toHaveCSS("--viewport-height", "600px");
@@ -77,10 +77,9 @@ test.describe("phone browser viewer", () => {
       .getByRole("button", { name: "Done" })
       .boundingBox();
     expect(done.y + done.height).toBeLessThanOrEqual(600);
-    await dialog.getByRole("button", { name: "Actual size" }).click();
     await expect(
-      dialog.getByRole("button", { name: "Fit screen" }),
-    ).toBeVisible();
+      dialog.getByRole("button", { name: "Actual size" }),
+    ).toHaveCount(0);
     const bounds = await dialog.boundingBox();
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(390);
@@ -90,6 +89,37 @@ test.describe("phone browser viewer", () => {
       await page.evaluate(() => document.documentElement.scrollWidth),
     ).toBeLessThanOrEqual(390);
   });
+});
+
+test("watches an active agent without taking control", async ({
+  page,
+  session,
+}) => {
+  await page.route("**/api/browser/status", (route) =>
+    route.fulfill({
+      json: {
+        ok: true,
+        mode: "agent",
+        running: true,
+        leased: false,
+        controller: false,
+        generation: 3,
+        profile_id: "default",
+        profiles: [{ id: "default", name: "Default" }],
+      },
+    }),
+  );
+  await page.goto(`/#session=${session.id}`);
+  await page.getByRole("button", { name: "Open browser" }).click();
+  const dialog = page.getByRole("dialog", { name: "Browser" });
+  await expect(dialog.getByLabel("Read-only browser display")).toBeVisible();
+  await expect(dialog.getByText(/Watching agent/)).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Take control" }),
+  ).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Text & keys" })).toHaveCount(
+    0,
+  );
 });
 
 test("creates and selects a persistent Chrome profile", async ({

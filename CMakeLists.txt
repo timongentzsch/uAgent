@@ -245,8 +245,9 @@ option(UAGENT_WEB "Embed the native web master and PWA" ON)
 option(UAGENT_WEB_PUSH "Build the optional OpenSSL Web Push sender" OFF)
 if(UAGENT_WEB)
   include(cmake/embed_web.cmake)
-  add_library(uagent_web src/web/master.cc src/web/browser_viewer.cc src/web/push.cc
-                          "${_web_generated}")
+  add_library(uagent_web src/web/master.cc src/web/browser_viewer.cc
+                         src/web/rfb_filter.cc src/web/push.cc
+                         "${_web_generated}")
   target_link_libraries(uagent_web PUBLIC uagent_core)
   target_include_directories(uagent_web SYSTEM PRIVATE third_party/cpp-httplib)
   target_compile_definitions(uagent PRIVATE UAGENT_WEB)
@@ -302,6 +303,7 @@ if(BUILD_TESTING)
   add_executable(
     uagent_tests
     tests/unit/browser_test.cc
+    src/web/rfb_filter.cc
     tests/unit/activity_sessions_test.cc
     tests/unit/attachment_encoding_test.cc
     tests/unit/config_proposal_test.cc

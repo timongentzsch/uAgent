@@ -264,6 +264,9 @@ class Master {
           "/api/browser/viewer",
           [this](const Request& request, httplib::ws::WebSocket& socket) {
             std::string device;
+            const std::string role = request.has_param("role")
+                                         ? request.get_param_value("role")
+                                         : "control";
             {
               std::lock_guard lock(mutex_);
               if (request.get_header_value("Host") == authority_ &&
@@ -271,12 +274,13 @@ class Master {
                 device = DeviceId(request);
               }
             }
-            if (device.empty() || viewer_active_.exchange(true)) {
+            if (device.empty() || (role != "control" && role != "observe") ||
+                viewer_active_.exchange(true)) {
               socket.close(httplib::ws::CloseStatus::PolicyViolation);
               return;
             }
-            uint64_t generation = RelayBrowserViewer(socket, device);
-            if (generation) {
+            uint64_t generation = RelayBrowserViewer(socket, device, role);
+            if (generation && role == "control") {
               browser::Request({{"op", "viewer_disconnected"},
                                 {"device", device},
                                 {"generation", generation}});

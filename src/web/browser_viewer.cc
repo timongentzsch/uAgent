@@ -14,9 +14,11 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "include/browser/browser.h"
 #include "include/core/fd.h"
+#include "include/web/rfb_filter.h"
 
 namespace uagent::web {
 namespace {
@@ -34,16 +36,20 @@ Fd ConnectRfb() {
   }
   return fd;
 }
-bool StillControls(const std::string& device, uint64_t generation) {
-  json status = browser::Request({{"op", "viewer"}, {"device", device}}, 1000);
+bool StillViews(const std::string& device, const std::string& role,
+                uint64_t generation) {
+  json status = browser::Request(
+      {{"op", "viewer"}, {"device", device}, {"role", role}}, 1000);
   return status.value("ok", false) &&
          JsonValue(status, "generation", uint64_t{0}) == generation;
 }
 }  // namespace
 
 uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
-                            const std::string& device) {
-  json status = browser::Request({{"op", "viewer"}, {"device", device}});
+                            const std::string& device,
+                            const std::string& role) {
+  json status = browser::Request(
+      {{"op", "viewer"}, {"device", device}, {"role", role}});
   if (!status.value("ok", false)) {
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
     return 0;
@@ -62,7 +68,7 @@ uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
       pollfd ready{rfb.Get(), POLLIN, 0};
       int result = poll(&ready, 1, 500);
       if (std::chrono::steady_clock::now() >= next_check) {
-        if (!StillControls(device, generation)) break;
+        if (!StillViews(device, role, generation)) break;
         next_check =
             std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
       }
@@ -75,11 +81,17 @@ uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
     socket.close(httplib::ws::CloseStatus::GoingAway);
   });
   std::string data;
+  RfbViewOnlyFilter view_only;
   while (!stopped) {
     auto result = socket.read(data);
     if (result != httplib::ws::ReadResult::Binary || data.size() > 262144 ||
-        !StillControls(device, generation)) {
+        !StillViews(device, role, generation)) {
       break;
+    }
+    std::string filtered;
+    if (role == "observe") {
+      if (!view_only.Push(data, filtered)) break;
+      data = std::move(filtered);
     }
     size_t sent = 0;
     while (sent < data.size()) {

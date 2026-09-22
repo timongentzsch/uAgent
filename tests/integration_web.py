@@ -327,7 +327,10 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
             root,
             home,
             provider.url,
-            extra_env={"UAGENT_REQUEST_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS)},
+            extra_env={
+                "UAGENT_REQUEST_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
+                "UAGENT_STREAM_IDLE_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
+            },
         ) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)

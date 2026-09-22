@@ -824,7 +824,13 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             )
             client.command("permissions", session, mode="ask")
             client.command("submit", parallel, text="WEB_SECOND_WORKSPACE")
-            client.until(parallel, lambda value: "other workspace works" in json.dumps(value))
+            client.until(
+                parallel,
+                lambda value: (
+                    "other workspace works" in json.dumps(value)
+                    and not value["metadata"]["turn_active"]
+                ),
+            )
             decision = value["pending"]["id"]
             client.command("reply", session, interaction_id=decision, text="y")
             wait_until(

@@ -194,9 +194,11 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
   json pending_progress = json::object();
   json published_usage = json::object();
   size_t pending_response_bytes = 0;
+  size_t published_response_bytes = 0;
   bool progress_pending = false;
-  auto emit_progress = [this, estimated_bytes, &published_usage](
-                           const json& reported, size_t response_bytes) {
+  auto emit_progress = [this, estimated_bytes, &published_usage,
+                        &published_response_bytes](const json& reported,
+                                                   size_t response_bytes) {
     Usage provisional = session_usage_, current;
     current.Add(reported);
     provisional.Merge(current);
@@ -209,6 +211,7 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
         EventId::kUsageUpdated,
         {{"usage", UsageJson(provisional)}, {"context_tokens", context}}});
     published_usage = reported;
+    published_response_bytes = response_bytes;
   };
   api_.observe_progress = [&](const json& reported, size_t response_bytes) {
     const auto now = std::chrono::steady_clock::now();
@@ -217,7 +220,10 @@ ChatResult Agent::Chat(const char* purpose, int64_t step, const json& schemas,
     progress_pending = true;
     const bool provider_usage_changed =
         !reported.empty() && reported != published_usage;
-    if (!provider_usage_changed && response_bytes > 0 &&
+    const bool response_growth_due =
+        response_bytes > published_response_bytes &&
+        response_bytes - published_response_bytes >= kUsageProgressBytes;
+    if (!provider_usage_changed && !response_growth_due && response_bytes > 0 &&
         now - last_progress <
             std::chrono::milliseconds(kUsageProgressIntervalMs)) {
       return;

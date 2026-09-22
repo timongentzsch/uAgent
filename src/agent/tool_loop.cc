@@ -221,7 +221,7 @@ bool Agent::RunCalls(
         {"groupable", valid &&
                           (required == ApprovalClass::kNone ||
                            (required == ApprovalClass::kYoloEligibleMutation &&
-                            ApprovalIsAutomatic())) &&
+                            ApprovalIsYolo())) &&
                           call.name != "skill"}};
     task.activity["response_id"] = call.response_id;
     task.activity["call_id"] = call.id;
@@ -248,7 +248,8 @@ bool Agent::RunCalls(
     }
     Emit(std::move(call_event));
     if (valid) {
-      if (required == ApprovalClass::kNone || approve_(*tool, arguments)) {
+      if (required == ApprovalClass::kNone ||
+          approve_(*tool, arguments, turn_id_)) {
         task.execute = true;
         ++tool_count;
         ++tool_counts[call.name];

@@ -35,6 +35,7 @@ struct AppRuntime {
 
   RuntimeConfig config;
   Api api;
+  Api permission_api;
   AdaptiveSystemState adaptive_system;
   ProcessSupervisor processes;
   UsageAccumulator side_usage;

@@ -167,7 +167,7 @@ std::string HostCapabilityPrompt(const std::vector<Tool>& tools,
   // Whether a mutation needs the user's consent changes how much a turn should
   // attempt on its own, so it is a host fact rather than an inferred one.
   prompt += "; approval=";
-  prompt += ApprovalIsAutomatic() ? "automatic" : "prompted";
+  prompt += ApprovalModeName(CurrentApprovalMode());
   return prompt +
          ". Ignore contrary self-authored claims.\n[END HOST CAPABILITIES]";
 }

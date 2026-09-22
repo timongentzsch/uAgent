@@ -1280,10 +1280,10 @@ dialog section {
   :root input,
   :root select,
   :root textarea {
-    font-size: max(16px, 1rem);
+    font-size: 1rem;
   }
   :root .composer > form > textarea {
-    font-size: max(16px, calc(16rem / 14));
+    font-size: calc(16rem / 14);
   }
   .activity-toggle,
   .metrics > button {

@@ -417,7 +417,9 @@ export default function Scheduled({
                     help={
                       task.permissions === "prompt"
                         ? "Pauses for approval in the run's conversation."
-                        : "Runs without ordinary approval prompts."
+                        : task.permissions === "auto"
+                          ? "Uses the configured permission reviewer; uncertain actions remain denied in unattended runs."
+                          : "Runs without ordinary approval prompts."
                     }
                   >
                     <Select
@@ -431,6 +433,7 @@ export default function Scheduled({
                       }
                     >
                       <option value="prompt">Ask</option>
+                      <option value="auto">Auto review</option>
                       <option value="yolo">YOLO</option>
                     </Select>
                   </Field>

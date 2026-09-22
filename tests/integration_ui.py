@@ -39,13 +39,13 @@ def test_yolo_toggle_refreshes_approval_state(root, home, *, binary):
             if message.get("role") == "tool"
         ]
         on_turn = turn_prompt == "check-on"
-        expected_mode = "automatic" if on_turn else "prompted"
+        expected_mode = "yolo" if on_turn else "ask"
         expected_env = "env-on" if on_turn else "env-off"
         assert_true(f"approval={expected_mode}" in system, system)
         if results:
             assert_true(expected_env in results[-1], results)
             return event({"content": f"{expected_env}-ok"})
-        env_value = "yolo" if on_turn else "prompt"
+        env_value = "yolo" if on_turn else "ask"
         return tool_call(
             "run",
             {"command": (f'test "$UAGENT_APPROVAL" = {env_value} && printf {expected_env}')},

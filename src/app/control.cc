@@ -8,8 +8,10 @@
 
 #include "include/agent/prompt.h"
 #include "include/app/library.h"
+#include "include/app/permissions.h"
 #include "include/app/prompt_control.h"
 #include "include/app/schedule.h"
+#include "include/app/tool_categories.h"
 #include "include/core/capture.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -36,6 +38,12 @@ json ManagementControl(const json& request) {
   }
   if (JsonValue(request, "kind", "") == "schedule") {
     return ScheduleControl(request);
+  }
+  if (JsonValue(request, "kind", "") == "permission_rules") {
+    return PermissionRulesControl(request);
+  }
+  if (JsonValue(request, "kind", "") == "tool_categories") {
+    return ToolCategoriesControl(request);
   }
   return LibraryControl(request, JsonValue(request, "cwd", CanonicalCwd()));
 }

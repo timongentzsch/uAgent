@@ -79,6 +79,7 @@ namespace uagent {
   X(TestMemoryAlwaysOnSelection)                 \
   X(TestEarlyTurnInterruption)                   \
   X(TestRuntimeOwnershipHelpers)                 \
+  X(TestPermissionAndToolCategoryPolicy)         \
   X(TestAttributedUsageAccumulator)              \
   X(TestAgentConfigAllowlist)                    \
   X(TestEffectiveConfigReload)                   \

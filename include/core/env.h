@@ -116,8 +116,12 @@ std::string ShellEnvironmentAllowlist();
 // Approval mode is the one setting a running session can toggle, so it cannot
 // live in environ: spawning a child iterates environ on another thread while
 // /yolo would be rewriting it. Children receive it as an explicit override.
-bool ApprovalIsAutomatic();
-void SetApprovalAutomatic(bool automatic);
+enum class ApprovalMode { kAsk, kAuto, kYolo };
+const char* ApprovalModeName(ApprovalMode mode);
+bool ParseApprovalMode(std::string_view value, ApprovalMode& mode);
+ApprovalMode CurrentApprovalMode();
+void SetApprovalMode(ApprovalMode mode);
+bool ApprovalIsYolo();
 
 // Core request, MCP, and persistence settings. Bootstrap builds one snapshot;
 // a validated turn-boundary reload may replace explicitly safe fields.
@@ -173,6 +177,8 @@ struct RuntimeConfig : TurnBudgets {
   int64_t project_doc_bytes = int64_t{32} * 1024;
   int64_t session_archive_bytes = int64_t{16} * 1024 * 1024;
   std::string approval;
+  std::string permission_model = "~typesafe/jev-latest";
+  std::string permission_url = "https://openrouter.ai/api/alpha";
   std::string openrouter_provider;
   std::string openrouter_variant;
   std::string web_search_backend = "auto";

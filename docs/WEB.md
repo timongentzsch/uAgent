@@ -141,8 +141,10 @@ responses. Disconnected views stop animation and disable commands.
 - `/` commands use the native registry, suggestions and Tab completion. Enter
   sends; Shift+Enter inserts a newline. Navigation and file picking belong to the
   client; execution and configuration use the runtime commands.
-- Conversation menus provide rename, fork, close, delete and statistics. Stop and
-  close a live runtime before deleting its history. Project files are unaffected.
+- Conversation menus provide tools, rename, fork, close, delete and statistics.
+  The Tools view controls the active schema and lets the user group tools in
+  persistent custom categories. Stop and close a live runtime before deleting
+  its history. Project files are unaffected.
 - The context counter prepares the current context when idle and shows the
   captured request while running. Message menus expose retained
   tool input/output and HTTP request/response captures. Credential headers are
@@ -273,7 +275,7 @@ requires device validation; browser emulation does not establish it.
 
 ### Frontend bundle baseline (`web/scripts/size.js`, CI-reported)
 
-Measured 2026-09-22 after the browser viewer and shared UI updates. Core shell CSS is
+Measured 2026-09-23 after the browser viewer and shared UI updates. Core shell CSS is
 available before lazy feature modules so loading and loaded surfaces keep their
 columns and dialog bounds. `npm run size --prefix web` records raw and gzip
 bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
@@ -281,7 +283,7 @@ bytes in CI for review; it has no fixed byte ceiling. Heavy renderers
 
 | Group | Raw | Gzip |
 | --- | ---: | ---: |
-| Initial JS | 75,174 | 29,387 |
-| Initial CSS | 22,569 | 5,394 |
-| App (excl. diagrams) | 1,162,600 | 566,853 |
+| Initial JS | 75,115 | 29,357 |
+| Initial CSS | 22,549 | 5,384 |
+| App (excl. diagrams) | 1,166,517 | 568,328 |
 | Diagrams (lazy) | 5,124,554 | 1,479,761 |

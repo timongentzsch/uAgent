@@ -76,7 +76,7 @@ ChildEnvironment::ChildEnvironment(const EnvironmentOverrides& overrides,
                                  }),
                   values_.end());
     values_.push_back(std::string("UAGENT_APPROVAL=") +
-                      (ApprovalIsAutomatic() ? "yolo" : "prompt"));
+                      ApprovalModeName(CurrentApprovalMode()));
   }
   for (const auto& [key, value] : overrides) {
     values_.erase(std::remove_if(values_.begin(), values_.end(),

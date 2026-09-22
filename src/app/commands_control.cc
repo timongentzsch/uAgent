@@ -92,25 +92,27 @@ json CommandResult(const AppSession& session,
 json PermissionControl(AppContext& context, const json& request) {
   std::string mode = JsonValue(request, "mode", "");
   if (!mode.empty()) {
-    if (mode != "default" && mode != "ask" && mode != "yolo") {
+    PermissionOverride parsed;
+    if (!ParsePermissionOverride(mode, parsed)) {
       return {{"error", "unknown permission mode"}};
     }
-    context.permission_override.store(mode == "default" ? -1
-                                      : mode == "yolo"  ? 1
-                                                        : 0);
+    context.permission_override.store(parsed);
   }
   auto configured = context.config_manager.Read();
   auto value = configured.values.find("UAGENT_APPROVAL");
-  bool automatic = value != configured.values.end() && value->second == "yolo";
-  const std::string default_mode = automatic ? "yolo" : "ask";
-  int override = context.permission_override.load();
-  if (override >= 0) automatic = override == 1;
-  SetApprovalAutomatic(automatic);
-  json result = {{"mode", override < 0 ? "default"
-                          : override   ? "yolo"
-                                       : "ask"},
-                 {"effective", automatic ? "yolo" : "ask"},
-                 {"default", default_mode}};
+  ApprovalMode default_mode = ApprovalMode::kAsk;
+  if (value != configured.values.end()) {
+    ParseApprovalMode(value->second, default_mode);
+  }
+  PermissionOverride override = context.permission_override.load();
+  ApprovalMode effective = default_mode;
+  if (override == PermissionOverride::kAsk) effective = ApprovalMode::kAsk;
+  if (override == PermissionOverride::kAuto) effective = ApprovalMode::kAuto;
+  if (override == PermissionOverride::kYolo) effective = ApprovalMode::kYolo;
+  SetApprovalMode(effective);
+  json result = {{"mode", PermissionOverrideName(override)},
+                 {"effective", ApprovalModeName(effective)},
+                 {"default", ApprovalModeName(default_mode)}};
   if (!mode.empty()) {
     Emit(Event{EventId::kConfigChanged, {{"permissions", result}}});
   }

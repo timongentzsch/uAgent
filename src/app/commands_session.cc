@@ -44,7 +44,8 @@ void SaveSessionSettings(AppSession& session) {
   session.ActiveAgent().SessionSettings(
       {{"route", RouteSelection(session.ApiClient(),
                                 session.context.provider.providers)},
-       {"permissions", session.context.permission_override.load()},
+       {"permissions",
+        PermissionOverrideName(session.context.permission_override.load())},
        {"tools", session.ActiveAgent().ToolSelectionSettings()}});
 }
 
@@ -58,7 +59,7 @@ StatusView SessionStatusView(const AppSession& session) {
                     .model = std::move(model),
                     .host = std::move(host),
                     .verbose = session.ActiveAgent().Verbose(),
-                    .yolo = ApprovalIsAutomatic(),
+                    .yolo = ApprovalIsYolo(),
                     .attachments = session.attachments.size(),
                     .background = session.Runtime().processes.Count()};
 }
@@ -171,11 +172,11 @@ void HandleContext(AppSession& session) {
 // /context is the deep live-context view. /status answers the everyday
 // questions in one screen and /debug-config explains provenance.
 void HandleStatus(const AppSession& session) {
-  json status = DescribeSelf(
-      SelfTopic::kStatus, "",
-      SelfDescriptionInputs{session.context.config_manager,
-                            session.Runtime().config, session.ApiClient(),
-                            session.context.tools, ApprovalIsAutomatic()});
+  json status =
+      DescribeSelf(SelfTopic::kStatus, "",
+                   SelfDescriptionInputs{
+                       session.context.config_manager, session.Runtime().config,
+                       session.ApiClient(), session.context.tools});
   auto row = [](const char* label, const std::string& value) {
     printf("  %s%-16s%s %s\n", DIM(), label, RST(),
            TerminalSafe(value).c_str());
@@ -206,11 +207,11 @@ void HandleStatus(const AppSession& session) {
 }
 
 void HandleDebugConfig(const AppSession& session, const std::string& argument) {
-  json described = DescribeSelf(
-      SelfTopic::kConfig, argument,
-      SelfDescriptionInputs{session.context.config_manager,
-                            session.Runtime().config, session.ApiClient(),
-                            session.context.tools, ApprovalIsAutomatic()});
+  json described =
+      DescribeSelf(SelfTopic::kConfig, argument,
+                   SelfDescriptionInputs{
+                       session.context.config_manager, session.Runtime().config,
+                       session.ApiClient(), session.context.tools});
   const json& settings = described["settings"];
   if (settings.empty()) {
     printf("%s\u00b7 no setting named %s%s\n", RED(),
@@ -318,12 +319,8 @@ json AgentsJson(const AppSession& session) {
 }
 
 SelfDescriptionInputs DescriptionInputs(const AppSession& session) {
-  return {session.context.config_manager,
-          session.Runtime().config,
-          session.ApiClient(),
-          session.context.tools,
-          ApprovalIsAutomatic(),
-          &session.ActiveAgent()};
+  return {session.context.config_manager, session.Runtime().config,
+          session.ApiClient(), session.context.tools, &session.ActiveAgent()};
 }
 
 }  // namespace uagent

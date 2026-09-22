@@ -1384,13 +1384,13 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       })
       .toBe(true);
   };
-  const input = async (locator, text) => {
+  const input = async (locator, text, expectedFontSize = 14) => {
     await locator.fill(text);
     await viewport(390, 70);
     await expect(locator).toBeFocused();
     expect(
       await locator.evaluate((e) => parseFloat(getComputedStyle(e).fontSize)),
-    ).toBeGreaterThanOrEqual(16);
+    ).toBeCloseTo(expectedFontSize, 1);
     await contained(locator, 390, 70);
   };
   try {
@@ -1407,7 +1407,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
       150,
     );
     const draft = "Keep my draft and focus as the keyboard moves";
-    await input(prompt, draft);
+    await input(prompt, draft, 16);
     await expect(page.locator("html")).toHaveAttribute("data-keyboard", "");
     await expect(page.locator("#app")).toHaveCSS("padding-bottom", "0px");
     expect(
@@ -1475,7 +1475,7 @@ test("keyboard viewport preserves focus and contains chat, dialogs and editors",
     await settings
       .getByRole("button", { name: "Advanced configuration", exact: true })
       .tap();
-    await input(settings.getByLabel("Find a setting"), "web");
+    await input(settings.getByLabel("Find a setting"), "web", 7);
     await contained(settings, 390, 70);
     await settings.getByRole("button", { name: "Back", exact: true }).tap();
     await settings

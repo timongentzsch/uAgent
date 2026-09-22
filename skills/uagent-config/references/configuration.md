@@ -211,7 +211,9 @@ Every setting below is read from the running binary's registry. `takes effect` i
 | `UAGENT_STEERING` | boolean | `1` | restart-required | accept typed steering during a turn |
 | `UAGENT_ADAPT_SYSTEM` | boolean | `0` | restart-required | expose adapt_system so the model may revise its directive |
 | `UAGENT_PROMPT_OVERLAY` | string | empty | restart-required | experiment: JSON file replacing base prompt sections so a variant can be measured without a rebuild; prompt text only |
-| `UAGENT_APPROVAL` | string | empty | next-user-turn | yolo approves ordinary mutations without asking |
+| `UAGENT_APPROVAL` | string | empty | next-user-turn | ask, auto reviewer, or yolo for ordinary mutations |
+| `UAGENT_PERMISSION_MODEL` | string | `~typesafe/jev-latest` | next-user-turn | OpenRouter Decisions model used by auto permissions |
+| `UAGENT_PERMISSION_URL` | string | `https://openrouter.ai/api/alpha` | next-user-turn | OpenRouter Decisions API base URL |
 | `UAGENT_TOOL_CAPABILITIES` | string | empty | restart-required | restrict the exposed tool capability set |
 | `UAGENT_SHELL_ENV_ALLOW` | string | empty | restart-required | comma-separated sensitive variables approved shells may inherit |
 | `UAGENT_TRUST_PROJECT_CONFIG` | boolean | `0` | restart-required | trust this workspace's .mcp.json and config |

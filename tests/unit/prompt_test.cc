@@ -106,7 +106,8 @@ void TestPromptRequestParity() {
   UsageAccumulator usage;
   Agent agent(
       api, tools, processes, usage,
-      [](const Tool&, const json&) { return false; }, {}, {}, {}, &state);
+      [](const Tool&, const json&, int64_t) { return false; }, {}, {}, {},
+      &state);
   auto initial = agent.PromptConfiguration({});
   auto proposed = agent.PromptConfiguration(
       {{"action", "set"},

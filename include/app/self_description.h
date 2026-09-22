@@ -37,7 +37,6 @@ struct SelfDescriptionInputs {
   const RuntimeConfig& active;
   const Api& api;
   const std::vector<Tool>& tools;
-  bool yolo = false;
   Agent* agent = nullptr;
 };
 

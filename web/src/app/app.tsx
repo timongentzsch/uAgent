@@ -25,7 +25,7 @@ import {
   Spinner,
   preloadDeferred,
 } from "../shared/ui.tsx";
-import { Globe2, Menu, Settings, Wrench } from "lucide-preact";
+import { Globe2, Menu, Settings } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -141,6 +141,11 @@ function App() {
   const session =
     snapshot?.metadata ||
     catalogue.sessions.find((item) => item.id === selected);
+  const toolsSessionId = modal?.type === "tools" ? modal.session_id : "";
+  const toolsSnapshot = snapshots[toolsSessionId];
+  const toolsSession =
+    toolsSnapshot?.metadata ||
+    catalogue.sessions.find((item) => item.id === toolsSessionId);
   const draft = drafts[selected] || emptyDraft();
   const pending = snapshot?.pending;
   const running = online && !!session?.turn_active;
@@ -690,7 +695,6 @@ function App() {
       menu={conversationMenu}
       refresh={refresh}
       settings={() => open({ type: "settings" })}
-      tools={() => open({ type: "tools" })}
       create={() => {
         setFolder(session?.cwd || "");
         open({ type: "new" });
@@ -822,14 +826,6 @@ function App() {
               )}
               {compact && (
                 <div class="conversation-head-actions">
-                  {session && (
-                    <IconButton
-                      label="Tools"
-                      onClick={() => open({ type: "tools" })}
-                    >
-                      <Wrench aria-hidden="true" />
-                    </IconButton>
-                  )}
                   <IconButton
                     label="Settings"
                     onClick={() => open({ type: "settings" })}
@@ -1089,7 +1085,7 @@ function App() {
         >
           <Deferred
             load={settingsDialog}
-            fallback={<SettingsSkeleton />}
+            fallback={<SettingsSkeleton repository={!!session?.cwd} />}
             theme={theme}
             setTheme={setTheme}
             zoom={zoom}
@@ -1121,14 +1117,14 @@ function App() {
           className="tools-view"
           close={() => setModal(null)}
         >
-          {session ? (
+          {toolsSession ? (
             <Deferred
               load={toolsDialog}
               fallback={<Spinner label="Loading tools…" surface />}
-              session={session}
+              session={toolsSession}
               online={online}
-              busy={!!session.turn_active || !!snapshot?.pending}
-              changed={() => load(selected)}
+              busy={!!toolsSession.turn_active || !!toolsSnapshot?.pending}
+              changed={() => load(toolsSessionId)}
             />
           ) : (
             <p class="muted">Open a conversation to choose its tools.</p>

@@ -786,7 +786,8 @@ void Master::Command(const Request& request, Response& response) {
       outcome["result"] = result;
     }
   } else if (kind == "memory" || kind == "skills" || kind == "schedule" ||
-             kind == "models" ||
+             kind == "models" || kind == "permission_rules" ||
+             kind == "tool_categories" ||
              (kind == "prompt" &&
               JsonValue(command, "session_id", "").empty())) {
     lock.unlock();

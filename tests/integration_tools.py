@@ -972,8 +972,8 @@ def test_self_configuration_commits_after_approval(root, home, *, binary):
         assert_true("UNKNOWN_KEY=kept" in written, written)
 
 
-def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home, *, binary):
-    """An exact command is remembered; a different command still asks."""
+def test_approval_remembers_exact_action_and_forwards_a_refusal(root, home, *, binary):
+    """An exact action is remembered; a different command still asks."""
     refusal = {}
 
     def route(_, body):
@@ -993,11 +993,11 @@ def test_approval_remembers_exact_command_and_forwards_a_refusal(root, home, *, 
             root,
             base_env(home, server.url),
             [
-                (b"go\n", b"always this exact command this session"),
+                (b"go\n", b"Allow for this session"),
                 (
-                    b"a\n",
+                    b"s\n",
                     b"rm -rf /tmp/uagent-nothing",
-                    b"always this exact command this session",
+                    b"Allow for this session",
                     None,
                 ),
                 (b"use git log instead\n", b"approval-done"),

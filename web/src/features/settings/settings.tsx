@@ -1,11 +1,15 @@
 import "./settings.css";
 import { SizeControls } from "../../shared/size-controls.tsx";
+
+const permissionHelp =
+  "Used by new conversations and conversations that inherit the default. Auto sends the current request and action preview to the configured reviewer.";
 import type { Dispatch, StateUpdater, MutableRef } from "preact/hooks";
 import type {
   InstallPrompt,
   Draft,
   Snapshot,
   Catalogue,
+  PermissionRules,
   Session,
 } from "../../shared/types.ts";
 import {
@@ -77,6 +81,8 @@ export default function Settings({
   }, [advanced]);
   const [permission, setPermission] = useState<string | null>(null);
   const [savingPermission, setSavingPermission] = useState(false);
+  const [rules, setRules] = useState<PermissionRules | null>(null);
+  const [ruleError, setRuleError] = useState<unknown>(null);
   useEffect(() => {
     if (!online) return;
     let active = true;
@@ -86,8 +92,9 @@ export default function Settings({
         if (!active) return;
         if (response.pending)
           throw new Error("Permissions are still loading. Try again shortly.");
+        const configured = response.result.settings[0]?.value;
         setPermission(
-          response.result.settings[0]?.value === "yolo" ? "yolo" : "prompt",
+          configured === "yolo" || configured === "auto" ? configured : "ask",
         );
       })
       .catch((failure) => {
@@ -97,6 +104,26 @@ export default function Settings({
       active = false;
     };
   }, [attempt, online]);
+  useEffect(() => {
+    if (!online || !session?.cwd) {
+      setRules(null);
+      return;
+    }
+    let active = true;
+    command("permission_rules", null, {
+      action: "list",
+      cwd: session.cwd,
+    })
+      .then((response) => {
+        if (active && !response.pending) setRules(response.result);
+      })
+      .catch((failure) => {
+        if (active) setRuleError(failure);
+      });
+    return () => {
+      active = false;
+    };
+  }, [online, session?.cwd]);
   return (
     <div ref={body} class="settings-content">
       {advanced ? (
@@ -141,10 +168,7 @@ export default function Settings({
                   retry={() => setAttempt(attempt + 1)}
                 />
               ) : (
-                <Field
-                  label="Default permissions"
-                  help="Used by new conversations and conversations that inherit the default."
-                >
+                <Field label="Default permissions" help={permissionHelp}>
                   <Skeleton
                     rows={1}
                     className="control-skeleton"
@@ -153,10 +177,7 @@ export default function Settings({
                 </Field>
               )
             ) : (
-              <Field
-                label="Default permissions"
-                help="Used by new conversations and conversations that inherit the default."
-              >
+              <Field label="Default permissions" help={permissionHelp}>
                 <Select
                   aria-label="Default permissions"
                   value={permission}
@@ -183,7 +204,10 @@ export default function Settings({
                     }
                   }}
                 >
-                  <option value="prompt">Ask</option>
+                  <option value="ask">Ask</option>
+                  <option value="auto">
+                    Auto · review ordinary approvals with Jev
+                  </option>
                   <option value="yolo">
                     YOLO · automatic ordinary approvals
                   </option>
@@ -207,6 +231,65 @@ export default function Settings({
               UI showcase
             </a>
           </div>
+          {session?.cwd && (
+            <details class="settings-section">
+              <summary>
+                Remembered permissions
+                {rules?.rules.length ? ` · ${rules.rules.length}` : ""}
+              </summary>
+              <p class="muted">
+                Exact actions allowed for this repository. Tool definitions and
+                arguments must still match.
+              </p>
+              {ruleError && <LoadError error={ruleError} />}
+              {rules?.rules.map((rule) => (
+                <div class="device" key={rule.key}>
+                  <span>
+                    <strong>{rule.tool}</strong>
+                    <small class="muted">{rule.preview}</small>
+                  </span>
+                  <button
+                    disabled={!online}
+                    onClick={() => {
+                      setRuleError(null);
+                      command("permission_rules", null, {
+                        action: "delete",
+                        key: rule.key,
+                        cwd: session.cwd,
+                      })
+                        .then((response) => {
+                          if (!response.pending) setRules(response.result);
+                        })
+                        .catch(setRuleError);
+                    }}
+                  >
+                    Forget
+                  </button>
+                </div>
+              ))}
+              {rules && !rules.rules.length && (
+                <p class="muted">No remembered actions.</p>
+              )}
+              {!!rules?.rules.length && (
+                <button
+                  disabled={!online}
+                  onClick={() => {
+                    setRuleError(null);
+                    command("permission_rules", null, {
+                      action: "clear",
+                      cwd: session.cwd,
+                    })
+                      .then((response) => {
+                        if (!response.pending) setRules(response.result);
+                      })
+                      .catch(setRuleError);
+                  }}
+                >
+                  Forget all for this repository
+                </button>
+              )}
+            </details>
+          )}
           <details class="settings-section">
             <summary>Install</summary>
             {installed ? (

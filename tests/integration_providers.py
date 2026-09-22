@@ -77,6 +77,90 @@ def test_streamed_search_citations(root, home, *, binary):
         assert_true("legacy snippet" in result.stdout, result.stdout)
 
 
+def test_auto_permission_reviewer_allows_and_accounts(root, home, *, binary):
+    target = root / "reviewed.txt"
+
+    def reviewer(handler, body):
+        assert_true(body["model"] == "~typesafe/jev-latest", body)
+        assert_true(body["state"]["tool"] == "write_file", body)
+        assert_true(
+            set(body["questions"]["permission"]["criteria"]) == {"allow", "ask", "deny"}, body
+        )
+        write_json_response(
+            handler,
+            {
+                "answers": {
+                    "permission": {
+                        "type": "choice",
+                        "choice": "allow",
+                        "probabilities": {"allow": 0.9, "ask": 0.1, "deny": 0.0},
+                    }
+                },
+                "usage": {"input_tokens": 7, "output_tokens": 1, "cost": 0.0001},
+            },
+        )
+
+    def finish(_, body):
+        assert_true("wrote" in tool_results(body["messages"])[-1], body)
+        return event({"content": "auto-review-ok"})
+
+    with Server([reviewer]) as permission_server:
+        with Server(
+            [
+                tool_call(
+                    "write_file",
+                    {"path": str(target), "content": "approved"},
+                ),
+                finish,
+            ]
+        ) as model_server:
+            env = base_env(home, model_server.url)
+            env.update(
+                {
+                    "OPENROUTER_API_KEY": "review-key",
+                    "UAGENT_APPROVAL": "auto",
+                    "UAGENT_PERMISSION_URL": permission_server.url,
+                }
+            )
+            result = run(root, env, "--json", "-p", "write it", binary=binary)
+            envelope = json.loads(result.stdout)
+            assert_true(result.returncode == 0, (result.stderr, envelope))
+            assert_true(envelope["answer"] == "auto-review-ok", envelope)
+            assert_true(target.read_text() == "approved", target)
+            assert_true(envelope["usage"]["input"] >= 7, envelope)
+            assert_true(envelope["usage"]["cost_reported"], envelope)
+            assert_true(
+                any("permission_review" in route for route in envelope["routes"]),
+                envelope,
+            )
+
+
+def test_auto_permission_reviewer_failure_denies_headless(root, home, *, binary):
+    target = root / "must-not-exist.txt"
+
+    def finish(_, body):
+        assert_true("user denied this action" in tool_results(body["messages"])[-1], body)
+        return event({"content": "review-failed-closed"})
+
+    with Server(
+        [
+            tool_call(
+                "write_file",
+                {"path": str(target), "content": "not approved"},
+            ),
+            finish,
+        ]
+    ) as model_server:
+        env = base_env(home, model_server.url)
+        env.pop("OPENROUTER_API_KEY", None)
+        env["UAGENT_APPROVAL"] = "auto"
+        result = run(root, env, "--json", "-p", "write it", binary=binary)
+        envelope = json.loads(result.stdout)
+        assert_true(result.returncode == 0, (result.stderr, envelope))
+        assert_true(envelope["answer"] == "review-failed-closed", envelope)
+        assert_true(not target.exists(), target)
+
+
 def test_openrouter_named_search_contract_and_errors(root, home, *, binary):
     citation = {
         "type": "url_citation",

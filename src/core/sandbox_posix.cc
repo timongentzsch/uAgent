@@ -288,7 +288,7 @@ const SandboxStatus& SandboxRuntime() {
 }
 
 json SandboxDiagnosticJson() {
-  if (ApprovalIsAutomatic()) {
+  if (ApprovalIsYolo()) {
     return {{"mode", "off"},
             {"reason", "yolo approval mode"},
             {"summary", "off (yolo)"}};

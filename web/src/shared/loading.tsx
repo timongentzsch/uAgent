@@ -73,7 +73,11 @@ export function StatsSkeleton({
   );
 }
 
-export function SettingsSkeleton() {
+export function SettingsSkeleton({
+  repository = false,
+}: {
+  repository?: boolean;
+}) {
   // Mirror the live settings form row for row: same Fields (labels,
   // values, help), real inert controls where the shape is textual
   // (disabled buttons, closed sections, disabled ranges render their
@@ -99,7 +103,7 @@ export function SettingsSkeleton() {
         </div>
         <Field
           label="Default permissions"
-          help="Used by new conversations and conversations that inherit the default."
+          help="Used by new conversations and conversations that inherit the default. Auto sends the current request and action preview to the configured reviewer."
         >
           <Control />
         </Field>
@@ -113,6 +117,11 @@ export function SettingsSkeleton() {
           UI showcase
         </button>
       </div>
+      {repository && (
+        <details className="settings-section" aria-hidden="true">
+          <summary>Remembered permissions</summary>
+        </details>
+      )}
       {["Install", "Notifications", "Paired devices"].map((name) => (
         <details key={name} className="settings-section" aria-hidden="true">
           <summary>{name}</summary>

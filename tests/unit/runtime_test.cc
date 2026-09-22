@@ -17,7 +17,9 @@
 #include "include/agent/child_agent.h"
 #include "include/agent/delegation.h"
 #include "include/api/retry.h"
+#include "include/app/permissions.h"
 #include "include/app/self_description.h"
+#include "include/app/tool_categories.h"
 #include "include/core/child_env.h"
 #include "include/core/config.h"
 #include "include/core/effective_config.h"
@@ -38,7 +40,7 @@ void TestEarlyTurnInterruption() {
     ProcessSupervisor processes;
     UsageAccumulator usage;
     Agent agent(api, tools, processes, usage,
-                [](const Tool&, const json&) { return false; });
+                [](const Tool&, const json&, int64_t) { return false; });
     Observability observable;
     auto* previous = ActiveObservability();
     int notices = 0, responses = 0;
@@ -436,6 +438,57 @@ void TestRuntimeOwnershipHelpers() {
         RejectedCapability::kNone);
 }
 
+void TestPermissionAndToolCategoryPolicy() {
+  TestWorkspace workspace("permission-policy");
+  ApprovalMode approval;
+  CHECK(ParseApprovalMode("ask", approval));
+  CHECK(approval == ApprovalMode::kAsk);
+  CHECK(ParseApprovalMode("auto", approval));
+  CHECK(approval == ApprovalMode::kAuto);
+  CHECK(ParseApprovalMode("yolo", approval));
+  CHECK(approval == ApprovalMode::kYolo);
+  CHECK(!ParseApprovalMode("guess", approval));
+  CHECK(LegacyPermissionOverride(json(-1)) == PermissionOverride::kDefault);
+  CHECK(LegacyPermissionOverride(json(0)) == PermissionOverride::kAsk);
+  CHECK(LegacyPermissionOverride(json(1)) == PermissionOverride::kYolo);
+  CHECK(LegacyPermissionOverride(json("auto")) == PermissionOverride::kAuto);
+
+  Tool tool;
+  tool.name = "write_file";
+  tool.provider = "builtin";
+  tool.parameters = {{"type", "object"}};
+  tool.mutating = true;
+  const auto approval_class = ApprovalClass::kYoloEligibleMutation;
+  const std::string first =
+      PermissionKey(tool, {{"path", "first"}}, approval_class);
+  const std::string second =
+      PermissionKey(tool, {{"path", "second"}}, approval_class);
+  CHECK(first != second);
+  std::string error;
+  CHECK(RememberRepositoryPermission(CanonicalCwd(), first, tool.name,
+                                     "write first", error));
+  CHECK(RepositoryPermissionAllows(CanonicalCwd(), first));
+  CHECK(!RepositoryPermissionAllows(CanonicalCwd(), second));
+  json rules = PermissionRulesControl({{"action", "list"}});
+  CHECK(rules["rules"].size() == 1);
+  rules = PermissionRulesControl({{"action", "delete"}, {"key", first}});
+  CHECK(rules["rules"].empty());
+
+  json categories =
+      ToolCategoriesControl({{"action", "create"}, {"name", "Custom"}});
+  REQUIRE(categories.contains("categories"));
+  REQUIRE(categories["categories"].size() == 1);
+  const std::string category = JsonValue(categories["categories"][0], "id", "");
+  categories = ToolCategoriesControl({{"action", "assign"},
+                                      {"name", "write_file"},
+                                      {"category_id", category}});
+  CHECK(categories["assignments"]["write_file"] == category);
+  categories =
+      ToolCategoriesControl({{"action", "delete"}, {"category_id", category}});
+  CHECK(categories["categories"].empty());
+  CHECK(categories["assignments"].empty());
+}
+
 void TestAttributedUsageAccumulator() {
   UsageAccumulator accumulator;
   Usage direct;
@@ -517,7 +570,7 @@ void TestEffectiveImageModel() {
   ProcessSupervisor processes;
   UsageAccumulator usage;
   Agent agent(api, tools, processes, usage,
-              [](const Tool&, const json&) { return false; });
+              [](const Tool&, const json&, int64_t) { return false; });
   api.config.image_model = "custom/vision";
   api.capabilities.image_input = false;
   CHECK(agent.EffectiveImageModel() == "custom/vision");

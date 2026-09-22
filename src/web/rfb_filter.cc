@@ -34,7 +34,7 @@ bool RfbViewOnlyFilter::Push(std::string_view input, std::string& output) {
     handshake_remaining_ -= bytes;
   }
   if (input.size() > kMaxMessageBytes - pending_.size()) return false;
-  pending_.append(input);
+  pending_.append(input.data(), input.size());
   while (!pending_.empty()) {
     const auto type = static_cast<unsigned char>(pending_[0]);
     size_t size = 0;

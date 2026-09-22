@@ -29,12 +29,12 @@ bool RfbViewOnlyFilter::Push(std::string_view input, std::string& output) {
   output.clear();
   if (handshake_remaining_ > 0) {
     const size_t bytes = std::min(handshake_remaining_, input.size());
-    output.append(input.data(), bytes);
+    output.append(input.begin(), input.begin() + bytes);
     input.remove_prefix(bytes);
     handshake_remaining_ -= bytes;
   }
   if (input.size() > kMaxMessageBytes - pending_.size()) return false;
-  pending_.append(input.data(), input.size());
+  pending_.append(input.begin(), input.end());
   while (!pending_.empty()) {
     const auto type = static_cast<unsigned char>(pending_[0]);
     size_t size = 0;

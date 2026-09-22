@@ -13,6 +13,7 @@ export const scheduledModule = () =>
 export const pairing = () => import("../features/settings/pairing.tsx");
 export const composer = () => import("../features/composer/composer.tsx");
 export const chat = () => import("../features/chat/chat.tsx");
+export const browserDialog = () => import("../features/browser/browser.tsx");
 export const rawDialog = () => import("../features/settings/raw.tsx");
 export const conversationActions = () =>
   import("../features/chat/conversation-actions.tsx");

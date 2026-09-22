@@ -40,6 +40,8 @@ needs no npm or Node runtime. [Setup and development](docs/WEB.md).
 Requires CMake, a C++20 compiler, and libcurl. [uv](https://docs.astral.sh/uv/)
 enables Python scratch scripts. Browser automation additionally requires
 Node.js 20+ and `npm install -g @playwright/cli@latest`.
+The [Docker browser appliance](docs/WEB.md#docker-browser-appliance) ships a
+persistent Chrome, browser tool and phone viewer in one image.
 
 ```sh
 ./install.sh

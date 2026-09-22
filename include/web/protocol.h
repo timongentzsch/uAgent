@@ -27,6 +27,7 @@ struct WebOptions {
   int port = 8080;
   std::string origin;
   std::string push_contact;
+  std::string bind = "127.0.0.1";
 };
 int MasterMain(const WebOptions& options, const char* executable);
 }  // namespace uagent::web

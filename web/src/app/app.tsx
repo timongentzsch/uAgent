@@ -25,7 +25,7 @@ import {
   Spinner,
   preloadDeferred,
 } from "../shared/ui.tsx";
-import { Menu, Settings, Wrench } from "lucide-preact";
+import { Globe2, Menu, Settings, Wrench } from "lucide-preact";
 // Prefetch helpers live next to the renderer so marker regexes stay in one
 // place. Loaded dynamically: a static import would drag markdown.css into
 // the initial bundle and break the CSS size budget.
@@ -48,6 +48,7 @@ import { prependHistoryPage } from "../state/history-page.ts";
 import "../shared/style.css";
 import {
   chat,
+  browserDialog,
   composer,
   conversationActions,
   libraryModule,
@@ -79,6 +80,7 @@ function App() {
     () => matchMedia("(max-width: 900px)").matches,
   );
   const [modal, setModal] = useState<AppModal | null>(null);
+  const [browserAvailable, setBrowserAvailable] = useState(false);
   const [notice, setNotice] = useState("");
   const onResult = useCallback((value: JSONValue, inspect: boolean) => {
     if (inspect) setModal({ type: "raw", value });
@@ -113,6 +115,15 @@ function App() {
     correlate,
     reset,
   } = useHost(onResult, page === "chat");
+  useEffect(() => {
+    if (authenticated !== true || !online) {
+      setBrowserAvailable(false);
+      return;
+    }
+    api("/api/browser/status")
+      .then(() => setBrowserAvailable(true))
+      .catch(() => setBrowserAvailable(false));
+  }, [authenticated, online]);
   const [folder, setFolder] = useState("");
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -801,6 +812,14 @@ function App() {
                       : session?.title || "Your workspace"}
                 </h1>
               </div>
+              {browserAvailable && (
+                <IconButton
+                  label="Open browser"
+                  onClick={() => setModal({ type: "browser" })}
+                >
+                  <Globe2 aria-hidden="true" />
+                </IconButton>
+              )}
               {compact && (
                 <div class="conversation-head-actions">
                   {session && (
@@ -903,6 +922,7 @@ function App() {
                   }
                   showContext={showContext}
                   zoom={zoom}
+                  openBrowser={() => setModal({ type: "browser" })}
                 />
               </>
             ) : (
@@ -966,6 +986,20 @@ function App() {
               }}
             />
           )}
+        </Modal>
+      )}
+      {modal?.type === "browser" && (
+        <Modal
+          title="Browser"
+          className="browser-view"
+          close={() => setModal(null)}
+        >
+          <Deferred
+            load={browserDialog}
+            fallback={<p role="status">Loading browser…</p>}
+            sessions={catalogue.sessions}
+            report={report}
+          />
         </Modal>
       )}
       {modal?.type === "new" && (

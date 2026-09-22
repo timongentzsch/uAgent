@@ -2,6 +2,10 @@
 (() => {
   let t,
     z = 100;
+  // The browser can restore a stale transcript position before modules run.
+  try {
+    history.scrollRestoration = "manual";
+  } catch {}
   try {
     t = localStorage.getItem("uagent-theme");
     const stored = JSON.parse(localStorage.getItem("uagent-zoom") || "100");

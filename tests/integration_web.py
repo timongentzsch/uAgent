@@ -4,6 +4,7 @@ import os
 import signal
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -15,6 +16,7 @@ from integration_support import (
     event,
     run,
     session_files,
+    timeout_setting,
     tool_call,
     tool_results,
     wait_until,
@@ -27,6 +29,56 @@ PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a5WQAAAAASUVORK5CYII="
 )
 ASSET_NAME_CHARS = 128
+PARTIAL_USAGE_GATE_SECONDS = 10
+PARTIAL_USAGE_REQUEST_SECONDS = 25
+
+
+def test_browser_appliance_auth_and_handover_guards(root, home, *, binary):
+    offered = []
+
+    def answer(_, body):
+        offered.extend(tool["function"]["name"] for tool in body.get("tools", []))
+        return event({"content": "browser tool offered"})
+
+    with (
+        tempfile.TemporaryDirectory(prefix="ua-b-", dir=os.path.realpath("/tmp")) as browser_data,
+        Server([answer]) as provider,
+    ):
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={"UAGENT_BROWSER_DATA": browser_data},
+        ) as (client, code, _, _):
+            assert_true(client.json("/api/browser/status")[0] == 401, "unpaired browser status")
+            client.pair(code)
+            status, idle, _ = client.json("/api/browser/status")
+            assert_true(status == 200 and idle["mode"] == "idle", idle)
+            assert_true(idle["running"] is False, idle)
+            assert_true(idle["controller"] is False, idle)
+            assert_true("viewer" not in idle, idle)
+            project = root / "project"
+            project.mkdir()
+            session = client.create(project)
+            client.command("submit", session, text="Check available tools")
+            client.until(session, lambda value: "browser tool offered" in json.dumps(value))
+            assert_true("browser" in offered, offered)
+            client.sequence += 1
+            rejected, outcome, _ = client.json(
+                "/api/command",
+                {
+                    "v": 2,
+                    "kind": "browser",
+                    "request_id": f"{client.sequence:032x}",
+                    "action": "done",
+                    "interaction_id": "a" * 32,
+                },
+            )
+            assert_true(rejected == 409 and outcome["accepted"] is False, outcome)
+            assert_true(
+                client.command("browser", action="stop")["result"]["mode"] == "idle", "stop"
+            )
 
 
 def test_web_tool_sourced_attachment_marks_origin(root, home, *, binary):
@@ -253,12 +305,12 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
         )
         handler.wfile.write(("data: " + json.dumps(first) + "\n\n").encode())
         handler.wfile.flush()
-        assert release.wait(budget(10))
+        assert release.wait(budget(PARTIAL_USAGE_GATE_SECONDS))
         # Context must keep growing even without a new billing sample.
         chunk = event({"content": "x" * 4096}, finish=None)
         handler.wfile.write(("data: " + json.dumps(chunk) + "\n\n").encode())
         handler.wfile.flush()
-        assert finish.wait(budget(10))
+        assert finish.wait(budget(PARTIAL_USAGE_GATE_SECONDS))
         final = event(
             {"content": " complete"},
             usage={"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.03},
@@ -267,7 +319,19 @@ def test_partial_usage_reconciles_without_double_counting(root, home, *, binary)
         handler.wfile.flush()
 
     with Server([stream]) as provider:
-        with web_host(binary, root, home, provider.url) as (client, code, _, _):
+        # This stream deliberately pauses twice while the client observes
+        # intermediate state. Its transport deadline must exceed both scaled
+        # gates under coverage and thread instrumentation.
+        with web_host(
+            binary,
+            root,
+            home,
+            provider.url,
+            extra_env={
+                "UAGENT_REQUEST_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
+                "UAGENT_STREAM_IDLE_TIMEOUT": timeout_setting(PARTIAL_USAGE_REQUEST_SECONDS),
+            },
+        ) as (client, code, _, _):
             client.pair(code)
             session = client.create(root)
             initial = client.snapshot(session)["state"].get("context_tokens", 0)
@@ -763,7 +827,13 @@ def test_web_approval_interrupt_and_independent_workers(root, home, *, binary):
             )
             client.command("permissions", session, mode="ask")
             client.command("submit", parallel, text="WEB_SECOND_WORKSPACE")
-            client.until(parallel, lambda value: "other workspace works" in json.dumps(value))
+            client.until(
+                parallel,
+                lambda value: (
+                    "other workspace works" in json.dumps(value)
+                    and not value["metadata"]["turn_active"]
+                ),
+            )
             decision = value["pending"]["id"]
             client.command("reply", session, interaction_id=decision, text="y")
             wait_until(

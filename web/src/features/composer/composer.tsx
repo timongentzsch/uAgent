@@ -55,6 +55,7 @@ export default function Composer({
   showContext,
   showStatistics,
   zoom,
+  openBrowser,
 }: {
   session: Session;
   commands: SlashCommand[];
@@ -75,6 +76,7 @@ export default function Composer({
   clearActivity: () => void;
   showContext: () => void;
   showStatistics: () => void;
+  openBrowser: () => void;
   zoom: number;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
@@ -235,7 +237,15 @@ export default function Composer({
           <ArrowDown />
         </button>
       )}
-      {pending ? (
+      {pending?.kind === "browser" ? (
+        <section class="decision" aria-label="Browser needs you">
+          <h2>Continue in the browser</h2>
+          <p>{pending.prompt || "The agent needs you to finish in Chrome."}</p>
+          <button class="primary" disabled={!online} onClick={openBrowser}>
+            Open browser
+          </button>
+        </section>
+      ) : pending ? (
         <Deferred
           load={decisionPanel}
           key={pending.id}

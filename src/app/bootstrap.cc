@@ -20,6 +20,7 @@
 #include "include/agent/prompt.h"
 #include "include/api.h"
 #include "include/app/reference.h"
+#include "include/browser/browser.h"
 #include "include/cli.h"
 #include "include/core/config.h"
 #include "include/core/debug.h"
@@ -39,6 +40,7 @@
 #include "include/media/attachments.h"
 #include "include/providers.h"
 #include "include/tools/adapt_system.h"
+#include "include/tools/browser.h"
 #include "include/tools/configure.h"
 #include "include/tools/memory.h"
 #include "include/tools/registry.h"
@@ -234,6 +236,11 @@ std::vector<Tool> BuildTools(AppContext& context,
   // Reading a named URL needs no hosted route, so it does not follow search's
   // availability.
   tools.push_back(WebFetchTool(api));
+  if (!browser::DataDirectory().empty() && context.options.browser_session &&
+      context.channel && !context.channel->SessionPath().empty() &&
+      AgentDepth() == 0) {
+    tools.push_back(BrowserTool(HashHex(context.channel->SessionPath())));
+  }
   // The default lean child is an isolation and context-efficiency boundary:
   // do not clone the parent's entire MCP fleet into every delegation. A root
   // lean session and an explicitly requested full child still get MCP.

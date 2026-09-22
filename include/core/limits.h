@@ -76,6 +76,9 @@ inline constexpr int64_t kModelRequestDeadlineReserveSeconds = 1;
 // Live event pacing. Model callbacks and browser publication use the same
 // usage cadence so one layer cannot silently undo the other's coalescing.
 inline constexpr int64_t kUsageProgressIntervalMs = 100;
+// A quiet provider chunk still advances context promptly even when it arrives
+// inside the time interval and no later chunk wakes the progress callback.
+inline constexpr size_t kUsageProgressBytes = KiB(1);
 inline constexpr int64_t kStreamBatchIntervalMs = 12;
 inline constexpr size_t kStreamBatchBytes = KiB(8);
 

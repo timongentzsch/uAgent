@@ -308,7 +308,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.native == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # The full clang-tidy scan now covers 155 translation units. The prior
+    # 15-minute limit stopped a healthy run at 142/155, so keep one bounded
+    # budget that can finish the repository-wide analysis on shared runners.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

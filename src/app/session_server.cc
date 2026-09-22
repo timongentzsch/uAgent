@@ -155,6 +155,7 @@ Connection Open(const std::string& executable, const std::string& cwd,
     return {};
   }
   json config = {{"owner_fd", delegated ? 3 : -1},
+                 {"browser_session", options.browser_session},
                  {"overrides", options.overrides},
                  {"yolo", options.yolo},
                  {"debug", options.debug},

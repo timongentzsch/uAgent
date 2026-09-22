@@ -48,8 +48,8 @@ bool StillViews(const std::string& device, const std::string& role,
 uint64_t RelayBrowserViewer(httplib::ws::WebSocket& socket,
                             const std::string& device,
                             const std::string& role) {
-  json status = browser::Request(
-      {{"op", "viewer"}, {"device", device}, {"role", role}});
+  json status =
+      browser::Request({{"op", "viewer"}, {"device", device}, {"role", role}});
   if (!status.value("ok", false)) {
     socket.close(httplib::ws::CloseStatus::PolicyViolation);
     return 0;

@@ -18,8 +18,7 @@ uint16_t Read16(const std::string& input, size_t offset) {
 uint32_t Read32(const std::string& input, size_t offset) {
   uint32_t value = 0;
   for (size_t index = 0; index < 4; ++index) {
-    value = (value << 8U) |
-            static_cast<unsigned char>(input[offset + index]);
+    value = (value << 8U) | static_cast<unsigned char>(input[offset + index]);
   }
   return value;
 }

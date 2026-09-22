@@ -26,6 +26,8 @@ Every setting below is read from the running binary's registry. `takes effect` i
 
 | Setting | Type | Default | Takes effect | Description |
 | --- | --- | --- | --- | --- |
+| `UAGENT_WEB_BIND` | string | `127.0.0.1` | restart-required | web listener address: loopback by default, all interfaces only when explicitly configured |
+| `UAGENT_BROWSER_DATA` | string | empty | restart-required | private browser profile and service directory; empty disables the browser appliance |
 | `UAGENT_WEB_PORT` | integer | `8080` | restart-required | global web master's loopback port |
 | `UAGENT_WEB_ORIGIN` | string | empty | restart-required | exact browser origin via an explicitly configured HTTPS or tailnet proxy |
 | `UAGENT_WEB_PUSH_CONTACT` | string | empty | restart-required | VAPID mailto or HTTPS contact; empty disables optional native Web Push |
